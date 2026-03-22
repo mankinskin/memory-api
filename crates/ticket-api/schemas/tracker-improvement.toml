@@ -1,0 +1,203 @@
+# Ticket type schema for "tracker-improvement"
+#
+# This is the built-in workflow schema used for tracking implementation work,
+# bug fixes, and release governance. Edit or copy this file to define custom
+# ticket types; load custom schemas with `ticket --schema-dir <dir>`.
+#
+# Schema format: serde-compatible TOML representation of TicketTypeSchema.
+#   - fields: BTreeMap<field_name, {field_type, required}>
+#   - states: list of valid state names
+#   - transitions: list of {from, to} pairs defining the state machine
+#   - edge_rules: BTreeMap<kind_name, {directed, acyclic_enforced}>
+
+type_id = "tracker-improvement"
+
+states = [
+    "open",
+    "in-progress",
+    "review",
+    "validating",
+    "validated",
+    "release-candidate",
+    "released",
+    "monitoring",
+    "done",
+    "blocked",
+    "cancelled",
+]
+
+# ── State machine transitions ──────────────────────────────────────────────────
+
+[[transitions]]
+from = "open"
+to = "in-progress"
+
+[[transitions]]
+from = "open"
+to = "blocked"
+
+[[transitions]]
+from = "open"
+to = "cancelled"
+
+[[transitions]]
+from = "in-progress"
+to = "review"
+
+[[transitions]]
+from = "in-progress"
+to = "blocked"
+
+[[transitions]]
+from = "in-progress"
+to = "cancelled"
+
+[[transitions]]
+from = "review"
+to = "validating"
+
+[[transitions]]
+from = "review"
+to = "in-progress"
+
+[[transitions]]
+from = "review"
+to = "blocked"
+
+[[transitions]]
+from = "validating"
+to = "validated"
+
+[[transitions]]
+from = "validating"
+to = "review"
+
+[[transitions]]
+from = "validating"
+to = "blocked"
+
+[[transitions]]
+from = "validated"
+to = "release-candidate"
+
+[[transitions]]
+from = "validated"
+to = "review"
+
+[[transitions]]
+from = "validated"
+to = "blocked"
+
+[[transitions]]
+from = "release-candidate"
+to = "released"
+
+[[transitions]]
+from = "release-candidate"
+to = "review"
+
+[[transitions]]
+from = "release-candidate"
+to = "blocked"
+
+[[transitions]]
+from = "released"
+to = "monitoring"
+
+[[transitions]]
+from = "released"
+to = "blocked"
+
+[[transitions]]
+from = "monitoring"
+to = "done"
+
+[[transitions]]
+from = "monitoring"
+to = "blocked"
+
+[[transitions]]
+from = "blocked"
+to = "open"
+
+[[transitions]]
+from = "blocked"
+to = "in-progress"
+
+[[transitions]]
+from = "blocked"
+to = "review"
+
+[[transitions]]
+from = "blocked"
+to = "cancelled"
+
+# ── Field definitions ──────────────────────────────────────────────────────────
+# Required fields must be present in every manifest of this type.
+# Optional fields are indexed when present.
+
+[fields.title]
+field_type = "string"
+required = true
+
+[fields.type]
+field_type = "string"
+required = true
+
+[fields.state]
+field_type = "string"
+required = false
+
+[fields.component]
+field_type = "string"
+required = false
+
+[fields.risk_level]
+field_type = "string"
+required = false
+
+[fields.acceptance_criteria]
+field_type = "string"
+required = false
+
+[fields.validation_plan]
+field_type = "string"
+required = false
+
+[fields.validation_status]
+field_type = "string"
+required = false
+
+[fields.validator_id]
+field_type = "string"
+required = false
+
+[fields.release_target]
+field_type = "string"
+required = false
+
+[fields.release_version]
+field_type = "string"
+required = false
+
+[fields.bootstrap_blocker]
+field_type = "boolean"
+required = false
+
+[fields.rollout_stage]
+field_type = "string"
+required = false
+
+# ── Edge kind rules ────────────────────────────────────────────────────────────
+
+[edge_rules.depends_on]
+directed = true
+acyclic_enforced = true
+
+[edge_rules.blocks]
+directed = true
+acyclic_enforced = false
+
+[edge_rules.linked]
+directed = false
+acyclic_enforced = false
