@@ -407,6 +407,163 @@ impl TicketStore {
         Ok(filtered)
     }
 
+    /// List tickets with extended options (deleted visibility, field filters).
+    pub fn list_extended(
+        &self,
+        state_filter: Option<&str>,
+        type_filter: Option<&str>,
+        limit: Option<usize>,
+        include_deleted: bool,
+        field_filters: &[(String, String)],
+    ) -> Result<Vec<IndexedTicket>, StorageError> {
+        let all = self.index.list_tickets(include_deleted)?;
+        let needs_manifest_check = !field_filters.is_empty();
+        let filtered: Vec<_> = all
+            .into_iter()
+            .filter(|t| {
+                if let Some(s) = state_filter {
+                    if t.state.as_deref() != Some(s) {
+                        return false;
+                    }
+                }
+                if let Some(tp) = type_filter {
+                    if t.type_id != tp {
+                        return false;
+                    }
+                }
+                if needs_manifest_check {
+                    let manifest = match TicketFs::read(&t.path) {
+                        Ok(m) => m,
+                        Err(_) => return false,
+                    };
+                    for (key, value) in field_filters {
+                        let field_val = manifest.extra.get(key)
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        if field_val != value {
+                            return false;
+                        }
+                    }
+                }
+                true
+            })
+            .take(limit.unwrap_or(usize::MAX))
+            .collect();
+        Ok(filtered)
+    }
+
+    /// Fast-forward a ticket to a target state by traversing all intermediate states.
+    /// Returns the final manifest after all transitions.
+    pub fn close(
+        &self,
+        id: &Uuid,
+        target_state: &str,
+    ) -> Result<(TicketManifest, Vec<String>), StorageError> {
+        let indexed = self
+            .index
+            .get_ticket(id)?
+            .ok_or(StorageError::NotFound(*id))?;
+        if indexed.deleted {
+            return Err(StorageError::NotFound(*id));
+        }
+
+        let current_state = indexed.state.as_deref().unwrap_or("open");
+        if current_state == target_state {
+            let manifest = TicketFs::read(&indexed.path)?;
+            return Ok((manifest, vec![]));
+        }
+
+        let schema = self.schema_registry.get(&indexed.type_id)
+            .ok_or_else(|| StorageError::Other(
+                format!("no schema for type '{}'", indexed.type_id),
+            ))?;
+
+        let path = schema.find_path(current_state, target_state)
+            .ok_or_else(|| StorageError::Other(
+                format!("no path from '{}' to '{}'", current_state, target_state),
+            ))?;
+
+        let empty_patch = BTreeMap::new();
+        let mut last_manifest = None;
+        for state in &path {
+            last_manifest = Some(self.update(id, empty_patch.clone(), None, Some(state))?);
+        }
+
+        Ok((last_manifest.unwrap(), path))
+    }
+
+    /// Attach a file as an asset to a ticket. Returns the asset path.
+    pub fn attach(
+        &self,
+        id: &Uuid,
+        source_path: &std::path::Path,
+        asset_name: Option<&str>,
+    ) -> Result<std::path::PathBuf, StorageError> {
+        let indexed = self
+            .index
+            .get_ticket(id)?
+            .ok_or(StorageError::NotFound(*id))?;
+        if indexed.deleted {
+            return Err(StorageError::NotFound(*id));
+        }
+
+        let file_name = asset_name
+            .map(String::from)
+            .unwrap_or_else(|| {
+                source_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "attachment".to_string())
+            });
+
+        let assets_dir = indexed.path.join("assets");
+        std::fs::create_dir_all(&assets_dir)
+            .map_err(|e| StorageError::Other(format!("create assets dir: {e}")))?;
+
+        let dest = assets_dir.join(&file_name);
+        std::fs::copy(source_path, &dest)
+            .map_err(|e| StorageError::Other(format!("copy asset: {e}")))?;
+
+        // Record in history
+        let mut event = BTreeMap::new();
+        event.insert("_event".to_string(), serde_json::Value::String("attach".to_string()));
+        event.insert("asset".to_string(), serde_json::Value::String(file_name));
+        let _ = TicketFs::append_history(&indexed.path, event);
+
+        Ok(dest)
+    }
+
+    /// List assets for a ticket.
+    pub fn list_assets(&self, id: &Uuid) -> Result<Vec<String>, StorageError> {
+        let indexed = self
+            .index
+            .get_ticket(id)?
+            .ok_or(StorageError::NotFound(*id))?;
+        if indexed.deleted {
+            return Err(StorageError::NotFound(*id));
+        }
+
+        let assets_dir = indexed.path.join("assets");
+        if !assets_dir.exists() {
+            return Ok(vec![]);
+        }
+
+        let mut names = Vec::new();
+        for entry in std::fs::read_dir(&assets_dir)
+            .map_err(|e| StorageError::Other(format!("read assets dir: {e}")))?
+        {
+            let entry: std::fs::DirEntry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            if let Some(name) = entry.file_name().to_str() {
+                names.push(name.to_string());
+            }
+        }
+        names.sort();
+        Ok(names)
+    }
+
     pub fn search_tickets(
         &self,
         query_expr: &str,

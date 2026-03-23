@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -71,5 +71,38 @@ impl TicketTypeSchema {
         } else {
             Err(SchemaValidationError::InvalidEdgeKind(kind.to_owned()))
         }
+    }
+
+    /// Find the shortest path of intermediate states from `from` to `to` using BFS.
+    /// Returns the sequence of states to transition through (excluding `from`, including `to`).
+    /// Returns `None` if no path exists.
+    pub fn find_path(&self, from: &str, to: &str) -> Option<Vec<String>> {
+        if from == to {
+            return Some(vec![]);
+        }
+        if self.allows_transition(from, to) {
+            return Some(vec![to.to_string()]);
+        }
+
+        let mut visited = std::collections::HashSet::new();
+        visited.insert(from.to_string());
+        let mut queue = VecDeque::new();
+        queue.push_back((from.to_string(), vec![]));
+
+        while let Some((current, path)) = queue.pop_front() {
+            for t in &self.transitions {
+                if t.from == current && !visited.contains(&t.to) {
+                    let mut new_path = path.clone();
+                    new_path.push(t.to.clone());
+                    if t.to == to {
+                        return Some(new_path);
+                    }
+                    visited.insert(t.to.clone());
+                    queue.push_back((t.to.clone(), new_path));
+                }
+            }
+        }
+
+        None
     }
 }

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use redb::{Database, ReadableTable, TableDefinition};
 use uuid::Uuid;
@@ -18,37 +18,32 @@ const META: TableDefinition<&str, &str> = TableDefinition::new(TABLE_META);
 
 /// Redb-backed metadata index.
 ///
-/// The database file is opened on demand for each operation and released
-/// immediately afterwards so that no long-lived file lock is held while the
-/// process is idle.
+/// Keeps a single open [`Database`] handle for the lifetime of the store so
+/// that rapid sequential operations (e.g. batch rollback) never contend on
+/// the file lock that redb acquires when opening the database file.
 pub struct RedbIndexStore {
-    db_path: PathBuf,
+    db: Database,
 }
 
 impl RedbIndexStore {
     pub fn open(db_path: &Path) -> Result<Self, StorageError> {
-        let store = Self { db_path: db_path.to_path_buf() };
-        // Eagerly create + validate on first open so callers get an early error.
-        {
-            let db = store.db()?;
-            store.ensure_tables(&db)?;
-            store.check_or_set_schema_version(&db)?;
-        }
+        let db = if db_path.exists() {
+            Database::open(db_path).map_err(|e| StorageError::Database(e.to_string()))?
+        } else {
+            Database::create(db_path).map_err(|e| StorageError::Database(e.to_string()))?
+        };
+        let store = Self { db };
+        store.ensure_tables()?;
+        store.check_or_set_schema_version()?;
         Ok(store)
     }
 
-    /// Open the database file, acquiring the file lock for the duration of the
-    /// returned [`Database`] value's lifetime.
-    fn db(&self) -> Result<Database, StorageError> {
-        if self.db_path.exists() {
-            Database::open(&self.db_path).map_err(|e| StorageError::Database(e.to_string()))
-        } else {
-            Database::create(&self.db_path).map_err(|e| StorageError::Database(e.to_string()))
-        }
+    fn db(&self) -> &Database {
+        &self.db
     }
 
-    fn ensure_tables(&self, db: &Database) -> Result<(), StorageError> {
-        let write_txn = db.begin_write()?;
+    fn ensure_tables(&self) -> Result<(), StorageError> {
+        let write_txn = self.db().begin_write()?;
         {
             write_txn.open_table(TICKETS)?;
             write_txn.open_table(EDGES)?;
@@ -60,12 +55,10 @@ impl RedbIndexStore {
         Ok(())
     }
 
-    fn check_or_set_schema_version(&self, db: &Database) -> Result<(), StorageError> {
-        let write_txn = db.begin_write()?;
+    fn check_or_set_schema_version(&self) -> Result<(), StorageError> {
+        let write_txn = self.db().begin_write()?;
         {
             let mut table = write_txn.open_table(META)?;
-            // Eagerly copy the value out so the immutable borrow from get() is dropped
-            // before we potentially call insert().
             let existing: Option<String> = table
                 .get("schema_version")?
                 .map(|v| v.value().to_string());
@@ -88,7 +81,7 @@ impl RedbIndexStore {
         let bytes = bincode::serialize(ticket)
             .map_err(|e| StorageError::Serialization(e.to_string()))?;
         let key = ticket.id.to_string();
-        let write_txn = self.db()?.begin_write()?;
+        let write_txn = self.db().begin_write()?;
         {
             let mut table = write_txn.open_table(TICKETS)?;
             table.insert(key.as_str(), bytes.as_slice())?;
@@ -98,7 +91,7 @@ impl RedbIndexStore {
     }
 
     pub fn get_ticket(&self, id: &Uuid) -> Result<Option<IndexedTicket>, StorageError> {
-        let read_txn = self.db()?.begin_read()?;
+        let read_txn = self.db().begin_read()?;
         let table = read_txn.open_table(TICKETS)?;
         let key = id.to_string();
         match table.get(key.as_str())? {
@@ -112,7 +105,7 @@ impl RedbIndexStore {
     }
 
     pub fn list_tickets(&self, include_deleted: bool) -> Result<Vec<IndexedTicket>, StorageError> {
-        let read_txn = self.db()?.begin_read()?;
+        let read_txn = self.db().begin_read()?;
         let table = read_txn.open_table(TICKETS)?;
         let mut tickets = Vec::new();
         for result in table.iter()? {
@@ -142,7 +135,7 @@ impl RedbIndexStore {
     /// Duplicate insert is idempotent.
     pub fn insert_edge(&self, edge: &EdgeRecord) -> Result<(), StorageError> {
         let key = format!("{}|{}|{}", edge.from, edge.to, edge.kind);
-        let write_txn = self.db()?.begin_write()?;
+        let write_txn = self.db().begin_write()?;
         {
             let mut table = write_txn.open_table(EDGES)?;
             table.insert(key.as_str(), ())?;
@@ -154,7 +147,7 @@ impl RedbIndexStore {
     /// Delete an edge by composite key. Missing edges are treated as no-op.
     pub fn delete_edge(&self, edge: &EdgeRecord) -> Result<(), StorageError> {
         let key = format!("{}|{}|{}", edge.from, edge.to, edge.kind);
-        let write_txn = self.db()?.begin_write()?;
+        let write_txn = self.db().begin_write()?;
         {
             let mut table = write_txn.open_table(EDGES)?;
             let _ = table.remove(key.as_str())?;
@@ -166,7 +159,7 @@ impl RedbIndexStore {
     /// Returns all edges originating from `from`.
     pub fn edges_from(&self, from: &Uuid) -> Result<Vec<EdgeRecord>, StorageError> {
         let prefix = from.to_string();
-        let read_txn = self.db()?.begin_read()?;
+        let read_txn = self.db().begin_read()?;
         let table = read_txn.open_table(EDGES)?;
         let mut edges = Vec::new();
         for result in table.iter()? {
@@ -183,7 +176,7 @@ impl RedbIndexStore {
 
     /// Returns every edge in the store.
     pub fn list_all_edges(&self) -> Result<Vec<EdgeRecord>, StorageError> {
-        let read_txn = self.db()?.begin_read()?;
+        let read_txn = self.db().begin_read()?;
         let table = read_txn.open_table(EDGES)?;
         let mut edges = Vec::new();
         for result in table.iter()? {
@@ -199,7 +192,7 @@ impl RedbIndexStore {
 
     pub fn add_scan_root(&self, root: &ScanRoot) -> Result<(), StorageError> {
         let path_str = root.path.to_string_lossy().into_owned();
-        let write_txn = self.db()?.begin_write()?;
+        let write_txn = self.db().begin_write()?;
         {
             let mut table = write_txn.open_table(SCAN_ROOTS_TABLE)?;
             table.insert(path_str.as_str(), root.label.as_str())?;
@@ -209,7 +202,7 @@ impl RedbIndexStore {
     }
 
     pub fn list_scan_roots(&self) -> Result<Vec<ScanRoot>, StorageError> {
-        let read_txn = self.db()?.begin_read()?;
+        let read_txn = self.db().begin_read()?;
         let table = read_txn.open_table(SCAN_ROOTS_TABLE)?;
         let mut roots = Vec::new();
         for result in table.iter()? {
@@ -228,7 +221,7 @@ impl RedbIndexStore {
         let bytes = bincode::serialize(lease)
             .map_err(|e| StorageError::Serialization(e.to_string()))?;
         let key = lease.ticket_id.to_string();
-        let write_txn = self.db()?.begin_write()?;
+        let write_txn = self.db().begin_write()?;
         {
             let mut table = write_txn.open_table(LEASES)?;
             table.insert(key.as_str(), bytes.as_slice())?;
@@ -238,7 +231,7 @@ impl RedbIndexStore {
     }
 
     pub fn get_lease(&self, ticket_id: &Uuid) -> Result<Option<LeaseInfo>, StorageError> {
-        let read_txn = self.db()?.begin_read()?;
+        let read_txn = self.db().begin_read()?;
         let table = read_txn.open_table(LEASES)?;
         let key = ticket_id.to_string();
         match table.get(key.as_str())? {
@@ -253,7 +246,7 @@ impl RedbIndexStore {
 
     pub fn remove_lease(&self, ticket_id: &Uuid) -> Result<(), StorageError> {
         let key = ticket_id.to_string();
-        let write_txn = self.db()?.begin_write()?;
+        let write_txn = self.db().begin_write()?;
         {
             let mut table = write_txn.open_table(LEASES)?;
             table.remove(key.as_str())?;
@@ -263,7 +256,7 @@ impl RedbIndexStore {
     }
 
     pub fn list_active_leases(&self) -> Result<Vec<LeaseInfo>, StorageError> {
-        let read_txn = self.db()?.begin_read()?;
+        let read_txn = self.db().begin_read()?;
         let table = read_txn.open_table(LEASES)?;
         let mut leases = Vec::new();
         for result in table.iter()? {

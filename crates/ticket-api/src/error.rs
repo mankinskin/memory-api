@@ -60,6 +60,8 @@ pub enum StorageError {
     },
     #[error("protocol: {0}")]
     Protocol(#[from] ProtocolError),
+    #[error("{0}")]
+    Other(String),
 }
 
 /// Structured errors for the canonical `TaskCommand` agent protocol.
