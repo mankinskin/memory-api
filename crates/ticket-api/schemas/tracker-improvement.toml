@@ -188,6 +188,34 @@ required = false
 field_type = "string"
 required = false
 
+[fields.doc_category]
+field_type = "string"
+required = false
+
+[fields.tags]
+field_type = "string"
+required = false
+
+[fields.workflow_stage]
+field_type = "string"
+required = false
+
+[fields.priority]
+field_type = "string"
+required = false
+
+[fields.source_agent_files]
+field_type = "string"
+required = false
+
+[fields.bug_validity]
+field_type = "string"
+required = false
+
+[fields.phase]
+field_type = "string"
+required = false
+
 # ── Edge kind rules ────────────────────────────────────────────────────────────
 
 [edge_rules.depends_on]
