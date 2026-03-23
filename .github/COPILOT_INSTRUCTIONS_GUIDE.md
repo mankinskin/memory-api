@@ -22,6 +22,7 @@ Example structure:
   ├── core-crates.instructions.md
   ├── ticket-system.instructions.md
   ├── mcp-tools.instructions.md
+  ├── viewer-api-tools.instructions.md
   └── tests.instructions.md
 ```
 

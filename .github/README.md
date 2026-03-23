@@ -16,6 +16,7 @@ This file provides:
 ### Supporting Documentation
 **`COPILOT_INSTRUCTIONS_GUIDE.md`** - Meta-documentation about the custom instructions system
 **`.github/instructions/*.instructions.md`** - Path-scoped guidance loaded by file pattern
+Includes `viewer-api-tools.instructions.md` for viewer-api-driven frontend and API/file integration work.
 **`.github/prompts/*.prompt.md`** - Explicit workflow prompts
 
 ## GitHub Copilot Instruction Types
