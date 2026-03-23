@@ -5,38 +5,34 @@ This directory contains GitHub Copilot custom instructions for the context-engin
 ## Active Files
 
 ### Primary Agent Instructions
-**`instructions.md`** - Repository-wide custom instructions (copy of `../AGENTS.md`)
+**`../AGENTS.md`** - Repository-wide behavioral constitution
 
 This file provides:
-- Documentation maintenance checklist
-- Problem-solving approach (context-first strategy)
-- Project structure overview
-- Testing & debugging workflows
-- API migration guides (Response API unification)
-- Bug reporting conventions
-- Temporary work file guidelines
+- operating principles and scope control
+- MCP-first discovery protocol
+- task routing for simple fixes, bugs, features, research, and swarm work
+- quality gates, escalation rules, and fallback behavior
 
 ### Supporting Documentation
 **`COPILOT_INSTRUCTIONS_GUIDE.md`** - Meta-documentation about the custom instructions system
-**`instructions/README.md`** - Guidance for creating path-specific instructions
+**`.github/instructions/*.instructions.md`** - Path-scoped guidance loaded by file pattern
+**`.github/prompts/*.prompt.md`** - Explicit workflow prompts
 
 ## GitHub Copilot Instruction Types
 
 GitHub Copilot supports multiple instruction file types (in priority order):
 
-1. **Repository-wide**: `.github/instructions.md` ✅ **We use this**
-   - Applied to all requests in the repository
-   - Best for project-wide conventions and architecture
+1. **Agent instructions**: `AGENTS.md` ✅ **Primary in this repo**
+   - Applied broadly for project-level conventions
+   - Used as the single source of core behavior
 
 2. **Path-specific**: `.github/instructions/*.instructions.md`
    - Target specific files/directories with glob patterns
-   - Use for crate-specific or module-specific guidance
-   - Currently not implemented (may add later)
+   - Use for crate/tool/test specific guidance
+   - Implemented in this repository
 
-3. **Agent instructions**: `AGENTS.md` (anywhere in repo)
-   - Nearest file in directory tree takes precedence
-   - Alternative to repository-wide approach
-   - Not used (we use repository-wide instead)
+3. **Prompt workflows**: `.github/prompts/*.prompt.md`
+   - Named workflows invoked explicitly (for example, tickets, swarm-worker, debug-test, research)
 
 4. **Model-specific**: `CLAUDE.md` or `GEMINI.md` (root only)
    - Provider-specific optimizations
@@ -55,6 +51,7 @@ Priority Order (for agents):
 5. <crate>/src/tests/                ← Usage examples
 6. bug-reports/                      ← Known issues
 7. QUESTIONS_FOR_AUTHOR.md           ← Unclear topics
+8. .github/prompts/*.prompt.md       ← Operational workflows
 ```
 
 ## Verification
@@ -64,7 +61,7 @@ To verify Copilot is using these instructions:
 **In VS Code:**
 - Use Copilot Chat
 - Check "References" in response
-- Look for `.github/instructions.md`
+- Look for `AGENTS.md` and/or matching `.github/instructions/*.instructions.md`
 
 **On GitHub.com:**
 - Use Copilot Chat or Agents
@@ -77,19 +74,11 @@ To verify Copilot is using these instructions:
 
 ## Updates
 
-When updating `AGENTS.md`, remember to sync changes:
-```bash
-cp AGENTS.md .github/instructions.md
-git add .github/instructions.md
-git commit -m "docs: update Copilot instructions"
-```
-
-Or consider making `.github/instructions.md` a symlink:
-```bash
-# Not done yet, but possible future approach:
-cd .github
-ln -s ../AGENTS.md instructions.md
-```
+When updating instruction architecture:
+- keep `AGENTS.md` concise and stable
+- place domain rules in `.github/instructions/*.instructions.md`
+- place task recipes in `.github/prompts/*.prompt.md`
+- avoid duplicated copies of the same instruction content
 
 ## References
 
