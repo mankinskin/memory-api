@@ -63,16 +63,6 @@ ticket topgraph abcd1234 --json \
   | ticket health --stdin --json
 ```
 
-### Exec Protocol (NDJSON batch — agent use only)
-
-```bash
-# Single health check via exec
-echo '{"command":"health","all":true}' | ticket exec --index-root /path/to/index --json
-
-# Subgraph query via exec
-echo '{"command":"subgraph","root":"<UUID>","depth":2}' | ticket exec --index-root /path/to/index --json
-```
-
 ### Batch (CLI-syntax, transactional)
 
 `ticket batch` reads one CLI command per line from stdin (or `--file`). All
@@ -99,7 +89,7 @@ echo -e "create --title 'Setup CI' --type tracker-improvement\nclose <UUID>" \
 
 **Rules:**
 - Each line is parsed identically to a top-level `ticket <subcommand>` call.
-- `serve`, `watch`, `exec`, nested `batch`, `scan`, lease commands, and
+- `serve`, `watch`, nested `batch`, `scan`, lease commands, and
   config commands (`add-root`, `workspace`, `export-command-schema`) are
   rejected with a clear error — they cannot be used inside a batch.
 - On rollback: `create` → deleted, `update` → state/fields restored, `link`
