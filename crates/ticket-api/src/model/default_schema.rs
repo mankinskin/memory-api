@@ -96,10 +96,6 @@ pub fn tracker_improvement_schema() -> TicketTypeSchema {
         EdgeKindRule { directed: true, acyclic_enforced: true },
     );
     edge_rules.insert(
-        "blocks".to_string(),
-        EdgeKindRule { directed: true, acyclic_enforced: false },
-    );
-    edge_rules.insert(
         "linked".to_string(),
         EdgeKindRule { directed: false, acyclic_enforced: false },
     );

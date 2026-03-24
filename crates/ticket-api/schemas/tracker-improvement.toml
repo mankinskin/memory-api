@@ -222,10 +222,6 @@ required = false
 directed = true
 acyclic_enforced = true
 
-[edge_rules.blocks]
-directed = true
-acyclic_enforced = false
-
 [edge_rules.linked]
 directed = false
 acyclic_enforced = false
