@@ -1,6 +1,6 @@
 ---
 description: "Use when editing ticket system crates/tools. Covers state transitions, storage/search boundaries, and workflow expectations."
-applyTo: "crates/ticket-api/**,tools/ticket-*/**"
+applyTo: "**"
 ---
 
 # Ticket System Guidance
@@ -19,6 +19,83 @@ Applies to:
 - Respect ticket lifecycle/state machine invariants.
 - Keep storage/index behavior backward compatible unless explicitly requested.
 - Preserve clear separation between API, storage, transport, and UI layers.
+
+## Ticket Quality — Standing Obligations
+
+These rules apply during **every session**, not only when working on ticket-system code.
+
+### Orientation (start of every session)
+
+Before writing any code, run a quick orientation to understand the current ticket landscape:
+
+```bash
+# Survey all open tickets
+./target/debug/ticket.exe list --where state=open --json
+
+# Check for stale in-progress tickets that may conflict with your work
+./target/debug/ticket.exe list --where state=in-progress --json
+
+# Check overall graph health
+./target/debug/ticket.exe health --all --json
+```
+
+Alternatively, use the MCP ticket tools (`mcp_ticket-mcp_list_tickets`, `mcp_ticket-mcp_health`) when the MCP server is running.
+
+### Discovery Before Creating
+
+Always search for existing tickets before creating new ones. Duplicate tickets degrade store quality.
+
+```bash
+./target/debug/ticket.exe search "<keywords>" --json
+```
+
+Or via MCP: `mcp_ticket-mcp_list_tickets` with a `where` filter, or `mcp_ticket-mcp_get_ticket_description`.
+
+### Continuous State Updates
+
+Update ticket state immediately when the work status changes — do not defer to the end of a session:
+
+| Situation | Action |
+|---|---|
+| Starting work on a ticket | `update --state in-progress` |
+| Blocked waiting on something | `update --state blocked` (add a note via `--note`) |
+| All acceptance criteria met | `close <id>` |
+| Ticket is no longer relevant | `cancel <id>` with a reason |
+
+### Dependency Maintenance
+
+After completing significant work, check whether finished tickets unblock others and update those links:
+
+```bash
+# Find what a completed ticket blocks
+./target/debug/ticket.exe topgraph <id> --json \
+  | jq -r '.payload.nodes[] | select(.state=="blocked") | .id'
+```
+
+Add missing `depends_on` edges when you discover undocumented dependencies. Use `--reason` on every link to explain *why* the dependency exists.
+
+### Commit Checkpoint Suggestions
+
+Suggest a `git commit` checkpoint to the user when any of the following is true:
+
+- A ticket transitions to `closed` (work milestone reached).
+- A batch of related tickets all reach `closed` or `in-progress` together.
+- A dependency graph changes materially (new links added/removed).
+- A tracked bug is fixed and its ticket closed.
+
+Phrase suggestions like:
+
+> "Ticket `<title>` is now closed — good checkpoint for a commit. Suggested message: `<imperative summary of what was done>`."
+
+### Aggressive Quality Improvement
+
+Opportunistically improve ticket quality whenever you touch the store:
+
+- Fill in missing `description`, `priority`, or `type` fields on tickets you encounter.
+- Split vague tickets into concrete, actionable child tickets linked with `depends_on`.
+- Remove or merge duplicate tickets.
+- Verify that `in-progress` tickets actually have an active owner/context; flag stale ones.
+- After any structural refactor, re-run `ticket health --all` and resolve reported issues.
 
 ## Workflow Expectations
 
