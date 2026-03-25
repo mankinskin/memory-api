@@ -1,0 +1,32 @@
+[package]
+name = "ticket-http"
+version = "0.1.0"
+edition = "2024"
+description = "Thin HTTP API layer for ticket-api: REST endpoints and SSE streaming"
+
+[lib]
+name = "ticket_http"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ticket-http"
+path = "src/main.rs"
+
+[dependencies]
+ticket-api = { path = "../../../crates/ticket-api" }
+viewer-api = { path = "../../viewer/viewer-api" }
+
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.4" }
+arc-swap = "1"
+futures-util = "0.3"
+tracing = "0.1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["serde", "v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3"
