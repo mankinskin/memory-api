@@ -3,9 +3,7 @@ agents/tmp/
 node_modules/
 
 # Built frontend assets
-tools/doc-viewer/static/
-tools/log-viewer/static/
-tools/ticket-viewer/static/
+tools/viewer/**/static/
 
 # Generated Playwright report output
 **/playwright-report/

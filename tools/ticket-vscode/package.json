@@ -1,0 +1,116 @@
+{
+  "name": "ticket-viewer",
+  "displayName": "Ticket Viewer",
+  "description": "View and navigate the ticket graph directly from the VS Code sidebar.",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ticket-viewer",
+          "title": "Tickets",
+          "icon": "resources/ticket.svg"
+        }
+      ]
+    },
+    "views": {
+      "ticket-viewer": [
+        {
+          "id": "ticket-viewer.tickets",
+          "name": "Tickets",
+          "contextualTitle": "Tickets"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "ticket-viewer.openBrowser",
+        "title": "Open Ticket Viewer in Browser",
+        "icon": "$(browser)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.refresh",
+        "title": "Refresh Tickets",
+        "icon": "$(refresh)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.startServer",
+        "title": "Start Ticket Viewer Server",
+        "icon": "$(play)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.copyId",
+        "title": "Copy Ticket ID",
+        "icon": "$(copy)",
+        "category": "Ticket Viewer"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "ticket-viewer.openBrowser",
+          "when": "view == ticket-viewer.tickets",
+          "group": "navigation@3"
+        },
+        {
+          "command": "ticket-viewer.startServer",
+          "when": "view == ticket-viewer.tickets",
+          "group": "navigation@2"
+        },
+        {
+          "command": "ticket-viewer.refresh",
+          "when": "view == ticket-viewer.tickets",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "ticket-viewer.copyId",
+          "when": "view == ticket-viewer.tickets && viewItem == ticket",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Ticket Viewer",
+      "properties": {
+        "ticketViewer.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:3002",
+          "description": "URL of the ticket-viewer HTTP server."
+        },
+        "ticketViewer.workspace": {
+          "type": "string",
+          "default": "default",
+          "description": "Ticket workspace name to display. Leave empty to detect automatically."
+        },
+        "ticketViewer.autoRefreshSeconds": {
+          "type": "number",
+          "default": 30,
+          "minimum": 0,
+          "description": "Auto-refresh interval in seconds. Set to 0 to disable."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "watch": "tsc --watch -p tsconfig.json",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.4.0"
+  }
+}
