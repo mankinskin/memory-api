@@ -7,8 +7,12 @@
   "engines": {
     "vscode": "^1.90.0"
   },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -52,6 +56,24 @@
         "command": "ticket-viewer.copyId",
         "title": "Copy Ticket ID",
         "icon": "$(copy)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.bridgeNavigate",
+        "title": "Browser Bridge: Open URL",
+        "icon": "$(link-external)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.bridgeConnectCdp",
+        "title": "Browser Bridge: Connect CDP",
+        "icon": "$(plug)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.bridgeStatus",
+        "title": "Browser Bridge: Status",
+        "icon": "$(info)",
         "category": "Ticket Viewer"
       }
     ],
@@ -99,6 +121,21 @@
           "default": 30,
           "minimum": 0,
           "description": "Auto-refresh interval in seconds. Set to 0 to disable."
+        },
+        "ticketViewer.bridgePort": {
+          "type": "number",
+          "default": 0,
+          "description": "Port for the Browser Bridge HTTP control server. 0 = auto-assign."
+        },
+        "ticketViewer.cdpPort": {
+          "type": "number",
+          "default": 0,
+          "description": "Chrome DevTools Protocol port. 0 = auto-discover by probing common ports (9222, 9223, 9229, 9230)."
+        },
+        "ticketViewer.autoConnectCdp": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically connect to CDP on startup. Requires VS Code launched with --remote-debugging-port."
         }
       }
     }
@@ -112,5 +149,8 @@
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.90.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "playwright": "^1.58.2"
   }
 }

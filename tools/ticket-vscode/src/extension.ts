@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { TicketTreeProvider, TicketItem } from './ticketProvider';
 import { fetchWorkspaces } from './api';
+import { BrowserBridge } from './browserBridge';
 
 function readConfig() {
   const cfg = vscode.workspace.getConfiguration('ticketViewer');
@@ -8,6 +9,9 @@ function readConfig() {
     serverUrl: cfg.get<string>('serverUrl', 'http://localhost:3002'),
     workspace: cfg.get<string>('workspace', 'default'),
     autoRefreshSeconds: cfg.get<number>('autoRefreshSeconds', 30),
+    bridgePort: cfg.get<number>('bridgePort', 0),
+    cdpPort: cfg.get<number>('cdpPort', 0),
+    autoConnectCdp: cfg.get<boolean>('autoConnectCdp', true),
   };
 }
 
@@ -137,6 +141,48 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
       },
     ),
+  );
+
+  // ── Browser Bridge ──────────────────────────────────────────────────────────
+  const bridge = new BrowserBridge({
+    controlPort: config.bridgePort,
+    cdpPort: config.cdpPort,
+    autoConnectCdp: config.autoConnectCdp,
+  });
+  context.subscriptions.push(bridge);
+
+  // Start the control server immediately.
+  bridge.start().catch(err => {
+    const msg = err instanceof Error ? err.message : String(err);
+    void vscode.window.showWarningMessage(`Browser Bridge failed to start: ${msg}`);
+  });
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ticket-viewer.bridgeNavigate', async () => {
+      const url = await vscode.window.showInputBox({
+        prompt: 'URL to open in Simple Browser',
+        value: config.serverUrl,
+      });
+      if (url) { await bridge.navigate(url); }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ticket-viewer.bridgeConnectCdp', async () => {
+      const ok = await bridge.connectCdp();
+      if (ok) {
+        void vscode.window.showInformationMessage('Browser Bridge: CDP connected.');
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ticket-viewer.bridgeStatus', () => {
+      const s = bridge.state;
+      void vscode.window.showInformationMessage(
+        `Bridge port: ${s.controlPort} | CDP: ${s.cdpConnected ? 'connected' : 'disconnected'} | URL: ${s.currentUrl ?? 'none'}`
+      );
+    }),
   );
 
   // ── React to config changes ───────────────────────────────────────────────
