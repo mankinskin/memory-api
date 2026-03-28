@@ -66,6 +66,34 @@ pub(crate) fn cmd_get(args: IdArgs, store: &TicketStore) -> Result<Value, CliRun
 
 pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
+
+    if args.undo {
+        if args.to_state.is_some() || args.from_state.is_some() || !args.fields.is_empty() {
+            return Err(CliRunError::BadRequest(
+                "--undo cannot be combined with --to-state, --from-state, or --field".into(),
+            ));
+        }
+        let revisions = store.get_history(&id)?;
+        if revisions.len() < 2 {
+            return Err(CliRunError::BadRequest(
+                "cannot undo: not enough history revisions".into(),
+            ));
+        }
+        let prev = &revisions[revisions.len() - 2];
+        let prev_rev = prev.rev;
+        let new_rev = store.apply_revert(&id, prev.fields.clone())?;
+        let updated = store.get(&id)?;
+        return Ok(json!({
+            "command": "update",
+            "status": "ok",
+            "undo": true,
+            "reverted_to": prev_rev,
+            "new_rev": new_rev,
+            "id": id,
+            "ticket": { "fields": updated.extra }
+        }));
+    }
+
     let patch = parse_fields_to_json(&args.fields)?;
     let manifest = store.update(
         &id,

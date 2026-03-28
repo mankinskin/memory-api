@@ -209,6 +209,9 @@ pub struct UpdateArgs {
     pub to_state: Option<String>,
     #[arg(long = "field")]
     pub fields: Vec<String>,
+    /// Revert to the previous history revision (undo the last change).
+    #[arg(long)]
+    pub undo: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

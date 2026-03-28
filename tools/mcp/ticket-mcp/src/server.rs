@@ -165,6 +165,9 @@ pub struct UpdateTicketInput {
     /// Field patches as key=value pairs (e.g. ["priority=high", "owner=alice"]).
     #[serde(default)]
     pub fields: Vec<String>,
+    /// If true, revert the ticket to its previous history revision (undo last change).
+    #[serde(default)]
+    pub undo: bool,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -918,13 +921,48 @@ impl TicketServer {
 
     #[tool(
         name = "update_ticket",
-        description = "Update a ticket: apply field patches and/or transition state."
+        description = "Update a ticket: apply field patches and/or transition state. Set undo=true to revert to the previous history revision."
     )]
     async fn update_ticket(
         &self,
         Parameters(input): Parameters<UpdateTicketInput>,
     ) -> Result<CallToolResult, McpError> {
         let id = self.resolve_uuid(&input.id)?;
+
+        if input.undo {
+            if input.to_state.is_some() || !input.fields.is_empty() {
+                return Err(McpError::invalid_params(
+                    "undo cannot be combined with to_state or fields",
+                    None,
+                ));
+            }
+            let (prev_rev, new_rev, updated) = self.with_store(|store| {
+                let revisions = store.get_history(&id)?;
+                if revisions.len() < 2 {
+                    return Err(ticket_api::error::StorageError::Database(
+                        "cannot undo: not enough history revisions".into(),
+                    ));
+                }
+                let prev = &revisions[revisions.len() - 2];
+                let prev_rev = prev.rev;
+                let new_rev = store.apply_revert(&id, prev.fields.clone())?;
+                let updated = store.get(&id)?;
+                Ok((prev_rev, new_rev, updated))
+            })?;
+            return Self::json_result(&serde_json::json!({
+                "workspace": input.workspace,
+                "status": "ok",
+                "undo": true,
+                "reverted_to": prev_rev,
+                "new_rev": new_rev,
+                "ticket": TicketDetail {
+                    id: updated.id.to_string(),
+                    created_at: updated.created_at,
+                    fields: updated.extra,
+                },
+            }));
+        }
+
         let mut patch = BTreeMap::new();
         for raw in &input.fields {
             let (k, v) = raw.split_once('=').ok_or_else(|| {
