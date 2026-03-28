@@ -29,6 +29,9 @@ These rules apply during **every session**, not only when working on ticket-syst
 Before writing any code, run a quick orientation to understand the current ticket landscape:
 
 ```bash
+# Find unblocked ready tickets you can work on now (priority-ordered)
+./target/debug/ticket.exe next --json
+
 # Survey all new tickets
 ./target/debug/ticket.exe list --where state=new --json
 
@@ -39,7 +42,7 @@ Before writing any code, run a quick orientation to understand the current ticke
 ./target/debug/ticket.exe health --all --json
 ```
 
-Alternatively, use the MCP ticket tools (`mcp_ticket-mcp_list_tickets`, `mcp_ticket-mcp_health`) when the MCP server is running.
+Alternatively, use the MCP ticket tools (`mcp_ticket-mcp_next_tickets`, `mcp_ticket-mcp_list_tickets`, `mcp_ticket-mcp_health`) when the MCP server is running.
 
 ### Discovery Before Creating
 
@@ -61,6 +64,27 @@ Update ticket state immediately when the work status changes — do not defer to
 | Starting implementation | `update --state in-implementation` |
 | All acceptance criteria met | `close <id>` |
 | Ticket is no longer relevant | `cancel <id>` with a reason |
+
+### Picking Next Work
+
+Use `ticket next` to find the highest-priority unblocked tickets:
+
+```bash
+# List tickets in "ready" state with all depends_on targets satisfied
+./target/debug/ticket.exe next --json
+
+# With a title prefix filter for a specific track
+./target/debug/ticket.exe next --filter "[bootstrap]" --json
+
+# Limit results
+./target/debug/ticket.exe next --limit 5 --json
+```
+
+Or via MCP: `mcp_ticket-mcp_next_tickets` with `workspace`, optional `limit` and `filter`.
+
+The command returns tickets sorted by priority (`critical > high > medium > low > none`), then by creation date (oldest first). Only tickets in `ready` state whose `depends_on` edges all point to `done`/`cancelled` tickets are included.
+
+**Dependency direction convention:** Parents/epics `depends_on` their children (an epic is done when all children are done). Children do **not** depend on their parent — they depend on sibling prerequisites.
 
 ### Dependency Maintenance
 
