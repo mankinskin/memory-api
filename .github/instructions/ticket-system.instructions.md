@@ -67,15 +67,63 @@ Update ticket state immediately when the work status changes — do not defer to
 | All acceptance criteria met and validated | `close <id>` |
 | Ticket is no longer relevant | `cancel <id>` with a reason |
 
-> **IMPORTANT — state machine is one-way.** Transitions only go forward. You
-> cannot move a ticket back from `done` or `in-review`. Update the state
-> correctly at each step so that regressions discovered in review can be
-> addressed while the ticket is still open.
+> **IMPORTANT — state machine is one-way.** Transitions only go forward.
+> Progress through **every** state in order — do not skip states. The schema
+> defines `required_states` (e.g. `["in-review"]`) that **must** appear in a
+> ticket's history before it can reach a terminal state (`done`). Attempting to
+> close a ticket without visiting all required states will be rejected by the
+> store.
+>
+> If a state was reached prematurely, use `update --undo` to revert the last
+> transition and re-progress correctly.
+
+### Correcting State Transitions (Undo / Revert)
+
+If a ticket was advanced to the wrong state, use `--undo` to roll back the
+last transition:
+
+```bash
+# Undo the most recent state change (reverts to the previous state)
+./target/debug/ticket.exe update <id> --undo --json
+```
+
+For deeper rollbacks, use `revert --to <rev>` to restore a specific historical
+revision:
+
+```bash
+# Revert to revision 6 (re-applies fields from that point in history)
+./target/debug/ticket.exe revert <id> --to 6 --json
+```
+
+> `--undo` is a convenience for the common case of "I advanced too far" and is
+> equivalent to reverting to rev N-2. Neither command deletes history — a new
+> revision is appended recording the rollback.
+
+### Schema-Enforced Workflow (`required_states`)
+
+The ticket type schema can declare `required_states` — a list of states that
+**must** appear in a ticket's history before the store allows a transition to
+a terminal state (default terminal: `done`).
+
+For `tracker-improvement` tickets, the schema enforces:
+
+```toml
+required_states = ["in-review"]
+```
+
+This means the store will **reject** `close` (or `update --to-state done`) if
+`in-review` has never been visited. This is enforced at the API layer, so it
+applies to CLI, MCP, and HTTP equally.
+
+To customize enforcement per ticket type, edit the corresponding schema file
+under `crates/ticket-api/schemas/<type>.toml`.
 
 ### Review Gate Before Closing
 
 **Never `close` a ticket directly from `in-implementation`.** Always move
 through `in-review` and `in-validation` first, even for small changes.
+The schema's `required_states` enforcement prevents skipping `in-review`,
+but you should still follow the full progression diligently.
 
 #### Step 1 — Move to in-review
 
@@ -153,7 +201,7 @@ Only close after the review checklist is complete and tests pass:
 Use `ticket next` to find the highest-priority unblocked tickets:
 
 ```bash
-# List tickets in "ready" state with all depends_on targets satisfied
+# List unblocked tickets sorted by progress, then priority
 ./target/debug/ticket.exe next --json
 
 # With a title prefix filter for a specific track
@@ -165,7 +213,14 @@ Use `ticket next` to find the highest-priority unblocked tickets:
 
 Or via MCP: `mcp_ticket-mcp_next_tickets` with `workspace`, optional `limit` and `filter`.
 
-The command returns tickets sorted by priority (`critical > high > medium > low > none`), then by creation date (oldest first). Only tickets in `ready` state whose `depends_on` edges all point to `done`/`cancelled` tickets are included.
+The command returns tickets in **any non-terminal state** whose `depends_on`
+edges all point to `done`/`cancelled` tickets. Results are sorted by:
+
+1. **State progress** — tickets closest to `done` appear first (e.g.
+   `in-validation` > `in-review` > `in-implementation` > `ready` > `new`).
+   Progress is determined by the state's index in the schema's `states` list.
+2. **Priority** — `critical > high > medium > low > none`.
+3. **Creation date** — oldest first (FIFO tiebreaker).
 
 **Dependency direction convention:** Parents/epics `depends_on` their children (an epic is done when all children are done). Children do **not** depend on their parent — they depend on sibling prerequisites.
 
@@ -290,6 +345,21 @@ GET /api/graph/topgraph?workspace=default&root=<UUID>&depth=2
 GET /api/graph/health?workspace=default&all=true
 GET /api/graph/health?workspace=default&root=<UUID>&depth=4&direction=out
 ```
+
+## Index Reconciliation (`scan --force`)
+
+`scan` normally only integrates new/changed files it discovers. Use
+`scan --force` to force a full reconciliation — every ticket.toml is re-read
+from disk and both the redb index and Tantivy search index are rebuilt:
+
+```bash
+# Force-reconcile all indexes from disk
+./target/debug/ticket.exe scan --force --json
+```
+
+Output includes `"force": true` and `"reconciled": <count>` showing how many
+tickets were re-indexed. Use this after manual edits to ticket.toml files or
+when the index seems stale.
 
 ## Validation
 
