@@ -62,8 +62,91 @@ Update ticket state immediately when the work status changes — do not defer to
 |---|---|
 | Starting refinement on a ticket | `update --state in-refinement` |
 | Starting implementation | `update --state in-implementation` |
-| All acceptance criteria met | `close <id>` |
+| Implementation complete, moving to review | `update --state in-review` |
+| Review passed, validating acceptance criteria | `update --state in-validation` |
+| All acceptance criteria met and validated | `close <id>` |
 | Ticket is no longer relevant | `cancel <id>` with a reason |
+
+> **IMPORTANT — state machine is one-way.** Transitions only go forward. You
+> cannot move a ticket back from `done` or `in-review`. Update the state
+> correctly at each step so that regressions discovered in review can be
+> addressed while the ticket is still open.
+
+### Review Gate Before Closing
+
+**Never `close` a ticket directly from `in-implementation`.** Always move
+through `in-review` and `in-validation` first, even for small changes.
+
+#### Step 1 — Move to in-review
+
+```bash
+./target/debug/ticket.exe update <id> --state in-review
+```
+
+#### Step 2 — Code Review Checklist
+
+Before moving to validation, verify each of the following. Fix any issue
+found before proceeding:
+
+**Correctness & Reactivity (frontend)**
+- [ ] All signal reads that must re-run on change are inside reactive closures,
+      not computed once outside the `view!` macro.
+- [ ] State updated correctly on all paths (including edge cases like empty data).
+
+**Memory & Cleanup**
+- [ ] No unbounded `Closure::forget()` calls; use `Closure::into_js_value()` to
+      transfer ownership to the JS GC instead.
+- [ ] Document-level event listeners registered with a `on_cleanup` removal hook
+      so they are unregistered if the component unmounts mid-gesture.
+- [ ] No `Rc`/`RefCell` or wasm-bindgen closures that outlive component scope
+      without an explicit cleanup path.
+
+**CSS & Layout**
+- [ ] Elements with negative positioning checked against any `overflow: hidden`
+      ancestors — they will be clipped.
+- [ ] Responsive/resize behavior tested at both min-width and large widths.
+- [ ] `aria-label` or role attributes on interactive elements without visible text.
+
+**Security**
+- [ ] User-controlled strings inserted into the DOM use text-node APIs (e.g.
+      `set_text_content`) — not `set_inner_html` — to prevent XSS.
+- [ ] URLs derived from external data are validated before fetch/navigation.
+
+**General**
+- [ ] No dead code, unused imports, or unreachable branches left behind.
+- [ ] Public API changes reflected in docs/changelogs if applicable.
+
+#### Step 3 — Validate Acceptance Criteria
+
+Run the relevant test suite(s) against the ticket's acceptance criteria:
+
+```bash
+# Native unit tests (pure-Rust logic, no browser needed)
+cargo test -p <crate>
+
+# WASM browser tests (requires wasm-pack + Chrome)
+wasm-pack test --headless --chrome <path/to/crate>
+
+# Cargo check for WASM target (quick compile gate)
+cargo check --target wasm32-unknown-unknown -p <crate>
+```
+
+Confirm each acceptance criterion listed in the ticket description is met with
+a passing test or a documented manual verification step.
+
+#### Step 4 — Move to in-validation
+
+```bash
+./target/debug/ticket.exe update <id> --state in-validation
+```
+
+#### Step 5 — Close
+
+Only close after the review checklist is complete and tests pass:
+
+```bash
+./target/debug/ticket.exe close <id>
+```
 
 ### Picking Next Work
 
