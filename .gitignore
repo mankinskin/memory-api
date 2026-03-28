@@ -4,6 +4,7 @@ node_modules/
 
 # Built frontend assets
 tools/viewer/**/static/
+tools/viewer/**/dist/
 
 # Generated Playwright report output
 **/playwright-report/
