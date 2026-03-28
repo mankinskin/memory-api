@@ -70,6 +70,16 @@ impl StreamBroker {
             .or_insert_with(|| broadcast::channel(CHANNEL_CAPACITY).0);
     }
 
+    /// Number of active subscribers for a specific workspace.
+    pub fn workspace_subscriber_count(&self, workspace: &str) -> usize {
+        self.channels
+            .lock()
+            .unwrap()
+            .get(workspace)
+            .map(|tx| tx.receiver_count())
+            .unwrap_or(0)
+    }
+
     /// Number of active subscribers across all workspaces.
     pub fn total_subscriber_count(&self) -> usize {
         self.channels

@@ -84,6 +84,13 @@ impl HookEmitter {
         }));
     }
 
+    /// Returns `true` if at least one SSE subscriber is currently connected
+    /// for this workspace.  The reconcile loop uses this to skip expensive
+    /// database reads when nobody is listening.
+    pub fn has_subscribers(&self) -> bool {
+        self.broker.workspace_subscriber_count(&self.workspace) > 0
+    }
+
     pub fn snapshot_ready(&self, node_count: usize, edge_count: usize) {
         self.emit(SseEvent::SnapshotReady(SnapshotReadyPayload {
             workspace: self.workspace.clone(),

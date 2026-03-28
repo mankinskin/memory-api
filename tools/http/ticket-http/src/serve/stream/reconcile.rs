@@ -27,6 +27,18 @@ pub fn spawn_reconcile(
         loop {
             interval.tick().await;
 
+            // Skip the database read when no SSE clients are connected.
+            // The heartbeat is only useful when someone is listening; holding
+            // the redb exclusive lock while counting tickets and edges would
+            // block other processes (e.g. ticket-mcp) from opening the store.
+            if !emitter.has_subscribers() {
+                tracing::debug!(
+                    workspace = %emitter.workspace,
+                    "reconcile: no subscribers, skipping db read"
+                );
+                continue;
+            }
+
             // Count nodes and edges from the store.
             let (node_count, edge_count) = tokio::task::spawn_blocking({
                 let store = Arc::clone(&store);
