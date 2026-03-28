@@ -198,6 +198,15 @@ pub struct WorkflowInput {
     pub query: Option<String>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct NextTicketsInput {
+    pub workspace: String,
+    #[serde(default)]
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub filter: Option<String>,
+}
+
 fn default_workflow_name() -> WorkflowName {
     WorkflowName::List
 }
@@ -779,6 +788,117 @@ impl TicketServer {
     }
 
     #[tool(
+        name = "next_tickets",
+        description = "List unblocked tickets in 'ready' state whose dependencies are all satisfied, ordered by priority. Designed for worker agents to pick the next implementable item."
+    )]
+    async fn next_tickets(
+        &self,
+        Parameters(input): Parameters<NextTicketsInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let limit = input.limit.unwrap_or(20).min(100);
+        let filter = input.filter.clone();
+
+        let items: Vec<Value> = self.with_store(|store| {
+            let all = store.list(None, None, None)?;
+
+            let tickets: Vec<_> = if let Some(ref prefix) = filter {
+                all.into_iter()
+                    .filter(|t| {
+                        t.title
+                            .as_deref()
+                            .unwrap_or("")
+                            .starts_with(prefix.as_str())
+                    })
+                    .collect()
+            } else {
+                all
+            };
+
+            let done_states: &[&str] = &["done", "cancelled"];
+
+            let done_ids: HashSet<Uuid> = tickets
+                .iter()
+                .filter(|t| {
+                    t.state
+                        .as_deref()
+                        .map(|s| done_states.contains(&s))
+                        .unwrap_or(false)
+                })
+                .map(|t| t.id)
+                .collect();
+
+            let all_edges = store.list_all_edges()?;
+            let mut blockers: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+            for edge in &all_edges {
+                if edge.kind == "depends_on" && !done_ids.contains(&edge.to) {
+                    blockers.entry(edge.from).or_default().push(edge.to);
+                }
+            }
+
+            let mut candidates: Vec<_> = tickets
+                .iter()
+                .filter(|t| t.state.as_deref() == Some("ready"))
+                .filter(|t| blockers.get(&t.id).map_or(true, |b| b.is_empty()))
+                .collect();
+
+            // Read priority for sorting.
+            let mut priority_map: HashMap<Uuid, String> = HashMap::new();
+            for t in &candidates {
+                if let Ok(manifest) = TicketFs::read(&t.path) {
+                    if let Some(p) = manifest.extra.get("priority").and_then(|v| v.as_str()) {
+                        priority_map.insert(t.id, p.to_string());
+                    }
+                }
+            }
+
+            let priority_weight = |p: &str| -> u8 {
+                match p {
+                    "critical" => 0,
+                    "high" => 1,
+                    "medium" => 2,
+                    "low" => 3,
+                    _ => 4,
+                }
+            };
+
+            candidates.sort_by(|a, b| {
+                let pa = priority_map.get(&a.id).map(|s| s.as_str()).unwrap_or("");
+                let pb = priority_map.get(&b.id).map(|s| s.as_str()).unwrap_or("");
+                priority_weight(pa)
+                    .cmp(&priority_weight(pb))
+                    .then_with(|| a.created_at.cmp(&b.created_at))
+            });
+
+            candidates.truncate(limit);
+
+            Ok(candidates
+                .iter()
+                .enumerate()
+                .map(|(rank, t)| {
+                    let prio = priority_map
+                        .get(&t.id)
+                        .cloned()
+                        .unwrap_or_else(|| "none".to_string());
+                    serde_json::json!({
+                        "rank": rank + 1,
+                        "id": t.id.to_string(),
+                        "title": t.title,
+                        "type": t.type_id,
+                        "priority": prio,
+                        "created_at": t.created_at.to_rfc3339(),
+                    })
+                })
+                .collect())
+        })?;
+
+        Self::json_result(&serde_json::json!({
+            "workspace": input.workspace,
+            "count": items.len(),
+            "items": items,
+        }))
+    }
+
+    #[tool(
         name = "health_check",
         description = "Run health checks on tickets: validates descriptions, titles, dependency state consistency, and dangling edges. Scope by root (BFS subgraph), explicit IDs, or all tickets."
     )]
@@ -976,6 +1096,11 @@ impl TicketServer {
                     "description": "Run health checks on tickets (descriptions, titles, deps, edges)",
                     "required": ["workspace"],
                     "optional": ["root", "all", "ids", "depth", "direction"],
+                },
+                "next_tickets": {
+                    "description": "List unblocked ready tickets in priority order for worker agents",
+                    "required": ["workspace"],
+                    "optional": ["limit", "filter"],
                 },
                 "update_ticket": {
                     "description": "Update ticket fields and/or transition state",

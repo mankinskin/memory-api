@@ -217,6 +217,7 @@ fn batch_dispatch(cmd: TicketCommandCli, store: &TicketStore) -> Result<Value, C
         TicketCommandCli::Cancel(args) => commands::cmd_cancel(args, store),
         TicketCommandCli::Status(args) => commands::cmd_status(args, store),
         TicketCommandCli::ReadyOverview(args) => commands::cmd_ready_overview(args, store),
+        TicketCommandCli::Next(args) => commands::cmd_next(args, store),
         TicketCommandCli::Attach(args) => commands::cmd_attach(args, store),
         TicketCommandCli::Assets(args) => commands::cmd_assets(args, store),
         TicketCommandCli::History(args) => commands::cmd_history(args, store),

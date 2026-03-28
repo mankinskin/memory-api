@@ -120,6 +120,8 @@ pub enum TicketCommandCli {
     /// Return a JSON overview of ready tickets.
     #[command(name = "ready-overview")]
     ReadyOverview(ReadyOverviewArgs),
+    /// List unblocked, dependency-satisfied tickets in priority order for worker agents.
+    Next(NextArgs),
     /// Start the HTTP server exposing the ticket API (REST + SSE).
     Serve(ServeCliArgs),
     /// Fast-forward a ticket to a target state (default: done).

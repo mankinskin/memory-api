@@ -66,6 +66,16 @@ pub struct ReadyOverviewArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct NextArgs {
+    /// Maximum number of tickets to return.
+    #[arg(long, default_value = "20")]
+    pub limit: usize,
+    /// Optional prefix filter — only include tickets whose title starts with this string.
+    #[arg(long)]
+    pub filter: Option<String>,
+}
+
+#[derive(Debug, Args)]
 pub struct WatchArgs {
     /// Debounce time in milliseconds before triggering reconcile after an event.
     #[arg(long, default_value = "200")]

@@ -9,8 +9,8 @@ use ticket_api::error::StorageError;
 use ticket_api::storage::TicketStore;
 
 use crate::cli::{
-    AddRootArgs, AttachArgs, CliRunError, HealthArgs, IdArgs, ReadyOverviewArgs, ScanArgs,
-    ServeCliArgs, StatusArgs, WatchArgs,
+    AddRootArgs, AttachArgs, CliRunError, HealthArgs, IdArgs, NextArgs, ReadyOverviewArgs,
+    ScanArgs, ServeCliArgs, StatusArgs, WatchArgs,
 };
 
 pub(crate) fn cmd_scan(args: ScanArgs, store: &TicketStore) -> Result<Value, CliRunError> {
@@ -310,6 +310,121 @@ pub(crate) fn cmd_ready_overview(
         "summary": status_payload["summary"],
         "ready": status_payload["ready"],
         "ready_count": status_payload["summary"]["ready"],
+    }))
+}
+
+/// Priority weight for sorting. Lower value = higher priority.
+fn priority_weight(p: &str) -> u8 {
+    match p {
+        "critical" => 0,
+        "high" => 1,
+        "medium" => 2,
+        "low" => 3,
+        _ => 4,
+    }
+}
+
+pub(crate) fn cmd_next(args: NextArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+    let all = store.list(None, None, None)?;
+
+    let tickets: Vec<_> = if let Some(ref prefix) = args.filter {
+        all.into_iter()
+            .filter(|t| {
+                t.title
+                    .as_deref()
+                    .unwrap_or("")
+                    .starts_with(prefix.as_str())
+            })
+            .collect()
+    } else {
+        all
+    };
+
+    // Collect IDs of done/cancelled tickets.
+    let done_ids: HashSet<Uuid> = tickets
+        .iter()
+        .filter(|t| {
+            t.state
+                .as_deref()
+                .map(|s| DONE_STATES.contains(&s))
+                .unwrap_or(false)
+        })
+        .map(|t| t.id)
+        .collect();
+
+    // Build map of unresolved blockers per ticket.
+    let all_edges = store.list_all_edges()?;
+    let mut blockers: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+    for edge in &all_edges {
+        if edge.kind == "depends_on" && !done_ids.contains(&edge.to) {
+            blockers.entry(edge.from).or_default().push(edge.to);
+        }
+    }
+
+    // Find tickets in "ready" state with all dependencies satisfied.
+    let mut candidates: Vec<_> = tickets
+        .iter()
+        .filter(|t| t.state.as_deref() == Some("ready"))
+        .filter(|t| blockers.get(&t.id).map_or(true, |b| b.is_empty()))
+        .collect();
+
+    // Read priority from manifest for sorting.
+    let mut priority_map: HashMap<Uuid, String> = HashMap::new();
+    for t in &candidates {
+        if let Ok(manifest) = ticket_api::storage::ticket_fs::TicketFs::read(&t.path) {
+            if let Some(p) = manifest.extra.get("priority").and_then(|v| v.as_str()) {
+                priority_map.insert(t.id, p.to_string());
+            }
+        }
+    }
+
+    // Sort by priority weight, then by creation date (oldest first).
+    candidates.sort_by(|a, b| {
+        let pa = priority_map.get(&a.id).map(|s| s.as_str()).unwrap_or("");
+        let pb = priority_map.get(&b.id).map(|s| s.as_str()).unwrap_or("");
+        priority_weight(pa)
+            .cmp(&priority_weight(pb))
+            .then_with(|| a.created_at.cmp(&b.created_at))
+    });
+
+    candidates.truncate(args.limit);
+
+    // Build dependency count per candidate (total depends_on edges, resolved or not).
+    let dep_count: HashMap<Uuid, usize> = {
+        let mut m: HashMap<Uuid, usize> = HashMap::new();
+        for edge in &all_edges {
+            if edge.kind == "depends_on" {
+                *m.entry(edge.from).or_default() += 1;
+            }
+        }
+        m
+    };
+
+    let items: Vec<Value> = candidates
+        .iter()
+        .enumerate()
+        .map(|(rank, t)| {
+            let prio = priority_map
+                .get(&t.id)
+                .cloned()
+                .unwrap_or_else(|| "none".to_string());
+            json!({
+                "rank": rank + 1,
+                "id": t.id,
+                "title": t.title,
+                "type": t.type_id,
+                "priority": prio,
+                "dependency_count": dep_count.get(&t.id).copied().unwrap_or(0),
+                "created_at": t.created_at.to_rfc3339(),
+            })
+        })
+        .collect();
+
+    Ok(json!({
+        "command": "next",
+        "status": "ok",
+        "count": items.len(),
+        "items": items,
     }))
 }
 
