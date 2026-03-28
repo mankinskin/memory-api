@@ -41,6 +41,8 @@ fn make_schema() -> TicketTypeSchema {
             },
         ],
         edge_rules,
+        required_states: vec![],
+        terminal_states: vec!["done".to_string()],
     }
 }
 

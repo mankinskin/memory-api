@@ -23,6 +23,10 @@ states = [
     "cancelled",
 ]
 
+# States that must appear in a ticket's history before it can reach a terminal
+# state (done). This enforces that every ticket passes through review.
+required_states = ["in-review"]
+
 # ── State machine transitions ──────────────────────────────────────────────────
 
 [[transitions]]

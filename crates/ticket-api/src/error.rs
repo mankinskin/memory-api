@@ -9,6 +9,11 @@ pub enum SchemaValidationError {
     InvalidTransition { from: String, to: String },
     #[error("edge kind not allowed: {0}")]
     InvalidEdgeKind(String),
+    #[error("required states not visited before '{target}': {missing:?}")]
+    RequiredStatesNotVisited {
+        target: String,
+        missing: Vec<String>,
+    },
 }
 
 #[derive(Debug, Error)]

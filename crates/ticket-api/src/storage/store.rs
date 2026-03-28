@@ -220,6 +220,17 @@ impl TicketStore {
             let from = from_state.unwrap_or(current_state);
             if let Some(schema) = self.schema_registry.get(&indexed.type_id) {
                 schema.ensure_transition(from, to)?;
+                // Enforce required_states before entering a terminal state.
+                if !schema.required_states.is_empty()
+                    && schema.terminal_states.contains(&to.to_string())
+                {
+                    let history = TicketFs::read_history(&indexed.path).unwrap_or_default();
+                    let visited: Vec<String> = history
+                        .iter()
+                        .filter_map(|r| r.fields.get("state").and_then(|v| v.as_str()).map(String::from))
+                        .collect();
+                    schema.validate_workflow(to, &visited)?;
+                }
             }
         }
 

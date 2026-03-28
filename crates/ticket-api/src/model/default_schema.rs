@@ -89,6 +89,8 @@ pub fn tracker_improvement_schema() -> TicketTypeSchema {
         states,
         transitions,
         edge_rules,
+        required_states: vec!["in-review".to_string()],
+        terminal_states: vec!["done".to_string()],
     }
 }
 
