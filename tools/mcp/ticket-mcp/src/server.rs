@@ -532,20 +532,10 @@ impl TicketServer {
                 }));
             }
 
-            // 4. Blocked but all dependencies resolved.
+            // 4. Has unresolved deps but not in new state.
             let state = t.state.as_deref().unwrap_or("");
             let has_unresolved = unresolved_deps.contains_key(&t.id);
-            if state == "blocked" && !has_unresolved {
-                *summary.entry("blocked_but_resolved").or_insert(0) += 1;
-                findings.push(serde_json::json!({
-                    "ticket_id": t.id, "short_id": short_id, "title": title,
-                    "check": "blocked_but_resolved", "severity": "warning",
-                    "message": "Ticket is blocked but all dependencies are done — may be ready to unblock.",
-                }));
-            }
-
-            // 5. Has unresolved deps but not in blocked state.
-            if has_unresolved && state != "blocked" && state != "open" {
+            if has_unresolved && state != "new" {
                 let dep_count = unresolved_deps[&t.id].len();
                 *summary.entry("unblocked_with_deps").or_insert(0) += 1;
                 findings.push(serde_json::json!({
@@ -897,8 +887,8 @@ impl TicketServer {
                 "steps": [
                     {"tool": "health", "input": {}},
                     {"tool": "list_workspaces", "input": {}},
-                    {"tool": "list_tickets", "input": {"workspace": workspace, "state": "open", "limit": 50}},
-                    {"tool": "list_tickets", "input": {"workspace": workspace, "state": "in-progress", "limit": 50}}
+                    {"tool": "list_tickets", "input": {"workspace": workspace, "state": "new", "limit": 50}},
+                    {"tool": "list_tickets", "input": {"workspace": workspace, "state": "in-implementation", "limit": 50}}
                 ]
             }),
             WorkflowName::FetchTicketContext => serde_json::json!({

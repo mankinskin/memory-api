@@ -13,123 +13,80 @@
 type_id = "tracker-improvement"
 
 states = [
-    "open",
-    "in-progress",
-    "review",
-    "validating",
-    "validated",
-    "release-candidate",
-    "released",
-    "monitoring",
+    "new",
+    "in-refinement",
+    "ready",
+    "in-implementation",
+    "in-review",
+    "in-validation",
     "done",
-    "blocked",
     "cancelled",
 ]
 
 # ── State machine transitions ──────────────────────────────────────────────────
 
 [[transitions]]
-from = "open"
-to = "in-progress"
+from = "new"
+to = "in-refinement"
 
 [[transitions]]
-from = "open"
-to = "blocked"
-
-[[transitions]]
-from = "open"
+from = "new"
 to = "cancelled"
 
 [[transitions]]
-from = "in-progress"
-to = "review"
+from = "in-refinement"
+to = "ready"
 
 [[transitions]]
-from = "in-progress"
-to = "blocked"
+from = "in-refinement"
+to = "new"
 
 [[transitions]]
-from = "in-progress"
+from = "in-refinement"
 to = "cancelled"
 
 [[transitions]]
-from = "review"
-to = "validating"
+from = "ready"
+to = "in-implementation"
 
 [[transitions]]
-from = "review"
-to = "in-progress"
+from = "ready"
+to = "in-refinement"
 
 [[transitions]]
-from = "review"
-to = "blocked"
+from = "ready"
+to = "cancelled"
 
 [[transitions]]
-from = "validating"
-to = "validated"
+from = "in-implementation"
+to = "in-review"
 
 [[transitions]]
-from = "validating"
-to = "review"
+from = "in-implementation"
+to = "cancelled"
 
 [[transitions]]
-from = "validating"
-to = "blocked"
+from = "in-review"
+to = "in-validation"
 
 [[transitions]]
-from = "validated"
-to = "release-candidate"
+from = "in-review"
+to = "in-implementation"
 
 [[transitions]]
-from = "validated"
-to = "review"
+from = "in-review"
+to = "cancelled"
 
 [[transitions]]
-from = "validated"
-to = "blocked"
-
-[[transitions]]
-from = "release-candidate"
-to = "released"
-
-[[transitions]]
-from = "release-candidate"
-to = "review"
-
-[[transitions]]
-from = "release-candidate"
-to = "blocked"
-
-[[transitions]]
-from = "released"
-to = "monitoring"
-
-[[transitions]]
-from = "released"
-to = "blocked"
-
-[[transitions]]
-from = "monitoring"
+from = "in-validation"
 to = "done"
 
 [[transitions]]
-from = "monitoring"
-to = "blocked"
+from = "in-validation"
+to = "in-review"
 
 [[transitions]]
-from = "blocked"
-to = "open"
-
-[[transitions]]
-from = "blocked"
-to = "in-progress"
-
-[[transitions]]
-from = "blocked"
-to = "review"
-
-[[transitions]]
-from = "blocked"
+from = "in-validation"
 to = "cancelled"
 
 # ── Field definitions ──────────────────────────────────────────────────────────

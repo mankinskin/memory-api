@@ -308,14 +308,12 @@ mod tests {
                 "total": 10,
                 "done": 3,
                 "active": 2,
-                "ready": 3,
-                "blocked": 2
+                "ready": 3
             },
             "active": [
-                { "id": "aaa", "title": "Bug fix", "state": "in-progress", "component": "core" }
+                { "id": "aaa", "title": "Bug fix", "state": "in-implementation", "component": "core" }
             ],
             "ready": [],
-            "blocked": [],
             "parallel_groups": []
         });
         let out = render_human_readable(&payload);
@@ -378,8 +376,8 @@ mod tests {
             "active": 8,
             "deleted": 2,
             "by_state": {
-                "open": 3,
-                "in-progress": 2,
+                "new": 3,
+                "in-implementation": 2,
                 "done": 3
             },
             "by_type": {

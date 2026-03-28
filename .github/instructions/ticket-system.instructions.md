@@ -29,11 +29,11 @@ These rules apply during **every session**, not only when working on ticket-syst
 Before writing any code, run a quick orientation to understand the current ticket landscape:
 
 ```bash
-# Survey all open tickets
-./target/debug/ticket.exe list --where state=open --json
+# Survey all new tickets
+./target/debug/ticket.exe list --where state=new --json
 
-# Check for stale in-progress tickets that may conflict with your work
-./target/debug/ticket.exe list --where state=in-progress --json
+# Check for stale in-implementation tickets that may conflict with your work
+./target/debug/ticket.exe list --where state=in-implementation --json
 
 # Check overall graph health
 ./target/debug/ticket.exe health --all --json
@@ -57,8 +57,8 @@ Update ticket state immediately when the work status changes — do not defer to
 
 | Situation | Action |
 |---|---|
-| Starting work on a ticket | `update --state in-progress` |
-| Blocked waiting on something | `update --state blocked` (add a note via `--note`) |
+| Starting refinement on a ticket | `update --state in-refinement` |
+| Starting implementation | `update --state in-implementation` |
 | All acceptance criteria met | `close <id>` |
 | Ticket is no longer relevant | `cancel <id>` with a reason |
 
@@ -69,7 +69,7 @@ After completing significant work, check whether finished tickets unblock others
 ```bash
 # Find what a completed ticket blocks
 ./target/debug/ticket.exe topgraph <id> --json \
-  | jq -r '.payload.nodes[] | select(.state=="blocked") | .id'
+  | jq -r '.payload.nodes[] | select(.state=="new" or .state=="ready") | .id'
 ```
 
 Add missing `depends_on` edges when you discover undocumented dependencies. Use `--reason` on every link to explain *why* the dependency exists.
@@ -79,7 +79,7 @@ Add missing `depends_on` edges when you discover undocumented dependencies. Use 
 Suggest a `git commit` checkpoint to the user when any of the following is true:
 
 - A ticket transitions to `closed` (work milestone reached).
-- A batch of related tickets all reach `closed` or `in-progress` together.
+- A batch of related tickets all reach `closed` or `in-implementation` together.
 - A dependency graph changes materially (new links added/removed).
 - A tracked bug is fixed and its ticket closed.
 
@@ -94,7 +94,7 @@ Opportunistically improve ticket quality whenever you touch the store:
 - Fill in missing `description`, `priority`, or `type` fields on tickets you encounter.
 - Split vague tickets into concrete, actionable child tickets linked with `depends_on`.
 - Remove or merge duplicate tickets.
-- Verify that `in-progress` tickets actually have an active owner/context; flag stale ones.
+- Verify that `in-implementation` tickets actually have an active owner/context; flag stale ones.
 - After any structural refactor, re-run `ticket health --all` and resolve reported issues.
 
 ## Workflow Expectations
@@ -114,8 +114,8 @@ ticket health abcd1234 --json
 # Health-check all tickets
 ticket health --all --json
 
-# Health-check all open tickets (--where filter)
-ticket health --all --where state=open --json
+# Health-check all new tickets (--where filter)
+ticket health --all --where state=new --json
 
 # Health-check a subgraph, filtering to a specific type
 ticket health abcd1234 --where type=tracker-improvement --json
@@ -129,9 +129,9 @@ ticket list --where priority=high --json \
   | jq -r '.payload.items[].id' \
   | ticket health --stdin --json
 
-# Subgraph → filter open tickets → health check
+# Subgraph → filter new tickets → health check
 ticket subgraph abcd1234 --json \
-  | jq -r '.payload.nodes[] | select(.state=="open") | .id' \
+  | jq -r '.payload.nodes[] | select(.state=="new") | .id' \
   | ticket health --stdin --json
 
 # Topgraph → health check all reverse dependencies

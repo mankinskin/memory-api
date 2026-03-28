@@ -4,7 +4,7 @@ node_modules/
 # Build output (built to ../static/)
 dist/
 
-# Generated demo data (created by scripts/generate-demo-data.mjs)
+# Demo data
 public/data/
 
 # Logs

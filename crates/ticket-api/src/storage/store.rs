@@ -132,7 +132,7 @@ impl TicketStore {
         if let Some(t) = title {
             manifest.extra.insert("title".to_string(), Value::String(t.to_string()));
         }
-        let state = initial_state.unwrap_or("open").to_string();
+        let state = initial_state.unwrap_or("new").to_string();
         manifest.extra.insert("state".to_string(), Value::String(state.clone()));
         for (k, v) in extra {
             manifest.extra.insert(k, v);
@@ -216,7 +216,7 @@ impl TicketStore {
 
         // Validate state transition if type schema is known and state change requested.
         if let Some(to) = to_state {
-            let current_state = indexed.state.as_deref().unwrap_or("open");
+            let current_state = indexed.state.as_deref().unwrap_or("new");
             let from = from_state.unwrap_or(current_state);
             if let Some(schema) = self.schema_registry.get(&indexed.type_id) {
                 schema.ensure_transition(from, to)?;
@@ -467,7 +467,7 @@ impl TicketStore {
             return Err(StorageError::NotFound(*id));
         }
 
-        let current_state = indexed.state.as_deref().unwrap_or("open");
+        let current_state = indexed.state.as_deref().unwrap_or("new");
         if current_state == target_state {
             let manifest = TicketFs::read(&indexed.path)?;
             return Ok((manifest, vec![]));
@@ -743,10 +743,10 @@ impl TicketStore {
 
     // ── validation & release protocol ─────────────────────────────────────────
 
-    /// `task_validate_start` — move ticket from `review` to `validating`.
+    /// `task_validate_start` — move ticket from `in-review` to `in-validation`.
     ///
     /// Guards:
-    /// - current state must be `review`
+    /// - current state must be `in-review`
     /// - `validator_id` must not equal `worker_id` (separation of duties)
     pub fn validate_start(
         &self,
@@ -759,11 +759,11 @@ impl TicketStore {
         let manifest = self.get(ticket_id)?;
         let current_state = manifest.extra.get("state").and_then(|v| v.as_str()).unwrap_or("");
 
-        if current_state != "review" {
+        if current_state != "in-review" {
             return Err(ProtocolError::ValidateInvalidState {
                 ticket: *ticket_id,
                 actual: current_state.to_string(),
-                expected: "review".to_string(),
+                expected: "in-review".to_string(),
             }
             .into());
         }
@@ -787,17 +787,17 @@ impl TicketStore {
         );
         patch.insert("assignment_id".to_string(), Value::String(assignment_id.to_string()));
 
-        self.update(ticket_id, patch, Some("review"), Some("validating"))
+        self.update(ticket_id, patch, Some("in-review"), Some("in-validation"))
     }
 
     /// `task_validate_result` — submit validation outcome.
     ///
     /// `result` must be `"passed"` or `"failed"`.
-    /// On pass: ticket moves to `validated`, `validation_status=passed`.
-    /// On fail: ticket moves back to `review`, `validation_status=failed`.
+    /// On pass: ticket moves to `done`, `validation_status=passed`.
+    /// On fail: ticket moves back to `in-review`, `validation_status=failed`.
     ///
     /// Guards:
-    /// - current state must be `validating`
+    /// - current state must be `in-validation`
     /// - `validator_id` must match recorded validator
     /// - `evidence_refs` must be non-empty
     pub fn validate_result(
@@ -816,11 +816,11 @@ impl TicketStore {
 
         let manifest = self.get(ticket_id)?;
         let current_state = manifest.extra.get("state").and_then(|v| v.as_str()).unwrap_or("");
-        if current_state != "validating" {
+        if current_state != "in-validation" {
             return Err(ProtocolError::ValidateInvalidState {
                 ticket: *ticket_id,
                 actual: current_state.to_string(),
-                expected: "validating".to_string(),
+                expected: "in-validation".to_string(),
             }
             .into());
         }
@@ -832,9 +832,9 @@ impl TicketStore {
 
         let passed = result == "passed";
         let (new_state, status_str) = if passed {
-            ("validated", "passed")
+            ("done", "passed")
         } else {
-            ("review", "failed")
+            ("in-review", "failed")
         };
 
         let mut patch = BTreeMap::new();
@@ -854,7 +854,7 @@ impl TicketStore {
             );
         }
 
-        let from_state = "validating";
+        let from_state = "in-validation";
         let _updated = self.update(ticket_id, patch, Some(from_state), Some(new_state))?;
 
         Ok(ValidationResultOutcome {
@@ -865,10 +865,10 @@ impl TicketStore {
         })
     }
 
-    /// `task_release_candidate_create` — move a `validated` ticket to `release-candidate`.
+    /// `task_release_candidate_create` — move a `done` ticket to `done` (no-op in simplified workflow).
     ///
     /// Guards:
-    /// - current state must be `validated`
+    /// - current state must be `done`
     /// - `validation_status` must be `passed`
     /// - `assignment_chain` must be non-empty
     pub fn release_candidate_create(
@@ -883,11 +883,11 @@ impl TicketStore {
 
         let manifest = self.get(ticket_id)?;
         let current_state = manifest.extra.get("state").and_then(|v| v.as_str()).unwrap_or("");
-        if current_state != "validated" {
+        if current_state != "done" {
             return Err(ProtocolError::ReleaseInvalidState {
                 ticket: *ticket_id,
                 actual: current_state.to_string(),
-                expected: "validated".to_string(),
+                expected: "done".to_string(),
             }
             .into());
         }
@@ -908,7 +908,7 @@ impl TicketStore {
             Value::Array(assignment_chain.into_iter().map(Value::String).collect()),
         );
 
-        self.update(ticket_id, patch, Some("validated"), Some("release-candidate"))
+        self.update(ticket_id, patch, Some("done"), Some("done"))
     }
 
     /// `task_release_gate_check` — evaluate release gates for a target.
@@ -920,13 +920,12 @@ impl TicketStore {
         release_target: &str,
         required_gates: &[String],
     ) -> Result<GateCheckOutcome, StorageError> {
-        // Collect all release-candidate tickets for this target.
+        // Collect all done tickets for this target.
         let all = self.index.list_tickets(false)?;
         let candidates: Vec<_> = all
             .iter()
             .filter(|t| {
-                t.state.as_deref() == Some("release-candidate")
-                    || t.state.as_deref() == Some("validated")
+                t.state.as_deref() == Some("done")
             })
             .filter(|_t| {
                 // Check release_target field in manifest if needed; use in-memory index for speed.
@@ -958,7 +957,7 @@ impl TicketStore {
         })
     }
 
-    /// `task_release_promote` — promote all `release-candidate` tickets for a target.
+    /// `task_release_promote` — promote all `done` tickets for a target.
     ///
     /// Guards:
     /// - all required gates must be `pass`
@@ -992,13 +991,13 @@ impl TicketStore {
         let all = self.index.list_tickets(false)?;
         let to_promote: Vec<Uuid> = all
             .into_iter()
-            .filter(|t| t.state.as_deref() == Some("release-candidate"))
+            .filter(|t| t.state.as_deref() == Some("done"))
             .map(|t| t.id)
             .collect();
 
         if to_promote.is_empty() {
             return Err(ProtocolError::ReleaseTicketStateInvalid(
-                format!("no release-candidate tickets found for target '{release_target}'"),
+                format!("no done tickets found for target '{release_target}'"),
             )
             .into());
         }
@@ -1008,7 +1007,7 @@ impl TicketStore {
             let mut patch = BTreeMap::new();
             patch.insert("release_version".to_string(), Value::String(release_version.to_string()));
             patch.insert("merge_commit".to_string(), Value::String(merge_commit.to_string()));
-            self.update(ticket_id, patch, Some("release-candidate"), Some("released"))?;
+            self.update(ticket_id, patch, None, None)?;
             promoted += 1;
         }
 
@@ -1067,15 +1066,15 @@ fn evaluate_gate(
     _index: &RedbIndexStore,
 ) -> Result<(GateStatus, Option<String>), StorageError> {
     match gate {
-        // R1: all included tickets are validated/release-candidate — no open blockers
+        // R1: all included tickets are done — no open blockers
         "R1" => {
             let all_ready = candidates
                 .iter()
-                .all(|t| matches!(t.state.as_deref(), Some("validated") | Some("release-candidate")));
+                .all(|t| matches!(t.state.as_deref(), Some("done")));
             if all_ready {
                 Ok((GateStatus::Pass, None))
             } else {
-                Ok((GateStatus::Fail, Some("some tickets are not yet validated".to_string())))
+                Ok((GateStatus::Fail, Some("some tickets are not yet done".to_string())))
             }
         }
         // R2: no open sev0/sev1 bugs (best-effort via field scan)

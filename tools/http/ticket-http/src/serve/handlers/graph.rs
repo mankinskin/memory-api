@@ -409,16 +409,7 @@ pub async fn health_check(
 
         let state = t.state.as_deref().unwrap_or("");
         let has_unresolved = unresolved_deps.contains_key(&t.id);
-        if state == "blocked" && !has_unresolved {
-            *summary.entry("blocked_but_resolved".into()).or_insert(0) += 1;
-            findings.push(serde_json::json!({
-                "ticket_id": t.id, "short_id": short_id, "title": title,
-                "check": "blocked_but_resolved", "severity": "warning",
-                "message": "Ticket is blocked but all dependencies are done — may be ready to unblock.",
-            }));
-        }
-
-        if has_unresolved && state != "blocked" && state != "open" {
+        if has_unresolved && state != "new" {
             let dep_count = unresolved_deps[&t.id].len();
             *summary.entry("unblocked_with_deps".into()).or_insert(0) += 1;
             findings.push(serde_json::json!({

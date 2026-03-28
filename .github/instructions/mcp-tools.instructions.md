@@ -40,7 +40,7 @@ After changing MCP behavior:
 
 Returns: `tickets_checked`, `finding_count`, `summary` (counts by check), `findings[]` (ticket_id, check, severity, message).
 
-Checks: `missing_description`, `short_description`, `missing_title`, `blocked_but_resolved`, `unblocked_with_deps`, `dangling_edge`.
+Checks: `missing_description`, `short_description`, `missing_title`, `unblocked_with_deps`, `dangling_edge`.
 
 ### Chaining subgraph → health_check in MCP
 

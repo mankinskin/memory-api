@@ -32,16 +32,13 @@ pub fn tracker_improvement_schema() -> TicketTypeSchema {
     .collect();
 
     let states = vec![
-        "open",
-        "in-progress",
-        "review",
-        "validating",
-        "validated",
-        "release-candidate",
-        "released",
-        "monitoring",
+        "new",
+        "in-refinement",
+        "ready",
+        "in-implementation",
+        "in-review",
+        "in-validation",
         "done",
-        "blocked",
         "cancelled",
     ]
     .into_iter()
@@ -49,42 +46,28 @@ pub fn tracker_improvement_schema() -> TicketTypeSchema {
     .collect();
 
     let transitions = vec![
-        // open ->
-        ("open", "in-progress"),
-        ("open", "blocked"),
-        ("open", "cancelled"),
-        // in-progress ->
-        ("in-progress", "review"),
-        ("in-progress", "blocked"),
-        ("in-progress", "cancelled"),
-        // review ->
-        ("review", "validating"),
-        ("review", "in-progress"),
-        ("review", "blocked"),
-        // validating ->
-        ("validating", "validated"),
-        ("validating", "review"),
-        ("validating", "blocked"),
-        // validated ->
-        ("validated", "release-candidate"),
-        ("validated", "done"),
-        ("validated", "review"),
-        ("validated", "blocked"),
-        // release-candidate ->
-        ("release-candidate", "released"),
-        ("release-candidate", "review"),
-        ("release-candidate", "blocked"),
-        // released ->
-        ("released", "monitoring"),
-        ("released", "blocked"),
-        // monitoring ->
-        ("monitoring", "done"),
-        ("monitoring", "blocked"),
-        // blocked ->
-        ("blocked", "open"),
-        ("blocked", "in-progress"),
-        ("blocked", "review"),
-        ("blocked", "cancelled"),
+        // new ->
+        ("new", "in-refinement"),
+        ("new", "cancelled"),
+        // in-refinement ->
+        ("in-refinement", "ready"),
+        ("in-refinement", "new"),
+        ("in-refinement", "cancelled"),
+        // ready ->
+        ("ready", "in-implementation"),
+        ("ready", "in-refinement"),
+        ("ready", "cancelled"),
+        // in-implementation ->
+        ("in-implementation", "in-review"),
+        ("in-implementation", "cancelled"),
+        // in-review ->
+        ("in-review", "in-validation"),
+        ("in-review", "in-implementation"),
+        ("in-review", "cancelled"),
+        // in-validation ->
+        ("in-validation", "done"),
+        ("in-validation", "in-review"),
+        ("in-validation", "cancelled"),
     ]
     .into_iter()
     .map(|(f, t)| Transition { from: f.to_string(), to: t.to_string() })

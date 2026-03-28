@@ -149,12 +149,11 @@ pub(crate) fn cmd_watch(args: WatchArgs, store: &TicketStore) -> Result<Value, C
 
 const DONE_STATES: &[&str] = &["done", "cancelled"];
 const ACTIVE_STATES: &[&str] = &[
-    "in-progress",
-    "review",
-    "validating",
-    "validated",
-    "release-candidate",
-    "monitoring",
+    "in-refinement",
+    "ready",
+    "in-implementation",
+    "in-review",
+    "in-validation",
 ];
 
 pub(crate) fn cmd_status(args: StatusArgs, store: &TicketStore) -> Result<Value, CliRunError> {
@@ -200,7 +199,7 @@ pub(crate) fn cmd_status(args: StatusArgs, store: &TicketStore) -> Result<Value,
 
     for t in &tickets {
         total += 1;
-        let state = t.state.as_deref().unwrap_or("open");
+        let state = t.state.as_deref().unwrap_or("new");
 
         if DONE_STATES.contains(&state) {
             done_count += 1;
@@ -501,23 +500,10 @@ pub(crate) fn cmd_health(args: HealthArgs, store: &TicketStore) -> Result<Value,
             }));
         }
 
-        // 4. Blocked but all dependencies resolved.
+        // 4. Has unresolved deps but not in new state.
         let state = t.state.as_deref().unwrap_or("");
         let has_unresolved = unresolved_deps.contains_key(&t.id);
-        if state == "blocked" && !has_unresolved {
-            *summary.entry("blocked_but_resolved").or_insert(0u64) += 1;
-            findings.push(json!({
-                "ticket_id": t.id,
-                "short_id": short_id,
-                "title": title,
-                "check": "blocked_but_resolved",
-                "severity": "warning",
-                "message": "Ticket is blocked but all dependencies are done — may be ready to unblock.",
-            }));
-        }
-
-        // 5. Has unresolved deps but not in blocked state.
-        if has_unresolved && state != "blocked" && state != "open" {
+        if has_unresolved && state != "new" {
             let dep_count = unresolved_deps[&t.id].len();
             *summary.entry("unblocked_with_deps").or_insert(0u64) += 1;
             findings.push(json!({
