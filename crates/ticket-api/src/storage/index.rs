@@ -139,6 +139,22 @@ impl RedbIndexStore {
         })
     }
 
+    /// Hard-delete a ticket entry from the redb index.  Used during
+    /// force-reconciliation to prune entries whose ticket.toml no longer
+    /// exists on disk.  Missing entries are treated as a no-op.
+    pub fn remove_ticket(&self, id: &Uuid) -> Result<(), StorageError> {
+        let key = id.to_string();
+        self.with_db(|db| {
+            let write_txn = db.begin_write()?;
+            {
+                let mut table = write_txn.open_table(TICKETS)?;
+                table.remove(key.as_str())?;
+            }
+            write_txn.commit()?;
+            Ok(())
+        })
+    }
+
     // ── edge CRUD ─────────────────────────────────────────────────────────────
 
     /// Insert an edge using `"{from}|{to}|{kind}"` as the composite key.

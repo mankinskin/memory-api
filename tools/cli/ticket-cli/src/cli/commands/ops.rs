@@ -30,6 +30,7 @@ pub(crate) fn cmd_scan(args: ScanArgs, store: &TicketStore) -> Result<Value, Cli
     if args.force {
         result["force"] = json!(true);
         result["reconciled"] = json!(report.integrated);
+        result["pruned"] = json!(report.pruned);
     }
     Ok(result)
 }

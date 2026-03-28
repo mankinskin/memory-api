@@ -660,6 +660,7 @@ impl TicketStore {
 
         let mut integrated = 0usize;
         let mut diagnostics = Vec::new();
+        let mut disk_ids = std::collections::HashSet::new();
 
         for root in all_roots {
             if !root.path.exists() {
@@ -669,12 +670,26 @@ impl TicketStore {
             diagnostics.extend(diags);
 
             for entry in entries {
+                disk_ids.insert(entry.id);
                 integrate_entry(&self.index, &self.search, entry, reindex)?;
                 integrated += 1;
             }
         }
 
-        Ok(ScanReport { integrated, diagnostics })
+        // When reindexing, prune redb entries whose ticket.toml no longer
+        // exists on disk.  (Tantivy was already cleared above.)
+        let mut pruned = 0usize;
+        if reindex {
+            let indexed = self.index.list_tickets(true)?;
+            for ticket in indexed {
+                if !disk_ids.contains(&ticket.id) {
+                    self.index.remove_ticket(&ticket.id)?;
+                    pruned += 1;
+                }
+            }
+        }
+
+        Ok(ScanReport { integrated, pruned, diagnostics })
     }
 
     /// Integrate a single ticket folder discovered on the filesystem into the
@@ -1038,6 +1053,7 @@ impl TicketStore {
 
 pub struct ScanReport {
     pub integrated: usize,
+    pub pruned: usize,
     pub diagnostics: Vec<crate::model::filesystem::ParseDiagnostic>,
 }
 
