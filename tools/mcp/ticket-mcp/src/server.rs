@@ -792,7 +792,7 @@ impl TicketServer {
 
     #[tool(
         name = "next_tickets",
-        description = "List unblocked tickets in 'ready' state whose dependencies are all satisfied, ordered by priority. Designed for worker agents to pick the next implementable item."
+        description = "List unblocked tickets in any non-terminal state whose dependencies are all satisfied, ordered by workflow progress (closest to done first), then priority. Designed for worker agents to pick the next implementable item."
     )]
     async fn next_tickets(
         &self,
@@ -838,9 +838,24 @@ impl TicketServer {
                 }
             }
 
+            // Build state-index map for progress sorting.
+            let mut state_index: HashMap<String, usize> = HashMap::new();
+            for type_id in store.schema_registry().type_ids() {
+                if let Some(schema) = store.schema_registry().get(type_id) {
+                    for (i, s) in schema.states.iter().enumerate() {
+                        state_index.entry(s.clone()).or_insert(i);
+                    }
+                }
+            }
+
             let mut candidates: Vec<_> = tickets
                 .iter()
-                .filter(|t| t.state.as_deref() == Some("ready"))
+                .filter(|t| {
+                    t.state
+                        .as_deref()
+                        .map(|s| !done_states.contains(&s))
+                        .unwrap_or(true)
+                })
                 .filter(|t| blockers.get(&t.id).map_or(true, |b| b.is_empty()))
                 .collect();
 
@@ -864,11 +879,18 @@ impl TicketServer {
                 }
             };
 
+            // Sort by state progress (highest index first), then priority, then oldest.
             candidates.sort_by(|a, b| {
-                let pa = priority_map.get(&a.id).map(|s| s.as_str()).unwrap_or("");
-                let pb = priority_map.get(&b.id).map(|s| s.as_str()).unwrap_or("");
-                priority_weight(pa)
-                    .cmp(&priority_weight(pb))
+                let sa = a.state.as_deref().unwrap_or("");
+                let sb = b.state.as_deref().unwrap_or("");
+                let si_a = state_index.get(sa).copied().unwrap_or(0);
+                let si_b = state_index.get(sb).copied().unwrap_or(0);
+                si_b.cmp(&si_a)
+                    .then_with(|| {
+                        let pa = priority_map.get(&a.id).map(|s| s.as_str()).unwrap_or("");
+                        let pb = priority_map.get(&b.id).map(|s| s.as_str()).unwrap_or("");
+                        priority_weight(pa).cmp(&priority_weight(pb))
+                    })
                     .then_with(|| a.created_at.cmp(&b.created_at))
             });
 
@@ -886,6 +908,7 @@ impl TicketServer {
                         "rank": rank + 1,
                         "id": t.id.to_string(),
                         "title": t.title,
+                        "state": t.state,
                         "type": t.type_id,
                         "priority": prio,
                         "created_at": t.created_at.to_rfc3339(),

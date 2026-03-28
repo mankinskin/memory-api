@@ -277,6 +277,10 @@ pub struct ListArgs {
 pub struct ScanArgs {
     #[arg(long = "reindex")]
     pub reindex: bool,
+    /// Force-reconcile: re-read every ticket.toml from disk, update all indexes,
+    /// and report which tickets changed.
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(Debug, Args)]

@@ -84,6 +84,11 @@ impl TicketStore {
         })
     }
 
+    /// Access the schema registry to look up type schemas.
+    pub fn schema_registry(&self) -> &SchemaRegistry {
+        &self.schema_registry
+    }
+
     // ── scan root management ──────────────────────────────────────────────────
 
     pub fn add_scan_root(&self, root: ScanRoot) -> Result<(), StorageError> {

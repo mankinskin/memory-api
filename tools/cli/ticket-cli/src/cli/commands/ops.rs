@@ -14,18 +14,24 @@ use crate::cli::{
 };
 
 pub(crate) fn cmd_scan(args: ScanArgs, store: &TicketStore) -> Result<Value, CliRunError> {
-    let report = store.scan(args.reindex)?;
+    let reindex = args.reindex || args.force;
+    let report = store.scan(reindex)?;
     let diags: Vec<Value> = report
         .diagnostics
         .iter()
         .map(|d| json!({ "path": d.path, "reason": d.reason }))
         .collect();
-    Ok(json!({
+    let mut result = json!({
         "command": "scan",
         "status": "ok",
         "integrated": report.integrated,
         "diagnostics": diags,
-    }))
+    });
+    if args.force {
+        result["force"] = json!(true);
+        result["reconciled"] = json!(report.integrated);
+    }
+    Ok(result)
 }
 
 pub(crate) fn cmd_attach(args: AttachArgs, store: &TicketStore) -> Result<Value, CliRunError> {
@@ -361,10 +367,26 @@ pub(crate) fn cmd_next(args: NextArgs, store: &TicketStore) -> Result<Value, Cli
         }
     }
 
-    // Find tickets in "ready" state with all dependencies satisfied.
+    // Build state-index map from schemas for state-progress sorting.
+    // Higher index = further along the workflow = higher sort rank.
+    let mut state_index: HashMap<String, usize> = HashMap::new();
+    for type_id in store.schema_registry().type_ids() {
+        if let Some(schema) = store.schema_registry().get(type_id) {
+            for (i, s) in schema.states.iter().enumerate() {
+                state_index.entry(s.clone()).or_insert(i);
+            }
+        }
+    }
+
+    // Find tickets in any non-terminal state with all dependencies satisfied.
     let mut candidates: Vec<_> = tickets
         .iter()
-        .filter(|t| t.state.as_deref() == Some("ready"))
+        .filter(|t| {
+            t.state
+                .as_deref()
+                .map(|s| !DONE_STATES.contains(&s))
+                .unwrap_or(true)
+        })
         .filter(|t| blockers.get(&t.id).map_or(true, |b| b.is_empty()))
         .collect();
 
@@ -378,12 +400,18 @@ pub(crate) fn cmd_next(args: NextArgs, store: &TicketStore) -> Result<Value, Cli
         }
     }
 
-    // Sort by priority weight, then by creation date (oldest first).
+    // Sort by state progress (highest index first), then priority, then oldest first.
     candidates.sort_by(|a, b| {
-        let pa = priority_map.get(&a.id).map(|s| s.as_str()).unwrap_or("");
-        let pb = priority_map.get(&b.id).map(|s| s.as_str()).unwrap_or("");
-        priority_weight(pa)
-            .cmp(&priority_weight(pb))
+        let sa = a.state.as_deref().unwrap_or("");
+        let sb = b.state.as_deref().unwrap_or("");
+        let si_a = state_index.get(sa).copied().unwrap_or(0);
+        let si_b = state_index.get(sb).copied().unwrap_or(0);
+        si_b.cmp(&si_a) // higher index = closer to done = first
+            .then_with(|| {
+                let pa = priority_map.get(&a.id).map(|s| s.as_str()).unwrap_or("");
+                let pb = priority_map.get(&b.id).map(|s| s.as_str()).unwrap_or("");
+                priority_weight(pa).cmp(&priority_weight(pb))
+            })
             .then_with(|| a.created_at.cmp(&b.created_at))
     });
 
@@ -412,6 +440,7 @@ pub(crate) fn cmd_next(args: NextArgs, store: &TicketStore) -> Result<Value, Cli
                 "rank": rank + 1,
                 "id": t.id,
                 "title": t.title,
+                "state": t.state,
                 "type": t.type_id,
                 "priority": prio,
                 "dependency_count": dep_count.get(&t.id).copied().unwrap_or(0),
