@@ -928,7 +928,8 @@ impl TicketServer {
                     "high" => 1,
                     "medium" => 2,
                     "low" => 3,
-                    _ => 4,
+                    "backlog" => 5,
+                    _ => 4, // none / unset
                 }
             };
 
