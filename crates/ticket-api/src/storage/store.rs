@@ -203,13 +203,14 @@ impl TicketStore {
         self.index.get_ticket(id)
     }
 
-    /// Update a ticket: apply field patches and optional state transition.
+    /// Update a ticket: apply field patches, optional state transition, and optional description.
     pub fn update(
         &self,
         id: &Uuid,
         patch: BTreeMap<String, Value>,
         from_state: Option<&str>,
         to_state: Option<&str>,
+        description: Option<&str>,
     ) -> Result<TicketManifest, StorageError> {
         let mut indexed = self
             .index
@@ -241,6 +242,11 @@ impl TicketStore {
 
         let new_state = to_state.map(str::to_string).or_else(|| indexed.state.clone());
         let updated_manifest = TicketFs::update(&indexed.path, &patch, to_state)?;
+
+        // Write description if provided.
+        if let Some(desc) = description {
+            TicketFs::write_description(&indexed.path, desc)?;
+        }
 
         // Refresh indexed metadata.
         let now = Utc::now();
@@ -502,7 +508,7 @@ impl TicketStore {
         let empty_patch = BTreeMap::new();
         let mut last_manifest = None;
         for state in &path {
-            last_manifest = Some(self.update(id, empty_patch.clone(), None, Some(state))?);
+            last_manifest = Some(self.update(id, empty_patch.clone(), None, Some(state), None)?);
         }
 
         Ok((last_manifest.unwrap(), path))
@@ -818,7 +824,7 @@ impl TicketStore {
         );
         patch.insert("assignment_id".to_string(), Value::String(assignment_id.to_string()));
 
-        self.update(ticket_id, patch, Some("in-review"), Some("in-validation"))
+        self.update(ticket_id, patch, Some("in-review"), Some("in-validation"), None)
     }
 
     /// `task_validate_result` — submit validation outcome.
@@ -886,7 +892,7 @@ impl TicketStore {
         }
 
         let from_state = "in-validation";
-        let _updated = self.update(ticket_id, patch, Some(from_state), Some(new_state))?;
+        let _updated = self.update(ticket_id, patch, Some(from_state), Some(new_state), None)?;
 
         Ok(ValidationResultOutcome {
             ticket_id: *ticket_id,
@@ -939,7 +945,7 @@ impl TicketStore {
             Value::Array(assignment_chain.into_iter().map(Value::String).collect()),
         );
 
-        self.update(ticket_id, patch, Some("done"), Some("done"))
+        self.update(ticket_id, patch, Some("done"), Some("done"), None)
     }
 
     /// `task_release_gate_check` — evaluate release gates for a target.
@@ -1038,7 +1044,7 @@ impl TicketStore {
             let mut patch = BTreeMap::new();
             patch.insert("release_version".to_string(), Value::String(release_version.to_string()));
             patch.insert("merge_commit".to_string(), Value::String(merge_commit.to_string()));
-            self.update(ticket_id, patch, None, None)?;
+            self.update(ticket_id, patch, None, None, None)?;
             promoted += 1;
         }
 

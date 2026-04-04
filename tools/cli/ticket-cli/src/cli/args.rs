@@ -212,6 +212,9 @@ pub struct UpdateArgs {
     /// Revert to the previous history revision (undo the last change).
     #[arg(long)]
     pub undo: bool,
+    /// Markdown description to write/overwrite as description.md.
+    #[arg(long)]
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

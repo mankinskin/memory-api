@@ -285,6 +285,15 @@ impl TicketFs {
         Ok(())
     }
 
+    /// Write or overwrite the `description.md` file for a ticket.
+    pub fn write_description(ticket_path: &Path, text: &str) -> Result<(), StorageError> {
+        let lock_path = ticket_path.join(TICKET_LOCK_FILE);
+        let lock_file = acquire_lock(&lock_path)?;
+        let result = fs::write(ticket_path.join("description.md"), text).map_err(StorageError::Io);
+        release_lock(&lock_file);
+        result
+    }
+
     /// Read text content of a file inside the assets directory for search indexing.
     /// Returns `None` if no `description.md` exists.
     pub fn read_description(ticket_path: &Path) -> Option<String> {

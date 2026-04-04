@@ -100,6 +100,7 @@ pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value,
         patch,
         args.from_state.as_deref(),
         args.to_state.as_deref(),
+        args.description.as_deref(),
     )?;
     let title = manifest.extra.get("title").and_then(Value::as_str).unwrap_or("-");
     let state = manifest.extra.get("state").and_then(Value::as_str).unwrap_or("open");
@@ -164,7 +165,7 @@ pub(crate) fn cmd_repro(args: ReproArgs, store: &TicketStore) -> Result<Value, C
         patch.insert("last_reproduction_command".to_string(), command);
     }
 
-    let updated = store.update(&id, patch, None, None)?;
+    let updated = store.update(&id, patch, None, None, None)?;
     let reproduction_count = updated
         .extra
         .get("reproductions")

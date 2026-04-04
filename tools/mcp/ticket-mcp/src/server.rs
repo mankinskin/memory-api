@@ -170,6 +170,9 @@ pub struct UpdateTicketInput {
     /// If true, revert the ticket to its previous history revision (undo last change).
     #[serde(default)]
     pub undo: bool,
+    /// Optional markdown description to write/overwrite as description.md.
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -565,7 +568,7 @@ impl TicketServer {
                 *summary.entry("missing_description").or_insert(0) += 1;
                 findings.push(serde_json::json!({
                     "ticket_id": t.id, "short_id": short_id, "title": title,
-                    "check": "missing_description", "severity": "warning",
+                    "check": "missing_description", "severity": "error",
                     "message": "No description.md file — ticket lacks detailed context.",
                 }));
             } else if let Some(ref body) = desc {
@@ -1051,9 +1054,10 @@ impl TicketServer {
         let workspace = input.workspace;
         let to_state = input.to_state;
         let id_str = input.id;
+        let description = input.description;
         let manifest = self.with_store_ext(move |store| {
             let id = Self::resolve_uuid_with(store, &id_str)?;
-            store.update(&id, patch, None, to_state.as_deref()).map_err(Self::store_err)
+            store.update(&id, patch, None, to_state.as_deref(), description.as_deref()).map_err(Self::store_err)
         }).await?;
         Self::json_result(&serde_json::json!({
             "workspace": workspace,

@@ -614,7 +614,7 @@ pub(crate) fn cmd_health(args: HealthArgs, store: &TicketStore) -> Result<Value,
                 "short_id": short_id,
                 "title": title,
                 "check": "missing_description",
-                "severity": "warning",
+                "severity": "error",
                 "message": "No description.md file — ticket lacks detailed context.",
             }));
         } else if let Some(ref body) = desc {
