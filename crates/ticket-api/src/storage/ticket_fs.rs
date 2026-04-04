@@ -127,7 +127,7 @@ impl TicketFs {
             Ok(manifest)
         })();
 
-        release_lock(&lock_file);
+        release_lock(&lock_file, &lock_path);
         result
     }
 
@@ -146,7 +146,7 @@ impl TicketFs {
             Ok(())
         })();
 
-        release_lock(&lock_file);
+        release_lock(&lock_file, &lock_path);
         result
     }
 
@@ -290,7 +290,7 @@ impl TicketFs {
         let lock_path = ticket_path.join(TICKET_LOCK_FILE);
         let lock_file = acquire_lock(&lock_path)?;
         let result = fs::write(ticket_path.join("description.md"), text).map_err(StorageError::Io);
-        release_lock(&lock_file);
+        release_lock(&lock_file, &lock_path);
         result
     }
 
@@ -325,6 +325,7 @@ fn acquire_lock(lock_path: &Path) -> Result<File, StorageError> {
     Ok(file)
 }
 
-fn release_lock(file: &File) {
+fn release_lock(file: &File, lock_path: &Path) {
     let _ = file.unlock();
+    let _ = fs::remove_file(lock_path);
 }
