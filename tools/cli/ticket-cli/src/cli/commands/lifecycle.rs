@@ -2,11 +2,18 @@ use serde_json::{Value, json};
 
 use ticket_api::storage::TicketStore;
 
-use crate::cli::{ClaimArgs, CloseArgs, CliRunError, IdArgs, UnclaimArgs};
+use crate::cli::{CancelArgs, ClaimArgs, CloseArgs, CliRunError, UnclaimArgs};
+
+fn resolve_author(explicit: Option<&str>) -> Option<String> {
+    explicit
+        .map(str::to_string)
+        .or_else(|| std::env::var("TICKET_AUTHOR").ok().filter(|s| !s.is_empty()))
+}
 
 pub(crate) fn cmd_close(args: CloseArgs, store: &TicketStore) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
-    let (manifest, path) = store.close(&id, &args.to_state)?;
+    let author = resolve_author(args.author.as_deref());
+    let (manifest, path) = store.close(&id, &args.to_state, author.as_deref())?;
     let title = manifest.extra.get("title").and_then(Value::as_str).unwrap_or("-");
     Ok(json!({
         "command": "close",
@@ -18,9 +25,10 @@ pub(crate) fn cmd_close(args: CloseArgs, store: &TicketStore) -> Result<Value, C
     }))
 }
 
-pub(crate) fn cmd_cancel(args: IdArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_cancel(args: CancelArgs, store: &TicketStore) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
-    let (manifest, path) = store.close(&id, "cancelled")?;
+    let author = resolve_author(args.author.as_deref());
+    let (manifest, path) = store.close(&id, "cancelled", author.as_deref())?;
     let title = manifest.extra.get("title").and_then(Value::as_str).unwrap_or("-");
     Ok(json!({
         "command": "cancel",

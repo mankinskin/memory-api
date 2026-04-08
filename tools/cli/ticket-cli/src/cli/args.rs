@@ -102,6 +102,18 @@ pub struct CloseArgs {
     /// Target state to fast-forward to (default: done).
     #[arg(long = "to-state", default_value = "done")]
     pub to_state: String,
+    /// Author/user identity to record in history revisions (overrides TICKET_AUTHOR env var).
+    #[arg(long)]
+    pub author: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct CancelArgs {
+    /// Ticket UUID or 8+ character hex prefix.
+    pub id: String,
+    /// Author/user identity to record in history revisions (overrides TICKET_AUTHOR env var).
+    #[arg(long)]
+    pub author: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -226,6 +238,9 @@ pub struct UpdateArgs {
     /// Markdown description to write/overwrite as description.md.
     #[arg(long)]
     pub description: Option<String>,
+    /// Author/user identity to record in the history revision (overrides TICKET_AUTHOR env var).
+    #[arg(long)]
+    pub author: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

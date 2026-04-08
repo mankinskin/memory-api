@@ -11,6 +11,12 @@ use crate::cli::{
     parse_fields, parse_fields_to_json, repro_summary_from_fields,
 };
 
+fn resolve_author(explicit: Option<&str>) -> Option<String> {
+    explicit
+        .map(str::to_string)
+        .or_else(|| std::env::var("TICKET_AUTHOR").ok().filter(|s| !s.is_empty()))
+}
+
 pub(crate) fn cmd_create(args: CreateArgs, store: &TicketStore) -> Result<Value, CliRunError> {
     let type_id = args.ticket_type.as_deref().unwrap_or("tracker-improvement");
     let extra = parse_fields_to_json(&args.fields)?;
@@ -66,6 +72,7 @@ pub(crate) fn cmd_get(args: IdArgs, store: &TicketStore) -> Result<Value, CliRun
 
 pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
+    let author = resolve_author(args.author.as_deref());
 
     if args.undo {
         if args.to_state.is_some() || args.from_state.is_some() || !args.fields.is_empty() {
@@ -81,7 +88,7 @@ pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value,
         }
         let prev = &revisions[revisions.len() - 2];
         let prev_rev = prev.rev;
-        let new_rev = store.apply_revert(&id, prev.fields.clone())?;
+        let new_rev = store.apply_revert(&id, prev.fields.clone(), author.as_deref())?;
         let updated = store.get(&id)?;
         return Ok(json!({
             "command": "update",
@@ -101,6 +108,7 @@ pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value,
         args.from_state.as_deref(),
         args.to_state.as_deref(),
         args.description.as_deref(),
+        author.as_deref(),
     )?;
     let title = manifest.extra.get("title").and_then(Value::as_str).unwrap_or("-");
     let state = manifest.extra.get("state").and_then(Value::as_str).unwrap_or("open");
@@ -165,7 +173,7 @@ pub(crate) fn cmd_repro(args: ReproArgs, store: &TicketStore) -> Result<Value, C
         patch.insert("last_reproduction_command".to_string(), command);
     }
 
-    let updated = store.update(&id, patch, None, None, None)?;
+    let updated = store.update(&id, patch, None, None, None, None)?;
     let reproduction_count = updated
         .extra
         .get("reproductions")

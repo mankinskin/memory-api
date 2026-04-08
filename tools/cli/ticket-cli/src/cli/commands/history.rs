@@ -16,7 +16,7 @@ pub(crate) fn cmd_history(
     revisions.truncate(args.limit);
     let entries: Vec<Value> = revisions
         .into_iter()
-        .map(|r| json!({ "rev": r.rev, "ts": r.ts, "fields": r.fields }))
+        .map(|r| json!({ "rev": r.rev, "ts": r.ts, "author": r.author, "fields": r.fields }))
         .collect();
     Ok(json!({
         "command": "history",
@@ -112,7 +112,7 @@ pub(crate) fn cmd_revert(args: RevertArgs, store: &TicketStore) -> Result<Value,
         .cloned()
         .ok_or_else(|| CliRunError::BadRequest(format!("revision {} not found", target_rev)))?;
 
-    let new_rev = store.apply_revert(&id, snapshot.fields)?;
+    let new_rev = store.apply_revert(&id, snapshot.fields, None)?;
     let updated = store.get(&id)?;
 
     Ok(json!({

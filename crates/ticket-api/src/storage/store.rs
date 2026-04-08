@@ -176,7 +176,7 @@ impl TicketStore {
         )?;
 
         // Append initial history snapshot (rev 1).
-        let _ = TicketFs::append_history(&indexed.path, manifest.extra.clone());
+        let _ = TicketFs::append_history(&indexed.path, manifest.extra.clone(), None);
 
         // Emit SSE hook event.
         if let Some(h) = self.hook() {
@@ -211,6 +211,7 @@ impl TicketStore {
         from_state: Option<&str>,
         to_state: Option<&str>,
         description: Option<&str>,
+        author: Option<&str>,
     ) -> Result<TicketManifest, StorageError> {
         let mut indexed = self
             .index
@@ -269,7 +270,7 @@ impl TicketStore {
         )?;
 
         // Append history snapshot after successful write.
-        let _ = TicketFs::append_history(&indexed.path, updated_manifest.extra.clone());
+        let _ = TicketFs::append_history(&indexed.path, updated_manifest.extra.clone(), author.map(str::to_string));
 
         // Emit SSE hook event.
         if let Some(h) = self.hook() {
@@ -362,6 +363,7 @@ impl TicketStore {
         &self,
         id: &Uuid,
         fields: BTreeMap<String, Value>,
+        author: Option<&str>,
     ) -> Result<u64, StorageError> {
         let indexed = self
             .index
@@ -395,7 +397,7 @@ impl TicketStore {
 
         // Append history entry for the reverted state (creates a new rev).
         let updated_manifest = TicketFs::read(&refreshed.path)?;
-        let new_rev = TicketFs::append_history(&refreshed.path, updated_manifest.extra)?;
+        let new_rev = TicketFs::append_history(&refreshed.path, updated_manifest.extra, author.map(str::to_string))?;
         Ok(new_rev)
     }
 
@@ -480,6 +482,7 @@ impl TicketStore {
         &self,
         id: &Uuid,
         target_state: &str,
+        author: Option<&str>,
     ) -> Result<(TicketManifest, Vec<String>), StorageError> {
         let indexed = self
             .index
@@ -508,7 +511,7 @@ impl TicketStore {
         let empty_patch = BTreeMap::new();
         let mut last_manifest = None;
         for state in &path {
-            last_manifest = Some(self.update(id, empty_patch.clone(), None, Some(state), None)?);
+            last_manifest = Some(self.update(id, empty_patch.clone(), None, Some(state), None, author)?);
         }
 
         Ok((last_manifest.unwrap(), path))
@@ -550,7 +553,7 @@ impl TicketStore {
         let mut event = BTreeMap::new();
         event.insert("_event".to_string(), serde_json::Value::String("attach".to_string()));
         event.insert("asset".to_string(), serde_json::Value::String(file_name));
-        let _ = TicketFs::append_history(&indexed.path, event);
+        let _ = TicketFs::append_history(&indexed.path, event, None);
 
         Ok(dest)
     }
@@ -824,7 +827,7 @@ impl TicketStore {
         );
         patch.insert("assignment_id".to_string(), Value::String(assignment_id.to_string()));
 
-        self.update(ticket_id, patch, Some("in-review"), Some("in-validation"), None)
+        self.update(ticket_id, patch, Some("in-review"), Some("in-validation"), None, None)
     }
 
     /// `task_validate_result` — submit validation outcome.
@@ -892,7 +895,7 @@ impl TicketStore {
         }
 
         let from_state = "in-validation";
-        let _updated = self.update(ticket_id, patch, Some(from_state), Some(new_state), None)?;
+        let _updated = self.update(ticket_id, patch, Some(from_state), Some(new_state), None, None)?;
 
         Ok(ValidationResultOutcome {
             ticket_id: *ticket_id,
@@ -945,7 +948,7 @@ impl TicketStore {
             Value::Array(assignment_chain.into_iter().map(Value::String).collect()),
         );
 
-        self.update(ticket_id, patch, Some("done"), Some("done"), None)
+        self.update(ticket_id, patch, Some("done"), Some("done"), None, None)
     }
 
     /// `task_release_gate_check` — evaluate release gates for a target.
@@ -1044,7 +1047,7 @@ impl TicketStore {
             let mut patch = BTreeMap::new();
             patch.insert("release_version".to_string(), Value::String(release_version.to_string()));
             patch.insert("merge_commit".to_string(), Value::String(merge_commit.to_string()));
-            self.update(ticket_id, patch, None, None, None)?;
+            self.update(ticket_id, patch, None, None, None, None)?;
             promoted += 1;
         }
 

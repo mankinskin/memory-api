@@ -27,6 +27,9 @@ pub struct HistoryRevision {
     pub ts: String,
     /// Complete snapshot of the manifest `extra` fields at this revision.
     pub fields: BTreeMap<String, Value>,
+    /// Identity of the user or agent who made this change (optional).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
 }
 
 /// Low-level filesystem operations for ticket folders.
@@ -259,6 +262,7 @@ impl TicketFs {
     pub fn append_history(
         ticket_path: &Path,
         fields: BTreeMap<String, Value>,
+        author: Option<String>,
     ) -> Result<u64, StorageError> {
         let path = ticket_path.join(TICKET_HISTORY_FILE);
         // Count existing revisions to assign the next rev number.
@@ -268,6 +272,7 @@ impl TicketFs {
             rev,
             ts: Utc::now().to_rfc3339(),
             fields,
+            author,
         };
         let line = serde_json::to_string(&entry)
             .map_err(|e| StorageError::Serialization(e.to_string()))?;
@@ -343,4 +348,45 @@ fn acquire_lock(lock_path: &Path) -> Result<File, StorageError> {
 fn release_lock(file: &File, lock_path: &Path) {
     let _ = file.unlock();
     let _ = fs::remove_file(lock_path);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HistoryRevision;
+    use std::collections::BTreeMap;
+    use serde_json::Value;
+
+    /// Existing `history.ndjson` entries without the `author` field must
+    /// deserialize correctly with `author == None`.
+    #[test]
+    fn history_revision_backward_compat_no_author() {
+        let json = r#"{"rev":1,"ts":"2025-01-01T00:00:00Z","fields":{"state":"new","title":"Old entry"}}"#;
+        let rev: HistoryRevision = serde_json::from_str(json)
+            .expect("should deserialize legacy revision without author field");
+        assert_eq!(rev.rev, 1);
+        assert_eq!(rev.author, None, "author should be None for legacy entries");
+    }
+
+    /// Entries with an explicit `author` field deserialize correctly.
+    #[test]
+    fn history_revision_with_author() {
+        let json = r#"{"rev":2,"ts":"2025-01-02T00:00:00Z","fields":{},"author":"alice"}"#;
+        let rev: HistoryRevision = serde_json::from_str(json)
+            .expect("should deserialize revision with author");
+        assert_eq!(rev.author, Some("alice".to_string()));
+    }
+
+    /// Serializing a revision with `author == None` omits the `author` key.
+    #[test]
+    fn history_revision_none_author_is_skipped_in_serialization() {
+        let rev = HistoryRevision {
+            rev: 1,
+            ts: "2025-01-01T00:00:00Z".to_string(),
+            fields: BTreeMap::new(),
+            author: None,
+        };
+        let json = serde_json::to_string(&rev).expect("serialize");
+        let v: Value = serde_json::from_str(&json).unwrap();
+        assert!(v.get("author").is_none(), "author key should be absent when None");
+    }
 }

@@ -127,7 +127,7 @@ pub enum TicketCommandCli {
     /// Fast-forward a ticket to a target state (default: done).
     Close(CloseArgs),
     /// Cancel a ticket (shortcut for close --to-state cancelled).
-    Cancel(IdArgs),
+    Cancel(CancelArgs),
     /// Attach a file as an asset to a ticket.
     Attach(AttachArgs),
     /// List assets attached to a ticket.

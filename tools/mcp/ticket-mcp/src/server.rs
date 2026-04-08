@@ -1026,7 +1026,7 @@ impl TicketServer {
                 }
                 let prev = &revisions[revisions.len() - 2];
                 let prev_rev = prev.rev;
-                let new_rev = store.apply_revert(&id, prev.fields.clone()).map_err(Self::store_err)?;
+                let new_rev = store.apply_revert(&id, prev.fields.clone(), None).map_err(Self::store_err)?;;
                 let updated = store.get(&id).map_err(Self::store_err)?;
                 Ok((prev_rev, new_rev, updated))
             }).await?;
@@ -1057,7 +1057,7 @@ impl TicketServer {
         let description = input.description;
         let manifest = self.with_store_ext(move |store| {
             let id = Self::resolve_uuid_with(store, &id_str)?;
-            store.update(&id, patch, None, to_state.as_deref(), description.as_deref()).map_err(Self::store_err)
+            store.update(&id, patch, None, to_state.as_deref(), description.as_deref(), None).map_err(Self::store_err)
         }).await?;
         Self::json_result(&serde_json::json!({
             "workspace": workspace,
@@ -1084,7 +1084,7 @@ impl TicketServer {
         let target_state = to_state.clone();
         let (manifest, path) = self.with_store_ext(move |store| {
             let id = Self::resolve_uuid_with(store, &id_str)?;
-            store.close(&id, &to_state).map_err(Self::store_err)
+            store.close(&id, &to_state, None).map_err(Self::store_err)
         }).await?;
         Self::json_result(&serde_json::json!({
             "workspace": workspace,
@@ -1107,7 +1107,7 @@ impl TicketServer {
         let id_str = input.id;
         let (manifest, path) = self.with_store_ext(move |store| {
             let id = Self::resolve_uuid_with(store, &id_str)?;
-            store.close(&id, "cancelled").map_err(Self::store_err)
+            store.close(&id, "cancelled", None).map_err(Self::store_err)
         }).await?;
         Self::json_result(&serde_json::json!({
             "workspace": workspace,
