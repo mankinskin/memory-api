@@ -136,6 +136,12 @@ pub enum TicketCommandCli {
     Health(HealthArgs),
     /// Audit the ticket store: report health, counts, and orphan checks.
     Audit,
+    /// Reformat all ticket.toml files to canonical field ordering.
+    ///
+    /// Writes fields in the order: id, created_at, title, state,
+    /// acceptance_criteria, then remaining fields alphabetically.
+    /// Use --check to report without writing (CI gate).
+    Fmt(FmtArgs),
 }
 
 // ── error type ─────────────────────────────────────────────────────────────────

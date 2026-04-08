@@ -224,6 +224,7 @@ fn batch_dispatch(cmd: TicketCommandCli, store: &TicketStore) -> Result<Value, C
         TicketCommandCli::Diff(args) => commands::cmd_diff(args, store),
         TicketCommandCli::Revert(args) => commands::cmd_revert(args, store),
         TicketCommandCli::Audit => commands::cmd_audit(store),
+        TicketCommandCli::Fmt(args) => commands::cmd_fmt(args, store),
         TicketCommandCli::Serve(_) => {
             Err(CliRunError::BadRequest("'serve' cannot be used in a batch".to_string()))
         }

@@ -200,6 +200,17 @@ pub struct HealthArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct FmtArgs {
+    /// Report files needing reordering without writing any changes.
+    ///
+    /// When set, the command exits with `status = "needs_formatting"` and a
+    /// positive `reformatted` count if any ticket.toml is out of canonical
+    /// field order.  Useful for CI gating.
+    #[arg(long, default_value_t = false)]
+    pub check: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct UpdateArgs {
     /// Ticket UUID or 8+ character hex prefix.
     pub id: String,

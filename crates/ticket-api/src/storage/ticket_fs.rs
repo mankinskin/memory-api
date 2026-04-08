@@ -285,6 +285,22 @@ impl TicketFs {
         Ok(())
     }
 
+    /// Reformat an existing ticket's `ticket.toml` to canonical field ordering.
+    ///
+    /// Acquires the advisory lock, reads the current manifest, and rewrites
+    /// it through the canonical formatter.  This is idempotent.
+    pub fn reformat(ticket_path: &Path) -> Result<(), StorageError> {
+        let lock_path = ticket_path.join(TICKET_LOCK_FILE);
+        let lock_file = acquire_lock(&lock_path)?;
+        let result = (|| -> Result<(), StorageError> {
+            let manifest = Self::read(ticket_path)?;
+            write_manifest(ticket_path, &manifest)?;
+            Ok(())
+        })();
+        release_lock(&lock_file, &lock_path);
+        result
+    }
+
     /// Write or overwrite the `description.md` file for a ticket.
     pub fn write_description(ticket_path: &Path, text: &str) -> Result<(), StorageError> {
         let lock_path = ticket_path.join(TICKET_LOCK_FILE);
@@ -311,8 +327,7 @@ pub struct TicketScanEntry {
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 fn write_manifest(dir: &Path, manifest: &TicketManifest) -> Result<(), StorageError> {
-    let toml_str = toml::to_string_pretty(manifest)
-        .map_err(|e| StorageError::Serialization(e.to_string()))?;
+    let toml_str = crate::model::manifest_format::format_manifest_toml(manifest);
     let path = dir.join(TICKET_MANIFEST_FILE);
     fs::write(&path, toml_str)?;
     Ok(())
