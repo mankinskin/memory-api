@@ -6,6 +6,7 @@
 pub mod auth_state;
 pub mod error;
 mod handlers;
+pub mod middleware;
 pub mod registry;
 pub mod routes;
 pub mod stream;
@@ -14,6 +15,8 @@ use std::{net::SocketAddr, sync::Arc};
 use std::{collections::HashSet, sync::Mutex};
 
 use tokio::net::TcpListener;
+
+use viewer_api::auth::TokenSet;
 
 pub use auth_state::AuthState;
 pub use registry::WorkspaceRegistry;
@@ -50,6 +53,9 @@ pub struct AppState {
     pub registry: Arc<WorkspaceRegistry>,
     pub broker: Arc<StreamBroker>,
     runtime_ready: Arc<Mutex<HashSet<String>>>,
+    /// Optional bearer-token set for write-endpoint auth.
+    /// When `None`, write endpoints are unauthenticated (local/dev mode).
+    pub auth: Option<Arc<TokenSet>>,
 }
 
 impl AppState {
@@ -61,7 +67,14 @@ impl AppState {
             registry,
             broker,
             runtime_ready: Arc::new(Mutex::new(HashSet::new())),
+            auth: None,
         }
+    }
+
+    /// Enable bearer-token authentication for write endpoints.
+    pub fn with_auth(mut self, token_set: Arc<TokenSet>) -> Self {
+        self.auth = Some(token_set);
+        self
     }
 
     /// Get a workspace store and ensure serve-runtime wiring is initialized once.
@@ -164,5 +177,85 @@ mod tests {
             }
             other => panic!("expected TicketUpsert, got {other:?}"),
         }
+    }
+
+    // ── Auth middleware router-level tests ────────────────────────────────
+
+    fn make_state_with_auth(dir: &std::path::Path, token: &str) -> AppState {
+        let state = AppState::new(
+            Arc::new(WorkspaceRegistry::single(dir.to_path_buf())),
+            Arc::new(StreamBroker::new()),
+        );
+        state.with_auth(Arc::new(viewer_api::auth::TokenSet::single(token)))
+    }
+
+    fn make_state_no_auth(dir: &std::path::Path) -> AppState {
+        AppState::new(
+            Arc::new(WorkspaceRegistry::single(dir.to_path_buf())),
+            Arc::new(StreamBroker::new()),
+        )
+    }
+
+    async fn post_create(app: axum::Router, auth_header: Option<&str>) -> axum::http::StatusCode {
+        use axum::http::{Request, header};
+        use tower::ServiceExt;
+
+        let body = serde_json::json!({
+            "type_id": "tracker-improvement",
+            "title": "auth test ticket"
+        })
+        .to_string();
+
+        let mut req = Request::builder()
+            .method("POST")
+            .uri("/api/tickets?workspace=default")
+            .header(header::CONTENT_TYPE, "application/json");
+
+        if let Some(val) = auth_header {
+            req = req.header(header::AUTHORIZATION, val);
+        }
+
+        let response = app
+            .oneshot(req.body(axum::body::Body::from(body)).unwrap())
+            .await
+            .unwrap();
+        response.status()
+    }
+
+    #[tokio::test]
+    async fn write_auth_rejects_when_token_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = make_state_with_auth(dir.path(), "secret-token");
+        let app = crate::serve::routes::build_router(state);
+        let status = post_create(app, None).await;
+        assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn write_auth_rejects_invalid_token() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = make_state_with_auth(dir.path(), "secret-token");
+        let app = crate::serve::routes::build_router(state);
+        let status = post_create(app, Some("Bearer wrong-token")).await;
+        assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn write_auth_allows_valid_token() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = make_state_with_auth(dir.path(), "secret-token");
+        let app = crate::serve::routes::build_router(state);
+        let status = post_create(app, Some("Bearer secret-token")).await;
+        // 201 Created or 422 (validation) is acceptable — not 401
+        assert_ne!(status, axum::http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn write_auth_passes_through_when_disabled() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = make_state_no_auth(dir.path());
+        let app = crate::serve::routes::build_router(state);
+        let status = post_create(app, None).await;
+        assert_ne!(status, axum::http::StatusCode::UNAUTHORIZED);
     }
 }
