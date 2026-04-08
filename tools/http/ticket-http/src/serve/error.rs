@@ -20,6 +20,14 @@ pub fn storage_err(
             ApiError::not_found("ticket", rid)
                 .into_response_with_status(StatusCode::NOT_FOUND)
         }
+        StorageError::DependencyCycle => {
+            ApiError::new(
+                "edge.cycle_detected",
+                "Adding this edge would create a dependency cycle",
+                rid,
+            )
+            .into_response_with_status(StatusCode::UNPROCESSABLE_ENTITY)
+        }
         _ => {
             tracing::error!(error = %e, "storage error in serve handler");
             ApiError::internal(rid)
