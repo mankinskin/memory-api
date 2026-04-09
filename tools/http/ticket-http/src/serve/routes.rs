@@ -35,6 +35,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/api/tickets/{id}/close", post(handlers::tickets::close_ticket))
         .route("/api/tickets/{id}/cancel", post(handlers::tickets::cancel_ticket))
+        .route("/api/tickets/{id}/undo", post(handlers::tickets::undo_ticket))
         .route(
             "/api/edges",
             post(handlers::edges::add_edge).delete(handlers::edges::remove_edge),

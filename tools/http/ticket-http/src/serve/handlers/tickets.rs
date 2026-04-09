@@ -528,6 +528,70 @@ pub async fn cancel_ticket(
     .into_response()
 }
 
+/// `POST /api/tickets/{id}/undo?workspace=<name>`
+///
+/// Undo the last state/field transition on a ticket by reverting to the
+/// second-to-last history revision, bypassing state-machine validation.
+pub async fn undo_ticket(
+    State(state): State<AppState>,
+    Extension(rid): Extension<RequestIdExt>,
+    Path(id): Path<Uuid>,
+    Query(params): Query<MutationWorkspaceParam>,
+    headers: HeaderMap,
+) -> Response {
+    let store = match state.ensure_workspace_runtime(&params.workspace) {
+        Some(s) => s,
+        None => {
+            return ApiError::not_found("workspace", &rid.0)
+                .into_response_with_status(StatusCode::NOT_FOUND);
+        }
+    };
+
+    let revisions = match store.get_history(&id) {
+        Ok(r) => r,
+        Err(e) => return storage_err(e, &rid.0),
+    };
+
+    if revisions.len() < 2 {
+        return ApiError::bad_request(
+            "no_previous_revision",
+            "ticket has no previous revision to undo",
+            &rid.0,
+        )
+        .into_response_with_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    // Second-to-last revision — the state before the most recent change.
+    let prev_fields = revisions[revisions.len() - 2].fields.clone();
+    let author = author_from_headers(&headers);
+
+    match store.apply_revert(&id, prev_fields, author.as_deref()) {
+        Ok(_new_rev) => {
+            let manifest = match store.get(&id) {
+                Ok(m) => m,
+                Err(e) => return storage_err(e, &rid.0),
+            };
+            let created_at = store
+                .get_indexed(&id)
+                .ok()
+                .flatten()
+                .map(|t| t.created_at)
+                .unwrap_or_else(chrono::Utc::now);
+            Json(MutationResponse {
+                request_id: rid.0,
+                workspace: params.workspace,
+                ticket: TicketDetail {
+                    id: manifest.id.to_string(),
+                    created_at,
+                    fields: manifest.extra,
+                },
+            })
+            .into_response()
+        }
+        Err(e) => storage_err(e, &rid.0),
+    }
+}
+
 /// `DELETE /api/tickets/{id}?workspace=<name>`
 ///
 /// Soft-delete (mark deleted) a ticket.  Emits a `ticket.delete` SSE event.
