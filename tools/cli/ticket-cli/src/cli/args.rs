@@ -73,6 +73,9 @@ pub struct NextArgs {
     /// Optional prefix filter — only include tickets whose title starts with this string.
     #[arg(long)]
     pub filter: Option<String>,
+    /// Skip board-awareness: include tickets already tracked on the board in results.
+    #[arg(long, default_value_t = false)]
+    pub no_board: bool,
 }
 
 #[derive(Debug, Args)]

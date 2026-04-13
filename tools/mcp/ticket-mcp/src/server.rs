@@ -857,7 +857,10 @@ impl TicketServer {
         let limit = input.limit.unwrap_or(20).min(100);
         let filter = input.filter.clone();
 
-        let items: Vec<Value> = self.with_store(|store| {
+        let (items, board_value, excluded_by_board, warnings) = self.with_store(|store| {
+            // Board snapshot (best-effort; errors are non-fatal).
+            let board_snap = store.board_show(None).ok();
+
             let all = store.list(None, None, None)?;
 
             let tickets: Vec<_> = if let Some(ref prefix) = filter {
@@ -951,9 +954,92 @@ impl TicketServer {
                     .then_with(|| a.created_at.cmp(&b.created_at))
             });
 
+            // --- Board-aware filtering ---
+            let board_ticket_ids: HashSet<Uuid> = board_snap
+                .as_ref()
+                .map(|snap| {
+                    snap.entries
+                        .iter()
+                        .filter(|e| {
+                            e.status == ticket_api::BoardEntryStatus::Active
+                                || e.status == ticket_api::BoardEntryStatus::Stale
+                        })
+                        .map(|e| e.ticket_id)
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            // Collect excluded candidates before filtering.
+            let excluded_by_board: Vec<Value> = board_snap
+                .as_ref()
+                .map(|snap| {
+                    snap.entries
+                        .iter()
+                        .filter(|e| {
+                            (e.status == ticket_api::BoardEntryStatus::Active
+                                || e.status == ticket_api::BoardEntryStatus::Stale)
+                                && candidates.iter().any(|c| c.id == e.ticket_id)
+                        })
+                        .map(|e| {
+                            let status_str = match e.status {
+                                ticket_api::BoardEntryStatus::Active => "active",
+                                ticket_api::BoardEntryStatus::Stale => "stale",
+                                ticket_api::BoardEntryStatus::Conflict => "conflict",
+                                ticket_api::BoardEntryStatus::Completed => "completed",
+                            };
+                            serde_json::json!({
+                                "ticket_id": e.ticket_id.to_string(),
+                                "agent_id": e.agent_id,
+                                "status": status_str,
+                                "intent": e.intent,
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            candidates.retain(|t| !board_ticket_ids.contains(&t.id));
             candidates.truncate(limit);
 
-            Ok(candidates
+            // Board summary value.
+            let board_value: Value = board_snap
+                .as_ref()
+                .map(|snap| {
+                    serde_json::json!({
+                        "active_count": snap.active_count,
+                        "stale_count": snap.stale_count,
+                        "max_wip": snap.config.max_wip,
+                        "wip_limit_reached": snap.wip_limit_reached,
+                        "warnings": snap.warnings,
+                    })
+                })
+                .unwrap_or(Value::Null);
+
+            // Synthesize per-invocation warnings.
+            let mut warnings: Vec<String> = Vec::new();
+            if let Some(ref snap) = board_snap {
+                let max_wip = snap.config.max_wip;
+                if snap.active_count >= max_wip {
+                    warnings.push(format!(
+                        "WIP limit reached: {}/{} active entries \u{2014} pause new work and reduce the board.",
+                        snap.active_count, max_wip
+                    ));
+                } else if max_wip > 0 && snap.active_count + 1 >= max_wip {
+                    warnings.push(format!(
+                        "Approaching WIP limit: {}/{} active entries.",
+                        snap.active_count, max_wip
+                    ));
+                }
+                if snap.stale_count > 0 {
+                    warnings.push(format!(
+                        "{} stale board entr{} \u{2014} heartbeat has expired; run board heartbeat or clean.",
+                        snap.stale_count,
+                        if snap.stale_count == 1 { "y" } else { "ies" }
+                    ));
+                }
+            }
+
+            let items: Vec<Value> = candidates
                 .iter()
                 .enumerate()
                 .map(|(rank, t)| {
@@ -971,13 +1057,18 @@ impl TicketServer {
                         "created_at": t.created_at.to_rfc3339(),
                     })
                 })
-                .collect())
+                .collect();
+
+            Ok((items, board_value, excluded_by_board, warnings))
         }).await?;
 
         Self::json_result(&serde_json::json!({
             "workspace": input.workspace,
             "count": items.len(),
             "items": items,
+            "board": board_value,
+            "excluded_by_board": excluded_by_board,
+            "warnings": warnings,
         }))
     }
 
