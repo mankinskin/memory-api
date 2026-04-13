@@ -41,18 +41,19 @@ pub(crate) fn cmd_cancel(args: CancelArgs, store: &TicketStore) -> Result<Value,
 
 pub(crate) fn cmd_claim(args: ClaimArgs, store: &TicketStore) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
-    let lease = store.claim(
+    let entry = store.board_check_in(
         &id,
         &args.agent_id,
         args.ttl_secs,
-        args.work_intent.as_deref(),
+        args.work_intent.as_deref().unwrap_or("claim"),
+        vec![],
     )?;
     Ok(json!({
         "command": "claim",
         "status": "ok",
-        "ticket_id": lease.ticket_id,
-        "working_by": lease.working_by,
-        "expires_at": lease.lease_expires_at,
+        "ticket_id": entry.ticket_id,
+        "working_by": entry.agent_id,
+        "entry_id": entry.entry_id,
     }))
 }
 
@@ -60,7 +61,15 @@ pub(crate) fn cmd_unclaim(args: UnclaimArgs, store: &TicketStore) -> Result<Valu
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let manifest = store.get(&id)?;
     let title = manifest.extra.get("title").and_then(Value::as_str).unwrap_or("-");
-    store.unclaim(&id)?;
+    // Determine agent_id from the active board snapshot (find any active entry for this ticket).
+    let snap = store.board_show(None)?;
+    let entry = snap
+        .entries
+        .iter()
+        .find(|e| e.ticket_id == id && e.status == ticket_api::BoardEntryStatus::Active);
+    if let Some(e) = entry {
+        store.board_check_out(&id, &e.agent_id, args.reason.as_deref())?;
+    }
     Ok(json!({
         "command": "unclaim",
         "status": "ok",

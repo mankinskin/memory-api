@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use ticket_api::contracts::command_schema::{CommandEnvelope, ErrorEnvelope};
 use ticket_api::error::StorageError;
+use ticket_api::storage::board::BoardError;
 
 #[path = "cli/args.rs"]
 mod args;
@@ -154,6 +155,8 @@ pub enum CliRunError {
     CommandSchema(#[from] serde_json::Error),
     #[error("storage error: {0}")]
     Storage(#[from] StorageError),
+    #[error("board error: {0}")]
+    Board(#[from] BoardError),
     #[error("invalid exec command payload: {0}")]
     InvalidExecPayload(String),
     #[error("{0}")]

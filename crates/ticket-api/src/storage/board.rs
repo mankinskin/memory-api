@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use chrono::{DateTime, Duration, Utc};
 use redb::{ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::error::StorageError;
@@ -97,6 +98,52 @@ pub struct BoardSnapshot {
     pub warnings: Vec<String>,
 }
 
+// ── Operational maintenance types ─────────────────────────────────────────────
+
+/// Preview of entries that are eligible for removal by `board_clean_apply`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoardCleanPreview {
+    pub generated_at: DateTime<Utc>,
+    /// Stateless verification token (opaque, SHA-256 based).
+    ///
+    /// Pass this value back verbatim to `board_clean_apply`.  The server
+    /// re-derives the set of eligible entries and verifies the token; if the
+    /// board has changed in the interim the call is rejected with
+    /// [`BoardError::StaleCleanToken`].
+    pub token: String,
+    /// IDs of the entries that will be deleted when the token is applied.
+    pub entry_ids: Vec<Uuid>,
+    pub entry_count: usize,
+    pub include_stale: bool,
+}
+
+/// Outcome of a successful `board_clean_apply` call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoardCleanResult {
+    pub removed_entry_ids: Vec<Uuid>,
+    pub removed_count: usize,
+}
+
+/// Action taken by `board_reconcile` for a given ticket.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ReconcileAction {
+    /// An active board entry was found and marked `Completed` because the
+    /// ticket reached a terminal state.
+    MarkedCompleted { entry_id: Uuid },
+    /// The ticket was reverted while an active board entry exists.  The entry
+    /// remains active; a warning is emitted at the call site.
+    StaleIntentWarning { entry_id: Uuid, current_state: String },
+    /// No active board entry was found for this ticket.
+    NoEntry,
+}
+
+/// Result returned by the internal `board_reconcile` helper.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoardReconcileResult {
+    pub ticket_id: Uuid,
+    pub action: ReconcileAction,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum BoardError {
     #[error("WIP limit reached: {current}/{max} active entries")]
@@ -115,8 +162,49 @@ pub enum BoardError {
     TicketNotFound(Uuid),
     #[error("Entry not found: {0}")]
     EntryNotFound(Uuid),
+    #[error("clean token is stale: board has changed since the preview was generated")]
+    StaleCleanToken,
+    #[error("file rename conflict: '{path}' is owned by agent {conflicting_agent} (ticket {conflicting_ticket})")]
+    FileRenameConflict {
+        path: String,
+        conflicting_agent: String,
+        conflicting_ticket: Uuid,
+    },
     #[error("Storage error: {0}")]
     Storage(#[from] StorageError),
+}
+
+// ── Token helpers ─────────────────────────────────────────────────────────────
+
+/// Compute the opaque clean token from a sorted list of entry IDs and the
+/// timestamp at which the preview was generated.
+///
+/// Token format: `"{sha256_hex}|{generated_at_millis}"`.
+/// The SHA-256 input is the concatenation of:
+/// - each entry UUID's bytes (in sorted order)
+/// - the `generated_at` timestamp as 8 LE bytes (milliseconds since epoch)
+fn compute_clean_token(sorted_ids: &[Uuid], generated_at: DateTime<Utc>) -> String {
+    let ts_millis = generated_at.timestamp_millis();
+    let mut hasher = Sha256::new();
+    for id in sorted_ids {
+        hasher.update(id.as_bytes());
+    }
+    hasher.update(ts_millis.to_le_bytes());
+    let hash = hasher.finalize();
+    let hash_hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+    format!("{hash_hex}|{ts_millis}")
+}
+
+/// Parse and verify a clean token.  Returns `(hash_hex, generated_at)`
+/// extracted from the token string, or `Err(StaleCleanToken)` if malformed.
+fn parse_clean_token(token: &str) -> Result<(String, DateTime<Utc>), BoardError> {
+    let Some((hash_hex, millis_str)) = token.split_once('|') else {
+        return Err(BoardError::StaleCleanToken);
+    };
+    let ts_millis: i64 = millis_str.parse().map_err(|_| BoardError::StaleCleanToken)?;
+    let generated_at =
+        DateTime::from_timestamp_millis(ts_millis).ok_or(BoardError::StaleCleanToken)?;
+    Ok((hash_hex.to_string(), generated_at))
 }
 
 // ── Serde helpers ─────────────────────────────────────────────────────────────
@@ -555,6 +643,425 @@ impl RedbIndexStore {
             })
         })
     }
+
+    // ── clean preview / apply ─────────────────────────────────────────────────
+
+    /// Collect all cleanup-eligible entries and produce a stateless verification
+    /// token.  No writes are performed.
+    ///
+    /// Eligible entries:
+    /// - `Completed` or `Conflict` — always eligible
+    /// - `Active` with an expired TTL (stale) — eligible when `include_stale` is `true`
+    pub(crate) fn board_clean_preview_atomic(
+        &self,
+        include_stale: bool,
+    ) -> Result<BoardCleanPreview, BoardError> {
+        self.with_db_ext(|db| {
+            let now = Utc::now();
+            let read_txn = db.begin_read().map_err(db_err)?;
+
+            let mut eligible: Vec<Uuid> = {
+                let table = read_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
+                let mut ids = Vec::new();
+                for result in table.iter().map_err(db_err)? {
+                    let (_, value) = result.map_err(db_err)?;
+                    let entry = deserialize_entry(value.value())?;
+                    let is_eligible = matches!(
+                        entry.status,
+                        BoardEntryStatus::Completed | BoardEntryStatus::Conflict
+                    ) || (include_stale && entry.is_stale_at(now));
+                    if is_eligible {
+                        ids.push(entry.entry_id);
+                    }
+                }
+                ids
+            };
+
+            eligible.sort();
+            let generated_at = now;
+            let token = compute_clean_token(&eligible, generated_at);
+            let entry_count = eligible.len();
+
+            Ok(BoardCleanPreview {
+                generated_at,
+                token,
+                entry_ids: eligible,
+                entry_count,
+                include_stale,
+            })
+        })
+    }
+
+    /// Apply a previously previewed cleanup.
+    ///
+    /// Re-computes the eligible set (same `include_stale` flag), derives the
+    /// expected token from the `generated_at` embedded in `token`, and rejects
+    /// with [`BoardError::StaleCleanToken`] if the board has changed since the
+    /// preview was taken.  On success, all previewed entries are permanently
+    /// removed from `BOARD_ENTRIES` (and from `BOARD_ACTIVE_INDEX` for stale
+    /// entries that are still indexed as active).
+    pub(crate) fn board_clean_apply_atomic(
+        &self,
+        token: &str,
+        include_stale: bool,
+    ) -> Result<BoardCleanResult, BoardError> {
+        let (expected_hash_hex, generated_at) = parse_clean_token(token)?;
+
+        self.with_db_ext(|db| {
+            let now = Utc::now();
+            let write_txn = db.begin_write().map_err(db_err)?;
+
+            // Re-collect eligible entries.
+            let mut eligible: Vec<(Uuid, String)> = {
+                let table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
+                let mut pairs = Vec::new();
+                for result in table.iter().map_err(db_err)? {
+                    let (key, value) = result.map_err(db_err)?;
+                    let entry = deserialize_entry(value.value())?;
+                    let is_eligible = matches!(
+                        entry.status,
+                        BoardEntryStatus::Completed | BoardEntryStatus::Conflict
+                    ) || (include_stale && entry.is_stale_at(now));
+                    if is_eligible {
+                        pairs.push((entry.entry_id, key.value().to_string()));
+                    }
+                }
+                pairs
+            };
+
+            eligible.sort_by_key(|(id, _)| *id);
+            let sorted_ids: Vec<Uuid> = eligible.iter().map(|(id, _)| *id).collect();
+            let candidate_token = compute_clean_token(&sorted_ids, generated_at);
+
+            // Verify: compare only the hash prefix (before the `|`).
+            let candidate_hash = candidate_token.split_once('|').map(|(h, _)| h).unwrap_or("");
+            if candidate_hash != expected_hash_hex {
+                return Err(BoardError::StaleCleanToken);
+            }
+
+            // Delete all eligible entries.
+            let entry_keys: Vec<String> = eligible.iter().map(|(_, k)| k.clone()).collect();
+            let removed_ids: Vec<Uuid> = eligible.iter().map(|(id, _)| *id).collect();
+
+            {
+                let mut entries_table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
+                for key in &entry_keys {
+                    entries_table.remove(key.as_str()).map_err(db_err)?;
+                }
+            }
+
+            // Also clean up any stale active-index entries for removed entries.
+            {
+                let mut index_table = write_txn
+                    .open_table(BOARD_ACTIVE_INDEX)
+                    .map_err(db_err)?;
+                let to_remove: Vec<String> = {
+                    let mut stale_keys = Vec::new();
+                    for result in index_table.iter().map_err(db_err)? {
+                        let (k, v) = result.map_err(db_err)?;
+                        let eid: Uuid = v.value().parse().map_err(|e: uuid::Error| {
+                            BoardError::Storage(StorageError::Serialization(e.to_string()))
+                        })?;
+                        if removed_ids.contains(&eid) {
+                            stale_keys.push(k.value().to_string());
+                        }
+                    }
+                    stale_keys
+                };
+                for k in &to_remove {
+                    index_table.remove(k.as_str()).map_err(db_err)?;
+                }
+            }
+
+            write_txn.commit().map_err(db_err)?;
+            let removed_count = removed_ids.len();
+            Ok(BoardCleanResult {
+                removed_entry_ids: removed_ids,
+                removed_count,
+            })
+        })
+    }
+
+    // ── file management ───────────────────────────────────────────────────────
+
+    /// Update the `owned_files` list for an active board entry.
+    ///
+    /// Files in `remove` are dropped from the entry's list.  Files in `add`
+    /// are checked for conflicts against all other active entries and, if
+    /// clear, appended.  Returns the updated [`BoardEntry`].
+    pub(crate) fn board_update_files_atomic(
+        &self,
+        ticket_id: Uuid,
+        agent_id: &str,
+        add: Vec<String>,
+        remove: Vec<String>,
+    ) -> Result<BoardEntry, BoardError> {
+        self.with_db_ext(|db| {
+            let write_txn = db.begin_write().map_err(db_err)?;
+            let index_key = format!("{ticket_id}:{agent_id}");
+
+            // Find the entry_id from the active index.
+            let entry_id: Uuid = {
+                let table = write_txn
+                    .open_table(BOARD_ACTIVE_INDEX)
+                    .map_err(db_err)?;
+                match table.get(index_key.as_str()).map_err(db_err)? {
+                    Some(val) => val.value().parse::<Uuid>().map_err(|e| {
+                        BoardError::Storage(StorageError::Serialization(e.to_string()))
+                    })?,
+                    None => {
+                        return Err(BoardError::NotCheckedIn {
+                            ticket_id,
+                            agent_id: agent_id.to_string(),
+                        });
+                    }
+                }
+            };
+
+            // Read all entries (needed for conflict check).
+            let all_entries: Vec<BoardEntry> = {
+                let table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
+                let mut v = Vec::new();
+                for result in table.iter().map_err(db_err)? {
+                    let (_, value) = result.map_err(db_err)?;
+                    v.push(deserialize_entry(value.value())?);
+                }
+                v
+            };
+
+            // Find the caller's entry.
+            let mut caller = all_entries
+                .iter()
+                .find(|e| e.entry_id == entry_id)
+                .cloned()
+                .ok_or(BoardError::EntryNotFound(entry_id))?;
+
+            if caller.status != BoardEntryStatus::Active {
+                return Err(BoardError::NotCheckedIn {
+                    ticket_id,
+                    agent_id: agent_id.to_string(),
+                });
+            }
+
+            // Conflict check: files being added must not be owned by others.
+            if !add.is_empty() {
+                for other in all_entries
+                    .iter()
+                    .filter(|e| e.entry_id != entry_id && e.status == BoardEntryStatus::Active)
+                {
+                    let conflicting: Vec<String> = add
+                        .iter()
+                        .filter(|f| other.owned_files.contains(*f))
+                        .cloned()
+                        .collect();
+                    if !conflicting.is_empty() {
+                        return Err(BoardError::FileConflict {
+                            files: conflicting,
+                            conflicting_agent: other.agent_id.clone(),
+                            conflicting_ticket: other.ticket_id,
+                        });
+                    }
+                }
+            }
+
+            // Apply the update to the caller's file list.
+            caller.owned_files.retain(|f| !remove.contains(f));
+            for f in add {
+                if !caller.owned_files.contains(&f) {
+                    caller.owned_files.push(f);
+                }
+            }
+
+            let updated_bytes = serialize_entry(&caller)?;
+            let entry_key = caller.entry_id.to_string();
+            {
+                let mut table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
+                table
+                    .insert(entry_key.as_str(), updated_bytes.as_slice())
+                    .map_err(db_err)?;
+            }
+
+            write_txn.commit().map_err(db_err)?;
+            Ok(caller)
+        })
+    }
+
+    /// Atomically rename a file in an active board entry's `owned_files`.
+    ///
+    /// Checks that `new_path` is not already owned by another active entry
+    /// before performing the rename.  Returns the updated [`BoardEntry`].
+    pub(crate) fn board_rename_file_atomic(
+        &self,
+        ticket_id: Uuid,
+        agent_id: &str,
+        old_path: &str,
+        new_path: &str,
+    ) -> Result<BoardEntry, BoardError> {
+        self.with_db_ext(|db| {
+            let write_txn = db.begin_write().map_err(db_err)?;
+            let index_key = format!("{ticket_id}:{agent_id}");
+
+            // Find the entry_id via the active index.
+            let entry_id: Uuid = {
+                let table = write_txn
+                    .open_table(BOARD_ACTIVE_INDEX)
+                    .map_err(db_err)?;
+                match table.get(index_key.as_str()).map_err(db_err)? {
+                    Some(val) => val.value().parse::<Uuid>().map_err(|e| {
+                        BoardError::Storage(StorageError::Serialization(e.to_string()))
+                    })?,
+                    None => {
+                        return Err(BoardError::NotCheckedIn {
+                            ticket_id,
+                            agent_id: agent_id.to_string(),
+                        });
+                    }
+                }
+            };
+
+            // Read all entries.
+            let all_entries: Vec<BoardEntry> = {
+                let table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
+                let mut v = Vec::new();
+                for result in table.iter().map_err(db_err)? {
+                    let (_, value) = result.map_err(db_err)?;
+                    v.push(deserialize_entry(value.value())?);
+                }
+                v
+            };
+
+            let mut caller = all_entries
+                .iter()
+                .find(|e| e.entry_id == entry_id)
+                .cloned()
+                .ok_or(BoardError::EntryNotFound(entry_id))?;
+
+            if caller.status != BoardEntryStatus::Active {
+                return Err(BoardError::NotCheckedIn {
+                    ticket_id,
+                    agent_id: agent_id.to_string(),
+                });
+            }
+
+            // Conflict check: new_path must not be owned by another active entry.
+            for other in all_entries
+                .iter()
+                .filter(|e| e.entry_id != entry_id && e.status == BoardEntryStatus::Active)
+            {
+                if other.owned_files.contains(&new_path.to_string()) {
+                    return Err(BoardError::FileRenameConflict {
+                        path: new_path.to_string(),
+                        conflicting_agent: other.agent_id.clone(),
+                        conflicting_ticket: other.ticket_id,
+                    });
+                }
+            }
+
+            // Atomic remove + add.
+            caller.owned_files.retain(|f| f != old_path);
+            if !caller.owned_files.contains(&new_path.to_string()) {
+                caller.owned_files.push(new_path.to_string());
+            }
+
+            let updated_bytes = serialize_entry(&caller)?;
+            let entry_key = caller.entry_id.to_string();
+            {
+                let mut table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
+                table
+                    .insert(entry_key.as_str(), updated_bytes.as_slice())
+                    .map_err(db_err)?;
+            }
+
+            write_txn.commit().map_err(db_err)?;
+            Ok(caller)
+        })
+    }
+
+    // ── reconciliation helpers ────────────────────────────────────────────────
+
+    /// Mark **all** active board entries for `ticket_id` as `Completed` and
+    /// remove them from `BOARD_ACTIVE_INDEX`.  Returns the IDs of completed
+    /// entries.
+    pub(crate) fn board_complete_all_for_ticket(
+        &self,
+        ticket_id: Uuid,
+    ) -> Result<Vec<Uuid>, BoardError> {
+        self.with_db_ext(|db| {
+            let write_txn = db.begin_write().map_err(db_err)?;
+
+            // Collect all Active entries for this ticket.
+            let active: Vec<BoardEntry> = {
+                let table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
+                let mut v = Vec::new();
+                for result in table.iter().map_err(db_err)? {
+                    let (_, value) = result.map_err(db_err)?;
+                    let entry = deserialize_entry(value.value())?;
+                    if entry.ticket_id == ticket_id && entry.status == BoardEntryStatus::Active {
+                        v.push(entry);
+                    }
+                }
+                v
+            };
+
+            if active.is_empty() {
+                write_txn.commit().map_err(db_err)?;
+                return Ok(Vec::new());
+            }
+
+            let mut completed_ids = Vec::new();
+
+            for mut entry in active {
+                entry.status = BoardEntryStatus::Completed;
+                let updated_bytes = serialize_entry(&entry)?;
+                let entry_key = entry.entry_id.to_string();
+                {
+                    let mut entries_table =
+                        write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
+                    entries_table
+                        .insert(entry_key.as_str(), updated_bytes.as_slice())
+                        .map_err(db_err)?;
+                }
+                // Remove from active index.
+                let index_key = format!("{}:{}", ticket_id, entry.agent_id);
+                {
+                    let mut index_table = write_txn
+                        .open_table(BOARD_ACTIVE_INDEX)
+                        .map_err(db_err)?;
+                    index_table.remove(index_key.as_str()).map_err(db_err)?;
+                }
+                completed_ids.push(entry.entry_id);
+            }
+
+            write_txn.commit().map_err(db_err)?;
+            Ok(completed_ids)
+        })
+    }
+
+    /// Read any active board entry for `ticket_id` without writing.
+    ///
+    /// Returns `Some((entry, index_key))` when an active entry is found, or
+    /// `None` when the ticket has no active board presence.
+    pub(crate) fn board_find_active_for_ticket(
+        &self,
+        ticket_id: Uuid,
+    ) -> Result<Option<(BoardEntry, String)>, BoardError> {
+        self.with_db_ext(|db| {
+            let read_txn = db.begin_read().map_err(db_err)?;
+            let table = match read_txn.open_table(BOARD_ENTRIES) {
+                Ok(t) => t,
+                Err(_) => return Ok(None),
+            };
+            for result in table.iter().map_err(db_err)? {
+                let (_, value) = result.map_err(db_err)?;
+                let entry = deserialize_entry(value.value())?;
+                if entry.ticket_id == ticket_id && entry.status == BoardEntryStatus::Active {
+                    let index_key = format!("{ticket_id}:{}", entry.agent_id);
+                    return Ok(Some((entry, index_key)));
+                }
+            }
+            Ok(None)
+        })
+    }
 }
 
 // ── Unit tests ────────────────────────────────────────────────────────────────
@@ -974,6 +1481,328 @@ mod tests {
         assert!(
             matches!(failed.as_ref().unwrap_err(), BoardError::WipLimitReached { .. }),
             "expected WipLimitReached"
+        );
+    }
+
+    // ── board_clean_preview / board_clean_apply ───────────────────────────────
+
+    #[test]
+    fn clean_preview_happy_path() {
+        let (_dir, store) = make_store();
+        let ticket_id = make_ticket(&store);
+
+        // Check in and then check out to produce a Completed entry.
+        store
+            .board_check_in(&ticket_id, "cleaner", 300, "work", vec![])
+            .expect("check-in");
+        store
+            .board_check_out(&ticket_id, "cleaner", None)
+            .expect("check-out");
+
+        // Preview should find the completed entry.
+        let preview = store
+            .board_clean_preview(false)
+            .expect("preview should succeed");
+        assert_eq!(preview.entry_count, 1, "one completed entry is cleanup-eligible");
+        assert!(!preview.token.is_empty());
+
+        // Apply the token.
+        let result = store
+            .board_clean_apply(&preview.token, false)
+            .expect("apply should succeed");
+        assert_eq!(result.removed_count, 1);
+
+        // Board should now be empty.
+        let snap = store.board_show(None).expect("show after clean");
+        assert!(snap.entries.is_empty(), "board should be empty after clean");
+    }
+
+    #[test]
+    fn clean_stale_token_rejected() {
+        let (_dir, store) = make_store();
+        let ticket_id = make_ticket(&store);
+
+        // Check in and out to produce a completed entry.
+        store
+            .board_check_in(&ticket_id, "agent-a", 300, "work", vec![])
+            .expect("check-in");
+        store
+            .board_check_out(&ticket_id, "agent-a", None)
+            .expect("check-out");
+
+        // Take a preview.
+        let preview = store
+            .board_clean_preview(false)
+            .expect("preview");
+
+        // Mutate the board: check in another agent so the eligible set changes.
+        let ticket2 = make_ticket(&store);
+        store
+            .board_check_in(&ticket2, "agent-b", 300, "work", vec![])
+            .expect("second check-in");
+        store
+            .board_check_out(&ticket2, "agent-b", None)
+            .expect("second check-out");
+
+        // The token is now stale (eligible set has grown by one).
+        let err = store
+            .board_clean_apply(&preview.token, false)
+            .expect_err("stale token should be rejected");
+        assert!(
+            matches!(err, BoardError::StaleCleanToken),
+            "expected StaleCleanToken, got: {err}"
+        );
+    }
+
+    // ── board_update_files ────────────────────────────────────────────────────
+
+    #[test]
+    fn update_files_conflict_rejected() {
+        let (_dir, store) = make_store();
+        let t1 = make_ticket(&store);
+        let t2 = make_ticket(&store);
+
+        // agent-1 owns "shared.rs".
+        store
+            .board_check_in(&t1, "agent-1", 300, "work", vec!["shared.rs".to_string()])
+            .expect("check-in agent-1");
+
+        // agent-2 owns nothing initially.
+        store
+            .board_check_in(&t2, "agent-2", 300, "work", vec![])
+            .expect("check-in agent-2");
+
+        // agent-2 tries to add "shared.rs" → conflict.
+        let err = store
+            .board_update_files(&t2, "agent-2", vec!["shared.rs".to_string()], vec![])
+            .expect_err("conflict with agent-1 should be rejected");
+        assert!(
+            matches!(err, BoardError::FileConflict { .. }),
+            "expected FileConflict, got: {err}"
+        );
+
+        // agent-2's owned_files should be unchanged.
+        let snap = store.board_show(None).expect("show");
+        let agent2_entry = snap
+            .entries
+            .iter()
+            .find(|e| e.agent_id == "agent-2" && e.status == BoardEntryStatus::Active)
+            .expect("agent-2 entry");
+        assert!(agent2_entry.owned_files.is_empty());
+    }
+
+    #[test]
+    fn update_files_success() {
+        let (_dir, store) = make_store();
+        let ticket_id = make_ticket(&store);
+
+        store
+            .board_check_in(
+                &ticket_id,
+                "agent-upd",
+                300,
+                "work",
+                vec!["old.rs".to_string()],
+            )
+            .expect("check-in");
+
+        let updated = store
+            .board_update_files(
+                &ticket_id,
+                "agent-upd",
+                vec!["new.rs".to_string()],
+                vec!["old.rs".to_string()],
+            )
+            .expect("update should succeed");
+
+        assert!(
+            updated.owned_files.contains(&"new.rs".to_string()),
+            "new.rs should be in owned_files"
+        );
+        assert!(
+            !updated.owned_files.contains(&"old.rs".to_string()),
+            "old.rs should have been removed"
+        );
+    }
+
+    // ── board_rename_file ─────────────────────────────────────────────────────
+
+    #[test]
+    fn rename_file_conflict_rejected() {
+        let (_dir, store) = make_store();
+        let t1 = make_ticket(&store);
+        let t2 = make_ticket(&store);
+
+        // agent-1 owns "target.rs".
+        store
+            .board_check_in(&t1, "agent-1", 300, "work", vec!["target.rs".to_string()])
+            .expect("check-in agent-1");
+
+        // agent-2 owns "source.rs".
+        store
+            .board_check_in(&t2, "agent-2", 300, "work", vec!["source.rs".to_string()])
+            .expect("check-in agent-2");
+
+        // agent-2 tries to rename "source.rs" → "target.rs" (owned by agent-1).
+        let err = store
+            .board_rename_file(&t2, "agent-2", "source.rs", "target.rs")
+            .expect_err("rename to owned file should be rejected");
+        assert!(
+            matches!(err, BoardError::FileRenameConflict { .. }),
+            "expected FileRenameConflict, got: {err}"
+        );
+
+        // agent-2's files should remain unchanged.
+        let snap = store.board_show(None).expect("show");
+        let agent2_entry = snap
+            .entries
+            .iter()
+            .find(|e| e.agent_id == "agent-2" && e.status == BoardEntryStatus::Active)
+            .expect("agent-2 entry");
+        assert_eq!(agent2_entry.owned_files, vec!["source.rs"]);
+    }
+
+    #[test]
+    fn rename_file_success() {
+        let (_dir, store) = make_store();
+        let ticket_id = make_ticket(&store);
+
+        store
+            .board_check_in(
+                &ticket_id,
+                "agent-ren",
+                300,
+                "work",
+                vec!["before.rs".to_string()],
+            )
+            .expect("check-in");
+
+        let updated = store
+            .board_rename_file(&ticket_id, "agent-ren", "before.rs", "after.rs")
+            .expect("rename should succeed");
+
+        assert!(
+            !updated.owned_files.contains(&"before.rs".to_string()),
+            "before.rs should be removed"
+        );
+        assert!(
+            updated.owned_files.contains(&"after.rs".to_string()),
+            "after.rs should be present"
+        );
+    }
+
+    // ── board_reconcile on close / cancel / revert ────────────────────────────
+
+    #[test]
+    fn reconcile_on_close_marks_completed() {
+        use std::collections::BTreeMap;
+
+        let (_dir, store) = make_store();
+        let ticket_id = make_ticket(&store);
+
+        // Check in agent.
+        store
+            .board_check_in(&ticket_id, "reconcile-agent", 300, "work", vec![])
+            .expect("check-in");
+
+        // Advance through all required states to reach "done".
+        let states = [
+            "in-refinement",
+            "ready",
+            "in-implementation",
+            "in-review",
+            "in-validation",
+            "done",
+        ];
+        for state in &states {
+            store
+                .update(&ticket_id, BTreeMap::new(), None, Some(state), None, None)
+                .expect(state);
+        }
+
+        // The board entry should now be Completed (reconciled automatically).
+        let snap = store.board_show(None).expect("show after close");
+        let entry = snap
+            .entries
+            .iter()
+            .find(|e| e.ticket_id == ticket_id)
+            .expect("entry should exist");
+        assert_eq!(
+            entry.status,
+            BoardEntryStatus::Completed,
+            "entry should be Completed after ticket reached 'done'"
+        );
+        // No active entries after reconciliation.
+        assert_eq!(snap.active_count, 0);
+    }
+
+    #[test]
+    fn reconcile_on_cancel_marks_completed() {
+        use std::collections::BTreeMap;
+
+        let (_dir, store) = make_store();
+        let ticket_id = make_ticket(&store);
+
+        store
+            .board_check_in(&ticket_id, "cancel-agent", 300, "work", vec![])
+            .expect("check-in");
+
+        // Cancel the ticket (new → cancelled is valid in the schema).
+        store
+            .update(&ticket_id, BTreeMap::new(), None, Some("cancelled"), None, None)
+            .expect("cancel");
+
+        // The board entry should now be Completed.
+        let snap = store.board_show(None).expect("show after cancel");
+        let entry = snap
+            .entries
+            .iter()
+            .find(|e| e.ticket_id == ticket_id)
+            .expect("entry should exist");
+        assert_eq!(
+            entry.status,
+            BoardEntryStatus::Completed,
+            "entry should be Completed after ticket was cancelled"
+        );
+    }
+
+    #[test]
+    fn reconcile_on_revert_emits_warning_not_completed() {
+        use std::collections::BTreeMap;
+
+        let (_dir, store) = make_store();
+        let ticket_id = make_ticket(&store);
+
+        store
+            .board_check_in(&ticket_id, "revert-agent", 300, "work", vec![])
+            .expect("check-in");
+
+        // Advance to in-implementation.
+        store
+            .update(&ticket_id, BTreeMap::new(), None, Some("in-refinement"), None, None)
+            .expect("to in-refinement");
+
+        // Read history so we can revert.
+        let history = store.get_history(&ticket_id).expect("history");
+        assert!(!history.is_empty());
+
+        // Revert to the first revision (new state).
+        let first_rev = &history[0];
+        store
+            .apply_revert(&ticket_id, first_rev.fields.clone(), None)
+            .expect("revert");
+
+        // The board entry should still be Active (revert emits warning, not completion).
+        let snap = store.board_show(None).expect("show after revert");
+        let entry = snap
+            .entries
+            .iter()
+            .find(|e| e.ticket_id == ticket_id)
+            .expect("entry should exist");
+        assert_eq!(
+            entry.status,
+            BoardEntryStatus::Active,
+            "entry should remain Active after a revert (warning only)"
         );
     }
 }

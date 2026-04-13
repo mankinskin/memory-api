@@ -282,6 +282,9 @@ impl TicketStore {
             );
         }
 
+        // Reconcile board: mark completed on terminal states.
+        self.board_reconcile(id, false);
+
         Ok(updated_manifest)
     }
 
@@ -302,6 +305,9 @@ impl TicketStore {
         if let Some(h) = self.hook() {
             h.ticket_delete(*id);
         }
+
+        // Reconcile board: mark any active entry completed (ticket deleted).
+        self.board_reconcile(id, false);
 
         Ok(())
     }
@@ -398,6 +404,10 @@ impl TicketStore {
         // Append history entry for the reverted state (creates a new rev).
         let updated_manifest = TicketFs::read(&refreshed.path)?;
         let new_rev = TicketFs::append_history(&refreshed.path, updated_manifest.extra, author.map(str::to_string))?;
+
+        // Reconcile board: emit stale-intent warning if an active entry exists.
+        self.board_reconcile(id, true);
+
         Ok(new_rev)
     }
 
@@ -495,6 +505,8 @@ impl TicketStore {
         let current_state = indexed.state.as_deref().unwrap_or("new");
         if current_state == target_state {
             let manifest = TicketFs::read(&indexed.path)?;
+            // Reconcile board even on the no-op path (may already be terminal).
+            self.board_reconcile(id, false);
             return Ok((manifest, vec![]));
         }
 
@@ -514,6 +526,8 @@ impl TicketStore {
             last_manifest = Some(self.update(id, empty_patch.clone(), None, Some(state), None, author)?);
         }
 
+        // board_reconcile is already invoked by each update() call above;
+        // the final transition to target_state will have triggered it.
         Ok((last_manifest.unwrap(), path))
     }
 
@@ -1162,6 +1176,150 @@ impl TicketStore {
             promoted_ticket_count: promoted,
             monitoring_state: "active".to_string(),
         })
+    }
+
+    // ── board reconciliation ──────────────────────────────────────────────────
+
+    /// Internal helper: reconcile board state after a ticket state change.
+    ///
+    /// When `is_revert` is `false` (forward transition or delete):
+    /// - If the ticket is now in a terminal state (or deleted), mark all
+    ///   active board entries `Completed`.
+    /// - Otherwise, no action.
+    ///
+    /// When `is_revert` is `true`:
+    /// - Emit `StaleIntentWarning` via tracing and leave entries as-is.
+    ///
+    /// **This method never propagates errors** to the caller; board errors are
+    /// logged as warnings so the parent operation always succeeds.
+    fn board_reconcile(&self, ticket_id: &Uuid, is_revert: bool) {
+        use crate::storage::board::ReconcileAction;
+
+        if is_revert {
+            match self.index.board_find_active_for_ticket(*ticket_id) {
+                Ok(Some((entry, _))) => {
+                    let state = self
+                        .index
+                        .get_ticket(ticket_id)
+                        .ok()
+                        .flatten()
+                        .and_then(|t| t.state)
+                        .unwrap_or_default();
+                    tracing::warn!(
+                        ticket_id = %ticket_id,
+                        entry_id = %entry.entry_id,
+                        current_state = %state,
+                        "board_reconcile: stale intent — ticket reverted but active board entry remains"
+                    );
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        ticket_id = %ticket_id,
+                        error = %e,
+                        "board_reconcile: failed to look up active entry during revert"
+                    );
+                }
+            }
+            return;
+        }
+
+        // Determine whether the ticket is in a terminal state.
+        let is_terminal = match self.index.get_ticket(ticket_id) {
+            Ok(Some(indexed)) => {
+                let type_id = &indexed.type_id;
+                let current_state = indexed.state.as_deref().unwrap_or("");
+                // Check schema terminal states first, then fall back to
+                // "no outgoing transitions" heuristic (catches `cancelled`).
+                if let Some(schema) = self.schema_registry.get(type_id) {
+                    schema.terminal_states.contains(&current_state.to_string())
+                        || !schema.transitions.iter().any(|t| t.from == current_state)
+                } else {
+                    false
+                }
+            }
+            // deleted / not found → treat as terminal so the board is cleaned up.
+            Ok(None) => true,
+            Err(e) => {
+                tracing::warn!(
+                    ticket_id = %ticket_id,
+                    error = %e,
+                    "board_reconcile: failed to fetch ticket — skipping"
+                );
+                return;
+            }
+        };
+
+        if !is_terminal {
+            return;
+        }
+
+        match self.index.board_complete_all_for_ticket(*ticket_id) {
+            Ok(ids) if !ids.is_empty() => {
+                tracing::debug!(
+                    ticket_id = %ticket_id,
+                    completed_entries = ?ids,
+                    action = ?ReconcileAction::MarkedCompleted { entry_id: ids[0] },
+                    "board_reconcile: marked active entries completed"
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(
+                    ticket_id = %ticket_id,
+                    error = %e,
+                    "board_reconcile: failed to complete board entries"
+                );
+            }
+        }
+    }
+
+    // ── public board API ops ──────────────────────────────────────────────────
+
+    /// Preview entries eligible for a board cleanup pass.
+    ///
+    /// Returns a [`BoardCleanPreview`] with a stateless token that can be
+    /// passed to [`board_clean_apply`] to commit the deletion.
+    pub fn board_clean_preview(
+        &self,
+        include_stale: bool,
+    ) -> Result<crate::storage::board::BoardCleanPreview, crate::storage::board::BoardError> {
+        self.index.board_clean_preview_atomic(include_stale)
+    }
+
+    /// Apply a previously obtained clean preview token.
+    ///
+    /// Re-derives the eligible set and rejects with
+    /// [`BoardError::StaleCleanToken`] if the board has changed since the
+    /// preview was generated.
+    pub fn board_clean_apply(
+        &self,
+        token: &str,
+        include_stale: bool,
+    ) -> Result<crate::storage::board::BoardCleanResult, crate::storage::board::BoardError> {
+        self.index.board_clean_apply_atomic(token, include_stale)
+    }
+
+    /// Add and/or remove files from an active board entry's `owned_files`.
+    pub fn board_update_files(
+        &self,
+        ticket_id: &Uuid,
+        agent_id: &str,
+        add: Vec<String>,
+        remove: Vec<String>,
+    ) -> Result<crate::storage::board::BoardEntry, crate::storage::board::BoardError> {
+        self.index.board_update_files_atomic(*ticket_id, agent_id, add, remove)
+    }
+
+    /// Atomically rename a file in an active board entry's `owned_files`.
+    pub fn board_rename_file(
+        &self,
+        ticket_id: &Uuid,
+        agent_id: &str,
+        old_path: &str,
+        new_path: &str,
+    ) -> Result<crate::storage::board::BoardEntry, crate::storage::board::BoardError> {
+        self.index.board_rename_file_atomic(*ticket_id, agent_id, old_path, new_path)
     }
 }
 
