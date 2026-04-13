@@ -70,3 +70,68 @@ Checks: `missing_description`, `short_description`, `missing_title`, `unblocked_
 
 - Follow reminders from `.github/hooks/` after MCP-adjacent edits.
 - Prefer doc-viewer validation flows over ad hoc manual checklists.
+
+## Board Tools (ticket-mcp)
+
+Nine MCP tools cover the full board lifecycle. All require `workspace`.
+
+### Tool reference
+
+| Tool | Required | Optional |
+|------|----------|----------|
+| `board_show` | workspace | agent_id |
+| `board_check_in` | workspace, ticket_id, agent_id | intent, files, ttl_secs |
+| `board_check_out` | workspace, ticket_id | agent_id, reason |
+| `board_heartbeat` | workspace, entry_id | — |
+| `board_configure` | workspace | max_wip, stale_after_secs, completed_audit_window_secs |
+| `board_clean_preview` | workspace | include_stale |
+| `board_clean_apply` | workspace, token | include_stale |
+| `board_update_files` | workspace, ticket_id, agent_id | add, remove |
+| `board_rename_file` | workspace, ticket_id, agent_id, old_path, new_path | — |
+
+### JSON examples
+
+```json
+// board_show — read snapshot (no heartbeat)
+{"workspace": "default"}
+
+// board_show — read snapshot + refresh caller's heartbeat
+{"workspace": "default", "agent_id": "copilot-agent-1"}
+
+// board_check_in
+{
+  "workspace": "default",
+  "ticket_id": "abcd1234",
+  "agent_id": "copilot-agent-1",
+  "intent": "implementing the storage layer",
+  "files": ["crates/ticket-api/src/storage/board.rs"],
+  "ttl_secs": 3600
+}
+
+// board_check_out
+{"workspace": "default", "ticket_id": "abcd1234", "agent_id": "copilot-agent-1", "reason": "done"}
+
+// board_heartbeat
+{"workspace": "default", "entry_id": "<full-UUID-from-check-in>"}
+
+// board_configure — set WIP limit and stale timeout
+{"workspace": "default", "max_wip": 3, "stale_after_secs": 1800}
+
+// board_clean_preview — include stale entries
+{"workspace": "default", "include_stale": true}
+
+// board_clean_apply — consume a preview token
+{"workspace": "default", "token": "<token-from-preview>", "include_stale": true}
+```
+
+### next_tickets board fields
+
+`next_tickets` integrates board state into its response:
+
+- `board.active_count` / `board.stale_count` — current load
+- `board.wip_limit_reached` — true when new check-in would be blocked
+- `board.warnings[]` — stale-entry alert strings
+- `excluded_by_board[]` — candidate tickets excluded because an active/stale board entry covers
+  them; fields: `ticket_id`, `agent_id`, `status`, `intent`
+
+When `wip_limit_reached` is true, resolve existing entries before checking in.
