@@ -102,6 +102,7 @@ pub(super) fn dispatch(
         TicketCommandCli::Health(args) => commands::cmd_health(args, &store),
         TicketCommandCli::Audit => commands::cmd_audit(&store),
         TicketCommandCli::Fmt(args) => commands::cmd_fmt(args, &store),
+        TicketCommandCli::Board(args) => commands::cmd_board(args, &store),
         TicketCommandCli::ExportCommandSchema => unreachable!("handled above"),
         TicketCommandCli::Workspace(_) => unreachable!("handled above"),
     }
@@ -133,6 +134,7 @@ fn dry_run_command_payload(command: &TicketCommandCli) -> Option<Value> {
         TicketCommandCli::Attach(_) => Some(dry_run_payload("attach", "attach asset to ticket")),
         TicketCommandCli::Workspace(_) => Some(dry_run_payload("workspace", "workspace config writes")),
         TicketCommandCli::Fmt(_) => Some(dry_run_payload("fmt", "reformat ticket.toml files")),
+        TicketCommandCli::Board(_) => Some(dry_run_payload("board", "board state mutation")),
         TicketCommandCli::Get(_)
         | TicketCommandCli::List(_)
         | TicketCommandCli::Leases

@@ -1,3 +1,4 @@
+mod board;
 mod crud;
 mod edges;
 mod history;
@@ -5,6 +6,7 @@ mod lifecycle;
 mod ops;
 mod query;
 
+pub(crate) use board::*;
 pub(crate) use crud::*;
 pub(crate) use edges::*;
 pub(crate) use history::*;

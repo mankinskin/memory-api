@@ -143,6 +143,8 @@ pub enum TicketCommandCli {
     /// acceptance_criteria, then remaining fields alphabetically.
     /// Use --check to report without writing (CI gate).
     Fmt(FmtArgs),
+    /// Manage the work-in-progress board (check-in, check-out, heartbeat, show, clean).
+    Board(BoardArgs),
 }
 
 // ── error type ─────────────────────────────────────────────────────────────────

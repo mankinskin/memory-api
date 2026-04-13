@@ -112,7 +112,37 @@ pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value,
     )?;
     let title = manifest.extra.get("title").and_then(Value::as_str).unwrap_or("-");
     let state = manifest.extra.get("state").and_then(Value::as_str).unwrap_or("open");
-    Ok(json!({
+
+    // Optional board check-in after a successful update.
+    let board_entry_json: Option<Value> = if args.board_check_in {
+        match args.board_agent {
+            None => {
+                return Err(CliRunError::BadRequest(
+                    "--board-check-in requires --board-agent".into(),
+                ));
+            }
+            Some(ref agent) => {
+                let ttl = args.board_ttl_secs.unwrap_or(3600);
+                let intent = args.board_intent.as_deref().unwrap_or("");
+                let entry = store
+                    .board_check_in(&id, agent, ttl, intent, args.board_files.clone())
+                    .map_err(|e| CliRunError::Board(e))?;
+                Some(json!({
+                    "entry_id": entry.entry_id,
+                    "ticket_id": entry.ticket_id,
+                    "agent_id": entry.agent_id,
+                    "intent": entry.intent,
+                    "owned_files": entry.owned_files,
+                    "checked_in_at": entry.checked_in_at,
+                    "ttl_secs": entry.ttl_secs,
+                }))
+            }
+        }
+    } else {
+        None
+    };
+
+    let mut response = json!({
         "command": "update",
         "status": "ok",
         "id": manifest.id,
@@ -122,7 +152,13 @@ pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value,
             "id": manifest.id,
             "fields": manifest.extra,
         }
-    }))
+    });
+
+    if let (Some(entry), Some(obj)) = (board_entry_json, response.as_object_mut()) {
+        obj.insert("board_entry".to_string(), entry);
+    }
+
+    Ok(response)
 }
 
 pub(crate) fn cmd_repro(args: ReproArgs, store: &TicketStore) -> Result<Value, CliRunError> {

@@ -10,6 +10,7 @@ use ticket_api::storage::TicketStore;
 
 use super::commands;
 use super::*;
+use super::{BoardArgs, BoardCommand};
 
 #[derive(Debug)]
 enum BatchUndoOp {
@@ -20,6 +21,10 @@ enum BatchUndoOp {
         saved_state: Option<String>,
     },
     RemoveEdge { from: Uuid, to: Uuid, kind: String },
+    /// Undo a board check-in by checking the agent back out.
+    BoardCheckOut { ticket_id: Uuid, agent_id: String },
+    /// Undo a board check-out by checking the agent back in (best-effort re-check-in with no files/intent).
+    BoardCheckIn { ticket_id: Uuid, agent_id: String },
 }
 
 fn apply_batch_undo(undo: BatchUndoOp, store: &TicketStore, errors: &mut Vec<String>) {
@@ -47,6 +52,17 @@ fn apply_batch_undo(undo: BatchUndoOp, store: &TicketStore, errors: &mut Vec<Str
             };
             if let Err(e) = store.remove_edge(edge) {
                 errors.push(format!("rollback remove_edge {from}->{to}: {e}"));
+            }
+        }
+        BatchUndoOp::BoardCheckOut { ticket_id, agent_id } => {
+            if let Err(e) = store.board_check_out(&ticket_id, &agent_id, Some("batch rollback")) {
+                errors.push(format!("rollback board_check_out {ticket_id}/{agent_id}: {e}"));
+            }
+        }
+        BatchUndoOp::BoardCheckIn { ticket_id, agent_id } => {
+            // Best-effort: re-check-in with empty files and a rollback intent.
+            if let Err(e) = store.board_check_in(&ticket_id, &agent_id, 3600, "batch rollback", vec![]) {
+                errors.push(format!("rollback board_check_in {ticket_id}/{agent_id}: {e}"));
             }
         }
     }
@@ -115,6 +131,33 @@ fn execute_cli_batch(cmds: Vec<TicketCommandCli>, store: &TicketStore) -> Result
     for cmd in cmds {
         let is_create = matches!(cmd, TicketCommandCli::Create(_));
         let is_link = matches!(cmd, TicketCommandCli::Link(_));
+        let is_board_check_in = matches!(
+            cmd,
+            TicketCommandCli::Board(BoardArgs {
+                command: BoardCommand::CheckIn { .. }
+            })
+        );
+        let is_board_check_out = matches!(
+            cmd,
+            TicketCommandCli::Board(BoardArgs {
+                command: BoardCommand::CheckOut { .. }
+            })
+        );
+        // Capture check-in context before dispatching (for undo).
+        let board_check_in_ctx: Option<(String, String)> =
+            if let TicketCommandCli::Board(BoardArgs { command: BoardCommand::CheckIn { ref id, ref agent, .. } }) = cmd {
+                Some((id.clone(), agent.clone()))
+            } else {
+                None
+            };
+        // Capture check-out context before dispatching (for undo).
+        let board_check_out_ctx: Option<(String, Option<String>)> =
+            if let TicketCommandCli::Board(BoardArgs { command: BoardCommand::CheckOut { ref id, ref agent, .. } }) = cmd {
+                Some((id.clone(), agent.clone()))
+            } else {
+                None
+            };
+
         let update_pre: Option<(Uuid, BTreeMap<String, Value>, Option<String>)> =
             if let TicketCommandCli::Update(ref args) = cmd {
                 commands::resolve_uuid_prefix(&args.id, store)
@@ -160,6 +203,59 @@ fn execute_cli_batch(cmds: Vec<TicketCommandCli>, store: &TicketStore) -> Result
                             Some(BatchUndoOp::RemoveEdge { from, to, kind })
                         }
                         _ => None,
+                    }
+                } else if is_board_check_in {
+                    // Undo a check-in by checking the agent back out.
+                    let ticket_id = result
+                        .get("ticket_id")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<Uuid>().ok());
+                    let agent_id = result
+                        .get("agent_id")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string);
+                    match (ticket_id, agent_id) {
+                        (Some(ticket_id), Some(agent_id)) => {
+                            Some(BatchUndoOp::BoardCheckOut { ticket_id, agent_id })
+                        }
+                        _ => {
+                            // Fall back to context captured before dispatch.
+                            if let Some((id_str, agent)) = board_check_in_ctx {
+                                commands::resolve_uuid_prefix(&id_str, store).ok().map(|tid| {
+                                    BatchUndoOp::BoardCheckOut { ticket_id: tid, agent_id: agent }
+                                })
+                            } else {
+                                None
+                            }
+                        }
+                    }
+                } else if is_board_check_out {
+                    // Undo a check-out by re-checking the agent in.
+                    let ticket_id = result
+                        .get("ticket_id")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<Uuid>().ok());
+                    let agent_id = result
+                        .get("agent_id")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string);
+                    match (ticket_id, agent_id) {
+                        (Some(ticket_id), Some(agent_id)) => {
+                            Some(BatchUndoOp::BoardCheckIn { ticket_id, agent_id })
+                        }
+                        _ => {
+                            if let Some((id_str, agent_opt)) = board_check_out_ctx {
+                                if let (Ok(tid), Some(agent)) =
+                                    (commands::resolve_uuid_prefix(&id_str, store), agent_opt)
+                                {
+                                    Some(BatchUndoOp::BoardCheckIn { ticket_id: tid, agent_id: agent })
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        }
                     }
                 } else {
                     None
@@ -254,6 +350,7 @@ fn batch_dispatch(cmd: TicketCommandCli, store: &TicketStore) -> Result<Value, C
         TicketCommandCli::FinalizeMerge(_) => Err(CliRunError::BadRequest(
             "'finalize-merge' is not supported in a batch".to_string(),
         )),
+        TicketCommandCli::Board(args) => commands::cmd_board(args, store),
     }
 }
 
