@@ -781,6 +781,111 @@ impl TicketStore {
         self.index.list_active_leases()
     }
 
+    // ── board operations ─────────────────────────────────────────────────────
+
+    /// Check an agent in to the draftboard for `ticket_id`.
+    ///
+    /// Follows the 10-step validation sequence:
+    /// 1. Read `BoardConfig` (or default).
+    /// 2. Count `Active` entries for WIP limit.
+    /// 3. Return [`BoardError::WipLimitReached`] if over limit.
+    /// 4. Return [`BoardError::AlreadyCheckedIn`] if already checked in.
+    /// 5-6. Detect file ownership conflicts; mark conflicting entry and return
+    ///      [`BoardError::FileConflict`].
+    /// 7. Populate `previous_attempt` from any completed prior entry.
+    /// 8-9. Insert `BoardEntry` and update `BOARD_ACTIVE_INDEX`.
+    /// 10. Create a backward-compatible lease via `claim()`.
+    pub fn board_check_in(
+        &self,
+        ticket_id: &Uuid,
+        agent_id: &str,
+        ttl_secs: u64,
+        intent: &str,
+        owned_files: Vec<String>,
+    ) -> Result<crate::storage::board::BoardEntry, crate::storage::board::BoardError> {
+        use crate::storage::board::BoardError;
+
+        // Steps 1-9: atomic in one write transaction.
+        let entry = self
+            .index
+            .board_check_in_atomic(*ticket_id, agent_id, ttl_secs, intent, owned_files)?;
+
+        // Step 10: backward-compatible lease propagation.
+        // A LeaseConflict here means an orphaned lease from a prior session;
+        // the board entry is the authority, so we treat it as non-fatal.
+        match self.claim(ticket_id, agent_id, ttl_secs, Some(intent)) {
+            Ok(_) => {}
+            Err(StorageError::LeaseConflict { .. }) => {}
+            Err(e) => return Err(BoardError::Storage(e)),
+        }
+
+        Ok(entry)
+    }
+
+    /// Check an agent out of the draftboard.
+    ///
+    /// Marks the entry `Completed`, removes it from the active index (keeping
+    /// it in `BOARD_ENTRIES` for the audit window), and releases the legacy
+    /// lease via `unclaim()`.
+    pub fn board_check_out(
+        &self,
+        ticket_id: &Uuid,
+        agent_id: &str,
+        handoff_reason: Option<&str>,
+    ) -> Result<crate::storage::board::BoardEntry, crate::storage::board::BoardError> {
+        use crate::storage::board::BoardError;
+
+        let entry = self
+            .index
+            .board_complete_entry(ticket_id, agent_id, handoff_reason)?;
+
+        // Release backward-compatible lease; missing lease is non-fatal.
+        match self.unclaim(ticket_id) {
+            Ok(_) | Err(StorageError::NotFound(_)) => {}
+            Err(e) => return Err(BoardError::Storage(e)),
+        }
+
+        Ok(entry)
+    }
+
+    /// Update `last_heartbeat` for the given `entry_id`, resetting the stale
+    /// timer, and return the refreshed [`BoardEntry`].
+    pub fn board_heartbeat(
+        &self,
+        entry_id: &Uuid,
+    ) -> Result<crate::storage::board::BoardEntry, crate::storage::board::BoardError> {
+        self.index.board_refresh_heartbeat(entry_id)
+    }
+
+    /// Build a read-only atomic snapshot of the board.
+    ///
+    /// Uses a single redb read transaction. Stale status is computed
+    /// dynamically. When `agent_id` is `Some`, `caller_entries` in the
+    /// returned [`BoardSnapshot`] is populated with that agent's entries.
+    pub fn board_show(
+        &self,
+        agent_id: Option<&str>,
+    ) -> Result<crate::storage::board::BoardSnapshot, crate::storage::board::BoardError> {
+        self.index.board_snapshot(agent_id)
+    }
+
+    /// Read or write the board configuration.
+    ///
+    /// - `None` → return the current config (or default if unset).
+    /// - `Some(config)` → persist `config` and return it.
+    pub fn board_configure(
+        &self,
+        config: Option<crate::storage::board::BoardConfig>,
+    ) -> Result<crate::storage::board::BoardConfig, crate::storage::board::BoardError> {
+        match config {
+            None => self.index.board_read_config(),
+            Some(c) => {
+                self.index.board_write_config(&c)?;
+                Ok(c)
+            }
+        }
+    }
+
     // ── validation & release protocol ─────────────────────────────────────────
 
     /// `task_validate_start` — move ticket from `in-review` to `in-validation`.

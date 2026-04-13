@@ -60,6 +60,19 @@ impl RedbIndexStore {
         // `db` drops here (LIFO), releasing the file lock before `_guard`.
     }
 
+    /// Generic variant of `with_db` accepting any error type `E` that can be
+    /// constructed from [`StorageError`].  Used by the board extension impl in
+    /// `board.rs` so it can return [`crate::storage::board::BoardError`].
+    pub(crate) fn with_db_ext<F, R, E>(&self, f: F) -> Result<R, E>
+    where
+        F: FnOnce(&Database) -> Result<R, E>,
+        E: From<StorageError>,
+    {
+        let _guard = self.serial.lock().unwrap();
+        let db = open_db(&self.db_path).map_err(E::from)?;
+        f(&db)
+    }
+
     // ── ticket CRUD ──────────────────────────────────────────────────────────
 
     pub fn insert_ticket(&self, ticket: &IndexedTicket) -> Result<(), StorageError> {
@@ -371,6 +384,7 @@ fn open_db(path: &Path) -> Result<Database, StorageError> {
 }
 
 fn ensure_tables(db: &Database) -> Result<(), StorageError> {
+    use super::board::{BOARD_ACTIVE_INDEX, BOARD_CONFIG, BOARD_ENTRIES};
     let write_txn = db.begin_write()?;
     {
         write_txn.open_table(TICKETS)?;
@@ -378,6 +392,10 @@ fn ensure_tables(db: &Database) -> Result<(), StorageError> {
         write_txn.open_table(SCAN_ROOTS_TABLE)?;
         write_txn.open_table(LEASES)?;
         write_txn.open_table(META)?;
+        // Board tables — created alongside the ticket tables.
+        write_txn.open_table(BOARD_ENTRIES)?;
+        write_txn.open_table(BOARD_ACTIVE_INDEX)?;
+        write_txn.open_table(BOARD_CONFIG)?;
     }
     write_txn.commit()?;
     Ok(())
