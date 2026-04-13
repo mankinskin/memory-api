@@ -967,7 +967,7 @@ impl TicketServer {
         name = "next_tickets",
         description = "List unblocked tickets in any non-terminal state whose dependencies are all satisfied, ordered by workflow progress (closest to done first), then priority. Designed for worker agents to pick the next implementable item."
     )]
-    async fn next_tickets(
+    pub async fn next_tickets(
         &self,
         Parameters(input): Parameters<NextTicketsInput>,
     ) -> Result<CallToolResult, McpError> {

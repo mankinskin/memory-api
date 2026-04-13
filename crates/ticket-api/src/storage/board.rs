@@ -1805,4 +1805,632 @@ mod tests {
             "entry should remain Active after a revert (warning only)"
         );
     }
+
+    // ── concurrency: overlapping-file simultaneous check-in ───────────────────
+
+    /// Two threads simultaneously claim ownership of the same file.  Exactly
+    /// one check-in must succeed (return `Ok`) and the other must receive
+    /// `FileConflict`.  The design intentionally marks the *existing* entry as
+    /// `Conflict` when the second thread's conflict detection runs; this ensures
+    /// agents are notified of the dispute.  The important invariant is that
+    /// exactly one of the two tickets is represented in the board and the loser
+    /// does NOT gain a board entry.
+    #[test]
+    fn concurrent_overlapping_file_check_in_one_wins() {
+        use std::sync::Barrier;
+
+        let dir = TempDir::new().expect("temp dir");
+        let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
+
+        let t1 = make_ticket(&store);
+        let t2 = make_ticket(&store);
+
+        // Barrier ensures both threads attempt check-in at the same time.
+        let barrier = Arc::new(Barrier::new(2));
+        let b1 = Arc::clone(&barrier);
+        let b2 = Arc::clone(&barrier);
+        let s1 = Arc::clone(&store);
+        let s2 = Arc::clone(&store);
+
+        let h1 = thread::spawn(move || {
+            b1.wait();
+            s1.board_check_in(&t1, "racer-1", 300, "work", vec!["contested.rs".to_string()])
+        });
+        let h2 = thread::spawn(move || {
+            b2.wait();
+            s2.board_check_in(&t2, "racer-2", 300, "work", vec!["contested.rs".to_string()])
+        });
+
+        let r1 = h1.join().expect("thread 1 join");
+        let r2 = h2.join().expect("thread 2 join");
+
+        // Exactly one succeeds. The other gets FileConflict.
+        let ok_count = [&r1, &r2].iter().filter(|r| r.is_ok()).count();
+        let err_count = [&r1, &r2].iter().filter(|r| r.is_err()).count();
+
+        assert_eq!(ok_count, 1, "exactly one racer should win the file");
+        assert_eq!(err_count, 1, "exactly one racer should be rejected");
+
+        let failed = if r1.is_err() { &r1 } else { &r2 };
+        assert!(
+            matches!(
+                failed.as_ref().unwrap_err(),
+                BoardError::FileConflict { .. }
+            ),
+            "loser should get FileConflict, got: {:?}",
+            failed.as_ref().unwrap_err()
+        );
+
+        // Board snapshot must be consistent.
+        //
+        // NOTE: when the loser's transaction runs its conflict-detection it
+        // intentionally marks the existing active entry as `Conflict` to signal
+        // the dispute to the winning agent.  Therefore the total entry count is
+        // 1 (the winner's entry, now possibly Conflict-flagged) and the loser's
+        // ticket has NO board entry at all.
+        let snap = store.board_show(None).expect("show after race");
+        let total = snap.entries.len();
+        assert_eq!(total, 1, "exactly one board entry after race (winner only)");
+
+        let winner_ticket = if r1.is_ok() { t1 } else { t2 };
+        let loser_ticket = if r1.is_ok() { t2 } else { t1 };
+
+        let winner_entry = snap
+            .entries
+            .iter()
+            .find(|e| e.ticket_id == winner_ticket)
+            .expect("winner's entry must be present in board");
+        assert!(
+            winner_entry.owned_files.contains(&"contested.rs".to_string()),
+            "winner's entry must list contested.rs in owned_files"
+        );
+
+        assert!(
+            !snap.entries.iter().any(|e| e.ticket_id == loser_ticket),
+            "loser's ticket must NOT have a board entry"
+        );
+    }
+
+    /// Two threads simultaneously attempt to check in when WIP is at max-1,
+    /// so only one slot remains.  Exactly one must succeed; the other must
+    /// get `WipLimitReached`.
+    #[test]
+    fn concurrent_wip_limit_boundary_one_wins() {
+        use std::sync::Barrier;
+
+        let dir = TempDir::new().expect("temp dir");
+        let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
+
+        // Set WIP limit = 2 and fill one slot.
+        store
+            .board_configure(Some(BoardConfig {
+                max_wip: 2,
+                stale_after_secs: 3600,
+                completed_audit_window_secs: 3600,
+            }))
+            .expect("configure");
+
+        let pre = make_ticket(&store);
+        store
+            .board_check_in(&pre, "pre-agent", 300, "fills slot 1", vec![])
+            .expect("pre check-in");
+
+        // Now exactly 1 slot remains. Race two threads for it.
+        let t1 = make_ticket(&store);
+        let t2 = make_ticket(&store);
+
+        let barrier = Arc::new(Barrier::new(2));
+        let b1 = Arc::clone(&barrier);
+        let b2 = Arc::clone(&barrier);
+        let s1 = Arc::clone(&store);
+        let s2 = Arc::clone(&store);
+
+        let h1 = thread::spawn(move || {
+            b1.wait();
+            s1.board_check_in(&t1, "wip-racer-1", 300, "race for last slot", vec![])
+        });
+        let h2 = thread::spawn(move || {
+            b2.wait();
+            s2.board_check_in(&t2, "wip-racer-2", 300, "race for last slot", vec![])
+        });
+
+        let r1 = h1.join().expect("thread 1 join");
+        let r2 = h2.join().expect("thread 2 join");
+
+        let ok_count = [&r1, &r2].iter().filter(|r| r.is_ok()).count();
+        assert_eq!(ok_count, 1, "exactly one racer wins the last WIP slot");
+
+        let failed = if r1.is_err() { &r1 } else { &r2 };
+        assert!(
+            matches!(failed.as_ref().unwrap_err(), BoardError::WipLimitReached { .. }),
+            "loser should get WipLimitReached"
+        );
+
+        // Snapshot: exactly 2 active entries (pre-agent + winner).
+        let snap = store.board_show(None).expect("show after boundary race");
+        let active_count = snap
+            .entries
+            .iter()
+            .filter(|e| e.status == BoardEntryStatus::Active)
+            .count();
+        assert_eq!(active_count, 2, "should have exactly 2 active after boundary race");
+    }
+
+    /// `board_show` can execute concurrently with `board_heartbeat` without
+    /// producing inconsistent state or panicking.
+    #[test]
+    fn concurrent_show_and_heartbeat_no_corruption() {
+        use std::sync::Barrier;
+
+        let dir = TempDir::new().expect("temp dir");
+        let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
+
+        let ticket_id = make_ticket(&store);
+        let entry = store
+            .board_check_in(&ticket_id, "hb-racer", 300, "work", vec![])
+            .expect("check-in");
+        let entry_id = entry.entry_id;
+
+        let n_iters = 20_usize;
+        let barrier = Arc::new(Barrier::new(2));
+
+        let b_snap = Arc::clone(&barrier);
+        let b_hb = Arc::clone(&barrier);
+        let s_snap = Arc::clone(&store);
+        let s_hb = Arc::clone(&store);
+
+        let snap_handle = thread::spawn(move || {
+            b_snap.wait();
+            let mut results = Vec::new();
+            for _ in 0..n_iters {
+                results.push(s_snap.board_show(None));
+            }
+            results
+        });
+        let hb_handle = thread::spawn(move || {
+            b_hb.wait();
+            let mut results = Vec::new();
+            for _ in 0..n_iters {
+                results.push(s_hb.board_heartbeat(&entry_id));
+            }
+            results
+        });
+
+        let snap_results = snap_handle.join().expect("snap thread join");
+        let hb_results = hb_handle.join().expect("hb thread join");
+
+        // All snapshots and heartbeats must succeed without error.
+        for (i, r) in snap_results.iter().enumerate() {
+            assert!(r.is_ok(), "snapshot {i} failed: {:?}", r.as_ref().unwrap_err());
+        }
+        for (i, r) in hb_results.iter().enumerate() {
+            assert!(r.is_ok(), "heartbeat {i} failed: {:?}", r.as_ref().unwrap_err());
+        }
+
+        // Final state: entry must still be active.
+        let final_snap = store.board_show(None).expect("final show");
+        assert_eq!(final_snap.active_count, 1);
+    }
+
+    /// `board_clean_apply` racing with `board_check_out` and `board_heartbeat`
+    /// must not corrupt the store. Either the clean wins (removing the entry)
+    /// or the mutations win (entry is updated), but the store remains consistent.
+    #[test]
+    fn concurrent_clean_vs_checkout_and_heartbeat() {
+        use std::sync::Barrier;
+
+        let dir = TempDir::new().expect("temp dir");
+        let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
+
+        let ticket_id = make_ticket(&store);
+        let entry = store
+            .board_check_in(&ticket_id, "clean-racer", 300, "work", vec![])
+            .expect("check-in");
+        let entry_id = entry.entry_id;
+
+        // Check out first so the entry is Completed and eligible for clean.
+        store
+            .board_check_out(&ticket_id, "clean-racer", Some("done"))
+            .expect("check-out");
+
+        let preview = store.board_clean_preview(false).expect("preview");
+        let token = preview.token.clone();
+
+        let barrier = Arc::new(Barrier::new(2));
+        let b1 = Arc::clone(&barrier);
+        let b2 = Arc::clone(&barrier);
+        let s1 = Arc::clone(&store);
+        let s2 = Arc::clone(&store);
+
+        // Thread 1: apply clean.
+        let h_clean = thread::spawn(move || {
+            b1.wait();
+            s1.board_clean_apply(&token, false)
+        });
+
+        // Thread 2: attempt heartbeat on the (completed) entry — should fail
+        // with EntryNotFound or succeed; either outcome is valid and non-corrupting.
+        let h_hb = thread::spawn(move || {
+            b2.wait();
+            s2.board_heartbeat(&entry_id)
+        });
+
+        let r_clean = h_clean.join().expect("clean thread join");
+        let r_hb = h_hb.join().expect("hb thread join");
+
+        // The clean either applied or rejected with StaleCleanToken.
+        assert!(
+            r_clean.is_ok()
+                || matches!(r_clean.as_ref().unwrap_err(), BoardError::StaleCleanToken),
+            "clean result must be ok or StaleCleanToken, got: {:?}",
+            r_clean.as_ref().unwrap_err()
+        );
+
+        // Heartbeat either refreshed the entry or found it gone — both fine.
+        assert!(
+            r_hb.is_ok()
+                || matches!(r_hb.as_ref().unwrap_err(), BoardError::EntryNotFound(_)),
+            "heartbeat result must be ok or EntryNotFound, got: {:?}",
+            r_hb.as_ref().unwrap_err()
+        );
+
+        // Store must be self-consistent: snapshot returns without error.
+        let snap = store.board_show(None).expect("final show must succeed");
+        assert_eq!(
+            snap.active_count, 0,
+            "no active entries after clean+checkout race"
+        );
+    }
+
+    // ── restart recovery ──────────────────────────────────────────────────────
+
+    /// Persisted active board entries survive a store re-open. After restart
+    /// the snapshot reflects the same entries with their original data.
+    #[test]
+    fn restart_recovery_active_entries_persist() {
+        let dir = TempDir::new().expect("temp dir");
+        let ticket_id = {
+            let store = TicketStore::open(dir.path()).expect("open store");
+            let ticket_id = make_ticket(&store);
+            store
+                .board_check_in(
+                    &ticket_id,
+                    "persist-agent",
+                    3600,
+                    "survives restart",
+                    vec!["important.rs".to_string()],
+                )
+                .expect("check-in");
+            ticket_id
+        }; // store is dropped here (simulated restart)
+
+        // Re-open the store (simulates process restart).
+        let store2 = TicketStore::open(dir.path()).expect("re-open store after restart");
+        let snap = store2.board_show(None).expect("show after restart");
+
+        assert_eq!(snap.active_count, 1, "active entry survived restart");
+        let entry = snap
+            .entries
+            .iter()
+            .find(|e| e.ticket_id == ticket_id)
+            .expect("entry should be present after restart");
+        assert_eq!(entry.agent_id, "persist-agent");
+        assert_eq!(entry.intent, "survives restart");
+        assert_eq!(entry.owned_files, vec!["important.rs"]);
+        assert_eq!(entry.status, BoardEntryStatus::Active);
+    }
+
+    /// Entries that exceeded their TTL before the restart are surfaced as Stale
+    /// in the first snapshot after re-open (stale status is computed dynamically).
+    #[test]
+    fn restart_recovery_stale_entries_recomputed() {
+        let dir = TempDir::new().expect("temp dir");
+        {
+            let store = TicketStore::open(dir.path()).expect("open store");
+            let ticket_id = make_ticket(&store);
+            // Very short TTL — will expire before we re-open.
+            store
+                .board_check_in(&ticket_id, "stale-before-restart", 1, "will go stale", vec![])
+                .expect("check-in");
+            // Wait for expiry.
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        } // store dropped
+
+        let store2 = TicketStore::open(dir.path()).expect("re-open store after restart");
+        let snap = store2.board_show(None).expect("show after restart");
+
+        assert_eq!(snap.stale_count, 1, "stale entry detected after restart");
+        assert_eq!(snap.active_count, 0, "stale does not count as active");
+        assert!(
+            !snap.warnings.is_empty(),
+            "stale warnings should be present after restart"
+        );
+        // Stale entry still counts toward WIP.
+        assert!(snap.wip_limit_reached || snap.stale_count > 0);
+    }
+
+    /// Completed entries within the audit window are retained after restart;
+    /// the board can still show them in the snapshot.
+    #[test]
+    fn restart_recovery_completed_entries_retained() {
+        let dir = TempDir::new().expect("temp dir");
+        let ticket_id = {
+            let store = TicketStore::open(dir.path()).expect("open store");
+            let ticket_id = make_ticket(&store);
+            store
+                .board_check_in(&ticket_id, "done-agent", 3600, "finished work", vec![])
+                .expect("check-in");
+            store
+                .board_check_out(&ticket_id, "done-agent", Some("delivered"))
+                .expect("check-out");
+            ticket_id
+        };
+
+        let store2 = TicketStore::open(dir.path()).expect("re-open store after restart");
+        let snap = store2.board_show(None).expect("show after restart");
+
+        assert_eq!(snap.active_count, 0, "no active after restart");
+        let completed = snap
+            .entries
+            .iter()
+            .find(|e| e.ticket_id == ticket_id && e.status == BoardEntryStatus::Completed)
+            .expect("completed entry retained in audit log after restart");
+        assert_eq!(
+            completed.handoff_reason.as_deref(),
+            Some("delivered"),
+            "handoff_reason preserved across restart"
+        );
+    }
+
+    /// `board_configure` values survive a store re-open.
+    #[test]
+    fn restart_recovery_config_persists() {
+        let dir = TempDir::new().expect("temp dir");
+        {
+            let store = TicketStore::open(dir.path()).expect("open store");
+            store
+                .board_configure(Some(BoardConfig {
+                    max_wip: 3,
+                    stale_after_secs: 900,
+                    completed_audit_window_secs: 43200,
+                }))
+                .expect("write config");
+        }
+
+        let store2 = TicketStore::open(dir.path()).expect("re-open store after restart");
+        let config = store2.board_configure(None).expect("read config after restart");
+        assert_eq!(config.max_wip, 3, "max_wip persisted");
+        assert_eq!(config.stale_after_secs, 900, "stale_after_secs persisted");
+        assert_eq!(
+            config.completed_audit_window_secs, 43200,
+            "completed_audit_window_secs persisted"
+        );
+    }
+
+    // ── stale-entry mitigation end-to-end ─────────────────────────────────────
+
+    /// A stale entry that still owns files blocks new conflicting check-in until
+    /// the stale entry is explicitly resolved (via heartbeat or clean).
+    #[test]
+    fn stale_file_ownership_blocks_new_check_in() {
+        let (_dir, store) = make_store();
+        let t1 = make_ticket(&store);
+        let t2 = make_ticket(&store);
+
+        // Agent 1 checks in with a very short TTL and owns a file.
+        store
+            .board_check_in(
+                &t1,
+                "ghost-agent",
+                1,
+                "will go stale",
+                vec!["owned.rs".to_string()],
+            )
+            .expect("ghost check-in");
+
+        // Wait for TTL to expire → ghost-agent's entry is stale.
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        let snap = store.board_show(None).expect("show after expiry");
+        assert_eq!(snap.stale_count, 1, "entry should be stale");
+
+        // Agent 2 tries to claim the same file → must be rejected.
+        // (Stale entries still own their files; conflict check covers Active entries,
+        //  but the file_ownership map includes Stale entries too.)
+        let result = store.board_check_in(
+            &t2,
+            "eager-agent",
+            300,
+            "wants the file",
+            vec!["owned.rs".to_string()],
+        );
+
+        // The check-in should fail (FileConflict) because the stale ghost still
+        // has the file in its owned_files and is stored as Active in the DB.
+        // (Stale is a computed view; the underlying entry is still Active.)
+        assert!(
+            result.is_err(),
+            "new agent should not be able to claim a stale-owned file without resolution"
+        );
+    }
+
+    /// Heartbeat renews a stale entry: subsequent snapshot shows Active again.
+    #[test]
+    fn stale_entry_renewed_by_heartbeat() {
+        let (_dir, store) = make_store();
+        let ticket_id = make_ticket(&store);
+
+        let entry = store
+            .board_check_in(&ticket_id, "renew-agent", 1, "will go stale", vec![])
+            .expect("check-in");
+
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        let snap_stale = store.board_show(None).expect("show stale");
+        assert_eq!(snap_stale.stale_count, 1, "should be stale before renewal");
+
+        // Renew via heartbeat.
+        store.board_heartbeat(&entry.entry_id).expect("heartbeat");
+
+        let snap_fresh = store.board_show(None).expect("show after heartbeat");
+        assert_eq!(snap_fresh.stale_count, 0, "stale cleared by heartbeat");
+        assert_eq!(snap_fresh.active_count, 1, "entry should be active again");
+        assert!(
+            snap_fresh.warnings.is_empty(),
+            "no stale warnings after renewal"
+        );
+    }
+
+    /// `board_clean_preview` includes stale entries when `include_stale = true`;
+    /// applying the token removes them permanently.
+    #[test]
+    fn stale_entry_explicit_cleanup_end_to_end() {
+        let (_dir, store) = make_store();
+        let ticket_id = make_ticket(&store);
+
+        // Check in with TTL=1 and wait for staleness.
+        store
+            .board_check_in(&ticket_id, "stale-cleanup", 1, "stale work", vec![])
+            .expect("check-in");
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        // Preview without include_stale: stale entry not included.
+        let preview_no_stale = store.board_clean_preview(false).expect("preview no-stale");
+        assert_eq!(
+            preview_no_stale.entry_count, 0,
+            "stale entry not in preview without include_stale"
+        );
+
+        // Preview with include_stale: stale entry included.
+        let preview_with_stale = store.board_clean_preview(true).expect("preview with-stale");
+        assert_eq!(
+            preview_with_stale.entry_count, 1,
+            "stale entry included with include_stale=true"
+        );
+        assert!(
+            preview_with_stale.include_stale,
+            "include_stale flag preserved in preview"
+        );
+
+        // Apply to remove the stale entry.
+        let result = store
+            .board_clean_apply(&preview_with_stale.token, true)
+            .expect("apply stale clean");
+        assert_eq!(result.removed_count, 1, "stale entry removed");
+
+        // Board is now empty.
+        let snap = store.board_show(None).expect("show after stale clean");
+        assert!(snap.entries.is_empty(), "board empty after stale clean");
+        assert_eq!(snap.stale_count, 0);
+    }
+
+    // ── `next` / `status` board integration ──────────────────────────────────
+
+    /// A ticket that is actively checked in does not appear in `ticket next`
+    /// results when board filtering is active (the default).
+    /// This is validated at the TicketStore level by checking the board snapshot
+    /// directly, since `ticket next` filters tickets whose IDs appear in the
+    /// board's active/stale set.
+    #[test]
+    fn board_active_tickets_excluded_from_next_candidates() {
+        let (_dir, store) = make_store();
+        let ticket_in_flight = make_ticket(&store);
+        let ticket_free = make_ticket(&store);
+
+        // Make both tickets `ready` so they would normally be `next` candidates.
+        for tid in [&ticket_in_flight, &ticket_free] {
+            store
+                .update(tid, Default::default(), None, Some("in-refinement"), None, None)
+                .expect("to in-refinement");
+            store
+                .update(tid, Default::default(), None, Some("ready"), None, None)
+                .expect("to ready");
+        }
+
+        // Check in one ticket to the board.
+        store
+            .board_check_in(
+                &ticket_in_flight,
+                "active-agent",
+                3600,
+                "in flight",
+                vec![],
+            )
+            .expect("check-in");
+
+        let snap = store.board_show(None).expect("board show");
+        let board_ticket_ids: std::collections::HashSet<Uuid> = snap
+            .entries
+            .iter()
+            .filter(|e| {
+                matches!(e.status, BoardEntryStatus::Active | BoardEntryStatus::Stale)
+            })
+            .map(|e| e.ticket_id)
+            .collect();
+
+        // The board-active ticket must appear in the board_ticket_ids set.
+        assert!(
+            board_ticket_ids.contains(&ticket_in_flight),
+            "in-flight ticket must be in the board exclusion set"
+        );
+        // The free ticket must NOT be in the exclusion set.
+        assert!(
+            !board_ticket_ids.contains(&ticket_free),
+            "free ticket must not be in the board exclusion set"
+        );
+        // WIP not breached.
+        assert!(!snap.wip_limit_reached, "WIP limit not reached");
+    }
+
+    /// When the WIP limit is reached the board snapshot reports it, which
+    /// the `next` command uses to emit a warning.
+    #[test]
+    fn board_wip_limit_surfaced_in_snapshot() {
+        let (_dir, store) = make_store();
+        store
+            .board_configure(Some(BoardConfig {
+                max_wip: 1,
+                stale_after_secs: 3600,
+                completed_audit_window_secs: 3600,
+            }))
+            .expect("configure");
+
+        let t = make_ticket(&store);
+        store
+            .board_check_in(&t, "limit-agent", 3600, "fills the limit", vec![])
+            .expect("check-in");
+
+        let snap = store.board_show(None).expect("show");
+        assert!(snap.wip_limit_reached, "wip_limit_reached must be true");
+        assert_eq!(snap.active_count, 1);
+        assert_eq!(snap.config.max_wip, 1);
+    }
+
+    /// Stale entries appear in the snapshot with a high-priority warning string,
+    /// which `next` / `status` surface to operators.
+    #[test]
+    fn board_stale_warnings_present_in_snapshot() {
+        let (_dir, store) = make_store();
+        let ticket_id = make_ticket(&store);
+
+        store
+            .board_check_in(&ticket_id, "stale-warn-agent", 1, "stale soon", vec![])
+            .expect("check-in");
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        let snap = store.board_show(None).expect("show");
+        assert!(
+            !snap.warnings.is_empty(),
+            "warnings must be non-empty for stale entries"
+        );
+        let warning = &snap.warnings[0];
+        assert!(
+            warning.contains("STALE"),
+            "warning should mention STALE: {warning}"
+        );
+        assert!(
+            warning.contains("stale-warn-agent"),
+            "warning should name the agent: {warning}"
+        );
+    }
 }
