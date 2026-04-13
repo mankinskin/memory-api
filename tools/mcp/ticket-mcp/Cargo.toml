@@ -8,6 +8,10 @@ description = "MCP server for ticket-api with direct store access (no HTTP backe
 name = "ticket-mcp"
 path = "src/main.rs"
 
+[lib]
+name = "ticket_mcp"
+path = "src/lib.rs"
+
 [dependencies]
 ticket-api = { path = "../../../crates/ticket-api" }
 rmcp = { version = "0.14", features = ["server", "transport-io"] }
@@ -18,3 +22,6 @@ uuid = { version = "1", features = ["serde", "v4"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"

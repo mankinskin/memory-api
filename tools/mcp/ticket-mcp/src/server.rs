@@ -219,6 +219,112 @@ fn default_workflow_name() -> WorkflowName {
     WorkflowName::List
 }
 
+// ── Board input types ────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BoardShowInput {
+    pub workspace: String,
+    /// When supplied, performs a follow-up heartbeat for the caller's active
+    /// entries after the read-only snapshot.
+    #[serde(default)]
+    pub agent_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BoardCheckInInput {
+    pub workspace: String,
+    /// Ticket UUID or prefix to check in to.
+    pub ticket_id: String,
+    /// Caller's session identifier.
+    pub agent_id: String,
+    /// Description of planned work.
+    #[serde(default)]
+    pub intent: Option<String>,
+    /// Files the agent will own.
+    #[serde(default)]
+    pub files: Vec<String>,
+    /// Heartbeat TTL in seconds (default: 3600).
+    #[serde(default)]
+    pub ttl_secs: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BoardCheckOutInput {
+    pub workspace: String,
+    /// Ticket UUID or prefix.
+    pub ticket_id: String,
+    /// Agent to check out.  If omitted, the first active entry for the ticket
+    /// is used.
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    /// Optional exit/handoff reason recorded in the audit trail.
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BoardHeartbeatInput {
+    pub workspace: String,
+    /// Full UUID of the board entry (returned by board_check_in or board_show).
+    pub entry_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BoardConfigureInput {
+    pub workspace: String,
+    /// Maximum simultaneous active board entries (0 = unlimited).
+    #[serde(default)]
+    pub max_wip: Option<u32>,
+    /// Seconds before an entry without a heartbeat is considered stale.
+    #[serde(default)]
+    pub stale_after_secs: Option<u64>,
+    /// Seconds to retain completed entries for auditing.
+    #[serde(default)]
+    pub completed_audit_window_secs: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BoardCleanPreviewInput {
+    pub workspace: String,
+    /// Include stale-but-active entries as eviction candidates.
+    #[serde(default)]
+    pub include_stale: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BoardCleanApplyInput {
+    pub workspace: String,
+    /// Confirmation token from board_clean_preview.
+    pub token: String,
+    /// If true, also prune stale entries identified in the preview.
+    #[serde(default)]
+    pub include_stale: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BoardUpdateFilesInput {
+    pub workspace: String,
+    /// Ticket UUID or prefix.
+    pub ticket_id: String,
+    pub agent_id: String,
+    /// Files to add to the entry's ownership.
+    #[serde(default)]
+    pub add: Vec<String>,
+    /// Files to release from the entry's ownership.
+    #[serde(default)]
+    pub remove: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BoardRenameFileInput {
+    pub workspace: String,
+    /// Ticket UUID or prefix.
+    pub ticket_id: String,
+    pub agent_id: String,
+    pub old_path: String,
+    pub new_path: String,
+}
+
 // ── Server ───────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -249,6 +355,17 @@ impl TicketServer {
 
     fn store_err(e: ticket_api::error::StorageError) -> McpError {
         McpError::internal_error(format!("store error: {e}"), None)
+    }
+
+    /// Map a `BoardError` to an `McpError`.  Storage errors become internal
+    /// errors; all domain errors (WIP limits, conflicts, not-found) become
+    /// structured `invalid_params` responses so callers can act on them.
+    fn board_err(e: ticket_api::BoardError) -> McpError {
+        use ticket_api::BoardError;
+        match e {
+            BoardError::Storage(s) => Self::store_err(s),
+            other => McpError::invalid_params(other.to_string(), None),
+        }
     }
 
     /// Resolve a UUID string — accepts full UUIDs directly and hex prefixes
@@ -1117,7 +1234,7 @@ impl TicketServer {
                 }
                 let prev = &revisions[revisions.len() - 2];
                 let prev_rev = prev.rev;
-                let new_rev = store.apply_revert(&id, prev.fields.clone(), None).map_err(Self::store_err)?;;
+                let new_rev = store.apply_revert(&id, prev.fields.clone(), None).map_err(Self::store_err)?;
                 let updated = store.get(&id).map_err(Self::store_err)?;
                 Ok((prev_rev, new_rev, updated))
             }).await?;
@@ -1260,6 +1377,280 @@ impl TicketServer {
         Self::json_result(&payload)
     }
 
+    // ── Board tools ───────────────────────────────────────────────────────────
+
+    #[tool(
+        name = "board_show",
+        description = "Read the current draftboard snapshot. When agent_id is supplied, performs a follow-up heartbeat for the caller's active entries and returns the refreshed entry alongside the snapshot."
+    )]
+    pub async fn board_show(
+        &self,
+        Parameters(input): Parameters<BoardShowInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let agent_id = input.agent_id;
+        self.with_store_ext(move |store| {
+            let agent_str = agent_id.as_deref();
+            let snap = store.board_show(agent_str).map_err(Self::board_err)?;
+
+            // If an agent_id was provided, heartbeat each of the caller's
+            // active entries and produce a refreshed snapshot.
+            let (heartbeat_entries, final_snap) = if agent_str.is_some() && !snap.caller_entries.is_empty() {
+                let mut refreshed = Vec::new();
+                for entry in &snap.caller_entries {
+                    if let Ok(e) = store.board_heartbeat(&entry.entry_id) {
+                        refreshed.push(e);
+                    }
+                }
+                let fresh_snap = store.board_show(agent_str).map_err(Self::board_err)?;
+                (refreshed, fresh_snap)
+            } else {
+                (Vec::new(), snap)
+            };
+
+            let heartbeat_val: serde_json::Value = if heartbeat_entries.is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::to_value(&heartbeat_entries)
+                    .unwrap_or(serde_json::Value::Null)
+            };
+
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "snapshot": final_snap,
+                "heartbeat": heartbeat_val,
+            }))
+        }).await
+    }
+
+    #[tool(
+        name = "board_check_in",
+        description = "Register an agent as actively working on a ticket. Returns the new board entry. Fails with WIP limit or file conflict errors."
+    )]
+    pub async fn board_check_in(
+        &self,
+        Parameters(input): Parameters<BoardCheckInInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let ticket_id_str = input.ticket_id;
+        let agent_id = input.agent_id;
+        let intent = input.intent.unwrap_or_default();
+        let files = input.files;
+        let ttl_secs = input.ttl_secs.unwrap_or(3600);
+        self.with_store_ext(move |store| {
+            let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
+            let entry = store
+                .board_check_in(&ticket_id, &agent_id, ttl_secs, &intent, files)
+                .map_err(Self::board_err)?;
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "status": "ok",
+                "entry": entry,
+            }))
+        }).await
+    }
+
+    #[tool(
+        name = "board_check_out",
+        description = "Remove an agent from the draftboard for the given ticket. If agent_id is omitted, the first active entry for the ticket is used."
+    )]
+    pub async fn board_check_out(
+        &self,
+        Parameters(input): Parameters<BoardCheckOutInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let ticket_id_str = input.ticket_id;
+        let agent_id_arg = input.agent_id;
+        let reason = input.reason;
+        self.with_store_ext(move |store| {
+            let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
+
+            // Resolve agent_id: use the provided one, or look up the first
+            // active entry for this ticket from the snapshot.
+            let agent_id = if let Some(a) = agent_id_arg {
+                a
+            } else {
+                let snap = store.board_show(None).map_err(Self::board_err)?;
+                snap.entries
+                    .iter()
+                    .find(|e| {
+                        e.ticket_id == ticket_id
+                            && e.status == ticket_api::BoardEntryStatus::Active
+                    })
+                    .map(|e| e.agent_id.clone())
+                    .ok_or_else(|| McpError::invalid_params(
+                        format!("no active board entry found for ticket {ticket_id}"),
+                        None,
+                    ))?
+            };
+
+            let entry = store
+                .board_check_out(&ticket_id, &agent_id, reason.as_deref())
+                .map_err(Self::board_err)?;
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "status": "ok",
+                "entry": entry,
+            }))
+        }).await
+    }
+
+    #[tool(
+        name = "board_heartbeat",
+        description = "Refresh the TTL for a board entry to prevent it from going stale. Returns the updated entry with a refreshed last_heartbeat timestamp."
+    )]
+    pub async fn board_heartbeat(
+        &self,
+        Parameters(input): Parameters<BoardHeartbeatInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let entry_id_str = input.entry_id;
+        self.with_store_ext(move |store| {
+            let entry_id = entry_id_str.parse::<Uuid>().map_err(|_| {
+                McpError::invalid_params(
+                    format!("invalid UUID '{}': expected full UUID", entry_id_str),
+                    None,
+                )
+            })?;
+            let entry = store.board_heartbeat(&entry_id).map_err(Self::board_err)?;
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "status": "ok",
+                "entry": entry,
+            }))
+        }).await
+    }
+
+    #[tool(
+        name = "board_configure",
+        description = "Read or update the board configuration. Omit all optional fields to read the current config. Provide any field to patch and persist the updated config."
+    )]
+    pub async fn board_configure(
+        &self,
+        Parameters(input): Parameters<BoardConfigureInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        self.with_store_ext(move |store| {
+            // Read current config first.
+            let current = store.board_configure(None).map_err(Self::board_err)?;
+
+            let config = if input.max_wip.is_none()
+                && input.stale_after_secs.is_none()
+                && input.completed_audit_window_secs.is_none()
+            {
+                // Read-only: return current.
+                current
+            } else {
+                // Patch fields and write.
+                let updated = ticket_api::BoardConfig {
+                    max_wip: input.max_wip.unwrap_or(current.max_wip),
+                    stale_after_secs: input.stale_after_secs.unwrap_or(current.stale_after_secs),
+                    completed_audit_window_secs: input
+                        .completed_audit_window_secs
+                        .unwrap_or(current.completed_audit_window_secs),
+                };
+                store.board_configure(Some(updated)).map_err(Self::board_err)?
+            };
+
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "config": config,
+            }))
+        }).await
+    }
+
+    #[tool(
+        name = "board_clean_preview",
+        description = "Preview which board entries would be pruned by a clean operation. Returns a list of candidates and a confirmation token to pass to board_clean_apply."
+    )]
+    pub async fn board_clean_preview(
+        &self,
+        Parameters(input): Parameters<BoardCleanPreviewInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let include_stale = input.include_stale.unwrap_or(false);
+        self.with_store_ext(move |store| {
+            let preview = store.board_clean_preview(include_stale).map_err(Self::board_err)?;
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "preview": preview,
+            }))
+        }).await
+    }
+
+    #[tool(
+        name = "board_clean_apply",
+        description = "Execute a board cleanup using the token obtained from board_clean_preview. Rejects the token if the board has changed materially since the preview."
+    )]
+    pub async fn board_clean_apply(
+        &self,
+        Parameters(input): Parameters<BoardCleanApplyInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let token = input.token;
+        let include_stale = input.include_stale.unwrap_or(false);
+        self.with_store_ext(move |store| {
+            let result = store.board_clean_apply(&token, include_stale).map_err(Self::board_err)?;
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "status": "ok",
+                "result": result,
+            }))
+        }).await
+    }
+
+    #[tool(
+        name = "board_update_files",
+        description = "Add or remove files from an active board entry's owned_files. Conflict detection runs on newly added files."
+    )]
+    pub async fn board_update_files(
+        &self,
+        Parameters(input): Parameters<BoardUpdateFilesInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let ticket_id_str = input.ticket_id;
+        let agent_id = input.agent_id;
+        let add = input.add;
+        let remove = input.remove;
+        self.with_store_ext(move |store| {
+            let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
+            let entry = store
+                .board_update_files(&ticket_id, &agent_id, add, remove)
+                .map_err(Self::board_err)?;
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "status": "ok",
+                "entry": entry,
+            }))
+        }).await
+    }
+
+    #[tool(
+        name = "board_rename_file",
+        description = "Atomically rename a file in an active board entry's owned_files: releases the old path and claims the new path in one audited operation."
+    )]
+    pub async fn board_rename_file(
+        &self,
+        Parameters(input): Parameters<BoardRenameFileInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let ticket_id_str = input.ticket_id;
+        let agent_id = input.agent_id;
+        let old_path = input.old_path;
+        let new_path = input.new_path;
+        self.with_store_ext(move |store| {
+            let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
+            let entry = store
+                .board_rename_file(&ticket_id, &agent_id, &old_path, &new_path)
+                .map_err(Self::board_err)?;
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "status": "ok",
+                "entry": entry,
+            }))
+        }).await
+    }
+
     #[tool(
         name = "help",
         description = "List ticket-mcp tools and their parameters."
@@ -1281,6 +1672,15 @@ impl TicketServer {
                 "close_ticket",
                 "cancel_ticket",
                 "workflow",
+                "board_show",
+                "board_check_in",
+                "board_check_out",
+                "board_heartbeat",
+                "board_configure",
+                "board_clean_preview",
+                "board_clean_apply",
+                "board_update_files",
+                "board_rename_file",
             ],
             "operations": {
                 "health": {
@@ -1342,6 +1742,49 @@ impl TicketServer {
                 "cancel_ticket": {
                     "description": "Cancel a ticket",
                     "required": ["workspace", "id"],
+                },
+                "board_show": {
+                    "description": "Read current draftboard snapshot; optionally refresh caller heartbeat",
+                    "required": ["workspace"],
+                    "optional": ["agent_id"],
+                },
+                "board_check_in": {
+                    "description": "Register agent as working on a ticket",
+                    "required": ["workspace", "ticket_id", "agent_id"],
+                    "optional": ["intent", "files", "ttl_secs"],
+                },
+                "board_check_out": {
+                    "description": "Remove agent from the draftboard for a ticket",
+                    "required": ["workspace", "ticket_id"],
+                    "optional": ["agent_id", "reason"],
+                },
+                "board_heartbeat": {
+                    "description": "Refresh TTL for a board entry (requires full entry UUID)",
+                    "required": ["workspace", "entry_id"],
+                },
+                "board_configure": {
+                    "description": "Read or update board configuration",
+                    "required": ["workspace"],
+                    "optional": ["max_wip", "stale_after_secs", "completed_audit_window_secs"],
+                },
+                "board_clean_preview": {
+                    "description": "Preview board cleanup candidates and obtain a confirmation token",
+                    "required": ["workspace"],
+                    "optional": ["include_stale"],
+                },
+                "board_clean_apply": {
+                    "description": "Execute cleanup using the token from board_clean_preview",
+                    "required": ["workspace", "token"],
+                    "optional": ["include_stale"],
+                },
+                "board_update_files": {
+                    "description": "Add/remove files from a board entry's owned_files",
+                    "required": ["workspace", "ticket_id", "agent_id"],
+                    "optional": ["add", "remove"],
+                },
+                "board_rename_file": {
+                    "description": "Atomically rename a file in a board entry's owned_files",
+                    "required": ["workspace", "ticket_id", "agent_id", "old_path", "new_path"],
                 },
             },
             "notes": [

@@ -1,4 +1,4 @@
-mod server;
+use ticket_mcp::server;
 
 use std::path::PathBuf;
 
