@@ -144,6 +144,8 @@ export class TicketTreeProvider
   private _depsOf = new Map<string, string[]>();
   /** Set of ticket IDs that are the target of at least one depends_on edge. */
   private _hasParent = new Set<string>();
+  /** Map from child ticket ID to the IDs of its parent tickets (reverse of _depsOf). */
+  private _parentOf = new Map<string, string[]>();
 
   /** Absolute path to the .ticket/tickets/ directory on disk, or undefined if not found. */
   private _ticketsDir: string | undefined;
@@ -338,11 +340,28 @@ export class TicketTreeProvider
     const result: StateGroupItem[] = [];
 
     const makeGroup = (s: string, bucket: TicketSummary[]): StateGroupItem => {
-      const rootTickets = bucket.filter(t => !this._hasParent.has(t.id));
-      // If all tickets in this state have parents, show them all to avoid
-      // an empty group (their parent lives in a different state group).
-      const visible = rootTickets.length > 0 ? rootTickets : bucket;
-      return new StateGroupItem(s, bucket.length, visible);
+      // Extend the bucket with all ancestors of tickets in this state,
+      // regardless of the ancestors' own state.
+      const extendedIds = new Set(bucket.map(t => t.id));
+      for (const t of bucket) {
+        for (const ancestorId of this._getAncestors(t.id)) {
+          extendedIds.add(ancestorId);
+        }
+      }
+
+      // Root tickets are those in the extended set whose parents are not also
+      // in the extended set (i.e. no ancestor is already shown above them).
+      const rootTickets: TicketSummary[] = [];
+      for (const id of extendedIds) {
+        const ticket = this._ticketMap.get(id);
+        if (!ticket) { continue; }
+        const parents = this._parentOf.get(id) ?? [];
+        if (!parents.some(pid => extendedIds.has(pid))) {
+          rootTickets.push(ticket);
+        }
+      }
+
+      return new StateGroupItem(s, bucket.length, rootTickets);
     };
 
     // Canonical order first.
@@ -394,6 +413,7 @@ export class TicketTreeProvider
     this._ticketMap.clear();
     this._depsOf.clear();
     this._hasParent.clear();
+    this._parentOf.clear();
 
     for (const t of this.tickets) {
       this._ticketMap.set(t.id, t);
@@ -408,7 +428,30 @@ export class TicketTreeProvider
       if (!deps) { deps = []; this._depsOf.set(edge.from, deps); }
       deps.push(edge.to);
       this._hasParent.add(edge.to);
+
+      let parents = this._parentOf.get(edge.to);
+      if (!parents) { parents = []; this._parentOf.set(edge.to, parents); }
+      parents.push(edge.from);
     }
+  }
+
+  /**
+   * Returns the set of all ancestor ticket IDs (direct and transitive parents)
+   * for the given ticket.
+   */
+  private _getAncestors(ticketId: string): Set<string> {
+    const ancestors = new Set<string>();
+    const queue = [ticketId];
+    while (queue.length > 0) {
+      const id = queue.pop()!;
+      for (const parentId of this._parentOf.get(id) ?? []) {
+        if (!ancestors.has(parentId)) {
+          ancestors.add(parentId);
+          queue.push(parentId);
+        }
+      }
+    }
+    return ancestors;
   }
 
   private scheduleAutoRefresh(): void {
