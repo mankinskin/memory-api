@@ -1,9 +1,22 @@
 import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { TicketTreeProvider, TicketItem } from './ticketProvider';
-import { fetchWorkspaces } from './api';
+import {
+  fetchWorkspaces,
+  createTicket, updateTicket, closeTicket, cancelTicket, undoTicket, deleteTicket, addEdge,
+} from './api';
 import { BrowserBridge } from './browserBridge';
+
+// All known states in progression order.
+const TICKET_STATES = [
+  'new', 'in-refinement', 'ready', 'in-implementation',
+  'in-review', 'in-validation', 'done', 'cancelled',
+];
+
+// Known ticket types (offered as QuickPick defaults).
+const TICKET_TYPES = ['tracker-improvement'];
 
 function readConfig() {
   const cfg = vscode.workspace.getConfiguration('ticketViewer');
@@ -107,19 +120,70 @@ function openTicketViewer(url: string): void {
   void vscode.commands.executeCommand('simpleBrowser.show', url);
 }
 
-async function startServerTask(): Promise<void> {
-  // Invoke the ticket-viewer: start task defined in .vscode/tasks.json.
-  try {
-    await vscode.commands.executeCommand(
-      'workbench.action.tasks.runTask',
-      'ticket-viewer: start',
-    );
-  } catch {
-    void vscode.window.showErrorMessage(
-      'Could not start "ticket-viewer: start" task. Make sure .vscode/tasks.json is configured.',
-    );
+/** Derive the absolute path to .ticket/tickets/ for the active workspace name, if detectable. */
+function resolveTicketsDir(wsName: string): string | undefined {
+  const detected = detectTicketWorkspaces();
+  const match = detected.find(d => d.folderName === wsName) ?? detected[0];
+  if (!match) { return undefined; }
+  const dir = path.join(match.ticketPath, 'tickets');
+  try { if (fs.statSync(dir).isDirectory()) { return dir; } } catch { /* not found */ }
+  return undefined;
+}
+
+async function startServerTask(
+  outputChannel: vscode.OutputChannel,
+): Promise<ChildProcess | undefined> {
+  // Find the workspace folder that contains a .ticket directory.
+  const detected = detectTicketWorkspaces();
+  const workspaceRoot = detected[0]?.folder.uri.fsPath
+    ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+  // Prefer the pre-built debug binary; fall back to cargo run.
+  const binaryPath = path.join(
+    workspaceRoot ?? '',
+    'target', 'debug', process.platform === 'win32' ? 'ticket-viewer.exe' : 'ticket-viewer',
+  );
+  const useCargoRun = !fs.existsSync(binaryPath);
+  const [cmd, args] = useCargoRun
+    ? ['cargo', ['run', '-p', 'ticket-viewer']]
+    : [binaryPath, []];
+
+  outputChannel.appendLine(`[ticket-viewer] Starting: ${cmd} ${args.join(' ')}`);
+
+  const proc = spawn(cmd, args, {
+    cwd: workspaceRoot,
+    detached: false,
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  proc.stdout?.on('data', (d: Buffer) => outputChannel.append(d.toString()));
+  proc.stderr?.on('data', (d: Buffer) => outputChannel.append(d.toString()));
+  proc.on('error', err => outputChannel.appendLine(`[ticket-viewer] Error: ${err.message}`));
+  proc.on('exit', code => outputChannel.appendLine(`[ticket-viewer] Exited with code ${code}`));
+
+  return proc;
+}
+
+/**
+ * Poll the server's health endpoint every 2 seconds until it responds with
+ * a successful status or the timeout elapses. Resolves either way.
+ */
+async function pollUntilReachable(baseUrl: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(`${baseUrl}/api/workspaces`, { signal: controller.signal });
+      clearTimeout(id);
+      if (res.ok) { return; }
+    } catch { /* not ready yet */ }
+    await new Promise<void>(resolve => setTimeout(resolve, 2000));
   }
 }
+
+let _serverProcess: import('node:child_process').ChildProcess | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   let config = readConfig();
@@ -129,9 +193,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context,
   );
 
+  // ── Output channel for server logs ───────────────────────────────
+  const outputChannel = vscode.window.createOutputChannel('Ticket Viewer Server');
+  context.subscriptions.push(outputChannel);
+
   // ── Auto-start server ────────────────────────────────────────────
   if (config.autoStartServer) {
-    void startServerTask();
+    _serverProcess = await startServerTask(outputChannel);
   }
 
   // ── Tree data provider ──────────────────────────────────────────
@@ -139,12 +207,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     config.serverUrl,
     workspace,
     config.autoRefreshSeconds,
+    resolveTicketsDir(workspace),
   );
   context.subscriptions.push(provider);
 
-  // If we auto-started the server give it a moment then retry.
+  // Poll until the server responds, then refresh the tree.
+  // This handles the case where the server takes longer than expected to start.
   if (config.autoStartServer) {
-    setTimeout(() => provider.refresh(), 3000);
+    void pollUntilReachable(config.serverUrl, 60_000).then(() => provider.refresh());
   }
 
   const treeView = vscode.window.createTreeView('ticket-viewer.tickets', {
@@ -201,9 +271,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand('ticket-viewer.startServer', async () => {
-      await startServerTask();
-      // Give the server a moment to start, then refresh.
-      setTimeout(() => provider.refresh(), 3000);
+      if (_serverProcess && !_serverProcess.killed) {
+        _serverProcess.kill();
+      }
+      _serverProcess = await startServerTask(outputChannel);
+      void pollUntilReachable(config.serverUrl, 60_000).then(() => provider.refresh());
     }),
   );
 
@@ -222,10 +294,179 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       'ticket-viewer.copyId',
       (item: TicketItem) => {
         void vscode.env.clipboard.writeText(item.ticket.id).then(() => {
-          void vscode.window.showInformationMessage(
-            `Copied: ${item.ticket.id}`,
-          );
+          vscode.window.setStatusBarMessage(`$(check) Copied: ${item.ticket.id}`, 5000);
         });
+      },
+    ),
+  );
+
+  // ── Ticket mutation commands ──────────────────────────────────────────────
+
+  /** Helper: run a mutation and refresh, or show error. */
+  async function runMutation(action: () => Promise<unknown>): Promise<void> {
+    try {
+      await action();
+      provider.refresh();
+    } catch (err) {
+      void vscode.window.showErrorMessage(
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ticket-viewer.createTicket', async () => {
+      const typeItems = TICKET_TYPES.map(t => ({ label: t }));
+      const typePick = await vscode.window.showQuickPick(typeItems, {
+        title: 'New Ticket — Select Type',
+        placeHolder: 'Ticket type',
+      });
+      if (!typePick) { return; }
+
+      const title = await vscode.window.showInputBox({
+        title: 'New Ticket — Title',
+        prompt: 'Enter a title for the new ticket',
+        ignoreFocusOut: true,
+      });
+      if (title === undefined) { return; }
+
+      await runMutation(() => createTicket(config.serverUrl, workspace, typePick.label, title));
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'ticket-viewer.editTitle',
+      async (item: TicketItem) => {
+        const newTitle = await vscode.window.showInputBox({
+          title: 'Edit Title',
+          value: item.ticket.title ?? '',
+          prompt: 'New title for the ticket',
+          ignoreFocusOut: true,
+        });
+        if (newTitle === undefined) { return; }
+        await runMutation(() =>
+          updateTicket(config.serverUrl, workspace, item.ticket.id, {
+            fields: { title: newTitle },
+          }),
+        );
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'ticket-viewer.setState',
+      async (item: TicketItem) => {
+        const current = item.ticket.state;
+        const stateItems = TICKET_STATES.map(s => ({
+          label: s,
+          description: s === current ? '← current' : undefined,
+        }));
+        const pick = await vscode.window.showQuickPick(stateItems, {
+          title: `Set State — ${item.ticket.title ?? item.ticket.id.slice(0, 8)}`,
+          placeHolder: `Current: ${current ?? 'unknown'}`,
+        });
+        if (!pick || pick.label === current) { return; }
+        await runMutation(() =>
+          updateTicket(config.serverUrl, workspace, item.ticket.id, { state: pick.label }),
+        );
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'ticket-viewer.editDescription',
+      (item: TicketItem) => {
+        const ticketsDir = resolveTicketsDir(workspace);
+        if (!ticketsDir) {
+          void vscode.window.showWarningMessage('Ticket folder not found on disk.');
+          return;
+        }
+        const descPath = path.join(ticketsDir, item.ticket.id, 'description.md');
+        void vscode.commands.executeCommand('vscode.open', vscode.Uri.file(descPath));
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'ticket-viewer.closeTicket',
+      async (item: TicketItem) => {
+        const confirm = await vscode.window.showWarningMessage(
+          `Fast-forward "${item.ticket.title ?? item.ticket.id.slice(0, 8)}" to done?`,
+          { modal: true }, 'Close Ticket',
+        );
+        if (confirm !== 'Close Ticket') { return; }
+        await runMutation(() => closeTicket(config.serverUrl, workspace, item.ticket.id));
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'ticket-viewer.cancelTicket',
+      async (item: TicketItem) => {
+        const reason = await vscode.window.showInputBox({
+          title: `Cancel — ${item.ticket.title ?? item.ticket.id.slice(0, 8)}`,
+          prompt: 'Reason for cancellation (optional)',
+          ignoreFocusOut: true,
+        });
+        if (reason === undefined) { return; }
+        await runMutation(() =>
+          cancelTicket(config.serverUrl, workspace, item.ticket.id, reason || undefined),
+        );
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'ticket-viewer.undoTicket',
+      async (item: TicketItem) => {
+        const confirm = await vscode.window.showWarningMessage(
+          `Undo last transition on "${item.ticket.title ?? item.ticket.id.slice(0, 8)}"?`,
+          { modal: true }, 'Undo',
+        );
+        if (confirm !== 'Undo') { return; }
+        await runMutation(() => undoTicket(config.serverUrl, workspace, item.ticket.id));
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'ticket-viewer.addDependency',
+      async (item: TicketItem) => {
+        const all = provider.allTickets.filter(t => t.id !== item.ticket.id);
+        const picks = all.map(t => ({
+          label: t.title ?? `(${t.id.slice(0, 8)})`,
+          description: `${t.id.slice(0, 8)} · ${t.state ?? '?'}`,
+          id: t.id,
+        }));
+        const pick = await vscode.window.showQuickPick(picks, {
+          title: `Add Dependency to "${item.ticket.title ?? item.ticket.id.slice(0, 8)}"`,
+          placeHolder: 'Select dependency ticket',
+        });
+        if (!pick) { return; }
+        await runMutation(() =>
+          addEdge(config.serverUrl, workspace, item.ticket.id, pick.id, 'depends_on'),
+        );
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'ticket-viewer.deleteTicket',
+      async (item: TicketItem) => {
+        const confirm = await vscode.window.showWarningMessage(
+          `Delete "${item.ticket.title ?? item.ticket.id.slice(0, 8)}"? This cannot be undone.`,
+          { modal: true }, 'Delete',
+        );
+        if (confirm !== 'Delete') { return; }
+        await runMutation(() => deleteTicket(config.serverUrl, workspace, item.ticket.id));
       },
     ),
   );
@@ -253,7 +494,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const resolved = await resolveActiveWorkspace(config.serverUrl, config.workspace, context);
       workspace = resolved.workspace;
       displayName = resolved.displayName;
-      provider.update(config.serverUrl, workspace, config.autoRefreshSeconds);
+      provider.update(config.serverUrl, workspace, config.autoRefreshSeconds, resolveTicketsDir(workspace));
       updateStatusBar();
     }),
   );
@@ -306,7 +547,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const resolved = await resolveActiveWorkspace(config.serverUrl, config.workspace, context);
       workspace = resolved.workspace;
       displayName = resolved.displayName;
-      provider.update(config.serverUrl, workspace, config.autoRefreshSeconds);
+      provider.update(config.serverUrl, workspace, config.autoRefreshSeconds, resolveTicketsDir(workspace));
       updateStatusBar();
     }),
   );
@@ -319,7 +560,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const resolved = await resolveActiveWorkspace(config.serverUrl, config.workspace, context);
       workspace = resolved.workspace;
       displayName = resolved.displayName;
-      provider.update(config.serverUrl, workspace, config.autoRefreshSeconds);
+      provider.update(config.serverUrl, workspace, config.autoRefreshSeconds, resolveTicketsDir(workspace));
       statusBarItem.tooltip = `Open Ticket Viewer (${config.serverUrl})`;
       updateStatusBar();
     }),
@@ -327,5 +568,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export function deactivate(): void {
-  // Nothing to clean up beyond subscriptions (handled by context.subscriptions).
+  // Kill the background server process if we started it.
+  if (_serverProcess && !_serverProcess.killed) {
+    _serverProcess.kill();
+    _serverProcess = undefined;
+  }
 }

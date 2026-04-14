@@ -53,9 +53,63 @@
         "category": "Ticket Viewer"
       },
       {
+        "command": "ticket-viewer.createTicket",
+        "title": "New Ticket...",
+        "icon": "$(add)",
+        "category": "Ticket Viewer"
+      },
+      {
         "command": "ticket-viewer.copyId",
         "title": "Copy Ticket ID",
         "icon": "$(copy)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.editTitle",
+        "title": "Edit Title...",
+        "icon": "$(edit)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.setState",
+        "title": "Set State...",
+        "icon": "$(symbol-enum)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.editDescription",
+        "title": "Edit Description",
+        "icon": "$(markdown)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.closeTicket",
+        "title": "Close (fast-forward to done)",
+        "icon": "$(pass-filled)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.cancelTicket",
+        "title": "Cancel Ticket...",
+        "icon": "$(circle-slash)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.undoTicket",
+        "title": "Undo Last Transition",
+        "icon": "$(discard)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.addDependency",
+        "title": "Add Dependency...",
+        "icon": "$(type-hierarchy-sub)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.deleteTicket",
+        "title": "Delete Ticket...",
+        "icon": "$(trash)",
         "category": "Ticket Viewer"
       },
       {
@@ -86,6 +140,11 @@
     "menus": {
       "view/title": [
         {
+          "command": "ticket-viewer.createTicket",
+          "when": "view == ticket-viewer.tickets",
+          "group": "navigation@0"
+        },
+        {
           "command": "ticket-viewer.openBrowser",
           "when": "view == ticket-viewer.tickets",
           "group": "navigation@3"
@@ -106,6 +165,46 @@
           "command": "ticket-viewer.copyId",
           "when": "view == ticket-viewer.tickets && viewItem == ticket",
           "group": "inline"
+        },
+        {
+          "command": "ticket-viewer.editTitle",
+          "when": "view == ticket-viewer.tickets && viewItem == ticket",
+          "group": "1_modify@1"
+        },
+        {
+          "command": "ticket-viewer.setState",
+          "when": "view == ticket-viewer.tickets && viewItem == ticket",
+          "group": "1_modify@2"
+        },
+        {
+          "command": "ticket-viewer.editDescription",
+          "when": "view == ticket-viewer.tickets && viewItem == ticket",
+          "group": "1_modify@3"
+        },
+        {
+          "command": "ticket-viewer.addDependency",
+          "when": "view == ticket-viewer.tickets && viewItem == ticket",
+          "group": "1_modify@4"
+        },
+        {
+          "command": "ticket-viewer.closeTicket",
+          "when": "view == ticket-viewer.tickets && viewItem == ticket",
+          "group": "2_lifecycle@1"
+        },
+        {
+          "command": "ticket-viewer.cancelTicket",
+          "when": "view == ticket-viewer.tickets && viewItem == ticket",
+          "group": "2_lifecycle@2"
+        },
+        {
+          "command": "ticket-viewer.undoTicket",
+          "when": "view == ticket-viewer.tickets && viewItem == ticket",
+          "group": "2_lifecycle@3"
+        },
+        {
+          "command": "ticket-viewer.deleteTicket",
+          "when": "view == ticket-viewer.tickets && viewItem == ticket",
+          "group": "9_delete@1"
         }
       ]
     },

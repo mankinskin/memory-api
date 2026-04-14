@@ -72,6 +72,30 @@ export async function fetchAllTickets(
   return all;
 }
 
+export interface EdgeRecord {
+  from: string;
+  to: string;
+  kind: string;
+}
+
+export interface EdgesResponse {
+  request_id: string;
+  workspace: string;
+  items: EdgeRecord[];
+}
+
+/** Fetches all edges, optionally filtered by kind (e.g. "depends_on"). */
+export async function fetchEdges(
+  baseUrl: string,
+  workspace: string,
+  kind?: string,
+): Promise<EdgeRecord[]> {
+  const params = new URLSearchParams({ workspace });
+  if (kind) { params.set('kind', kind); }
+  const data = await apiFetch<EdgesResponse>(`${baseUrl}/api/edges?${params}`);
+  return data.items;
+}
+
 export interface TicketDescriptionResponse {
   request_id: string;
   workspace: string;
@@ -89,4 +113,122 @@ export async function fetchTicketDescription(
     `${baseUrl}/api/tickets/${encodeURIComponent(ticketId)}/description?${params}`,
   );
   return data.description;
+}
+
+// ── Mutations ─────────────────────────────────────────────────────────────────
+
+export interface TicketMutationResponse {
+  request_id: string;
+  workspace: string;
+  ticket: { id: string; fields: Record<string, unknown>; };
+}
+
+async function apiMutate<T>(
+  method: 'POST' | 'PATCH' | 'DELETE',
+  url: string,
+  body?: unknown,
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  try {
+    const init: RequestInit = { method, signal: controller.signal };
+    if (body !== undefined) {
+      init.headers = { 'Content-Type': 'application/json' };
+      init.body = JSON.stringify(body);
+    }
+    const res = await fetch(url, init);
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    return res.json() as Promise<T>;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export async function createTicket(
+  baseUrl: string,
+  workspace: string,
+  typeId: string,
+  title: string,
+  description?: string,
+): Promise<TicketMutationResponse> {
+  const params = new URLSearchParams({ workspace });
+  return apiMutate<TicketMutationResponse>('POST', `${baseUrl}/api/tickets?${params}`, {
+    type: typeId, title, description,
+  });
+}
+
+export async function updateTicket(
+  baseUrl: string,
+  workspace: string,
+  id: string,
+  body: { state?: string; fields?: Record<string, unknown>; description?: string; },
+): Promise<TicketMutationResponse> {
+  const params = new URLSearchParams({ workspace });
+  return apiMutate<TicketMutationResponse>(
+    'PATCH', `${baseUrl}/api/tickets/${encodeURIComponent(id)}?${params}`, body,
+  );
+}
+
+export async function closeTicket(
+  baseUrl: string,
+  workspace: string,
+  id: string,
+  targetState?: string,
+): Promise<TicketMutationResponse> {
+  const params = new URLSearchParams({ workspace });
+  return apiMutate<TicketMutationResponse>(
+    'POST', `${baseUrl}/api/tickets/${encodeURIComponent(id)}/close?${params}`,
+    targetState ? { target_state: targetState } : {},
+  );
+}
+
+export async function cancelTicket(
+  baseUrl: string,
+  workspace: string,
+  id: string,
+  reason?: string,
+): Promise<TicketMutationResponse> {
+  const params = new URLSearchParams({ workspace });
+  return apiMutate<TicketMutationResponse>(
+    'POST', `${baseUrl}/api/tickets/${encodeURIComponent(id)}/cancel?${params}`, { reason },
+  );
+}
+
+export async function undoTicket(
+  baseUrl: string,
+  workspace: string,
+  id: string,
+): Promise<TicketMutationResponse> {
+  const params = new URLSearchParams({ workspace });
+  return apiMutate<TicketMutationResponse>(
+    'POST', `${baseUrl}/api/tickets/${encodeURIComponent(id)}/undo?${params}`, {},
+  );
+}
+
+export async function deleteTicket(
+  baseUrl: string,
+  workspace: string,
+  id: string,
+): Promise<{ request_id: string; workspace: string; id: string; }> {
+  const params = new URLSearchParams({ workspace });
+  return apiMutate<{ request_id: string; workspace: string; id: string; }>(
+    'DELETE', `${baseUrl}/api/tickets/${encodeURIComponent(id)}?${params}`,
+  );
+}
+
+export async function addEdge(
+  baseUrl: string,
+  workspace: string,
+  fromId: string,
+  toId: string,
+  kind: string,
+  reason?: string,
+): Promise<void> {
+  const params = new URLSearchParams({ workspace });
+  await apiMutate<unknown>('POST', `${baseUrl}/api/edges?${params}`, {
+    from_id: fromId, to_id: toId, kind, reason,
+  });
 }

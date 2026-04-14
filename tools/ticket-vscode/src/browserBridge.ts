@@ -110,7 +110,7 @@ export class BrowserBridge implements vscode.Disposable {
         this._server = server;
         const p = (server.address() as AddressInfo).port;
         this._outputChannel.appendLine(`Browser Bridge control server listening on http://127.0.0.1:${p}`);
-        void vscode.window.showInformationMessage(`Browser Bridge running on port ${p}`);
+        vscode.window.setStatusBarMessage(`$(plug) Browser Bridge running on port ${p}`, 5000);
         resolve(p);
       });
       server.on('error', reject);

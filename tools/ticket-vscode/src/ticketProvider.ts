@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
-import { fetchAllTickets, fetchTicketDescription, type TicketSummary } from './api';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fetchAllTickets, fetchEdges, fetchTicketDescription, type TicketSummary, type EdgeRecord } from './api';
 
 // Canonical ordering for ticket states in the tree.
 const STATE_ORDER: ReadonlyArray<string> = [
@@ -38,10 +40,11 @@ export class StateGroupItem extends vscode.TreeItem {
 
   constructor(
     public readonly state: string,
-    public readonly tickets: TicketSummary[],
+    public readonly totalCount: number,
+    public readonly rootTickets: TicketSummary[],
   ) {
     super(
-      `${state} (${tickets.length})`,
+      `${state} (${totalCount})`,
       vscode.TreeItemCollapsibleState.Collapsed,
     );
     this.contextValue = 'stateGroup';
@@ -49,15 +52,23 @@ export class StateGroupItem extends vscode.TreeItem {
   }
 }
 
-/** Leaf item representing a single ticket. */
+/** Item representing a single ticket. Collapsible when it has dependency children. */
 export class TicketItem extends vscode.TreeItem {
   readonly kind = 'ticket' as const;
 
-  constructor(public readonly ticket: TicketSummary) {
+  constructor(
+    public readonly ticket: TicketSummary,
+    hasChildren: boolean = false,
+    treePath?: string,
+  ) {
     const label = ticket.title ?? `(${ticket.id.slice(0, 8)})`;
-    super(label, vscode.TreeItemCollapsibleState.None);
+    super(
+      label,
+      // Always collapsible — even without dep children, folder contents are shown.
+      vscode.TreeItemCollapsibleState.Collapsed,
+    );
     this.contextValue = 'ticket';
-    this.id = `ticket:${ticket.id}`;
+    this.id = treePath ?? `ticket:${ticket.id}`;
     this.description = ticket.id.slice(0, 8);
     this.tooltip = new vscode.MarkdownString(
       `**${label}**\n\nID: \`${ticket.id}\`\nState: ${ticket.state ?? '—'}\nType: ${ticket.type}`,
@@ -83,7 +94,35 @@ class InfoItem extends vscode.TreeItem {
   }
 }
 
-type TreeNode = StateGroupItem | TicketItem | InfoItem;
+/** A file inside a ticket folder (leaf). */
+class TicketFileItem extends vscode.TreeItem {
+  readonly kind = 'ticketFile' as const;
+
+  constructor(public readonly filePath: string) {
+    super(path.basename(filePath), vscode.TreeItemCollapsibleState.None);
+    this.resourceUri = vscode.Uri.file(filePath);
+    this.contextValue = 'ticketFile';
+    this.command = {
+      command: 'vscode.open',
+      title: 'Open File',
+      arguments: [this.resourceUri],
+    };
+  }
+}
+
+/** A subdirectory inside a ticket folder (expandable). */
+class TicketFolderItem extends vscode.TreeItem {
+  readonly kind = 'ticketFolder' as const;
+
+  constructor(public readonly folderPath: string) {
+    super(path.basename(folderPath), vscode.TreeItemCollapsibleState.Collapsed);
+    this.resourceUri = vscode.Uri.file(folderPath);
+    this.contextValue = 'ticketFolder';
+    this.iconPath = new vscode.ThemeIcon('folder');
+  }
+}
+
+type TreeNode = StateGroupItem | TicketItem | TicketFileItem | TicketFolderItem | InfoItem;
 
 // ── Provider ─────────────────────────────────────────────────────────────────
 
@@ -100,11 +139,22 @@ export class TicketTreeProvider
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
   private _descriptionCache = new Map<string, string | null>();
 
+  /** Map from ticket ID to TicketSummary for quick lookup. */
+  private _ticketMap = new Map<string, TicketSummary>();
+  /** Map from ticket ID to the IDs of tickets it depends on (outgoing depends_on). */
+  private _depsOf = new Map<string, string[]>();
+  /** Set of ticket IDs that are the target of at least one depends_on edge. */
+  private _hasParent = new Set<string>();
+
+  /** Absolute path to the .ticket/tickets/ directory on disk, or undefined if not found. */
+  private _ticketsDir: string | undefined;
+
   private _baseUrl: string;
   private _workspace: string;
   private _autoRefreshSec: number;
 
-  constructor(baseUrl: string, workspace: string, autoRefreshSec: number) {
+  constructor(baseUrl: string, workspace: string, autoRefreshSec: number, ticketsDir?: string) {
+    this._ticketsDir = ticketsDir;
     this._baseUrl = baseUrl;
     this._workspace = workspace;
     this._autoRefreshSec = autoRefreshSec;
@@ -125,10 +175,11 @@ export class TicketTreeProvider
   }
 
   /** Update connection settings and reload. */
-  update(baseUrl: string, workspace: string, autoRefreshSec: number): void {
+  update(baseUrl: string, workspace: string, autoRefreshSec: number, ticketsDir?: string): void {
     this._baseUrl = baseUrl;
     this._workspace = workspace;
     this._autoRefreshSec = autoRefreshSec;
+    this._ticketsDir = ticketsDir;
     this._descriptionCache.clear();
     this.scheduleAutoRefresh();
     void this.load();
@@ -149,10 +200,20 @@ export class TicketTreeProvider
 
   getChildren(element?: TreeNode): TreeNode[] {
     if (element instanceof StateGroupItem) {
-      return element.tickets.map(t => new TicketItem(t));
+      return element.rootTickets.map(t => this._makeTicketItem(t, element.state));
     }
 
-    // Root level
+    if (element instanceof TicketItem) {
+      const depChildren = this._getDependencyChildren(element);
+      const folderChildren = this._getTicketFolderChildren(element.ticket.id);
+      return [...depChildren, ...folderChildren];
+    }
+
+    if (element instanceof TicketFolderItem) {
+      return this._readDirEntries(element.folderPath);
+    }
+
+    // TicketFileItem and InfoItem are leaves.
     if (element !== undefined) { return []; }
 
     if (this.state === 'loading' && this.tickets.length === 0) {
@@ -214,6 +275,55 @@ export class TicketTreeProvider
 
   // ── Private ────────────────────────────────────────────────────────────────
 
+  /** Create a TicketItem with correct collapsibility and a unique tree path. */
+  private _makeTicketItem(ticket: TicketSummary, parentPath: string): TicketItem {
+    const hasChildren = (this._depsOf.get(ticket.id)?.length ?? 0) > 0;
+    const treePath = `${parentPath}|${ticket.id}`;
+    return new TicketItem(ticket, hasChildren, treePath);
+  }
+
+  /** Return TicketItems for the dependencies of the given parent ticket. */
+  private _getDependencyChildren(parent: TicketItem): TicketItem[] {
+    const depIds = this._depsOf.get(parent.ticket.id) ?? [];
+    const children: TicketItem[] = [];
+    for (const depId of depIds) {
+      const ticket = this._ticketMap.get(depId);
+      if (!ticket) { continue; }
+      children.push(this._makeTicketItem(ticket, parent.id ?? parent.ticket.id));
+    }
+    return children;
+  }
+
+  /** Return file/folder entries for the ticket's on-disk folder. */
+  private _getTicketFolderChildren(ticketId: string): (TicketFileItem | TicketFolderItem)[] {
+    if (!this._ticketsDir) { return []; }
+    const ticketDir = path.join(this._ticketsDir, ticketId);
+    return this._readDirEntries(ticketDir);
+  }
+
+  /** Read a directory and return sorted TicketFolderItem / TicketFileItem nodes. */
+  private _readDirEntries(dirPath: string): (TicketFileItem | TicketFolderItem)[] {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+    const folders: TicketFolderItem[] = [];
+    const files: TicketFileItem[] = [];
+    for (const entry of entries) {
+      const full = path.join(dirPath, entry.name);
+      if (entry.isDirectory()) {
+        folders.push(new TicketFolderItem(full));
+      } else if (entry.isFile()) {
+        files.push(new TicketFileItem(full));
+      }
+    }
+    folders.sort((a, b) => a.folderPath.localeCompare(b.folderPath));
+    files.sort((a, b) => a.filePath.localeCompare(b.filePath));
+    return [...folders, ...files];
+  }
+
   private buildStateGroups(): StateGroupItem[] {
     const grouped = new Map<string, TicketSummary[]>();
 
@@ -226,11 +336,19 @@ export class TicketTreeProvider
 
     const result: StateGroupItem[] = [];
 
+    const makeGroup = (s: string, bucket: TicketSummary[]): StateGroupItem => {
+      const rootTickets = bucket.filter(t => !this._hasParent.has(t.id));
+      // If all tickets in this state have parents, show them all to avoid
+      // an empty group (their parent lives in a different state group).
+      const visible = rootTickets.length > 0 ? rootTickets : bucket;
+      return new StateGroupItem(s, bucket.length, visible);
+    };
+
     // Canonical order first.
     for (const s of STATE_ORDER) {
       const bucket = grouped.get(s);
       if (bucket && bucket.length > 0) {
-        result.push(new StateGroupItem(s, bucket));
+        result.push(makeGroup(s, bucket));
         grouped.delete(s);
       }
     }
@@ -238,7 +356,7 @@ export class TicketTreeProvider
     // Then any remaining unknown states alphabetically.
     for (const [s, bucket] of [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b))) {
       if (bucket.length > 0) {
-        result.push(new StateGroupItem(s, bucket));
+        result.push(makeGroup(s, bucket));
       }
     }
 
@@ -250,16 +368,46 @@ export class TicketTreeProvider
     this._onDidChangeTreeData.fire(undefined);
 
     try {
-      this.tickets = await fetchAllTickets(this._baseUrl, this._workspace);
+      const [tickets, edges] = await Promise.all([
+        fetchAllTickets(this._baseUrl, this._workspace),
+        fetchEdges(this._baseUrl, this._workspace, 'depends_on').catch(() => [] as EdgeRecord[]),
+      ]);
+      this.tickets = tickets;
+      this._buildDependencyMaps(edges);
       this.state = 'idle';
       this.errorMessage = '';
     } catch (err) {
       this.errorMessage = err instanceof Error ? err.message : String(err);
       this.state = 'error';
       this.tickets = [];
+      this._ticketMap.clear();
+      this._depsOf.clear();
+      this._hasParent.clear();
     }
 
     this._onDidChangeTreeData.fire(undefined);
+  }
+
+  /** Build lookup maps from the fetched edges. */
+  private _buildDependencyMaps(edges: EdgeRecord[]): void {
+    this._ticketMap.clear();
+    this._depsOf.clear();
+    this._hasParent.clear();
+
+    for (const t of this.tickets) {
+      this._ticketMap.set(t.id, t);
+    }
+
+    for (const edge of edges) {
+      // edge.from depends_on edge.to → from is parent, to is child in the tree
+      if (!this._ticketMap.has(edge.from) || !this._ticketMap.has(edge.to)) {
+        continue; // skip edges referencing unknown tickets
+      }
+      let deps = this._depsOf.get(edge.from);
+      if (!deps) { deps = []; this._depsOf.set(edge.from, deps); }
+      deps.push(edge.to);
+      this._hasParent.add(edge.to);
+    }
   }
 
   private scheduleAutoRefresh(): void {
