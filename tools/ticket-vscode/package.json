@@ -83,6 +83,12 @@
         "category": "Ticket Viewer"
       },
       {
+        "command": "ticket-viewer.previewDescription",
+        "title": "Preview Description",
+        "icon": "$(open-preview)",
+        "category": "Ticket Viewer"
+      },
+      {
         "command": "ticket-viewer.closeTicket",
         "title": "Close (fast-forward to done)",
         "icon": "$(pass-filled)",

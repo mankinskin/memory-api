@@ -283,6 +283,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand(
       'ticket-viewer.openTicket',
       (item: TicketItem) => {
+        // Prefer showing description.md as a scrollable markdown preview.
+        const ticketsDir = resolveTicketsDir(workspace);
+        if (ticketsDir) {
+          const descPath = path.join(ticketsDir, item.ticket.id, 'description.md');
+          if (fs.existsSync(descPath)) {
+            void vscode.commands.executeCommand('markdown.showPreviewToSide', vscode.Uri.file(descPath));
+            return;
+          }
+        }
+        // Fallback: open browser viewer.
         const ticketUrl = `${config.serverUrl}/#/ws/${encodeURIComponent(workspace)}/ticket/${encodeURIComponent(item.ticket.id)}`;
         openTicketViewer(ticketUrl);
       },
@@ -386,6 +396,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         const descPath = path.join(ticketsDir, item.ticket.id, 'description.md');
         void vscode.commands.executeCommand('vscode.open', vscode.Uri.file(descPath));
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'ticket-viewer.previewDescription',
+      (ticketId: string) => {
+        const ticketsDir = resolveTicketsDir(workspace);
+        if (!ticketsDir) {
+          void vscode.window.showWarningMessage('Ticket folder not found on disk.');
+          return;
+        }
+        const descPath = path.join(ticketsDir, ticketId, 'description.md');
+        if (!fs.existsSync(descPath)) {
+          void vscode.window.showInformationMessage('No description.md found for this ticket.');
+          return;
+        }
+        void vscode.commands.executeCommand('markdown.showPreviewToSide', vscode.Uri.file(descPath));
       },
     ),
   );
