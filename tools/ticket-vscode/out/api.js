@@ -5,6 +5,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.fetchWorkspaces = fetchWorkspaces;
 exports.fetchTickets = fetchTickets;
 exports.fetchAllTickets = fetchAllTickets;
+exports.fetchTicketDescription = fetchTicketDescription;
 async function apiFetch(url) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -41,5 +42,10 @@ async function fetchAllTickets(baseUrl, workspace) {
         cursor = page.next_cursor ?? undefined;
     } while (cursor);
     return all;
+}
+async function fetchTicketDescription(baseUrl, workspace, ticketId) {
+    const params = new URLSearchParams({ workspace });
+    const data = await apiFetch(`${baseUrl}/api/tickets/${encodeURIComponent(ticketId)}/description?${params}`);
+    return data.description;
 }
 //# sourceMappingURL=api.js.map

@@ -116,6 +116,7 @@ class TicketTreeProvider {
         this.tickets = [];
         this.state = 'idle';
         this.errorMessage = '';
+        this._descriptionCache = new Map();
         this._baseUrl = baseUrl;
         this._workspace = workspace;
         this._autoRefreshSec = autoRefreshSec;
@@ -128,6 +129,7 @@ class TicketTreeProvider {
         return this.tickets;
     }
     refresh() {
+        this._descriptionCache.clear();
         void this.load();
     }
     /** Update connection settings and reload. */
@@ -135,6 +137,7 @@ class TicketTreeProvider {
         this._baseUrl = baseUrl;
         this._workspace = workspace;
         this._autoRefreshSec = autoRefreshSec;
+        this._descriptionCache.clear();
         this.scheduleAutoRefresh();
         void this.load();
     }
@@ -168,6 +171,41 @@ class TicketTreeProvider {
             return [new InfoItem('No tickets found', 'info')];
         }
         return this.buildStateGroups();
+    }
+    // ── Lazy tooltip resolution ────────────────────────────────────────────────
+    async resolveTreeItem(item, _element, token) {
+        if (!(item instanceof TicketItem)) {
+            return item;
+        }
+        const id = item.ticket.id;
+        const cached = this._descriptionCache.get(id);
+        if (cached !== undefined) {
+            if (cached !== null) {
+                this._setDescriptionTooltip(item, cached);
+            }
+            return item;
+        }
+        try {
+            const desc = await (0, api_1.fetchTicketDescription)(this._baseUrl, this._workspace, id);
+            if (token.isCancellationRequested) {
+                return item;
+            }
+            this._descriptionCache.set(id, desc);
+            if (desc !== null) {
+                this._setDescriptionTooltip(item, desc);
+            }
+        }
+        catch {
+            this._descriptionCache.set(id, null);
+        }
+        return item;
+    }
+    _setDescriptionTooltip(item, description) {
+        const label = item.ticket.title ?? `(${item.ticket.id.slice(0, 8)})`;
+        const meta = `**${label}**\n\nID: \`${item.ticket.id}\`\nState: ${item.ticket.state ?? '—'}\nType: ${item.ticket.type}`;
+        const md = new vscode.MarkdownString(`${meta}\n\n---\n\n${description}`, true);
+        md.isTrusted = false;
+        item.tooltip = md;
     }
     // ── Private ────────────────────────────────────────────────────────────────
     buildStateGroups() {

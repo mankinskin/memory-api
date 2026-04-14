@@ -36,6 +36,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
+const fs = __importStar(require("node:fs"));
+const path = __importStar(require("node:path"));
 const ticketProvider_1 = require("./ticketProvider");
 const api_1 = require("./api");
 const browserBridge_1 = require("./browserBridge");
@@ -43,28 +45,85 @@ function readConfig() {
     const cfg = vscode.workspace.getConfiguration('ticketViewer');
     return {
         serverUrl: cfg.get('serverUrl', 'http://localhost:3002'),
-        workspace: cfg.get('workspace', 'default'),
+        workspace: cfg.get('workspace', ''),
         autoRefreshSeconds: cfg.get('autoRefreshSeconds', 30),
+        autoStartServer: cfg.get('autoStartServer', true),
         bridgePort: cfg.get('bridgePort', 0),
         cdpPort: cfg.get('cdpPort', 0),
         autoConnectCdp: cfg.get('autoConnectCdp', true),
     };
 }
-/** Resolve the workspace name: use config value if set, otherwise first available. */
-async function resolveWorkspace(serverUrl, configured) {
-    if (configured.trim() !== '') {
-        return configured.trim();
-    }
-    try {
-        const workspaces = await (0, api_1.fetchWorkspaces)(serverUrl);
-        return workspaces[0]?.name ?? 'default';
-    }
-    catch {
-        return 'default';
-    }
+function detectTicketWorkspaces() {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    return folders.flatMap(folder => {
+        const ticketDir = path.join(folder.uri.fsPath, '.ticket');
+        try {
+            if (fs.statSync(ticketDir).isDirectory()) {
+                return [{ folderName: folder.name, ticketPath: ticketDir, folder }];
+            }
+        }
+        catch { /* directory not found */ }
+        return [];
+    });
 }
-function openTicketViewer(serverUrl) {
-    void vscode.commands.executeCommand('simpleBrowser.show', serverUrl);
+/** Resolve the active workspace name and a display label for the status bar. */
+async function resolveActiveWorkspace(serverUrl, configured, context) {
+    // Explicit user config always wins.
+    if (configured.trim() !== '') {
+        return { workspace: configured.trim(), displayName: configured.trim() };
+    }
+    // Scan open VS Code folders for .ticket/ directories.
+    const detected = detectTicketWorkspaces();
+    // Fetch workspace names the server currently knows.
+    let serverWorkspaces = [];
+    try {
+        const list = await (0, api_1.fetchWorkspaces)(serverUrl);
+        serverWorkspaces = list.map(w => w.name);
+    }
+    catch { /* server may not be running yet */ }
+    if (detected.length === 1) {
+        const { folderName } = detected[0];
+        const wsName = serverWorkspaces.includes(folderName)
+            ? folderName
+            : (serverWorkspaces[0] ?? 'default');
+        return { workspace: wsName, displayName: folderName };
+    }
+    if (detected.length > 1) {
+        // Restore a previously chosen folder for this window.
+        const stored = context.workspaceState.get('activeTicketFolder');
+        if (stored) {
+            const match = detected.find(d => d.folderName === stored);
+            if (match) {
+                const wsName = serverWorkspaces.includes(match.folderName)
+                    ? match.folderName
+                    : (serverWorkspaces[0] ?? 'default');
+                return { workspace: wsName, displayName: match.folderName };
+            }
+        }
+        // Multiple candidates — ask the user.
+        const items = detected.map(d => ({
+            label: d.folderName,
+            description: d.ticketPath,
+            folderName: d.folderName,
+        }));
+        const pick = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Multiple .ticket workspaces found — select one',
+            title: 'Active Ticket Workspace',
+        });
+        if (pick) {
+            await context.workspaceState.update('activeTicketFolder', pick.folderName);
+            const wsName = serverWorkspaces.includes(pick.folderName)
+                ? pick.folderName
+                : (serverWorkspaces[0] ?? 'default');
+            return { workspace: wsName, displayName: pick.folderName };
+        }
+    }
+    // Fallback: first workspace from server.
+    const ws = serverWorkspaces[0] ?? 'default';
+    return { workspace: ws, displayName: ws };
+}
+function openTicketViewer(url) {
+    void vscode.commands.executeCommand('simpleBrowser.show', url);
 }
 async function startServerTask() {
     // Invoke the ticket-viewer: start task defined in .vscode/tasks.json.
@@ -77,10 +136,18 @@ async function startServerTask() {
 }
 async function activate(context) {
     let config = readConfig();
-    const workspace = await resolveWorkspace(config.serverUrl, config.workspace);
-    // ── Tree data provider ────────────────────────────────────────────────────
+    let { workspace, displayName } = await resolveActiveWorkspace(config.serverUrl, config.workspace, context);
+    // ── Auto-start server ────────────────────────────────────────────
+    if (config.autoStartServer) {
+        void startServerTask();
+    }
+    // ── Tree data provider ──────────────────────────────────────────
     const provider = new ticketProvider_1.TicketTreeProvider(config.serverUrl, workspace, config.autoRefreshSeconds);
     context.subscriptions.push(provider);
+    // If we auto-started the server give it a moment then retry.
+    if (config.autoStartServer) {
+        setTimeout(() => provider.refresh(), 3000);
+    }
     const treeView = vscode.window.createTreeView('ticket-viewer.tickets', {
         treeDataProvider: provider,
         showCollapseAll: true,
@@ -96,8 +163,9 @@ async function activate(context) {
         const tickets = provider.allTickets;
         const openCount = tickets.filter(t => t.state === 'open').length;
         const inProgressCount = tickets.filter(t => t.state === 'in-progress').length;
+        const prefix = `$(issues) ${displayName}`;
         if (tickets.length === 0) {
-            statusBarItem.text = '$(issues) Tickets';
+            statusBarItem.text = prefix;
         }
         else {
             const parts = [];
@@ -108,8 +176,8 @@ async function activate(context) {
                 parts.push(`${inProgressCount} in-progress`);
             }
             statusBarItem.text = parts.length > 0
-                ? `$(issues) ${parts.join(', ')}`
-                : `$(issues) ${tickets.length} tickets`;
+                ? `${prefix}: ${parts.join(', ')}`
+                : `${prefix} (${tickets.length})`;
         }
     }
     // Update status bar whenever the tree data changes.
@@ -127,16 +195,38 @@ async function activate(context) {
         setTimeout(() => provider.refresh(), 3000);
     }));
     context.subscriptions.push(vscode.commands.registerCommand('ticket-viewer.openTicket', (item) => {
-        // Open the viewer and copy the ticket ID so the user can search for it.
-        openTicketViewer(config.serverUrl);
-        void vscode.env.clipboard.writeText(item.ticket.id).then(() => {
-            void vscode.window.showInformationMessage(`Ticket ID copied to clipboard: ${item.ticket.id.slice(0, 8)}…`);
-        });
+        const ticketUrl = `${config.serverUrl}/#/ws/${encodeURIComponent(workspace)}/ticket/${encodeURIComponent(item.ticket.id)}`;
+        openTicketViewer(ticketUrl);
     }));
     context.subscriptions.push(vscode.commands.registerCommand('ticket-viewer.copyId', (item) => {
         void vscode.env.clipboard.writeText(item.ticket.id).then(() => {
             void vscode.window.showInformationMessage(`Copied: ${item.ticket.id}`);
         });
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('ticket-viewer.selectWorkspace', async () => {
+        const detected = detectTicketWorkspaces();
+        if (detected.length === 0) {
+            void vscode.window.showInformationMessage('No .ticket workspaces found in the currently open folders.');
+            return;
+        }
+        const items = detected.map(d => ({
+            label: d.folderName,
+            description: d.ticketPath,
+            folderName: d.folderName,
+        }));
+        const pick = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Select active ticket workspace',
+            title: 'Active Ticket Workspace',
+        });
+        if (!pick) {
+            return;
+        }
+        await context.workspaceState.update('activeTicketFolder', pick.folderName);
+        const resolved = await resolveActiveWorkspace(config.serverUrl, config.workspace, context);
+        workspace = resolved.workspace;
+        displayName = resolved.displayName;
+        provider.update(config.serverUrl, workspace, config.autoRefreshSeconds);
+        updateStatusBar();
     }));
     // ── Browser Bridge ──────────────────────────────────────────────────────────
     const bridge = new browserBridge_1.BrowserBridge({
@@ -169,15 +259,26 @@ async function activate(context) {
         const s = bridge.state;
         void vscode.window.showInformationMessage(`Bridge port: ${s.controlPort} | CDP: ${s.cdpConnected ? 'connected' : 'disconnected'} | URL: ${s.currentUrl ?? 'none'}`);
     }));
-    // ── React to config changes ───────────────────────────────────────────────
+    // ── React to VS Code folder changes ───────────────────────────────
+    context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+        const resolved = await resolveActiveWorkspace(config.serverUrl, config.workspace, context);
+        workspace = resolved.workspace;
+        displayName = resolved.displayName;
+        provider.update(config.serverUrl, workspace, config.autoRefreshSeconds);
+        updateStatusBar();
+    }));
+    // ── React to config changes ───────────────────────────────────────────
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(async (e) => {
         if (!e.affectsConfiguration('ticketViewer')) {
             return;
         }
         config = readConfig();
-        const ws = await resolveWorkspace(config.serverUrl, config.workspace);
-        provider.update(config.serverUrl, ws, config.autoRefreshSeconds);
+        const resolved = await resolveActiveWorkspace(config.serverUrl, config.workspace, context);
+        workspace = resolved.workspace;
+        displayName = resolved.displayName;
+        provider.update(config.serverUrl, workspace, config.autoRefreshSeconds);
         statusBarItem.tooltip = `Open Ticket Viewer (${config.serverUrl})`;
+        updateStatusBar();
     }));
 }
 function deactivate() {
