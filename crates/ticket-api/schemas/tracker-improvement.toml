@@ -14,11 +14,9 @@ type_id = "tracker-improvement"
 
 states = [
     "new",
-    "in-refinement",
     "ready",
     "in-implementation",
     "in-review",
-    "in-validation",
     "done",
     "cancelled",
 ]
@@ -31,33 +29,21 @@ required_states = ["in-review"]
 
 [[transitions]]
 from = "new"
-to = "in-refinement"
+to = "ready"
 
 [[transitions]]
 from = "new"
 to = "cancelled"
 
 [[transitions]]
-from = "in-refinement"
-to = "ready"
+from = "ready"
+to = "in-implementation"
 
 [[transitions]]
-from = "in-refinement"
+from = "ready"
 to = "new"
 
 [[transitions]]
-from = "in-refinement"
-to = "cancelled"
-
-[[transitions]]
-from = "ready"
-to = "in-implementation"
-
-[[transitions]]
-from = "ready"
-to = "in-refinement"
-
-[[transitions]]
 from = "ready"
 to = "cancelled"
 
@@ -71,26 +57,14 @@ to = "cancelled"
 
 [[transitions]]
 from = "in-review"
-to = "in-validation"
-
-[[transitions]]
-from = "in-review"
-to = "in-implementation"
-
-[[transitions]]
-from = "in-review"
-to = "cancelled"
-
-[[transitions]]
-from = "in-validation"
 to = "done"
 
 [[transitions]]
-from = "in-validation"
-to = "in-review"
+from = "in-review"
+to = "in-implementation"
 
 [[transitions]]
-from = "in-validation"
+from = "in-review"
 to = "cancelled"
 
 # ── Field definitions ──────────────────────────────────────────────────────────

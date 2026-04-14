@@ -232,7 +232,7 @@ fn update_with_board_check_in() {
         "update",
         &ticket_id,
         "--to-state",
-        "in-refinement",
+        "ready",
         "--board-check-in",
         "--board-agent",
         "agent-epsilon",
@@ -241,7 +241,7 @@ fn update_with_board_check_in() {
     ]);
 
     assert_eq!(result["status"], "ok");
-    assert_eq!(result["state"], "in-refinement");
+    assert_eq!(result["state"], "ready");
     assert!(
         !result["board_entry"].is_null(),
         "board_entry should be present in update response"

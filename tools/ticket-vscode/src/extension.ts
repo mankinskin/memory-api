@@ -11,8 +11,8 @@ import { BrowserBridge } from './browserBridge';
 
 // All known states in progression order.
 const TICKET_STATES = [
-  'new', 'in-refinement', 'ready', 'in-implementation',
-  'in-review', 'in-validation', 'done', 'cancelled',
+  'new', 'ready', 'in-implementation',
+  'in-review', 'done', 'cancelled',
 ];
 
 // Known ticket types (offered as QuickPick defaults).
@@ -273,16 +273,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   function updateStatusBar(): void {
     const tickets = provider.allTickets;
-    const openCount = tickets.filter(t => t.state === 'open').length;
-    const inProgressCount = tickets.filter(t => t.state === 'in-progress').length;
+    const newCount = tickets.filter(t => t.state === 'new').length;
+    const inImplCount = tickets.filter(t => t.state === 'in-implementation').length;
     const prefix = `$(issues) ${displayName}`;
 
     if (tickets.length === 0) {
       statusBarItem.text = prefix;
     } else {
       const parts: string[] = [];
-      if (openCount > 0) { parts.push(`${openCount} open`); }
-      if (inProgressCount > 0) { parts.push(`${inProgressCount} in-progress`); }
+      if (newCount > 0) { parts.push(`${newCount} new`); }
+      if (inImplCount > 0) { parts.push(`${inImplCount} in-impl`); }
       statusBarItem.text = parts.length > 0
         ? `${prefix}: ${parts.join(', ')}`
         : `${prefix} (${tickets.length})`;

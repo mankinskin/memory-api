@@ -41,7 +41,7 @@ fn history_accumulates_revisions_on_update() {
     let created = s.ticket_json(&["create", "--title", "Feature A", "--type", "tracker-improvement"]);
     let id = created["id"].as_str().expect("id");
 
-    s.ticket_json(&["update", id, "--to-state", "in-refinement"]);
+    s.ticket_json(&["update", id, "--to-state", "ready"]);
     s.ticket_json(&["update", id, "--field", "title=Feature A v2"]);
 
     let hist = s.ticket_json(&["history", id]);
@@ -61,7 +61,7 @@ fn history_limit_caps_entries() {
     let created = s.ticket_json(&["create", "--title", "Ticket X", "--type", "tracker-improvement"]);
     let id = created["id"].as_str().expect("id");
 
-    s.ticket_json(&["update", id, "--to-state", "in-refinement"]);
+    s.ticket_json(&["update", id, "--to-state", "ready"]);
     s.ticket_json(&["update", id, "--field", "priority=high"]);
 
     let hist = s.ticket_json(&["history", id, "--limit", "2"]);
@@ -84,17 +84,17 @@ fn diff_detects_state_change() {
     let created = s.ticket_json(&["create", "--title", "Diffable", "--type", "tracker-improvement"]);
     let id = created["id"].as_str().expect("id");
 
-    s.ticket_json(&["update", id, "--to-state", "in-refinement"]);
+    s.ticket_json(&["update", id, "--to-state", "ready"]);
 
     let diff = s.ticket_json(&["diff", id, "--from", "1", "--to", "2"]);
     assert_eq!(diff["status"], "ok");
     assert_eq!(diff["from_rev"], 1);
     assert_eq!(diff["to_rev"], 2);
 
-    // state changed: new → in-refinement
+    // state changed: new → ready
     let changed = &diff["changed"];
     assert_eq!(changed["state"]["from"], "new");
-    assert_eq!(changed["state"]["to"], "in-refinement");
+    assert_eq!(changed["state"]["to"], "ready");
 }
 
 /// `--to latest` resolves to the most recent revision.
@@ -145,8 +145,8 @@ fn revert_creates_new_revision_with_old_state() {
     let created = s.ticket_json(&["create", "--title", "Revertable", "--type", "tracker-improvement"]);
     let id = created["id"].as_str().expect("id");
 
-    // Advance state to in-refinement (rev 2).
-    s.ticket_json(&["update", id, "--to-state", "in-refinement"]);
+    // Advance state to ready (rev 2).
+    s.ticket_json(&["update", id, "--to-state", "ready"]);
 
     // Revert to rev 1 (state: new). Bypasses state machine — always succeeds.
     let rev_result = s.ticket_json(&["revert", id, "--to", "1"]);

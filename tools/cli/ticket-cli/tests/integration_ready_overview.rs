@@ -10,11 +10,9 @@ fn ready_overview_returns_json_with_ready_tickets() {
     let done_dependency = create_ticket(&s, "Done dependency");
     let ready = create_ticket(&s, "Ready ticket");
 
-    s.ticket_json(&["update", &done_dependency, "--to-state", "in-refinement"]);
     s.ticket_json(&["update", &done_dependency, "--to-state", "ready"]);
     s.ticket_json(&["update", &done_dependency, "--to-state", "in-implementation"]);
     s.ticket_json(&["update", &done_dependency, "--to-state", "in-review"]);
-    s.ticket_json(&["update", &done_dependency, "--to-state", "in-validation"]);
     s.ticket_json(&["update", &done_dependency, "--to-state", "done"]);
 
     s.ticket_json(&[

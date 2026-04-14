@@ -17,15 +17,22 @@ echo "==> Installing $VSIX..."
 # Snapshot existing Code.exe PIDs before installation so we can kill only
 # the window that `code --install-extension` opens, not all VS Code instances.
 get_code_pids() {
+  # Disable pipefail locally so grep exiting 1 (no match) doesn't abort.
+  set +o pipefail
   tasklist.exe /FI "IMAGENAME eq Code.exe" /FO CSV /NH 2>/dev/null \
     | grep -i "code.exe" \
     | awk -F',' '{print $2}' \
     | tr -d '"' \
     | sort -n
+  set -o pipefail
+  return 0
 }
 
 BEFORE_PIDS="$(get_code_pids)"
-code --install-extension "$VSIX" --force
+# Allow code --install-extension to return non-zero (e.g. devtools port errors)
+# without aborting the script; the sync step below is what guarantees files
+# are up-to-date regardless of whether extraction actually happened.
+code --install-extension "$VSIX" --force || true
 # Give Code.exe a moment to finish spawning its window process.
 sleep 2
 AFTER_PIDS="$(get_code_pids)"
@@ -40,15 +47,19 @@ VERSION="$(node -p "require('./package.json').version")"
 INSTALL_DIR="${USERPROFILE}/.vscode/extensions/${PUBLISHER}.${NAME}-${VERSION}"
 INSTALL_DIR_UNIX="$(cygpath -u "${INSTALL_DIR}" 2>/dev/null || echo "${INSTALL_DIR}")"
 
-# Directly sync the compiled output so VS Code always gets the latest build,
-# even when the version hasn't changed (code --install-extension skips
-# extraction when the folder already exists with the same version).
+# Always sync compiled output to the installed directory.
+# `code --install-extension --force` skips extraction when the extension folder
+# already exists at the same version, so a direct copy is the only reliable way
+# to guarantee the running extension matches what was just compiled.
 if [[ -d "$INSTALL_DIR_UNIX" ]]; then
   echo "==> Syncing out/, resources/ and package.json to ${INSTALL_DIR_UNIX} ..."
   cp -r out/. "${INSTALL_DIR_UNIX}/out/"
   cp -r resources/. "${INSTALL_DIR_UNIX}/resources/"
   cp package.json "${INSTALL_DIR_UNIX}/package.json"
   echo "==> Sync complete."
+else
+  echo "==> WARNING: install directory not found at ${INSTALL_DIR_UNIX}" >&2
+  echo "==>          Extension may not have been installed correctly." >&2
 fi
 
 if [[ -n "$NEW_PIDS" ]]; then

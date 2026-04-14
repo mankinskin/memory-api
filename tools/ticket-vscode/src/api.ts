@@ -232,3 +232,28 @@ export async function addEdge(
     from_id: fromId, to_id: toId, kind, reason,
   });
 }
+
+// ── Schema ────────────────────────────────────────────────────────────────────
+
+export interface TypeSchema {
+  type_id: string;
+  states: string[];
+  transitions: Array<{ from: string; to: string }>;
+  required_states: string[];
+  terminal_states: string[];
+}
+
+interface SchemaListResponse {
+  request_id: string;
+  workspace: string;
+  types: TypeSchema[];
+}
+
+export async function fetchSchemas(
+  baseUrl: string,
+  workspace: string,
+): Promise<TypeSchema[]> {
+  const params = new URLSearchParams({ workspace });
+  const data = await apiFetch<SchemaListResponse>(`${baseUrl}/api/schema?${params}`);
+  return data.types;
+}

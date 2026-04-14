@@ -1,33 +1,14 @@
 import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { fetchAllTickets, fetchEdges, fetchTicketDescription, type TicketSummary, type EdgeRecord } from './api';
+import { fetchAllTickets, fetchEdges, fetchSchemas, fetchTicketDescription, type TicketSummary, type EdgeRecord } from './api';
 
-// Canonical ordering for ticket states in the tree.
-const STATE_ORDER: ReadonlyArray<string> = [
-  'open',
-  'in-progress',
-  'blocked',
-  'review',
-  'validating',
-  'validated',
-  'release-candidate',
-  'released',
-  'monitoring',
-  'done',
-  'cancelled',
-];
-
+/** Best-effort icon map for well-known states; unknown states get 'tag'. */
 const STATE_ICONS: Record<string, string> = {
-  'open': 'circle-outline',
-  'in-progress': 'loading~spin',
-  'blocked': 'error',
-  'review': 'eye',
-  'validating': 'beaker',
-  'validated': 'check',
-  'release-candidate': 'rocket',
-  'released': 'package',
-  'monitoring': 'pulse',
+  'new': 'circle-outline',
+  'ready': 'circle-large-outline',
+  'in-implementation': 'loading~spin',
+  'in-review': 'eye',
   'done': 'pass-filled',
   'cancelled': 'circle-slash',
 };
@@ -137,6 +118,8 @@ export class TicketTreeProvider
   private errorMessage = '';
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
   private _descriptionCache = new Map<string, string | null>();
+  /** Ordered state names from the schema endpoint; undefined until first fetch. */
+  private _schemaStates: string[] | undefined;
 
   /** Map from ticket ID to TicketSummary for quick lookup. */
   private _ticketMap = new Map<string, TicketSummary>();
@@ -285,14 +268,18 @@ export class TicketTreeProvider
     return new TicketItem(ticket, hasChildren, treePath);
   }
 
-  /** Return TicketItems for the dependencies of the given parent ticket. */
+  /** Return TicketItems for the dependencies of the given parent ticket, filtered to same state. */
   private _getDependencyChildren(parent: TicketItem): TicketItem[] {
     const depIds = this._depsOf.get(parent.ticket.id) ?? [];
+    const parentState = parent.ticket.state;
     const children: TicketItem[] = [];
     for (const depId of depIds) {
       const ticket = this._ticketMap.get(depId);
       if (!ticket) { continue; }
-      children.push(this._makeTicketItem(ticket, parent.id ?? parent.ticket.id));
+      // Only show children that share the parent's state
+      if (ticket.state === parentState) {
+        children.push(this._makeTicketItem(ticket, parent.id ?? parent.ticket.id));
+      }
     }
     return children;
   }
@@ -328,8 +315,8 @@ export class TicketTreeProvider
   }
 
   private buildStateGroups(): StateGroupItem[] {
+    // 1. Group tickets by state
     const grouped = new Map<string, TicketSummary[]>();
-
     for (const ticket of this.tickets) {
       const s = ticket.state ?? 'unknown';
       let bucket = grouped.get(s);
@@ -337,49 +324,36 @@ export class TicketTreeProvider
       bucket.push(ticket);
     }
 
-    const result: StateGroupItem[] = [];
-
+    // 2. For each state, find root tickets (no same-state parent)
     const makeGroup = (s: string, bucket: TicketSummary[]): StateGroupItem => {
-      // Extend the bucket with all ancestors of tickets in this state,
-      // regardless of the ancestors' own state.
-      const extendedIds = new Set(bucket.map(t => t.id));
-      for (const t of bucket) {
-        for (const ancestorId of this._getAncestors(t.id)) {
-          extendedIds.add(ancestorId);
-        }
-      }
-
-      // Root tickets are those in the extended set whose parents are not also
-      // in the extended set (i.e. no ancestor is already shown above them).
+      const stateIds = new Set(bucket.map(t => t.id));
       const rootTickets: TicketSummary[] = [];
-      for (const id of extendedIds) {
-        const ticket = this._ticketMap.get(id);
-        if (!ticket) { continue; }
-        const parents = this._parentOf.get(id) ?? [];
-        if (!parents.some(pid => extendedIds.has(pid))) {
+      for (const ticket of bucket) {
+        const parents = this._parentOf.get(ticket.id) ?? [];
+        // Root if no parent is also in this same state
+        const hasSameStateParent = parents.some(pid => stateIds.has(pid));
+        if (!hasSameStateParent) {
           rootTickets.push(ticket);
         }
       }
-
       return new StateGroupItem(s, bucket.length, rootTickets);
     };
 
-    // Canonical order first.
-    for (const s of STATE_ORDER) {
+    // 3. Order by schema states, then unknown alphabetically
+    const result: StateGroupItem[] = [];
+    const schemaStates = this._schemaStates ?? [];
+    for (const s of schemaStates) {
       const bucket = grouped.get(s);
       if (bucket && bucket.length > 0) {
         result.push(makeGroup(s, bucket));
         grouped.delete(s);
       }
     }
-
-    // Then any remaining unknown states alphabetically.
     for (const [s, bucket] of [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b))) {
       if (bucket.length > 0) {
         result.push(makeGroup(s, bucket));
       }
     }
-
     return result;
   }
 
@@ -388,10 +362,12 @@ export class TicketTreeProvider
     this._onDidChangeTreeData.fire(undefined);
 
     try {
-      const [tickets, edges] = await Promise.all([
+      const [tickets, edges, schemas] = await Promise.all([
         fetchAllTickets(this._baseUrl, this._workspace),
         fetchEdges(this._baseUrl, this._workspace, 'depends_on').catch(() => [] as EdgeRecord[]),
+        fetchSchemas(this._baseUrl, this._workspace).catch(() => []),
       ]);
+      this._schemaStates = schemas.flatMap(s => s.states);
       this.tickets = tickets;
       this._buildDependencyMaps(edges);
       this.state = 'idle';
@@ -433,25 +409,6 @@ export class TicketTreeProvider
       if (!parents) { parents = []; this._parentOf.set(edge.to, parents); }
       parents.push(edge.from);
     }
-  }
-
-  /**
-   * Returns the set of all ancestor ticket IDs (direct and transitive parents)
-   * for the given ticket.
-   */
-  private _getAncestors(ticketId: string): Set<string> {
-    const ancestors = new Set<string>();
-    const queue = [ticketId];
-    while (queue.length > 0) {
-      const id = queue.pop()!;
-      for (const parentId of this._parentOf.get(id) ?? []) {
-        if (!ancestors.has(parentId)) {
-          ancestors.add(parentId);
-          queue.push(parentId);
-        }
-      }
-    }
-    return ancestors;
   }
 
   private scheduleAutoRefresh(): void {

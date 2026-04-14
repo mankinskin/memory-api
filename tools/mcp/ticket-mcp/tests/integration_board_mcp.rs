@@ -415,9 +415,6 @@ async fn next_tickets_excludes_board_active_and_surfaces_wip_limit() {
         for id_str in [&t_active, &t_free] {
             let uid: uuid::Uuid = id_str.parse().expect("uuid");
             store
-                .update(&uid, Default::default(), None, Some("in-refinement"), None, None)
-                .expect("in-refinement");
-            store
                 .update(&uid, Default::default(), None, Some("ready"), None, None)
                 .expect("ready");
         }

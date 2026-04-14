@@ -902,7 +902,7 @@ impl TicketStore {
 
     // ── validation & release protocol ─────────────────────────────────────────
 
-    /// `task_validate_start` — move ticket from `in-review` to `in-validation`.
+    /// `task_validate_start` — begin validation while ticket remains in `in-review`.
     ///
     /// Guards:
     /// - current state must be `in-review`
@@ -946,17 +946,18 @@ impl TicketStore {
         );
         patch.insert("assignment_id".to_string(), Value::String(assignment_id.to_string()));
 
-        self.update(ticket_id, patch, Some("in-review"), Some("in-validation"), None, None)
+        // Stay in in-review — no state transition; validation is part of review.
+        self.update(ticket_id, patch, None, None, None, None)
     }
 
     /// `task_validate_result` — submit validation outcome.
     ///
     /// `result` must be `"passed"` or `"failed"`.
     /// On pass: ticket moves to `done`, `validation_status=passed`.
-    /// On fail: ticket moves back to `in-review`, `validation_status=failed`.
+    /// On fail: ticket stays in `in-review`, `validation_status=failed`.
     ///
     /// Guards:
-    /// - current state must be `in-validation`
+    /// - current state must be `in-review`
     /// - `validator_id` must match recorded validator
     /// - `evidence_refs` must be non-empty
     pub fn validate_result(
@@ -975,11 +976,11 @@ impl TicketStore {
 
         let manifest = self.get(ticket_id)?;
         let current_state = manifest.extra.get("state").and_then(|v| v.as_str()).unwrap_or("");
-        if current_state != "in-validation" {
+        if current_state != "in-review" {
             return Err(ProtocolError::ValidateInvalidState {
                 ticket: *ticket_id,
                 actual: current_state.to_string(),
-                expected: "in-validation".to_string(),
+                expected: "in-review".to_string(),
             }
             .into());
         }
@@ -990,10 +991,11 @@ impl TicketStore {
         }
 
         let passed = result == "passed";
-        let (new_state, status_str) = if passed {
-            ("done", "passed")
+        let (new_state, status_str, from_state) = if passed {
+            (Some("done"), "passed", Some("in-review"))
         } else {
-            ("in-review", "failed")
+            // Stay in in-review on failure — no state transition.
+            (None, "failed", None)
         };
 
         let mut patch = BTreeMap::new();
@@ -1013,12 +1015,12 @@ impl TicketStore {
             );
         }
 
-        let from_state = "in-validation";
-        let _updated = self.update(ticket_id, patch, Some(from_state), Some(new_state), None, None)?;
+        let _updated = self.update(ticket_id, patch, from_state, new_state, None, None)?;
 
+        let final_state = new_state.unwrap_or("in-review");
         Ok(ValidationResultOutcome {
             ticket_id: *ticket_id,
-            state: new_state.to_string(),
+            state: final_state.to_string(),
             validation_status: status_str.to_string(),
             passed,
         })

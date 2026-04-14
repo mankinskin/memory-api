@@ -824,7 +824,7 @@ mod tests {
             HeaderMap::new(),
             Json(UpdateTicketBody {
                 fields: None,
-                state: Some("in-refinement".to_string()),
+                state: Some("ready".to_string()),
                 from_state: None,
                 description: None,
             }),
@@ -834,7 +834,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let bytes = to_bytes(response.into_body(), 1024 * 1024).await.expect("body");
         let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
-        assert_eq!(payload["ticket"]["fields"]["state"], "in-refinement");
+        assert_eq!(payload["ticket"]["fields"]["state"], "ready");
     }
 
     #[tokio::test]

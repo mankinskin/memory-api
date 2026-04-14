@@ -156,11 +156,9 @@ pub(crate) fn cmd_watch(args: WatchArgs, store: &TicketStore) -> Result<Value, C
 
 const DONE_STATES: &[&str] = &["done", "cancelled"];
 const ACTIVE_STATES: &[&str] = &[
-    "in-refinement",
     "ready",
     "in-implementation",
     "in-review",
-    "in-validation",
 ];
 
 pub(crate) fn cmd_status(args: StatusArgs, store: &TicketStore) -> Result<Value, CliRunError> {

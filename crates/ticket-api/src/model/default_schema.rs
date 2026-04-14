@@ -33,11 +33,9 @@ pub fn tracker_improvement_schema() -> TicketTypeSchema {
 
     let states = vec![
         "new",
-        "in-refinement",
         "ready",
         "in-implementation",
         "in-review",
-        "in-validation",
         "done",
         "cancelled",
     ]
@@ -47,27 +45,19 @@ pub fn tracker_improvement_schema() -> TicketTypeSchema {
 
     let transitions = vec![
         // new ->
-        ("new", "in-refinement"),
+        ("new", "ready"),
         ("new", "cancelled"),
-        // in-refinement ->
-        ("in-refinement", "ready"),
-        ("in-refinement", "new"),
-        ("in-refinement", "cancelled"),
         // ready ->
         ("ready", "in-implementation"),
-        ("ready", "in-refinement"),
+        ("ready", "new"),
         ("ready", "cancelled"),
         // in-implementation ->
         ("in-implementation", "in-review"),
         ("in-implementation", "cancelled"),
         // in-review ->
-        ("in-review", "in-validation"),
+        ("in-review", "done"),
         ("in-review", "in-implementation"),
         ("in-review", "cancelled"),
-        // in-validation ->
-        ("in-validation", "done"),
-        ("in-validation", "in-review"),
-        ("in-validation", "cancelled"),
     ]
     .into_iter()
     .map(|(f, t)| Transition { from: f.to_string(), to: t.to_string() })

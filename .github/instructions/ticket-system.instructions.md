@@ -63,10 +63,8 @@ Update ticket state immediately when the work status changes — do not defer to
 
 | Situation | Action |
 |---|---|
-| Starting refinement on a ticket | `update --state in-refinement` |
 | Starting implementation | `update --state in-implementation` |
 | Implementation complete, moving to review | `update --state in-review` |
-| Review passed, validating acceptance criteria | `update --state in-validation` |
 | All acceptance criteria met and validated | `close <id>` |
 | Ticket is no longer relevant | `cancel <id>` with a reason |
 
@@ -124,7 +122,7 @@ under `crates/ticket-api/schemas/<type>.toml`.
 ### Review Gate Before Closing
 
 **Never `close` a ticket directly from `in-implementation`.** Always move
-through `in-review` and `in-validation` first, even for small changes.
+through `in-review` first, even for small changes.
 The schema's `required_states` enforcement prevents skipping `in-review`,
 but you should still follow the full progression diligently.
 
@@ -185,13 +183,7 @@ cargo check --target wasm32-unknown-unknown -p <crate>
 Confirm each acceptance criterion listed in the ticket description is met with
 a passing test or a documented manual verification step.
 
-#### Step 4 — Move to in-validation
-
-```bash
-./target/debug/ticket.exe update <id> --state in-validation
-```
-
-#### Step 5 — Close
+#### Step 3 — Close
 
 Only close after the review checklist is complete and tests pass:
 
@@ -220,7 +212,7 @@ The command returns tickets in **any non-terminal state** whose `depends_on`
 edges all point to `done`/`cancelled` tickets. Results are sorted by:
 
 1. **State progress** — tickets closest to `done` appear first (e.g.
-   `in-validation` > `in-review` > `in-implementation` > `ready` > `new`).
+   `in-review` > `in-implementation` > `ready` > `new`).
    Progress is determined by the state's index in the schema's `states` list.
 2. **Priority** — `critical > high > medium > low > none`.
 3. **Creation date** — oldest first (FIFO tiebreaker).

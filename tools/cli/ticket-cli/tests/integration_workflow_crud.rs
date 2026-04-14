@@ -71,14 +71,14 @@ fn list_filters_by_state() {
     let s = Sandbox::new();
 
     create_ticket(&s, "Stays new");
-    let id2 = create_ticket(&s, "Goes in-refinement");
-    s.ticket_json(&["update", &id2, "--to-state", "in-refinement"]);
+    let id2 = create_ticket(&s, "Goes ready");
+    s.ticket_json(&["update", &id2, "--to-state", "ready"]);
 
     let new_tickets = s.ticket_json(&["list", "--state", "new"]);
     assert_eq!(new_tickets["count"].as_u64().unwrap(), 1);
     assert_eq!(new_tickets["items"][0]["title"], "Stays new");
 
-    let in_ref = s.ticket_json(&["list", "--state", "in-refinement"]);
+    let in_ref = s.ticket_json(&["list", "--state", "ready"]);
     assert_eq!(in_ref["count"].as_u64().unwrap(), 1);
     assert_eq!(in_ref["items"][0]["id"], id2.as_str());
 }
@@ -124,13 +124,13 @@ fn update_fields_and_state_transition() {
         "--field",
         "title=Updated title",
         "--to-state",
-        "in-refinement",
+        "ready",
     ]);
     assert_eq!(updated["status"], "ok");
 
     let got = s.ticket_json(&["get", &id]);
     assert_eq!(got["ticket"]["fields"]["title"], "Updated title");
-    assert_eq!(got["ticket"]["fields"]["state"], "in-refinement");
+    assert_eq!(got["ticket"]["fields"]["state"], "ready");
 }
 
 #[test]

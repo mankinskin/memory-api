@@ -1707,11 +1707,9 @@ mod tests {
 
         // Advance through all required states to reach "done".
         let states = [
-            "in-refinement",
             "ready",
             "in-implementation",
             "in-review",
-            "in-validation",
             "done",
         ];
         for state in &states {
@@ -1779,8 +1777,8 @@ mod tests {
 
         // Advance to in-implementation.
         store
-            .update(&ticket_id, BTreeMap::new(), None, Some("in-refinement"), None, None)
-            .expect("to in-refinement");
+            .update(&ticket_id, BTreeMap::new(), None, Some("ready"), None, None)
+            .expect("to ready");
 
         // Read history so we can revert.
         let history = store.get_history(&ticket_id).expect("history");
@@ -2339,9 +2337,6 @@ mod tests {
 
         // Make both tickets `ready` so they would normally be `next` candidates.
         for tid in [&ticket_in_flight, &ticket_free] {
-            store
-                .update(tid, Default::default(), None, Some("in-refinement"), None, None)
-                .expect("to in-refinement");
             store
                 .update(tid, Default::default(), None, Some("ready"), None, None)
                 .expect("to ready");
