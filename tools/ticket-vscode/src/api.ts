@@ -71,3 +71,22 @@ export async function fetchAllTickets(
   } while (cursor);
   return all;
 }
+
+export interface TicketDescriptionResponse {
+  request_id: string;
+  workspace: string;
+  id: string;
+  description: string | null;
+}
+
+export async function fetchTicketDescription(
+  baseUrl: string,
+  workspace: string,
+  ticketId: string,
+): Promise<string | null> {
+  const params = new URLSearchParams({ workspace });
+  const data = await apiFetch<TicketDescriptionResponse>(
+    `${baseUrl}/api/tickets/${encodeURIComponent(ticketId)}/description?${params}`,
+  );
+  return data.description;
+}

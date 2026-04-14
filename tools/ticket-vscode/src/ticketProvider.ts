@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { fetchAllTickets, type TicketSummary } from './api';
+import { fetchAllTickets, fetchTicketDescription, type TicketSummary } from './api';
 
 // Canonical ordering for ticket states in the tree.
 const STATE_ORDER: ReadonlyArray<string> = [
@@ -98,6 +98,7 @@ export class TicketTreeProvider
   private state: 'idle' | 'loading' | 'error' = 'idle';
   private errorMessage = '';
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
+  private _descriptionCache = new Map<string, string | null>();
 
   private _baseUrl: string;
   private _workspace: string;
@@ -119,6 +120,7 @@ export class TicketTreeProvider
   }
 
   refresh(): void {
+    this._descriptionCache.clear();
     void this.load();
   }
 
@@ -127,6 +129,7 @@ export class TicketTreeProvider
     this._baseUrl = baseUrl;
     this._workspace = workspace;
     this._autoRefreshSec = autoRefreshSec;
+    this._descriptionCache.clear();
     this.scheduleAutoRefresh();
     void this.load();
   }
@@ -171,6 +174,42 @@ export class TicketTreeProvider
     }
 
     return this.buildStateGroups();
+  }
+
+  // ── Lazy tooltip resolution ────────────────────────────────────────────────
+
+  async resolveTreeItem(
+    item: TreeNode,
+    _element: TreeNode,
+    token: vscode.CancellationToken,
+  ): Promise<TreeNode> {
+    if (!(item instanceof TicketItem)) { return item; }
+
+    const id = item.ticket.id;
+    const cached = this._descriptionCache.get(id);
+    if (cached !== undefined) {
+      if (cached !== null) { this._setDescriptionTooltip(item, cached); }
+      return item;
+    }
+
+    try {
+      const desc = await fetchTicketDescription(this._baseUrl, this._workspace, id);
+      if (token.isCancellationRequested) { return item; }
+      this._descriptionCache.set(id, desc);
+      if (desc !== null) { this._setDescriptionTooltip(item, desc); }
+    } catch {
+      this._descriptionCache.set(id, null);
+    }
+
+    return item;
+  }
+
+  private _setDescriptionTooltip(item: TicketItem, description: string): void {
+    const label = item.ticket.title ?? `(${item.ticket.id.slice(0, 8)})`;
+    const meta = `**${label}**\n\nID: \`${item.ticket.id}\`\nState: ${item.ticket.state ?? '—'}\nType: ${item.ticket.type}`;
+    const md = new vscode.MarkdownString(`${meta}\n\n---\n\n${description}`, true);
+    md.isTrusted = false;
+    item.tooltip = md;
   }
 
   // ── Private ────────────────────────────────────────────────────────────────
