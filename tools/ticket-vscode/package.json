@@ -252,6 +252,16 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically connect to CDP on startup. Requires VS Code launched with --remote-debugging-port."
+        },
+        "ticketViewer.serverBinaryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the ticket-viewer binary. Leave empty to auto-detect: the extension checks PATH first, then target/debug/ inside the first .ticket workspace folder."
+        },
+        "ticketViewer.serverWorkingDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Working directory for the ticket-viewer server process. Leave empty to use the first VS Code workspace folder that contains a .ticket directory."
         }
       }
     }

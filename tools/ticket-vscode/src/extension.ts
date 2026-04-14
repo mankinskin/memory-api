@@ -28,6 +28,8 @@ function readConfig() {
     bridgePort: cfg.get<number>('bridgePort', 0),
     cdpPort: cfg.get<number>('cdpPort', 0),
     autoConnectCdp: cfg.get<boolean>('autoConnectCdp', true),
+    serverBinaryPath: cfg.get<string>('serverBinaryPath', ''),
+    serverWorkingDirectory: cfg.get<string>('serverWorkingDirectory', ''),
   };
 }
 
@@ -130,28 +132,54 @@ function resolveTicketsDir(wsName: string): string | undefined {
   return undefined;
 }
 
+/** Resolve the binary and working-directory for the server process. */
+function resolveServerLaunch(config: ReturnType<typeof readConfig>): {
+  cmd: string;
+  args: string[];
+  cwd: string | undefined;
+} {
+  const detected = detectTicketWorkspaces();
+
+  // Working directory: explicit config wins, then first .ticket workspace, then any workspace folder.
+  const cwd = config.serverWorkingDirectory.trim() !== ''
+    ? config.serverWorkingDirectory.trim()
+    : (detected[0]?.folder.uri.fsPath
+        ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
+
+  // Binary resolution:
+  // 1. Explicit config path.
+  if (config.serverBinaryPath.trim() !== '') {
+    return { cmd: config.serverBinaryPath.trim(), args: [], cwd };
+  }
+
+  // 2. ticket-viewer binary found inside the .ticket workspace's sibling target/debug/.
+  //    This is the development-time path when working inside the context-engine repo.
+  const binaryName = process.platform === 'win32' ? 'ticket-viewer.exe' : 'ticket-viewer';
+  if (detected[0]?.folder.uri.fsPath) {
+    const devBinary = path.join(detected[0].folder.uri.fsPath, 'target', 'debug', binaryName);
+    if (fs.existsSync(devBinary)) {
+      return { cmd: devBinary, args: [], cwd };
+    }
+  }
+
+  // 3. ticket-viewer on the system PATH.
+  const onPath = process.platform === 'win32' ? 'ticket-viewer.exe' : 'ticket-viewer';
+  // We cannot check PATH existence cheaply, but `spawn` will throw if not found.
+  // Use it as a fallback before cargo run.
+  return { cmd: onPath, args: [], cwd };
+}
+
 async function startServerTask(
   outputChannel: vscode.OutputChannel,
+  config: ReturnType<typeof readConfig>,
 ): Promise<ChildProcess | undefined> {
-  // Find the workspace folder that contains a .ticket directory.
-  const detected = detectTicketWorkspaces();
-  const workspaceRoot = detected[0]?.folder.uri.fsPath
-    ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-
-  // Prefer the pre-built debug binary; fall back to cargo run.
-  const binaryPath = path.join(
-    workspaceRoot ?? '',
-    'target', 'debug', process.platform === 'win32' ? 'ticket-viewer.exe' : 'ticket-viewer',
-  );
-  const useCargoRun = !fs.existsSync(binaryPath);
-  const [cmd, args] = useCargoRun
-    ? ['cargo', ['run', '-p', 'ticket-viewer']]
-    : [binaryPath, []];
+  const { cmd, args, cwd } = resolveServerLaunch(config);
 
   outputChannel.appendLine(`[ticket-viewer] Starting: ${cmd} ${args.join(' ')}`);
+  outputChannel.appendLine(`[ticket-viewer] Working directory: ${cwd ?? '(inherited)'}`);
 
   const proc = spawn(cmd, args, {
-    cwd: workspaceRoot,
+    cwd,
     detached: false,
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -199,7 +227,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // ── Auto-start server ────────────────────────────────────────────
   if (config.autoStartServer) {
-    _serverProcess = await startServerTask(outputChannel);
+    _serverProcess = await startServerTask(outputChannel, config);
   }
 
   // ── Tree data provider ──────────────────────────────────────────
@@ -274,7 +302,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (_serverProcess && !_serverProcess.killed) {
         _serverProcess.kill();
       }
-      _serverProcess = await startServerTask(outputChannel);
+      _serverProcess = await startServerTask(outputChannel, config);
       void pollUntilReachable(config.serverUrl, 60_000).then(() => provider.refresh());
     }),
   );
