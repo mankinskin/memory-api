@@ -7,7 +7,7 @@ import { fetchAllTickets, fetchEdges, fetchSchemas, fetchTicketDescription, type
 const STATE_ICONS: Record<string, string> = {
   'new': 'circle-outline',
   'ready': 'circle-large-outline',
-  'in-implementation': 'loading~spin',
+  'in-implementation': 'tools',
   'in-review': 'eye',
   'done': 'pass-filled',
   'cancelled': 'circle-slash',
