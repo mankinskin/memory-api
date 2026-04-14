@@ -132,7 +132,7 @@ function resolveTicketsDir(wsName: string): string | undefined {
   return undefined;
 }
 
-/** Resolve the binary and working-directory for the server process. */
+/** Resolve the binary, args, and working-directory for the server process. */
 function resolveServerLaunch(config: ReturnType<typeof readConfig>): {
   cmd: string;
   args: string[];
@@ -146,10 +146,21 @@ function resolveServerLaunch(config: ReturnType<typeof readConfig>): {
     : (detected[0]?.folder.uri.fsPath
         ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
 
+  // Always pass --index-root so the server opens the correct ticket store
+  // regardless of the server's workspace resolution chain (which would otherwise
+  // walk up from cwd, check ~/.ticket-workspaces.toml, or fall back to ~/.ticket-index/).
+  //
+  // Priority:
+  //   1. Detected .ticket/ directory in the open VS Code workspace folder.
+  //   2. The cwd itself (covers the serverWorkingDirectory override case).
+  //      The server's own resolution chain handles the rest from there.
+  const indexRoot = detected[0]?.ticketPath ?? undefined;
+  const indexRootArgs = indexRoot ? ['--index-root', indexRoot] : [];
+
   // Binary resolution:
   // 1. Explicit config path.
   if (config.serverBinaryPath.trim() !== '') {
-    return { cmd: config.serverBinaryPath.trim(), args: [], cwd };
+    return { cmd: config.serverBinaryPath.trim(), args: indexRootArgs, cwd };
   }
 
   // 2. ticket-viewer binary found inside the .ticket workspace's sibling target/debug/.
@@ -158,15 +169,14 @@ function resolveServerLaunch(config: ReturnType<typeof readConfig>): {
   if (detected[0]?.folder.uri.fsPath) {
     const devBinary = path.join(detected[0].folder.uri.fsPath, 'target', 'debug', binaryName);
     if (fs.existsSync(devBinary)) {
-      return { cmd: devBinary, args: [], cwd };
+      return { cmd: devBinary, args: indexRootArgs, cwd };
     }
   }
 
   // 3. ticket-viewer on the system PATH.
   const onPath = process.platform === 'win32' ? 'ticket-viewer.exe' : 'ticket-viewer';
   // We cannot check PATH existence cheaply, but `spawn` will throw if not found.
-  // Use it as a fallback before cargo run.
-  return { cmd: onPath, args: [], cwd };
+  return { cmd: onPath, args: indexRootArgs, cwd };
 }
 
 async function startServerTask(
