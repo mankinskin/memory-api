@@ -70,9 +70,8 @@ export class TicketItem extends vscode.TreeItem {
     this.contextValue = 'ticket';
     this.id = treePath ?? `ticket:${ticket.id}`;
     this.description = ticket.id.slice(0, 8);
-    this.tooltip = new vscode.MarkdownString(
-      `**${label}**\n\nID: \`${ticket.id}\`\nState: ${ticket.state ?? '—'}\nType: ${ticket.type}`,
-    );
+    // Leave tooltip undefined so VS Code calls resolveTreeItem on hover,
+    // which lazily fetches the description and sets the full tooltip.
     this.iconPath = new vscode.ThemeIcon('tag');
     this.command = {
       command: 'ticket-viewer.openTicket',
@@ -249,7 +248,7 @@ export class TicketTreeProvider
     const id = item.ticket.id;
     const cached = this._descriptionCache.get(id);
     if (cached !== undefined) {
-      if (cached !== null) { this._setDescriptionTooltip(item, cached); }
+      this._setDescriptionTooltip(item, cached);
       return item;
     }
 
@@ -257,18 +256,20 @@ export class TicketTreeProvider
       const desc = await fetchTicketDescription(this._baseUrl, this._workspace, id);
       if (token.isCancellationRequested) { return item; }
       this._descriptionCache.set(id, desc);
-      if (desc !== null) { this._setDescriptionTooltip(item, desc); }
+      this._setDescriptionTooltip(item, desc);
     } catch {
       this._descriptionCache.set(id, null);
+      this._setDescriptionTooltip(item, null);
     }
 
     return item;
   }
 
-  private _setDescriptionTooltip(item: TicketItem, description: string): void {
+  private _setDescriptionTooltip(item: TicketItem, description: string | null): void {
     const label = item.ticket.title ?? `(${item.ticket.id.slice(0, 8)})`;
     const meta = `**${label}**\n\nID: \`${item.ticket.id}\`\nState: ${item.ticket.state ?? '—'}\nType: ${item.ticket.type}`;
-    const md = new vscode.MarkdownString(`${meta}\n\n---\n\n${description}`, true);
+    const body = description ? `\n\n---\n\n${description}` : '';
+    const md = new vscode.MarkdownString(`${meta}${body}`, true);
     md.isTrusted = false;
     item.tooltip = md;
   }
