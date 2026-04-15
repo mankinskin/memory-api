@@ -179,28 +179,86 @@ function resolveServerLaunch(config: ReturnType<typeof readConfig>): {
   return { cmd: onPath, args: indexRootArgs, cwd };
 }
 
-async function startServerTask(
+interface ServerHandle {
+  process: ChildProcess;
+  /** The URL the server is actually listening on (e.g. http://localhost:54321). */
+  serverUrl: string;
+}
+
+/**
+ * Spawn the ticket-viewer server with `--port 0` so the OS assigns a free
+ * port.  The server prints `TICKET_VIEWER_PORT=<port>` on stdout once it has
+ * bound; we parse that to discover the actual URL.
+ *
+ * Returns a promise that resolves once the port has been detected or rejects
+ * on early exit / timeout.
+ */
+function startServerTask(
   outputChannel: vscode.OutputChannel,
   config: ReturnType<typeof readConfig>,
-): Promise<ChildProcess | undefined> {
+): Promise<ServerHandle> {
   const { cmd, args, cwd } = resolveServerLaunch(config);
 
-  outputChannel.appendLine(`[ticket-viewer] Starting: ${cmd} ${args.join(' ')}`);
+  // Force --port 0 so we always get a fresh, conflict-free port.
+  const finalArgs = [...args, '--port', '0'];
+
+  outputChannel.appendLine(`[ticket-viewer] Starting: ${cmd} ${finalArgs.join(' ')}`);
   outputChannel.appendLine(`[ticket-viewer] Working directory: ${cwd ?? '(inherited)'}`);
 
-  const proc = spawn(cmd, args, {
+  const proc = spawn(cmd, finalArgs, {
     cwd,
     detached: false,
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  proc.stdout?.on('data', (d: Buffer) => outputChannel.append(d.toString()));
-  proc.stderr?.on('data', (d: Buffer) => outputChannel.append(d.toString()));
-  proc.on('error', err => outputChannel.appendLine(`[ticket-viewer] Error: ${err.message}`));
-  proc.on('exit', code => outputChannel.appendLine(`[ticket-viewer] Exited with code ${code}`));
+  return new Promise<ServerHandle>((resolve, reject) => {
+    let resolved = false;
+    const PORT_RE = /TICKET_VIEWER_PORT=(\d+)/;
 
-  return proc;
+    proc.stdout?.on('data', (d: Buffer) => {
+      const text = d.toString();
+      outputChannel.append(text);
+
+      if (!resolved) {
+        const m = PORT_RE.exec(text);
+        if (m) {
+          resolved = true;
+          const port = Number(m[1]);
+          const serverUrl = `http://localhost:${port}`;
+          outputChannel.appendLine(`[ticket-viewer] Detected server on ${serverUrl}`);
+          resolve({ process: proc, serverUrl });
+        }
+      }
+    });
+
+    proc.stderr?.on('data', (d: Buffer) => outputChannel.append(d.toString()));
+
+    proc.on('error', err => {
+      outputChannel.appendLine(`[ticket-viewer] Error: ${err.message}`);
+      if (!resolved) {
+        resolved = true;
+        reject(err);
+      }
+    });
+
+    proc.on('exit', code => {
+      outputChannel.appendLine(`[ticket-viewer] Exited with code ${code}`);
+      if (!resolved) {
+        resolved = true;
+        reject(new Error(`Server exited with code ${code} before reporting a port`));
+      }
+    });
+
+    // Safety timeout: if the server hasn't printed its port within 30 s,
+    // give up so the extension doesn't hang indefinitely.
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        reject(new Error('Timed out waiting for server to report its port'));
+      }
+    }, 30_000);
+  });
 }
 
 /**
@@ -225,34 +283,49 @@ let _serverProcess: import('node:child_process').ChildProcess | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   let config = readConfig();
-  let { workspace, displayName } = await resolveActiveWorkspace(
-    config.serverUrl,
-    config.workspace,
-    context,
-  );
 
   // ── Output channel for server logs ───────────────────────────────
   const outputChannel = vscode.window.createOutputChannel('Ticket Viewer Server');
   context.subscriptions.push(outputChannel);
 
-  // ── Auto-start server ────────────────────────────────────────────
+  // ── Auto-start server & determine server URL ─────────────────────
+  // When auto-starting, we always bind on a fresh port (--port 0) so we
+  // never collide with other instances.  The configured serverUrl is only
+  // used when auto-start is disabled (i.e. the user manages the server).
+  let serverUrl = config.serverUrl;
+
   if (config.autoStartServer) {
-    _serverProcess = await startServerTask(outputChannel, config);
+    try {
+      const handle = await startServerTask(outputChannel, config);
+      _serverProcess = handle.process;
+      serverUrl = handle.serverUrl;
+      vscode.window.setStatusBarMessage(`$(server) Ticket server running on ${serverUrl}`, 5000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      outputChannel.appendLine(`[ticket-viewer] Failed to start server: ${msg}`);
+      void vscode.window.showWarningMessage(`Ticket Viewer server failed to start: ${msg}`);
+    }
   }
+
+  let { workspace, displayName } = await resolveActiveWorkspace(
+    serverUrl,
+    config.workspace,
+    context,
+  );
 
   // ── Tree data provider ──────────────────────────────────────────
   const provider = new TicketTreeProvider(
-    config.serverUrl,
+    serverUrl,
     workspace,
     config.autoRefreshSeconds,
     resolveTicketsDir(workspace),
   );
   context.subscriptions.push(provider);
 
-  // Poll until the server responds, then refresh the tree.
-  // This handles the case where the server takes longer than expected to start.
-  if (config.autoStartServer) {
-    void pollUntilReachable(config.serverUrl, 60_000).then(() => provider.refresh());
+  // If we auto-started, the server is already listening (we waited for the
+  // port), but give it a moment to finish workspace initialisation.
+  if (config.autoStartServer && _serverProcess) {
+    void pollUntilReachable(serverUrl, 30_000).then(() => provider.refresh());
   }
 
   const treeView = vscode.window.createTreeView('ticket-viewer.tickets', {
@@ -267,7 +340,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     100,
   );
   statusBarItem.command = 'ticket-viewer.openBrowser';
-  statusBarItem.tooltip = `Open Ticket Viewer (${config.serverUrl})`;
+  statusBarItem.tooltip = `Open Ticket Viewer (${serverUrl})`;
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
@@ -297,7 +370,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ── Commands ──────────────────────────────────────────────────────────────
   context.subscriptions.push(
     vscode.commands.registerCommand('ticket-viewer.openBrowser', () => {
-      openTicketViewer(config.serverUrl);
+      openTicketViewer(serverUrl);
     }),
   );
 
@@ -312,8 +385,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (_serverProcess && !_serverProcess.killed) {
         _serverProcess.kill();
       }
-      _serverProcess = await startServerTask(outputChannel, config);
-      void pollUntilReachable(config.serverUrl, 60_000).then(() => provider.refresh());
+      try {
+        const handle = await startServerTask(outputChannel, config);
+        _serverProcess = handle.process;
+        serverUrl = handle.serverUrl;
+        vscode.window.setStatusBarMessage(`$(server) Ticket server running on ${serverUrl}`, 5000);
+        provider.update(serverUrl, workspace, config.autoRefreshSeconds, resolveTicketsDir(workspace));
+        statusBarItem.tooltip = `Open Ticket Viewer (${serverUrl})`;
+        void pollUntilReachable(serverUrl, 30_000).then(() => provider.refresh());
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        void vscode.window.showErrorMessage(`Failed to start server: ${msg}`);
+      }
     }),
   );
 
@@ -331,7 +414,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           }
         }
         // Fallback: open browser viewer.
-        const ticketUrl = `${config.serverUrl}/#/ws/${encodeURIComponent(workspace)}/ticket/${encodeURIComponent(item.ticket.id)}`;
+        const ticketUrl = `${serverUrl}/#/ws/${encodeURIComponent(workspace)}/ticket/${encodeURIComponent(item.ticket.id)}`;
         openTicketViewer(ticketUrl);
       },
     ),
@@ -378,7 +461,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       });
       if (title === undefined) { return; }
 
-      await runMutation(() => createTicket(config.serverUrl, workspace, typePick.label, title));
+      await runMutation(() => createTicket(serverUrl, workspace, typePick.label, title));
     }),
   );
 
@@ -394,7 +477,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
         if (newTitle === undefined) { return; }
         await runMutation(() =>
-          updateTicket(config.serverUrl, workspace, item.ticket.id, {
+          updateTicket(serverUrl, workspace, item.ticket.id, {
             fields: { title: newTitle },
           }),
         );
@@ -417,7 +500,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
         if (!pick || pick.label === current) { return; }
         await runMutation(() =>
-          updateTicket(config.serverUrl, workspace, item.ticket.id, { state: pick.label }),
+          updateTicket(serverUrl, workspace, item.ticket.id, { state: pick.label }),
         );
       },
     ),
@@ -466,7 +549,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           { modal: true }, 'Close Ticket',
         );
         if (confirm !== 'Close Ticket') { return; }
-        await runMutation(() => closeTicket(config.serverUrl, workspace, item.ticket.id));
+        await runMutation(() => closeTicket(serverUrl, workspace, item.ticket.id));
       },
     ),
   );
@@ -482,7 +565,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
         if (reason === undefined) { return; }
         await runMutation(() =>
-          cancelTicket(config.serverUrl, workspace, item.ticket.id, reason || undefined),
+          cancelTicket(serverUrl, workspace, item.ticket.id, reason || undefined),
         );
       },
     ),
@@ -497,7 +580,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           { modal: true }, 'Undo',
         );
         if (confirm !== 'Undo') { return; }
-        await runMutation(() => undoTicket(config.serverUrl, workspace, item.ticket.id));
+        await runMutation(() => undoTicket(serverUrl, workspace, item.ticket.id));
       },
     ),
   );
@@ -518,7 +601,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
         if (!pick) { return; }
         await runMutation(() =>
-          addEdge(config.serverUrl, workspace, item.ticket.id, pick.id, 'depends_on'),
+          addEdge(serverUrl, workspace, item.ticket.id, pick.id, 'depends_on'),
         );
       },
     ),
@@ -533,7 +616,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           { modal: true }, 'Delete',
         );
         if (confirm !== 'Delete') { return; }
-        await runMutation(() => deleteTicket(config.serverUrl, workspace, item.ticket.id));
+        await runMutation(() => deleteTicket(serverUrl, workspace, item.ticket.id));
       },
     ),
   );
@@ -558,10 +641,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       });
       if (!pick) { return; }
       await context.workspaceState.update('activeTicketFolder', pick.folderName);
-      const resolved = await resolveActiveWorkspace(config.serverUrl, config.workspace, context);
+      const resolved = await resolveActiveWorkspace(serverUrl, config.workspace, context);
       workspace = resolved.workspace;
       displayName = resolved.displayName;
-      provider.update(config.serverUrl, workspace, config.autoRefreshSeconds, resolveTicketsDir(workspace));
+      provider.update(serverUrl, workspace, config.autoRefreshSeconds, resolveTicketsDir(workspace));
       updateStatusBar();
     }),
   );
@@ -584,7 +667,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('ticket-viewer.bridgeNavigate', async () => {
       const url = await vscode.window.showInputBox({
         prompt: 'URL to open in Simple Browser',
-        value: config.serverUrl,
+        value: serverUrl,
       });
       if (url) { await bridge.navigate(url); }
     }),
@@ -611,10 +694,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ── React to VS Code folder changes ───────────────────────────────
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(async () => {
-      const resolved = await resolveActiveWorkspace(config.serverUrl, config.workspace, context);
+      const resolved = await resolveActiveWorkspace(serverUrl, config.workspace, context);
       workspace = resolved.workspace;
       displayName = resolved.displayName;
-      provider.update(config.serverUrl, workspace, config.autoRefreshSeconds, resolveTicketsDir(workspace));
+      provider.update(serverUrl, workspace, config.autoRefreshSeconds, resolveTicketsDir(workspace));
       updateStatusBar();
     }),
   );
@@ -624,11 +707,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidChangeConfiguration(async e => {
       if (!e.affectsConfiguration('ticketViewer')) { return; }
       config = readConfig();
-      const resolved = await resolveActiveWorkspace(config.serverUrl, config.workspace, context);
+      // When auto-start is disabled the user manages the server, so honour
+      // the configured URL.  When auto-start is enabled we keep the URL we
+      // obtained at startup (or from the last manual startServer command).
+      if (!config.autoStartServer) {
+        serverUrl = config.serverUrl;
+      }
+      const resolved = await resolveActiveWorkspace(serverUrl, config.workspace, context);
       workspace = resolved.workspace;
       displayName = resolved.displayName;
-      provider.update(config.serverUrl, workspace, config.autoRefreshSeconds, resolveTicketsDir(workspace));
-      statusBarItem.tooltip = `Open Ticket Viewer (${config.serverUrl})`;
+      provider.update(serverUrl, workspace, config.autoRefreshSeconds, resolveTicketsDir(workspace));
+      statusBarItem.tooltip = `Open Ticket Viewer (${serverUrl})`;
       updateStatusBar();
     }),
   );

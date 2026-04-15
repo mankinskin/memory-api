@@ -220,7 +220,7 @@
         "ticketViewer.serverUrl": {
           "type": "string",
           "default": "http://localhost:3002",
-          "description": "URL of the ticket-viewer HTTP server."
+          "description": "URL of the ticket-viewer HTTP server. Only used when autoStartServer is disabled; when auto-start is enabled the extension starts the server on a random free port."
         },
         "ticketViewer.workspace": {
           "type": "string",
