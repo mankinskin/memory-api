@@ -7,8 +7,9 @@ tools/viewer/**/static/
 tools/viewer/**/dist/
 tools/context-editor/**/dist/
 
-# Generated Playwright report output
+# Generated Playwright output
 **/playwright-report/
+**/test-results/
 
 # Generated demo logs (produced by tools/log-viewer/scripts/generate-demo-logs.sh)
 tools/log-viewer/demo-logs/
