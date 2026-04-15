@@ -141,6 +141,12 @@
         "title": "Select Ticket Workspace",
         "icon": "$(folder)",
         "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.openInTicketViewer",
+        "title": "Open in Ticket Viewer",
+        "icon": "$(browser)",
+        "category": "Ticket Viewer"
       }
     ],
     "menus": {
@@ -206,6 +212,11 @@
           "command": "ticket-viewer.undoTicket",
           "when": "view == ticket-viewer.tickets && viewItem == ticket",
           "group": "2_lifecycle@3"
+        },
+        {
+          "command": "ticket-viewer.openInTicketViewer",
+          "when": "view == ticket-viewer.tickets && viewItem == ticket",
+          "group": "0_open@1"
         },
         {
           "command": "ticket-viewer.deleteTicket",

@@ -431,6 +431,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'ticket-viewer.openInTicketViewer',
+      (item: TicketItem) => {
+        const ticketUrl = `${serverUrl}/#/ws/${encodeURIComponent(workspace)}/ticket/${encodeURIComponent(item.ticket.id)}`;
+        openTicketViewer(ticketUrl);
+      },
+    ),
+  );
+
   // ── Ticket mutation commands ──────────────────────────────────────────────
 
   /** Helper: run a mutation and refresh, or show error. */

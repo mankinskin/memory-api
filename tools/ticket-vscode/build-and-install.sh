@@ -1,13 +1,49 @@
 #!/usr/bin/env bash
 # Build, package, and install the ticket-vscode extension into the running VS Code.
+#
+# Strategy: compile, then directly overwrite the installed extension directory
+# with the fresh build artifacts. This bypasses `code --install-extension`
+# quirks (skipped extraction, stale cache, extra windows) entirely for the
+# common dev-loop case where the extension is already installed.
+#
+# If the install directory doesn't exist yet (first install), falls back to
+# `code --install-extension`.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# ── Derive install directory ─────────────────────────────────────────────────
+PUBLISHER="$(node -p "require('./package.json').publisher || 'undefined_publisher'")"
+NAME="$(node -p "require('./package.json').name")"
+VERSION="$(node -p "require('./package.json').version")"
+INSTALL_DIR="${USERPROFILE}/.vscode/extensions/${PUBLISHER}.${NAME}-${VERSION}"
+INSTALL_DIR_UNIX="$(cygpath -u "${INSTALL_DIR}" 2>/dev/null || echo "${INSTALL_DIR}")"
+
 echo "==> Compiling TypeScript..."
 npm run compile
 
+# ── Fast path: extension already installed — overwrite in-place ──────────────
+if [[ -d "$INSTALL_DIR_UNIX" ]]; then
+  echo "==> Extension dir exists at ${INSTALL_DIR_UNIX}"
+  echo "==> Cleaning old out/ in install dir..."
+  rm -rf "${INSTALL_DIR_UNIX}/out"
+
+  echo "==> Syncing out/, resources/ and package.json..."
+  cp -r out "${INSTALL_DIR_UNIX}/out"
+  cp -r resources/. "${INSTALL_DIR_UNIX}/resources/"
+  cp package.json "${INSTALL_DIR_UNIX}/package.json"
+  # Copy node_modules if they exist (e.g. playwright)
+  if [[ -d node_modules ]]; then
+    cp -r node_modules/. "${INSTALL_DIR_UNIX}/node_modules/"
+  fi
+
+  echo "==> Sync complete. Reload VS Code window to activate."
+  exit 0
+fi
+
+# ── Slow path: first install via VSIX ────────────────────────────────────────
+echo "==> Install dir not found — performing first-time VSIX install..."
 echo "==> Packaging extension..."
 vsce package --no-dependencies --allow-missing-repository --skip-license
 
@@ -29,46 +65,17 @@ get_code_pids() {
 }
 
 BEFORE_PIDS="$(get_code_pids)"
-# Allow code --install-extension to return non-zero (e.g. devtools port errors)
-# without aborting the script; the sync step below is what guarantees files
-# are up-to-date regardless of whether extraction actually happened.
 code --install-extension "$VSIX" --force || true
-# Give Code.exe a moment to finish spawning its window process.
 sleep 2
 AFTER_PIDS="$(get_code_pids)"
 
-# Determine PIDs that appeared after the install command ran.
 NEW_PIDS="$(comm -13 <(echo "$BEFORE_PIDS") <(echo "$AFTER_PIDS") || true)"
-
-# Derive the installed extension directory name from package.json.
-PUBLISHER="$(node -p "require('./package.json').publisher || 'undefined_publisher'")"
-NAME="$(node -p "require('./package.json').name")"
-VERSION="$(node -p "require('./package.json').version")"
-INSTALL_DIR="${USERPROFILE}/.vscode/extensions/${PUBLISHER}.${NAME}-${VERSION}"
-INSTALL_DIR_UNIX="$(cygpath -u "${INSTALL_DIR}" 2>/dev/null || echo "${INSTALL_DIR}")"
-
-# Always sync compiled output to the installed directory.
-# `code --install-extension --force` skips extraction when the extension folder
-# already exists at the same version, so a direct copy is the only reliable way
-# to guarantee the running extension matches what was just compiled.
-if [[ -d "$INSTALL_DIR_UNIX" ]]; then
-  echo "==> Syncing out/, resources/ and package.json to ${INSTALL_DIR_UNIX} ..."
-  cp -r out/. "${INSTALL_DIR_UNIX}/out/"
-  cp -r resources/. "${INSTALL_DIR_UNIX}/resources/"
-  cp package.json "${INSTALL_DIR_UNIX}/package.json"
-  echo "==> Sync complete."
-else
-  echo "==> WARNING: install directory not found at ${INSTALL_DIR_UNIX}" >&2
-  echo "==>          Extension may not have been installed correctly." >&2
-fi
 
 if [[ -n "$NEW_PIDS" ]]; then
   echo "==> Closing VS Code window opened by installer..."
   for pid in $NEW_PIDS; do
     taskkill.exe /F /PID "$pid" 2>/dev/null || true
   done
-else
-  echo "==> No new VS Code window detected; nothing to close."
 fi
 
-echo "==> Done. Reload VS Code (or reopen it) to activate the updated extension."
+echo "==> Done. Reload VS Code window to activate the extension."
