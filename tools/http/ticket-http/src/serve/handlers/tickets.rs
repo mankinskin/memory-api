@@ -303,6 +303,12 @@ pub struct CancelTicketBody {
     pub reason: Option<String>,
 }
 
+/// `POST /api/tickets/{id}/revert` request body.
+#[derive(Deserialize)]
+pub struct RevertTicketBody {
+    pub revision: u64,
+}
+
 #[derive(Serialize)]
 pub struct MutationResponse {
     pub request_id: String,
@@ -528,6 +534,73 @@ pub async fn cancel_ticket(
     .into_response()
 }
 
+/// `POST /api/tickets/{id}/revert?workspace=<name>`
+///
+/// Revert a ticket to a specific historical revision, identified by its
+/// 1-based `revision` number.  The revert is forward-only: a new history
+/// entry is appended; no history is erased.
+pub async fn revert_ticket(
+    State(state): State<AppState>,
+    Extension(rid): Extension<RequestIdExt>,
+    Path(id): Path<Uuid>,
+    Query(params): Query<MutationWorkspaceParam>,
+    headers: HeaderMap,
+    Json(body): Json<RevertTicketBody>,
+) -> Response {
+    let store = match state.ensure_workspace_runtime(&params.workspace) {
+        Some(s) => s,
+        None => {
+            return ApiError::not_found("workspace", &rid.0)
+                .into_response_with_status(StatusCode::NOT_FOUND);
+        }
+    };
+
+    let revisions = match store.get_history(&id) {
+        Ok(r) => r,
+        Err(e) => return storage_err(e, &rid.0),
+    };
+
+    let target_rev = match revisions.iter().find(|r| r.rev == body.revision) {
+        Some(r) => r.clone(),
+        None => {
+            return ApiError::bad_request(
+                "revision_not_found",
+                &format!("revision {} does not exist for this ticket", body.revision),
+                &rid.0,
+            )
+            .into_response_with_status(StatusCode::BAD_REQUEST);
+        }
+    };
+
+    let author = author_from_headers(&headers);
+
+    match store.apply_revert(&id, target_rev.fields, author.as_deref()) {
+        Ok(_new_rev) => {
+            let manifest = match store.get(&id) {
+                Ok(m) => m,
+                Err(e) => return storage_err(e, &rid.0),
+            };
+            let created_at = store
+                .get_indexed(&id)
+                .ok()
+                .flatten()
+                .map(|t| t.created_at)
+                .unwrap_or_else(chrono::Utc::now);
+            Json(MutationResponse {
+                request_id: rid.0,
+                workspace: params.workspace,
+                ticket: TicketDetail {
+                    id: manifest.id.to_string(),
+                    created_at,
+                    fields: manifest.extra,
+                },
+            })
+            .into_response()
+        }
+        Err(e) => storage_err(e, &rid.0),
+    }
+}
+
 /// `POST /api/tickets/{id}/undo?workspace=<name>`
 ///
 /// Undo the last state/field transition on a ticket by reverting to the
@@ -623,9 +696,9 @@ pub async fn delete_ticket(
 #[cfg(test)]
 mod tests {
     use super::{
-        cancel_ticket, close_ticket, create_ticket, delete_ticket, list_tickets, update_ticket,
-        CancelTicketBody, CloseTicketBody, CreateTicketBody, MutationWorkspaceParam,
-        UpdateTicketBody, WorkspaceParam,
+        cancel_ticket, close_ticket, create_ticket, delete_ticket, list_tickets, revert_ticket,
+        update_ticket, CancelTicketBody, CloseTicketBody, CreateTicketBody, MutationWorkspaceParam,
+        RevertTicketBody, UpdateTicketBody, WorkspaceParam,
     };
     use axum::{
         Json,
@@ -862,6 +935,70 @@ mod tests {
         let bytes = to_bytes(response.into_body(), 1024 * 1024).await.expect("body");
         let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
         assert_eq!(payload["ticket"]["fields"]["state"], "done");
+    }
+
+    #[tokio::test]
+    async fn revert_ticket_restores_historical_revision() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = make_store(dir.path());
+
+        // Create ticket (revision 1: state="new")
+        let id = store
+            .create(None, "tracker-improvement", Some("Revert me"), None, BTreeMap::new(), None, None)
+            .expect("create");
+
+        // Advance to "ready" (revision 2)
+        store
+            .update(&id, BTreeMap::new(), None, Some("ready"), None, None)
+            .expect("update to ready");
+
+        let state = make_state(Arc::clone(&store));
+
+        // Revert back to revision 1 (state="new")
+        let response = revert_ticket(
+            State(state),
+            Extension(RequestIdExt("rid-revert".to_string())),
+            Path(id),
+            Query(MutationWorkspaceParam { workspace: "default".to_string() }),
+            HeaderMap::new(),
+            Json(RevertTicketBody { revision: 1 }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.expect("body");
+        let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        assert_eq!(payload["request_id"], "rid-revert");
+        assert_eq!(payload["workspace"], "default");
+        assert_eq!(payload["ticket"]["fields"]["state"], "new");
+        assert_eq!(payload["ticket"]["fields"]["title"], "Revert me");
+    }
+
+    #[tokio::test]
+    async fn revert_ticket_returns_400_for_unknown_revision() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = make_store(dir.path());
+
+        let id = store
+            .create(None, "tracker-improvement", Some("T"), None, BTreeMap::new(), None, None)
+            .expect("create");
+
+        let state = make_state(Arc::clone(&store));
+
+        let response = revert_ticket(
+            State(state),
+            Extension(RequestIdExt("rid".to_string())),
+            Path(id),
+            Query(MutationWorkspaceParam { workspace: "default".to_string() }),
+            HeaderMap::new(),
+            Json(RevertTicketBody { revision: 999 }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.expect("body");
+        let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        assert_eq!(payload["code"], "revision_not_found");
     }
 
     #[tokio::test]
