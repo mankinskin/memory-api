@@ -414,7 +414,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           }
         }
         // Fallback: open browser viewer.
-        const ticketUrl = `${serverUrl}/#/ws/${encodeURIComponent(workspace)}/ticket/${encodeURIComponent(item.ticket.id)}`;
+        const ticketUrl = `${serverUrl}/workspace/${encodeURIComponent(workspace)}/ticket/${encodeURIComponent(item.ticket.id)}`;
         openTicketViewer(ticketUrl);
       },
     ),
@@ -435,7 +435,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand(
       'ticket-viewer.openInTicketViewer',
       (item: TicketItem) => {
-        const ticketUrl = `${serverUrl}/#/ws/${encodeURIComponent(workspace)}/ticket/${encodeURIComponent(item.ticket.id)}`;
+        const ticketUrl = `${serverUrl}/workspace/${encodeURIComponent(workspace)}/ticket/${encodeURIComponent(item.ticket.id)}`;
         openTicketViewer(ticketUrl);
       },
     ),

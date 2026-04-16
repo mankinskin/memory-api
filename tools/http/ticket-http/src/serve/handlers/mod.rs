@@ -1,3 +1,4 @@
+pub mod batch;
 pub mod edges;
 pub mod graph;
 pub mod health;

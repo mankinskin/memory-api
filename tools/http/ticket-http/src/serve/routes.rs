@@ -28,6 +28,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/stream", get(handlers::stream::stream_handler));
 
     let write_routes = Router::new()
+        .route("/api/batch", post(handlers::batch::batch_tickets))
         .route("/api/tickets", post(handlers::tickets::create_ticket))
         .route(
             "/api/tickets/{id}",
