@@ -1,5 +1,5 @@
 // Typed HTTP client for the ticket-viewer REST API.
-// Response shapes mirror tools/viewer/ticket-viewer/frontend/src/types.ts.
+// Response shapes mirror tools/viewer/ticket-viewer/frontend/ts/src/types.ts.
 
 export interface WorkspaceInfo {
   name: string;
