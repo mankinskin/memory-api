@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::code_ref::CodeRef;
+
 pub type SpecId = Uuid;
 
 /// A specification manifest — metadata about a spec stored in spec.toml.
@@ -16,6 +18,8 @@ pub type SpecId = Uuid;
 pub struct SpecManifest {
     pub id: SpecId,
     pub created_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub code_refs: Vec<CodeRef>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -36,6 +40,7 @@ impl SpecManifest {
         Self {
             id: Uuid::new_v4(),
             created_at: Utc::now(),
+            code_refs: Vec::new(),
             extra,
         }
     }
