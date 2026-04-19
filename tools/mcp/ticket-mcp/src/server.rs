@@ -77,6 +77,9 @@ pub struct ListTicketsInput {
     pub workspace: String,
     #[serde(default)]
     pub state: Option<String>,
+    /// Filter by ticket type (e.g. "tracker-improvement").
+    #[serde(default, rename = "type")]
+    pub type_id: Option<String>,
     #[serde(default)]
     pub query: Option<String>,
     #[serde(default)]
@@ -161,6 +164,9 @@ pub enum WorkflowName {
 pub struct UpdateTicketInput {
     pub workspace: String,
     pub id: String,
+    /// Guard: only transition if current state matches this value.
+    #[serde(default)]
+    pub from_state: Option<String>,
     /// Optional state to transition to.
     #[serde(default)]
     pub to_state: Option<String>,
@@ -173,6 +179,9 @@ pub struct UpdateTicketInput {
     /// Optional markdown description to write/overwrite as description.md.
     #[serde(default)]
     pub description: Option<String>,
+    /// Optional author/agent performing the update.
+    #[serde(default)]
+    pub author: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -182,6 +191,9 @@ pub struct CloseTicketInput {
     /// Target state to fast-forward to (default: "done").
     #[serde(default = "default_close_state")]
     pub to_state: String,
+    /// Optional author/agent performing the close.
+    #[serde(default)]
+    pub author: Option<String>,
 }
 
 fn default_close_state() -> String {
@@ -192,6 +204,58 @@ fn default_close_state() -> String {
 pub struct CancelTicketInput {
     pub workspace: String,
     pub id: String,
+    /// Optional author/agent performing the cancellation.
+    #[serde(default)]
+    pub author: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CreateTicketInput {
+    pub workspace: String,
+    /// Ticket type (e.g. "tracker-improvement").
+    #[serde(rename = "type")]
+    pub type_id: String,
+    /// Ticket title.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Initial state override (default: schema default).
+    #[serde(default)]
+    pub state: Option<String>,
+    /// Extra field patches as key=value pairs (e.g. ["priority=high"]).
+    #[serde(default)]
+    pub fields: Vec<String>,
+    /// Markdown description body to write as description.md.
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DeleteTicketInput {
+    pub workspace: String,
+    /// Ticket UUID or hex prefix.
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct AddEdgeInput {
+    pub workspace: String,
+    /// Source ticket UUID or hex prefix.
+    pub from: String,
+    /// Target ticket UUID or hex prefix.
+    pub to: String,
+    /// Edge kind (e.g. "depends_on", "linked").
+    pub kind: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RemoveEdgeInput {
+    pub workspace: String,
+    /// Source ticket UUID or hex prefix.
+    pub from: String,
+    /// Target ticket UUID or hex prefix.
+    pub to: String,
+    /// Edge kind (e.g. "depends_on", "linked").
+    pub kind: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -833,7 +897,7 @@ impl TicketServer {
             let limit = input.limit.map(|l| l.min(1000));
             let items: Vec<TicketSummary> = self.with_store(|store| {
                 Ok(store
-                    .list(input.state.as_deref(), None, limit)?
+                    .list(input.state.as_deref(), input.type_id.as_deref(), limit)?
                     .into_iter()
                     .map(|t| TicketSummary {
                         id: t.id.to_string(),
@@ -1261,11 +1325,13 @@ impl TicketServer {
         }
         let workspace = input.workspace;
         let to_state = input.to_state;
+        let from_state = input.from_state;
         let id_str = input.id;
         let description = input.description;
+        let author = input.author;
         let manifest = self.with_store_ext(move |store| {
             let id = Self::resolve_uuid_with(store, &id_str)?;
-            store.update(&id, patch, None, to_state.as_deref(), description.as_deref(), None).map_err(Self::store_err)
+            store.update(&id, patch, from_state.as_deref(), to_state.as_deref(), description.as_deref(), author.as_deref()).map_err(Self::store_err)
         }).await?;
         Self::json_result(&serde_json::json!({
             "workspace": workspace,
@@ -1289,10 +1355,11 @@ impl TicketServer {
         let workspace = input.workspace;
         let to_state = input.to_state;
         let id_str = input.id;
+        let author = input.author;
         let target_state = to_state.clone();
         let (manifest, path) = self.with_store_ext(move |store| {
             let id = Self::resolve_uuid_with(store, &id_str)?;
-            store.close(&id, &to_state, None).map_err(Self::store_err)
+            store.close(&id, &to_state, author.as_deref()).map_err(Self::store_err)
         }).await?;
         Self::json_result(&serde_json::json!({
             "workspace": workspace,
@@ -1313,9 +1380,10 @@ impl TicketServer {
     ) -> Result<CallToolResult, McpError> {
         let workspace = input.workspace;
         let id_str = input.id;
+        let author = input.author;
         let (manifest, path) = self.with_store_ext(move |store| {
             let id = Self::resolve_uuid_with(store, &id_str)?;
-            store.close(&id, "cancelled", None).map_err(Self::store_err)
+            store.close(&id, "cancelled", author.as_deref()).map_err(Self::store_err)
         }).await?;
         Self::json_result(&serde_json::json!({
             "workspace": workspace,
@@ -1323,6 +1391,141 @@ impl TicketServer {
             "id": manifest.id.to_string(),
             "traversed_states": path,
         }))
+    }
+
+    #[tool(
+        name = "create_ticket",
+        description = "Create a new ticket with the given type, optional title, state, fields, and description."
+    )]
+    async fn create_ticket(
+        &self,
+        Parameters(input): Parameters<CreateTicketInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut extra = BTreeMap::new();
+        for raw in &input.fields {
+            let (k, v) = raw.split_once('=').ok_or_else(|| {
+                McpError::invalid_params(format!("invalid field format '{raw}', expected key=value"), None)
+            })?;
+            extra.insert(k.trim().to_string(), Value::String(v.trim().to_string()));
+        }
+        let workspace = input.workspace;
+        let type_id = input.type_id;
+        let title = input.title;
+        let state = input.state;
+        let description = input.description;
+        let (ticket_id, manifest) = self.with_store_ext(move |store| {
+            let id = store
+                .create(
+                    None,
+                    &type_id,
+                    title.as_deref(),
+                    state.as_deref(),
+                    extra,
+                    None,
+                    description.as_deref(),
+                )
+                .map_err(Self::store_err)?;
+            let manifest = store.get(&id).map_err(Self::store_err)?;
+            Ok((id, manifest))
+        })
+        .await?;
+        Self::json_result(&serde_json::json!({
+            "workspace": workspace,
+            "status": "ok",
+            "id": ticket_id.to_string(),
+            "ticket": TicketDetail {
+                id: manifest.id.to_string(),
+                created_at: manifest.created_at,
+                fields: manifest.extra,
+            },
+        }))
+    }
+
+    #[tool(
+        name = "delete_ticket",
+        description = "Soft-delete a ticket. The ticket is marked deleted but its history is preserved."
+    )]
+    async fn delete_ticket(
+        &self,
+        Parameters(input): Parameters<DeleteTicketInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let id_str = input.id;
+        let id = self
+            .with_store_ext(move |store| {
+                let id = Self::resolve_uuid_with(store, &id_str)?;
+                store.delete(&id).map_err(Self::store_err)?;
+                Ok(id)
+            })
+            .await?;
+        Self::json_result(&serde_json::json!({
+            "workspace": workspace,
+            "status": "ok",
+            "id": id.to_string(),
+            "deleted": true,
+        }))
+    }
+
+    #[tool(
+        name = "add_edge",
+        description = "Add a directed edge between two tickets (e.g. depends_on, linked)."
+    )]
+    async fn add_edge(
+        &self,
+        Parameters(input): Parameters<AddEdgeInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let from_str = input.from;
+        let to_str = input.to;
+        let kind = input.kind;
+        self.with_store_ext(move |store| {
+            let from = Self::resolve_uuid_with(store, &from_str)?;
+            let to = Self::resolve_uuid_with(store, &to_str)?;
+            let edge = ticket_api::model::edge::EdgeRecord {
+                from,
+                to,
+                kind: kind.clone(),
+                created_at: chrono::Utc::now(),
+            };
+            store.add_edge(edge).map_err(Self::store_err)?;
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "status": "ok",
+                "edge": EdgeItem { from: from.to_string(), to: to.to_string(), kind },
+            }))
+        })
+        .await
+    }
+
+    #[tool(
+        name = "remove_edge",
+        description = "Remove a directed edge between two tickets."
+    )]
+    async fn remove_edge(
+        &self,
+        Parameters(input): Parameters<RemoveEdgeInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let from_str = input.from;
+        let to_str = input.to;
+        let kind = input.kind;
+        self.with_store_ext(move |store| {
+            let from = Self::resolve_uuid_with(store, &from_str)?;
+            let to = Self::resolve_uuid_with(store, &to_str)?;
+            let edge = ticket_api::model::edge::EdgeRecord {
+                from,
+                to,
+                kind: kind.clone(),
+                created_at: chrono::Utc::now(),
+            };
+            store.remove_edge(edge).map_err(Self::store_err)?;
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "status": "ok",
+                "removed": EdgeItem { from: from.to_string(), to: to.to_string(), kind },
+            }))
+        })
+        .await
     }
 
     #[tool(
@@ -1664,7 +1867,11 @@ impl TicketServer {
                 "list_tickets",
                 "get_ticket",
                 "get_ticket_description",
+                "create_ticket",
+                "delete_ticket",
                 "list_edges",
+                "add_edge",
+                "remove_edge",
                 "subgraph",
                 "topgraph",
                 "health_check",
@@ -1672,6 +1879,7 @@ impl TicketServer {
                 "close_ticket",
                 "cancel_ticket",
                 "workflow",
+                "next_tickets",
                 "board_show",
                 "board_check_in",
                 "board_check_out",
@@ -1694,7 +1902,7 @@ impl TicketServer {
                 "list_tickets": {
                     "description": "List/search tickets",
                     "required": ["workspace"],
-                    "optional": ["state", "query", "limit"],
+                    "optional": ["state", "type", "query", "limit"],
                 },
                 "get_ticket": {
                     "description": "Get full ticket manifest",
@@ -1704,10 +1912,27 @@ impl TicketServer {
                     "description": "Get ticket markdown description",
                     "required": ["workspace", "id"],
                 },
+                "create_ticket": {
+                    "description": "Create a new ticket",
+                    "required": ["workspace", "type"],
+                    "optional": ["title", "state", "fields", "description"],
+                },
+                "delete_ticket": {
+                    "description": "Soft-delete a ticket",
+                    "required": ["workspace", "id"],
+                },
                 "list_edges": {
                     "description": "List graph edges",
                     "required": ["workspace"],
                     "optional": ["kind"],
+                },
+                "add_edge": {
+                    "description": "Add a directed edge between tickets",
+                    "required": ["workspace", "from", "to", "kind"],
+                },
+                "remove_edge": {
+                    "description": "Remove a directed edge between tickets",
+                    "required": ["workspace", "from", "to", "kind"],
                 },
                 "subgraph": {
                     "description": "BFS dependency subgraph",
@@ -1732,16 +1957,17 @@ impl TicketServer {
                 "update_ticket": {
                     "description": "Update ticket fields and/or transition state",
                     "required": ["workspace", "id"],
-                    "optional": ["to_state", "fields"],
+                    "optional": ["from_state", "to_state", "fields", "undo", "description", "author"],
                 },
                 "close_ticket": {
                     "description": "Fast-forward ticket to target state",
                     "required": ["workspace", "id"],
-                    "optional": ["to_state"],
+                    "optional": ["to_state", "author"],
                 },
                 "cancel_ticket": {
                     "description": "Cancel a ticket",
                     "required": ["workspace", "id"],
+                    "optional": ["author"],
                 },
                 "board_show": {
                     "description": "Read current draftboard snapshot; optionally refresh caller heartbeat",
