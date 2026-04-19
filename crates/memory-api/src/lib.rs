@@ -8,3 +8,4 @@ pub use storage::{
     BoardCleanPreview, BoardCleanResult, BoardConfig, BoardEntry, BoardEntryStatus, BoardError,
     BoardReconcileResult, BoardSnapshot, ReconcileAction,
 };
+pub use storage::EntityStore;
