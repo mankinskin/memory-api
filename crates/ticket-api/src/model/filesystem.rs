@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+
+// Re-export generic types from memory-api — same type identity, no duplication.
+pub use memory_api::model::filesystem::{ParseDiagnostic, ScanRoot};
 
 use super::ticket::TicketManifest;
 
@@ -10,18 +12,6 @@ pub const TICKET_HISTORY_FILE: &str = "history.ndjson";
 pub const TICKET_INTERVIEW_DIR: &str = "assets/interviews";
 pub const TICKET_INTERVIEW_QUESTIONS_FILE: &str = "assets/interviews/questions.md";
 pub const TICKET_INTERVIEW_ANSWERS_FILE: &str = "assets/interviews/answers.md";
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ScanRoot {
-    pub path: PathBuf,
-    pub label: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ParseDiagnostic {
-    pub path: PathBuf,
-    pub reason: String,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TicketFolderContract {
@@ -40,11 +30,10 @@ impl Default for TicketFolderContract {
     }
 }
 
-pub fn parse_ticket_manifest_toml(path: PathBuf, content: &str) -> Result<TicketManifest, ParseDiagnostic> {
-    toml::from_str::<TicketManifest>(content).map_err(|err| ParseDiagnostic {
-        path,
-        reason: err.to_string(),
-    })
+/// Parse a ticket manifest from TOML. Delegates to the generic memory-api
+/// implementation; the name is preserved for downstream compatibility.
+pub fn parse_ticket_manifest_toml(path: std::path::PathBuf, content: &str) -> Result<TicketManifest, ParseDiagnostic> {
+    memory_api::model::filesystem::parse_entity_manifest_toml(path, content)
 }
 
 pub fn has_minimum_ticket_contract(entries: &[&str]) -> bool {
