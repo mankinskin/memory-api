@@ -52,7 +52,7 @@ export class TicketItem extends vscode.TreeItem {
     this.id = treePath ?? `ticket:${ticket.id}`;
     this.description = ticket.id.slice(0, 8);
     // Leave tooltip undefined so VS Code calls resolveTreeItem on hover,
-    // which lazily fetches the description and sets the full tooltip.
+    // which lazily fetches the description and sets the rich tooltip.
     this.iconPath = new vscode.ThemeIcon('tag');
     this.command = {
       command: 'ticket-viewer.openTicket',
@@ -179,6 +179,12 @@ export class TicketTreeProvider
   // ── vscode.TreeDataProvider ────────────────────────────────────────────────
 
   getTreeItem(element: TreeNode): vscode.TreeItem {
+    // Clear any previously-set tooltip so VS Code calls resolveTreeItem again
+    // on the next hover instead of using the cached rich tooltip instantly.
+    if (this._lastTooltipItem) {
+      this._lastTooltipItem.tooltip = undefined;
+      this._lastTooltipItem = undefined;
+    }
     return element;
   }
 
@@ -222,6 +228,16 @@ export class TicketTreeProvider
   }
 
   // ── Lazy tooltip resolution ────────────────────────────────────────────────
+  //
+  // resolveTreeItem is called by VS Code on hover (when tooltip is undefined).
+  // We resolve immediately — VS Code's own hover delay + CancellationToken
+  // provide sufficient debouncing against cursor fly-bys.
+  //
+  // Important: we clear item.tooltip in getTreeItem so VS Code calls
+  // resolveTreeItem again on every hover rather than caching a stale tooltip.
+
+  /** Track the last item whose tooltip was set so we can clear it. */
+  private _lastTooltipItem: TicketItem | undefined;
 
   async resolveTreeItem(
     item: TreeNode,
@@ -230,29 +246,34 @@ export class TicketTreeProvider
   ): Promise<TreeNode> {
     if (!(item instanceof TicketItem)) { return item; }
 
+    // Clear tooltip from any previous hover so it doesn't stick.
+    if (this._lastTooltipItem && this._lastTooltipItem !== item) {
+      this._lastTooltipItem.tooltip = undefined;
+    }
+
     const id = item.ticket.id;
-    const cached = this._descriptionCache.get(id);
-    if (cached !== undefined) {
-      this._setDescriptionTooltip(item, cached);
-      return item;
+    let desc = this._descriptionCache.get(id);
+    if (desc === undefined) {
+      try {
+        desc = await fetchTicketDescription(this._baseUrl, this._workspace, id);
+        if (token.isCancellationRequested) { return item; }
+        this._descriptionCache.set(id, desc);
+      } catch {
+        desc = null;
+        this._descriptionCache.set(id, null);
+      }
     }
 
-    try {
-      const desc = await fetchTicketDescription(this._baseUrl, this._workspace, id);
-      if (token.isCancellationRequested) { return item; }
-      this._descriptionCache.set(id, desc);
-      this._setDescriptionTooltip(item, desc);
-    } catch {
-      this._descriptionCache.set(id, null);
-      this._setDescriptionTooltip(item, null);
-    }
+    if (token.isCancellationRequested) { return item; }
 
+    this._setDescriptionTooltip(item, desc ?? null);
+    this._lastTooltipItem = item;
     return item;
   }
 
   private _setDescriptionTooltip(item: TicketItem, description: string | null): void {
     const label = item.ticket.title ?? `(${item.ticket.id.slice(0, 8)})`;
-    const meta = `**${label}**\n\nID: \`${item.ticket.id}\`\nState: ${item.ticket.state ?? '—'}\nType: ${item.ticket.type}`;
+    const meta = `**${label}**\n\nID: \`${item.ticket.id}\`\nState: ${item.ticket.state ?? '\u2014'}\nType: ${item.ticket.type}`;
     const body = description ? `\n\n---\n\n${description}` : '';
     const md = new vscode.MarkdownString(`${meta}${body}`, true);
     md.isTrusted = false;
