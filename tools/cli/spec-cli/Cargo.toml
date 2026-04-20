@@ -1,0 +1,28 @@
+[package]
+name = "spec-cli"
+version = "0.1.0"
+edition = "2024"
+description = "CLI interface for spec-api: the `spec` command"
+
+[[bin]]
+name = "spec"
+path = "src/bin/spec.rs"
+
+[lib]
+name = "spec_cli"
+path = "src/lib.rs"
+
+[dependencies]
+spec-api = { path = "../../../crates/spec-api" }
+memory-api = { path = "../../../crates/memory-api" }
+
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+thiserror = "2"
+
+[dev-dependencies]
+pretty_assertions = "1"
+tempfile = "3"
