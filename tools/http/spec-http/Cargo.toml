@@ -1,0 +1,32 @@
+[package]
+name = "spec-http"
+version = "0.1.0"
+edition = "2024"
+description = "HTTP REST API for spec-api"
+
+[[bin]]
+name = "spec-http"
+path = "src/main.rs"
+
+[lib]
+name = "spec_http"
+path = "src/lib.rs"
+
+[dependencies]
+spec-api = { path = "../../../crates/spec-api" }
+memory-api = { path = "../../../crates/memory-api" }
+viewer-api = { path = "../../viewer/viewer-api" }
+
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tower-http = { version = "0.6", features = ["cors"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
