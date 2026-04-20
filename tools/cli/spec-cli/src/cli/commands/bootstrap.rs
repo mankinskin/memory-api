@@ -50,7 +50,10 @@ pub fn cmd_bootstrap(
     let workspace_root = args
         .workspace_root
         .map(|p| p.canonicalize().unwrap_or(p))
-        .unwrap_or_else(|| std::env::current_dir().expect("cwd"));
+        .unwrap_or_else(|| {
+            let cwd = std::env::current_dir().expect("cwd");
+            cwd.canonicalize().unwrap_or(cwd)
+        });
 
     // Crate name: from Cargo.toml name field, or last path segment
     let crate_name = read_crate_name(&crate_path).unwrap_or_else(|| {
