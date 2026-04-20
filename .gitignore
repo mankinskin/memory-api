@@ -28,3 +28,9 @@ tools/log-viewer/demo-logs/
 # Local workspace data created by the CLI/REPL
 .context-engine/
 packages/
+
+# Spec/ticket store binary indexes (only the spec/ticket folders are tracked)
+.spec/entities.redb
+.spec/search_index/
+.ticket/tickets.redb
+.ticket/search_index/

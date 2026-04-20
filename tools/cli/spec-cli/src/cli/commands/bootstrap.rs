@@ -243,10 +243,14 @@ fn scan_src_dir(
         // Normalize: "storage/mod" → "storage"
         let module_path = module_path.trim_end_matches("/mod").to_string();
 
-        // Slug: "ticket-api/storage/store"
-        let slug = format!("{crate_name}/{module_path}");
+        // Slug-safe module path: underscores → hyphens (slug rules: [a-z0-9-]).
+        // The original `module_path` is preserved for the title/file display.
+        let slug_module_path = module_path.replace('_', "-");
 
-        // Title: last segment of module path
+        // Slug: "ticket-api/storage/store"
+        let slug = format!("{crate_name}/{slug_module_path}");
+
+        // Title: last segment of module path (uses original, with underscores)
         let title = module_path
             .split('/')
             .last()
@@ -254,11 +258,11 @@ fn scan_src_dir(
             .to_string();
 
         // Parent slug: parent module or crate root
-        let parent_slug = if module_path.contains('/') {
-            let parent = module_path
+        let parent_slug = if slug_module_path.contains('/') {
+            let parent = slug_module_path
                 .rsplitn(2, '/')
                 .nth(1)
-                .unwrap_or(module_path.as_str());
+                .unwrap_or(slug_module_path.as_str());
             format!("{crate_name}/{parent}")
         } else {
             crate_name.to_string()
