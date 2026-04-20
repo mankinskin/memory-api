@@ -30,6 +30,7 @@ pub(super) fn dispatch(
         SpecCommandCli::Refs(args) => commands::cmd_refs(args, &store),
         SpecCommandCli::Section(args) => commands::cmd_section(args, &mut store),
         SpecCommandCli::Health(args) => commands::cmd_health(args, &store),
+        SpecCommandCli::Bootstrap(args) => commands::cmd_bootstrap(args, &mut store),
     }
 }
 

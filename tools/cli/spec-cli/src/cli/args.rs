@@ -157,6 +157,24 @@ pub enum SectionCommand {
 }
 
 #[derive(Debug, Args)]
+pub struct BootstrapArgs {
+    /// Path to the crate root (must contain Cargo.toml and src/).
+    pub crate_path: std::path::PathBuf,
+    /// Override the component name (defaults to crate name).
+    #[arg(long)]
+    pub component: Option<String>,
+    /// Print what would be created without writing to the store.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Workspace root used for computing relative file paths.
+    #[arg(long)]
+    pub workspace_root: Option<std::path::PathBuf>,
+    /// Place the created specs in this scan root.
+    #[arg(long = "root")]
+    pub target_root: Option<std::path::PathBuf>,
+}
+
+#[derive(Debug, Args)]
 pub struct HealthArgs {
     /// Spec UUID, prefix, or slug (omit with --all for all specs).
     pub id: Option<String>,

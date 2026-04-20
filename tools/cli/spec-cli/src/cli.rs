@@ -8,7 +8,7 @@ use spec_api::error::SpecError;
 #[path = "cli/args.rs"]
 mod args;
 #[path = "cli/commands/mod.rs"]
-mod commands;
+pub mod commands;
 #[path = "cli/dispatch.rs"]
 mod dispatch;
 
@@ -58,6 +58,8 @@ pub enum SpecCommandCli {
     Section(SectionArgs),
     /// Run health checks on specs.
     Health(HealthArgs),
+    /// Bootstrap specs from a Rust crate's public API.
+    Bootstrap(BootstrapArgs),
 }
 
 // ── error type ────────────────────────────────────────────────────────────────

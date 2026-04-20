@@ -1,9 +1,11 @@
+mod bootstrap;
 mod crud;
 mod hierarchy;
 mod query;
 mod refs;
 mod sections;
 
+pub use bootstrap::*;
 pub(crate) use crud::*;
 pub(crate) use hierarchy::*;
 pub(crate) use query::*;
