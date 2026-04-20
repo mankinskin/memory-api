@@ -206,6 +206,9 @@ impl SpecStore {
             .inner
             .get_indexed(&uuid)?
             .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
+        if indexed.deleted {
+            return Err(SpecError::NotFound(uuid.to_string()));
+        }
         let spec = read_spec_manifest(&indexed.path)?;
         Ok(spec)
     }
@@ -217,6 +220,9 @@ impl SpecStore {
             .inner
             .get_indexed(&uuid)?
             .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
+        if indexed.deleted {
+            return Err(SpecError::NotFound(uuid.to_string()));
+        }
         let spec = read_spec_manifest(&indexed.path)?;
         let body = read_body(&indexed.path);
         Ok((spec, body))
