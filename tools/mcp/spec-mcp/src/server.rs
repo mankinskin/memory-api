@@ -223,7 +223,7 @@ impl SpecServer {
         name = "spec_create",
         description = "Create a new spec with title, slug, component, and optional body."
     )]
-    async fn spec_create(
+    pub async fn spec_create(
         &self,
         Parameters(input): Parameters<CreateSpecInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -255,7 +255,7 @@ impl SpecServer {
         name = "spec_get",
         description = "Get a spec by ID or slug, optionally with body and sections."
     )]
-    async fn spec_get(
+    pub async fn spec_get(
         &self,
         Parameters(input): Parameters<GetSpecInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -294,7 +294,7 @@ impl SpecServer {
         name = "spec_update",
         description = "Update a spec's fields, state, or body."
     )]
-    async fn spec_update(
+    pub async fn spec_update(
         &self,
         Parameters(input): Parameters<UpdateSpecInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -327,7 +327,7 @@ impl SpecServer {
     }
 
     #[tool(name = "spec_delete", description = "Soft-delete a spec.")]
-    async fn spec_delete(
+    pub async fn spec_delete(
         &self,
         Parameters(input): Parameters<SpecRefInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -346,7 +346,7 @@ impl SpecServer {
         name = "spec_list",
         description = "List specs with optional field=value filters."
     )]
-    async fn spec_list(
+    pub async fn spec_list(
         &self,
         Parameters(input): Parameters<ListSpecsInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -392,7 +392,7 @@ impl SpecServer {
     }
 
     #[tool(name = "spec_search", description = "Full-text search across specs.")]
-    async fn spec_search(
+    pub async fn spec_search(
         &self,
         Parameters(input): Parameters<SearchSpecsInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -428,7 +428,7 @@ impl SpecServer {
         name = "spec_tree",
         description = "Get hierarchy subtree for a spec, or list all root specs."
     )]
-    async fn spec_tree(
+    pub async fn spec_tree(
         &self,
         Parameters(input): Parameters<TreeInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -486,7 +486,7 @@ impl SpecServer {
         name = "spec_health",
         description = "Run health checks on specs (completeness of required fields)."
     )]
-    async fn spec_health(
+    pub async fn spec_health(
         &self,
         Parameters(input): Parameters<HealthInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -534,7 +534,7 @@ impl SpecServer {
         name = "spec_refs_validate",
         description = "Validate code references for a spec (check file existence and line ranges)."
     )]
-    async fn spec_refs_validate(
+    pub async fn spec_refs_validate(
         &self,
         Parameters(input): Parameters<RefsValidateInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -568,7 +568,7 @@ impl SpecServer {
     }
 
     #[tool(name = "spec_section_add", description = "Add a section to a spec.")]
-    async fn spec_section_add(
+    pub async fn spec_section_add(
         &self,
         Parameters(input): Parameters<SectionAddInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -586,7 +586,7 @@ impl SpecServer {
     }
 
     #[tool(name = "spec_section_list", description = "List sections of a spec.")]
-    async fn spec_section_list(
+    pub async fn spec_section_list(
         &self,
         Parameters(input): Parameters<SpecRefInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -603,7 +603,7 @@ impl SpecServer {
     }
 
     #[tool(name = "spec_section_get", description = "Get section content.")]
-    async fn spec_section_get(
+    pub async fn spec_section_get(
         &self,
         Parameters(input): Parameters<SectionRefInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -634,7 +634,7 @@ impl SpecServer {
     }
 
     #[tool(name = "spec_section_delete", description = "Delete a section from a spec.")]
-    async fn spec_section_delete(
+    pub async fn spec_section_delete(
         &self,
         Parameters(input): Parameters<SectionRefInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -652,7 +652,7 @@ impl SpecServer {
     }
 
     #[tool(name = "spec_scan", description = "Scan and reindex all spec roots.")]
-    async fn spec_scan(
+    pub async fn spec_scan(
         &self,
         Parameters(input): Parameters<ScanInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -673,7 +673,7 @@ impl SpecServer {
         name = "spec_add_root",
         description = "Register a directory as a scan root for specs."
     )]
-    async fn spec_add_root(
+    pub async fn spec_add_root(
         &self,
         Parameters(input): Parameters<AddRootInput>,
     ) -> Result<CallToolResult, McpError> {
