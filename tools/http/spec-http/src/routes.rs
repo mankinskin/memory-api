@@ -18,6 +18,7 @@ pub fn build_router(state: SpecAppState) -> Router {
         .route("/api/specs", get(handlers::specs::list_specs))
         .route("/api/specs/search", get(handlers::specs::search_specs))
         .route("/api/specs/health", get(handlers::health::health_check))
+        .route("/api/specs/stream", get(handlers::stream::spec_stream))
         .route("/api/specs/{id}", get(handlers::specs::get_spec))
         .route("/api/specs/{id}/full", get(handlers::specs::get_spec_full))
         .route("/api/specs/{id}/tree", get(handlers::tree::get_tree))
