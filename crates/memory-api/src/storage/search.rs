@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tantivy::schema::{Field, Schema, Value as TantivyValue, FAST, STORED, STRING, TEXT};
 use tantivy::{Index, IndexWriter, TantivyDocument, TantivyError, Term};
@@ -25,8 +25,19 @@ pub struct SearchFields {
     pub ticket_type: Field,
 }
 
+/// Tantivy-backed full-text search index.
+///
+/// # Windows file-sharing note
+///
+/// Tantivy's default `MmapDirectory` opens segment files with `FILE_SHARE_READ`
+/// only.  On Windows this prevents any other process from writing to (or GC-
+/// deleting) those segment files while the mapping is alive.  To avoid blocking
+/// concurrent CLI writers when a long-running viewer server is running, this
+/// struct stores only the **directory path** and opens (and immediately drops)
+/// a fresh `Index` for every operation.  Between operations no OS file handles
+/// are held, so the CLI can write freely.
 pub struct TantivySearchIndex {
-    index: Index,
+    dir: PathBuf,
     fields: SearchFields,
 }
 
@@ -36,30 +47,22 @@ impl TantivySearchIndex {
 
         let (schema, fields) = build_schema();
 
-        let index = if dir
-            .read_dir()
-            .map(|mut d| d.next().is_some())
-            .unwrap_or(false)
-        {
-            match Index::open_in_dir(dir) {
-                Ok(idx) => idx,
-                Err(_) => {
-                    std::fs::remove_dir_all(dir)?;
-                    std::fs::create_dir_all(dir)?;
-                    Index::create_in_dir(dir, schema)
-                        .map_err(|e| StorageError::SearchIndex(e.to_string()))?
-                }
-            }
-        } else {
-            Index::create_in_dir(dir, schema)
-                .map_err(|e| StorageError::SearchIndex(e.to_string()))?
-        };
+        // Open (or create) the index once to validate the directory, then
+        // immediately drop it.  We do NOT keep it open so that Windows
+        // MmapDirectory handles are released between operations.
+        open_or_create_index(dir, schema)?;
 
-        Ok(Self { index, fields })
+        Ok(Self { dir: dir.to_path_buf(), fields })
     }
 
-    fn writer(&self) -> Result<IndexWriter, StorageError> {
-        self.index
+    /// Open a fresh `Index` handle for a single operation, then drop it.
+    fn open_index(&self) -> Result<Index, StorageError> {
+        let (schema, _) = build_schema();
+        open_or_create_index(&self.dir, schema)
+    }
+
+    fn make_writer(index: &Index) -> Result<IndexWriter, StorageError> {
+        index
             .writer(50_000_000)
             .map_err(|e| StorageError::SearchIndex(e.to_string()))
     }
@@ -74,7 +77,8 @@ impl TantivySearchIndex {
         state: Option<&str>,
         entity_type: Option<&str>,
     ) -> Result<(), StorageError> {
-        let mut writer = self.writer()?;
+        let index = self.open_index()?;
+        let mut writer = Self::make_writer(&index)?;
         writer.delete_term(Term::from_field_text(self.fields.id, &id.to_string()));
 
         let mut d = TantivyDocument::default();
@@ -101,7 +105,8 @@ impl TantivySearchIndex {
     }
 
     pub fn remove(&self, id: &Uuid) -> Result<(), StorageError> {
-        let mut writer = self.writer()?;
+        let index = self.open_index()?;
+        let mut writer = Self::make_writer(&index)?;
         writer.delete_term(Term::from_field_text(self.fields.id, &id.to_string()));
         writer
             .commit()
@@ -111,7 +116,8 @@ impl TantivySearchIndex {
 
     /// Delete every document from the Tantivy index.
     pub fn clear_all(&self) -> Result<(), StorageError> {
-        let mut writer = self.writer()?;
+        let index = self.open_index()?;
+        let mut writer = Self::make_writer(&index)?;
         writer
             .delete_all_documents()
             .map_err(|e: TantivyError| StorageError::SearchIndex(e.to_string()))?;
@@ -127,19 +133,19 @@ impl TantivySearchIndex {
         use tantivy::collector::TopDocs;
         use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, TermQuery};
 
-        let reader = self
-            .index
+        let index = self.open_index()?;
+        let reader = index
             .reader()
             .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
         let searcher = reader.searcher();
 
-        let query: Box<dyn Query> = expr_to_query(expr, &self.fields, &self.index);
+        let query: Box<dyn Query> = expr_to_query(expr, &self.fields, &index);
 
         let top_docs = searcher
             .search(&*query, &TopDocs::with_limit(limit))
             .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
 
-        let schema = self.index.schema();
+        let schema = index.schema();
         let mut results = Vec::with_capacity(top_docs.len());
 
         for (score, doc_addr) in top_docs {
@@ -171,6 +177,30 @@ impl TantivySearchIndex {
         ));
 
         Ok(results)
+    }
+}
+
+/// Open the Tantivy index at `dir`, or create it from `schema` if the
+/// directory is empty.  If the directory is non-empty but the index cannot be
+/// opened (e.g. corrupt meta.json), the directory is wiped and recreated.
+fn open_or_create_index(dir: &Path, schema: Schema) -> Result<Index, StorageError> {
+    if dir
+        .read_dir()
+        .map(|mut d| d.next().is_some())
+        .unwrap_or(false)
+    {
+        match Index::open_in_dir(dir) {
+            Ok(idx) => Ok(idx),
+            Err(_) => {
+                std::fs::remove_dir_all(dir)?;
+                std::fs::create_dir_all(dir)?;
+                Index::create_in_dir(dir, schema)
+                    .map_err(|e| StorageError::SearchIndex(e.to_string()))
+            }
+        }
+    } else {
+        Index::create_in_dir(dir, schema)
+            .map_err(|e| StorageError::SearchIndex(e.to_string()))
     }
 }
 
