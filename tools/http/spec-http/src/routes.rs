@@ -17,6 +17,7 @@ pub fn build_router(state: SpecAppState) -> Router {
         .route("/healthz", get(handlers::health::healthz))
         .route("/api/specs", get(handlers::specs::list_specs))
         .route("/api/specs/search", get(handlers::specs::search_specs))
+        .route("/api/specs/graph", get(handlers::graph::get_graph))
         .route("/api/specs/health", get(handlers::health::health_check))
         .route("/api/specs/stream", get(handlers::stream::spec_stream))
         .route("/api/specs/{id}", get(handlers::specs::get_spec))
