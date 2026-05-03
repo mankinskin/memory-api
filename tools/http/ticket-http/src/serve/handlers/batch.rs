@@ -306,54 +306,58 @@ pub async fn batch_tickets(
         }
     };
 
-    let workspace = body.workspace.clone();
-    let total = body.commands.len();
-    let mut results: Vec<Value> = Vec::with_capacity(total);
-    let mut undo_stack: Vec<BatchUndoOp> = Vec::with_capacity(total);
+    let workspace = body.workspace;
+    let commands = body.commands;
+    let total = commands.len();
 
-    for (index, cmd) in body.commands.into_iter().enumerate() {
-        match dispatch_command(cmd, &store) {
-            Ok((mut result, undo)) => {
-                result["index"] = json!(index);
-                result["status"] = json!("ok");
-                if let Some(u) = undo {
-                    undo_stack.push(u);
+    tokio::task::block_in_place(move || {
+        let mut results: Vec<Value> = Vec::with_capacity(total);
+        let mut undo_stack: Vec<BatchUndoOp> = Vec::with_capacity(total);
+
+        for (index, cmd) in commands.into_iter().enumerate() {
+            match dispatch_command(cmd, &store) {
+                Ok((mut result, undo)) => {
+                    result["index"] = json!(index);
+                    result["status"] = json!("ok");
+                    if let Some(u) = undo {
+                        undo_stack.push(u);
+                    }
+                    results.push(result);
                 }
-                results.push(result);
-            }
-            Err(e) => {
-                let mut rollback_errors: Vec<String> = Vec::new();
-                for undo in undo_stack.into_iter().rev() {
-                    apply_batch_undo(undo, &store, &mut rollback_errors);
+                Err(e) => {
+                    let mut rollback_errors: Vec<String> = Vec::new();
+                    for undo in undo_stack.into_iter().rev() {
+                        apply_batch_undo(undo, &store, &mut rollback_errors);
+                    }
+                    return (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        Json(json!({
+                            "request_id": rid.0,
+                            "workspace": workspace,
+                            "status": "error",
+                            "failed_at": index,
+                            "error": e.to_string(),
+                            "completed": results.len(),
+                            "total": total,
+                            "rolled_back": rollback_errors.is_empty(),
+                            "rollback_errors": rollback_errors,
+                            "results": results,
+                        })),
+                    )
+                        .into_response();
                 }
-                return (
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    Json(json!({
-                        "request_id": rid.0,
-                        "workspace": workspace,
-                        "status": "error",
-                        "failed_at": index,
-                        "error": e.to_string(),
-                        "completed": results.len(),
-                        "total": total,
-                        "rolled_back": rollback_errors.is_empty(),
-                        "rollback_errors": rollback_errors,
-                        "results": results,
-                    })),
-                )
-                    .into_response();
             }
         }
-    }
 
-    Json(BatchResponse {
-        request_id: rid.0,
-        workspace,
-        status: "ok",
-        count: results.len(),
-        results,
+        Json(BatchResponse {
+            request_id: rid.0,
+            workspace,
+            status: "ok",
+            count: results.len(),
+            results,
+        })
+        .into_response()
     })
-    .into_response()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

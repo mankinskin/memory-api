@@ -83,7 +83,7 @@ pub async fn subgraph(
         request_id = %rid.0,
         "subgraph request received"
     );
-    bfs_graph(
+    tokio::task::block_in_place(|| bfs_graph(
         state,
         &rid.0,
         params.workspace,
@@ -93,7 +93,7 @@ pub async fn subgraph(
         params.depth,
         params.limit_nodes,
         params.limit_edges,
-    )
+    ))
 }
 
 #[derive(Deserialize)]
@@ -115,7 +115,7 @@ pub async fn topgraph(
     Extension(rid): Extension<RequestIdExt>,
     Query(params): Query<TopgraphQuery>,
 ) -> Response {
-    bfs_graph(
+    tokio::task::block_in_place(|| bfs_graph(
         state,
         &rid.0,
         params.workspace,
@@ -125,7 +125,7 @@ pub async fn topgraph(
         params.depth,
         params.limit_nodes,
         params.limit_edges,
-    )
+    ))
 }
 
 fn bfs_graph(

@@ -77,62 +77,64 @@ pub async fn list_tickets(
         }
     };
 
-    // Use query search if provided, otherwise plain list
-    let tickets = if let Some(q) = &params.query {
-        let limit = params.limit.unwrap_or(100).min(1000);
-        match store.search_tickets(q, limit) {
-            Ok(results) => {
-                let mut items = Vec::with_capacity(results.len());
-                for r in results {
-                    let (created_at, updated_at) = match store.get_indexed(&r.id) {
-                        Ok(Some(indexed)) => (indexed.created_at, indexed.updated_at),
-                        Ok(None) => {
-                            let epoch = chrono::DateTime::<chrono::Utc>::from(SystemTime::UNIX_EPOCH);
-                            (epoch, epoch)
-                        }
-                        Err(e) => return storage_err(e, &rid.0),
-                    };
+    tokio::task::block_in_place(|| {
+        // Use query search if provided, otherwise plain list
+        let tickets = if let Some(q) = &params.query {
+            let limit = params.limit.unwrap_or(100).min(1000);
+            match store.search_tickets(q, limit) {
+                Ok(results) => {
+                    let mut items = Vec::with_capacity(results.len());
+                    for r in results {
+                        let (created_at, updated_at) = match store.get_indexed(&r.id) {
+                            Ok(Some(indexed)) => (indexed.created_at, indexed.updated_at),
+                            Ok(None) => {
+                                let epoch = chrono::DateTime::<chrono::Utc>::from(SystemTime::UNIX_EPOCH);
+                                (epoch, epoch)
+                            }
+                            Err(e) => return storage_err(e, &rid.0),
+                        };
 
-                    items.push(TicketSummary {
-                        id: r.id.to_string(),
-                        type_id: r.ticket_type.unwrap_or_default(),
-                        title: r.title,
-                        state: r.state,
-                        created_at,
-                        updated_at,
-                        fields: BTreeMap::new(),
-                    });
+                        items.push(TicketSummary {
+                            id: r.id.to_string(),
+                            type_id: r.ticket_type.unwrap_or_default(),
+                            title: r.title,
+                            state: r.state,
+                            created_at,
+                            updated_at,
+                            fields: BTreeMap::new(),
+                        });
+                    }
+                    items
                 }
-                items
+                Err(e) => return storage_err(e, &rid.0),
             }
-            Err(e) => return storage_err(e, &rid.0),
-        }
-    } else {
-        let limit = params.limit.map(|l| l.min(1000));
-        match store.list(params.state.as_deref(), None, limit) {
-            Ok(items) => items
-                .into_iter()
-                .map(|t| TicketSummary {
-                    id: t.id.to_string(),
-                    type_id: t.type_id,
-                    title: t.title,
-                    state: t.state,
-                    created_at: t.created_at,
-                    updated_at: t.updated_at,
-                    fields: BTreeMap::new(),
-                })
-                .collect(),
-            Err(e) => return storage_err(e, &rid.0),
-        }
-    };
+        } else {
+            let limit = params.limit.map(|l| l.min(1000));
+            match store.list(params.state.as_deref(), None, limit) {
+                Ok(items) => items
+                    .into_iter()
+                    .map(|t| TicketSummary {
+                        id: t.id.to_string(),
+                        type_id: t.type_id,
+                        title: t.title,
+                        state: t.state,
+                        created_at: t.created_at,
+                        updated_at: t.updated_at,
+                        fields: BTreeMap::new(),
+                    })
+                    .collect(),
+                Err(e) => return storage_err(e, &rid.0),
+            }
+        };
 
-    Json(TicketsResponse {
-        request_id: rid.0,
-        workspace: params.workspace,
-        items: tickets,
-        next_cursor: None, // cursor pagination deferred to later iteration
+        Json(TicketsResponse {
+            request_id: rid.0.clone(),
+            workspace: params.workspace.clone(),
+            items: tickets,
+            next_cursor: None, // cursor pagination deferred to later iteration
+        })
+        .into_response()
     })
-    .into_response()
 }
 
 pub async fn get_ticket(
@@ -149,10 +151,10 @@ pub async fn get_ticket(
         }
     };
 
-    match store.get(&id) {
+    tokio::task::block_in_place(|| match store.get(&id) {
         Ok(manifest) => Json(TicketDetailResponse {
-            request_id: rid.0,
-            workspace: params.workspace,
+            request_id: rid.0.clone(),
+            workspace: params.workspace.clone(),
             ticket: TicketDetail {
                 id: manifest.id.to_string(),
                 created_at: manifest.created_at,
@@ -161,7 +163,7 @@ pub async fn get_ticket(
         })
         .into_response(),
         Err(e) => storage_err(e, &rid.0),
-    }
+    })
 }
 
 #[derive(Serialize)]
@@ -192,29 +194,31 @@ pub async fn get_ticket_description(
         }
     };
 
-    let indexed = match store.get_indexed(&id) {
-        Ok(Some(t)) => t,
-        Ok(None) => {
+    tokio::task::block_in_place(|| {
+        let indexed = match store.get_indexed(&id) {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                return viewer_api::error::ApiError::not_found("ticket", &rid.0)
+                    .into_response_with_status(StatusCode::NOT_FOUND);
+            }
+            Err(e) => return storage_err(e, &rid.0),
+        };
+
+        if indexed.deleted {
             return viewer_api::error::ApiError::not_found("ticket", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
         }
-        Err(e) => return storage_err(e, &rid.0),
-    };
 
-    if indexed.deleted {
-        return viewer_api::error::ApiError::not_found("ticket", &rid.0)
-            .into_response_with_status(StatusCode::NOT_FOUND);
-    }
+        let description = TicketFs::read_description(&indexed.path);
 
-    let description = TicketFs::read_description(&indexed.path);
-
-    Json(TicketDescriptionResponse {
-        request_id: rid.0,
-        workspace: params.workspace,
-        id: id.to_string(),
-        description,
+        Json(TicketDescriptionResponse {
+            request_id: rid.0.clone(),
+            workspace: params.workspace.clone(),
+            id: id.to_string(),
+            description,
+        })
+        .into_response()
     })
-    .into_response()
 }
 
 /// Extract the bearer token from request headers as an author string.
@@ -239,7 +243,7 @@ pub async fn get_ticket_history(
         }
     };
 
-    match store.get_history(&id) {
+    tokio::task::block_in_place(|| match store.get_history(&id) {
         Ok(revisions) => {
             let entries: Vec<serde_json::Value> = revisions
                 .into_iter()
@@ -251,8 +255,8 @@ pub async fn get_ticket_history(
                 }))
                 .collect();
             Json(serde_json::json!({
-                "request_id": rid.0,
-                "workspace": params.workspace,
+                "request_id": &rid.0,
+                "workspace": &params.workspace,
                 "id": id.to_string(),
                 "count": entries.len(),
                 "entries": entries,
@@ -260,7 +264,7 @@ pub async fn get_ticket_history(
             .into_response()
         }
         Err(e) => storage_err(e, &rid.0),
-    }
+    })
 }
 
 // ── Mutation request / response types ────────────────────────────────────────
@@ -343,45 +347,50 @@ pub async fn create_ticket(
     };
 
     let extra = body.fields.unwrap_or_default();
+    let type_id = body.type_id;
+    let title = body.title;
+    let description = body.description;
 
-    let id = match store.create(
-        None,
-        &body.type_id,
-        body.title.as_deref(),
-        None,
-        extra,
-        None,
-        body.description.as_deref(),
-    ) {
-        Ok(id) => id,
-        Err(e) => return storage_err(e, &rid.0),
-    };
+    tokio::task::block_in_place(move || {
+        let id = match store.create(
+            None,
+            &type_id,
+            title.as_deref(),
+            None,
+            extra,
+            None,
+            description.as_deref(),
+        ) {
+            Ok(id) => id,
+            Err(e) => return storage_err(e, &rid.0),
+        };
 
-    let manifest = match store.get(&id) {
-        Ok(m) => m,
-        Err(e) => return storage_err(e, &rid.0),
-    };
+        let manifest = match store.get(&id) {
+            Ok(m) => m,
+            Err(e) => return storage_err(e, &rid.0),
+        };
 
-    let created_at = store
-        .get_indexed(&id)
-        .ok()
-        .flatten()
-        .map(|t| t.created_at)
-        .unwrap_or_else(chrono::Utc::now);
+        let created_at = store
+            .get_indexed(&id)
+            .ok()
+            .flatten()
+            .map(|t| t.created_at)
+            .unwrap_or_else(chrono::Utc::now);
 
-    (
-        StatusCode::CREATED,
-        Json(MutationResponse {
-            request_id: rid.0,
-            workspace: params.workspace,
-            ticket: TicketDetail {
-                id: manifest.id.to_string(),
-                created_at,
-                fields: manifest.extra,
-            },
-        }),
-    )
-        .into_response()
+        (
+            StatusCode::CREATED,
+            Json(MutationResponse {
+                request_id: rid.0,
+                workspace: params.workspace,
+                ticket: TicketDetail {
+                    id: manifest.id.to_string(),
+                    created_at,
+                    fields: manifest.extra,
+                },
+            }),
+        )
+            .into_response()
+    })
 }
 
 /// `PATCH /api/tickets/{id}?workspace=<name>`
@@ -404,37 +413,42 @@ pub async fn update_ticket(
     };
 
     let patch = body.fields.unwrap_or_default();
+    let from_state = body.from_state;
+    let to_state = body.state;
+    let description = body.description;
     let author = author_from_headers(&headers);
 
-    let manifest = match store.update(
-        &id,
-        patch,
-        body.from_state.as_deref(),
-        body.state.as_deref(),
-        body.description.as_deref(),
-        author.as_deref(),
-    ) {
-        Ok(m) => m,
-        Err(e) => return storage_err(e, &rid.0),
-    };
+    tokio::task::block_in_place(move || {
+        let manifest = match store.update(
+            &id,
+            patch,
+            from_state.as_deref(),
+            to_state.as_deref(),
+            description.as_deref(),
+            author.as_deref(),
+        ) {
+            Ok(m) => m,
+            Err(e) => return storage_err(e, &rid.0),
+        };
 
-    let created_at = store
-        .get_indexed(&id)
-        .ok()
-        .flatten()
-        .map(|t| t.created_at)
-        .unwrap_or_else(chrono::Utc::now);
+        let created_at = store
+            .get_indexed(&id)
+            .ok()
+            .flatten()
+            .map(|t| t.created_at)
+            .unwrap_or_else(chrono::Utc::now);
 
-    Json(MutationResponse {
-        request_id: rid.0,
-        workspace: params.workspace,
-        ticket: TicketDetail {
-            id: manifest.id.to_string(),
-            created_at,
-            fields: manifest.extra,
-        },
+        Json(MutationResponse {
+            request_id: rid.0,
+            workspace: params.workspace,
+            ticket: TicketDetail {
+                id: manifest.id.to_string(),
+                created_at,
+                fields: manifest.extra,
+            },
+        })
+        .into_response()
     })
-    .into_response()
 }
 
 /// `POST /api/tickets/{id}/close?workspace=<name>`
@@ -457,31 +471,33 @@ pub async fn close_ticket(
         }
     };
 
-    let target = body.target_state.as_deref().unwrap_or("done");
+    let target = body.target_state.as_deref().unwrap_or("done").to_string();
     let author = author_from_headers(&headers);
 
-    let (manifest, _path) = match store.close(&id, target, author.as_deref()) {
-        Ok(result) => result,
-        Err(e) => return storage_err(e, &rid.0),
-    };
+    tokio::task::block_in_place(|| {
+        let (manifest, _path) = match store.close(&id, &target, author.as_deref()) {
+            Ok(result) => result,
+            Err(e) => return storage_err(e, &rid.0),
+        };
 
-    let created_at = store
-        .get_indexed(&id)
-        .ok()
-        .flatten()
-        .map(|t| t.created_at)
-        .unwrap_or_else(chrono::Utc::now);
+        let created_at = store
+            .get_indexed(&id)
+            .ok()
+            .flatten()
+            .map(|t| t.created_at)
+            .unwrap_or_else(chrono::Utc::now);
 
-    Json(MutationResponse {
-        request_id: rid.0,
-        workspace: params.workspace,
-        ticket: TicketDetail {
-            id: manifest.id.to_string(),
-            created_at,
-            fields: manifest.extra,
-        },
+        Json(MutationResponse {
+            request_id: rid.0.clone(),
+            workspace: params.workspace.clone(),
+            ticket: TicketDetail {
+                id: manifest.id.to_string(),
+                created_at,
+                fields: manifest.extra,
+            },
+        })
+        .into_response()
     })
-    .into_response()
 }
 
 /// `POST /api/tickets/{id}/cancel?workspace=<name>`
@@ -510,28 +526,30 @@ pub async fn cancel_ticket(
         patch.insert("cancel_reason".to_string(), Value::String(reason));
     }
 
-    let manifest = match store.update(&id, patch, None, Some("cancelled"), None, author.as_deref()) {
-        Ok(m) => m,
-        Err(e) => return storage_err(e, &rid.0),
-    };
+    tokio::task::block_in_place(|| {
+        let manifest = match store.update(&id, patch, None, Some("cancelled"), None, author.as_deref()) {
+            Ok(m) => m,
+            Err(e) => return storage_err(e, &rid.0),
+        };
 
-    let created_at = store
-        .get_indexed(&id)
-        .ok()
-        .flatten()
-        .map(|t| t.created_at)
-        .unwrap_or_else(chrono::Utc::now);
+        let created_at = store
+            .get_indexed(&id)
+            .ok()
+            .flatten()
+            .map(|t| t.created_at)
+            .unwrap_or_else(chrono::Utc::now);
 
-    Json(MutationResponse {
-        request_id: rid.0,
-        workspace: params.workspace,
-        ticket: TicketDetail {
-            id: manifest.id.to_string(),
-            created_at,
-            fields: manifest.extra,
-        },
+        Json(MutationResponse {
+            request_id: rid.0.clone(),
+            workspace: params.workspace.clone(),
+            ticket: TicketDetail {
+                id: manifest.id.to_string(),
+                created_at,
+                fields: manifest.extra,
+            },
+        })
+        .into_response()
     })
-    .into_response()
 }
 
 /// `POST /api/tickets/{id}/revert?workspace=<name>`
@@ -555,50 +573,53 @@ pub async fn revert_ticket(
         }
     };
 
-    let revisions = match store.get_history(&id) {
-        Ok(r) => r,
-        Err(e) => return storage_err(e, &rid.0),
-    };
-
-    let target_rev = match revisions.iter().find(|r| r.rev == body.revision) {
-        Some(r) => r.clone(),
-        None => {
-            return ApiError::bad_request(
-                "revision_not_found",
-                &format!("revision {} does not exist for this ticket", body.revision),
-                &rid.0,
-            )
-            .into_response_with_status(StatusCode::BAD_REQUEST);
-        }
-    };
-
+    let revision = body.revision;
     let author = author_from_headers(&headers);
 
-    match store.apply_revert(&id, target_rev.fields, author.as_deref()) {
-        Ok(_new_rev) => {
-            let manifest = match store.get(&id) {
-                Ok(m) => m,
-                Err(e) => return storage_err(e, &rid.0),
-            };
-            let created_at = store
-                .get_indexed(&id)
-                .ok()
-                .flatten()
-                .map(|t| t.created_at)
-                .unwrap_or_else(chrono::Utc::now);
-            Json(MutationResponse {
-                request_id: rid.0,
-                workspace: params.workspace,
-                ticket: TicketDetail {
-                    id: manifest.id.to_string(),
-                    created_at,
-                    fields: manifest.extra,
-                },
-            })
-            .into_response()
+    tokio::task::block_in_place(|| {
+        let revisions = match store.get_history(&id) {
+            Ok(r) => r,
+            Err(e) => return storage_err(e, &rid.0),
+        };
+
+        let target_rev = match revisions.iter().find(|r| r.rev == revision) {
+            Some(r) => r.clone(),
+            None => {
+                return ApiError::bad_request(
+                    "revision_not_found",
+                    &format!("revision {} does not exist for this ticket", revision),
+                    &rid.0,
+                )
+                .into_response_with_status(StatusCode::BAD_REQUEST);
+            }
+        };
+
+        match store.apply_revert(&id, target_rev.fields, author.as_deref()) {
+            Ok(_new_rev) => {
+                let manifest = match store.get(&id) {
+                    Ok(m) => m,
+                    Err(e) => return storage_err(e, &rid.0),
+                };
+                let created_at = store
+                    .get_indexed(&id)
+                    .ok()
+                    .flatten()
+                    .map(|t| t.created_at)
+                    .unwrap_or_else(chrono::Utc::now);
+                Json(MutationResponse {
+                    request_id: rid.0.clone(),
+                    workspace: params.workspace.clone(),
+                    ticket: TicketDetail {
+                        id: manifest.id.to_string(),
+                        created_at,
+                        fields: manifest.extra,
+                    },
+                })
+                .into_response()
+            }
+            Err(e) => storage_err(e, &rid.0),
         }
-        Err(e) => storage_err(e, &rid.0),
-    }
+    })
 }
 
 /// `POST /api/tickets/{id}/undo?workspace=<name>`
@@ -620,49 +641,52 @@ pub async fn undo_ticket(
         }
     };
 
-    let revisions = match store.get_history(&id) {
-        Ok(r) => r,
-        Err(e) => return storage_err(e, &rid.0),
-    };
-
-    if revisions.len() < 2 {
-        return ApiError::bad_request(
-            "no_previous_revision",
-            "ticket has no previous revision to undo",
-            &rid.0,
-        )
-        .into_response_with_status(StatusCode::UNPROCESSABLE_ENTITY);
-    }
-
-    // Second-to-last revision — the state before the most recent change.
-    let prev_fields = revisions[revisions.len() - 2].fields.clone();
     let author = author_from_headers(&headers);
 
-    match store.apply_revert(&id, prev_fields, author.as_deref()) {
-        Ok(_new_rev) => {
-            let manifest = match store.get(&id) {
-                Ok(m) => m,
-                Err(e) => return storage_err(e, &rid.0),
-            };
-            let created_at = store
-                .get_indexed(&id)
-                .ok()
-                .flatten()
-                .map(|t| t.created_at)
-                .unwrap_or_else(chrono::Utc::now);
-            Json(MutationResponse {
-                request_id: rid.0,
-                workspace: params.workspace,
-                ticket: TicketDetail {
-                    id: manifest.id.to_string(),
-                    created_at,
-                    fields: manifest.extra,
-                },
-            })
-            .into_response()
+    tokio::task::block_in_place(|| {
+        let revisions = match store.get_history(&id) {
+            Ok(r) => r,
+            Err(e) => return storage_err(e, &rid.0),
+        };
+
+        if revisions.len() < 2 {
+            return ApiError::bad_request(
+                "no_previous_revision",
+                "ticket has no previous revision to undo",
+                &rid.0,
+            )
+            .into_response_with_status(StatusCode::UNPROCESSABLE_ENTITY);
         }
-        Err(e) => storage_err(e, &rid.0),
-    }
+
+        // Second-to-last revision — the state before the most recent change.
+        let prev_fields = revisions[revisions.len() - 2].fields.clone();
+
+        match store.apply_revert(&id, prev_fields, author.as_deref()) {
+            Ok(_new_rev) => {
+                let manifest = match store.get(&id) {
+                    Ok(m) => m,
+                    Err(e) => return storage_err(e, &rid.0),
+                };
+                let created_at = store
+                    .get_indexed(&id)
+                    .ok()
+                    .flatten()
+                    .map(|t| t.created_at)
+                    .unwrap_or_else(chrono::Utc::now);
+                Json(MutationResponse {
+                    request_id: rid.0.clone(),
+                    workspace: params.workspace.clone(),
+                    ticket: TicketDetail {
+                        id: manifest.id.to_string(),
+                        created_at,
+                        fields: manifest.extra,
+                    },
+                })
+                .into_response()
+            }
+            Err(e) => storage_err(e, &rid.0),
+        }
+    })
 }
 
 /// `DELETE /api/tickets/{id}?workspace=<name>`
@@ -682,15 +706,15 @@ pub async fn delete_ticket(
         }
     };
 
-    match store.delete(&id) {
+    tokio::task::block_in_place(|| match store.delete(&id) {
         Ok(()) => Json(DeleteResponse {
-            request_id: rid.0,
-            workspace: params.workspace,
+            request_id: rid.0.clone(),
+            workspace: params.workspace.clone(),
             id: id.to_string(),
         })
         .into_response(),
         Err(e) => storage_err(e, &rid.0),
-    }
+    })
 }
 
 #[cfg(test)]
