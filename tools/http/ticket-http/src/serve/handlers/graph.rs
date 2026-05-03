@@ -39,6 +39,10 @@ pub struct NodeItem {
     pub title: Option<String>,
     pub state: Option<String>,
     pub depth: usize,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub ticket_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -259,11 +263,21 @@ fn bfs_graph(
         .iter()
         .map(|(node_id, depth)| {
             if let Some(t) = meta_map.get(node_id) {
+                let priority = TicketFs::read(&t.path)
+                    .ok()
+                    .and_then(|m| {
+                        m.extra
+                            .get("priority")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    });
                 NodeItem {
                     id: node_id.to_string(),
                     title: t.title.clone(),
                     state: t.state.clone(),
                     depth: *depth,
+                    ticket_type: Some(t.type_id.clone()),
+                    priority,
                 }
             } else {
                 NodeItem {
@@ -271,6 +285,8 @@ fn bfs_graph(
                     title: None,
                     state: None,
                     depth: *depth,
+                    ticket_type: None,
+                    priority: None,
                 }
             }
         })
