@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use redb::{Database, ReadableTable, TableDefinition};
 use uuid::Uuid;
@@ -19,16 +18,13 @@ const META: TableDefinition<&str, &str> = TableDefinition::new(TABLE_META);
 
 /// Redb-backed metadata index.
 ///
-/// Opens the [`Database`] file only for the duration of each individual
-/// operation and releases the exclusive file lock immediately after.
-///
-/// A per-store [`Mutex`] serialises concurrent open attempts within the
-/// same process (required on Windows where `LockFileEx` is per-handle, not
-/// per-process like Unix `flock`).
+/// Keeps the [`Database`] open for the lifetime of the store. ReDB 2.x
+/// is `Send + Sync` and handles concurrent access internally: read
+/// transactions run in parallel; write transactions are serialised by
+/// ReDB itself via `begin_write()`. No application-level lock is needed.
 pub struct RedbIndexStore {
     db_path: PathBuf,
-    /// Serialises concurrent database opens within this process.
-    serial: Mutex<()>,
+    db: Database,
 }
 
 impl RedbIndexStore {
@@ -36,10 +32,9 @@ impl RedbIndexStore {
         let db = open_db(db_path)?;
         ensure_tables(&db)?;
         check_or_set_schema_version(&db)?;
-        drop(db);
         Ok(Self {
             db_path: db_path.to_path_buf(),
-            serial: Mutex::new(()),
+            db,
         })
     }
 
@@ -47,9 +42,7 @@ impl RedbIndexStore {
     where
         F: FnOnce(&Database) -> Result<R, StorageError>,
     {
-        let _guard = self.serial.lock().unwrap();
-        let db = open_db(&self.db_path)?;
-        f(&db)
+        f(&self.db)
     }
 
     /// Generic variant of `with_db` accepting any error type `E` that can be
@@ -59,9 +52,7 @@ impl RedbIndexStore {
         F: FnOnce(&Database) -> Result<R, E>,
         E: From<StorageError>,
     {
-        let _guard = self.serial.lock().unwrap();
-        let db = open_db(&self.db_path).map_err(E::from)?;
-        f(&db)
+        f(&self.db)
     }
 
     // ── entity CRUD ──────────────────────────────────────────────────────────
