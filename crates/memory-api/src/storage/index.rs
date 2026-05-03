@@ -270,6 +270,32 @@ impl RedbIndexStore {
         Ok(edges)
     }
 
+    /// Returns the number of non-deleted tickets without deserializing rows.
+    ///
+    /// Note: deleted tickets are stored as BLOBs with a flag inside, so we
+    /// can only do an approximate count via `COUNT(*)` (includes soft-deleted).
+    /// For the SSE snapshot baseline this is accurate enough.
+    pub fn count_tickets(&self) -> Result<usize, StorageError> {
+        let conn = self.read_conn()?;
+        let n: i64 = conn.query_row(
+            &format!("SELECT COUNT(*) FROM {TABLE_TICKETS}"),
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(n as usize)
+    }
+
+    /// Returns the number of edges without fetching the full edge list.
+    pub fn count_edges(&self) -> Result<usize, StorageError> {
+        let conn = self.read_conn()?;
+        let n: i64 = conn.query_row(
+            &format!("SELECT COUNT(*) FROM {TABLE_EDGES}"),
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(n as usize)
+    }
+
     // ── scan root registry ───────────────────────────────────────────────────
 
     pub fn add_scan_root(&self, root: &ScanRoot) -> Result<(), StorageError> {

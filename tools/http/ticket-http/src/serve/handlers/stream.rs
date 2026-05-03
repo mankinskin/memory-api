@@ -38,8 +38,8 @@ pub async fn stream_handler(
     let combined: BoxStream<'static, Result<Event, Infallible>> =
         if let Some(store) = state.ensure_workspace_runtime(&workspace) {
             let (nc, ec) = tokio::task::spawn_blocking(move || {
-                let nc = store.list(None, None, None).map(|v| v.len()).unwrap_or(0);
-                let ec = store.list_all_edges().map(|v| v.len()).unwrap_or(0);
+                let nc = store.count_tickets().unwrap_or(0);
+                let ec = store.count_edges().unwrap_or(0);
                 (nc, ec)
             })
             .await

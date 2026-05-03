@@ -69,7 +69,7 @@ impl TicketStore {
     /// loaded from TOML files via [`SchemaRegistry::load_dir`].
     pub fn open_with(index_root: &Path, schema_registry: SchemaRegistry) -> Result<Self, StorageError> {
         std::fs::create_dir_all(index_root)?;
-        let db_path = index_root.join("tickets.redb");
+        let db_path = index_root.join("tickets.db");
         let search_dir = index_root.join("search_index");
 
         let index = RedbIndexStore::open(&db_path)?;
@@ -630,6 +630,16 @@ impl TicketStore {
     /// Returns every edge in the store (used for bulk dependency resolution).
     pub fn list_all_edges(&self) -> Result<Vec<EdgeRecord>, StorageError> {
         self.index.list_all_edges()
+    }
+
+    /// Cheap COUNT(*) on the tickets table — used for SSE snapshot baseline.
+    pub fn count_tickets(&self) -> Result<usize, StorageError> {
+        self.index.count_tickets()
+    }
+
+    /// Cheap COUNT(*) on the edges table — used for SSE snapshot baseline.
+    pub fn count_edges(&self) -> Result<usize, StorageError> {
+        self.index.count_edges()
     }
 
     pub fn add_edge(&self, edge: EdgeRecord) -> Result<(), StorageError> {
