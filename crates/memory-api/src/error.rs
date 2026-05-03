@@ -128,29 +128,8 @@ impl ProtocolError {
     }
 }
 
-// Blanket redb error conversions — all redb error types stringify nicely.
-impl From<redb::DatabaseError> for StorageError {
-    fn from(e: redb::DatabaseError) -> Self {
-        StorageError::Database(e.to_string())
-    }
-}
-impl From<redb::TransactionError> for StorageError {
-    fn from(e: redb::TransactionError) -> Self {
-        StorageError::Database(e.to_string())
-    }
-}
-impl From<redb::TableError> for StorageError {
-    fn from(e: redb::TableError) -> Self {
-        StorageError::Database(e.to_string())
-    }
-}
-impl From<redb::StorageError> for StorageError {
-    fn from(e: redb::StorageError) -> Self {
-        StorageError::Database(e.to_string())
-    }
-}
-impl From<redb::CommitError> for StorageError {
-    fn from(e: redb::CommitError) -> Self {
+impl From<rusqlite::Error> for StorageError {
+    fn from(e: rusqlite::Error) -> Self {
         StorageError::Database(e.to_string())
     }
 }

@@ -50,7 +50,7 @@ impl EntityStore {
         schema_registry: SchemaRegistry,
     ) -> Result<Self, StorageError> {
         std::fs::create_dir_all(index_root)?;
-        let db_path = index_root.join("entities.redb");
+        let db_path = index_root.join("entities.db");
         let search_dir = index_root.join("search_index");
 
         let index = RedbIndexStore::open(&db_path)?;

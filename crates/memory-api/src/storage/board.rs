@@ -1,23 +1,17 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Duration, Utc};
-use redb::{ReadableTable, TableDefinition};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::error::StorageError;
+use crate::storage::schema::{
+    TABLE_BOARD_ACTIVE_INDEX, TABLE_BOARD_CONFIG, TABLE_BOARD_ENTRIES,
+};
 
 use super::index::RedbIndexStore;
-
-// ── Table definitions ─────────────────────────────────────────────────────────
-
-pub(crate) const BOARD_ENTRIES: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("board_entries");
-pub(crate) const BOARD_ACTIVE_INDEX: TableDefinition<&str, &str> =
-    TableDefinition::new("board_active_index");
-pub(crate) const BOARD_CONFIG: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("board_config");
 
 const BOARD_CONFIG_KEY: &str = "default";
 
@@ -224,8 +218,8 @@ fn deserialize_config(bytes: &[u8]) -> Result<BoardConfig, BoardError> {
         .map_err(|e| BoardError::Storage(StorageError::Serialization(e.to_string())))
 }
 
-fn db_err<E: Into<StorageError>>(e: E) -> BoardError {
-    BoardError::Storage(e.into())
+fn db_err(e: rusqlite::Error) -> BoardError {
+    BoardError::Storage(StorageError::Database(e.to_string()))
 }
 
 // ── RedbIndexStore board extension impl ──────────────────────────────────────
@@ -234,29 +228,34 @@ impl RedbIndexStore {
     // ── config ────────────────────────────────────────────────────────────────
 
     pub fn board_read_config(&self) -> Result<BoardConfig, BoardError> {
-        self.with_db_ext(|db| {
-            let read_txn = db.begin_read().map_err(db_err)?;
-            match read_txn.open_table(BOARD_CONFIG) {
-                Ok(table) => match table.get(BOARD_CONFIG_KEY).map_err(db_err)? {
-                    Some(value) => deserialize_config(value.value()),
-                    None => Ok(BoardConfig::default()),
-                },
-                Err(_) => Ok(BoardConfig::default()),
+        self.with_db_ext(|conn| {
+            let bytes: Option<Vec<u8>> = conn
+                .query_row(
+                    &format!(
+                        "SELECT data FROM {TABLE_BOARD_CONFIG} WHERE key = ?1"
+                    ),
+                    params![BOARD_CONFIG_KEY],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(db_err)?;
+            match bytes {
+                Some(b) => deserialize_config(&b),
+                None => Ok(BoardConfig::default()),
             }
         })
     }
 
     pub fn board_write_config(&self, config: &BoardConfig) -> Result<(), BoardError> {
         let bytes = serialize_config(config)?;
-        self.with_db_ext(|db| {
-            let write_txn = db.begin_write().map_err(db_err)?;
-            {
-                let mut table = write_txn.open_table(BOARD_CONFIG).map_err(db_err)?;
-                table
-                    .insert(BOARD_CONFIG_KEY, bytes.as_slice())
-                    .map_err(db_err)?;
-            }
-            write_txn.commit().map_err(db_err)?;
+        self.with_db_ext(|conn| {
+            conn.execute(
+                &format!(
+                    "INSERT OR REPLACE INTO {TABLE_BOARD_CONFIG} (key, data) VALUES (?1, ?2)"
+                ),
+                params![BOARD_CONFIG_KEY, bytes],
+            )
+            .map_err(db_err)?;
             Ok(())
         })
     }
@@ -271,27 +270,26 @@ impl RedbIndexStore {
         intent: &str,
         owned_files: Vec<String>,
     ) -> Result<BoardEntry, BoardError> {
-        self.with_db_ext(|db| {
+        self.with_db_ext(|conn| {
             let now = Utc::now();
-            let write_txn = db.begin_write().map_err(db_err)?;
+            conn.execute_batch("BEGIN IMMEDIATE;").map_err(db_err)?;
 
             let config: BoardConfig = {
-                let table = write_txn.open_table(BOARD_CONFIG).map_err(db_err)?;
-                match table.get(BOARD_CONFIG_KEY).map_err(db_err)? {
-                    Some(value) => deserialize_config(value.value())?,
+                let bytes: Option<Vec<u8>> = conn
+                    .query_row(
+                        &format!("SELECT data FROM {TABLE_BOARD_CONFIG} WHERE key = ?1"),
+                        params![BOARD_CONFIG_KEY],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(db_err)?;
+                match bytes {
+                    Some(b) => deserialize_config(&b)?,
                     None => BoardConfig::default(),
                 }
             };
 
-            let all_entries: Vec<BoardEntry> = {
-                let table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                let mut entries = Vec::new();
-                for result in table.iter().map_err(db_err)? {
-                    let (_, value) = result.map_err(db_err)?;
-                    entries.push(deserialize_entry(value.value())?);
-                }
-                entries
-            };
+            let all_entries: Vec<BoardEntry> = load_all_entries(conn)?;
 
             let wip_count = all_entries
                 .iter()
@@ -299,30 +297,32 @@ impl RedbIndexStore {
                 .count() as u32;
 
             if wip_count >= config.max_wip {
+                conn.execute_batch("ROLLBACK;").ok();
                 return Err(BoardError::WipLimitReached {
                     current: wip_count,
                     max: config.max_wip,
                 });
             }
 
-            let index_key = format!("{}:{}", ticket_id, agent_id);
-            let existing_entry_id: Option<Uuid> = {
-                let table = write_txn
-                    .open_table(BOARD_ACTIVE_INDEX)
-                    .map_err(db_err)?;
-                match table.get(index_key.as_str()).map_err(db_err)? {
-                    Some(val) => Some(val.value().parse::<Uuid>().map_err(|e| {
-                        BoardError::Storage(StorageError::Serialization(e.to_string()))
-                    })?),
-                    None => None,
-                }
-            };
+            let index_key = format!("{ticket_id}:{agent_id}");
+            let existing_entry_id: Option<Uuid> = conn
+                .query_row(
+                    &format!(
+                        "SELECT value FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1"
+                    ),
+                    params![index_key],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(db_err)?
+                .and_then(|s| s.parse::<Uuid>().ok());
 
             if existing_entry_id.is_some_and(|eid| {
                 all_entries
                     .iter()
                     .any(|e| e.entry_id == eid && e.status == BoardEntryStatus::Active)
             }) {
+                conn.execute_batch("ROLLBACK;").ok();
                 return Err(BoardError::AlreadyCheckedIn {
                     ticket_id,
                     agent_id: agent_id.to_string(),
@@ -345,15 +345,14 @@ impl RedbIndexStore {
                         conflict_entry.status = BoardEntryStatus::Conflict;
                         let conflict_bytes = serialize_entry(&conflict_entry)?;
                         let conflict_key = conflict_entry.entry_id.to_string();
-                        {
-                            let mut table =
-                                write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                            table
-                                .insert(conflict_key.as_str(), conflict_bytes.as_slice())
-                                .map_err(db_err)?;
-                        }
-                        write_txn.commit().map_err(db_err)?;
-
+                        conn.execute(
+                            &format!(
+                                "INSERT OR REPLACE INTO {TABLE_BOARD_ENTRIES} (id, data) VALUES (?1, ?2)"
+                            ),
+                            params![conflict_key, conflict_bytes],
+                        )
+                        .map_err(db_err)?;
+                        conn.execute_batch("COMMIT;").map_err(db_err)?;
                         return Err(BoardError::FileConflict {
                             files: conflicting,
                             conflicting_agent: existing.agent_id.clone(),
@@ -373,7 +372,6 @@ impl RedbIndexStore {
                 .map(|e| e.entry_id);
 
             let entry_id = Uuid::new_v4();
-
             let new_entry = BoardEntry {
                 entry_id,
                 ticket_id,
@@ -390,24 +388,24 @@ impl RedbIndexStore {
 
             let entry_bytes = serialize_entry(&new_entry)?;
             let entry_key = entry_id.to_string();
-            {
-                let mut table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                table
-                    .insert(entry_key.as_str(), entry_bytes.as_slice())
-                    .map_err(db_err)?;
-            }
+            conn.execute(
+                &format!(
+                    "INSERT OR REPLACE INTO {TABLE_BOARD_ENTRIES} (id, data) VALUES (?1, ?2)"
+                ),
+                params![entry_key, entry_bytes],
+            )
+            .map_err(db_err)?;
 
             let entry_id_str = entry_id.to_string();
-            {
-                let mut table = write_txn
-                    .open_table(BOARD_ACTIVE_INDEX)
-                    .map_err(db_err)?;
-                table
-                    .insert(index_key.as_str(), entry_id_str.as_str())
-                    .map_err(db_err)?;
-            }
+            conn.execute(
+                &format!(
+                    "INSERT OR REPLACE INTO {TABLE_BOARD_ACTIVE_INDEX} (key, value) VALUES (?1, ?2)"
+                ),
+                params![index_key, entry_id_str],
+            )
+            .map_err(db_err)?;
 
-            write_txn.commit().map_err(db_err)?;
+            conn.execute_batch("COMMIT;").map_err(db_err)?;
             Ok(new_entry)
         })
     }
@@ -420,35 +418,47 @@ impl RedbIndexStore {
         agent_id: &str,
         handoff_reason: Option<&str>,
     ) -> Result<BoardEntry, BoardError> {
-        self.with_db_ext(|db| {
-            let write_txn = db.begin_write().map_err(db_err)?;
-            let index_key = format!("{}:{}", ticket_id, agent_id);
+        self.with_db_ext(|conn| {
+            conn.execute_batch("BEGIN IMMEDIATE;").map_err(db_err)?;
+            let index_key = format!("{ticket_id}:{agent_id}");
 
-            let entry_id: Uuid = {
-                let table = write_txn
-                    .open_table(BOARD_ACTIVE_INDEX)
-                    .map_err(db_err)?;
-                match table.get(index_key.as_str()).map_err(db_err)? {
-                    Some(val) => val.value().parse::<Uuid>().map_err(|e| {
-                        BoardError::Storage(StorageError::Serialization(e.to_string()))
-                    })?,
-                    None => {
-                        return Err(BoardError::NotCheckedIn {
-                            ticket_id: *ticket_id,
-                            agent_id: agent_id.to_string(),
-                        });
-                    }
+            let entry_id: Uuid = match conn
+                .query_row(
+                    &format!(
+                        "SELECT value FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1"
+                    ),
+                    params![index_key],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(db_err)?
+            {
+                Some(s) => s.parse::<Uuid>().map_err(|e| {
+                    BoardError::Storage(StorageError::Serialization(e.to_string()))
+                })?,
+                None => {
+                    conn.execute_batch("ROLLBACK;").ok();
+                    return Err(BoardError::NotCheckedIn {
+                        ticket_id: *ticket_id,
+                        agent_id: agent_id.to_string(),
+                    });
                 }
             };
 
             let entry_key = entry_id.to_string();
-            let mut entry: BoardEntry = {
-                let table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                match table.get(entry_key.as_str()).map_err(db_err)? {
-                    Some(val) => deserialize_entry(val.value())?,
-                    None => {
-                        return Err(BoardError::EntryNotFound(entry_id));
-                    }
+            let mut entry: BoardEntry = match conn
+                .query_row(
+                    &format!("SELECT data FROM {TABLE_BOARD_ENTRIES} WHERE id = ?1"),
+                    params![entry_key],
+                    |row| row.get::<_, Vec<u8>>(0),
+                )
+                .optional()
+                .map_err(db_err)?
+            {
+                Some(b) => deserialize_entry(&b)?,
+                None => {
+                    conn.execute_batch("ROLLBACK;").ok();
+                    return Err(BoardError::EntryNotFound(entry_id));
                 }
             };
 
@@ -456,21 +466,21 @@ impl RedbIndexStore {
             entry.handoff_reason = handoff_reason.map(str::to_string);
 
             let updated_bytes = serialize_entry(&entry)?;
-            {
-                let mut table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                table
-                    .insert(entry_key.as_str(), updated_bytes.as_slice())
-                    .map_err(db_err)?;
-            }
+            conn.execute(
+                &format!(
+                    "INSERT OR REPLACE INTO {TABLE_BOARD_ENTRIES} (id, data) VALUES (?1, ?2)"
+                ),
+                params![entry_key, updated_bytes],
+            )
+            .map_err(db_err)?;
 
-            {
-                let mut table = write_txn
-                    .open_table(BOARD_ACTIVE_INDEX)
-                    .map_err(db_err)?;
-                table.remove(index_key.as_str()).map_err(db_err)?;
-            }
+            conn.execute(
+                &format!("DELETE FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1"),
+                params![index_key],
+            )
+            .map_err(db_err)?;
 
-            write_txn.commit().map_err(db_err)?;
+            conn.execute_batch("COMMIT;").map_err(db_err)?;
             Ok(entry)
         })
     }
@@ -481,29 +491,38 @@ impl RedbIndexStore {
         &self,
         entry_id: &Uuid,
     ) -> Result<BoardEntry, BoardError> {
-        self.with_db_ext(|db| {
-            let write_txn = db.begin_write().map_err(db_err)?;
+        self.with_db_ext(|conn| {
+            conn.execute_batch("BEGIN IMMEDIATE;").map_err(db_err)?;
             let entry_key = entry_id.to_string();
 
-            let mut entry: BoardEntry = {
-                let table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                match table.get(entry_key.as_str()).map_err(db_err)? {
-                    Some(val) => deserialize_entry(val.value())?,
-                    None => return Err(BoardError::EntryNotFound(*entry_id)),
+            let mut entry: BoardEntry = match conn
+                .query_row(
+                    &format!("SELECT data FROM {TABLE_BOARD_ENTRIES} WHERE id = ?1"),
+                    params![entry_key],
+                    |row| row.get::<_, Vec<u8>>(0),
+                )
+                .optional()
+                .map_err(db_err)?
+            {
+                Some(b) => deserialize_entry(&b)?,
+                None => {
+                    conn.execute_batch("ROLLBACK;").ok();
+                    return Err(BoardError::EntryNotFound(*entry_id));
                 }
             };
 
             entry.last_heartbeat = Utc::now();
 
             let updated_bytes = serialize_entry(&entry)?;
-            {
-                let mut table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                table
-                    .insert(entry_key.as_str(), updated_bytes.as_slice())
-                    .map_err(db_err)?;
-            }
+            conn.execute(
+                &format!(
+                    "INSERT OR REPLACE INTO {TABLE_BOARD_ENTRIES} (id, data) VALUES (?1, ?2)"
+                ),
+                params![entry_key, updated_bytes],
+            )
+            .map_err(db_err)?;
 
-            write_txn.commit().map_err(db_err)?;
+            conn.execute_batch("COMMIT;").map_err(db_err)?;
             Ok(entry)
         })
     }
@@ -514,31 +533,33 @@ impl RedbIndexStore {
         &self,
         agent_id: Option<&str>,
     ) -> Result<BoardSnapshot, BoardError> {
-        self.with_db_ext(|db| {
+        self.with_db_ext(|conn| {
             let now = Utc::now();
-            let read_txn = db.begin_read().map_err(db_err)?;
 
-            let config: BoardConfig = match read_txn.open_table(BOARD_CONFIG) {
-                Ok(table) => match table.get(BOARD_CONFIG_KEY).map_err(db_err)? {
-                    Some(value) => deserialize_config(value.value())?,
+            let config: BoardConfig = {
+                let bytes: Option<Vec<u8>> = conn
+                    .query_row(
+                        &format!("SELECT data FROM {TABLE_BOARD_CONFIG} WHERE key = ?1"),
+                        params![BOARD_CONFIG_KEY],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(db_err)?;
+                match bytes {
+                    Some(b) => deserialize_config(&b)?,
                     None => BoardConfig::default(),
-                },
-                Err(_) => BoardConfig::default(),
+                }
             };
 
-            let mut entries: Vec<BoardEntry> = {
-                let table = read_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                let mut v = Vec::new();
-                for result in table.iter().map_err(db_err)? {
-                    let (_, value) = result.map_err(db_err)?;
-                    let mut entry = deserialize_entry(value.value())?;
-                    if entry.is_stale_at(now) {
-                        entry.status = BoardEntryStatus::Stale;
+            let mut entries: Vec<BoardEntry> = load_all_entries(conn)?
+                .into_iter()
+                .map(|mut e| {
+                    if e.is_stale_at(now) {
+                        e.status = BoardEntryStatus::Stale;
                     }
-                    v.push(entry);
-                }
-                v
-            };
+                    e
+                })
+                .collect();
 
             entries.sort_by(|a, b| b.checked_in_at.cmp(&a.checked_in_at));
 
@@ -609,26 +630,19 @@ impl RedbIndexStore {
         &self,
         include_stale: bool,
     ) -> Result<BoardCleanPreview, BoardError> {
-        self.with_db_ext(|db| {
+        self.with_db_ext(|conn| {
             let now = Utc::now();
-            let read_txn = db.begin_read().map_err(db_err)?;
 
-            let mut eligible: Vec<Uuid> = {
-                let table = read_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                let mut ids = Vec::new();
-                for result in table.iter().map_err(db_err)? {
-                    let (_, value) = result.map_err(db_err)?;
-                    let entry = deserialize_entry(value.value())?;
-                    let is_eligible = matches!(
-                        entry.status,
+            let mut eligible: Vec<Uuid> = load_all_entries(conn)?
+                .into_iter()
+                .filter(|e| {
+                    matches!(
+                        e.status,
                         BoardEntryStatus::Completed | BoardEntryStatus::Conflict
-                    ) || (include_stale && entry.is_stale_at(now));
-                    if is_eligible {
-                        ids.push(entry.entry_id);
-                    }
-                }
-                ids
-            };
+                    ) || (include_stale && e.is_stale_at(now))
+                })
+                .map(|e| e.entry_id)
+                .collect();
 
             eligible.sort();
             let generated_at = now;
@@ -652,72 +666,70 @@ impl RedbIndexStore {
     ) -> Result<BoardCleanResult, BoardError> {
         let (expected_hash_hex, generated_at) = parse_clean_token(token)?;
 
-        self.with_db_ext(|db| {
+        self.with_db_ext(|conn| {
             let now = Utc::now();
-            let write_txn = db.begin_write().map_err(db_err)?;
+            conn.execute_batch("BEGIN IMMEDIATE;").map_err(db_err)?;
 
-            let mut eligible: Vec<(Uuid, String)> = {
-                let table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                let mut pairs = Vec::new();
-                for result in table.iter().map_err(db_err)? {
-                    let (key, value) = result.map_err(db_err)?;
-                    let entry = deserialize_entry(value.value())?;
-                    let is_eligible = matches!(
-                        entry.status,
+            let all_entries = load_all_entries(conn)?;
+            let mut eligible: Vec<Uuid> = all_entries
+                .iter()
+                .filter(|e| {
+                    matches!(
+                        e.status,
                         BoardEntryStatus::Completed | BoardEntryStatus::Conflict
-                    ) || (include_stale && entry.is_stale_at(now));
-                    if is_eligible {
-                        pairs.push((entry.entry_id, key.value().to_string()));
-                    }
-                }
-                pairs
-            };
+                    ) || (include_stale && e.is_stale_at(now))
+                })
+                .map(|e| e.entry_id)
+                .collect();
 
-            eligible.sort_by_key(|(id, _)| *id);
-            let sorted_ids: Vec<Uuid> = eligible.iter().map(|(id, _)| *id).collect();
-            let candidate_token = compute_clean_token(&sorted_ids, generated_at);
-
-            let candidate_hash = candidate_token.split_once('|').map(|(h, _)| h).unwrap_or("");
+            eligible.sort();
+            let candidate_token = compute_clean_token(&eligible, generated_at);
+            let candidate_hash =
+                candidate_token.split_once('|').map(|(h, _)| h).unwrap_or("");
             if candidate_hash != expected_hash_hex {
+                conn.execute_batch("ROLLBACK;").ok();
                 return Err(BoardError::StaleCleanToken);
             }
 
-            let entry_keys: Vec<String> = eligible.iter().map(|(_, k)| k.clone()).collect();
-            let removed_ids: Vec<Uuid> = eligible.iter().map(|(id, _)| *id).collect();
-
-            {
-                let mut entries_table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                for key in &entry_keys {
-                    entries_table.remove(key.as_str()).map_err(db_err)?;
-                }
+            for id in &eligible {
+                let id_str = id.to_string();
+                conn.execute(
+                    &format!("DELETE FROM {TABLE_BOARD_ENTRIES} WHERE id = ?1"),
+                    params![id_str],
+                )
+                .map_err(db_err)?;
             }
 
-            {
-                let mut index_table = write_txn
-                    .open_table(BOARD_ACTIVE_INDEX)
-                    .map_err(db_err)?;
-                let to_remove: Vec<String> = {
-                    let mut stale_keys = Vec::new();
-                    for result in index_table.iter().map_err(db_err)? {
-                        let (k, v) = result.map_err(db_err)?;
-                        let eid: Uuid = v.value().parse().map_err(|e: uuid::Error| {
-                            BoardError::Storage(StorageError::Serialization(e.to_string()))
-                        })?;
-                        if removed_ids.contains(&eid) {
-                            stale_keys.push(k.value().to_string());
-                        }
-                    }
-                    stale_keys
-                };
-                for k in &to_remove {
-                    index_table.remove(k.as_str()).map_err(db_err)?;
-                }
+            // Remove orphaned active-index entries that pointed at removed entries.
+            let mut index_stmt = conn
+                .prepare(&format!(
+                    "SELECT key, value FROM {TABLE_BOARD_ACTIVE_INDEX}"
+                ))
+                .map_err(db_err)?;
+            let to_remove: Vec<String> = index_stmt
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(db_err)?
+                .filter_map(|r| r.ok())
+                .filter_map(|(k, v)| {
+                    let eid: Uuid = v.parse().ok()?;
+                    if eligible.contains(&eid) { Some(k) } else { None }
+                })
+                .collect();
+            drop(index_stmt);
+            for k in &to_remove {
+                conn.execute(
+                    &format!("DELETE FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1"),
+                    params![k],
+                )
+                .map_err(db_err)?;
             }
 
-            write_txn.commit().map_err(db_err)?;
-            let removed_count = removed_ids.len();
+            conn.execute_batch("COMMIT;").map_err(db_err)?;
+            let removed_count = eligible.len();
             Ok(BoardCleanResult {
-                removed_entry_ids: removed_ids,
+                removed_entry_ids: eligible,
                 removed_count,
             })
         })
@@ -732,36 +744,34 @@ impl RedbIndexStore {
         add: Vec<String>,
         remove: Vec<String>,
     ) -> Result<BoardEntry, BoardError> {
-        self.with_db_ext(|db| {
-            let write_txn = db.begin_write().map_err(db_err)?;
+        self.with_db_ext(|conn| {
+            conn.execute_batch("BEGIN IMMEDIATE;").map_err(db_err)?;
             let index_key = format!("{ticket_id}:{agent_id}");
 
-            let entry_id: Uuid = {
-                let table = write_txn
-                    .open_table(BOARD_ACTIVE_INDEX)
-                    .map_err(db_err)?;
-                match table.get(index_key.as_str()).map_err(db_err)? {
-                    Some(val) => val.value().parse::<Uuid>().map_err(|e| {
-                        BoardError::Storage(StorageError::Serialization(e.to_string()))
-                    })?,
-                    None => {
-                        return Err(BoardError::NotCheckedIn {
-                            ticket_id,
-                            agent_id: agent_id.to_string(),
-                        });
-                    }
+            let entry_id: Uuid = match conn
+                .query_row(
+                    &format!(
+                        "SELECT value FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1"
+                    ),
+                    params![index_key],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(db_err)?
+            {
+                Some(s) => s.parse::<Uuid>().map_err(|e| {
+                    BoardError::Storage(StorageError::Serialization(e.to_string()))
+                })?,
+                None => {
+                    conn.execute_batch("ROLLBACK;").ok();
+                    return Err(BoardError::NotCheckedIn {
+                        ticket_id,
+                        agent_id: agent_id.to_string(),
+                    });
                 }
             };
 
-            let all_entries: Vec<BoardEntry> = {
-                let table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                let mut v = Vec::new();
-                for result in table.iter().map_err(db_err)? {
-                    let (_, value) = result.map_err(db_err)?;
-                    v.push(deserialize_entry(value.value())?);
-                }
-                v
-            };
+            let all_entries = load_all_entries(conn)?;
 
             let mut caller = all_entries
                 .iter()
@@ -770,6 +780,7 @@ impl RedbIndexStore {
                 .ok_or(BoardError::EntryNotFound(entry_id))?;
 
             if caller.status != BoardEntryStatus::Active {
+                conn.execute_batch("ROLLBACK;").ok();
                 return Err(BoardError::NotCheckedIn {
                     ticket_id,
                     agent_id: agent_id.to_string(),
@@ -787,6 +798,7 @@ impl RedbIndexStore {
                         .cloned()
                         .collect();
                     if !conflicting.is_empty() {
+                        conn.execute_batch("ROLLBACK;").ok();
                         return Err(BoardError::FileConflict {
                             files: conflicting,
                             conflicting_agent: other.agent_id.clone(),
@@ -805,14 +817,15 @@ impl RedbIndexStore {
 
             let updated_bytes = serialize_entry(&caller)?;
             let entry_key = caller.entry_id.to_string();
-            {
-                let mut table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                table
-                    .insert(entry_key.as_str(), updated_bytes.as_slice())
-                    .map_err(db_err)?;
-            }
+            conn.execute(
+                &format!(
+                    "INSERT OR REPLACE INTO {TABLE_BOARD_ENTRIES} (id, data) VALUES (?1, ?2)"
+                ),
+                params![entry_key, updated_bytes],
+            )
+            .map_err(db_err)?;
 
-            write_txn.commit().map_err(db_err)?;
+            conn.execute_batch("COMMIT;").map_err(db_err)?;
             Ok(caller)
         })
     }
@@ -824,36 +837,34 @@ impl RedbIndexStore {
         old_path: &str,
         new_path: &str,
     ) -> Result<BoardEntry, BoardError> {
-        self.with_db_ext(|db| {
-            let write_txn = db.begin_write().map_err(db_err)?;
+        self.with_db_ext(|conn| {
+            conn.execute_batch("BEGIN IMMEDIATE;").map_err(db_err)?;
             let index_key = format!("{ticket_id}:{agent_id}");
 
-            let entry_id: Uuid = {
-                let table = write_txn
-                    .open_table(BOARD_ACTIVE_INDEX)
-                    .map_err(db_err)?;
-                match table.get(index_key.as_str()).map_err(db_err)? {
-                    Some(val) => val.value().parse::<Uuid>().map_err(|e| {
-                        BoardError::Storage(StorageError::Serialization(e.to_string()))
-                    })?,
-                    None => {
-                        return Err(BoardError::NotCheckedIn {
-                            ticket_id,
-                            agent_id: agent_id.to_string(),
-                        });
-                    }
+            let entry_id: Uuid = match conn
+                .query_row(
+                    &format!(
+                        "SELECT value FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1"
+                    ),
+                    params![index_key],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(db_err)?
+            {
+                Some(s) => s.parse::<Uuid>().map_err(|e| {
+                    BoardError::Storage(StorageError::Serialization(e.to_string()))
+                })?,
+                None => {
+                    conn.execute_batch("ROLLBACK;").ok();
+                    return Err(BoardError::NotCheckedIn {
+                        ticket_id,
+                        agent_id: agent_id.to_string(),
+                    });
                 }
             };
 
-            let all_entries: Vec<BoardEntry> = {
-                let table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                let mut v = Vec::new();
-                for result in table.iter().map_err(db_err)? {
-                    let (_, value) = result.map_err(db_err)?;
-                    v.push(deserialize_entry(value.value())?);
-                }
-                v
-            };
+            let all_entries = load_all_entries(conn)?;
 
             let mut caller = all_entries
                 .iter()
@@ -862,6 +873,7 @@ impl RedbIndexStore {
                 .ok_or(BoardError::EntryNotFound(entry_id))?;
 
             if caller.status != BoardEntryStatus::Active {
+                conn.execute_batch("ROLLBACK;").ok();
                 return Err(BoardError::NotCheckedIn {
                     ticket_id,
                     agent_id: agent_id.to_string(),
@@ -873,6 +885,7 @@ impl RedbIndexStore {
                 .filter(|e| e.entry_id != entry_id && e.status == BoardEntryStatus::Active)
             {
                 if other.owned_files.contains(&new_path.to_string()) {
+                    conn.execute_batch("ROLLBACK;").ok();
                     return Err(BoardError::FileRenameConflict {
                         path: new_path.to_string(),
                         conflicting_agent: other.agent_id.clone(),
@@ -888,14 +901,15 @@ impl RedbIndexStore {
 
             let updated_bytes = serialize_entry(&caller)?;
             let entry_key = caller.entry_id.to_string();
-            {
-                let mut table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                table
-                    .insert(entry_key.as_str(), updated_bytes.as_slice())
-                    .map_err(db_err)?;
-            }
+            conn.execute(
+                &format!(
+                    "INSERT OR REPLACE INTO {TABLE_BOARD_ENTRIES} (id, data) VALUES (?1, ?2)"
+                ),
+                params![entry_key, updated_bytes],
+            )
+            .map_err(db_err)?;
 
-            write_txn.commit().map_err(db_err)?;
+            conn.execute_batch("COMMIT;").map_err(db_err)?;
             Ok(caller)
         })
     }
@@ -906,24 +920,18 @@ impl RedbIndexStore {
         &self,
         ticket_id: Uuid,
     ) -> Result<Vec<Uuid>, BoardError> {
-        self.with_db_ext(|db| {
-            let write_txn = db.begin_write().map_err(db_err)?;
+        self.with_db_ext(|conn| {
+            conn.execute_batch("BEGIN IMMEDIATE;").map_err(db_err)?;
 
-            let active: Vec<BoardEntry> = {
-                let table = write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                let mut v = Vec::new();
-                for result in table.iter().map_err(db_err)? {
-                    let (_, value) = result.map_err(db_err)?;
-                    let entry = deserialize_entry(value.value())?;
-                    if entry.ticket_id == ticket_id && entry.status == BoardEntryStatus::Active {
-                        v.push(entry);
-                    }
-                }
-                v
-            };
+            let active: Vec<BoardEntry> = load_all_entries(conn)?
+                .into_iter()
+                .filter(|e| {
+                    e.ticket_id == ticket_id && e.status == BoardEntryStatus::Active
+                })
+                .collect();
 
             if active.is_empty() {
-                write_txn.commit().map_err(db_err)?;
+                conn.execute_batch("COMMIT;").map_err(db_err)?;
                 return Ok(Vec::new());
             }
 
@@ -933,24 +941,25 @@ impl RedbIndexStore {
                 entry.status = BoardEntryStatus::Completed;
                 let updated_bytes = serialize_entry(&entry)?;
                 let entry_key = entry.entry_id.to_string();
-                {
-                    let mut entries_table =
-                        write_txn.open_table(BOARD_ENTRIES).map_err(db_err)?;
-                    entries_table
-                        .insert(entry_key.as_str(), updated_bytes.as_slice())
-                        .map_err(db_err)?;
-                }
-                let index_key = format!("{}:{}", ticket_id, entry.agent_id);
-                {
-                    let mut index_table = write_txn
-                        .open_table(BOARD_ACTIVE_INDEX)
-                        .map_err(db_err)?;
-                    index_table.remove(index_key.as_str()).map_err(db_err)?;
-                }
+                conn.execute(
+                    &format!(
+                        "INSERT OR REPLACE INTO {TABLE_BOARD_ENTRIES} (id, data) VALUES (?1, ?2)"
+                    ),
+                    params![entry_key, updated_bytes],
+                )
+                .map_err(db_err)?;
+
+                let index_key = format!("{ticket_id}:{}", entry.agent_id);
+                conn.execute(
+                    &format!("DELETE FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1"),
+                    params![index_key],
+                )
+                .map_err(db_err)?;
+
                 completed_ids.push(entry.entry_id);
             }
 
-            write_txn.commit().map_err(db_err)?;
+            conn.execute_batch("COMMIT;").map_err(db_err)?;
             Ok(completed_ids)
         })
     }
@@ -959,15 +968,8 @@ impl RedbIndexStore {
         &self,
         ticket_id: Uuid,
     ) -> Result<Option<(BoardEntry, String)>, BoardError> {
-        self.with_db_ext(|db| {
-            let read_txn = db.begin_read().map_err(db_err)?;
-            let table = match read_txn.open_table(BOARD_ENTRIES) {
-                Ok(t) => t,
-                Err(_) => return Ok(None),
-            };
-            for result in table.iter().map_err(db_err)? {
-                let (_, value) = result.map_err(db_err)?;
-                let entry = deserialize_entry(value.value())?;
+        self.with_db_ext(|conn| {
+            for entry in load_all_entries(conn)? {
                 if entry.ticket_id == ticket_id && entry.status == BoardEntryStatus::Active {
                     let index_key = format!("{ticket_id}:{}", entry.agent_id);
                     return Ok(Some((entry, index_key)));
@@ -976,4 +978,20 @@ impl RedbIndexStore {
             Ok(None)
         })
     }
+}
+
+// ── internal helpers ──────────────────────────────────────────────────────────
+
+fn load_all_entries(conn: &Connection) -> Result<Vec<BoardEntry>, BoardError> {
+    let mut stmt = conn
+        .prepare(&format!("SELECT data FROM {TABLE_BOARD_ENTRIES}"))
+        .map_err(db_err)?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, Vec<u8>>(0))
+        .map_err(db_err)?;
+    let mut entries = Vec::new();
+    for bytes in rows {
+        entries.push(deserialize_entry(&bytes.map_err(db_err)?)?);
+    }
+    Ok(entries)
 }

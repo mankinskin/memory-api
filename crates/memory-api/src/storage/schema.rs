@@ -8,6 +8,11 @@ pub const TABLE_SCAN_ROOTS: &str = "scan_roots";
 pub const TABLE_LEASES: &str = "leases";
 pub const TABLE_META: &str = "meta";
 
+// Board tables
+pub const TABLE_BOARD_ENTRIES: &str = "board_entries";
+pub const TABLE_BOARD_ACTIVE_INDEX: &str = "board_active_index";
+pub const TABLE_BOARD_CONFIG: &str = "board_config";
+
 pub const REQUIRED_TABLES: [&str; 5] = [
     TABLE_TICKETS,
     TABLE_EDGES,

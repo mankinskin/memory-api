@@ -11,7 +11,7 @@ toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 thiserror = "2"
-redb = "2"
+rusqlite = { version = "0.32", features = ["bundled", "unlock_notify"] }
 tantivy = "0.22"
 notify = "6"
 bincode = "1"
