@@ -44,7 +44,7 @@ pub async fn list_edges(
         }
     };
 
-    tokio::task::block_in_place(|| match store.list_all_edges() {
+    tokio::task::spawn_blocking(move || match store.list_all_edges() {
         Ok(edges) => {
             let items: Vec<EdgeItem> = edges
                 .into_iter()
@@ -71,6 +71,8 @@ pub async fn list_edges(
         }
         Err(e) => storage_err(e, &rid.0),
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 // ── Edge mutation types ───────────────────────────────────────────────────────
@@ -126,7 +128,7 @@ pub async fn add_edge(
         created_at: Utc::now(),
     };
 
-    tokio::task::block_in_place(move || match store.add_edge(edge) {
+    tokio::task::spawn_blocking(move || match store.add_edge(edge) {
         Ok(()) => (
             StatusCode::CREATED,
             Json(EdgeMutationResponse {
@@ -142,6 +144,8 @@ pub async fn add_edge(
             .into_response(),
         Err(e) => storage_err(e, &rid.0),
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 /// `DELETE /api/edges?workspace=<name>`
@@ -171,7 +175,7 @@ pub async fn remove_edge(
         created_at: Utc::now(),
     };
 
-    tokio::task::block_in_place(move || match store.remove_edge(edge) {
+    tokio::task::spawn_blocking(move || match store.remove_edge(edge) {
         Ok(()) => Json(EdgeMutationResponse {
             request_id: rid.0,
             workspace: params.workspace,
@@ -184,6 +188,8 @@ pub async fn remove_edge(
         .into_response(),
         Err(e) => storage_err(e, &rid.0),
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

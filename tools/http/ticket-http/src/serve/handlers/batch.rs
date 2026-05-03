@@ -310,7 +310,7 @@ pub async fn batch_tickets(
     let commands = body.commands;
     let total = commands.len();
 
-    tokio::task::block_in_place(move || {
+    tokio::task::spawn_blocking(move || {
         let mut results: Vec<Value> = Vec::with_capacity(total);
         let mut undo_stack: Vec<BatchUndoOp> = Vec::with_capacity(total);
 
@@ -358,6 +358,8 @@ pub async fn batch_tickets(
         })
         .into_response()
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -463,11 +465,10 @@ mod tests {
     #[tokio::test]
     async fn batch_link_and_unlink() {
         let dir = tempfile::tempdir().unwrap();
-        let app = make_router(dir.path());
 
-        // First create two tickets via the store directly.
-        let store =
-            Arc::new(TicketStore::open(dir.path()).expect("open store"));
+        // Create two tickets and then build the router using the SAME store to
+        // avoid a double-open of the redb database file.
+        let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
         store
             .add_scan_root(ScanRoot {
                 path: dir.path().join("tickets"),
@@ -481,7 +482,11 @@ mod tests {
             .create(None, "tracker-improvement", Some("B"), None, Default::default(), None, None)
             .unwrap();
 
-        let app = make_router(dir.path());
+        let state = AppState::new(
+            Arc::new(WorkspaceRegistry::single_opened(Arc::clone(&store))),
+            Arc::new(StreamBroker::new()),
+        );
+        let app = crate::serve::routes::build_router(state);
 
         // Link A -> B, then unlink.
         let (status, resp) = post_batch(

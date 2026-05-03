@@ -83,17 +83,27 @@ pub async fn subgraph(
         request_id = %rid.0,
         "subgraph request received"
     );
-    tokio::task::block_in_place(|| bfs_graph(
+    let request_id = rid.0;
+    let workspace = params.workspace;
+    let root = params.root;
+    let direction = params.direction.unwrap_or_else(|| "both".to_string());
+    let edge_kind = params.edge_kind;
+    let depth = params.depth;
+    let limit_nodes = params.limit_nodes;
+    let limit_edges = params.limit_edges;
+    tokio::task::spawn_blocking(move || bfs_graph(
         state,
-        &rid.0,
-        params.workspace,
-        params.root,
-        params.direction.as_deref().unwrap_or("both"),
-        params.edge_kind.as_deref(),
-        params.depth,
-        params.limit_nodes,
-        params.limit_edges,
+        &request_id,
+        workspace,
+        root,
+        &direction,
+        edge_kind.as_deref(),
+        depth,
+        limit_nodes,
+        limit_edges,
     ))
+    .await
+    .unwrap_or_else(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 #[derive(Deserialize)]
@@ -115,17 +125,27 @@ pub async fn topgraph(
     Extension(rid): Extension<RequestIdExt>,
     Query(params): Query<TopgraphQuery>,
 ) -> Response {
-    tokio::task::block_in_place(|| bfs_graph(
+    let request_id = rid.0;
+    let workspace = params.workspace;
+    let root = params.root;
+    let direction = params.direction.unwrap_or_else(|| "in".to_string());
+    let edge_kind = params.edge_kind;
+    let depth = params.depth;
+    let limit_nodes = params.limit_nodes;
+    let limit_edges = params.limit_edges;
+    tokio::task::spawn_blocking(move || bfs_graph(
         state,
-        &rid.0,
-        params.workspace,
-        params.root,
-        params.direction.as_deref().unwrap_or("in"),
-        params.edge_kind.as_deref(),
-        params.depth,
-        params.limit_nodes,
-        params.limit_edges,
+        &request_id,
+        workspace,
+        root,
+        &direction,
+        edge_kind.as_deref(),
+        depth,
+        limit_nodes,
+        limit_edges,
     ))
+    .await
+    .unwrap_or_else(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 fn bfs_graph(

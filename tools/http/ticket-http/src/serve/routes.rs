@@ -85,6 +85,15 @@ mod tests {
         build_router(state)
     }
 
+    /// Build a router around an already-opened store (avoids double-open of redb).
+    fn make_router_from_store(store: Arc<TicketStore>) -> axum::Router {
+        let state = AppState::new(
+            Arc::new(WorkspaceRegistry::single_opened(store)),
+            Arc::new(StreamBroker::new()),
+        );
+        build_router(state)
+    }
+
     /// Create a ticket via the store and return its UUID string.
     fn create_ticket(dir: &std::path::Path, title: &str) -> (Arc<TicketStore>, Uuid) {
         let store = Arc::new(TicketStore::open(dir).expect("open store"));
@@ -118,7 +127,7 @@ mod tests {
             .update(&id, BTreeMap::new(), None, Some("ready"), None, None)
             .expect("advance to ready");
 
-        let app = make_router(dir.path());
+        let app = make_router_from_store(Arc::clone(&store));
 
         let body = serde_json::json!({ "revision": 1 }).to_string();
         let request = Request::builder()
@@ -145,7 +154,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let (_store, id) = create_ticket(dir.path(), "T");
 
-        let app = make_router(dir.path());
+        let app = make_router_from_store(Arc::clone(&_store));
 
         // revision 99 does not exist — only revision 1 was created.
         let body = serde_json::json!({ "revision": 99 }).to_string();
@@ -186,7 +195,7 @@ mod tests {
     async fn revert_route_rejects_wrong_http_method() {
         let dir = tempfile::tempdir().expect("tempdir");
         let (_store, id) = create_ticket(dir.path(), "T");
-        let app = make_router(dir.path());
+        let app = make_router_from_store(Arc::clone(&_store));
 
         // GET is not registered for the revert path.
         let request = Request::builder()
@@ -209,7 +218,7 @@ mod tests {
             .update(&id, BTreeMap::new(), None, Some("ready"), None, None)
             .expect("advance state");
 
-        let app = make_router(dir.path());
+        let app = make_router_from_store(Arc::clone(&store));
 
         let request = Request::builder()
             .method(Method::GET)
@@ -226,5 +235,130 @@ mod tests {
         // Oldest-first: first entry is the initial creation revision.
         assert_eq!(payload["entries"][0]["rev"], 1);
         assert_eq!(payload["entries"][0]["fields"]["state"], "new");
+    }
+
+    /// Verify that multiple concurrent subgraph requests all complete without
+    /// deadlocking.  This exercises the `spawn_blocking` path in the graph
+    /// handlers: if blocking storage I/O were performed on an async worker
+    /// thread, the single-threaded test runtime would stall and the timeouts
+    /// below would fire.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_subgraph_requests_all_complete() {
+        use std::sync::Arc;
+        use tokio::time::{Duration, timeout};
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
+        store
+            .add_scan_root(ScanRoot {
+                path: dir.path().join("tickets"),
+                label: "default".into(),
+            })
+            .expect("add scan root");
+
+        // Create 8 tickets so each concurrent request has a unique root.
+        let ids: Vec<Uuid> = (0..8)
+            .map(|i| {
+                store
+                    .create(
+                        None,
+                        "tracker-improvement",
+                        Some(&format!("Concurrent ticket {i}")),
+                        None,
+                        BTreeMap::new(),
+                        None,
+                        None,
+                    )
+                    .expect("create ticket")
+            })
+            .collect();
+
+        let app = make_router_from_store(Arc::clone(&store));
+
+        let handles: Vec<_> = ids
+            .iter()
+            .map(|id| {
+                // `Router` implements `Clone` — each task gets its own clone.
+                let app = app.clone();
+                let id = *id;
+                tokio::spawn(async move {
+                    let req = Request::builder()
+                        .uri(format!(
+                            "/api/graph/subgraph?workspace=default&root={id}&depth=2"
+                        ))
+                        .body(Body::empty())
+                        .unwrap();
+                    timeout(Duration::from_secs(5), app.oneshot(req))
+                        .await
+                        .expect("request should complete within 5 s")
+                        .expect("oneshot should not error")
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            let resp = handle.await.expect("task panicked");
+            assert_eq!(
+                resp.status(),
+                StatusCode::OK,
+                "subgraph request returned non-200"
+            );
+        }
+    }
+
+    /// Verify that multiple concurrent ticket-list requests all complete.
+    /// The list handler hits the storage layer on every call; running 8 at
+    /// once confirms there is no mutex starvation or deadlock.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_list_requests_all_complete() {
+        use std::sync::Arc;
+        use tokio::time::{Duration, timeout};
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
+        store
+            .add_scan_root(ScanRoot {
+                path: dir.path().join("tickets"),
+                label: "default".into(),
+            })
+            .expect("add scan root");
+
+        // Create a few tickets so the list response is non-trivial.
+        for i in 0..5 {
+            store
+                .create(
+                    None,
+                    "tracker-improvement",
+                    Some(&format!("List ticket {i}")),
+                    None,
+                    BTreeMap::new(),
+                    None,
+                    None,
+                )
+                .expect("create ticket");
+        }
+
+        let app = make_router_from_store(Arc::clone(&store));
+
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let app = app.clone();
+                tokio::spawn(async move {
+                    let req = Request::builder()
+                        .uri("/api/tickets?workspace=default")
+                        .body(Body::empty())
+                        .unwrap();
+                    timeout(Duration::from_secs(5), app.oneshot(req))
+                        .await
+                        .expect("request should complete within 5 s")
+                        .expect("oneshot should not error")
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            let resp = handle.await.expect("task panicked");
+            assert_eq!(resp.status(), StatusCode::OK);
+        }
     }
 }

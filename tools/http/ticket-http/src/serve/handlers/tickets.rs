@@ -77,7 +77,7 @@ pub async fn list_tickets(
         }
     };
 
-    tokio::task::block_in_place(|| {
+    tokio::task::spawn_blocking(move || {
         // Use query search if provided, otherwise plain list
         let tickets = if let Some(q) = &params.query {
             let limit = params.limit.unwrap_or(100).min(1000);
@@ -135,6 +135,8 @@ pub async fn list_tickets(
         })
         .into_response()
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 pub async fn get_ticket(
@@ -151,7 +153,7 @@ pub async fn get_ticket(
         }
     };
 
-    tokio::task::block_in_place(|| match store.get(&id) {
+    tokio::task::spawn_blocking(move || match store.get(&id) {
         Ok(manifest) => Json(TicketDetailResponse {
             request_id: rid.0.clone(),
             workspace: params.workspace.clone(),
@@ -164,6 +166,8 @@ pub async fn get_ticket(
         .into_response(),
         Err(e) => storage_err(e, &rid.0),
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 #[derive(Serialize)]
@@ -194,7 +198,7 @@ pub async fn get_ticket_description(
         }
     };
 
-    tokio::task::block_in_place(|| {
+    tokio::task::spawn_blocking(move || {
         let indexed = match store.get_indexed(&id) {
             Ok(Some(t)) => t,
             Ok(None) => {
@@ -219,6 +223,8 @@ pub async fn get_ticket_description(
         })
         .into_response()
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 /// Extract the bearer token from request headers as an author string.
@@ -243,7 +249,7 @@ pub async fn get_ticket_history(
         }
     };
 
-    tokio::task::block_in_place(|| match store.get_history(&id) {
+    tokio::task::spawn_blocking(move || match store.get_history(&id) {
         Ok(revisions) => {
             let entries: Vec<serde_json::Value> = revisions
                 .into_iter()
@@ -265,6 +271,8 @@ pub async fn get_ticket_history(
         }
         Err(e) => storage_err(e, &rid.0),
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 // ── Mutation request / response types ────────────────────────────────────────
@@ -351,7 +359,7 @@ pub async fn create_ticket(
     let title = body.title;
     let description = body.description;
 
-    tokio::task::block_in_place(move || {
+    tokio::task::spawn_blocking(move || {
         let id = match store.create(
             None,
             &type_id,
@@ -391,6 +399,8 @@ pub async fn create_ticket(
         )
             .into_response()
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 /// `PATCH /api/tickets/{id}?workspace=<name>`
@@ -418,7 +428,7 @@ pub async fn update_ticket(
     let description = body.description;
     let author = author_from_headers(&headers);
 
-    tokio::task::block_in_place(move || {
+    tokio::task::spawn_blocking(move || {
         let manifest = match store.update(
             &id,
             patch,
@@ -449,6 +459,8 @@ pub async fn update_ticket(
         })
         .into_response()
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 /// `POST /api/tickets/{id}/close?workspace=<name>`
@@ -474,7 +486,7 @@ pub async fn close_ticket(
     let target = body.target_state.as_deref().unwrap_or("done").to_string();
     let author = author_from_headers(&headers);
 
-    tokio::task::block_in_place(|| {
+    tokio::task::spawn_blocking(move || {
         let (manifest, _path) = match store.close(&id, &target, author.as_deref()) {
             Ok(result) => result,
             Err(e) => return storage_err(e, &rid.0),
@@ -498,6 +510,8 @@ pub async fn close_ticket(
         })
         .into_response()
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 /// `POST /api/tickets/{id}/cancel?workspace=<name>`
@@ -526,7 +540,7 @@ pub async fn cancel_ticket(
         patch.insert("cancel_reason".to_string(), Value::String(reason));
     }
 
-    tokio::task::block_in_place(|| {
+    tokio::task::spawn_blocking(move || {
         let manifest = match store.update(&id, patch, None, Some("cancelled"), None, author.as_deref()) {
             Ok(m) => m,
             Err(e) => return storage_err(e, &rid.0),
@@ -550,6 +564,8 @@ pub async fn cancel_ticket(
         })
         .into_response()
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 /// `POST /api/tickets/{id}/revert?workspace=<name>`
@@ -576,7 +592,7 @@ pub async fn revert_ticket(
     let revision = body.revision;
     let author = author_from_headers(&headers);
 
-    tokio::task::block_in_place(|| {
+    tokio::task::spawn_blocking(move || {
         let revisions = match store.get_history(&id) {
             Ok(r) => r,
             Err(e) => return storage_err(e, &rid.0),
@@ -620,6 +636,8 @@ pub async fn revert_ticket(
             Err(e) => storage_err(e, &rid.0),
         }
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 /// `POST /api/tickets/{id}/undo?workspace=<name>`
@@ -643,7 +661,7 @@ pub async fn undo_ticket(
 
     let author = author_from_headers(&headers);
 
-    tokio::task::block_in_place(|| {
+    tokio::task::spawn_blocking(move || {
         let revisions = match store.get_history(&id) {
             Ok(r) => r,
             Err(e) => return storage_err(e, &rid.0),
@@ -687,6 +705,8 @@ pub async fn undo_ticket(
             Err(e) => storage_err(e, &rid.0),
         }
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 /// `DELETE /api/tickets/{id}?workspace=<name>`
@@ -706,7 +726,7 @@ pub async fn delete_ticket(
         }
     };
 
-    tokio::task::block_in_place(|| match store.delete(&id) {
+    tokio::task::spawn_blocking(move || match store.delete(&id) {
         Ok(()) => Json(DeleteResponse {
             request_id: rid.0.clone(),
             workspace: params.workspace.clone(),
@@ -715,6 +735,8 @@ pub async fn delete_ticket(
         .into_response(),
         Err(e) => storage_err(e, &rid.0),
     })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 #[cfg(test)]
