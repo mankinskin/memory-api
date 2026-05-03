@@ -53,6 +53,10 @@ pub struct SubgraphStats {
     pub nodes_returned: usize,
     pub edges_returned: usize,
     pub max_depth_reached: usize,
+    pub phase1_edges_ms: u128,
+    pub phase2_bfs_ms: u128,
+    pub phase3_meta_ms: u128,
+    pub total_ms: u128,
 }
 
 #[derive(Serialize)]
@@ -146,23 +150,17 @@ fn bfs_graph(
 
     let depth_limit = depth.min(8);
     let edge_kind_filter = edge_kind.unwrap_or("all");
+    let t_phase = Instant::now();
 
-    // ── Load all data up front (two DB reads total) ───────────────────────
-    // Previously list_all_edges() and get_indexed() were both called inside
-    // the BFS loop, causing O(N_nodes) serialized DB opens per request.
-    // Fetching everything once reduces this to 2 DB reads regardless of depth.
-
+    // ── Phase 1: load all edges once, build adjacency map ─────────────────
+    // The edge table is needed for BFS topology. Loading it once avoids
+    // per-node DB calls. Ticket metadata is NOT loaded upfront — we only
+    // fetch data for the ~20-100 nodes actually in the subgraph, not all
+    // 360+ tickets in the workspace.
     let all_edges = match store.list_all_edges() {
         Ok(e) => e,
         Err(e) => return storage_err(e, request_id),
     };
-
-    // ticket_map[id] → IndexedTicket for O(1) node-metadata lookups in BFS
-    let all_tickets = match store.list(None, None, None) {
-        Ok(t) => t,
-        Err(e) => return storage_err(e, request_id),
-    };
-    let ticket_map: HashMap<Uuid, _> = all_tickets.into_iter().map(|t| (t.id, t)).collect();
 
     // adj[node] = Vec<(neighbor, edge_from, edge_to, edge_kind)>
     let mut adj: HashMap<Uuid, Vec<AdjEntry>> = HashMap::new();
@@ -175,63 +173,44 @@ fn bfs_graph(
         adj.entry(edge.to).or_default().push((edge.from, edge.from, edge.to, edge.kind.clone()));
     }
 
-    // BFS traversal
-    let mut visited_nodes: HashSet<Uuid> = HashSet::new();
-    let mut nodes: Vec<NodeItem> = Vec::new();
+    // ── Phase 2: BFS — collect visited node IDs and edges ─────────────────
+    // No DB calls here; only the in-memory adjacency map is used.
+    let t_bfs_start = t_phase.elapsed().as_millis();
+    let mut visited: HashMap<Uuid, usize> = HashMap::new(); // node → depth
     let mut edges_set: Vec<EdgeItem> = Vec::new();
     let mut truncated = false;
     let mut max_depth_reached = 0;
 
-    // Queue: (id, current_depth)
     let mut queue: VecDeque<(Uuid, usize)> = VecDeque::new();
     queue.push_back((root, 0));
 
     while let Some((current_id, depth)) = queue.pop_front() {
-        if visited_nodes.contains(&current_id) {
+        if visited.contains_key(&current_id) {
             continue;
         }
-        if nodes.len() >= limit_nodes {
+        if visited.len() >= limit_nodes {
             truncated = true;
             break;
         }
 
-        visited_nodes.insert(current_id);
+        visited.insert(current_id, depth);
         max_depth_reached = max_depth_reached.max(depth);
-
-        // Get ticket summary from the pre-loaded map (no DB call).
-        let summary = match ticket_map.get(&current_id) {
-            Some(t) => NodeItem {
-                id: current_id.to_string(),
-                title: t.title.clone(),
-                state: t.state.clone(),
-                depth,
-            },
-            None => NodeItem {
-                id: current_id.to_string(),
-                title: None,
-                state: None,
-                depth,
-            },
-        };
-        nodes.push(summary);
 
         if depth >= depth_limit {
             continue;
         }
 
-        // Expand edges using the pre-built adjacency map (no DB call).
         if let Some(neighbors) = adj.get(&current_id) {
             for (neighbor, edge_from, edge_to, edge_kind) in neighbors {
                 let is_outbound = *edge_from == current_id;
                 let dir_ok = match direction {
                     "out" => is_outbound,
                     "in" => !is_outbound,
-                    _ => true, // "both"
+                    _ => true,
                 };
                 if !dir_ok {
                     continue;
                 }
-
                 if edges_set.len() < limit_edges {
                     edges_set.push(EdgeItem {
                         from: edge_from.to_string(),
@@ -239,31 +218,70 @@ fn bfs_graph(
                         kind: edge_kind.clone(),
                     });
                 }
-
-                if !visited_nodes.contains(neighbor) {
+                if !visited.contains_key(neighbor) {
                     queue.push_back((*neighbor, depth + 1));
                 }
             }
         }
     }
 
+    // ── Phase 3: fetch ticket metadata only for visited nodes ──────────────
+    // A single read transaction fetches all N visited nodes at once —
+    // orders of magnitude faster than N separate begin_read() calls.
+    let t_meta_start = t_phase.elapsed().as_millis();
+    let node_ids: Vec<Uuid> = visited.keys().copied().collect();
+    let meta_map = match store.get_indexed_many(&node_ids) {
+        Ok(m) => m,
+        Err(e) => return storage_err(e, request_id),
+    };
+
+    let mut nodes: Vec<NodeItem> = visited
+        .iter()
+        .map(|(node_id, depth)| {
+            if let Some(t) = meta_map.get(node_id) {
+                NodeItem {
+                    id: node_id.to_string(),
+                    title: t.title.clone(),
+                    state: t.state.clone(),
+                    depth: *depth,
+                }
+            } else {
+                NodeItem {
+                    id: node_id.to_string(),
+                    title: None,
+                    state: None,
+                    depth: *depth,
+                }
+            }
+        })
+        .collect();
+    nodes.sort_by_key(|n| n.depth);
+
     // Deduplicate edges
     edges_set.dedup_by(|a, b| a.from == b.from && a.to == b.to && a.kind == b.kind);
 
+    let t_end = t_phase.elapsed().as_millis();
     let stats = SubgraphStats {
         nodes_returned: nodes.len(),
         edges_returned: edges_set.len(),
         max_depth_reached,
+        phase1_edges_ms: t_bfs_start,
+        phase2_bfs_ms: t_meta_start - t_bfs_start,
+        phase3_meta_ms: t_end - t_meta_start,
+        total_ms: t0.elapsed().as_millis(),
     };
 
-    tracing::debug!(
+    tracing::info!(
         workspace = %workspace,
         root = %root,
         nodes = nodes.len(),
         edges = edges_set.len(),
         truncated,
         elapsed_ms = t0.elapsed().as_millis(),
-        "subgraph complete"
+        phase1_edges_ms = t_bfs_start,
+        phase2_bfs_ms = t_meta_start - t_bfs_start,
+        phase3_meta_ms = t_phase.elapsed().as_millis() - t_meta_start,
+        "subgraph timing"
     );
 
     Json(SubgraphResponse {

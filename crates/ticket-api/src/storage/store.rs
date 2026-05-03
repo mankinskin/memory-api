@@ -203,6 +203,15 @@ impl TicketStore {
         self.index.get_ticket(id)
     }
 
+    /// Fetch multiple tickets by ID in a single ReDB read transaction.
+    ///
+    /// Returns a `HashMap<Uuid, IndexedTicket>` for O(1) lookup. Missing or
+    /// deleted IDs are omitted. Prefer this over N separate `get_indexed()`
+    /// calls when you need metadata for a known set of IDs (e.g. BFS nodes).
+    pub fn get_indexed_many(&self, ids: &[Uuid]) -> Result<std::collections::HashMap<Uuid, IndexedTicket>, StorageError> {
+        self.index.get_tickets_by_ids(ids)
+    }
+
     /// Update a ticket: apply field patches, optional state transition, and optional description.
     pub fn update(
         &self,

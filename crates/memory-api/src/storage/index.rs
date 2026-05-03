@@ -105,6 +105,33 @@ impl RedbIndexStore {
         })
     }
 
+    /// Fetch multiple tickets in a single read transaction.
+    ///
+    /// Returns a `HashMap` keyed by `Uuid` for fast O(1) lookup. Missing IDs
+    /// are silently omitted. This is significantly faster than N separate
+    /// `get_ticket()` calls because it opens exactly one ReDB read transaction.
+    pub fn get_tickets_by_ids(&self, ids: &[Uuid]) -> Result<std::collections::HashMap<Uuid, IndexedEntity>, StorageError> {
+        if ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        self.with_db(|db| {
+            let read_txn = db.begin_read()?;
+            let table = read_txn.open_table(TICKETS)?;
+            let mut map = std::collections::HashMap::with_capacity(ids.len());
+            for id in ids {
+                let key = id.to_string();
+                if let Some(value) = table.get(key.as_str())? {
+                    let entity: IndexedEntity = bincode::deserialize(value.value())
+                        .map_err(|e| StorageError::Serialization(e.to_string()))?;
+                    if !entity.deleted {
+                        map.insert(*id, entity);
+                    }
+                }
+            }
+            Ok(map)
+        })
+    }
+
     /// Soft-delete: marks the index entry as deleted. Filesystem folder is not touched here.
     pub fn soft_delete_ticket(&self, id: &Uuid) -> Result<(), StorageError> {
         let key = id.to_string();
