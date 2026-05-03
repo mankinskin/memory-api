@@ -739,6 +739,214 @@ pub async fn delete_ticket(
     .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
+// ── Ticket file listing / asset serving ──────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct TicketFileEntry {
+    /// Relative path within the ticket folder (e.g. `"description.md"` or
+    /// `"assets/design/plan.md"`).
+    pub path: String,
+    /// Display name — just the file's stem+extension (e.g. `"plan.md"`).
+    pub name: String,
+}
+
+#[derive(Serialize)]
+pub struct TicketFilesResponse {
+    pub request_id: String,
+    pub workspace: String,
+    pub id: String,
+    pub files: Vec<TicketFileEntry>,
+}
+
+#[derive(Deserialize)]
+pub struct TicketAssetParam {
+    pub workspace: String,
+    /// Relative path within the ticket folder, e.g. `"assets/plan.md"`.
+    pub path: String,
+}
+
+#[derive(Serialize)]
+pub struct TicketAssetResponse {
+    pub request_id: String,
+    pub workspace: String,
+    pub id: String,
+    pub path: String,
+    pub content: String,
+}
+
+/// Recursively collect all files under `dir`, appending `TicketFileEntry`
+/// items with paths relative to `ticket_dir`.
+fn collect_ticket_files(
+    dir: &std::path::Path,
+    ticket_dir: &std::path::Path,
+    files: &mut Vec<TicketFileEntry>,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut children: Vec<std::path::PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    children.sort();
+    for child in children {
+        if child.is_dir() {
+            collect_ticket_files(&child, ticket_dir, files);
+        } else if let Some(ext) = child.extension() {
+            // Only expose Markdown files from the assets tree.
+            if ext.eq_ignore_ascii_case("md") {
+                if let Ok(rel) = child.strip_prefix(ticket_dir) {
+                    let path_str = rel.to_string_lossy().replace('\\', "/");
+                    let name = child
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    files.push(TicketFileEntry { path: path_str, name });
+                }
+            }
+        }
+    }
+}
+
+/// `GET /api/tickets/{id}/files?workspace=<name>`
+///
+/// Returns the list of user-visible files for a ticket:
+/// - `description.md` (if present) — always first
+/// - Every `*.md` file under `assets/` (recursively), sorted by path
+pub async fn list_ticket_files(
+    State(state): State<AppState>,
+    Extension(rid): Extension<RequestIdExt>,
+    Path(id): Path<Uuid>,
+    Query(params): Query<TicketIdParam>,
+) -> Response {
+    let store = match state.ensure_workspace_runtime(&params.workspace) {
+        Some(s) => s,
+        None => {
+            return viewer_api::error::ApiError::not_found("workspace", &rid.0)
+                .into_response_with_status(StatusCode::NOT_FOUND);
+        }
+    };
+
+    tokio::task::spawn_blocking(move || {
+        let indexed = match store.get_indexed(&id) {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                return viewer_api::error::ApiError::not_found("ticket", &rid.0)
+                    .into_response_with_status(StatusCode::NOT_FOUND);
+            }
+            Err(e) => return storage_err(e, &rid.0),
+        };
+
+        if indexed.deleted {
+            return viewer_api::error::ApiError::not_found("ticket", &rid.0)
+                .into_response_with_status(StatusCode::NOT_FOUND);
+        }
+
+        let ticket_dir = match indexed.path.parent() {
+            Some(p) => p.to_path_buf(),
+            None => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        };
+
+        let mut files: Vec<TicketFileEntry> = Vec::new();
+
+        // description.md always comes first.
+        if ticket_dir.join("description.md").is_file() {
+            files.push(TicketFileEntry {
+                path: "description.md".to_string(),
+                name: "description.md".to_string(),
+            });
+        }
+
+        // All *.md files under assets/ (recursively, sorted).
+        let assets_dir = ticket_dir.join("assets");
+        if assets_dir.is_dir() {
+            collect_ticket_files(&assets_dir, &ticket_dir, &mut files);
+        }
+
+        Json(TicketFilesResponse {
+            request_id: rid.0.clone(),
+            workspace: params.workspace.clone(),
+            id: id.to_string(),
+            files,
+        })
+        .into_response()
+    })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// `GET /api/tickets/{id}/asset?workspace=<name>&path=<relative-path>`
+///
+/// Returns the raw UTF-8 content of a single ticket asset file.
+/// Only files within the ticket's own directory tree are accessible;
+/// path traversal attempts are rejected with `403 Forbidden`.
+pub async fn get_ticket_asset(
+    State(state): State<AppState>,
+    Extension(rid): Extension<RequestIdExt>,
+    Path(id): Path<Uuid>,
+    Query(params): Query<TicketAssetParam>,
+) -> Response {
+    let store = match state.ensure_workspace_runtime(&params.workspace) {
+        Some(s) => s,
+        None => {
+            return viewer_api::error::ApiError::not_found("workspace", &rid.0)
+                .into_response_with_status(StatusCode::NOT_FOUND);
+        }
+    };
+
+    tokio::task::spawn_blocking(move || {
+        let indexed = match store.get_indexed(&id) {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                return viewer_api::error::ApiError::not_found("ticket", &rid.0)
+                    .into_response_with_status(StatusCode::NOT_FOUND);
+            }
+            Err(e) => return storage_err(e, &rid.0),
+        };
+
+        if indexed.deleted {
+            return viewer_api::error::ApiError::not_found("ticket", &rid.0)
+                .into_response_with_status(StatusCode::NOT_FOUND);
+        }
+
+        let ticket_dir = match indexed.path.parent() {
+            Some(p) => p.to_path_buf(),
+            None => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        };
+
+        // Prevent path traversal: canonicalize both the ticket dir and the
+        // requested file path, then assert the file is inside the ticket dir.
+        let canonical_dir = match ticket_dir.canonicalize() {
+            Ok(p) => p,
+            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        };
+        let requested = ticket_dir.join(&params.path);
+        let canonical_file = match requested.canonicalize() {
+            Ok(p) => p,
+            Err(_) => {
+                return (StatusCode::NOT_FOUND, "file not found").into_response();
+            }
+        };
+        if !canonical_file.starts_with(&canonical_dir) {
+            return (StatusCode::FORBIDDEN, "access denied").into_response();
+        }
+
+        let content = match std::fs::read_to_string(&canonical_file) {
+            Ok(s) => s,
+            Err(_) => return (StatusCode::NOT_FOUND, "file not found").into_response(),
+        };
+
+        Json(TicketAssetResponse {
+            request_id: rid.0.clone(),
+            workspace: params.workspace.clone(),
+            id: id.to_string(),
+            path: params.path.clone(),
+            content,
+        })
+        .into_response()
+    })
+    .await
+    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
