@@ -262,6 +262,23 @@ function startServerTask(
 }
 
 /**
+ * Returns true if the server at baseUrl responds to a workspaces request
+ * within a short timeout. Used to detect an already-running server before
+ * attempting to spawn a new one.
+ */
+async function pingServer(baseUrl: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch(`${baseUrl}/api/workspaces`, { signal: controller.signal });
+    clearTimeout(id);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Poll the server's health endpoint every 2 seconds until it responds with
  * a successful status or the timeout elapses. Resolves either way.
  */
@@ -295,15 +312,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let serverUrl = config.serverUrl;
 
   if (config.autoStartServer) {
-    try {
-      const handle = await startServerTask(outputChannel, config);
-      _serverProcess = handle.process;
-      serverUrl = handle.serverUrl;
-      vscode.window.setStatusBarMessage(`$(server) Ticket server running on ${serverUrl}`, 5000);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      outputChannel.appendLine(`[ticket-viewer] Failed to start server: ${msg}`);
-      void vscode.window.showWarningMessage(`Ticket Viewer server failed to start: ${msg}`);
+    // If a server is already reachable on the configured URL (e.g. started by
+    // viewer-ctl), skip auto-start entirely. The ticket store only allows one
+    // opener at a time (exclusive redb lock), so spawning a second instance
+    // would immediately crash with exit code 101.
+    if (await pingServer(config.serverUrl)) {
+      outputChannel.appendLine(`[ticket-viewer] Existing server detected at ${config.serverUrl} — skipping auto-start.`);
+      serverUrl = config.serverUrl;
+    } else {
+      try {
+        const handle = await startServerTask(outputChannel, config);
+        _serverProcess = handle.process;
+        serverUrl = handle.serverUrl;
+        vscode.window.setStatusBarMessage(`$(server) Ticket server running on ${serverUrl}`, 5000);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        outputChannel.appendLine(`[ticket-viewer] Failed to start server: ${msg}`);
+        void vscode.window.showWarningMessage(`Ticket Viewer server failed to start: ${msg}`);
+      }
     }
   }
 
@@ -382,6 +408,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand('ticket-viewer.startServer', async () => {
+      // If a server is already running and responsive on the current URL,
+      // just refresh the tree view rather than trying to spawn a duplicate.
+      if (await pingServer(serverUrl)) {
+        provider.refresh();
+        vscode.window.setStatusBarMessage(`$(server) Server already running at ${serverUrl}`, 3000);
+        return;
+      }
       if (_serverProcess && !_serverProcess.killed) {
         _serverProcess.kill();
       }
