@@ -147,14 +147,22 @@ fn bfs_graph(
     let depth_limit = depth.min(8);
     let edge_kind_filter = edge_kind.unwrap_or("all");
 
-    // ── Load all edges once and build a per-node adjacency map ────────────
-    // Previously list_all_edges() was called inside the BFS loop (once per
-    // visited node), causing O(N) serialized DB opens under concurrency.
-    // Fetching once and indexing by node reduces this to a single DB read.
+    // ── Load all data up front (two DB reads total) ───────────────────────
+    // Previously list_all_edges() and get_indexed() were both called inside
+    // the BFS loop, causing O(N_nodes) serialized DB opens per request.
+    // Fetching everything once reduces this to 2 DB reads regardless of depth.
+
     let all_edges = match store.list_all_edges() {
         Ok(e) => e,
         Err(e) => return storage_err(e, request_id),
     };
+
+    // ticket_map[id] → IndexedTicket for O(1) node-metadata lookups in BFS
+    let all_tickets = match store.list(None, None, None) {
+        Ok(t) => t,
+        Err(e) => return storage_err(e, request_id),
+    };
+    let ticket_map: HashMap<Uuid, _> = all_tickets.into_iter().map(|t| (t.id, t)).collect();
 
     // adj[node] = Vec<(neighbor, edge_from, edge_to, edge_kind)>
     let mut adj: HashMap<Uuid, Vec<AdjEntry>> = HashMap::new();
@@ -190,21 +198,20 @@ fn bfs_graph(
         visited_nodes.insert(current_id);
         max_depth_reached = max_depth_reached.max(depth);
 
-        // Get ticket summary
-        let summary = match store.get_indexed(&current_id) {
-            Ok(Some(t)) => NodeItem {
+        // Get ticket summary from the pre-loaded map (no DB call).
+        let summary = match ticket_map.get(&current_id) {
+            Some(t) => NodeItem {
                 id: current_id.to_string(),
-                title: t.title,
-                state: t.state,
+                title: t.title.clone(),
+                state: t.state.clone(),
                 depth,
             },
-            Ok(None) => NodeItem {
+            None => NodeItem {
                 id: current_id.to_string(),
                 title: None,
                 state: None,
                 depth,
             },
-            Err(e) => return storage_err(e, request_id),
         };
         nodes.push(summary);
 
