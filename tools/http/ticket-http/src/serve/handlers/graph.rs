@@ -5,6 +5,10 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::time::Instant;
+
+// Adjacency list entry: (neighbor_id, edge_from, edge_to, edge_kind)
+type AdjEntry = (Uuid, Uuid, Uuid, String);
 use uuid::Uuid;
 
 use ticket_api::storage::ticket_fs::TicketFs;
@@ -67,6 +71,14 @@ pub async fn subgraph(
     Extension(rid): Extension<RequestIdExt>,
     Query(params): Query<SubgraphQuery>,
 ) -> Response {
+    let root_str = params.root.to_string();
+    tracing::debug!(
+        workspace = %params.workspace,
+        root = %root_str,
+        depth = params.depth,
+        request_id = %rid.0,
+        "subgraph request received"
+    );
     bfs_graph(
         state,
         &rid.0,
@@ -123,6 +135,7 @@ fn bfs_graph(
     limit_nodes: usize,
     limit_edges: usize,
 ) -> Response {
+    let t0 = Instant::now();
     let store = match state.ensure_workspace_runtime(&workspace) {
         Some(s) => s,
         None => {
@@ -133,6 +146,26 @@ fn bfs_graph(
 
     let depth_limit = depth.min(8);
     let edge_kind_filter = edge_kind.unwrap_or("all");
+
+    // ── Load all edges once and build a per-node adjacency map ────────────
+    // Previously list_all_edges() was called inside the BFS loop (once per
+    // visited node), causing O(N) serialized DB opens under concurrency.
+    // Fetching once and indexing by node reduces this to a single DB read.
+    let all_edges = match store.list_all_edges() {
+        Ok(e) => e,
+        Err(e) => return storage_err(e, request_id),
+    };
+
+    // adj[node] = Vec<(neighbor, edge_from, edge_to, edge_kind)>
+    let mut adj: HashMap<Uuid, Vec<AdjEntry>> = HashMap::new();
+    for edge in &all_edges {
+        let kind_ok = edge_kind_filter == "all" || edge.kind == edge_kind_filter;
+        if !kind_ok {
+            continue;
+        }
+        adj.entry(edge.from).or_default().push((edge.to, edge.from, edge.to, edge.kind.clone()));
+        adj.entry(edge.to).or_default().push((edge.from, edge.from, edge.to, edge.kind.clone()));
+    }
 
     // BFS traversal
     let mut visited_nodes: HashSet<Uuid> = HashSet::new();
@@ -179,45 +212,30 @@ fn bfs_graph(
             continue;
         }
 
-        // Expand edges
-        let all_edges = match store.list_all_edges() {
-            Ok(e) => e,
-            Err(e) => return storage_err(e, request_id),
-        };
+        // Expand edges using the pre-built adjacency map (no DB call).
+        if let Some(neighbors) = adj.get(&current_id) {
+            for (neighbor, edge_from, edge_to, edge_kind) in neighbors {
+                let is_outbound = *edge_from == current_id;
+                let dir_ok = match direction {
+                    "out" => is_outbound,
+                    "in" => !is_outbound,
+                    _ => true, // "both"
+                };
+                if !dir_ok {
+                    continue;
+                }
 
-        for edge in &all_edges {
-            let kind_ok = edge_kind_filter == "all" || edge.kind == edge_kind_filter;
-            if !kind_ok {
-                continue;
-            }
+                if edges_set.len() < limit_edges {
+                    edges_set.push(EdgeItem {
+                        from: edge_from.to_string(),
+                        to: edge_to.to_string(),
+                        kind: edge_kind.clone(),
+                    });
+                }
 
-            let (neighbor, is_outbound) = if edge.from == current_id {
-                (edge.to, true)
-            } else if edge.to == current_id {
-                (edge.from, false)
-            } else {
-                continue
-            };
-
-            let dir_ok = match direction {
-                "out" => is_outbound,
-                "in" => !is_outbound,
-                _ => true, // "both"
-            };
-            if !dir_ok {
-                continue;
-            }
-
-            if edges_set.len() < limit_edges {
-                edges_set.push(EdgeItem {
-                    from: edge.from.to_string(),
-                    to: edge.to.to_string(),
-                    kind: edge.kind.clone(),
-                });
-            }
-
-            if !visited_nodes.contains(&neighbor) {
-                queue.push_back((neighbor, depth + 1));
+                if !visited_nodes.contains(neighbor) {
+                    queue.push_back((*neighbor, depth + 1));
+                }
             }
         }
     }
@@ -230,6 +248,16 @@ fn bfs_graph(
         edges_returned: edges_set.len(),
         max_depth_reached,
     };
+
+    tracing::debug!(
+        workspace = %workspace,
+        root = %root,
+        nodes = nodes.len(),
+        edges = edges_set.len(),
+        truncated,
+        elapsed_ms = t0.elapsed().as_millis(),
+        "subgraph complete"
+    );
 
     Json(SubgraphResponse {
         request_id: request_id.to_string(),
