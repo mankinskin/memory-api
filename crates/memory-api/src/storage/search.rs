@@ -101,6 +101,13 @@ impl TantivySearchIndex {
         writer
             .commit()
             .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
+        // Wait for background merge threads to release all file handles before
+        // returning. On Windows, MmapDirectory only allows FILE_SHARE_READ, so
+        // any handle a merge thread holds will cause PermissionDenied if the
+        // next writer tries to write or GC the same segment file.
+        writer
+            .wait_merging_threads()
+            .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
         Ok(())
     }
 
@@ -111,6 +118,9 @@ impl TantivySearchIndex {
         writer
             .commit()
             .map_err(|e: TantivyError| StorageError::SearchIndex(e.to_string()))?;
+        writer
+            .wait_merging_threads()
+            .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
         Ok(())
     }
 
@@ -124,6 +134,9 @@ impl TantivySearchIndex {
         writer
             .commit()
             .map_err(|e: TantivyError| StorageError::SearchIndex(e.to_string()))?;
+        writer
+            .wait_merging_threads()
+            .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
         Ok(())
     }
 
