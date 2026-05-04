@@ -30,7 +30,7 @@ pub enum StorageSchemaError {
     VersionMismatch { found: String, expected: String },
 }
 
-/// Runtime storage errors covering redb, filesystem, and search index operations.
+/// Runtime storage errors covering SQLite, filesystem, and search index operations.
 #[derive(Debug, Error)]
 pub enum StorageError {
     #[error("database error: {0}")]

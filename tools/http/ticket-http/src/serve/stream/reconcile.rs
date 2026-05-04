@@ -29,8 +29,8 @@ pub fn spawn_reconcile(
 
             // Skip the database read when no SSE clients are connected.
             // The heartbeat is only useful when someone is listening; holding
-            // the redb exclusive lock while counting tickets and edges would
-            // block other processes (e.g. ticket-mcp) from opening the store.
+            // holding the write lock while counting tickets and edges would
+            // block other write operations (e.g. ticket-mcp) from accessing the store.
             if !emitter.has_subscribers() {
                 tracing::debug!(
                     workspace = %emitter.workspace,

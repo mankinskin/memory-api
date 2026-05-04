@@ -467,7 +467,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         // Create two tickets and then build the router using the SAME store to
-        // avoid a double-open of the redb database file.
+        // avoid a double-open of the SQLite database file.
         let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
         store
             .add_scan_root(ScanRoot {

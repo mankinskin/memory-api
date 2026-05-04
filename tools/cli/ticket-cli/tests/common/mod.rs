@@ -2,7 +2,7 @@
 //!
 //! Each test creates a `Sandbox` that owns an exclusive `TempDir` used as the
 //! `--index-root` for every `ticket` invocation.  When the `Sandbox` is
-//! dropped the entire directory tree — redb database, Tantivy search index,
+//! dropped the entire directory tree — SQLite database, Tantivy search index,
 //! and all ticket folders — is deleted automatically.
 //!
 //! The `ticket` binary is located via `env!("CARGO_BIN_EXE_ticket")`, which

@@ -164,7 +164,7 @@ pub struct SpecServer {
     index_root: PathBuf,
     tool_router: ToolRouter<Self>,
     /// Serializes all SpecStore open/drop cycles so concurrent MCP calls
-    /// never race on the redb file lock, while still releasing the lock
+    /// never race on the SQLite write lock, while still releasing the lock
     /// between calls so the CLI can also access the database.
     store_lock: Arc<Mutex<()>>,
 }

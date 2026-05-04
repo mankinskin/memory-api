@@ -39,7 +39,7 @@ pub struct TicketCli {
     #[arg(long, global = true)]
     pub request_id: Option<String>,
 
-    /// Root directory for the redb index and Tantivy search index.
+    /// Root directory for the SQLite index and Tantivy search index.
     /// Defaults to $TICKET_INDEX_ROOT env var, then ~/.ticket-index/.
     #[arg(long, global = true)]
     pub index_root: Option<PathBuf>,

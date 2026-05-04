@@ -26,7 +26,7 @@ fn scan_reindex_removes_stale_entries_for_deleted_tickets() {
         before["count"]
     );
 
-    // Delete one ticket through the CLI (removes it from redb + Tantivy).
+    // Delete one ticket through the CLI (removes it from SQLite + Tantivy).
     s.ticket_json(&["delete", &_id_del]);
 
     // Confirm deletion: search should now return 1.

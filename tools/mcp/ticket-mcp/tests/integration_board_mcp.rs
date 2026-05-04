@@ -337,7 +337,7 @@ async fn board_check_out_resolves_agent_from_snapshot_mcp() {
 // ── cross-interface parity tests ────────────────────────────────────────────
 
 /// A board entry inserted directly via `TicketStore` is immediately visible
-/// through `board_show` called on the `TicketServer` (same redb file).
+/// through `board_show` called on the `TicketServer` (same SQLite database).
 #[tokio::test]
 async fn board_show_parity_store_and_mcp() {
     let (tmp, server) = make_sandbox();
@@ -356,7 +356,7 @@ async fn board_show_parity_store_and_mcp() {
         )
         .expect("check-in via store");
 
-    // Query via the MCP server (reads the same redb file).
+    // Query via the MCP server (reads the same SQLite database).
     let result = server
         .board_show(Parameters(BoardShowInput {
             workspace: ws(),

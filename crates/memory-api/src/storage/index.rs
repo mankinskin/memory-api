@@ -26,7 +26,7 @@ use super::indexed::{IndexedEntity, LeaseInfo};
 /// OS level by SQLite's own writer lock, but readers are never blocked by
 /// writers in WAL mode.
 ///
-/// This replaces the previous `redb`-backed implementation that held an
+/// This replaced the previous `redb`-backed implementation that held an
 /// exclusive OS-level file lock for the entire process lifetime, preventing
 /// any other process (CLI, VS Code extension, tests) from opening the same
 /// database simultaneously.

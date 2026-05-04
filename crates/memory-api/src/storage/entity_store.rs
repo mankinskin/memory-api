@@ -37,7 +37,7 @@ pub struct EntityStore {
 impl EntityStore {
     /// Open (or create) an entity store rooted at `index_root`.
     ///
-    /// `index_root` is the directory for redb + Tantivy index files.
+    /// `index_root` is the directory for SQLite + Tantivy index files.
     /// `fs` provides the filesystem layout configuration for entity folders.
     pub fn open(index_root: &Path, fs: EntityFs) -> Result<Self, StorageError> {
         Self::open_with(index_root, fs, SchemaRegistry::new())
@@ -132,7 +132,7 @@ impl EntityStore {
     /// `index_root`) and reconcile the index + search stores.
     ///
     /// When `reindex` is `true`, the search index is cleared first and
-    /// stale redb entries are pruned.
+    /// stale SQLite entries are pruned.
     pub fn scan(&self, reindex: bool) -> Result<ScanReport, StorageError> {
         if reindex {
             self.search.clear_all()?;

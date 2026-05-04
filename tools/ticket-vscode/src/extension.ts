@@ -314,7 +314,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (config.autoStartServer) {
     // If a server is already reachable on the configured URL (e.g. started by
     // viewer-ctl), skip auto-start entirely. The ticket store only allows one
-    // opener at a time (exclusive redb lock), so spawning a second instance
+    // opener at a time (exclusive SQLite write lock), so spawning a second instance
     // would immediately crash with exit code 101.
     if (await pingServer(config.serverUrl)) {
       outputChannel.appendLine(`[ticket-viewer] Existing server detected at ${config.serverUrl} — skipping auto-start.`);

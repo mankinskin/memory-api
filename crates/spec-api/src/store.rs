@@ -55,7 +55,7 @@ impl SpecStore {
         Ok(report)
     }
 
-    /// Rebuild the SlugIndex from the redb index.
+    /// Rebuild the SlugIndex from the SQLite index.
     fn rebuild_slug_index(&mut self) -> Result<(), SpecError> {
         let all = self.inner.list_indexed(false)?;
         let entries = all.iter().filter_map(|e| {
@@ -157,7 +157,7 @@ impl SpecStore {
             fs::rename(&desc_path, &body_path).map_err(StorageError::Io)?;
         }
 
-        // Index the entity in redb + search
+        // Index the entity in SQLite + search
         let type_id = manifest
             .extra
             .get("type")
@@ -266,7 +266,7 @@ impl SpecStore {
 
         let updated_entity = self.inner.fs.update(&indexed.path, &patch, to_state)?;
 
-        // Update redb + search indexes
+        // Update SQLite + search indexes
         let type_id = updated_entity
             .extra
             .get("type")

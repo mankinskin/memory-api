@@ -396,7 +396,7 @@ pub struct TicketServer {
     index_root: PathBuf,
     tool_router: ToolRouter<Self>,
     /// Serializes all `TicketStore::open` / drop cycles so that concurrent
-    /// MCP tool calls never race on the redb file lock, while still releasing
+    /// MCP tool calls never race on the SQLite write lock, while still releasing
     /// the lock between calls so the CLI and other processes can access the
     /// database.
     store_lock: Arc<Mutex<()>>,
@@ -481,7 +481,7 @@ impl TicketServer {
     }
 
     /// Open the store under the serialization lock, run `f`, then drop both
-    /// store and lock before returning.  This guarantees the redb file lock
+    /// store and lock before returning.  This guarantees the SQLite write lock
     /// is released before the MCP response is sent.
     ///
     /// The closure returns `StorageError`; it is mapped to `McpError`

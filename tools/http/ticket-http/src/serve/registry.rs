@@ -95,8 +95,7 @@ impl WorkspaceRegistry {
     /// Build with a single already-open store named `"default"`.
     ///
     /// Use this when the caller already holds an open `TicketStore` to avoid a
-    /// second open attempt on the same redb file (redb does not allow concurrent
-    /// opens from the same process).
+    /// second open attempt on the same SQLite file (only one writer at a time).
     pub fn single_opened(store: Arc<TicketStore>) -> Self {
         let path = store.index_root.clone();
         let mut paths = HashMap::new();

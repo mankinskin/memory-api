@@ -87,7 +87,7 @@ mod tests {
         build_router(state)
     }
 
-    /// Build a router around an already-opened store (avoids double-open of redb).
+    /// Build a router around an already-opened store (avoids double-open of the SQLite database).
     fn make_router_from_store(store: Arc<TicketStore>) -> axum::Router {
         let state = AppState::new(
             Arc::new(WorkspaceRegistry::single_opened(store)),

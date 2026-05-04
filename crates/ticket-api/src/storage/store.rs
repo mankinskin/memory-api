@@ -34,13 +34,13 @@ pub trait StoreHook: Send + Sync + 'static {
     fn edge_delete(&self, from: Uuid, to: Uuid, kind: String);
 }
 
-/// The central ticket store: filesystem source-of-truth + redb metadata index +
+/// The central ticket store: filesystem source-of-truth + SQLite metadata index +
 /// Tantivy full-text search index.
 pub struct TicketStore {
     index: RedbIndexStore,
     search: TantivySearchIndex,
     schema_registry: SchemaRegistry,
-    /// Root directory for the redb database and Tantivy index files.
+    /// Root directory for the SQLite database and Tantivy index files.
     pub index_root: PathBuf,
     /// Optional mutation hook. Set by the HTTP layer when streaming is active.
     /// Not used in CLI mode.
@@ -334,7 +334,7 @@ impl TicketStore {
             None => return Ok(()), // ticket may have been hard-deleted; nothing to restore
         };
         TicketFs::update(&indexed.path, &saved_extra, saved_state.as_deref())?;
-        // Refresh redb + search index.
+        // Refresh SQLite + search index.
         let mut refreshed = indexed;
         refreshed.state = saved_state.clone();
         if let Some(title_val) = saved_extra.get("title").and_then(|v| v.as_str()) {
@@ -718,7 +718,7 @@ impl TicketStore {
             }
         }
 
-        // When reindexing, prune redb entries whose ticket.toml no longer
+        // When reindexing, prune SQLite entries whose ticket.toml no longer
         // exists on disk.  (Tantivy was already cleared above.)
         let mut pruned = 0usize;
         if reindex {
@@ -892,7 +892,7 @@ impl TicketStore {
 
     /// Build a read-only atomic snapshot of the board.
     ///
-    /// Uses a single redb read transaction. Stale status is computed
+    /// Uses a single SQLite read transaction. Stale status is computed
     /// dynamically. When `agent_id` is `Some`, `caller_entries` in the
     /// returned [`BoardSnapshot`] is populated with that agent's entries.
     pub fn board_show(
@@ -1442,7 +1442,7 @@ fn integrate_entry(
         .map(str::to_string);
     let now = Utc::now();
 
-    // Upsert into redb (insert or overwrite).
+    // Upsert into SQLite (insert or overwrite).
     let indexed = match index.get_ticket(&entry.id)? {
         Some(mut existing) => {
             existing.updated_at = now;

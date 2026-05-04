@@ -410,7 +410,7 @@ GET /api/graph/health?workspace=default&root=<UUID>&depth=4&direction=out
 
 `scan` normally only integrates new/changed files it discovers. Use
 `scan --force` to force a full reconciliation — every ticket.toml is re-read
-from disk and both the redb index and Tantivy search index are rebuilt:
+from disk and both the SQLite index and Tantivy search index are rebuilt:
 
 ```bash
 # Force-reconcile all indexes from disk

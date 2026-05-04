@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
-/// Metadata stored per-entity in the redb index.
+/// Metadata stored per-entity in the SQLite index.
 /// Does not hold full content — that lives in the manifest file on disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexedEntity {
@@ -19,7 +19,7 @@ pub struct IndexedEntity {
     pub deleted: bool,
 }
 
-/// Lease record stored in the LEASES redb table.
+/// Lease record stored in the LEASES SQLite table.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LeaseInfo {
     pub ticket_id: Uuid,

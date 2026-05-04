@@ -2,7 +2,7 @@
 name = "memory-api"
 version = "0.1.0"
 edition = "2024"
-description = "Generic filesystem-backed entity storage: schema validation, redb indexing, Tantivy search, edge management, board coordination, and workspace resolution"
+description = "Generic filesystem-backed entity storage: schema validation, SQLite indexing, Tantivy search, edge management, board coordination, and workspace resolution"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
