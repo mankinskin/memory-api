@@ -30,7 +30,7 @@ fn history_initial_revision_on_create() {
     assert_eq!(hist["count"], 1, "one revision on create");
     assert_eq!(hist["entries"][0]["rev"], 1);
     assert_eq!(hist["entries"][0]["fields"]["title"], "Initial ticket");
-    assert_eq!(hist["entries"][0]["fields"]["state"], "open");
+    assert_eq!(hist["entries"][0]["fields"]["state"], "new");
 }
 
 /// Each update appends a new revision; history is returned most-recent first.

@@ -387,7 +387,7 @@ mod tests {
         let out = render_human_readable(&payload);
         assert!(out.contains("total: 10"));
         assert!(out.contains("[by_state]"));
-        assert!(out.contains("  open: 3"));
+        assert!(out.contains("  new: 3"));
         assert!(out.contains("[by_type]"));
         assert!(out.contains("  tracker-improvement: 10"));
     }

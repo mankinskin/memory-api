@@ -41,6 +41,21 @@ pub(crate) fn cmd_cancel(args: CancelArgs, store: &TicketStore) -> Result<Value,
 
 pub(crate) fn cmd_claim(args: ClaimArgs, store: &TicketStore) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
+
+    // Enforce per-ticket exclusivity: `claim` is a single-agent lease, so a
+    // different agent already holding the ticket must cause an explicit failure.
+    let snap = store.board_show(None)?;
+    if let Some(holder) = snap
+        .entries
+        .iter()
+        .find(|e| e.ticket_id == id && e.status == ticket_api::BoardEntryStatus::Active && e.agent_id != args.agent_id)
+    {
+        return Err(CliRunError::BadRequest(format!(
+            "lease conflict: ticket already claimed by agent '{}' (entry {})",
+            holder.agent_id, holder.entry_id,
+        )));
+    }
+
     let entry = store.board_check_in(
         &id,
         &args.agent_id,
