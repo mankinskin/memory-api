@@ -840,10 +840,8 @@ pub async fn list_ticket_files(
                 .into_response_with_status(StatusCode::NOT_FOUND);
         }
 
-        let ticket_dir = match indexed.path.parent() {
-            Some(p) => p.to_path_buf(),
-            None => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-        };
+        // indexed.path is the ticket folder itself (e.g. .ticket/tickets/{uuid}/).
+        let ticket_dir = indexed.path.clone();
 
         let mut files: Vec<TicketFileEntry> = Vec::new();
 
@@ -907,10 +905,8 @@ pub async fn get_ticket_asset(
                 .into_response_with_status(StatusCode::NOT_FOUND);
         }
 
-        let ticket_dir = match indexed.path.parent() {
-            Some(p) => p.to_path_buf(),
-            None => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-        };
+        // indexed.path is the ticket folder itself (e.g. .ticket/tickets/{uuid}/).
+        let ticket_dir = indexed.path.clone();
 
         // Prevent path traversal: canonicalize both the ticket dir and the
         // requested file path, then assert the file is inside the ticket dir.
