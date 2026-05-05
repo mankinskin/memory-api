@@ -31,6 +31,7 @@ packages/
 
 # Spec/ticket store binary indexes (only the spec/ticket folders are tracked)
 .spec/entities.redb
+.spec/entities.db*
 .spec/search_index/
 .ticket/tickets.redb
 .ticket/search_index/
