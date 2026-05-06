@@ -27,6 +27,7 @@ tools/log-viewer/demo-logs/
 
 # Local workspace data created by the CLI/REPL
 .context-engine/
+.audit/
 .repo-qa/
 packages/
 
