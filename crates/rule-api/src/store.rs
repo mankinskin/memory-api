@@ -30,6 +30,7 @@ pub struct RuleFilter {
     pub file_kind: Option<String>,
     pub section: Option<String>,
     pub repo_scope: Option<String>,
+    pub path_scope: Option<String>,
     pub slug: Option<String>,
     pub has_unresolved_feedback: Option<bool>,
 }
@@ -382,6 +383,11 @@ impl RuleFilter {
                 return false;
             }
         }
+        if let Some(path_scope) = self.path_scope.as_deref() {
+            if !rule.path_scopes().iter().any(|scope| scope == path_scope) {
+                return false;
+            }
+        }
         if let Some(slug) = self.slug.as_deref() {
             if rule.slug() != Some(slug) {
                 return false;
@@ -489,6 +495,7 @@ mod tests {
         );
         first.set_order_key(20);
         first.set_repo_scopes(["context-engine", "memory-viewers"]);
+        first.set_path_scopes([".github/instructions/tests.instructions.md"]);
         first.set_feedback_summary(1, 0, 0, 1, 1, Some("2026-05-07T14:00:00Z"));
 
         let mut second = RuleManifest::new(
@@ -500,6 +507,7 @@ mod tests {
         );
         second.set_order_key(10);
         second.set_repo_scopes(["memory-api"]);
+        second.set_path_scopes([".github/README.md"]);
 
         let mut third = RuleManifest::new(
             "shared/agents/quality-gates",
@@ -510,6 +518,7 @@ mod tests {
         );
         third.set_order_key(5);
         third.set_repo_scopes(["context-engine"]);
+        third.set_path_scopes(["AGENTS.md"]);
 
         store.create(&first, None).unwrap();
         store.create(&second, None).unwrap();
@@ -520,6 +529,7 @@ mod tests {
                 &RuleFilter {
                     file_kind: Some("AGENTS".to_string()),
                     repo_scope: Some("context-engine".to_string()),
+                    path_scope: Some("AGENTS.md".to_string()),
                     has_unresolved_feedback: Some(false),
                     ..RuleFilter::default()
                 },
@@ -544,6 +554,7 @@ mod tests {
             "Canonical project overview for all repos.",
         );
         shared.set_repo_scopes(["context-engine"]);
+        shared.set_path_scopes([".github/README.md"]);
 
         let mut memory = RuleManifest::new(
             "memory-api/github/readme/overview",
@@ -553,6 +564,7 @@ mod tests {
             "Canonical project overview for memory-api only.",
         );
         memory.set_repo_scopes(["memory-api"]);
+        memory.set_path_scopes([".github/README.md"]);
 
         store.create(&shared, None).unwrap();
         store.create(&memory, None).unwrap();

@@ -120,6 +120,8 @@ pub struct GenerateFileArgs {
     pub file_kind: String,
     #[arg(long = "repo")]
     pub repo_scope: String,
+    #[arg(long = "path-scope")]
+    pub path_scope: Option<String>,
     #[arg(long)]
     pub section: Option<String>,
     #[arg(long)]
@@ -154,6 +156,8 @@ pub struct FilterArgs {
     pub section: Option<String>,
     #[arg(long = "repo")]
     pub repo_scope: Option<String>,
+    #[arg(long = "path-scope")]
+    pub path_scope: Option<String>,
     #[arg(long)]
     pub slug: Option<String>,
     #[arg(long = "unresolved-only", default_value_t = false)]
@@ -309,6 +313,7 @@ fn dispatch(command: RuleCommandCli, index_root: &Path) -> Result<Value, CliRunE
                 file_kind: Some(args.file_kind.clone()),
                 section: args.section.clone(),
                 repo_scope: Some(args.repo_scope.clone()),
+                path_scope: args.path_scope.clone(),
                 slug: None,
                 has_unresolved_feedback: None,
             };
@@ -328,6 +333,7 @@ fn dispatch(command: RuleCommandCli, index_root: &Path) -> Result<Value, CliRunE
                 "count": rules.len(),
                 "file_kind": args.file_kind,
                 "repo_scope": args.repo_scope,
+                "path_scope": args.path_scope,
                 "section": args.section,
                 "output": args.output,
                 "dry_run": args.dry_run,
@@ -349,6 +355,7 @@ fn dispatch(command: RuleCommandCli, index_root: &Path) -> Result<Value, CliRunE
                 "count": payload.count,
                 "file_kind": target.file_kind,
                 "repo_scope": target.repo_scope,
+                "path_scope": target.path_scope,
                 "section": target.section,
                 "dry_run": args.dry_run,
                 "check": args.check,
@@ -611,6 +618,7 @@ fn generate_target_payload(
         file_kind: Some(target.file_kind.clone()),
         section: target.section.clone(),
         repo_scope: Some(target.repo_scope.clone()),
+        path_scope: target.path_scope.clone(),
         slug: None,
         has_unresolved_feedback: None,
     };
@@ -635,6 +643,7 @@ fn list_filter(args: &FilterArgs) -> RuleFilter {
         file_kind: args.file_kind.clone(),
         section: args.section.clone(),
         repo_scope: args.repo_scope.clone(),
+        path_scope: args.path_scope.clone(),
         slug: args.slug.clone(),
         has_unresolved_feedback: args.unresolved_only.then_some(true),
     }
@@ -776,6 +785,7 @@ mod tests {
             RuleCommandCli::GenerateFile(GenerateFileArgs {
                 file_kind: "AGENTS".to_string(),
                 repo_scope: "context-engine".to_string(),
+                path_scope: None,
                 section: None,
                 state: None,
                 output: Some(output.clone()),
@@ -840,14 +850,24 @@ mod tests {
     fn generate_target_uses_config_output_path() {
         let dir = tempdir().unwrap();
         let mut store = RuleStore::open(dir.path()).unwrap();
-        let first = sample_rule(
+        let mut first = sample_rule(
             "shared/agents/opening",
             "Opening",
             "opening",
             "Start with the concrete anchor.",
             10,
         );
+        first.set_path_scopes(["AGENTS.md"]);
+        let mut second = sample_rule(
+            "shared/agents/other",
+            "Other",
+            "other",
+            "Different file target.",
+            20,
+        );
+        second.set_path_scopes([".github/copilot-instructions.md"]);
         store.create(&first, None).unwrap();
+        store.create(&second, None).unwrap();
 
         let config_path = dir.path().join("rule-targets.toml");
         fs::write(
@@ -857,6 +877,7 @@ mod tests {
                 name = "context-engine-agents"
                 repo_scope = "context-engine"
                 file_kind = "AGENTS"
+                path_scope = "AGENTS.md"
                 output_path = "generated/AGENTS.md"
             "#,
         )
@@ -875,6 +896,7 @@ mod tests {
 
         let rendered = fs::read_to_string(dir.path().join("generated").join("AGENTS.md")).unwrap();
         assert!(rendered.contains("slug=shared/agents/opening"));
+        assert!(!rendered.contains("slug=shared/agents/other"));
         assert!(rendered.starts_with("<!-- rule-api:file generated=true -->"));
     }
 }

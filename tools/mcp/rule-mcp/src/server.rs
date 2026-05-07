@@ -91,6 +91,8 @@ pub struct ListRulesInput {
     #[serde(default)]
     pub repo_scope: Option<String>,
     #[serde(default)]
+    pub path_scope: Option<String>,
+    #[serde(default)]
     pub slug: Option<String>,
     #[serde(default)]
     pub unresolved_only: bool,
@@ -110,6 +112,8 @@ pub struct SearchRulesInput {
     #[serde(default)]
     pub repo_scope: Option<String>,
     #[serde(default)]
+    pub path_scope: Option<String>,
+    #[serde(default)]
     pub slug: Option<String>,
     #[serde(default)]
     pub unresolved_only: bool,
@@ -121,6 +125,8 @@ pub struct SearchRulesInput {
 pub struct GenerateRuleFileInput {
     pub file_kind: String,
     pub repo_scope: String,
+    #[serde(default)]
+    pub path_scope: Option<String>,
     #[serde(default)]
     pub section: Option<String>,
     #[serde(default)]
@@ -318,6 +324,7 @@ impl RuleServer {
                 input.file_kind,
                 input.section,
                 input.repo_scope,
+                input.path_scope,
                 input.slug,
                 input.unresolved_only,
             );
@@ -343,6 +350,7 @@ impl RuleServer {
                 file_kind: Some(input.file_kind.clone()),
                 section: input.section.clone(),
                 repo_scope: Some(input.repo_scope.clone()),
+                path_scope: input.path_scope.clone(),
                 slug: None,
                 has_unresolved_feedback: None,
             };
@@ -362,6 +370,7 @@ impl RuleServer {
                 "count": rules.len(),
                 "file_kind": input.file_kind,
                 "repo_scope": input.repo_scope,
+                "path_scope": input.path_scope,
                 "section": input.section,
                 "output_path": input.output_path,
                 "dry_run": input.dry_run,
@@ -392,6 +401,7 @@ impl RuleServer {
                 "count": payload.count,
                 "file_kind": target.file_kind,
                 "repo_scope": target.repo_scope,
+                "path_scope": target.path_scope,
                 "section": target.section,
                 "dry_run": input.dry_run,
                 "check": input.check,
@@ -412,6 +422,7 @@ impl RuleServer {
                 input.file_kind,
                 input.section,
                 input.repo_scope,
+                input.path_scope,
                 input.slug,
                 input.unresolved_only,
             );
@@ -532,6 +543,7 @@ fn rule_filter(
     file_kind: Option<String>,
     section: Option<String>,
     repo_scope: Option<String>,
+    path_scope: Option<String>,
     slug: Option<String>,
     unresolved_only: bool,
 ) -> RuleFilter {
@@ -540,6 +552,7 @@ fn rule_filter(
         file_kind,
         section,
         repo_scope,
+        path_scope,
         slug,
         has_unresolved_feedback: unresolved_only.then_some(true),
     }
@@ -727,6 +740,7 @@ fn generate_target_payload(
         file_kind: Some(target.file_kind.clone()),
         section: target.section.clone(),
         repo_scope: Some(target.repo_scope.clone()),
+        path_scope: target.path_scope.clone(),
         slug: None,
         has_unresolved_feedback: None,
     };

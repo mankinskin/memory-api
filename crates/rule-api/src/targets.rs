@@ -17,6 +17,8 @@ pub struct RenderTarget {
     pub repo_scope: String,
     pub file_kind: String,
     #[serde(default)]
+    pub path_scope: Option<String>,
+    #[serde(default)]
     pub section: Option<String>,
     #[serde(default)]
     pub state: Option<String>,
@@ -92,6 +94,7 @@ mod tests {
                 name = "context-engine-agents"
                 repo_scope = "context-engine"
                 file_kind = "AGENTS"
+                path_scope = "AGENTS.md"
                 output_path = "AGENTS.md"
             "#,
         )
@@ -99,6 +102,7 @@ mod tests {
 
         assert_eq!(config.targets.len(), 1);
         assert_eq!(config.targets[0].name, "context-engine-agents");
+        assert_eq!(config.targets[0].path_scope.as_deref(), Some("AGENTS.md"));
 
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("rule-targets.toml");
@@ -109,12 +113,14 @@ mod tests {
                 name = "dup"
                 repo_scope = "context-engine"
                 file_kind = "AGENTS"
+                path_scope = "AGENTS.md"
                 output_path = "AGENTS.md"
 
                 [[targets]]
                 name = "dup"
                 repo_scope = "memory-api"
                 file_kind = "AGENTS"
+                path_scope = "memory-api/AGENTS.md"
                 output_path = "memory-api/AGENTS.md"
             "#,
         )
@@ -131,6 +137,7 @@ mod tests {
             name: "context-engine-agents".to_string(),
             repo_scope: "context-engine".to_string(),
             file_kind: "AGENTS".to_string(),
+            path_scope: Some("AGENTS.md".to_string()),
             section: None,
             state: None,
             output_path: ".github/generated/AGENTS.md".to_string(),
