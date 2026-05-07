@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use clap::{Args, Parser, Subcommand};
 use memory_api::model::filesystem::ScanRoot;
-use rule_api::{RuleFilter, RuleManifest, RuleStore};
+use rule_api::{RuleFilter, RuleManifest, RuleStore, render_markdown_file};
 use serde_json::{Value, json};
 
 #[derive(Debug, Parser)]
@@ -26,6 +26,8 @@ pub enum RuleCommandCli {
     Create(CreateArgs),
     Get(IdArgs),
     Update(UpdateArgs),
+    #[command(name = "generate-file")]
+    GenerateFile(GenerateFileArgs),
     List(ListArgs),
     Search(SearchArgs),
     Scan(ScanArgs),
@@ -81,6 +83,24 @@ pub struct UpdateArgs {
     pub body: Option<String>,
     #[arg(long = "body-file")]
     pub body_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct GenerateFileArgs {
+    #[arg(long = "file-kind")]
+    pub file_kind: String,
+    #[arg(long = "repo")]
+    pub repo_scope: String,
+    #[arg(long)]
+    pub section: Option<String>,
+    #[arg(long)]
+    pub state: Option<String>,
+    #[arg(long)]
+    pub output: Option<PathBuf>,
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+    #[arg(long, default_value_t = false)]
+    pub check: bool,
 }
 
 #[derive(Debug, Args)]
@@ -230,6 +250,39 @@ fn dispatch(command: RuleCommandCli, index_root: &Path) -> Result<Value, CliRunE
                 "rule": rule_json(&rule),
             }))
         }
+        RuleCommandCli::GenerateFile(args) => {
+            validate_generate_args(&args)?;
+            let filter = RuleFilter {
+                state: args.state.clone(),
+                file_kind: Some(args.file_kind.clone()),
+                section: args.section.clone(),
+                repo_scope: Some(args.repo_scope.clone()),
+                slug: None,
+                has_unresolved_feedback: None,
+            };
+            let rules = store.list(&filter, None)?;
+            let rendered = render_markdown_file(&rules);
+
+            if args.check {
+                let output = args.output.as_deref().expect("validated output path");
+                ensure_generated_output_matches(output, &rendered)?;
+            } else if !args.dry_run {
+                let output = args.output.as_deref().expect("validated output path");
+                write_generated_output(output, &rendered)?;
+            }
+
+            Ok(json!({
+                "status": "ok",
+                "count": rules.len(),
+                "file_kind": args.file_kind,
+                "repo_scope": args.repo_scope,
+                "section": args.section,
+                "output": args.output,
+                "dry_run": args.dry_run,
+                "check": args.check,
+                "content": args.dry_run.then_some(rendered),
+            }))
+        }
         RuleCommandCli::List(args) => {
             let filter = list_filter(&args.filter);
             let rules = store.list(&filter, args.limit)?;
@@ -345,6 +398,49 @@ fn apply_source_location(
     }
 }
 
+fn validate_generate_args(args: &GenerateFileArgs) -> Result<(), CliRunError> {
+    if args.check && args.dry_run {
+        return Err(CliRunError::BadRequest(
+            "choose either --check or --dry-run".to_string(),
+        ));
+    }
+
+    if (args.check || !args.dry_run) && args.output.is_none() {
+        return Err(CliRunError::BadRequest(
+            "--output is required unless --dry-run is used".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn ensure_generated_output_matches(output: &Path, rendered: &str) -> Result<(), CliRunError> {
+    let existing = fs::read_to_string(output).map_err(|err| {
+        CliRunError::BadRequest(format!("read generated file {}: {err}", output.display()))
+    })?;
+
+    if existing == rendered {
+        Ok(())
+    } else {
+        Err(CliRunError::BadRequest(format!(
+            "generated output differs from {}",
+            output.display()
+        )))
+    }
+}
+
+fn write_generated_output(output: &Path, rendered: &str) -> Result<(), CliRunError> {
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent).map_err(|err| {
+            CliRunError::BadRequest(format!("create {}: {err}", parent.display()))
+        })?;
+    }
+
+    fs::write(output, rendered).map_err(|err| {
+        CliRunError::BadRequest(format!("write generated file {}: {err}", output.display()))
+    })
+}
+
 fn list_filter(args: &FilterArgs) -> RuleFilter {
     RuleFilter {
         state: args.state.clone(),
@@ -393,6 +489,20 @@ fn rule_summary_json(rule: &RuleManifest) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
+
+    fn sample_rule(
+        slug: &str,
+        title: &str,
+        section: &str,
+        body: &str,
+        order_key: i64,
+    ) -> RuleManifest {
+        let mut manifest = RuleManifest::new(slug, title, "AGENTS", section, body);
+        manifest.set_repo_scopes(["context-engine"]);
+        manifest.set_order_key(order_key);
+        manifest
+    }
 
     #[test]
     fn parse_search_command_with_filter_flags() {
@@ -415,5 +525,49 @@ mod tests {
             }
             _ => panic!("expected search command"),
         }
+    }
+
+    #[test]
+    fn generate_file_writes_deterministic_markdown_with_provenance() {
+        let dir = tempdir().unwrap();
+        let mut store = RuleStore::open(dir.path()).unwrap();
+        let first = sample_rule(
+            "shared/agents/validation",
+            "Validation",
+            "validation",
+            "Run the focused check next.",
+            20,
+        );
+        let second = sample_rule(
+            "shared/agents/opening",
+            "Opening",
+            "opening",
+            "Start with the concrete anchor.",
+            10,
+        );
+        store.create(&first, None).unwrap();
+        store.create(&second, None).unwrap();
+
+        let output = dir.path().join("generated").join("AGENTS.md");
+        dispatch(
+            RuleCommandCli::GenerateFile(GenerateFileArgs {
+                file_kind: "AGENTS".to_string(),
+                repo_scope: "context-engine".to_string(),
+                section: None,
+                state: None,
+                output: Some(output.clone()),
+                dry_run: false,
+                check: false,
+            }),
+            dir.path(),
+        )
+        .unwrap();
+
+        let rendered = fs::read_to_string(&output).unwrap();
+
+        assert!(rendered.starts_with("<!-- rule-api:file generated=true -->\n\n"));
+        let opening_idx = rendered.find("slug=shared/agents/opening").unwrap();
+        let validation_idx = rendered.find("slug=shared/agents/validation").unwrap();
+        assert!(opening_idx < validation_idx);
     }
 }

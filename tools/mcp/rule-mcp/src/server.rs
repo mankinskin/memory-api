@@ -1,3 +1,4 @@
+use std::fs;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
 
-use rule_api::{RuleFilter, RuleManifest, RuleStore};
+use rule_api::{RuleFilter, RuleManifest, RuleStore, render_markdown_file};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RuleRefInput {
@@ -92,6 +93,22 @@ pub struct SearchRulesInput {
     pub unresolved_only: bool,
     #[serde(default = "default_search_limit")]
     pub limit: usize,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GenerateRuleFileInput {
+    pub file_kind: String,
+    pub repo_scope: String,
+    #[serde(default)]
+    pub section: Option<String>,
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub output_path: Option<String>,
+    #[serde(default)]
+    pub dry_run: bool,
+    #[serde(default)]
+    pub check: bool,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -256,6 +273,47 @@ impl RuleServer {
                 "status": "ok",
                 "count": rules.len(),
                 "items": rules.iter().map(rule_summary_json).collect::<Vec<_>>(),
+            }))
+        })
+        .await
+    }
+
+    #[tool(name = "rule_generate_file", description = "Render deterministic markdown with provenance comments from canonical rule entries.")]
+    pub async fn rule_generate_file(
+        &self,
+        Parameters(input): Parameters<GenerateRuleFileInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.with_store(|store| {
+            validate_generate_input(&input)?;
+            let filter = RuleFilter {
+                state: input.state.clone(),
+                file_kind: Some(input.file_kind.clone()),
+                section: input.section.clone(),
+                repo_scope: Some(input.repo_scope.clone()),
+                slug: None,
+                has_unresolved_feedback: None,
+            };
+            let rules = store.list(&filter, None).map_err(Self::rule_err)?;
+            let rendered = render_markdown_file(&rules);
+
+            if input.check {
+                let output = input.output_path.as_deref().expect("validated output path");
+                ensure_generated_output_matches(output, &rendered)?;
+            } else if !input.dry_run {
+                let output = input.output_path.as_deref().expect("validated output path");
+                write_generated_output(output, &rendered)?;
+            }
+
+            Self::json_result(&json!({
+                "status": "ok",
+                "count": rules.len(),
+                "file_kind": input.file_kind,
+                "repo_scope": input.repo_scope,
+                "section": input.section,
+                "output_path": input.output_path,
+                "dry_run": input.dry_run,
+                "check": input.check,
+                "content": input.dry_run.then_some(rendered),
             }))
         })
         .await
@@ -440,4 +498,54 @@ fn parse_fields(fields: &[String]) -> Result<BTreeMap<String, Value>, McpError> 
         patch.insert(key.trim().to_string(), Value::String(value.trim().to_string()));
     }
     Ok(patch)
+}
+
+fn validate_generate_input(input: &GenerateRuleFileInput) -> Result<(), McpError> {
+    if input.check && input.dry_run {
+        return Err(McpError::invalid_params(
+            "choose either check or dry_run".to_string(),
+            None,
+        ));
+    }
+
+    if (input.check || !input.dry_run) && input.output_path.is_none() {
+        return Err(McpError::invalid_params(
+            "output_path is required unless dry_run is true".to_string(),
+            None,
+        ));
+    }
+
+    Ok(())
+}
+
+fn ensure_generated_output_matches(output: &str, rendered: &str) -> Result<(), McpError> {
+    let path = PathBuf::from(output);
+    let existing = fs::read_to_string(&path).map_err(|err| {
+        McpError::invalid_params(
+            format!("read generated file {}: {err}", path.display()),
+            None,
+        )
+    })?;
+
+    if existing == rendered {
+        Ok(())
+    } else {
+        Err(McpError::invalid_params(
+            format!("generated output differs from {}", path.display()),
+            None,
+        ))
+    }
+}
+
+fn write_generated_output(output: &str, rendered: &str) -> Result<(), McpError> {
+    let path = PathBuf::from(output);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| {
+            McpError::internal_error(format!("create {}: {err}", parent.display()), None)
+        })?;
+    }
+
+    fs::write(&path, rendered).map_err(|err| {
+        McpError::internal_error(format!("write generated file {}: {err}", path.display()), None)
+    })
 }
