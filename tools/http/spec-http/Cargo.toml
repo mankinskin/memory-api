@@ -15,7 +15,7 @@ path = "src/lib.rs"
 [dependencies]
 spec-api = { path = "../../../crates/spec-api" }
 memory-api = { path = "../../../crates/memory-api" }
-viewer-api = { path = "../../../../viewer-api/tools/viewer/viewer-api" }
+viewer-api = { path = "../../../../viewer-api/viewer-api" }
 
 axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }

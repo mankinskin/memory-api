@@ -1,0 +1,24 @@
+[package]
+name = "rule-cli"
+version = "0.1.0"
+edition = "2024"
+description = "CLI interface for rule-api: the `rule` command"
+
+[[bin]]
+name = "rule"
+path = "src/bin/rule.rs"
+
+[lib]
+name = "rule_cli"
+path = "src/lib.rs"
+
+[dependencies]
+rule-api = { path = "../../../crates/rule-api" }
+memory-api = { path = "../../../crates/memory-api" }
+
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
