@@ -16,7 +16,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
 
-use rule_api::{RuleFilter, RuleManifest, RuleStore, render_markdown_file};
+use rule_api::{
+    ImportedRuleBlock, MarkdownImportOptions, RuleFilter, RuleManifest, RuleStore,
+    import_markdown_blocks, render_markdown_file,
+};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RuleRefInput {
@@ -32,6 +35,24 @@ pub struct UpdateRuleInput {
     pub to_state: Option<String>,
     #[serde(default)]
     pub body: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ImportRuleFileInput {
+    pub path: String,
+    pub file_kind: String,
+    pub repo_scope: String,
+    pub slug_prefix: String,
+    #[serde(default)]
+    pub default_section: Option<String>,
+    #[serde(default)]
+    pub path_scope: Vec<String>,
+    #[serde(default)]
+    pub source_repo: Option<String>,
+    #[serde(default)]
+    pub target_root: Option<String>,
+    #[serde(default)]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -228,6 +249,23 @@ impl RuleServer {
             Self::json_result(&json!({
                 "status": "ok",
                 "rule": rule_json(&rule),
+            }))
+        })
+        .await
+    }
+
+    #[tool(name = "rule_import_file", description = "Import markdown blocks from an existing file into canonical rule entries.")]
+    pub async fn rule_import_file(
+        &self,
+        Parameters(input): Parameters<ImportRuleFileInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.with_store(|store| {
+            let items = import_file(store, &input)?;
+            Self::json_result(&json!({
+                "status": "ok",
+                "count": items.len(),
+                "dry_run": input.dry_run,
+                "items": items,
             }))
         })
         .await
@@ -500,6 +538,73 @@ fn parse_fields(fields: &[String]) -> Result<BTreeMap<String, Value>, McpError> 
     Ok(patch)
 }
 
+fn import_file(
+    store: &mut RuleStore,
+    input: &ImportRuleFileInput,
+) -> Result<Vec<Value>, McpError> {
+    let path = PathBuf::from(&input.path);
+    let content = fs::read_to_string(&path).map_err(|err| {
+        McpError::invalid_params(format!("read {}: {err}", path.display()), None)
+    })?;
+    let default_section = input
+        .default_section
+        .clone()
+        .unwrap_or_else(|| default_section_from_path(&path));
+    let imported_blocks = import_markdown_blocks(
+        &content,
+        &MarkdownImportOptions {
+            slug_prefix: input.slug_prefix.clone(),
+            default_section,
+        },
+    );
+    let source_repo = input.source_repo.as_deref().unwrap_or(&input.repo_scope);
+    let source_path = path.to_string_lossy().replace('\\', "/");
+    let target_root = input.target_root.as_ref().map(PathBuf::from);
+
+    let mut items = Vec::new();
+    for imported in imported_blocks {
+        let mut manifest = RuleManifest::new(
+            &imported.slug,
+            &imported.title,
+            &input.file_kind,
+            &imported.section,
+            &imported.body,
+        );
+        manifest.set_order_key(imported.order_key);
+        manifest.set_repo_scopes([input.repo_scope.as_str()]);
+        if !input.path_scope.is_empty() {
+            manifest.set_path_scopes(input.path_scope.iter().map(String::as_str));
+        }
+        manifest.set_source_location(
+            source_repo,
+            &source_path,
+            imported.source_start_line,
+            imported.source_end_line,
+        );
+
+        let action = if input.dry_run {
+            "preview"
+        } else if store.get(&imported.slug).is_ok() {
+            let patch = import_patch(&manifest);
+            store.update_body(&imported.slug, &imported.body)
+                .map_err(RuleServer::rule_err)?;
+            let _ = store
+                .update(&imported.slug, patch, None)
+                .map_err(RuleServer::rule_err)?;
+            "updated"
+        } else {
+            let _ = store
+                .create(&manifest, target_root.as_deref())
+                .map_err(RuleServer::rule_err)?;
+            "created"
+        };
+
+        items.push(imported_rule_json(&imported, action));
+    }
+
+    Ok(items)
+}
+
 fn validate_generate_input(input: &GenerateRuleFileInput) -> Result<(), McpError> {
     if input.check && input.dry_run {
         return Err(McpError::invalid_params(
@@ -547,5 +652,52 @@ fn write_generated_output(output: &str, rendered: &str) -> Result<(), McpError> 
 
     fs::write(&path, rendered).map_err(|err| {
         McpError::internal_error(format!("write generated file {}: {err}", path.display()), None)
+    })
+}
+
+fn default_section_from_path(path: &std::path::Path) -> String {
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("imported")
+        .to_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
+}
+
+fn import_patch(manifest: &RuleManifest) -> BTreeMap<String, Value> {
+    let mut patch = BTreeMap::new();
+    for key in [
+        "slug",
+        "title",
+        "file_kind",
+        "section",
+        "body",
+        "order_key",
+        "repo_scopes",
+        "path_scopes",
+        "source_repo",
+        "source_path",
+        "source_start_line",
+        "source_end_line",
+    ] {
+        if let Some(value) = manifest.extra.get(key) {
+            patch.insert(key.to_string(), value.clone());
+        }
+    }
+    patch
+}
+
+fn imported_rule_json(imported: &ImportedRuleBlock, action: &str) -> Value {
+    json!({
+        "action": action,
+        "slug": imported.slug,
+        "title": imported.title,
+        "section": imported.section,
+        "order_key": imported.order_key,
+        "source_start_line": imported.source_start_line,
+        "source_end_line": imported.source_end_line,
     })
 }

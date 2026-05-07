@@ -5,7 +5,10 @@ use std::collections::BTreeMap;
 
 use clap::{Args, Parser, Subcommand};
 use memory_api::model::filesystem::ScanRoot;
-use rule_api::{RuleFilter, RuleManifest, RuleStore, render_markdown_file};
+use rule_api::{
+    ImportedRuleBlock, MarkdownImportOptions, RuleFilter, RuleManifest, RuleStore,
+    import_markdown_blocks, render_markdown_file,
+};
 use serde_json::{Value, json};
 
 #[derive(Debug, Parser)]
@@ -25,6 +28,8 @@ pub struct RuleCli {
 pub enum RuleCommandCli {
     Create(CreateArgs),
     Get(IdArgs),
+    #[command(name = "import-file")]
+    ImportFile(ImportFileArgs),
     Update(UpdateArgs),
     #[command(name = "generate-file")]
     GenerateFile(GenerateFileArgs),
@@ -70,6 +75,27 @@ pub struct CreateArgs {
 #[derive(Debug, Args)]
 pub struct IdArgs {
     pub id: String,
+}
+
+#[derive(Debug, Args)]
+pub struct ImportFileArgs {
+    pub path: PathBuf,
+    #[arg(long = "file-kind")]
+    pub file_kind: String,
+    #[arg(long = "repo")]
+    pub repo_scope: String,
+    #[arg(long = "slug-prefix")]
+    pub slug_prefix: String,
+    #[arg(long = "default-section")]
+    pub default_section: Option<String>,
+    #[arg(long = "path-scope")]
+    pub path_scope: Vec<String>,
+    #[arg(long = "source-repo")]
+    pub source_repo: Option<String>,
+    #[arg(long = "root")]
+    pub target_root: Option<PathBuf>,
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Args)]
@@ -239,6 +265,15 @@ fn dispatch(command: RuleCommandCli, index_root: &Path) -> Result<Value, CliRunE
                 "rule": rule_json(&rule),
             }))
         }
+        RuleCommandCli::ImportFile(args) => {
+            let items = import_file(&mut store, &args)?;
+            Ok(json!({
+                "status": "ok",
+                "count": items.len(),
+                "dry_run": args.dry_run,
+                "items": items,
+            }))
+        }
         RuleCommandCli::Update(args) => {
             let patch = parse_fields(&args.fields)?;
             if let Some(body) = read_optional_body(args.body, args.body_file.as_deref())? {
@@ -363,6 +398,65 @@ fn read_body(inline: Option<String>, body_file: Option<&Path>) -> Result<String,
     }
 }
 
+fn import_file(
+    store: &mut RuleStore,
+    args: &ImportFileArgs,
+) -> Result<Vec<Value>, CliRunError> {
+    let content = fs::read_to_string(&args.path)
+        .map_err(|err| CliRunError::BadRequest(format!("read {}: {err}", args.path.display())))?;
+    let default_section = args
+        .default_section
+        .clone()
+        .unwrap_or_else(|| default_section_from_path(&args.path));
+    let imported_blocks = import_markdown_blocks(
+        &content,
+        &MarkdownImportOptions {
+            slug_prefix: args.slug_prefix.clone(),
+            default_section,
+        },
+    );
+    let source_repo = args.source_repo.as_deref().unwrap_or(&args.repo_scope);
+    let source_path = args.path.to_string_lossy().replace('\\', "/");
+
+    let mut items = Vec::new();
+    for imported in imported_blocks {
+        let mut manifest = RuleManifest::new(
+            &imported.slug,
+            &imported.title,
+            &args.file_kind,
+            &imported.section,
+            &imported.body,
+        );
+        manifest.set_order_key(imported.order_key);
+        manifest.set_repo_scopes([args.repo_scope.as_str()]);
+        if !args.path_scope.is_empty() {
+            manifest.set_path_scopes(args.path_scope.iter().map(String::as_str));
+        }
+        manifest.set_source_location(
+            source_repo,
+            &source_path,
+            imported.source_start_line,
+            imported.source_end_line,
+        );
+
+        let action = if args.dry_run {
+            "preview"
+        } else if store.get(&imported.slug).is_ok() {
+            let patch = import_patch(&manifest);
+            store.update_body(&imported.slug, &imported.body)?;
+            let _ = store.update(&imported.slug, patch, None)?;
+            "updated"
+        } else {
+            let _ = store.create(&manifest, args.target_root.as_deref())?;
+            "created"
+        };
+
+        items.push(imported_rule_json(&imported, action));
+    }
+
+    Ok(items)
+}
+
 fn read_optional_body(
     inline: Option<String>,
     body_file: Option<&Path>,
@@ -377,6 +471,18 @@ fn read_optional_body(
             "choose either --body or --body-file".to_string(),
         )),
     }
+}
+
+fn default_section_from_path(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("imported")
+        .to_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
 }
 
 fn apply_source_location(
@@ -450,6 +556,41 @@ fn list_filter(args: &FilterArgs) -> RuleFilter {
         slug: args.slug.clone(),
         has_unresolved_feedback: args.unresolved_only.then_some(true),
     }
+}
+
+fn import_patch(manifest: &RuleManifest) -> BTreeMap<String, Value> {
+    let mut patch = BTreeMap::new();
+    for key in [
+        "slug",
+        "title",
+        "file_kind",
+        "section",
+        "body",
+        "order_key",
+        "repo_scopes",
+        "path_scopes",
+        "source_repo",
+        "source_path",
+        "source_start_line",
+        "source_end_line",
+    ] {
+        if let Some(value) = manifest.extra.get(key) {
+            patch.insert(key.to_string(), value.clone());
+        }
+    }
+    patch
+}
+
+fn imported_rule_json(imported: &ImportedRuleBlock, action: &str) -> Value {
+    json!({
+        "action": action,
+        "slug": imported.slug,
+        "title": imported.title,
+        "section": imported.section,
+        "order_key": imported.order_key,
+        "source_start_line": imported.source_start_line,
+        "source_end_line": imported.source_end_line,
+    })
 }
 
 fn parse_fields(fields: &[String]) -> Result<BTreeMap<String, Value>, CliRunError> {
@@ -569,5 +710,47 @@ mod tests {
         let opening_idx = rendered.find("slug=shared/agents/opening").unwrap();
         let validation_idx = rendered.find("slug=shared/agents/validation").unwrap();
         assert!(opening_idx < validation_idx);
+    }
+
+    #[test]
+    fn import_file_creates_rules_from_markdown_blocks() {
+        let dir = tempdir().unwrap();
+        let markdown = dir.path().join("AGENTS.md");
+        fs::write(
+            &markdown,
+            "# Opening\n\nStart with the concrete anchor.\n\n## Validation\n\nRun the focused check next.",
+        )
+        .unwrap();
+
+        let mut store = RuleStore::open(dir.path()).unwrap();
+        let items = import_file(
+            &mut store,
+            &ImportFileArgs {
+                path: markdown,
+                file_kind: "AGENTS".to_string(),
+                repo_scope: "context-engine".to_string(),
+                slug_prefix: "shared/agents".to_string(),
+                default_section: None,
+                path_scope: vec!["AGENTS.md".to_string()],
+                source_repo: Some("context-engine".to_string()),
+                target_root: None,
+                dry_run: false,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(items.len(), 2);
+        let imported = store
+            .list(
+                &RuleFilter {
+                    repo_scope: Some("context-engine".to_string()),
+                    ..RuleFilter::default()
+                },
+                None,
+            )
+            .unwrap();
+        assert_eq!(imported.len(), 2);
+        assert_eq!(imported[0].slug(), Some("shared/agents/opening/l1"));
+        assert_eq!(imported[1].slug(), Some("shared/agents/opening/validation/l5"));
     }
 }
