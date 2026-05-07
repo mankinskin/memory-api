@@ -7,7 +7,8 @@ use clap::{Args, Parser, Subcommand};
 use memory_api::model::filesystem::ScanRoot;
 use rule_api::{
     ImportedRuleBlock, MarkdownImportOptions, RuleFilter, RuleManifest, RuleStore,
-    import_markdown_blocks, render_markdown_file,
+    RenderTarget, import_markdown_blocks, load_render_target_config,
+    render_markdown_file, render_target_by_name, resolve_render_target_output,
 };
 use serde_json::{Value, json};
 
@@ -33,6 +34,8 @@ pub enum RuleCommandCli {
     Update(UpdateArgs),
     #[command(name = "generate-file")]
     GenerateFile(GenerateFileArgs),
+    #[command(name = "generate-target")]
+    GenerateTarget(GenerateTargetArgs),
     List(ListArgs),
     Search(SearchArgs),
     Scan(ScanArgs),
@@ -130,6 +133,18 @@ pub struct GenerateFileArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct GenerateTargetArgs {
+    #[arg(long)]
+    pub config: PathBuf,
+    #[arg(long)]
+    pub target: String,
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+    #[arg(long, default_value_t = false)]
+    pub check: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct FilterArgs {
     #[arg(long)]
     pub state: Option<String>,
@@ -179,6 +194,8 @@ pub struct AddRootArgs {
 pub enum CliRunError {
     #[error("rule error: {0}")]
     Rule(#[from] rule_api::error::RuleError),
+    #[error("target config error: {0}")]
+    TargetConfig(#[from] rule_api::TargetConfigError),
     #[error("storage error: {0}")]
     Storage(#[from] memory_api::error::StorageError),
     #[error("{0}")]
@@ -316,6 +333,26 @@ fn dispatch(command: RuleCommandCli, index_root: &Path) -> Result<Value, CliRunE
                 "dry_run": args.dry_run,
                 "check": args.check,
                 "content": args.dry_run.then_some(rendered),
+            }))
+        }
+        RuleCommandCli::GenerateTarget(args) => {
+            validate_generate_target_args(&args)?;
+            let config = load_render_target_config(&args.config)?;
+            let target = render_target_by_name(&config, &args.target)?;
+            let output = resolve_render_target_output(&args.config, target);
+            let payload = generate_target_payload(&store, target, args.dry_run, args.check, &output)?;
+
+            Ok(json!({
+                "status": "ok",
+                "target": args.target,
+                "output": output,
+                "count": payload.count,
+                "file_kind": target.file_kind,
+                "repo_scope": target.repo_scope,
+                "section": target.section,
+                "dry_run": args.dry_run,
+                "check": args.check,
+                "content": payload.content,
             }))
         }
         RuleCommandCli::List(args) => {
@@ -520,6 +557,16 @@ fn validate_generate_args(args: &GenerateFileArgs) -> Result<(), CliRunError> {
     Ok(())
 }
 
+fn validate_generate_target_args(args: &GenerateTargetArgs) -> Result<(), CliRunError> {
+    if args.check && args.dry_run {
+        return Err(CliRunError::BadRequest(
+            "choose either --check or --dry-run".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 fn ensure_generated_output_matches(output: &Path, rendered: &str) -> Result<(), CliRunError> {
     let existing = fs::read_to_string(output).map_err(|err| {
         CliRunError::BadRequest(format!("read generated file {}: {err}", output.display()))
@@ -544,6 +591,41 @@ fn write_generated_output(output: &Path, rendered: &str) -> Result<(), CliRunErr
 
     fs::write(output, rendered).map_err(|err| {
         CliRunError::BadRequest(format!("write generated file {}: {err}", output.display()))
+    })
+}
+
+struct GenerateTargetPayload {
+    count: usize,
+    content: Option<String>,
+}
+
+fn generate_target_payload(
+    store: &RuleStore,
+    target: &RenderTarget,
+    dry_run: bool,
+    check: bool,
+    output: &Path,
+) -> Result<GenerateTargetPayload, CliRunError> {
+    let filter = RuleFilter {
+        state: target.state.clone(),
+        file_kind: Some(target.file_kind.clone()),
+        section: target.section.clone(),
+        repo_scope: Some(target.repo_scope.clone()),
+        slug: None,
+        has_unresolved_feedback: None,
+    };
+    let rules = store.list(&filter, None)?;
+    let rendered = render_markdown_file(&rules);
+
+    if check {
+        ensure_generated_output_matches(output, &rendered)?;
+    } else if !dry_run {
+        write_generated_output(output, &rendered)?;
+    }
+
+    Ok(GenerateTargetPayload {
+        count: rules.len(),
+        content: dry_run.then_some(rendered),
     })
 }
 
@@ -752,5 +834,47 @@ mod tests {
         assert_eq!(imported.len(), 2);
         assert_eq!(imported[0].slug(), Some("shared/agents/opening/l1"));
         assert_eq!(imported[1].slug(), Some("shared/agents/opening/validation/l5"));
+    }
+
+    #[test]
+    fn generate_target_uses_config_output_path() {
+        let dir = tempdir().unwrap();
+        let mut store = RuleStore::open(dir.path()).unwrap();
+        let first = sample_rule(
+            "shared/agents/opening",
+            "Opening",
+            "opening",
+            "Start with the concrete anchor.",
+            10,
+        );
+        store.create(&first, None).unwrap();
+
+        let config_path = dir.path().join("rule-targets.toml");
+        fs::write(
+            &config_path,
+            r#"
+                [[targets]]
+                name = "context-engine-agents"
+                repo_scope = "context-engine"
+                file_kind = "AGENTS"
+                output_path = "generated/AGENTS.md"
+            "#,
+        )
+        .unwrap();
+
+        dispatch(
+            RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+                config: config_path.clone(),
+                target: "context-engine-agents".to_string(),
+                dry_run: false,
+                check: false,
+            }),
+            dir.path(),
+        )
+        .unwrap();
+
+        let rendered = fs::read_to_string(dir.path().join("generated").join("AGENTS.md")).unwrap();
+        assert!(rendered.contains("slug=shared/agents/opening"));
+        assert!(rendered.starts_with("<!-- rule-api:file generated=true -->"));
     }
 }

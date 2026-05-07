@@ -18,7 +18,8 @@ use tokio::sync::Mutex;
 
 use rule_api::{
     ImportedRuleBlock, MarkdownImportOptions, RuleFilter, RuleManifest, RuleStore,
-    import_markdown_blocks, render_markdown_file,
+    RenderTarget, import_markdown_blocks, load_render_target_config,
+    render_markdown_file, render_target_by_name, resolve_render_target_output,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -133,6 +134,16 @@ pub struct GenerateRuleFileInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct GenerateRuleTargetInput {
+    pub config_path: String,
+    pub target: String,
+    #[serde(default)]
+    pub dry_run: bool,
+    #[serde(default)]
+    pub check: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ScanInput {
     #[serde(default)]
     pub force: bool,
@@ -185,6 +196,10 @@ impl RuleServer {
 
     fn storage_err(err: memory_api::error::StorageError) -> McpError {
         McpError::internal_error(format!("storage error: {err}"), None)
+    }
+
+    fn target_config_err(err: rule_api::TargetConfigError) -> McpError {
+        McpError::invalid_params(err.to_string(), None)
     }
 
     async fn with_store<T>(
@@ -352,6 +367,35 @@ impl RuleServer {
                 "dry_run": input.dry_run,
                 "check": input.check,
                 "content": input.dry_run.then_some(rendered),
+            }))
+        })
+        .await
+    }
+
+    #[tool(name = "rule_generate_target", description = "Render a named configured markdown target from canonical rule entries.")]
+    pub async fn rule_generate_target(
+        &self,
+        Parameters(input): Parameters<GenerateRuleTargetInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.with_store(|store| {
+            validate_generate_target_input(&input)?;
+            let config_path = PathBuf::from(&input.config_path);
+            let config = load_render_target_config(&config_path).map_err(Self::target_config_err)?;
+            let target = render_target_by_name(&config, &input.target).map_err(Self::target_config_err)?;
+            let output = resolve_render_target_output(&config_path, target);
+            let payload = generate_target_payload(store, target, input.dry_run, input.check, &output)?;
+
+            Self::json_result(&json!({
+                "status": "ok",
+                "target": input.target,
+                "output_path": output,
+                "count": payload.count,
+                "file_kind": target.file_kind,
+                "repo_scope": target.repo_scope,
+                "section": target.section,
+                "dry_run": input.dry_run,
+                "check": input.check,
+                "content": payload.content,
             }))
         })
         .await
@@ -623,6 +667,17 @@ fn validate_generate_input(input: &GenerateRuleFileInput) -> Result<(), McpError
     Ok(())
 }
 
+fn validate_generate_target_input(input: &GenerateRuleTargetInput) -> Result<(), McpError> {
+    if input.check && input.dry_run {
+        return Err(McpError::invalid_params(
+            "choose either check or dry_run".to_string(),
+            None,
+        ));
+    }
+
+    Ok(())
+}
+
 fn ensure_generated_output_matches(output: &str, rendered: &str) -> Result<(), McpError> {
     let path = PathBuf::from(output);
     let existing = fs::read_to_string(&path).map_err(|err| {
@@ -652,6 +707,41 @@ fn write_generated_output(output: &str, rendered: &str) -> Result<(), McpError> 
 
     fs::write(&path, rendered).map_err(|err| {
         McpError::internal_error(format!("write generated file {}: {err}", path.display()), None)
+    })
+}
+
+struct GenerateTargetPayload {
+    count: usize,
+    content: Option<String>,
+}
+
+fn generate_target_payload(
+    store: &RuleStore,
+    target: &RenderTarget,
+    dry_run: bool,
+    check: bool,
+    output: &std::path::Path,
+) -> Result<GenerateTargetPayload, McpError> {
+    let filter = RuleFilter {
+        state: target.state.clone(),
+        file_kind: Some(target.file_kind.clone()),
+        section: target.section.clone(),
+        repo_scope: Some(target.repo_scope.clone()),
+        slug: None,
+        has_unresolved_feedback: None,
+    };
+    let rules = store.list(&filter, None).map_err(RuleServer::rule_err)?;
+    let rendered = render_markdown_file(&rules);
+
+    if check {
+        ensure_generated_output_matches(output.to_string_lossy().as_ref(), &rendered)?;
+    } else if !dry_run {
+        write_generated_output(output.to_string_lossy().as_ref(), &rendered)?;
+    }
+
+    Ok(GenerateTargetPayload {
+        count: rules.len(),
+        content: dry_run.then_some(rendered),
     })
 }
 
