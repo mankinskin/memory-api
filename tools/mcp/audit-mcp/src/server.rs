@@ -11,6 +11,10 @@ use rmcp::{
 };
 use audit_api::audit;
 use audit_api::models::AuditConfig;
+use audit_api::summary::{
+    AuditSummaryBy,
+    summarize_report,
+};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
@@ -18,6 +22,42 @@ use tokio::sync::Mutex;
 pub struct AuditRepositoryInput {
     #[serde(default)]
     pub repo_root: Option<PathBuf>,
+    #[serde(default)]
+    pub max_file_lines: Option<usize>,
+    #[serde(default)]
+    pub max_cyclomatic_complexity: Option<usize>,
+    #[serde(default)]
+    pub coverage_warn_below: Option<f64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditSummaryByInput {
+    Crate,
+    Package,
+    Category,
+    Severity,
+    Metric,
+    Path,
+}
+
+impl From<AuditSummaryByInput> for AuditSummaryBy {
+    fn from(value: AuditSummaryByInput) -> Self {
+        match value {
+            AuditSummaryByInput::Crate | AuditSummaryByInput::Package => AuditSummaryBy::Crate,
+            AuditSummaryByInput::Category => AuditSummaryBy::Category,
+            AuditSummaryByInput::Severity => AuditSummaryBy::Severity,
+            AuditSummaryByInput::Metric => AuditSummaryBy::Metric,
+            AuditSummaryByInput::Path => AuditSummaryBy::Path,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct AuditSummaryInput {
+    #[serde(default)]
+    pub repo_root: Option<PathBuf>,
+    pub by: AuditSummaryByInput,
     #[serde(default)]
     pub max_file_lines: Option<usize>,
     #[serde(default)]
@@ -47,6 +87,26 @@ impl AuditServer {
             .map_err(|err| McpError::internal_error(format!("serialization: {err}"), None))?;
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
+
+    fn build_config(
+        max_file_lines: Option<usize>,
+        max_cyclomatic_complexity: Option<usize>,
+        coverage_warn_below: Option<f64>,
+    ) -> AuditConfig {
+        let mut config = AuditConfig::default();
+
+        if let Some(max_file_lines) = max_file_lines {
+            config.max_file_lines = max_file_lines;
+        }
+        if let Some(max_cyclomatic_complexity) = max_cyclomatic_complexity {
+            config.max_cyclomatic_complexity = max_cyclomatic_complexity;
+        }
+        if let Some(coverage_warn_below) = coverage_warn_below {
+            config.coverage_warn_below = coverage_warn_below;
+        }
+
+        config
+    }
 }
 
 #[tool_router]
@@ -61,22 +121,40 @@ impl AuditServer {
     ) -> Result<CallToolResult, McpError> {
         let _guard = self.audit_lock.lock().await;
         let repo_root = input.repo_root.unwrap_or_else(|| self.base_dir.clone());
-        let mut config = AuditConfig::default();
-
-        if let Some(max_file_lines) = input.max_file_lines {
-            config.max_file_lines = max_file_lines;
-        }
-        if let Some(max_cyclomatic_complexity) = input.max_cyclomatic_complexity {
-            config.max_cyclomatic_complexity = max_cyclomatic_complexity;
-        }
-        if let Some(coverage_warn_below) = input.coverage_warn_below {
-            config.coverage_warn_below = coverage_warn_below;
-        }
+        let config = Self::build_config(
+            input.max_file_lines,
+            input.max_cyclomatic_complexity,
+            input.coverage_warn_below,
+        );
 
         let report = audit::audit(&repo_root, config)
             .map_err(|err| McpError::internal_error(err.to_string(), None))?;
 
         Self::json_result(&report)
+    }
+
+    #[tool(
+        name = "audit_summary",
+        description = "Run a repository quality audit and return grouped issue counts."
+    )]
+    async fn audit_summary(
+        &self,
+        Parameters(input): Parameters<AuditSummaryInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let _guard = self.audit_lock.lock().await;
+        let repo_root = input.repo_root.unwrap_or_else(|| self.base_dir.clone());
+        let config = Self::build_config(
+            input.max_file_lines,
+            input.max_cyclomatic_complexity,
+            input.coverage_warn_below,
+        );
+
+        let report = audit::audit(&repo_root, config)
+            .map_err(|err| McpError::internal_error(err.to_string(), None))?;
+        let summary = summarize_report(&report, input.by.into())
+            .map_err(|err| McpError::internal_error(err.to_string(), None))?;
+
+        Self::json_result(&summary)
     }
 }
 
@@ -85,7 +163,7 @@ impl ServerHandler for AuditServer {
     fn get_info(&self) -> rmcp::model::ServerInfo {
         rmcp::model::ServerInfo {
             instructions: Some(
-                "Use audit to run one synchronized repository quality audit.".
+                "Use audit for the full report or audit_summary for grouped issue counts.".
                     to_string(),
             ),
             capabilities: rmcp::model::ServerCapabilities::builder().enable_tools().build(),

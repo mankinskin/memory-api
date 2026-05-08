@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use clap::{
     Args,
     Parser,
+    Subcommand,
+    ValueEnum,
 };
 use serde_json::{
     Value,
@@ -17,6 +19,11 @@ use audit_api::models::{
     AuditReport,
     TrialStatus,
 };
+use audit_api::summary::{
+    AuditSummaryBy,
+    AuditSummaryReport,
+    summarize_report,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "audit", about = "Repository quality audit CLI", version)]
@@ -24,8 +31,17 @@ pub struct AuditCli {
     #[arg(long, global = true)]
     pub json: bool,
 
+    #[command(subcommand)]
+    pub command: Option<AuditCommand>,
+
     #[command(flatten)]
     pub args: AuditArgs,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AuditCommand {
+    /// Summarize findings grouped by one key.
+    Summary(AuditSummaryArgs),
 }
 
 #[derive(Debug, Args)]
@@ -42,6 +58,37 @@ pub struct AuditArgs {
 
     #[arg(long)]
     pub coverage_warn_below: Option<f64>,
+}
+
+#[derive(Debug, Args)]
+pub struct AuditSummaryArgs {
+    #[arg(long, value_enum)]
+    pub by: SummaryByArg,
+
+    #[command(flatten)]
+    pub args: AuditArgs,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SummaryByArg {
+    Crate,
+    Package,
+    Category,
+    Severity,
+    Metric,
+    Path,
+}
+
+impl From<SummaryByArg> for AuditSummaryBy {
+    fn from(value: SummaryByArg) -> Self {
+        match value {
+            SummaryByArg::Crate | SummaryByArg::Package => AuditSummaryBy::Crate,
+            SummaryByArg::Category => AuditSummaryBy::Category,
+            SummaryByArg::Severity => AuditSummaryBy::Severity,
+            SummaryByArg::Metric => AuditSummaryBy::Metric,
+            SummaryByArg::Path => AuditSummaryBy::Path,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -64,23 +111,40 @@ where
 }
 
 pub fn run(cli: AuditCli) -> Result<CliOutput, CliRunError> {
+    match cli.command {
+        Some(AuditCommand::Summary(summary)) => {
+            let report = run_audit(&summary.args)?;
+            let summary = summarize_report(&report, summary.by.into())?;
+            if cli.json {
+                Ok(CliOutput::Json(json!(summary)))
+            } else {
+                Ok(CliOutput::Text(render_summary_human(&summary)))
+            }
+        },
+        None => {
+            let report = run_audit(&cli.args)?;
+            if cli.json {
+                Ok(CliOutput::Json(json!(report)))
+            } else {
+                Ok(CliOutput::Text(render_human(&report)))
+            }
+        },
+    }
+}
+
+fn run_audit(args: &AuditArgs) -> Result<AuditReport, CliRunError> {
     let mut config = AuditConfig::default();
-    if let Some(max_file_lines) = cli.args.max_file_lines {
+    if let Some(max_file_lines) = args.max_file_lines {
         config.max_file_lines = max_file_lines;
     }
-    if let Some(max_cyclomatic_complexity) = cli.args.max_cyclomatic_complexity {
+    if let Some(max_cyclomatic_complexity) = args.max_cyclomatic_complexity {
         config.max_cyclomatic_complexity = max_cyclomatic_complexity;
     }
-    if let Some(coverage_warn_below) = cli.args.coverage_warn_below {
+    if let Some(coverage_warn_below) = args.coverage_warn_below {
         config.coverage_warn_below = coverage_warn_below;
     }
 
-    let report = audit(&cli.args.repo_root, config)?;
-    if cli.json {
-        Ok(CliOutput::Json(json!(report)))
-    } else {
-        Ok(CliOutput::Text(render_human(&report)))
-    }
+    Ok(audit(&args.repo_root, config)?)
 }
 
 pub fn error_output(
@@ -161,6 +225,33 @@ fn render_human(report: &AuditReport) -> String {
             for instruction in &finding.instructions {
                 lines.push(format!("  fix: {instruction}"));
             }
+        }
+    }
+
+    lines.join("\n")
+}
+
+fn render_summary_human(summary: &AuditSummaryReport) -> String {
+    let mut lines = Vec::new();
+    lines.push("Repository Audit Summary".to_string());
+    lines.push(format!("Repo: {}", summary.repo_root));
+    lines.push(format!("Grouped by: {}", summary.by.as_str()));
+    lines.push(format!("Total findings: {}", summary.total_findings));
+    lines.push(format!("Repo-wide issues: {}", summary.repo_wide_issues));
+
+    if summary.groups.is_empty() {
+        lines.push("Groups: none".to_string());
+    } else {
+        lines.push("Groups:".to_string());
+        for group in &summary.groups {
+            lines.push(format!("- {}: {}", group.key, group.issues));
+        }
+    }
+
+    if !summary.unmapped_paths.is_empty() {
+        lines.push("Unmapped paths:".to_string());
+        for group in &summary.unmapped_paths {
+            lines.push(format!("- {}: {}", group.key, group.issues));
         }
     }
 
