@@ -18,10 +18,21 @@ use crate::manifest::{RuleId, RuleManifest};
 
 const RULE_MANIFEST_FILE: &str = "rule.toml";
 const RULE_LOCK_FILE: &str = ".rule-lock";
+const GENERATED_TARGET_TYPE_ID: &str = "generated-target";
+const GENERATED_TARGET_ROOT_DIR: &str = "entities";
 
 pub struct RuleStore {
     inner: EntityStore,
     slug_index: HashMap<String, Uuid>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneratedTargetRecord {
+    pub id: Uuid,
+    pub slug: String,
+    pub config_path: String,
+    pub target_name: String,
+    pub output_path: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -338,6 +349,161 @@ impl RuleStore {
         Ok(rules)
     }
 
+    pub fn list_generated_targets(
+        &self,
+        config_path: &Path,
+    ) -> Result<Vec<GeneratedTargetRecord>, RuleError> {
+        let config_path = stable_path_key(config_path);
+        let mut records = Vec::new();
+
+        for indexed in self.inner.list_indexed(false)? {
+            if indexed.type_id != GENERATED_TARGET_TYPE_ID {
+                continue;
+            }
+
+            let entity = self.inner.fs.read(&indexed.path)?;
+            let Some(record) = generated_target_from_entity(indexed.id, &entity) else {
+                continue;
+            };
+
+            if record.config_path == config_path {
+                records.push(record);
+            }
+        }
+
+        records.sort_by(|left, right| left.target_name.cmp(&right.target_name));
+        Ok(records)
+    }
+
+    pub fn upsert_generated_target(
+        &mut self,
+        config_path: &Path,
+        target_name: &str,
+        output_path: &Path,
+    ) -> Result<GeneratedTargetRecord, RuleError> {
+        let config_path = stable_path_key(config_path);
+        let output_path = stable_path_key(output_path);
+        let slug = generated_target_slug(&config_path, target_name);
+
+        if let Some(existing_id) = self.slug_index.get(&slug).copied() {
+            let indexed = self
+                .inner
+                .get_indexed(&existing_id)?
+                .ok_or_else(|| RuleError::NotFound(existing_id.to_string()))?;
+
+            if indexed.type_id != GENERATED_TARGET_TYPE_ID {
+                return Err(RuleError::DuplicateSlug(slug));
+            }
+
+            let patch = BTreeMap::from([
+                (
+                    "title".to_string(),
+                    Value::String(target_name.to_string()),
+                ),
+                (
+                    "config_path".to_string(),
+                    Value::String(config_path.clone()),
+                ),
+                (
+                    "target_name".to_string(),
+                    Value::String(target_name.to_string()),
+                ),
+                (
+                    "output_path".to_string(),
+                    Value::String(output_path.clone()),
+                ),
+            ]);
+            let updated = self.inner.fs.update(&indexed.path, &patch, Some("active"))?;
+
+            let refreshed = IndexedEntity {
+                id: existing_id,
+                path: indexed.path.clone(),
+                type_id: GENERATED_TARGET_TYPE_ID.to_string(),
+                title: Some(target_name.to_string()),
+                state: Some("active".to_string()),
+                created_at: indexed.created_at,
+                updated_at: Utc::now(),
+                deleted: false,
+            };
+            self.inner.index.insert_ticket(&refreshed)?;
+            self.inner.search.upsert(
+                &existing_id,
+                Some(target_name),
+                Some(&output_path),
+                Some("active"),
+                Some(GENERATED_TARGET_TYPE_ID),
+            )?;
+            let _ = self
+                .inner
+                .fs
+                .append_history(&indexed.path, updated.extra.clone(), None);
+
+            return generated_target_from_entity(existing_id, &updated)
+                .ok_or_else(|| RuleError::Asset("invalid generated-target manifest".to_string()));
+        }
+
+        let id = Uuid::new_v4();
+        let entity = generated_target_entity(id, &slug, &config_path, target_name, &output_path);
+        self.inner
+            .schema_registry()
+            .get(GENERATED_TARGET_TYPE_ID)
+            .ok_or_else(|| RuleError::Asset("missing generated-target schema".to_string()))?
+            .validate_manifest(&entity)
+            .map_err(|err| RuleError::Asset(err.to_string()))?;
+
+        let root = self.inner.index_root.join(GENERATED_TARGET_ROOT_DIR);
+        fs::create_dir_all(&root).map_err(StorageError::Io)?;
+        let folder = self.inner.fs.create(&entity, &root, Some(&output_path))?;
+        let indexed = IndexedEntity {
+            id,
+            path: folder.clone(),
+            type_id: GENERATED_TARGET_TYPE_ID.to_string(),
+            title: Some(target_name.to_string()),
+            state: Some("active".to_string()),
+            created_at: entity.created_at,
+            updated_at: Utc::now(),
+            deleted: false,
+        };
+        self.inner.index.insert_ticket(&indexed)?;
+        self.inner.search.upsert(
+            &id,
+            Some(target_name),
+            Some(&output_path),
+            Some("active"),
+            Some(GENERATED_TARGET_TYPE_ID),
+        )?;
+        let _ = self.inner.fs.append_history(&folder, entity.extra.clone(), None);
+        self.slug_index.insert(slug, id);
+
+        generated_target_from_entity(id, &entity)
+            .ok_or_else(|| RuleError::Asset("invalid generated-target manifest".to_string()))
+    }
+
+    pub fn delete_generated_target(&mut self, slug: &str) -> Result<(), RuleError> {
+        let uuid = self.resolve_id(slug)?;
+        let indexed = self
+            .inner
+            .get_indexed(&uuid)?
+            .ok_or_else(|| RuleError::NotFound(uuid.to_string()))?;
+
+        if indexed.type_id != GENERATED_TARGET_TYPE_ID {
+            return Err(RuleError::NotFound(slug.to_string()));
+        }
+
+        let entity = self.inner.fs.read(&indexed.path)?;
+        if let Some(existing_slug) = entity.extra.get("slug").and_then(Value::as_str) {
+            self.slug_index.remove(existing_slug);
+        }
+        self.inner.fs.mark_deleted(&indexed.path)?;
+
+        let mut refreshed = indexed.clone();
+        refreshed.deleted = true;
+        refreshed.updated_at = Utc::now();
+        self.inner.index.insert_ticket(&refreshed)?;
+
+        Ok(())
+    }
+
     fn resolve_prefix(&self, prefix: &str) -> Result<Option<Uuid>, RuleError> {
         if prefix.len() < 4 {
             return Ok(None);
@@ -433,6 +599,91 @@ fn entity_to_rule(entity: &EntityManifest) -> RuleManifest {
         created_at: entity.created_at,
         extra: entity.extra.clone(),
     }
+}
+
+fn generated_target_entity(
+    id: Uuid,
+    slug: &str,
+    config_path: &str,
+    target_name: &str,
+    output_path: &str,
+) -> EntityManifest {
+    EntityManifest {
+        id,
+        created_at: Utc::now(),
+        extra: BTreeMap::from([
+            ("slug".to_string(), Value::String(slug.to_string())),
+            (
+                "title".to_string(),
+                Value::String(target_name.to_string()),
+            ),
+            (
+                "type".to_string(),
+                Value::String(GENERATED_TARGET_TYPE_ID.to_string()),
+            ),
+            (
+                "state".to_string(),
+                Value::String("active".to_string()),
+            ),
+            (
+                "config_path".to_string(),
+                Value::String(config_path.to_string()),
+            ),
+            (
+                "target_name".to_string(),
+                Value::String(target_name.to_string()),
+            ),
+            (
+                "output_path".to_string(),
+                Value::String(output_path.to_string()),
+            ),
+        ]),
+    }
+}
+
+fn generated_target_from_entity(
+    id: Uuid,
+    entity: &EntityManifest,
+) -> Option<GeneratedTargetRecord> {
+    Some(GeneratedTargetRecord {
+        id,
+        slug: entity.extra.get("slug")?.as_str()?.to_string(),
+        config_path: entity.extra.get("config_path")?.as_str()?.to_string(),
+        target_name: entity.extra.get("target_name")?.as_str()?.to_string(),
+        output_path: entity.extra.get("output_path")?.as_str()?.to_string(),
+    })
+}
+
+fn generated_target_slug(config_path: &str, target_name: &str) -> String {
+    format!(
+        "generated-targets/{}/{}",
+        sanitize_slug_fragment(config_path),
+        sanitize_slug_fragment(target_name)
+    )
+}
+
+fn sanitize_slug_fragment(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_lowercase()
+                || ch.is_ascii_uppercase()
+                || ch.is_ascii_digit()
+                || matches!(ch, '/' | '-' | '_' | '.')
+            {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn stable_path_key(path: &Path) -> String {
+    fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 #[cfg(test)]
@@ -624,5 +875,47 @@ mod tests {
 
         let fetched = store.get("shared/agents/update-test-renamed").unwrap();
         assert_eq!(fetched.body(), Some("Updated body."));
+    }
+
+    #[test]
+    fn generated_target_records_round_trip_and_delete() {
+        let dir = tempdir().unwrap();
+        let mut store = RuleStore::open(dir.path()).unwrap();
+        let config_path = dir.path().join("rule-targets.yaml");
+        let output_path = dir.path().join(".github/README.md");
+
+        let record = store
+            .upsert_generated_target(&config_path, "context-engine-github-readme", &output_path)
+            .unwrap();
+
+        let listed = store.list_generated_targets(&config_path).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0], record);
+
+        store.delete_generated_target(&record.slug).unwrap();
+        assert!(store.list_generated_targets(&config_path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn generated_target_upsert_updates_existing_output_path() {
+        let dir = tempdir().unwrap();
+        let mut store = RuleStore::open(dir.path()).unwrap();
+        let config_path = dir.path().join("rule-targets.yaml");
+        let first_output = dir.path().join("memory-viewers/.github/README.md");
+        let second_output = dir.path().join(".github/README.md");
+
+        let created = store
+            .upsert_generated_target(&config_path, "github-readme", &first_output)
+            .unwrap();
+        let updated = store
+            .upsert_generated_target(&config_path, "github-readme", &second_output)
+            .unwrap();
+
+        assert_eq!(created.id, updated.id);
+        assert_ne!(created.output_path, updated.output_path);
+        assert_eq!(
+            store.list_generated_targets(&config_path).unwrap()[0].output_path,
+            updated.output_path
+        );
     }
 }
