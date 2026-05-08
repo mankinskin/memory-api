@@ -43,7 +43,7 @@ pub struct UpdateRuleInput {
 pub struct ImportRuleFileInput {
     pub path: String,
     pub file_kind: String,
-    pub repo_scope: String,
+    pub repo_scope: Vec<String>,
     pub slug_prefix: String,
     #[serde(default)]
     pub default_section: Option<String>,
@@ -643,7 +643,11 @@ fn import_file(
             default_section,
         },
     );
-    let source_repo = input.source_repo.as_deref().unwrap_or(&input.repo_scope);
+    let source_repo = input
+        .source_repo
+        .as_deref()
+        .or_else(|| input.repo_scope.first().map(String::as_str))
+        .ok_or_else(|| McpError::invalid_params("at least one repo_scope is required".to_string(), None))?;
     let source_path = path.to_string_lossy().replace('\\', "/");
     let target_root = input.target_root.as_ref().map(PathBuf::from);
 
@@ -657,7 +661,7 @@ fn import_file(
             &imported.body,
         );
         manifest.set_order_key(imported.order_key);
-        manifest.set_repo_scopes([input.repo_scope.as_str()]);
+        manifest.set_repo_scopes(input.repo_scope.iter().map(String::as_str));
         if !input.path_scope.is_empty() {
             manifest.set_path_scopes(input.path_scope.iter().map(String::as_str));
         }

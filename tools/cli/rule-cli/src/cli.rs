@@ -89,7 +89,7 @@ pub struct ImportFileArgs {
     #[arg(long = "file-kind")]
     pub file_kind: String,
     #[arg(long = "repo")]
-    pub repo_scope: String,
+    pub repo_scope: Vec<String>,
     #[arg(long = "slug-prefix")]
     pub slug_prefix: String,
     #[arg(long = "default-section")]
@@ -483,7 +483,11 @@ fn import_file(
             default_section,
         },
     );
-    let source_repo = args.source_repo.as_deref().unwrap_or(&args.repo_scope);
+    let source_repo = args
+        .source_repo
+        .as_deref()
+        .or_else(|| args.repo_scope.first().map(String::as_str))
+        .ok_or_else(|| CliRunError::BadRequest("at least one --repo is required".to_string()))?;
     let source_path = args.path.to_string_lossy().replace('\\', "/");
 
     let mut items = Vec::new();
@@ -496,7 +500,7 @@ fn import_file(
             &imported.body,
         );
         manifest.set_order_key(imported.order_key);
-        manifest.set_repo_scopes([args.repo_scope.as_str()]);
+        manifest.set_repo_scopes(args.repo_scope.iter().map(String::as_str));
         if !args.path_scope.is_empty() {
             manifest.set_path_scopes(args.path_scope.iter().map(String::as_str));
         }
@@ -835,7 +839,7 @@ mod tests {
             &ImportFileArgs {
                 path: markdown,
                 file_kind: "AGENTS".to_string(),
-                repo_scope: "context-engine".to_string(),
+                repo_scope: vec!["context-engine".to_string(), "memory-viewers".to_string()],
                 slug_prefix: "shared/agents".to_string(),
                 default_section: None,
                 path_scope: vec!["AGENTS.md".to_string()],
@@ -856,7 +860,17 @@ mod tests {
                 None,
             )
             .unwrap();
+        let imported_memory_viewers = store
+            .list(
+                &RuleFilter {
+                    repo_scope: Some("memory-viewers".to_string()),
+                    ..RuleFilter::default()
+                },
+                None,
+            )
+            .unwrap();
         assert_eq!(imported.len(), 2);
+        assert_eq!(imported_memory_viewers.len(), 2);
         assert_eq!(imported[0].slug(), Some("shared/agents/opening/l1"));
         assert_eq!(imported[1].slug(), Some("shared/agents/opening/validation/l5"));
     }
