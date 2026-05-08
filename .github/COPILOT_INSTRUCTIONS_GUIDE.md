@@ -11,14 +11,14 @@ This repository uses GitHub Copilot's custom instructions feature to provide con
 **Status:** ✅ Active
 
 ### 2. Path-Specific Instructions
-**Location:** `.github/instructions/*.instructions.md`
+**Location:** `.agents/instructions/*.instructions.md`
 **Scope:** Files matching glob patterns specified in frontmatter
 **Usage:** Crate-specific or feature-specific guidance
 **Status:** ✅ Implemented
 
 Example structure:
 ```
-.github/instructions/
+.agents/instructions/
   ├── core-crates.instructions.md
   ├── ticket-system.instructions.md
   ├── mcp-tools.instructions.md
@@ -42,7 +42,7 @@ Example structure:
 
 We use an **AGENTS-first + scoped instructions** approach:
 - Primary file: `AGENTS.md`
-- Path-scoped rules: `.github/instructions/*.instructions.md`
+- Path-scoped rules: `.agents/instructions/*.instructions.md`
 - Task prompts: `.github/prompts/*.prompt.md`
 - Layered docs: `CHEAT_SHEET.md` → crate guides/README → tests/logs
 
@@ -64,7 +64,7 @@ Consider adding path-specific instructions if:
 To verify Copilot is using your instructions:
 1. Use Copilot Chat in VS Code or GitHub.com
 2. Check the "References" section in responses
-3. Look for `AGENTS.md` and matching `.github/instructions/*.instructions.md` in the reference list
+3. Look for `AGENTS.md` and matching `.agents/instructions/*.instructions.md` in the reference list
 4. Click to view the active instructions
 
 ## Enable/Disable

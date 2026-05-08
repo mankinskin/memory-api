@@ -746,7 +746,7 @@ mod tests {
         );
         first.set_order_key(20);
         first.set_repo_scopes(["context-engine", "memory-viewers"]);
-        first.set_path_scopes([".github/instructions/tests.instructions.md"]);
+        first.set_path_scopes([".agents/instructions/tests.instructions.md"]);
         first.set_feedback_summary(1, 0, 0, 1, 1, Some("2026-05-07T14:00:00Z"));
 
         let mut second = RuleManifest::new(

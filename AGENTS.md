@@ -74,4 +74,4 @@ let _tracing = init_test_tracing!(&graph);
 - API patterns and gotchas: `CHEAT_SHEET.md`
 - Ticket workflow details: `.github/prompts/tickets.prompt.md`
 - Swarm workflow details: `.github/prompts/swarm-worker.prompt.md`
-- Path-specific rules: `.github/instructions/*.instructions.md`
+- Path-specific rules: `.agents/instructions/*.instructions.md`
