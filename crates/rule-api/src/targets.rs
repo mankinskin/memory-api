@@ -372,42 +372,44 @@ mod tests {
 
     #[test]
     fn load_render_target_config_parses_targets_and_rejects_duplicates() {
-        let config = toml::from_str::<RenderTargetConfig>(
-            r#"
-                [[targets]]
-                name = "context-engine-agents"
-                repo_scope = "context-engine"
-                file_kind = "AGENTS"
-                path_scope = "AGENTS.md"
-                output_path = "AGENTS.md"
-            "#,
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("rule-targets.yaml");
+        fs::write(
+            &config_path,
+            concat!(
+                "targets:\n",
+                "  - name: context-engine-agents\n",
+                "    repo_scope: context-engine\n",
+                "    file_kind: AGENTS\n",
+                "    path_scope: AGENTS.md\n",
+                "    output_path: AGENTS.md\n",
+            ),
         )
         .unwrap();
+
+        let config = load_render_target_config(&config_path).unwrap();
 
         assert_eq!(config.targets.len(), 1);
         assert_eq!(config.targets[0].name, "context-engine-agents");
         assert_eq!(config.targets[0].path_scope.as_deref(), Some("AGENTS.md"));
         assert_eq!(config.targets[0].ordered_nodes().len(), 1);
 
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("rule-targets.toml");
+        let path = tmp.path().join("duplicate-rule-targets.yaml");
         fs::write(
             &path,
-            r#"
-                [[targets]]
-                name = "dup"
-                repo_scope = "context-engine"
-                file_kind = "AGENTS"
-                path_scope = "AGENTS.md"
-                output_path = "AGENTS.md"
-
-                [[targets]]
-                name = "dup"
-                repo_scope = "memory-api"
-                file_kind = "AGENTS"
-                path_scope = "memory-api/AGENTS.md"
-                output_path = "memory-api/AGENTS.md"
-            "#,
+            concat!(
+                "targets:\n",
+                "  - name: dup\n",
+                "    repo_scope: context-engine\n",
+                "    file_kind: AGENTS\n",
+                "    path_scope: AGENTS.md\n",
+                "    output_path: AGENTS.md\n",
+                "  - name: dup\n",
+                "    repo_scope: memory-api\n",
+                "    file_kind: AGENTS\n",
+                "    path_scope: memory-api/AGENTS.md\n",
+                "    output_path: memory-api/AGENTS.md\n",
+            ),
         )
         .unwrap();
 
@@ -416,30 +418,34 @@ mod tests {
     }
 
         #[test]
-        fn load_render_target_config_supports_yaml_outline_nodes() {
-                let tmp = tempfile::tempdir().unwrap();
-                let path = tmp.path().join("rule-targets.yaml");
+    fn load_render_target_config_supports_legacy_toml() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("rule-targets.toml");
                 fs::write(
                         &path,
-                        concat!(
-                                "targets:\n",
-                                "  - name: context-engine-agents\n",
-                                "    repo_scope: context-engine\n",
-                                "    file_kind: AGENTS\n",
-                                "    path_scope: AGENTS.md\n",
-                                "    output_path: AGENTS.md\n",
-                                "    nodes:\n",
-                                "      - name: agent-rules\n",
-                                "        title: Agent Rules\n",
-                                "        section: agent-rules\n",
-                                "        nodes:\n",
-                                "          - name: operating-principles\n",
-                                "            title: Operating Principles\n",
-                                "            section: agent-rules/operating-principles\n",
-                                "          - name: task-routing\n",
-                                "            title: Task Routing\n",
-                                "            section: agent-rules/task-routing\n",
-                        ),
+            r#"
+                [[targets]]
+                name = "context-engine-agents"
+                repo_scope = "context-engine"
+                file_kind = "AGENTS"
+                path_scope = "AGENTS.md"
+                output_path = "AGENTS.md"
+
+                [[targets.nodes]]
+                name = "agent-rules"
+                title = "Agent Rules"
+                section = "agent-rules"
+
+                [[targets.nodes.nodes]]
+                name = "operating-principles"
+                title = "Operating Principles"
+                section = "agent-rules/operating-principles"
+
+                [[targets.nodes.nodes]]
+                name = "task-routing"
+                title = "Task Routing"
+                section = "agent-rules/task-routing"
+            "#,
                 )
                 .unwrap();
 
@@ -456,31 +462,32 @@ mod tests {
 
     #[test]
     fn load_render_target_config_parses_hierarchical_outline_nodes_in_order() {
-        let config = toml::from_str::<RenderTargetConfig>(
-            r#"
-                [[targets]]
-                name = "context-engine-agents"
-                repo_scope = "context-engine"
-                file_kind = "AGENTS"
-                output_path = "AGENTS.md"
-
-                [[targets.nodes]]
-                name = "opening"
-                title = "Opening"
-                section = "opening"
-
-                [[targets.nodes.nodes]]
-                name = "validation"
-                title = "Validation"
-                section = "opening/validation"
-
-                [[targets.nodes]]
-                name = "quality-gates"
-                title = "Quality Gates"
-                section = "quality-gates"
-            "#,
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("hierarchical-rule-targets.yaml");
+        fs::write(
+            &path,
+            concat!(
+                "targets:\n",
+                "  - name: context-engine-agents\n",
+                "    repo_scope: context-engine\n",
+                "    file_kind: AGENTS\n",
+                "    output_path: AGENTS.md\n",
+                "    nodes:\n",
+                "      - name: opening\n",
+                "        title: Opening\n",
+                "        section: opening\n",
+                "        nodes:\n",
+                "          - name: validation\n",
+                "            title: Validation\n",
+                "            section: opening/validation\n",
+                "      - name: quality-gates\n",
+                "        title: Quality Gates\n",
+                "        section: quality-gates\n",
+            ),
         )
         .unwrap();
+
+        let config = load_render_target_config(&path).unwrap();
 
         let target = &config.targets[0];
         let nodes = target.ordered_nodes();
