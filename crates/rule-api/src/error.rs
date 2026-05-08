@@ -16,6 +16,12 @@ pub enum RuleError {
     AmbiguousPrefix(String),
     #[error("rule asset operation failed: {0}")]
     Asset(String),
+    #[error("rule {slug} matched multiple nodes while rendering target {target} (node: {node})")]
+    DuplicateRenderRule {
+        target: String,
+        node: String,
+        slug: String,
+    },
     #[error("rule id mismatch: expected {expected}, got {actual}")]
     IdMismatch { expected: Uuid, actual: Uuid },
 }

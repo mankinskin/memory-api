@@ -8,7 +8,8 @@ use memory_api::model::filesystem::ScanRoot;
 use rule_api::{
     ImportedRuleBlock, MarkdownImportOptions, RuleFilter, RuleManifest, RuleStore,
     RenderTarget, import_markdown_blocks, load_render_target_config,
-    render_markdown_file, render_target_by_name, resolve_render_target_output,
+    collect_target_rules, explain_target, render_markdown_file, render_target_by_name,
+    resolve_render_target_output,
 };
 use serde_json::{Value, json};
 
@@ -36,6 +37,8 @@ pub enum RuleCommandCli {
     GenerateFile(GenerateFileArgs),
     #[command(name = "generate-target")]
     GenerateTarget(GenerateTargetArgs),
+    #[command(name = "explain-target")]
+    ExplainTarget(ExplainTargetArgs),
     List(ListArgs),
     Search(SearchArgs),
     Scan(ScanArgs),
@@ -144,6 +147,14 @@ pub struct GenerateTargetArgs {
     pub dry_run: bool,
     #[arg(long, default_value_t = false)]
     pub check: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ExplainTargetArgs {
+    #[arg(long)]
+    pub config: PathBuf,
+    #[arg(long)]
+    pub target: String,
 }
 
 #[derive(Debug, Args)]
@@ -360,6 +371,19 @@ fn dispatch(command: RuleCommandCli, index_root: &Path) -> Result<Value, CliRunE
                 "dry_run": args.dry_run,
                 "check": args.check,
                 "content": payload.content,
+            }))
+        }
+        RuleCommandCli::ExplainTarget(args) => {
+            let config = load_render_target_config(&args.config)?;
+            let target = render_target_by_name(&config, &args.target)?;
+            let output = resolve_render_target_output(&args.config, target);
+            let outline = explain_target(&store, target)?;
+
+            Ok(json!({
+                "status": "ok",
+                "target": args.target,
+                "output": output,
+                "outline": outline,
             }))
         }
         RuleCommandCli::List(args) => {
@@ -613,16 +637,7 @@ fn generate_target_payload(
     check: bool,
     output: &Path,
 ) -> Result<GenerateTargetPayload, CliRunError> {
-    let filter = RuleFilter {
-        state: target.state.clone(),
-        file_kind: Some(target.file_kind.clone()),
-        section: target.section.clone(),
-        repo_scope: Some(target.repo_scope.clone()),
-        path_scope: target.path_scope.clone(),
-        slug: None,
-        has_unresolved_feedback: None,
-    };
-    let rules = store.list(&filter, None)?;
+    let rules = collect_target_rules(store, target)?;
     let rendered = render_markdown_file(&rules);
 
     if check {
@@ -869,17 +884,17 @@ mod tests {
         store.create(&first, None).unwrap();
         store.create(&second, None).unwrap();
 
-        let config_path = dir.path().join("rule-targets.toml");
+        let config_path = dir.path().join("rule-targets.yaml");
         fs::write(
             &config_path,
-            r#"
-                [[targets]]
-                name = "context-engine-agents"
-                repo_scope = "context-engine"
-                file_kind = "AGENTS"
-                path_scope = "AGENTS.md"
-                output_path = "generated/AGENTS.md"
-            "#,
+            concat!(
+                "targets:\n",
+                "  - name: context-engine-agents\n",
+                "    repo_scope: context-engine\n",
+                "    file_kind: AGENTS\n",
+                "    path_scope: AGENTS.md\n",
+                "    output_path: generated/AGENTS.md\n",
+            ),
         )
         .unwrap();
 

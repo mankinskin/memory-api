@@ -12,6 +12,12 @@ pub use manifest::{RuleManifest, RuleState};
 pub use render::{GENERATED_FILE_COMMENT, render_markdown_file};
 pub use store::{RuleFilter, RuleStore};
 pub use targets::{
-	RenderTarget, RenderTargetConfig, TargetConfigError, load_render_target_config,
+	collect_target_rules,
+	explain_target,
+	ExplainedRuleMatch,
+	ExplainedTarget,
+	ExplainedTargetNode,
+	RenderTarget, RenderTargetConfig, RenderTargetFilter, RenderTargetNode,
+	TargetConfigError, load_render_target_config,
 	render_target_by_name, resolve_render_target_output,
 };
