@@ -7,13 +7,12 @@ use uuid::Uuid;
 
 use crate::error::StorageError;
 use crate::model::edge::EdgeRecord;
-use crate::model::filesystem::ScanRoot;
 use crate::storage::schema::{
     SCHEMA_VERSION, TABLE_BOARD_ACTIVE_INDEX, TABLE_BOARD_CONFIG, TABLE_BOARD_ENTRIES,
     TABLE_EDGES, TABLE_LEASES, TABLE_META, TABLE_SCAN_ROOTS, TABLE_TICKETS,
 };
 
-use super::indexed::{IndexedEntity, LeaseInfo};
+use super::indexed::IndexedEntity;
 
 /// SQLite-backed metadata index.
 ///
@@ -269,151 +268,9 @@ impl RedbIndexStore {
         }
         Ok(edges)
     }
-
-    /// Returns the number of non-deleted tickets without deserializing rows.
-    ///
-    /// Note: deleted tickets are stored as BLOBs with a flag inside, so we
-    /// can only do an approximate count via `COUNT(*)` (includes soft-deleted).
-    /// For the SSE snapshot baseline this is accurate enough.
-    pub fn count_tickets(&self) -> Result<usize, StorageError> {
-        let conn = self.read_conn()?;
-        let n: i64 = conn.query_row(
-            &format!("SELECT COUNT(*) FROM {TABLE_TICKETS}"),
-            [],
-            |row| row.get(0),
-        )?;
-        Ok(n as usize)
-    }
-
-    /// Returns the number of edges without fetching the full edge list.
-    pub fn count_edges(&self) -> Result<usize, StorageError> {
-        let conn = self.read_conn()?;
-        let n: i64 = conn.query_row(
-            &format!("SELECT COUNT(*) FROM {TABLE_EDGES}"),
-            [],
-            |row| row.get(0),
-        )?;
-        Ok(n as usize)
-    }
-
-    // ── scan root registry ───────────────────────────────────────────────────
-
-    pub fn add_scan_root(&self, root: &ScanRoot) -> Result<(), StorageError> {
-        let path_str = root.path.to_string_lossy().into_owned();
-        let label = root.label.clone();
-        self.with_write(|conn| {
-            conn.execute(
-                &format!(
-                    "INSERT OR REPLACE INTO {TABLE_SCAN_ROOTS} (path, label) VALUES (?1, ?2)"
-                ),
-                params![path_str, label],
-            )?;
-            Ok(())
-        })
-    }
-
-    pub fn list_scan_roots(&self) -> Result<Vec<ScanRoot>, StorageError> {
-        let conn = self.read_conn()?;
-        let mut stmt =
-            conn.prepare(&format!("SELECT path, label FROM {TABLE_SCAN_ROOTS}"))?;
-        let rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
-        let mut roots = Vec::new();
-        for row in rows {
-            let (path_str, label) = row?;
-            roots.push(ScanRoot {
-                path: std::path::PathBuf::from(path_str),
-                label,
-            });
-        }
-        Ok(roots)
-    }
-
-    // ── lease CRUD ────────────────────────────────────────────────────────────
-
-    pub fn insert_lease(&self, lease: &LeaseInfo) -> Result<(), StorageError> {
-        let bytes = bincode::serialize(lease)
-            .map_err(|e| StorageError::Serialization(e.to_string()))?;
-        let key = lease.ticket_id.to_string();
-        self.with_write(|conn| {
-            conn.execute(
-                &format!(
-                    "INSERT OR REPLACE INTO {TABLE_LEASES} (id, data) VALUES (?1, ?2)"
-                ),
-                params![key, bytes],
-            )?;
-            Ok(())
-        })
-    }
-
-    pub fn get_lease(&self, ticket_id: &Uuid) -> Result<Option<LeaseInfo>, StorageError> {
-        let key = ticket_id.to_string();
-        let conn = self.read_conn()?;
-        let mut stmt =
-            conn.prepare(&format!("SELECT data FROM {TABLE_LEASES} WHERE id = ?1"))?;
-        let mut rows = stmt.query(params![key])?;
-        if let Some(row) = rows.next()? {
-            let bytes: Vec<u8> = row.get(0)?;
-            let lease: LeaseInfo = bincode::deserialize(&bytes)
-                .map_err(|e| StorageError::Serialization(e.to_string()))?;
-            Ok(Some(lease))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn remove_lease(&self, ticket_id: &Uuid) -> Result<(), StorageError> {
-        let key = ticket_id.to_string();
-        self.with_write(|conn| {
-            conn.execute(
-                &format!("DELETE FROM {TABLE_LEASES} WHERE id = ?1"),
-                params![key],
-            )?;
-            Ok(())
-        })
-    }
-
-    pub fn list_active_leases(&self) -> Result<Vec<LeaseInfo>, StorageError> {
-        let conn = self.read_conn()?;
-        let mut stmt = conn.prepare(&format!("SELECT data FROM {TABLE_LEASES}"))?;
-        let rows = stmt.query_map([], |row| row.get::<_, Vec<u8>>(0))?;
-        let mut leases = Vec::new();
-        for bytes in rows {
-            let lease: LeaseInfo = bincode::deserialize(&bytes?)
-                .map_err(|e| StorageError::Serialization(e.to_string()))?;
-            leases.push(lease);
-        }
-        Ok(leases)
-    }
-
-    // ── internal ──────────────────────────────────────────────────────────────
-
-    /// BFS reachability check: returns `true` if `target` is reachable from
-    /// `start` following outgoing edges. Used for cycle detection.
-    pub fn is_reachable(&self, start: &Uuid, target: &Uuid) -> Result<bool, StorageError> {
-        use std::collections::{HashSet, VecDeque};
-
-        let all_edges = self.list_all_edges()?;
-        let mut visited: HashSet<Uuid> = HashSet::new();
-        let mut queue: VecDeque<Uuid> = VecDeque::new();
-        queue.push_back(*start);
-
-        while let Some(current) = queue.pop_front() {
-            if &current == target {
-                return Ok(true);
-            }
-            if visited.contains(&current) {
-                continue;
-            }
-            visited.insert(current);
-            for edge in all_edges.iter().filter(|e| e.from == current) {
-                queue.push_back(edge.to);
-            }
-        }
-        Ok(false)
-    }
 }
+
+mod auxiliary;
 
 // ── connection helpers ────────────────────────────────────────────────────────
 

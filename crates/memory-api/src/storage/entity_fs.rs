@@ -175,63 +175,49 @@ impl EntityFs {
         let mut valid = Vec::new();
         let mut diags = Vec::new();
 
-        let read_dir = match fs::read_dir(scan_root) {
-            Ok(rd) => rd,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((valid, diags)),
-            Err(e) => return Err(StorageError::Io(e)),
+        let Some(read_dir) = read_scan_root(scan_root)? else {
+            return Ok((valid, diags));
         };
 
-        let manifest_file = self.config.manifest_file;
-
         for entry in read_dir.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
+            let Some((path, id)) = scan_candidate(entry.path()) else {
                 continue;
-            }
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-
-            if name.ends_with(".tmp") || name.ends_with(".deleted") {
-                continue;
-            }
-
-            let id: Uuid = match name.parse() {
-                Ok(u) => u,
-                Err(_) => continue,
             };
 
-            let manifest_path = path.join(manifest_file);
-            if !manifest_path.exists() {
-                diags.push(ParseDiagnostic {
-                    path: manifest_path,
-                    reason: format!("missing {}", manifest_file),
-                });
-                continue;
-            }
-
-            match self.read(&path) {
-                Ok(manifest) => {
-                    let is_deleted = manifest
-                        .extra
-                        .get("deleted")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    if !is_deleted {
-                        valid.push(EntityScanEntry { id, path, manifest });
-                    }
-                }
-                Err(StorageError::ParseError { path: p, reason }) => {
-                    diags.push(ParseDiagnostic { path: p, reason });
-                }
-                Err(e) => {
-                    diags.push(ParseDiagnostic {
-                        path: manifest_path,
-                        reason: e.to_string(),
-                    });
-                }
+            match self.load_scan_entry(path, id) {
+                Ok(Some(entry)) => valid.push(entry),
+                Ok(None) => {}
+                Err(diag) => diags.push(diag),
             }
         }
 
         Ok((valid, diags))
+    }
+
+    fn load_scan_entry(
+        &self,
+        path: PathBuf,
+        id: Uuid,
+    ) -> Result<Option<EntityScanEntry>, ParseDiagnostic> {
+        let manifest_path = path.join(self.config.manifest_file);
+        if !manifest_path.exists() {
+            return Err(ParseDiagnostic {
+                path: manifest_path,
+                reason: format!("missing {}", self.config.manifest_file),
+            });
+        }
+
+        match self.read(&path) {
+            Ok(manifest) if entity_is_deleted(&manifest) => Ok(None),
+            Ok(manifest) => Ok(Some(EntityScanEntry { id, path, manifest })),
+            Err(StorageError::ParseError { path, reason }) => {
+                Err(ParseDiagnostic { path, reason })
+            }
+            Err(error) => Err(ParseDiagnostic {
+                path: manifest_path,
+                reason: error.to_string(),
+            }),
+        }
     }
 
     // ── history ───────────────────────────────────────────────────────────────
@@ -339,6 +325,38 @@ fn acquire_lock(lock_path: &Path) -> Result<File, StorageError> {
 fn release_lock(file: &File, lock_path: &Path) {
     let _ = file.unlock();
     let _ = fs::remove_file(lock_path);
+}
+
+fn read_scan_root(
+    scan_root: &Path,
+) -> Result<Option<fs::ReadDir>, StorageError> {
+    match fs::read_dir(scan_root) {
+        Ok(read_dir) => Ok(Some(read_dir)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(StorageError::Io(error)),
+    }
+}
+
+fn scan_candidate(path: PathBuf) -> Option<(PathBuf, Uuid)> {
+    if !path.is_dir() {
+        return None;
+    }
+
+    let name = path.file_name().and_then(|value| value.to_str())?;
+    if name.ends_with(".tmp") || name.ends_with(".deleted") {
+        return None;
+    }
+
+    let id = name.parse().ok()?;
+    Some((path, id))
+}
+
+fn entity_is_deleted(manifest: &EntityManifest) -> bool {
+    manifest
+        .extra
+        .get("deleted")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────

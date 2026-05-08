@@ -239,45 +239,85 @@ fn expr_to_query(
     fields: &SearchFields,
     index: &Index,
 ) -> Box<dyn tantivy::query::Query> {
-    use tantivy::query::{AllQuery, BooleanQuery, Occur, TermQuery};
-
     match expr {
-        Expr::Fts(text) => {
-            let mut qp =
-                tantivy::query::QueryParser::for_index(index, vec![fields.title, fields.body]);
-            qp.set_conjunction_by_default();
-            match qp.parse_query(text) {
-                Ok(q) => q,
-                Err(_) => Box::new(AllQuery),
-            }
-        }
-        Expr::Field { key, value } => {
-            let field = match key.as_str() {
-                "state" | "status" => fields.state,
-                "type" | "ticket_type" => fields.ticket_type,
-                "id" => fields.id,
-                "title" => fields.title,
-                _ => return Box::new(AllQuery),
-            };
-            match value {
-                ValueExpr::Text(t) => {
-                    let term = Term::from_field_text(field, t);
-                    Box::new(TermQuery::new(term, Default::default()))
-                }
-                ValueExpr::Range { .. } => Box::new(AllQuery),
-            }
-        }
-        Expr::And(exprs) => {
-            if exprs.is_empty() {
-                return Box::new(AllQuery);
-            }
-            let clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = exprs
-                .iter()
-                .map(|e| (Occur::Must, expr_to_query(e, fields, index)))
-                .collect();
-            Box::new(BooleanQuery::new(clauses))
-        }
+        Expr::Fts(text) => full_text_query(text, fields, index),
+        Expr::Field { key, value } => field_expr_to_query(key, value, fields),
+        Expr::And(exprs) => and_expr_to_query(exprs, fields, index),
     }
+}
+
+fn full_text_query(
+    text: &str,
+    fields: &SearchFields,
+    index: &Index,
+) -> Box<dyn tantivy::query::Query> {
+    use tantivy::query::AllQuery;
+
+    let mut query_parser =
+        tantivy::query::QueryParser::for_index(index, vec![fields.title, fields.body]);
+    query_parser.set_conjunction_by_default();
+    match query_parser.parse_query(text) {
+        Ok(query) => query,
+        Err(_) => Box::new(AllQuery),
+    }
+}
+
+fn field_expr_to_query(
+    key: &str,
+    value: &ValueExpr,
+    fields: &SearchFields,
+) -> Box<dyn tantivy::query::Query> {
+    use tantivy::query::AllQuery;
+
+    let Some(field) = search_field_for_key(key, fields) else {
+        return Box::new(AllQuery);
+    };
+
+    match value {
+        ValueExpr::Text(text) => term_query(field, text),
+        ValueExpr::Range { .. } => Box::new(AllQuery),
+    }
+}
+
+fn search_field_for_key(
+    key: &str,
+    fields: &SearchFields,
+) -> Option<Field> {
+    match key {
+        "state" | "status" => Some(fields.state),
+        "type" | "ticket_type" => Some(fields.ticket_type),
+        "id" => Some(fields.id),
+        "title" => Some(fields.title),
+        _ => None,
+    }
+}
+
+fn term_query(
+    field: Field,
+    text: &str,
+) -> Box<dyn tantivy::query::Query> {
+    use tantivy::query::TermQuery;
+
+    let term = Term::from_field_text(field, text);
+    Box::new(TermQuery::new(term, Default::default()))
+}
+
+fn and_expr_to_query(
+    exprs: &[Expr],
+    fields: &SearchFields,
+    index: &Index,
+) -> Box<dyn tantivy::query::Query> {
+    use tantivy::query::{AllQuery, BooleanQuery, Occur};
+
+    if exprs.is_empty() {
+        return Box::new(AllQuery);
+    }
+
+    let clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = exprs
+        .iter()
+        .map(|expr| (Occur::Must, expr_to_query(expr, fields, index)))
+        .collect();
+    Box::new(BooleanQuery::new(clauses))
 }
 
 fn truncate_snippet(text: &str, max_chars: usize) -> String {
