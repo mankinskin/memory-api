@@ -4,49 +4,13 @@
 //! sections → tree → health → refs_validate → delete) via `SpecServer`
 //! methods directly, without going through the JSON-RPC transport.
 
-use std::path::Path;
-
 use rmcp::handler::server::wrapper::Parameters;
-use serde_json::Value;
-use tempfile::TempDir;
-
-use spec_api::SpecStore;
 use spec_mcp::server::*;
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+#[path = "smoke_test/support.rs"]
+mod support;
 
-fn make_sandbox() -> (TempDir, SpecServer) {
-    let tmp = TempDir::new().expect("tempdir");
-    // Initialize the spec store so open succeeds
-    let mut store = SpecStore::open(tmp.path()).expect("open store");
-    // Register the temp dir itself as a scan root
-    store
-        .entity_store()
-        .add_scan_root(memory_api::model::filesystem::ScanRoot {
-            path: tmp.path().join("specs"),
-            label: "test-specs".to_string(),
-        })
-        .expect("add scan root");
-    drop(store);
-
-    let server = SpecServer::new(tmp.path().to_path_buf());
-    (tmp, server)
-}
-
-fn extract_json(result: rmcp::model::CallToolResult) -> Value {
-    let text = result
-        .content
-        .iter()
-        .find_map(|c| {
-            if let rmcp::model::RawContent::Text(t) = &c.raw {
-                Some(t.text.clone())
-            } else {
-                None
-            }
-        })
-        .expect("text content in result");
-    serde_json::from_str(&text).expect("parse json")
-}
+use support::{extract_json, make_sandbox};
 
 // ── tests ────────────────────────────────────────────────────────────────────
 
