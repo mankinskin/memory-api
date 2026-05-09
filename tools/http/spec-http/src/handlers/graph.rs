@@ -15,12 +15,22 @@ use crate::error::storage_err;
 use crate::state::SpecAppState;
 
 #[derive(Serialize)]
+pub struct GraphNodeMetrics {
+    pub child_count: usize,
+    pub code_ref_count: usize,
+    pub section_count: usize,
+}
+
+#[derive(Serialize)]
 pub struct GraphNode {
     pub id:        String,
     pub slug:      Option<String>,
     pub title:     Option<String>,
     pub state:     Option<String>,
     pub component: Option<String>,
+    pub scope:     Option<String>,
+    pub summary:   Option<String>,
+    pub metrics:   GraphNodeMetrics,
 }
 
 #[derive(Serialize)]
@@ -52,7 +62,7 @@ pub async fn get_graph(
         Err(response) => return response,
     };
 
-    let nodes = build_nodes(&specs);
+    let nodes = build_nodes(&mut store, &specs);
     let edges = build_edges(&specs, &nodes);
 
     Json(GraphResponse {
@@ -82,17 +92,80 @@ fn load_specs(store: &mut SpecStore, request_id: &str) -> Result<Vec<SpecManifes
     Ok(specs)
 }
 
-fn build_nodes(specs: &[SpecManifest]) -> Vec<GraphNode> {
+fn build_nodes(store: &mut SpecStore, specs: &[SpecManifest]) -> Vec<GraphNode> {
+    let child_counts = count_children(specs);
+
     specs
         .iter()
-        .map(|spec| GraphNode {
-            id:        spec.id.to_string(),
-            slug:      spec.slug().map(str::to_string),
-            title:     spec.title().map(str::to_string),
-            state:     spec.state().map(str::to_string),
-            component: spec.component().map(str::to_string),
+        .map(|spec| {
+            let id = spec.id.to_string();
+            let section_count = store.list_sections(&id).map(|sections| sections.len()).unwrap_or(0);
+            let summary = store
+                .get_full(&id)
+                .ok()
+                .and_then(|(_, body)| summarize_body(&body));
+
+            GraphNode {
+                id:        id.clone(),
+                slug:      spec.slug().map(str::to_string),
+                title:     spec.title().map(str::to_string),
+                state:     spec.state().map(str::to_string),
+                component: spec.component().map(str::to_string),
+                scope:     spec.scope().map(str::to_string),
+                summary,
+                metrics:   GraphNodeMetrics {
+                    child_count: child_counts.get(&id).copied().unwrap_or(0),
+                    code_ref_count: spec.code_refs.len(),
+                    section_count,
+                },
+            }
         })
         .collect()
+}
+
+fn count_children(specs: &[SpecManifest]) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for spec in specs {
+        if let Some(parent_id) = spec.parent() {
+            *counts.entry(parent_id.to_string()).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+fn summarize_body(body: &str) -> Option<String> {
+    let mut lines = Vec::new();
+    let mut saw_content = false;
+
+    for raw_line in body.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            if saw_content {
+                break;
+            }
+            continue;
+        }
+        if !saw_content && line.starts_with('#') {
+            continue;
+        }
+
+        saw_content = true;
+        lines.push(line);
+    }
+
+    let summary = lines.join(" ");
+    let normalized = summary.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        return None;
+    }
+
+    const LIMIT: usize = 180;
+    let excerpt: String = normalized.chars().take(LIMIT).collect();
+    if normalized.chars().count() > LIMIT {
+        Some(format!("{excerpt}..."))
+    } else {
+        Some(excerpt)
+    }
 }
 
 fn build_edges(specs: &[SpecManifest], nodes: &[GraphNode]) -> Vec<GraphEdge> {
@@ -163,4 +236,41 @@ fn code_ref_edges(specs: &[SpecManifest]) -> Vec<GraphEdge> {
     }
 
     edges
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summarize_body_skips_heading_and_truncates() {
+        let body = concat!(
+            "# Heading\n\n",
+            "This is the first meaningful paragraph for the summary. ",
+            "It should be preserved and collapsed into a single line even when the source uses multiple words.\n\n",
+            "Second paragraph."
+        );
+
+        let summary = summarize_body(body).expect("summary should exist");
+
+        assert!(summary.starts_with("This is the first meaningful paragraph"));
+        assert!(!summary.contains("Heading"));
+        assert!(!summary.contains("Second paragraph"));
+    }
+
+    #[test]
+    fn count_children_tracks_immediate_children() {
+        let parent = SpecManifest::new("context/root", "Root", "context");
+        let parent_id = parent.id.to_string();
+
+        let mut child_a = SpecManifest::new("context/a", "A", "context");
+        child_a.set_parent(&parent_id);
+
+        let mut child_b = SpecManifest::new("context/b", "B", "context");
+        child_b.set_parent(&parent_id);
+
+        let counts = count_children(&[parent, child_a, child_b]);
+
+        assert_eq!(counts.get(&parent_id), Some(&2));
+    }
 }
