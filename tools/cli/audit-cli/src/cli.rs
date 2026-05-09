@@ -26,20 +26,25 @@ use audit_api::summary::{
 };
 
 #[derive(Debug, Parser)]
-#[command(name = "audit", about = "Repository quality audit CLI", version)]
+#[command(
+    name = "audit",
+    about = "Repository quality audit CLI",
+    version,
+    arg_required_else_help = true
+)]
 pub struct AuditCli {
     #[arg(long, global = true)]
     pub json: bool,
 
     #[command(subcommand)]
-    pub command: Option<AuditCommand>,
-
-    #[command(flatten)]
-    pub args: AuditArgs,
+    pub command: AuditCommand,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum AuditCommand {
+    /// Run an audit for a repository.
+    Run(AuditArgs),
+
     /// Summarize findings grouped by one key.
     Summary(AuditSummaryArgs),
 }
@@ -112,7 +117,15 @@ where
 
 pub fn run(cli: AuditCli) -> Result<CliOutput, CliRunError> {
     match cli.command {
-        Some(AuditCommand::Summary(summary)) => {
+        AuditCommand::Run(args) => {
+            let report = run_audit(&args)?;
+            if cli.json {
+                Ok(CliOutput::Json(json!(report)))
+            } else {
+                Ok(CliOutput::Text(render_human(&report)))
+            }
+        }
+        AuditCommand::Summary(summary) => {
             let report = run_audit(&summary.args)?;
             let summary = summarize_report(&report, summary.by.into())?;
             if cli.json {
@@ -120,15 +133,7 @@ pub fn run(cli: AuditCli) -> Result<CliOutput, CliRunError> {
             } else {
                 Ok(CliOutput::Text(render_summary_human(&summary)))
             }
-        },
-        None => {
-            let report = run_audit(&cli.args)?;
-            if cli.json {
-                Ok(CliOutput::Json(json!(report)))
-            } else {
-                Ok(CliOutput::Text(render_human(&report)))
-            }
-        },
+        }
     }
 }
 

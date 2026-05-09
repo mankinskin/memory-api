@@ -3,7 +3,12 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "rule", about = "Rule system CLI", version)]
+#[command(
+    name = "rule",
+    about = "Rule system CLI",
+    version,
+    arg_required_else_help = true
+)]
 pub struct RuleCli {
     #[arg(long, global = true)]
     pub json: bool,

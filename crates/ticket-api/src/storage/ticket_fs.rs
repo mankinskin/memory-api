@@ -16,6 +16,9 @@ use crate::model::filesystem::{
 };
 use crate::model::ticket::TicketManifest;
 
+#[cfg(test)]
+mod tests;
+
 /// A single immutable revision snapshot stored in `history.ndjson`.
 ///
 /// Revisions are append-only; `revert` creates a new revision with old state.
@@ -167,67 +170,39 @@ impl TicketFs {
         let mut valid = Vec::new();
         let mut diags = Vec::new();
 
-        let read_dir = match fs::read_dir(scan_root) {
-            Ok(rd) => rd,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((valid, diags)),
-            Err(e) => return Err(StorageError::Io(e)),
+        let Some(read_dir) = Self::scan_root_dir(scan_root)? else {
+            return Ok((valid, diags));
         };
 
         for entry in read_dir.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-
-            // Skip temp and deleted folders.
-            if name.ends_with(".tmp") || name.ends_with(".deleted") {
-                continue;
-            }
-
-            // Must be UUID-parseable.
-            let id: Uuid = match name.parse() {
-                Ok(u) => u,
-                Err(_) => continue,
-            };
-
-            let manifest_path = path.join(TICKET_MANIFEST_FILE);
-            if !manifest_path.exists() {
-                diags.push(crate::model::filesystem::ParseDiagnostic {
-                    path: manifest_path,
-                    reason: "missing ticket.toml".to_string(),
-                });
-                continue;
-            }
-
-            match Self::read(&path) {
-                Ok(manifest) => {
-                    // Skip tickets whose manifest has been soft-deleted.
-                    let is_deleted = manifest
-                        .extra
-                        .get("deleted")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    if !is_deleted {
-                        valid.push(TicketScanEntry { id, path, manifest });
-                    }
-                }
-                Err(StorageError::ParseError { path: p, reason }) => {
-                    diags.push(crate::model::filesystem::ParseDiagnostic {
-                        path: p,
-                        reason,
-                    });
-                }
-                Err(e) => {
-                    diags.push(crate::model::filesystem::ParseDiagnostic {
-                        path: manifest_path,
-                        reason: e.to_string(),
-                    });
-                }
-            }
+            Self::scan_root_entry(entry.path(), &mut valid, &mut diags);
         }
 
         Ok((valid, diags))
+    }
+
+    fn scan_root_dir(scan_root: &Path) -> Result<Option<fs::ReadDir>, StorageError> {
+        match fs::read_dir(scan_root) {
+            Ok(read_dir) => Ok(Some(read_dir)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(StorageError::Io(error)),
+        }
+    }
+
+    fn scan_root_entry(
+        path: PathBuf,
+        valid: &mut Vec<TicketScanEntry>,
+        diags: &mut Vec<crate::model::filesystem::ParseDiagnostic>,
+    ) {
+        let Some(candidate) = scan_candidate_path(&path, diags) else {
+            return;
+        };
+
+        match load_scan_entry(candidate.id, path, candidate.manifest_path) {
+            Ok(Some(entry)) => valid.push(entry),
+            Ok(None) => {}
+            Err(diag) => diags.push(diag),
+        }
     }
 
     // ── history ───────────────────────────────────────────────────────────────
@@ -329,6 +304,65 @@ pub struct TicketScanEntry {
     pub manifest: TicketManifest,
 }
 
+struct ScanCandidate {
+    id: Uuid,
+    manifest_path: PathBuf,
+}
+
+fn scan_candidate_path(
+    path: &Path,
+    diags: &mut Vec<crate::model::filesystem::ParseDiagnostic>,
+) -> Option<ScanCandidate> {
+    if !path.is_dir() {
+        return None;
+    }
+
+    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+    if name.ends_with(".tmp") || name.ends_with(".deleted") {
+        return None;
+    }
+
+    let id = name.parse().ok()?;
+    let manifest_path = path.join(TICKET_MANIFEST_FILE);
+    if !manifest_path.exists() {
+        diags.push(crate::model::filesystem::ParseDiagnostic {
+            path: manifest_path,
+            reason: "missing ticket.toml".to_string(),
+        });
+        return None;
+    }
+
+    Some(ScanCandidate { id, manifest_path })
+}
+
+fn load_scan_entry(
+    id: Uuid,
+    path: PathBuf,
+    manifest_path: PathBuf,
+) -> Result<Option<TicketScanEntry>, crate::model::filesystem::ParseDiagnostic> {
+    match TicketFs::read(&path) {
+        Ok(manifest) => {
+            let is_deleted = manifest
+                .extra
+                .get("deleted")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false);
+            if is_deleted {
+                Ok(None)
+            } else {
+                Ok(Some(TicketScanEntry { id, path, manifest }))
+            }
+        }
+        Err(StorageError::ParseError { path, reason }) => {
+            Err(crate::model::filesystem::ParseDiagnostic { path, reason })
+        }
+        Err(error) => Err(crate::model::filesystem::ParseDiagnostic {
+            path: manifest_path,
+            reason: error.to_string(),
+        }),
+    }
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 fn write_manifest(dir: &Path, manifest: &TicketManifest) -> Result<(), StorageError> {
@@ -348,45 +382,4 @@ fn acquire_lock(lock_path: &Path) -> Result<File, StorageError> {
 fn release_lock(file: &File, lock_path: &Path) {
     let _ = file.unlock();
     let _ = fs::remove_file(lock_path);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::HistoryRevision;
-    use std::collections::BTreeMap;
-    use serde_json::Value;
-
-    /// Existing `history.ndjson` entries without the `author` field must
-    /// deserialize correctly with `author == None`.
-    #[test]
-    fn history_revision_backward_compat_no_author() {
-        let json = r#"{"rev":1,"ts":"2025-01-01T00:00:00Z","fields":{"state":"new","title":"Old entry"}}"#;
-        let rev: HistoryRevision = serde_json::from_str(json)
-            .expect("should deserialize legacy revision without author field");
-        assert_eq!(rev.rev, 1);
-        assert_eq!(rev.author, None, "author should be None for legacy entries");
-    }
-
-    /// Entries with an explicit `author` field deserialize correctly.
-    #[test]
-    fn history_revision_with_author() {
-        let json = r#"{"rev":2,"ts":"2025-01-02T00:00:00Z","fields":{},"author":"alice"}"#;
-        let rev: HistoryRevision = serde_json::from_str(json)
-            .expect("should deserialize revision with author");
-        assert_eq!(rev.author, Some("alice".to_string()));
-    }
-
-    /// Serializing a revision with `author == None` omits the `author` key.
-    #[test]
-    fn history_revision_none_author_is_skipped_in_serialization() {
-        let rev = HistoryRevision {
-            rev: 1,
-            ts: "2025-01-01T00:00:00Z".to_string(),
-            fields: BTreeMap::new(),
-            author: None,
-        };
-        let json = serde_json::to_string(&rev).expect("serialize");
-        let v: Value = serde_json::from_str(&json).unwrap();
-        assert!(v.get("author").is_none(), "author key should be absent when None");
-    }
 }

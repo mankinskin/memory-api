@@ -13,6 +13,7 @@ fn cli_supports_json_and_text_output() {
 
     let cli = parse_cli_from([
         "audit",
+        "run",
         repo.path().to_string_lossy().as_ref(),
         "--json",
         "--max-file-lines",
@@ -41,6 +42,7 @@ fn cli_supports_json_and_text_output() {
 
     let text_cli = parse_cli_from([
         "audit",
+        "run",
         repo.path().to_string_lossy().as_ref(),
         "--max-file-lines",
         "20",
@@ -56,6 +58,7 @@ fn cli_supports_json_and_text_output() {
 
     let mut command = Command::cargo_bin("audit").expect("audit binary");
     command
+        .arg("run")
         .arg(repo.path())
         .arg("--max-file-lines")
         .arg("20")
@@ -65,4 +68,14 @@ fn cli_supports_json_and_text_output() {
         .assert()
         .success()
         .stdout(predicates::str::contains("Repository Audit"));
+}
+
+#[test]
+fn cli_without_subcommand_shows_help() {
+    let mut command = Command::cargo_bin("audit").expect("audit binary");
+    command
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Repository quality audit CLI"))
+        .stdout(predicates::str::contains("run"));
 }

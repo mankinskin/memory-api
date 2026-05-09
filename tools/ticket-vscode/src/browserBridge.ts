@@ -9,43 +9,7 @@
 import * as vscode from 'vscode';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
-
-// Playwright types — loaded lazily via dynamic require since the package is
-// optional.  We only use structural shapes here so we don't need the real
-// module at compile time.
-
-/** Minimal structural type matching Playwright's Browser interface. */
-interface PwBrowser {
-  contexts(): PwContext[];
-  close(): Promise<void>;
-}
-
-interface PwContext {
-  pages(): PwPage[];
-}
-
-interface PwPage {
-  url(): string;
-  title(): Promise<string>;
-  frames(): PwFrame[];
-  click(selector: string): Promise<void>;
-  fill(selector: string, value: string): Promise<void>;
-  screenshot(): Promise<Buffer>;
-  content(): Promise<string>;
-  evaluate(expression: string): Promise<unknown>;
-  accessibility: { snapshot(): Promise<unknown> };
-}
-
-interface PwFrame {
-  url(): string;
-}
-
-/** Minimal structural type for the playwright module's top-level export. */
-interface PwModule {
-  chromium: {
-    connectOverCDP(endpoint: string): Promise<PwBrowser>;
-  };
-}
+import { BrowserBridgeCdpClient } from './browserBridgeCdp';
 
 /** Ports to probe when auto-discovering CDP. */
 const CDP_PROBE_PORTS = [9222, 9223, 9229, 9230];
@@ -76,9 +40,7 @@ interface BridgeState {
  */
 export class BrowserBridge implements vscode.Disposable {
   private _server: http.Server | null = null;
-  private _browser: PwBrowser | null = null;
-  private _page: PwPage | null = null;
-  private _playwright: PwModule | null = null;
+  private readonly _cdp: BrowserBridgeCdpClient;
   private _currentUrl: string | null = null;
   private _config: BridgeConfig;
   private _outputChannel: vscode.OutputChannel;
@@ -86,12 +48,13 @@ export class BrowserBridge implements vscode.Disposable {
   constructor(config: BridgeConfig) {
     this._config = config;
     this._outputChannel = vscode.window.createOutputChannel('Browser Bridge');
+    this._cdp = new BrowserBridgeCdpClient(this._outputChannel);
   }
 
   get state(): BridgeState {
     return {
       currentUrl: this._currentUrl,
-      cdpConnected: this._browser !== null,
+      cdpConnected: this._cdp.connected,
       controlPort: (this._server?.address() as AddressInfo | null)?.port ?? 0,
     };
   }
@@ -168,7 +131,7 @@ export class BrowserBridge implements vscode.Disposable {
   }
 
   async dispose(): Promise<void> {
-    await this._disconnectCdp();
+    await this._cdp.disconnect();
     if (this._server) {
       await new Promise<void>((resolve) => {
         this._server!.close(() => resolve());
@@ -185,9 +148,8 @@ export class BrowserBridge implements vscode.Disposable {
     await vscode.commands.executeCommand('simpleBrowser.show', url);
     this._outputChannel.appendLine(`Navigated Simple Browser to ${url}`);
 
-    // If CDP is connected, also try to find and target the page.
-    if (this._browser) {
-      await this._findTargetPage(url);
+    if (this._cdp.connected) {
+      await this._cdp.findTargetPage(url);
     }
   }
 
@@ -199,139 +161,35 @@ export class BrowserBridge implements vscode.Disposable {
    * @param opts.silent  If true, don't show UI warnings on failure (used for auto-connect).
    */
   async connectCdp(opts?: { port?: number; silent?: boolean }): Promise<boolean> {
-    if (this._browser) { return true; }
-
     const port = opts?.port ?? this._config.cdpPort;
     const silent = opts?.silent ?? false;
-
-    let pw: PwModule;
-    try {
-      // Dynamic require — playwright must be installed in the extension's
-      // node_modules or globally available.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      pw = require('playwright') as PwModule;
-    } catch {
-      this._outputChannel.appendLine(
-        'Playwright not found. Install it with: npm i playwright (in the extension folder)'
-      );
-      if (!silent) {
-        void vscode.window.showWarningMessage(
-          'Browser Bridge: playwright package not found. CDP automation disabled.'
-        );
-      }
-      return false;
-    }
-
-    try {
-      this._playwright = pw;
-      const endpoint = `http://127.0.0.1:${port}`;
-      this._outputChannel.appendLine(`Connecting to CDP at ${endpoint}…`);
-      this._browser = await pw.chromium.connectOverCDP(endpoint);
-      this._outputChannel.appendLine('CDP connection established.');
-      return true;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this._outputChannel.appendLine(`CDP connect failed: ${msg}`);
-      if (!silent) {
-        this._outputChannel.appendLine(
-          'Make sure VS Code was launched with: code --remote-debugging-port=' + port
-        );
-        void vscode.window.showWarningMessage(
-          `Browser Bridge: Could not connect to CDP on port ${port}. ` +
-          'Launch VS Code with --remote-debugging-port=' + port
-        );
-      }
-      return false;
-    }
-  }
-
-  private async _disconnectCdp(): Promise<void> {
-    if (this._browser) {
-      try { await this._browser.close(); } catch { /* ignore */ }
-      this._browser = null;
-      this._page = null;
-    }
-  }
-
-  /** Scan CDP contexts to find the Simple Browser page showing `url`. */
-  private async _findTargetPage(url: string): Promise<PwPage | null> {
-    if (!this._browser) { return null; }
-
-    for (const context of this._browser.contexts()) {
-      for (const page of context.pages()) {
-        const pageUrl: string = page.url();
-        // Simple Browser wraps URLs — check both exact match and contains.
-        if (pageUrl === url || pageUrl.includes(url)) {
-          this._page = page;
-          this._outputChannel.appendLine(`Found CDP target for ${url}`);
-          return page;
-        }
-      }
-    }
-
-    // The page may be in a frame inside a webview wrapper.
-    for (const context of this._browser.contexts()) {
-      for (const page of context.pages()) {
-        for (const frame of page.frames()) {
-          const frameUrl: string = frame.url();
-          if (frameUrl === url || frameUrl.includes(url)) {
-            this._page = page;
-            this._outputChannel.appendLine(`Found CDP target in frame for ${url}`);
-            return page;
-          }
-        }
-      }
-    }
-
-    this._outputChannel.appendLine(`No CDP target found for ${url}`);
-    return null;
+    return this._cdp.connect(port, silent);
   }
 
   // ── Page automation (requires CDP) ─────────────────────────────────────────
 
   async click(selector: string): Promise<boolean> {
-    if (!this._page) { return false; }
-    await this._page.click(selector);
-    return true;
+    return this._cdp.click(selector);
   }
 
   async fill(selector: string, value: string): Promise<boolean> {
-    if (!this._page) { return false; }
-    await this._page.fill(selector, value);
-    return true;
+    return this._cdp.fill(selector, value);
   }
 
   async screenshot(): Promise<Buffer | null> {
-    if (!this._page) { return null; }
-    return this._page.screenshot() as Promise<Buffer>;
+    return this._cdp.screenshot();
   }
 
   async snapshot(): Promise<string | null> {
-    if (!this._page) { return null; }
-    // Accessibility tree snapshot — Playwright's built-in method.
-    try {
-      const snap = await this._page.accessibility.snapshot();
-      return JSON.stringify(snap, null, 2);
-    } catch {
-      // Fallback: return page content.
-      return this._page.content() as Promise<string>;
-    }
+    return this._cdp.snapshot();
   }
 
   async evaluate(expression: string): Promise<unknown> {
-    if (!this._page) { return { error: 'No page connected' }; }
-    return this._page.evaluate(expression);
+    return this._cdp.evaluate(expression);
   }
 
   async listPages(): Promise<Array<{ url: string; title: string }>> {
-    if (!this._browser) { return []; }
-    const pages: Array<{ url: string; title: string }> = [];
-    for (const context of this._browser.contexts()) {
-      for (const page of context.pages()) {
-        pages.push({ url: page.url(), title: await page.title() });
-      }
-    }
-    return pages;
+    return this._cdp.listPages();
   }
 
   // ── HTTP control server handler ────────────────────────────────────────────
@@ -465,7 +323,7 @@ export class BrowserBridge implements vscode.Disposable {
   private async _handleClose(res: http.ServerResponse): Promise<void> {
     this._currentUrl = null;
     // There's no VS Code command to close Simple Browser, but we can disconnect CDP.
-    await this._disconnectCdp();
+    await this._cdp.disconnect();
     this._json(res, 200, { ok: true });
   }
 

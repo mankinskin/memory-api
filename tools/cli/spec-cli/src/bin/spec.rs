@@ -1,9 +1,20 @@
+use clap::error::ErrorKind;
+
 use spec_cli::cli::{CliOutput, error_output, parse_cli_from, run};
 
 fn main() {
     let cli = match parse_cli_from(std::env::args_os()) {
         Ok(cli) => cli,
         Err(err) => {
+            if matches!(
+                err.kind(),
+                ErrorKind::DisplayHelp
+                    | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+                    | ErrorKind::DisplayVersion
+            ) {
+                print!("{err}");
+                std::process::exit(0);
+            }
             let wants_json = std::env::args().any(|a| a == "--json");
             let rendered = error_output(&err.to_string(), wants_json);
             eprintln!("{rendered}");

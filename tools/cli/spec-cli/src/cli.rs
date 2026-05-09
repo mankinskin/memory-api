@@ -17,7 +17,12 @@ pub use args::*;
 // ── CLI root ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Parser)]
-#[command(name = "spec", about = "Specification system CLI", version)]
+#[command(
+    name = "spec",
+    about = "Specification system CLI",
+    version,
+    arg_required_else_help = true
+)]
 pub struct SpecCli {
     /// Return machine-readable JSON output.
     #[arg(long, global = true)]

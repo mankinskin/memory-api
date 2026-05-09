@@ -29,7 +29,12 @@ pub(crate) use helpers::*;
 // ── CLI root ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Parser)]
-#[command(name = "ticket", about = "Task tracker CLI", version)]
+#[command(
+    name = "ticket",
+    about = "Task tracker CLI",
+    version,
+    arg_required_else_help = true
+)]
 pub struct TicketCli {
     /// Return machine-readable JSON envelope output.
     #[arg(long, global = true)]
