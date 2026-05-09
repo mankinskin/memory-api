@@ -1,12 +1,24 @@
 use rusqlite::params;
 use uuid::Uuid;
 
-use crate::storage::index::RedbIndexStore;
-use crate::storage::schema::{TABLE_BOARD_ACTIVE_INDEX, TABLE_BOARD_ENTRIES};
+use crate::storage::{
+    index::RedbIndexStore,
+    schema::{
+        TABLE_BOARD_ACTIVE_INDEX,
+        TABLE_BOARD_ENTRIES,
+    },
+};
 
-use super::{load_all_entries, lookup_active_entry_id};
-use super::super::{
-    BoardEntry, BoardEntryStatus, BoardError, db_err, serialize_entry,
+use super::{
+    super::{
+        BoardEntry,
+        BoardEntryStatus,
+        BoardError,
+        db_err,
+        serialize_entry,
+    },
+    load_all_entries,
+    lookup_active_entry_id,
 };
 
 impl RedbIndexStore {
@@ -180,7 +192,9 @@ impl RedbIndexStore {
     ) -> Result<Option<(BoardEntry, String)>, BoardError> {
         self.with_db_ext(|conn| {
             for entry in load_all_entries(conn)? {
-                if entry.ticket_id == ticket_id && entry.status == BoardEntryStatus::Active {
+                if entry.ticket_id == ticket_id
+                    && entry.status == BoardEntryStatus::Active
+                {
                     let index_key = format!("{ticket_id}:{}", entry.agent_id);
                     return Ok(Some((entry, index_key)));
                 }

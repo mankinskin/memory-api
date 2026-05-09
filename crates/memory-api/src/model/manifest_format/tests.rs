@@ -1,5 +1,8 @@
 use chrono::Utc;
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 use uuid::Uuid;
 
 use super::*;
@@ -36,9 +39,16 @@ fn no_fields_dropped_string_fields() {
     let parsed = roundtrip(&manifest);
     for key in manifest.extra.keys() {
         assert!(parsed.extra.contains_key(key), "field '{key}' was dropped");
-        assert_eq!(parsed.extra[key], manifest.extra[key], "field '{key}' value was altered");
+        assert_eq!(
+            parsed.extra[key], manifest.extra[key],
+            "field '{key}' value was altered"
+        );
     }
-    assert_eq!(parsed.extra.len(), manifest.extra.len(), "field count changed");
+    assert_eq!(
+        parsed.extra.len(),
+        manifest.extra.len(),
+        "field count changed"
+    );
 }
 
 #[test]
@@ -52,10 +62,17 @@ fn no_fields_dropped_with_boolean_and_integer() {
     manifest.extra.insert("negative".into(), json!(-7));
 
     let parsed = roundtrip(&manifest);
-    assert_eq!(parsed.extra.len(), manifest.extra.len(), "field count changed");
+    assert_eq!(
+        parsed.extra.len(),
+        manifest.extra.len(),
+        "field count changed"
+    );
     for key in manifest.extra.keys() {
         assert!(parsed.extra.contains_key(key), "field '{key}' was dropped");
-        assert_eq!(parsed.extra[key], manifest.extra[key], "field '{key}' modified");
+        assert_eq!(
+            parsed.extra[key], manifest.extra[key],
+            "field '{key}' modified"
+        );
     }
 }
 
@@ -100,39 +117,58 @@ fn no_fields_dropped_large_field_set() {
     }
 
     let parsed = roundtrip(&manifest);
-    assert_eq!(parsed.extra.len(), manifest.extra.len(), "field count changed");
+    assert_eq!(
+        parsed.extra.len(),
+        manifest.extra.len(),
+        "field count changed"
+    );
     for (key, _) in &fields {
         assert!(parsed.extra.contains_key(*key), "field '{key}' was dropped");
-        assert_eq!(parsed.extra[*key], manifest.extra[*key], "field '{key}' value was modified");
+        assert_eq!(
+            parsed.extra[*key], manifest.extra[*key],
+            "field '{key}' value was modified"
+        );
     }
 }
 
 #[test]
 fn manifest_partialeq_holds_after_roundtrip() {
     let mut manifest = EntityManifest::new(Uuid::new_v4(), Utc::now());
-    manifest.extra.insert("title".into(), json!("roundtrip test"));
+    manifest
+        .extra
+        .insert("title".into(), json!("roundtrip test"));
     manifest.extra.insert("state".into(), json!("new"));
     manifest
         .extra
         .insert("acceptance_criteria".into(), json!("must pass"));
     manifest.extra.insert("priority".into(), json!("medium"));
     manifest.extra.insert("component".into(), json!("api"));
-    manifest.extra.insert("type".into(), json!("tracker-improvement"));
+    manifest
+        .extra
+        .insert("type".into(), json!("tracker-improvement"));
     manifest.extra.insert("active".into(), json!(true));
     manifest.extra.insert("count".into(), json!(7));
 
     let parsed = roundtrip(&manifest);
-    assert_eq!(parsed, manifest, "roundtripped manifest does not equal original");
+    assert_eq!(
+        parsed, manifest,
+        "roundtripped manifest does not equal original"
+    );
 }
 
 #[test]
 fn created_at_is_preserved_exactly() {
-    let fixed = chrono::DateTime::parse_from_rfc3339("2026-04-08T14:20:50.462259100+00:00")
-        .unwrap()
-        .with_timezone(&Utc);
+    let fixed = chrono::DateTime::parse_from_rfc3339(
+        "2026-04-08T14:20:50.462259100+00:00",
+    )
+    .unwrap()
+    .with_timezone(&Utc);
     let manifest = EntityManifest::new(Uuid::new_v4(), fixed);
     let parsed = roundtrip(&manifest);
-    assert_eq!(parsed.created_at, manifest.created_at, "created_at was altered");
+    assert_eq!(
+        parsed.created_at, manifest.created_at,
+        "created_at was altered"
+    );
 }
 
 #[test]
@@ -151,9 +187,15 @@ fn roundtrip_string_with_backslash() {
 
 #[test]
 fn roundtrip_string_with_embedded_newline() {
-    let manifest = make_manifest(&[("acceptance_criteria", "line one\nline two\nline three")]);
+    let manifest = make_manifest(&[(
+        "acceptance_criteria",
+        "line one\nline two\nline three",
+    )]);
     let parsed = roundtrip(&manifest);
-    assert_eq!(parsed.extra["acceptance_criteria"], manifest.extra["acceptance_criteria"]);
+    assert_eq!(
+        parsed.extra["acceptance_criteria"],
+        manifest.extra["acceptance_criteria"]
+    );
 }
 
 #[test]
@@ -208,7 +250,10 @@ fn formatting_is_idempotent_after_is_canonically_ordered_check() {
         ("aaa_first", "a"),
     ]);
     let formatted = format_manifest_toml(&manifest);
-    assert!(is_canonically_ordered(&formatted), "formatted output not canonically ordered");
+    assert!(
+        is_canonically_ordered(&formatted),
+        "formatted output not canonically ordered"
+    );
     let reparsed: EntityManifest = toml::from_str(&formatted).unwrap();
     assert_eq!(format_manifest_toml(&reparsed), formatted);
 }
@@ -244,8 +289,12 @@ fn missing_priority_fields_are_skipped_not_gap_filled() {
 #[test]
 fn roundtrip_boolean_and_number() {
     let mut manifest = EntityManifest::new(Uuid::new_v4(), Utc::now());
-    manifest.extra.insert("active".to_string(), Value::Bool(true));
-    manifest.extra.insert("count".to_string(), Value::Number(42.into()));
+    manifest
+        .extra
+        .insert("active".to_string(), Value::Bool(true));
+    manifest
+        .extra
+        .insert("count".to_string(), Value::Number(42.into()));
     let toml = format_manifest_toml(&manifest);
     let parsed: EntityManifest = toml::from_str(&toml).unwrap();
     assert_eq!(parsed.extra["active"], Value::Bool(true));
@@ -254,13 +303,15 @@ fn roundtrip_boolean_and_number() {
 
 #[test]
 fn is_canonically_ordered_detects_wrong_order() {
-    let toml = "id = \"1\"\ncreated_at = \"t\"\nstate = \"new\"\ntitle = \"x\"\n";
+    let toml =
+        "id = \"1\"\ncreated_at = \"t\"\nstate = \"new\"\ntitle = \"x\"\n";
     assert!(!is_canonically_ordered(toml));
 }
 
 #[test]
 fn is_canonically_ordered_accepts_correct_order() {
-    let toml = "id = \"1\"\ncreated_at = \"t\"\ntitle = \"x\"\nstate = \"new\"\n";
+    let toml =
+        "id = \"1\"\ncreated_at = \"t\"\ntitle = \"x\"\nstate = \"new\"\n";
     assert!(is_canonically_ordered(toml));
 }
 

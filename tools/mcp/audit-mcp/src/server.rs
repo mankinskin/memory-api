@@ -1,21 +1,41 @@
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{
+    path::PathBuf,
+    sync::Arc,
+};
 
+use audit_api::{
+    audit,
+    models::AuditConfig,
+    summary::{
+        AuditSummaryBy,
+        summarize_report,
+    },
+};
 use rmcp::{
-    ErrorData as McpError, ServerHandler, ServiceExt,
-    handler::server::{tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, Content},
-    schemars::{self, JsonSchema},
-    tool, tool_handler, tool_router,
+    ErrorData as McpError,
+    ServerHandler,
+    ServiceExt,
+    handler::server::{
+        tool::ToolRouter,
+        wrapper::Parameters,
+    },
+    model::{
+        CallToolResult,
+        Content,
+    },
+    schemars::{
+        self,
+        JsonSchema,
+    },
+    tool,
+    tool_handler,
+    tool_router,
     transport::stdio,
 };
-use audit_api::audit;
-use audit_api::models::AuditConfig;
-use audit_api::summary::{
-    AuditSummaryBy,
-    summarize_report,
+use serde::{
+    Deserialize,
+    Serialize,
 };
-use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -44,7 +64,8 @@ pub enum AuditSummaryByInput {
 impl From<AuditSummaryByInput> for AuditSummaryBy {
     fn from(value: AuditSummaryByInput) -> Self {
         match value {
-            AuditSummaryByInput::Crate | AuditSummaryByInput::Package => AuditSummaryBy::Crate,
+            AuditSummaryByInput::Crate | AuditSummaryByInput::Package =>
+                AuditSummaryBy::Crate,
             AuditSummaryByInput::Category => AuditSummaryBy::Category,
             AuditSummaryByInput::Severity => AuditSummaryBy::Severity,
             AuditSummaryByInput::Metric => AuditSummaryBy::Metric,
@@ -82,9 +103,12 @@ impl AuditServer {
         }
     }
 
-    fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
-        let text = serde_json::to_string_pretty(value)
-            .map_err(|err| McpError::internal_error(format!("serialization: {err}"), None))?;
+    fn json_result<T: Serialize>(
+        value: &T
+    ) -> Result<CallToolResult, McpError> {
+        let text = serde_json::to_string_pretty(value).map_err(|err| {
+            McpError::internal_error(format!("serialization: {err}"), None)
+        })?;
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
@@ -120,7 +144,8 @@ impl AuditServer {
         Parameters(input): Parameters<AuditRepositoryInput>,
     ) -> Result<CallToolResult, McpError> {
         let _guard = self.audit_lock.lock().await;
-        let repo_root = input.repo_root.unwrap_or_else(|| self.base_dir.clone());
+        let repo_root =
+            input.repo_root.unwrap_or_else(|| self.base_dir.clone());
         let config = Self::build_config(
             input.max_file_lines,
             input.max_cyclomatic_complexity,
@@ -142,7 +167,8 @@ impl AuditServer {
         Parameters(input): Parameters<AuditSummaryInput>,
     ) -> Result<CallToolResult, McpError> {
         let _guard = self.audit_lock.lock().await;
-        let repo_root = input.repo_root.unwrap_or_else(|| self.base_dir.clone());
+        let repo_root =
+            input.repo_root.unwrap_or_else(|| self.base_dir.clone());
         let config = Self::build_config(
             input.max_file_lines,
             input.max_cyclomatic_complexity,
@@ -173,7 +199,7 @@ impl ServerHandler for AuditServer {
 }
 
 pub async fn run_mcp_server(
-    base_dir: PathBuf,
+    base_dir: PathBuf
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let server = AuditServer::new(base_dir);
 

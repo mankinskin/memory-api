@@ -18,7 +18,8 @@ fn required_tables_are_stable_and_version_gated() {
     assert_eq!(REQUIRED_TABLES[3], TABLE_LEASES);
     assert_eq!(REQUIRED_TABLES[4], TABLE_META);
 
-    ensure_supported_schema_version(SCHEMA_VERSION).expect("current version must be supported");
+    ensure_supported_schema_version(SCHEMA_VERSION)
+        .expect("current version must be supported");
 }
 
 #[test]

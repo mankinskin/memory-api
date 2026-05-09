@@ -2,44 +2,83 @@ use std::path::Path;
 
 use memory_api::model::filesystem::ScanRoot;
 use rule_api::{
-    RuleFilter, RuleManifest, RuleStore, explain_target, load_render_target_config,
-    render_markdown_file, render_target_by_name, resolve_render_target_output,
+    RuleFilter,
+    RuleManifest,
+    RuleStore,
+    explain_target,
+    load_render_target_config,
+    render_markdown_file,
+    render_target_by_name,
+    resolve_render_target_output,
 };
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 
 use super::{
-    AddRootArgs, CliRunError, CreateArgs, ExplainTargetArgs, GenerateFileArgs,
-    GenerateTargetArgs, IdArgs, ImportFileArgs, ListArgs, RuleCommandCli, ScanArgs, SearchArgs,
-    SyncTargetsArgs, UpdateArgs,
+    AddRootArgs,
+    CliRunError,
+    CreateArgs,
+    ExplainTargetArgs,
+    GenerateFileArgs,
+    GenerateTargetArgs,
+    IdArgs,
+    ImportFileArgs,
+    ListArgs,
+    RuleCommandCli,
+    ScanArgs,
+    SearchArgs,
+    SyncTargetsArgs,
+    UpdateArgs,
     helpers::{
-        apply_source_location, list_filter, parse_fields, read_body, read_optional_body, rule_json,
+        apply_source_location,
+        list_filter,
+        parse_fields,
+        read_body,
+        read_optional_body,
+        rule_json,
         rule_summary_json,
     },
     importing::import_file,
     rendering::{
-        ensure_generated_output_matches, generate_target_payload, sync_targets_payload,
-        validate_generate_args, validate_generate_target_args, validate_sync_target_args,
+        ensure_generated_output_matches,
+        generate_target_payload,
+        sync_targets_payload,
+        validate_generate_args,
+        validate_generate_target_args,
+        validate_sync_target_args,
         write_generated_output,
     },
 };
 
-pub(super) fn dispatch(command: RuleCommandCli, index_root: &Path) -> Result<Value, CliRunError> {
+pub(super) fn dispatch(
+    command: RuleCommandCli,
+    index_root: &Path,
+) -> Result<Value, CliRunError> {
     let mut store = RuleStore::open(index_root)?;
 
     match command {
         RuleCommandCli::Create(args) => create_command(&mut store, args),
         RuleCommandCli::Get(args) => get_command(&store, args),
-        RuleCommandCli::ImportFile(args) => import_file_command(&mut store, args),
+        RuleCommandCli::ImportFile(args) =>
+            import_file_command(&mut store, args),
         RuleCommandCli::Update(args) => update_command(&mut store, args),
         other => dispatch_secondary(other, &mut store),
     }
 }
 
-fn dispatch_secondary(command: RuleCommandCli, store: &mut RuleStore) -> Result<Value, CliRunError> {
+fn dispatch_secondary(
+    command: RuleCommandCli,
+    store: &mut RuleStore,
+) -> Result<Value, CliRunError> {
     match command {
-        RuleCommandCli::GenerateFile(args) => generate_file_command(store, args),
-        RuleCommandCli::GenerateTarget(args) => generate_target_command(store, args),
-        RuleCommandCli::ExplainTarget(args) => explain_target_command(store, args),
+        RuleCommandCli::GenerateFile(args) =>
+            generate_file_command(store, args),
+        RuleCommandCli::GenerateTarget(args) =>
+            generate_target_command(store, args),
+        RuleCommandCli::ExplainTarget(args) =>
+            explain_target_command(store, args),
         RuleCommandCli::SyncTargets(args) => sync_targets_command(store, args),
         RuleCommandCli::List(args) => list_command(store, args),
         RuleCommandCli::Search(args) => search_command(store, args),
@@ -48,11 +87,15 @@ fn dispatch_secondary(command: RuleCommandCli, store: &mut RuleStore) -> Result<
         RuleCommandCli::Create(_)
         | RuleCommandCli::Get(_)
         | RuleCommandCli::ImportFile(_)
-        | RuleCommandCli::Update(_) => unreachable!("handled in primary dispatch"),
+        | RuleCommandCli::Update(_) =>
+            unreachable!("handled in primary dispatch"),
     }
 }
 
-fn create_command(store: &mut RuleStore, args: CreateArgs) -> Result<Value, CliRunError> {
+fn create_command(
+    store: &mut RuleStore,
+    args: CreateArgs,
+) -> Result<Value, CliRunError> {
     let body = read_body(args.body, args.body_file.as_deref())?;
     let mut manifest = RuleManifest::new(
         &args.slug,
@@ -89,7 +132,10 @@ fn create_command(store: &mut RuleStore, args: CreateArgs) -> Result<Value, CliR
     }))
 }
 
-fn get_command(store: &RuleStore, args: IdArgs) -> Result<Value, CliRunError> {
+fn get_command(
+    store: &RuleStore,
+    args: IdArgs,
+) -> Result<Value, CliRunError> {
     let rule = store.get(&args.id)?;
     Ok(json!({
         "status": "ok",
@@ -97,7 +143,10 @@ fn get_command(store: &RuleStore, args: IdArgs) -> Result<Value, CliRunError> {
     }))
 }
 
-fn import_file_command(store: &mut RuleStore, args: ImportFileArgs) -> Result<Value, CliRunError> {
+fn import_file_command(
+    store: &mut RuleStore,
+    args: ImportFileArgs,
+) -> Result<Value, CliRunError> {
     let items = import_file(store, &args)?;
     Ok(json!({
         "status": "ok",
@@ -107,9 +156,14 @@ fn import_file_command(store: &mut RuleStore, args: ImportFileArgs) -> Result<Va
     }))
 }
 
-fn update_command(store: &mut RuleStore, args: UpdateArgs) -> Result<Value, CliRunError> {
+fn update_command(
+    store: &mut RuleStore,
+    args: UpdateArgs,
+) -> Result<Value, CliRunError> {
     let patch = parse_fields(&args.fields)?;
-    if let Some(body) = read_optional_body(args.body, args.body_file.as_deref())? {
+    if let Some(body) =
+        read_optional_body(args.body, args.body_file.as_deref())?
+    {
         store.update_body(&args.id, &body)?;
     }
     let rule = store.update(&args.id, patch, args.to_state.as_deref())?;
@@ -119,7 +173,10 @@ fn update_command(store: &mut RuleStore, args: UpdateArgs) -> Result<Value, CliR
     }))
 }
 
-fn generate_file_command(store: &RuleStore, args: GenerateFileArgs) -> Result<Value, CliRunError> {
+fn generate_file_command(
+    store: &RuleStore,
+    args: GenerateFileArgs,
+) -> Result<Value, CliRunError> {
     validate_generate_args(&args)?;
     let filter = RuleFilter {
         state: args.state.clone(),
@@ -163,7 +220,13 @@ fn generate_target_command(
     let config = load_render_target_config(&args.config)?;
     let target = render_target_by_name(&config, &args.target)?;
     let output = resolve_render_target_output(&args.config, target);
-    let payload = generate_target_payload(store, target, args.dry_run, args.check, &output)?;
+    let payload = generate_target_payload(
+        store,
+        target,
+        args.dry_run,
+        args.check,
+        &output,
+    )?;
 
     Ok(json!({
         "status": "ok",
@@ -197,9 +260,13 @@ fn explain_target_command(
     }))
 }
 
-fn sync_targets_command(store: &mut RuleStore, args: SyncTargetsArgs) -> Result<Value, CliRunError> {
+fn sync_targets_command(
+    store: &mut RuleStore,
+    args: SyncTargetsArgs,
+) -> Result<Value, CliRunError> {
     validate_sync_target_args(&args)?;
-    let payload = sync_targets_payload(store, &args.config, args.dry_run, args.check)?;
+    let payload =
+        sync_targets_payload(store, &args.config, args.dry_run, args.check)?;
 
     Ok(json!({
         "status": "ok",
@@ -211,7 +278,10 @@ fn sync_targets_command(store: &mut RuleStore, args: SyncTargetsArgs) -> Result<
     }))
 }
 
-fn list_command(store: &RuleStore, args: ListArgs) -> Result<Value, CliRunError> {
+fn list_command(
+    store: &RuleStore,
+    args: ListArgs,
+) -> Result<Value, CliRunError> {
     let filter = list_filter(&args.filter);
     let rules = store.list(&filter, args.limit)?;
     Ok(json!({
@@ -221,7 +291,10 @@ fn list_command(store: &RuleStore, args: ListArgs) -> Result<Value, CliRunError>
     }))
 }
 
-fn search_command(store: &RuleStore, args: SearchArgs) -> Result<Value, CliRunError> {
+fn search_command(
+    store: &RuleStore,
+    args: SearchArgs,
+) -> Result<Value, CliRunError> {
     let filter = list_filter(&args.filter);
     let rules = store.search(&args.query, &filter, args.limit)?;
     Ok(json!({
@@ -232,7 +305,10 @@ fn search_command(store: &RuleStore, args: SearchArgs) -> Result<Value, CliRunEr
     }))
 }
 
-fn scan_command(store: &mut RuleStore, args: ScanArgs) -> Result<Value, CliRunError> {
+fn scan_command(
+    store: &mut RuleStore,
+    args: ScanArgs,
+) -> Result<Value, CliRunError> {
     let report = store.scan(args.force)?;
     Ok(json!({
         "status": "ok",
@@ -243,7 +319,10 @@ fn scan_command(store: &mut RuleStore, args: ScanArgs) -> Result<Value, CliRunEr
     }))
 }
 
-fn add_root_command(store: &mut RuleStore, args: AddRootArgs) -> Result<Value, CliRunError> {
+fn add_root_command(
+    store: &mut RuleStore,
+    args: AddRootArgs,
+) -> Result<Value, CliRunError> {
     let label = args.label.unwrap_or_else(|| {
         args.path
             .file_name()

@@ -1,14 +1,15 @@
+use std::collections::BTreeSet;
 use ticket_api::model::query::{
     Expr,
     ValueExpr,
     parse_query,
     parse_query_strict,
 };
-use std::collections::BTreeSet;
 
 #[test]
 fn parse_mixed_fts_and_fields() {
-    let expr = parse_query("status:open assigned:alice \"login page\"").expect("query parses");
+    let expr = parse_query("status:open assigned:alice \"login page\"")
+        .expect("query parses");
 
     match expr {
         Expr::And(parts) => {
@@ -24,7 +25,7 @@ fn parse_mixed_fts_and_fields() {
                 if key == "assigned" && v == "alice"
             ));
             assert!(matches!(parts[2], Expr::Fts(ref v) if v == "login page"));
-        }
+        },
         _ => panic!("expected Expr::And"),
     }
 }
@@ -60,8 +61,9 @@ fn strict_parser_allows_dynamic_namespaced_field() {
         "status".to_string(),
     ]);
 
-    let expr = parse_query_strict("x_feature_story_points:8 status:open", &known)
-        .expect("dynamic namespaced field should be allowed");
+    let expr =
+        parse_query_strict("x_feature_story_points:8 status:open", &known)
+            .expect("dynamic namespaced field should be allowed");
 
     match expr {
         Expr::And(parts) => assert_eq!(parts.len(), 2),

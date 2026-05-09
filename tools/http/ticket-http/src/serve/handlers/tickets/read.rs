@@ -1,22 +1,44 @@
-use std::collections::BTreeMap;
-use std::time::SystemTime;
+use std::{
+    collections::BTreeMap,
+    time::SystemTime,
+};
 
 use axum::{
-    extract::{Extension, Path, Query, State},
+    extract::{
+        Extension,
+        Path,
+        Query,
+        State,
+    },
     http::StatusCode,
-    response::{IntoResponse, Json, Response},
+    response::{
+        IntoResponse,
+        Json,
+        Response,
+    },
 };
 use uuid::Uuid;
 
-use viewer_api::error::{ApiError, RequestIdExt};
+use viewer_api::error::{
+    ApiError,
+    RequestIdExt,
+};
 
-use crate::serve::{AppState, error::storage_err};
+use crate::serve::{
+    AppState,
+    error::storage_err,
+};
 
 use ticket_api::storage::ticket_fs::TicketFs;
 
 use super::types::{
-    TicketDescriptionResponse, TicketDetail, TicketDetailResponse, TicketIdParam, TicketSummary,
-    TicketsResponse, WorkspaceParam,
+    TicketDescriptionResponse,
+    TicketDetail,
+    TicketDetailResponse,
+    TicketIdParam,
+    TicketSummary,
+    TicketsResponse,
+    WorkspaceParam,
 };
 
 pub async fn list_tickets(
@@ -29,7 +51,7 @@ pub async fn list_tickets(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     tokio::task::spawn_blocking(move || {
@@ -39,11 +61,13 @@ pub async fn list_tickets(
                 Ok(results) => {
                     let mut items = Vec::with_capacity(results.len());
                     for result in results {
-                        let (created_at, updated_at) = match store.get_indexed(&result.id) {
-                            Ok(Some(indexed)) => (indexed.created_at, indexed.updated_at),
-                            Ok(None) => epoch_timestamps(),
-                            Err(e) => return storage_err(e, &rid.0),
-                        };
+                        let (created_at, updated_at) =
+                            match store.get_indexed(&result.id) {
+                                Ok(Some(indexed)) =>
+                                    (indexed.created_at, indexed.updated_at),
+                                Ok(None) => epoch_timestamps(),
+                                Err(e) => return storage_err(e, &rid.0),
+                            };
 
                         items.push(TicketSummary {
                             id: result.id.to_string(),
@@ -56,7 +80,7 @@ pub async fn list_tickets(
                         });
                     }
                     items
-                }
+                },
                 Err(e) => return storage_err(e, &rid.0),
             }
         } else {
@@ -101,7 +125,7 @@ pub async fn get_ticket(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     tokio::task::spawn_blocking(move || match store.get(&id) {
@@ -138,7 +162,7 @@ pub async fn get_ticket_description(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     tokio::task::spawn_blocking(move || {
@@ -147,7 +171,7 @@ pub async fn get_ticket_description(
             Ok(None) => {
                 return ApiError::not_found("ticket", &rid.0)
                     .into_response_with_status(StatusCode::NOT_FOUND);
-            }
+            },
             Err(e) => return storage_err(e, &rid.0),
         };
 
@@ -182,19 +206,21 @@ pub async fn get_ticket_history(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     tokio::task::spawn_blocking(move || match store.get_history(&id) {
         Ok(revisions) => {
             let entries: Vec<serde_json::Value> = revisions
                 .into_iter()
-                .map(|revision| serde_json::json!({
-                    "rev": revision.rev,
-                    "ts": revision.ts,
-                    "author": revision.author,
-                    "fields": revision.fields,
-                }))
+                .map(|revision| {
+                    serde_json::json!({
+                        "rev": revision.rev,
+                        "ts": revision.ts,
+                        "author": revision.author,
+                        "fields": revision.fields,
+                    })
+                })
                 .collect();
             Json(serde_json::json!({
                 "request_id": &rid.0,
@@ -204,17 +230,15 @@ pub async fn get_ticket_history(
                 "entries": entries,
             }))
             .into_response()
-        }
+        },
         Err(e) => storage_err(e, &rid.0),
     })
     .await
     .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
-fn epoch_timestamps() -> (
-    chrono::DateTime<chrono::Utc>,
-    chrono::DateTime<chrono::Utc>,
-) {
+fn epoch_timestamps()
+-> (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) {
     let epoch = chrono::DateTime::<chrono::Utc>::from(SystemTime::UNIX_EPOCH);
     (epoch, epoch)
 }

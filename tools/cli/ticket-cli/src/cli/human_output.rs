@@ -17,7 +17,10 @@ pub(crate) fn render_human_readable(payload: &Value) -> String {
     };
 
     // Special case: subgraph/topgraph command renders as ASCII tree
-    if matches!(obj.get("command").and_then(Value::as_str), Some("subgraph" | "topgraph")) {
+    if matches!(
+        obj.get("command").and_then(Value::as_str),
+        Some("subgraph" | "topgraph")
+    ) {
         if let Some(tree) = obj.get("tree").and_then(Value::as_str) {
             return tree.to_string();
         }
@@ -92,7 +95,8 @@ fn format_scalar(val: &Value) -> String {
         Value::Bool(b) => b.to_string(),
         Value::Number(n) => n.to_string(),
         Value::String(s) => s.to_string(),
-        Value::Array(arr) => arr.iter().map(format_scalar).collect::<Vec<_>>().join(", "),
+        Value::Array(arr) =>
+            arr.iter().map(format_scalar).collect::<Vec<_>>().join(", "),
         // Fallback for inline objects
         Value::Object(_) => serde_json::to_string(val).unwrap_or_default(),
     }
@@ -100,26 +104,35 @@ fn format_scalar(val: &Value) -> String {
 
 // ── section rendering ──────────────────────────────────────────────────────────
 
-fn write_section(out: &mut String, key: &str, val: &Value, depth: usize) {
+fn write_section(
+    out: &mut String,
+    key: &str,
+    val: &Value,
+    depth: usize,
+) {
     let indent = "  ".repeat(depth);
 
     match val {
         Value::Object(map) => {
             let _ = write!(out, "\n{indent}[{key}]\n");
             write_object_fields(out, map, depth + 1);
-        }
+        },
         Value::Array(arr) => {
             let count = arr.len();
             let _ = write!(out, "\n{indent}[{key}] ({count})\n");
             write_array_items(out, arr, depth + 1);
-        }
+        },
         _ => {
             let _ = writeln!(out, "{indent}{key}: {}", format_scalar(val));
-        }
+        },
     }
 }
 
-fn write_object_fields(out: &mut String, map: &serde_json::Map<String, Value>, depth: usize) {
+fn write_object_fields(
+    out: &mut String,
+    map: &serde_json::Map<String, Value>,
+    depth: usize,
+) {
     let indent = "  ".repeat(depth);
     let mut child_sections = Vec::new();
 
@@ -136,7 +149,11 @@ fn write_object_fields(out: &mut String, map: &serde_json::Map<String, Value>, d
     }
 }
 
-fn write_array_items(out: &mut String, arr: &[Value], depth: usize) {
+fn write_array_items(
+    out: &mut String,
+    arr: &[Value],
+    depth: usize,
+) {
     let indent = "  ".repeat(depth);
 
     for (i, item) in arr.iter().enumerate() {
@@ -146,10 +163,10 @@ fn write_array_items(out: &mut String, arr: &[Value], depth: usize) {
         match item {
             Value::Object(map) => {
                 write_object_fields(out, map, depth);
-            }
+            },
             _ => {
                 let _ = writeln!(out, "{indent}{}", format_scalar(item));
-            }
+            },
         }
     }
 }
@@ -168,7 +185,10 @@ fn render_health_report(obj: &serde_json::Map<String, Value>) -> String {
         .and_then(Value::as_u64)
         .unwrap_or(0);
 
-    let _ = writeln!(out, "Health check: {checked} tickets checked, {finding_count} finding(s)\n");
+    let _ = writeln!(
+        out,
+        "Health check: {checked} tickets checked, {finding_count} finding(s)\n"
+    );
 
     if let Some(findings) = obj.get("findings").and_then(Value::as_array) {
         let severity_order = |s: &str| -> u8 {
@@ -181,17 +201,22 @@ fn render_health_report(obj: &serde_json::Map<String, Value>) -> String {
 
         let mut sorted: Vec<&Value> = findings.iter().collect();
         sorted.sort_by(|a, b| {
-            let sa = a.get("severity").and_then(Value::as_str).unwrap_or("info");
-            let sb = b.get("severity").and_then(Value::as_str).unwrap_or("info");
+            let sa =
+                a.get("severity").and_then(Value::as_str).unwrap_or("info");
+            let sb =
+                b.get("severity").and_then(Value::as_str).unwrap_or("info");
             severity_order(sa).cmp(&severity_order(sb))
         });
 
         for f in &sorted {
-            let severity = f.get("severity").and_then(Value::as_str).unwrap_or("info");
+            let severity =
+                f.get("severity").and_then(Value::as_str).unwrap_or("info");
             let check = f.get("check").and_then(Value::as_str).unwrap_or("?");
-            let short_id = f.get("short_id").and_then(Value::as_str).unwrap_or("?");
+            let short_id =
+                f.get("short_id").and_then(Value::as_str).unwrap_or("?");
             let title = f.get("title").and_then(Value::as_str).unwrap_or("?");
-            let message = f.get("message").and_then(Value::as_str).unwrap_or("");
+            let message =
+                f.get("message").and_then(Value::as_str).unwrap_or("");
 
             let icon = match severity {
                 "error" => "ERR ",

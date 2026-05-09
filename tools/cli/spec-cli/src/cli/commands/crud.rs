@@ -1,13 +1,30 @@
 use std::collections::BTreeMap;
 
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 
-use spec_api::{SpecManifest, SpecStore};
+use spec_api::{
+    SpecManifest,
+    SpecStore,
+};
 
-use crate::cli::{CliRunError, CreateArgs, GetArgs, IdArgs, ListArgs, UpdateArgs};
+use crate::cli::{
+    CliRunError,
+    CreateArgs,
+    GetArgs,
+    IdArgs,
+    ListArgs,
+    UpdateArgs,
+};
 
-pub(crate) fn cmd_create(args: CreateArgs, store: &mut SpecStore) -> Result<Value, CliRunError> {
-    let mut manifest = SpecManifest::new(&args.slug, &args.title, &args.component);
+pub(crate) fn cmd_create(
+    args: CreateArgs,
+    store: &mut SpecStore,
+) -> Result<Value, CliRunError> {
+    let mut manifest =
+        SpecManifest::new(&args.slug, &args.title, &args.component);
     if let Some(parent) = &args.parent {
         let parent_id = store.resolve_id(parent)?;
         manifest.set_parent(&parent_id.to_string());
@@ -18,8 +35,9 @@ pub(crate) fn cmd_create(args: CreateArgs, store: &mut SpecStore) -> Result<Valu
     let body = args
         .body_file
         .map(|p| {
-            std::fs::read_to_string(&p)
-                .map_err(|e| CliRunError::BadRequest(format!("cannot read body-file: {e}")))
+            std::fs::read_to_string(&p).map_err(|e| {
+                CliRunError::BadRequest(format!("cannot read body-file: {e}"))
+            })
         })
         .transpose()?
         .unwrap_or_default();
@@ -36,7 +54,10 @@ pub(crate) fn cmd_create(args: CreateArgs, store: &mut SpecStore) -> Result<Valu
     }))
 }
 
-pub(crate) fn cmd_get(args: GetArgs, store: &SpecStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_get(
+    args: GetArgs,
+    store: &SpecStore,
+) -> Result<Value, CliRunError> {
     if args.full {
         let (spec, body) = store.get_full(&args.id)?;
         let sections = store.list_sections(&args.id)?;
@@ -67,19 +88,23 @@ pub(crate) fn cmd_get(args: GetArgs, store: &SpecStore) -> Result<Value, CliRunE
     }
 }
 
-pub(crate) fn cmd_update(args: UpdateArgs, store: &mut SpecStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_update(
+    args: UpdateArgs,
+    store: &mut SpecStore,
+) -> Result<Value, CliRunError> {
     let mut patch = BTreeMap::new();
     for f in &args.fields {
-        let (k, v) = f
-            .split_once('=')
-            .ok_or_else(|| CliRunError::BadRequest(format!("invalid field patch: {f}")))?;
+        let (k, v) = f.split_once('=').ok_or_else(|| {
+            CliRunError::BadRequest(format!("invalid field patch: {f}"))
+        })?;
         patch.insert(k.to_string(), Value::String(v.to_string()));
     }
 
     // Update body if provided
     if let Some(body_file) = &args.body_file {
-        let content = std::fs::read_to_string(body_file)
-            .map_err(|e| CliRunError::BadRequest(format!("cannot read body-file: {e}")))?;
+        let content = std::fs::read_to_string(body_file).map_err(|e| {
+            CliRunError::BadRequest(format!("cannot read body-file: {e}"))
+        })?;
         store.update_body(&args.id, &content)?;
     }
 
@@ -92,7 +117,10 @@ pub(crate) fn cmd_update(args: UpdateArgs, store: &mut SpecStore) -> Result<Valu
     }))
 }
 
-pub(crate) fn cmd_delete(args: IdArgs, store: &mut SpecStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_delete(
+    args: IdArgs,
+    store: &mut SpecStore,
+) -> Result<Value, CliRunError> {
     let id = store.resolve_id(&args.id)?;
     store.delete(&args.id)?;
     Ok(json!({
@@ -102,7 +130,10 @@ pub(crate) fn cmd_delete(args: IdArgs, store: &mut SpecStore) -> Result<Value, C
     }))
 }
 
-pub(crate) fn cmd_list(args: ListArgs, store: &SpecStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_list(
+    args: ListArgs,
+    store: &SpecStore,
+) -> Result<Value, CliRunError> {
     let all = store.entity_store().list_indexed(false)?;
     let mut items: Vec<Value> = Vec::new();
 

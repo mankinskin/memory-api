@@ -1,16 +1,34 @@
 use chrono::Utc;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{
+    Connection,
+    OptionalExtension,
+    params,
+};
 use uuid::Uuid;
 
-use crate::error::StorageError;
-use crate::storage::index::RedbIndexStore;
-use crate::storage::schema::{
-    TABLE_BOARD_ACTIVE_INDEX, TABLE_BOARD_CONFIG, TABLE_BOARD_ENTRIES,
+use crate::{
+    error::StorageError,
+    storage::{
+        index::RedbIndexStore,
+        schema::{
+            TABLE_BOARD_ACTIVE_INDEX,
+            TABLE_BOARD_CONFIG,
+            TABLE_BOARD_ENTRIES,
+        },
+    },
 };
 
 use super::{
-    BOARD_CONFIG_KEY, BoardConfig, BoardEntry, BoardEntryStatus, BoardError,
-    db_err, deserialize_config, deserialize_entry, serialize_config, serialize_entry,
+    BOARD_CONFIG_KEY,
+    BoardConfig,
+    BoardEntry,
+    BoardEntryStatus,
+    BoardError,
+    db_err,
+    deserialize_config,
+    deserialize_entry,
+    serialize_config,
+    serialize_entry,
 };
 
 impl RedbIndexStore {
@@ -18,7 +36,9 @@ impl RedbIndexStore {
         self.with_db_ext(|conn| {
             let bytes: Option<Vec<u8>> = conn
                 .query_row(
-                    &format!("SELECT data FROM {TABLE_BOARD_CONFIG} WHERE key = ?1"),
+                    &format!(
+                        "SELECT data FROM {TABLE_BOARD_CONFIG} WHERE key = ?1"
+                    ),
                     params![BOARD_CONFIG_KEY],
                     |row| row.get(0),
                 )
@@ -31,7 +51,10 @@ impl RedbIndexStore {
         })
     }
 
-    pub fn board_write_config(&self, config: &BoardConfig) -> Result<(), BoardError> {
+    pub fn board_write_config(
+        &self,
+        config: &BoardConfig,
+    ) -> Result<(), BoardError> {
         let bytes = serialize_config(config)?;
         self.with_db_ext(|conn| {
             conn.execute(
@@ -293,7 +316,9 @@ fn lookup_active_entry_id(
 ) -> Result<Uuid, BoardError> {
     match conn
         .query_row(
-            &format!("SELECT value FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1"),
+            &format!(
+                "SELECT value FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1"
+            ),
             params![index_key],
             |row| row.get::<_, String>(0),
         )

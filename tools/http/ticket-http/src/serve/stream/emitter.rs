@@ -12,8 +12,14 @@ use uuid::Uuid;
 use super::{
     broker::StreamBroker,
     event::{
-        DiagnosticWarningPayload, EdgePayload, EdgeRecord, SnapshotReadyPayload,
-        SseEvent, TicketDeletePayload, TicketSnapshot, TicketUpsertPayload,
+        DiagnosticWarningPayload,
+        EdgePayload,
+        EdgeRecord,
+        SnapshotReadyPayload,
+        SseEvent,
+        TicketDeletePayload,
+        TicketSnapshot,
+        TicketUpsertPayload,
     },
 };
 
@@ -25,7 +31,10 @@ pub struct HookEmitter {
 }
 
 impl HookEmitter {
-    pub fn new(workspace: impl Into<String>, broker: Arc<StreamBroker>) -> Self {
+    pub fn new(
+        workspace: impl Into<String>,
+        broker: Arc<StreamBroker>,
+    ) -> Self {
         Self {
             workspace: workspace.into(),
             broker,
@@ -33,7 +42,10 @@ impl HookEmitter {
     }
 
     /// Push a raw `SseEvent` to the broker.
-    pub fn emit(&self, event: SseEvent) {
+    pub fn emit(
+        &self,
+        event: SseEvent,
+    ) {
         self.broker.emit(&self.workspace, event);
     }
 
@@ -58,7 +70,10 @@ impl HookEmitter {
         }));
     }
 
-    pub fn ticket_delete(&self, id: Uuid) {
+    pub fn ticket_delete(
+        &self,
+        id: Uuid,
+    ) {
         let now = Utc::now();
         self.emit(SseEvent::TicketDelete(TicketDeletePayload {
             workspace: self.workspace.clone(),
@@ -68,7 +83,12 @@ impl HookEmitter {
         }));
     }
 
-    pub fn edge_upsert(&self, from: Uuid, to: Uuid, kind: String) {
+    pub fn edge_upsert(
+        &self,
+        from: Uuid,
+        to: Uuid,
+        kind: String,
+    ) {
         self.emit(SseEvent::EdgeUpsert(EdgePayload {
             workspace: self.workspace.clone(),
             ts: Utc::now(),
@@ -76,7 +96,12 @@ impl HookEmitter {
         }));
     }
 
-    pub fn edge_delete(&self, from: Uuid, to: Uuid, kind: String) {
+    pub fn edge_delete(
+        &self,
+        from: Uuid,
+        to: Uuid,
+        kind: String,
+    ) {
         self.emit(SseEvent::EdgeDelete(EdgePayload {
             workspace: self.workspace.clone(),
             ts: Utc::now(),
@@ -91,7 +116,11 @@ impl HookEmitter {
         self.broker.workspace_subscriber_count(&self.workspace) > 0
     }
 
-    pub fn snapshot_ready(&self, node_count: usize, edge_count: usize) {
+    pub fn snapshot_ready(
+        &self,
+        node_count: usize,
+        edge_count: usize,
+    ) {
         self.emit(SseEvent::SnapshotReady(SnapshotReadyPayload {
             workspace: self.workspace.clone(),
             ts: Utc::now(),
@@ -101,7 +130,11 @@ impl HookEmitter {
         }));
     }
 
-    pub fn diagnostic_warning(&self, code: impl Into<String>, message: impl Into<String>) {
+    pub fn diagnostic_warning(
+        &self,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) {
         self.emit(SseEvent::DiagnosticWarning(DiagnosticWarningPayload {
             workspace: self.workspace.clone(),
             ts: Utc::now(),
@@ -122,15 +155,28 @@ impl ticket_api::storage::store::StoreHook for HookEmitter {
         self.ticket_upsert(id, state, title, updated_at);
     }
 
-    fn ticket_delete(&self, id: Uuid) {
+    fn ticket_delete(
+        &self,
+        id: Uuid,
+    ) {
         self.ticket_delete(id);
     }
 
-    fn edge_upsert(&self, from: Uuid, to: Uuid, kind: String) {
+    fn edge_upsert(
+        &self,
+        from: Uuid,
+        to: Uuid,
+        kind: String,
+    ) {
         self.edge_upsert(from, to, kind);
     }
 
-    fn edge_delete(&self, from: Uuid, to: Uuid, kind: String) {
+    fn edge_delete(
+        &self,
+        from: Uuid,
+        to: Uuid,
+        kind: String,
+    ) {
         self.edge_delete(from, to, kind);
     }
 }

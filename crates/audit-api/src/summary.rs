@@ -1,8 +1,10 @@
-use std::collections::{
-    BTreeMap,
-    BTreeSet,
+use std::{
+    collections::{
+        BTreeMap,
+        BTreeSet,
+    },
+    path::Path,
 };
-use std::path::Path;
 
 use cargo_metadata::MetadataCommand;
 use serde::{
@@ -10,11 +12,13 @@ use serde::{
     Serialize,
 };
 
-use crate::error::AuditError;
-use crate::models::{
-    AuditFinding,
-    AuditReport,
-    Severity,
+use crate::{
+    error::AuditError,
+    models::{
+        AuditFinding,
+        AuditReport,
+        Severity,
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,26 +66,31 @@ pub fn summarize_report(
     let (groups, repo_wide_issues, unmapped_paths) = match by {
         AuditSummaryBy::Crate => summarize_by_crate(report)?,
         AuditSummaryBy::Category => {
-            let (groups, repo_wide_issues) = summarize_by_key(&report.findings, |finding| {
-                Some(finding.category.clone())
-            });
+            let (groups, repo_wide_issues) =
+                summarize_by_key(&report.findings, |finding| {
+                    Some(finding.category.clone())
+                });
             (groups, repo_wide_issues, Vec::new())
         },
         AuditSummaryBy::Severity => {
-            let (groups, repo_wide_issues) = summarize_by_key(&report.findings, |finding| {
-                Some(severity_key(&finding.severity).to_string())
-            });
+            let (groups, repo_wide_issues) =
+                summarize_by_key(&report.findings, |finding| {
+                    Some(severity_key(&finding.severity).to_string())
+                });
             (groups, repo_wide_issues, Vec::new())
         },
         AuditSummaryBy::Metric => {
-            let (groups, repo_wide_issues) = summarize_by_key(&report.findings, |finding| {
-                Some(finding.metric_name.clone())
-            });
+            let (groups, repo_wide_issues) =
+                summarize_by_key(&report.findings, |finding| {
+                    Some(finding.metric_name.clone())
+                });
             (groups, repo_wide_issues, Vec::new())
         },
         AuditSummaryBy::Path => {
             let (groups, repo_wide_issues) =
-                summarize_by_key(&report.findings, |finding| finding.path.clone());
+                summarize_by_key(&report.findings, |finding| {
+                    finding.path.clone()
+                });
             (groups, repo_wide_issues, Vec::new())
         },
     };
@@ -118,8 +127,9 @@ where
 }
 
 fn summarize_by_crate(
-    report: &AuditReport,
-) -> Result<(Vec<AuditSummaryGroup>, usize, Vec<AuditSummaryGroup>), AuditError> {
+    report: &AuditReport
+) -> Result<(Vec<AuditSummaryGroup>, usize, Vec<AuditSummaryGroup>), AuditError>
+{
     let repo_root = Path::new(&report.repo_root).canonicalize()?;
     let package_roots = workspace_package_roots(&repo_root)?;
     let mut counts = BTreeMap::<String, usize>::new();
@@ -130,7 +140,9 @@ fn summarize_by_crate(
         match finding.path.as_deref() {
             None => repo_wide_issues += 1,
             Some(path) => {
-                if let Some(package_name) = package_for_path(path, &package_roots) {
+                if let Some(package_name) =
+                    package_for_path(path, &package_roots)
+                {
                     *counts.entry(package_name.to_string()).or_default() += 1;
                 } else {
                     *unmapped_paths.entry(path.to_string()).or_default() += 1;
@@ -169,7 +181,7 @@ fn severity_key(severity: &Severity) -> &'static str {
 }
 
 fn workspace_package_roots(
-    repo_root: &Path,
+    repo_root: &Path
 ) -> Result<Vec<PackageRoot>, AuditError> {
     if !repo_root.join("Cargo.toml").exists() {
         return Ok(Vec::new());
@@ -191,7 +203,8 @@ fn workspace_package_roots(
             let Some(source_path) = source_path else {
                 continue;
             };
-            let Ok(relative_source_path) = source_path.strip_prefix(&repo_root) else {
+            let Ok(relative_source_path) = source_path.strip_prefix(&repo_root)
+            else {
                 continue;
             };
 
@@ -274,7 +287,9 @@ impl PartialEq for PackageRoot {
         &self,
         other: &Self,
     ) -> bool {
-        self.name == other.name && self.path == other.path && self.recursive == other.recursive
+        self.name == other.name
+            && self.path == other.path
+            && self.recursive == other.recursive
     }
 }
 

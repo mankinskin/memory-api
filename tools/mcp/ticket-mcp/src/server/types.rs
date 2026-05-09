@@ -1,7 +1,13 @@
 use std::collections::BTreeMap;
 
-use rmcp::schemars::{self, JsonSchema};
-use serde::{Deserialize, Serialize};
+use rmcp::schemars::{
+    self,
+    JsonSchema,
+};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use serde_json::Value;
 
 #[derive(Serialize)]

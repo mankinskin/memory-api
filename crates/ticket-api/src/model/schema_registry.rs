@@ -1,8 +1,13 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::BTreeMap,
+    path::Path,
+};
 
-use crate::error::StorageError;
-use crate::model::default_schema::tracker_improvement_schema;
 use super::schema::TicketTypeSchema;
+use crate::{
+    error::StorageError,
+    model::default_schema::tracker_improvement_schema,
+};
 
 /// Registry of ticket type schemas.
 ///
@@ -29,7 +34,10 @@ impl SchemaRegistry {
     ///
     /// Each file must deserialise into [`TicketTypeSchema`]. The `type_id` field
     /// inside the file determines the registry key (not the filename).
-    pub fn load_dir(&mut self, dir: &Path) -> Result<(), StorageError> {
+    pub fn load_dir(
+        &mut self,
+        dir: &Path,
+    ) -> Result<(), StorageError> {
         for entry in std::fs::read_dir(dir)? {
             let path = entry?.path();
             if path.extension().and_then(|e| e.to_str()) == Some("toml") {
@@ -40,20 +48,27 @@ impl SchemaRegistry {
     }
 
     /// Load a single TOML schema file into the registry.
-    pub fn load_file(&mut self, path: &Path) -> Result<(), StorageError> {
+    pub fn load_file(
+        &mut self,
+        path: &Path,
+    ) -> Result<(), StorageError> {
         let content = std::fs::read_to_string(path)?;
-        let schema: TicketTypeSchema = toml::from_str(&content).map_err(|e| {
-            StorageError::SchemaFileParse {
-                path: path.to_path_buf(),
-                reason: e.to_string(),
-            }
-        })?;
+        let schema: TicketTypeSchema =
+            toml::from_str(&content).map_err(|e| {
+                StorageError::SchemaFileParse {
+                    path: path.to_path_buf(),
+                    reason: e.to_string(),
+                }
+            })?;
         self.schemas.insert(schema.type_id.clone(), schema);
         Ok(())
     }
 
     /// Look up a schema by ticket type ID.
-    pub fn get(&self, type_id: &str) -> Option<&TicketTypeSchema> {
+    pub fn get(
+        &self,
+        type_id: &str,
+    ) -> Option<&TicketTypeSchema> {
         self.schemas.get(type_id)
     }
 

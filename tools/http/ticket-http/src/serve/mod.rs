@@ -11,8 +11,14 @@ pub mod registry;
 pub mod routes;
 pub mod stream;
 
-use std::{net::SocketAddr, sync::Arc};
-use std::{collections::HashSet, sync::Mutex};
+use std::{
+    collections::HashSet,
+    net::SocketAddr,
+    sync::{
+        Arc,
+        Mutex,
+    },
+};
 
 use tokio::net::TcpListener;
 
@@ -20,7 +26,10 @@ use viewer_api::auth::TokenSet;
 
 pub use auth_state::AuthState;
 pub use registry::WorkspaceRegistry;
-pub use stream::{HookEmitter, StreamBroker};
+pub use stream::{
+    HookEmitter,
+    StreamBroker,
+};
 use ticket_api::storage::store::TicketStore;
 
 /// Configuration for `ticket serve`.
@@ -72,7 +81,10 @@ impl AppState {
     }
 
     /// Enable bearer-token authentication for write endpoints.
-    pub fn with_auth(mut self, token_set: Arc<TokenSet>) -> Self {
+    pub fn with_auth(
+        mut self,
+        token_set: Arc<TokenSet>,
+    ) -> Self {
         self.auth = Some(token_set);
         self
     }
@@ -93,7 +105,8 @@ impl AppState {
         }
 
         self.broker.ensure_channel(workspace);
-        let emitter = HookEmitter::new(workspace.to_string(), Arc::clone(&self.broker));
+        let emitter =
+            HookEmitter::new(workspace.to_string(), Arc::clone(&self.broker));
         store.set_hook(emitter.clone());
         stream::reconcile::spawn_reconcile(Arc::clone(&store), emitter);
 
@@ -109,10 +122,8 @@ pub async fn serve(
     config: ServeConfig,
     registry: WorkspaceRegistry,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let state = AppState::new(
-        Arc::new(registry),
-        Arc::new(StreamBroker::new()),
-    );
+    let state =
+        AppState::new(Arc::new(registry), Arc::new(StreamBroker::new()));
 
     // Pre-initialize all known workspaces at startup while still keeping
     // on-demand initialization for lazily opened stores.
@@ -132,10 +143,17 @@ pub async fn serve(
 
 #[cfg(test)]
 mod tests {
-    use super::{AppState, StreamBroker, WorkspaceRegistry};
-    use ticket_api::model::filesystem::ScanRoot;
+    use super::{
+        AppState,
+        StreamBroker,
+        WorkspaceRegistry,
+    };
     use crate::serve::stream::event::SseEvent;
-    use std::{collections::BTreeMap, sync::Arc};
+    use std::{
+        collections::BTreeMap,
+        sync::Arc,
+    };
+    use ticket_api::model::filesystem::ScanRoot;
 
     #[tokio::test]
     async fn ensure_workspace_runtime_wires_hook_for_lazy_open_store() {
@@ -173,15 +191,21 @@ mod tests {
         match event {
             SseEvent::TicketUpsert(payload) => {
                 assert_eq!(payload.workspace, "default");
-                assert_eq!(payload.ticket.title.as_deref(), Some("runtime wiring regression"));
-            }
+                assert_eq!(
+                    payload.ticket.title.as_deref(),
+                    Some("runtime wiring regression")
+                );
+            },
             other => panic!("expected TicketUpsert, got {other:?}"),
         }
     }
 
     // ── Auth middleware router-level tests ────────────────────────────────
 
-    fn make_state_with_auth(dir: &std::path::Path, token: &str) -> AppState {
+    fn make_state_with_auth(
+        dir: &std::path::Path,
+        token: &str,
+    ) -> AppState {
         let state = AppState::new(
             Arc::new(WorkspaceRegistry::single(dir.to_path_buf())),
             Arc::new(StreamBroker::new()),
@@ -196,8 +220,14 @@ mod tests {
         )
     }
 
-    async fn post_create(app: axum::Router, auth_header: Option<&str>) -> axum::http::StatusCode {
-        use axum::http::{Request, header};
+    async fn post_create(
+        app: axum::Router,
+        auth_header: Option<&str>,
+    ) -> axum::http::StatusCode {
+        use axum::http::{
+            Request,
+            header,
+        };
         use tower::ServiceExt;
 
         let body = serde_json::json!({

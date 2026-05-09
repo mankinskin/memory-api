@@ -1,5 +1,11 @@
-use spec_api::{SpecManifest, SpecStore};
-use spec_http::{SpecAppState, build_router};
+use spec_api::{
+    SpecManifest,
+    SpecStore,
+};
+use spec_http::{
+    SpecAppState,
+    build_router,
+};
 
 pub(super) fn make_app(dir: &std::path::Path) -> axum::Router {
     let mut store = SpecStore::open(dir).expect("open spec store");
@@ -17,7 +23,11 @@ pub(super) fn make_app(dir: &std::path::Path) -> axum::Router {
     build_router(state)
 }
 
-pub(super) fn seed_spec(dir: &std::path::Path, slug: &str, title: &str) -> String {
+pub(super) fn seed_spec(
+    dir: &std::path::Path,
+    slug: &str,
+    title: &str,
+) -> String {
     let mut store = SpecStore::open(dir).expect("open store");
     let specs_dir = dir.join("specs");
     store

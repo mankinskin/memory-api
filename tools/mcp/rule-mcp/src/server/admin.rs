@@ -1,10 +1,17 @@
 use std::path::PathBuf;
 
 use memory_api::model::filesystem::ScanRoot;
-use rmcp::{ErrorData as McpError, model::CallToolResult};
+use rmcp::{
+    ErrorData as McpError,
+    model::CallToolResult,
+};
 use serde_json::json;
 
-use super::{AddRootInput, RuleServer, ScanInput};
+use super::{
+    AddRootInput,
+    RuleServer,
+    ScanInput,
+};
 
 impl RuleServer {
     pub(super) async fn rule_scan_tool(

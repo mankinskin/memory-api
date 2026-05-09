@@ -7,5 +7,10 @@
 pub mod serve;
 
 // Re-export the key types callers need to embed the HTTP API.
-pub use serve::{AppState, ServeConfig, WorkspaceRegistry, serve as start_server};
-pub use serve::routes::build_router;
+pub use serve::{
+    AppState,
+    ServeConfig,
+    WorkspaceRegistry,
+    routes::build_router,
+    serve as start_server,
+};

@@ -1,19 +1,33 @@
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::Path;
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::Path,
+};
 
 use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
-use memory_api::error::StorageError;
-use memory_api::storage::entity_fs::EntityFs;
-use memory_api::storage::entity_store::{EntityStore, ScanReport};
-use memory_api::storage::indexed::IndexedEntity;
+use memory_api::{
+    error::StorageError,
+    storage::{
+        entity_fs::EntityFs,
+        entity_store::{
+            EntityStore,
+            ScanReport,
+        },
+        indexed::IndexedEntity,
+    },
+};
 
-use crate::error::SpecError;
-use crate::manifest::{SpecId, SpecManifest};
-use crate::slug::SlugIndex;
+use crate::{
+    error::SpecError,
+    manifest::{
+        SpecId,
+        SpecManifest,
+    },
+    slug::SlugIndex,
+};
 
 mod helpers;
 mod hierarchy;
@@ -22,7 +36,13 @@ mod sections;
 #[cfg(test)]
 mod tests;
 
-use self::helpers::{entity_to_spec, read_body, read_spec_manifest, spec_to_entity, write_body};
+use self::helpers::{
+    entity_to_spec,
+    read_body,
+    read_spec_manifest,
+    spec_to_entity,
+    write_body,
+};
 
 const SPEC_MANIFEST_FILE: &str = "spec.toml";
 const SPEC_LOCK_FILE: &str = ".spec-lock";
@@ -47,7 +67,10 @@ impl SpecStore {
         &self.inner
     }
 
-    pub fn scan(&mut self, reindex: bool) -> Result<ScanReport, SpecError> {
+    pub fn scan(
+        &mut self,
+        reindex: bool,
+    ) -> Result<ScanReport, SpecError> {
         let report = self.inner.scan(reindex)?;
         self.rebuild_slug_index()?;
         Ok(report)
@@ -64,7 +87,10 @@ impl SpecStore {
         Ok(())
     }
 
-    pub fn resolve_id(&self, id_or_slug: &str) -> Result<Uuid, SpecError> {
+    pub fn resolve_id(
+        &self,
+        id_or_slug: &str,
+    ) -> Result<Uuid, SpecError> {
         if let Ok(uuid) = id_or_slug.parse::<Uuid>() {
             return Ok(uuid);
         }
@@ -76,14 +102,14 @@ impl SpecStore {
             .ok_or_else(|| SpecError::NotFound(id_or_slug.to_string()))
     }
 
-    fn resolve_prefix(&self, prefix: &str) -> Result<Option<Uuid>, SpecError> {
+    fn resolve_prefix(
+        &self,
+        prefix: &str,
+    ) -> Result<Option<Uuid>, SpecError> {
         if prefix.len() < 4 {
             return Ok(None);
         }
-        let all = self
-            .inner
-            .list_indexed(false)
-            .map_err(SpecError::Storage)?;
+        let all = self.inner.list_indexed(false).map_err(SpecError::Storage)?;
         let matches: Vec<_> = all
             .iter()
             .filter(|entry| entry.id.to_string().starts_with(prefix))
@@ -125,7 +151,7 @@ impl SpecStore {
                     .next()
                     .map(|root| root.path)
                     .unwrap_or_else(|| self.inner.index_root.join("specs"))
-            }
+            },
         };
         fs::create_dir_all(&root).map_err(StorageError::Io)?;
 
@@ -169,15 +195,18 @@ impl SpecStore {
 
         self.slug_index.insert(slug.to_string(), manifest.id)?;
 
-        let _ = self
-            .inner
-            .fs
-            .append_history(&folder, entity.extra.clone(), None);
+        let _ =
+            self.inner
+                .fs
+                .append_history(&folder, entity.extra.clone(), None);
 
         Ok(manifest.id)
     }
 
-    pub fn get(&self, id_or_slug: &str) -> Result<SpecManifest, SpecError> {
+    pub fn get(
+        &self,
+        id_or_slug: &str,
+    ) -> Result<SpecManifest, SpecError> {
         let uuid = self.resolve_id(id_or_slug)?;
         let indexed = self
             .inner
@@ -189,7 +218,10 @@ impl SpecStore {
         read_spec_manifest(&indexed.path)
     }
 
-    pub fn get_full(&self, id_or_slug: &str) -> Result<(SpecManifest, String), SpecError> {
+    pub fn get_full(
+        &self,
+        id_or_slug: &str,
+    ) -> Result<(SpecManifest, String), SpecError> {
         let uuid = self.resolve_id(id_or_slug)?;
         let indexed = self
             .inner
@@ -219,7 +251,9 @@ impl SpecStore {
             if let Some(new_slug) = new_slug_val.as_str() {
                 crate::slug::validate_slug(new_slug)?;
                 let old = self.inner.fs.read(&indexed.path)?;
-                if let Some(old_slug) = old.extra.get("slug").and_then(|value| value.as_str()) {
+                if let Some(old_slug) =
+                    old.extra.get("slug").and_then(|value| value.as_str())
+                {
                     self.slug_index.remove(old_slug);
                 }
                 self.slug_index.insert(new_slug.to_string(), uuid)?;
@@ -228,12 +262,15 @@ impl SpecStore {
 
         if let Some(to) = to_state {
             let current = indexed.state.as_deref().unwrap_or("draft");
-            if let Some(schema) = self.inner.schema_registry().get("specification") {
+            if let Some(schema) =
+                self.inner.schema_registry().get("specification")
+            {
                 schema.ensure_transition(current, to)?;
             }
         }
 
-        let updated_entity = self.inner.fs.update(&indexed.path, &patch, to_state)?;
+        let updated_entity =
+            self.inner.fs.update(&indexed.path, &patch, to_state)?;
 
         let type_id = updated_entity
             .extra
@@ -273,15 +310,20 @@ impl SpecStore {
             Some(&type_id),
         )?;
 
-        let _ = self
-            .inner
-            .fs
-            .append_history(&indexed.path, updated_entity.extra.clone(), None);
+        let _ = self.inner.fs.append_history(
+            &indexed.path,
+            updated_entity.extra.clone(),
+            None,
+        );
 
         Ok(entity_to_spec(&updated_entity))
     }
 
-    pub fn update_body(&self, id_or_slug: &str, content: &str) -> Result<(), SpecError> {
+    pub fn update_body(
+        &self,
+        id_or_slug: &str,
+        content: &str,
+    ) -> Result<(), SpecError> {
         let uuid = self.resolve_id(id_or_slug)?;
         let indexed = self
             .inner
@@ -291,14 +333,19 @@ impl SpecStore {
         Ok(())
     }
 
-    pub fn delete(&mut self, id_or_slug: &str) -> Result<(), SpecError> {
+    pub fn delete(
+        &mut self,
+        id_or_slug: &str,
+    ) -> Result<(), SpecError> {
         let uuid = self.resolve_id(id_or_slug)?;
         let indexed = self
             .inner
             .get_indexed(&uuid)?
             .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
         let entity = self.inner.fs.read(&indexed.path)?;
-        if let Some(slug) = entity.extra.get("slug").and_then(|value| value.as_str()) {
+        if let Some(slug) =
+            entity.extra.get("slug").and_then(|value| value.as_str())
+        {
             self.slug_index.remove(slug);
         }
         self.inner.fs.mark_deleted(&indexed.path)?;

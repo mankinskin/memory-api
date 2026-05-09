@@ -1,15 +1,33 @@
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::{
+    collections::BTreeMap,
+    path::PathBuf,
+};
 
-use rmcp::{ErrorData as McpError, model::CallToolResult};
-use serde_json::{Value, json};
+use rmcp::{
+    ErrorData as McpError,
+    model::CallToolResult,
+};
+use serde_json::{
+    Value,
+    json,
+};
 
-use spec_api::SpecManifest;
-use spec_api::code_ref::validate_refs;
+use spec_api::{
+    SpecManifest,
+    code_ref::validate_refs,
+};
 
 use super::{
-    CreateSpecInput, GetSpecInput, HealthInput, ListSpecsInput, RefsValidateInput,
-    SearchSpecsInput, SpecRefInput, SpecServer, TreeInput, UpdateSpecInput,
+    CreateSpecInput,
+    GetSpecInput,
+    HealthInput,
+    ListSpecsInput,
+    RefsValidateInput,
+    SearchSpecsInput,
+    SpecRefInput,
+    SpecServer,
+    TreeInput,
+    UpdateSpecInput,
 };
 
 impl SpecServer {
@@ -18,16 +36,20 @@ impl SpecServer {
         input: CreateSpecInput,
     ) -> Result<CallToolResult, McpError> {
         self.with_store(|store| {
-            let mut manifest = SpecManifest::new(&input.slug, &input.title, &input.component);
+            let mut manifest =
+                SpecManifest::new(&input.slug, &input.title, &input.component);
             if let Some(parent) = &input.parent {
-                let parent_id = store.resolve_id(parent).map_err(Self::spec_err)?;
+                let parent_id =
+                    store.resolve_id(parent).map_err(Self::spec_err)?;
                 manifest.set_parent(&parent_id.to_string());
             }
             if let Some(scope) = &input.scope {
                 manifest.set_scope(scope);
             }
             let body = input.body.as_deref().unwrap_or("");
-            let id = store.create(&manifest, body, None).map_err(Self::spec_err)?;
+            let id = store
+                .create(&manifest, body, None)
+                .map_err(Self::spec_err)?;
             Self::json_result(&json!({
                 "status": "ok",
                 "id": id,
@@ -46,8 +68,10 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.with_store(|store| {
             if input.full {
-                let (spec, body) = store.get_full(&input.id).map_err(Self::spec_err)?;
-                let sections = store.list_sections(&input.id).map_err(Self::spec_err)?;
+                let (spec, body) =
+                    store.get_full(&input.id).map_err(Self::spec_err)?;
+                let sections =
+                    store.list_sections(&input.id).map_err(Self::spec_err)?;
                 Self::json_result(&json!({
                     "status": "ok",
                     "spec": {
@@ -84,7 +108,9 @@ impl SpecServer {
             for raw in &input.fields {
                 let (key, value) = raw.split_once('=').ok_or_else(|| {
                     McpError::invalid_params(
-                        format!("invalid field format '{raw}', expected key=value"),
+                        format!(
+                            "invalid field format '{raw}', expected key=value"
+                        ),
                         None,
                     )
                 })?;
@@ -142,7 +168,10 @@ impl SpecServer {
                 };
                 for clause in &input.where_clauses {
                     if let Some((key, value)) = clause.split_once('=') {
-                        let field_val = spec.extra.get(key).and_then(|field| field.as_str());
+                        let field_val = spec
+                            .extra
+                            .get(key)
+                            .and_then(|field| field.as_str());
                         if field_val != Some(value) {
                             continue 'outer;
                         }
@@ -209,7 +238,8 @@ impl SpecServer {
         self.with_store(|store| {
             if let Some(root_id) = &input.id {
                 let root = store.get(root_id).map_err(Self::spec_err)?;
-                let descendants = store.subtree(root_id).map_err(Self::spec_err)?;
+                let descendants =
+                    store.subtree(root_id).map_err(Self::spec_err)?;
                 Self::json_result(&json!({
                     "status": "ok",
                     "root": {
@@ -272,19 +302,26 @@ impl SpecServer {
             } else if let Some(id) = &input.id {
                 vec![store.get(id).map_err(Self::spec_err)?]
             } else {
-                return Err(McpError::invalid_params("provide spec ID or set all=true", None));
+                return Err(McpError::invalid_params(
+                    "provide spec ID or set all=true",
+                    None,
+                ));
             };
 
             let mut issues = Vec::new();
             for spec in &specs {
                 if spec.slug().is_none() {
-                    issues.push(json!({"id": spec.id, "issue": "missing slug"}));
+                    issues
+                        .push(json!({"id": spec.id, "issue": "missing slug"}));
                 }
                 if spec.title().is_none() {
-                    issues.push(json!({"id": spec.id, "issue": "missing title"}));
+                    issues
+                        .push(json!({"id": spec.id, "issue": "missing title"}));
                 }
                 if spec.component().is_none() {
-                    issues.push(json!({"id": spec.id, "issue": "missing component"}));
+                    issues.push(
+                        json!({"id": spec.id, "issue": "missing component"}),
+                    );
                 }
             }
             Self::json_result(&json!({
@@ -318,7 +355,9 @@ impl SpecServer {
                     })
                 })
                 .collect();
-            let all_valid = results.iter().all(|result| result.file_exists && result.line_range_valid);
+            let all_valid = results
+                .iter()
+                .all(|result| result.file_exists && result.line_range_valid);
             Self::json_result(&json!({
                 "status": "ok",
                 "id": spec.id,

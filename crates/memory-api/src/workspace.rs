@@ -8,10 +8,18 @@
 //! 3. Active workspace in `~/.ticket-workspaces.toml`
 //! 4. Built-in default `~/.ticket-index/`
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 /// Filename for the global workspace registry.
 pub const WORKSPACE_CONFIG_FILE: &str = ".ticket-workspaces.toml";
@@ -48,13 +56,18 @@ impl WorkspaceConfig {
     /// Persist the registry back to disk.
     pub fn save(&self) -> std::io::Result<()> {
         let path = Self::config_path();
-        let content = toml::to_string_pretty(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let content = toml::to_string_pretty(self).map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
+        })?;
         std::fs::write(path, content)
     }
 
     /// Register a new workspace. Fails if the name is already taken.
-    pub fn add(&mut self, name: &str, path: PathBuf) -> Result<(), String> {
+    pub fn add(
+        &mut self,
+        name: &str,
+        path: PathBuf,
+    ) -> Result<(), String> {
         if self.workspaces.contains_key(name) {
             return Err(format!("workspace '{}' already exists", name));
         }
@@ -64,7 +77,10 @@ impl WorkspaceConfig {
     }
 
     /// Set the active workspace by name. Fails if the name is not registered.
-    pub fn set_active(&mut self, name: &str) -> Result<(), String> {
+    pub fn set_active(
+        &mut self,
+        name: &str,
+    ) -> Result<(), String> {
         if !self.workspaces.contains_key(name) {
             return Err(format!(
                 "workspace '{}' is not registered; run `ticket workspace new {}` first",
@@ -76,7 +92,10 @@ impl WorkspaceConfig {
     }
 
     /// Remove a workspace from the registry. Does not delete data on disk.
-    pub fn remove(&mut self, name: &str) -> Result<(), String> {
+    pub fn remove(
+        &mut self,
+        name: &str,
+    ) -> Result<(), String> {
         if self.workspaces.remove(name).is_none() {
             return Err(format!("workspace '{}' is not registered", name));
         }
@@ -93,7 +112,10 @@ impl WorkspaceConfig {
     }
 
     /// Resolve a name (or absolute path string) from a local `.ticket-workspace` file.
-    pub fn resolve_value(&self, value: &str) -> Option<PathBuf> {
+    pub fn resolve_value(
+        &self,
+        value: &str,
+    ) -> Option<PathBuf> {
         let p = PathBuf::from(value.trim());
         if p.is_absolute() {
             return Some(p);
@@ -144,8 +166,10 @@ impl WorkspaceSource {
     pub fn description(&self) -> String {
         match self {
             Self::Explicit => "–– (--index-root / env var)".to_string(),
-            Self::LocalFile(p) => format!("local .ticket-workspace ({})", p.display()),
-            Self::ActiveWorkspace(name) => format!("active workspace '{}'", name),
+            Self::LocalFile(p) =>
+                format!("local .ticket-workspace ({})", p.display()),
+            Self::ActiveWorkspace(name) =>
+                format!("active workspace '{}'", name),
             Self::Default => "built-in default (~/.ticket-index)".to_string(),
         }
     }
@@ -190,7 +214,10 @@ pub fn resolve_workspace() -> (PathBuf, WorkspaceSource) {
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /// Compute a relative path from `base_dir` to `target`.
-pub fn make_relative_path(base_dir: &Path, target: &Path) -> PathBuf {
+pub fn make_relative_path(
+    base_dir: &Path,
+    target: &Path,
+) -> PathBuf {
     use std::path::Component;
 
     let base_abs = base_dir
@@ -243,5 +270,7 @@ fn dirs_home() -> PathBuf {
             .unwrap_or_else(|_| ".".to_string()),
     );
     #[cfg(not(windows))]
-    return PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()));
+    return PathBuf::from(
+        std::env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+    );
 }

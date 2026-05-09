@@ -1,11 +1,19 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{
+    BTreeMap,
+    VecDeque,
+};
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 use crate::error::SchemaValidationError;
 
-use super::edge::EdgeKindRule;
-use super::entity::EntityManifest;
+use super::{
+    edge::EdgeKindRule,
+    entity::EntityManifest,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -52,20 +60,35 @@ fn default_terminal_states() -> Vec<String> {
 }
 
 impl EntityTypeSchema {
-    pub fn validate_manifest(&self, manifest: &EntityManifest) -> Result<(), SchemaValidationError> {
+    pub fn validate_manifest(
+        &self,
+        manifest: &EntityManifest,
+    ) -> Result<(), SchemaValidationError> {
         for (name, def) in &self.fields {
             if def.required && !manifest.extra.contains_key(name) {
-                return Err(SchemaValidationError::MissingRequiredField(name.clone()));
+                return Err(SchemaValidationError::MissingRequiredField(
+                    name.clone(),
+                ));
             }
         }
         Ok(())
     }
 
-    pub fn allows_transition(&self, from: &str, to: &str) -> bool {
-        self.transitions.iter().any(|t| t.from == from && t.to == to)
+    pub fn allows_transition(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> bool {
+        self.transitions
+            .iter()
+            .any(|t| t.from == from && t.to == to)
     }
 
-    pub fn ensure_transition(&self, from: &str, to: &str) -> Result<(), SchemaValidationError> {
+    pub fn ensure_transition(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<(), SchemaValidationError> {
         if self.allows_transition(from, to) {
             Ok(())
         } else {
@@ -76,7 +99,10 @@ impl EntityTypeSchema {
         }
     }
 
-    pub fn ensure_edge_kind(&self, kind: &str) -> Result<(), SchemaValidationError> {
+    pub fn ensure_edge_kind(
+        &self,
+        kind: &str,
+    ) -> Result<(), SchemaValidationError> {
         if self.edge_rules.contains_key(kind) {
             Ok(())
         } else {
@@ -92,7 +118,9 @@ impl EntityTypeSchema {
         target: &str,
         history_states: &[String],
     ) -> Result<(), SchemaValidationError> {
-        if self.required_states.is_empty() || !self.terminal_states.contains(&target.to_string()) {
+        if self.required_states.is_empty()
+            || !self.terminal_states.contains(&target.to_string())
+        {
             return Ok(());
         }
         let visited: std::collections::HashSet<&str> =
@@ -116,7 +144,11 @@ impl EntityTypeSchema {
     /// Find the shortest path of intermediate states from `from` to `to` using BFS.
     /// Returns the sequence of states to transition through (excluding `from`, including `to`).
     /// Returns `None` if no path exists.
-    pub fn find_path(&self, from: &str, to: &str) -> Option<Vec<String>> {
+    pub fn find_path(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Option<Vec<String>> {
         if from == to {
             return Some(vec![]);
         }

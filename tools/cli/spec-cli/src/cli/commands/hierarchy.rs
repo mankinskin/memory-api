@@ -1,10 +1,19 @@
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 
 use spec_api::SpecStore;
 
-use crate::cli::{CliRunError, TreeArgs};
+use crate::cli::{
+    CliRunError,
+    TreeArgs,
+};
 
-pub(crate) fn cmd_tree(args: TreeArgs, store: &SpecStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_tree(
+    args: TreeArgs,
+    store: &SpecStore,
+) -> Result<Value, CliRunError> {
     if let Some(root_id) = &args.id {
         let root = store.get(root_id)?;
         let descendants = store.subtree(root_id)?;

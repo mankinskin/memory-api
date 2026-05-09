@@ -1,7 +1,14 @@
 use std::collections::BTreeMap;
 
-use crate::model::edge::EdgeKindRule;
-use crate::model::schema::{FieldSchema, FieldType, Transition, TicketTypeSchema};
+use crate::model::{
+    edge::EdgeKindRule,
+    schema::{
+        FieldSchema,
+        FieldType,
+        TicketTypeSchema,
+        Transition,
+    },
+};
 
 pub const TYPE_ID: &str = "tracker-improvement";
 
@@ -11,21 +18,111 @@ pub const TYPE_ID: &str = "tracker-improvement";
 /// schema engine are deferred to post-dogfooding.
 pub fn tracker_improvement_schema() -> TicketTypeSchema {
     let fields: BTreeMap<String, FieldSchema> = [
-        ("title", FieldSchema { field_type: FieldType::String, required: true }),
-        ("type", FieldSchema { field_type: FieldType::String, required: true }),
-        ("state", FieldSchema { field_type: FieldType::String, required: false }),
-        ("component", FieldSchema { field_type: FieldType::String, required: false }),
-        ("risk_level", FieldSchema { field_type: FieldType::String, required: false }),
-        ("acceptance_criteria", FieldSchema { field_type: FieldType::String, required: false }),
-        ("validation_plan", FieldSchema { field_type: FieldType::String, required: false }),
-        ("validation_status", FieldSchema { field_type: FieldType::String, required: false }),
-        ("validator_id", FieldSchema { field_type: FieldType::String, required: false }),
-        ("release_target", FieldSchema { field_type: FieldType::String, required: false }),
-        ("release_version", FieldSchema { field_type: FieldType::String, required: false }),
-        ("interview_file_type", FieldSchema { field_type: FieldType::String, required: false }),
-        ("interview_files", FieldSchema { field_type: FieldType::Json, required: false }),
-        ("bootstrap_blocker", FieldSchema { field_type: FieldType::Boolean, required: false }),
-        ("rollout_stage", FieldSchema { field_type: FieldType::String, required: false }),
+        (
+            "title",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: true,
+            },
+        ),
+        (
+            "type",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: true,
+            },
+        ),
+        (
+            "state",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: false,
+            },
+        ),
+        (
+            "component",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: false,
+            },
+        ),
+        (
+            "risk_level",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: false,
+            },
+        ),
+        (
+            "acceptance_criteria",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: false,
+            },
+        ),
+        (
+            "validation_plan",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: false,
+            },
+        ),
+        (
+            "validation_status",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: false,
+            },
+        ),
+        (
+            "validator_id",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: false,
+            },
+        ),
+        (
+            "release_target",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: false,
+            },
+        ),
+        (
+            "release_version",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: false,
+            },
+        ),
+        (
+            "interview_file_type",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: false,
+            },
+        ),
+        (
+            "interview_files",
+            FieldSchema {
+                field_type: FieldType::Json,
+                required: false,
+            },
+        ),
+        (
+            "bootstrap_blocker",
+            FieldSchema {
+                field_type: FieldType::Boolean,
+                required: false,
+            },
+        ),
+        (
+            "rollout_stage",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: false,
+            },
+        ),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v))
@@ -60,17 +157,26 @@ pub fn tracker_improvement_schema() -> TicketTypeSchema {
         ("in-review", "cancelled"),
     ]
     .into_iter()
-    .map(|(f, t)| Transition { from: f.to_string(), to: t.to_string() })
+    .map(|(f, t)| Transition {
+        from: f.to_string(),
+        to: t.to_string(),
+    })
     .collect();
 
     let mut edge_rules: BTreeMap<String, EdgeKindRule> = BTreeMap::new();
     edge_rules.insert(
         "depends_on".to_string(),
-        EdgeKindRule { directed: true, acyclic_enforced: true },
+        EdgeKindRule {
+            directed: true,
+            acyclic_enforced: true,
+        },
     );
     edge_rules.insert(
         "linked".to_string(),
-        EdgeKindRule { directed: false, acyclic_enforced: false },
+        EdgeKindRule {
+            directed: false,
+            acyclic_enforced: false,
+        },
     );
 
     TicketTypeSchema {

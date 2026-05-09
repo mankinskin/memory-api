@@ -1,19 +1,33 @@
-use std::collections::BTreeMap;
-use std::fs;
+use std::{
+    collections::BTreeMap,
+    fs,
+};
 
 use rule_api::{
-    ImportedRuleBlock, MarkdownImportOptions, RuleManifest, RuleStore, import_markdown_blocks,
+    ImportedRuleBlock,
+    MarkdownImportOptions,
+    RuleManifest,
+    RuleStore,
+    import_markdown_blocks,
 };
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 
-use super::{CliRunError, ImportFileArgs, helpers::default_section_from_path};
+use super::{
+    CliRunError,
+    ImportFileArgs,
+    helpers::default_section_from_path,
+};
 
 pub(super) fn import_file(
     store: &mut RuleStore,
     args: &ImportFileArgs,
 ) -> Result<Vec<Value>, CliRunError> {
-    let content = fs::read_to_string(&args.path)
-        .map_err(|err| CliRunError::BadRequest(format!("read {}: {err}", args.path.display())))?;
+    let content = fs::read_to_string(&args.path).map_err(|err| {
+        CliRunError::BadRequest(format!("read {}: {err}", args.path.display()))
+    })?;
     let default_section = args
         .default_section
         .clone()
@@ -29,7 +43,11 @@ pub(super) fn import_file(
         .source_repo
         .as_deref()
         .or_else(|| args.repo_scope.first().map(String::as_str))
-        .ok_or_else(|| CliRunError::BadRequest("at least one --repo is required".to_string()))?;
+        .ok_or_else(|| {
+            CliRunError::BadRequest(
+                "at least one --repo is required".to_string(),
+            )
+        })?;
     let source_path = args.path.to_string_lossy().replace('\\', "/");
 
     let mut items = Vec::new();
@@ -44,7 +62,8 @@ pub(super) fn import_file(
         manifest.set_order_key(imported.order_key);
         manifest.set_repo_scopes(args.repo_scope.iter().map(String::as_str));
         if !args.path_scope.is_empty() {
-            manifest.set_path_scopes(args.path_scope.iter().map(String::as_str));
+            manifest
+                .set_path_scopes(args.path_scope.iter().map(String::as_str));
         }
         manifest.set_source_location(
             source_repo,
@@ -94,7 +113,10 @@ fn import_patch(manifest: &RuleManifest) -> BTreeMap<String, Value> {
     patch
 }
 
-fn imported_rule_json(imported: &ImportedRuleBlock, action: &str) -> Value {
+fn imported_rule_json(
+    imported: &ImportedRuleBlock,
+    action: &str,
+) -> Value {
     json!({
         "action": action,
         "slug": imported.slug,

@@ -1,13 +1,28 @@
 use std::sync::Arc;
 
 use axum::{
-    body::{Body, to_bytes},
-    http::{Method, Request, StatusCode, header},
+    body::{
+        Body,
+        to_bytes,
+    },
+    http::{
+        Method,
+        Request,
+        StatusCode,
+        header,
+    },
 };
-use ticket_api::{model::filesystem::ScanRoot, storage::store::TicketStore};
+use ticket_api::{
+    model::filesystem::ScanRoot,
+    storage::store::TicketStore,
+};
 use tower::ServiceExt;
 
-use crate::serve::{AppState, StreamBroker, WorkspaceRegistry};
+use crate::serve::{
+    AppState,
+    StreamBroker,
+    WorkspaceRegistry,
+};
 
 use super::*;
 
@@ -26,7 +41,10 @@ fn make_router(dir: &std::path::Path) -> axum::Router {
     crate::serve::routes::build_router(state)
 }
 
-async fn post_batch(app: axum::Router, body: serde_json::Value) -> (StatusCode, Value) {
+async fn post_batch(
+    app: axum::Router,
+    body: serde_json::Value,
+) -> (StatusCode, Value) {
     let req = Request::builder()
         .method(Method::POST)
         .uri("/api/batch")
@@ -85,10 +103,18 @@ async fn batch_rolls_back_on_failure() {
     )
     .await;
 
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "expected 422, got: {resp}");
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "expected 422, got: {resp}"
+    );
     assert_eq!(resp["status"], "error");
     assert_eq!(resp["failed_at"], 1);
-    assert_eq!(resp["rolled_back"].as_bool().unwrap_or(false), true, "rollback must succeed");
+    assert_eq!(
+        resp["rolled_back"].as_bool().unwrap_or(false),
+        true,
+        "rollback must succeed"
+    );
 }
 
 #[tokio::test]
@@ -103,10 +129,26 @@ async fn batch_link_and_unlink() {
         })
         .expect("add scan root");
     let id_a = store
-        .create(None, "tracker-improvement", Some("A"), None, Default::default(), None, None)
+        .create(
+            None,
+            "tracker-improvement",
+            Some("A"),
+            None,
+            Default::default(),
+            None,
+            None,
+        )
         .unwrap();
     let id_b = store
-        .create(None, "tracker-improvement", Some("B"), None, Default::default(), None, None)
+        .create(
+            None,
+            "tracker-improvement",
+            Some("B"),
+            None,
+            Default::default(),
+            None,
+            None,
+        )
         .unwrap();
 
     let state = AppState::new(

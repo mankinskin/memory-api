@@ -4,7 +4,10 @@ use memory_api::error::StorageError;
 
 use crate::error::SpecError;
 
-use super::{SpecStore, helpers::normalize_section_name};
+use super::{
+    SpecStore,
+    helpers::normalize_section_name,
+};
 
 impl SpecStore {
     pub fn add_section(
@@ -21,7 +24,8 @@ impl SpecStore {
         let sections_dir = indexed.path.join("sections");
         fs::create_dir_all(&sections_dir).map_err(StorageError::Io)?;
         let file_name = normalize_section_name(name);
-        fs::write(sections_dir.join(&file_name), content).map_err(StorageError::Io)?;
+        fs::write(sections_dir.join(&file_name), content)
+            .map_err(StorageError::Io)?;
         Ok(())
     }
 
@@ -45,7 +49,11 @@ impl SpecStore {
         Ok(())
     }
 
-    pub fn delete_section(&self, id_or_slug: &str, name: &str) -> Result<(), SpecError> {
+    pub fn delete_section(
+        &self,
+        id_or_slug: &str,
+        name: &str,
+    ) -> Result<(), SpecError> {
         let uuid = self.resolve_id(id_or_slug)?;
         let indexed = self
             .inner
@@ -59,7 +67,10 @@ impl SpecStore {
         Ok(())
     }
 
-    pub fn list_sections(&self, id_or_slug: &str) -> Result<Vec<String>, SpecError> {
+    pub fn list_sections(
+        &self,
+        id_or_slug: &str,
+    ) -> Result<Vec<String>, SpecError> {
         let uuid = self.resolve_id(id_or_slug)?;
         let indexed = self
             .inner

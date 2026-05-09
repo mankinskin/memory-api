@@ -1,14 +1,26 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{
+    HashSet,
+    VecDeque,
+};
 
 use rusqlite::params;
 use uuid::Uuid;
 
-use crate::error::StorageError;
-use crate::model::filesystem::ScanRoot;
+use crate::{
+    error::StorageError,
+    model::filesystem::ScanRoot,
+};
 
 use super::RedbIndexStore;
-use crate::storage::indexed::LeaseInfo;
-use crate::storage::schema::{TABLE_EDGES, TABLE_LEASES, TABLE_SCAN_ROOTS, TABLE_TICKETS};
+use crate::storage::{
+    indexed::LeaseInfo,
+    schema::{
+        TABLE_EDGES,
+        TABLE_LEASES,
+        TABLE_SCAN_ROOTS,
+        TABLE_TICKETS,
+    },
+};
 
 impl RedbIndexStore {
     /// Returns the number of non-deleted tickets without deserializing rows.
@@ -37,7 +49,10 @@ impl RedbIndexStore {
         Ok(count as usize)
     }
 
-    pub fn add_scan_root(&self, root: &ScanRoot) -> Result<(), StorageError> {
+    pub fn add_scan_root(
+        &self,
+        root: &ScanRoot,
+    ) -> Result<(), StorageError> {
         let path_str = root.path.to_string_lossy().into_owned();
         let label = root.label.clone();
         self.with_write(|conn| {
@@ -53,8 +68,8 @@ impl RedbIndexStore {
 
     pub fn list_scan_roots(&self) -> Result<Vec<ScanRoot>, StorageError> {
         let conn = self.read_conn()?;
-        let mut stmt =
-            conn.prepare(&format!("SELECT path, label FROM {TABLE_SCAN_ROOTS}"))?;
+        let mut stmt = conn
+            .prepare(&format!("SELECT path, label FROM {TABLE_SCAN_ROOTS}"))?;
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
@@ -69,7 +84,10 @@ impl RedbIndexStore {
         Ok(roots)
     }
 
-    pub fn insert_lease(&self, lease: &LeaseInfo) -> Result<(), StorageError> {
+    pub fn insert_lease(
+        &self,
+        lease: &LeaseInfo,
+    ) -> Result<(), StorageError> {
         let bytes = bincode::serialize(lease)
             .map_err(|error| StorageError::Serialization(error.to_string()))?;
         let key = lease.ticket_id.to_string();
@@ -84,23 +102,32 @@ impl RedbIndexStore {
         })
     }
 
-    pub fn get_lease(&self, ticket_id: &Uuid) -> Result<Option<LeaseInfo>, StorageError> {
+    pub fn get_lease(
+        &self,
+        ticket_id: &Uuid,
+    ) -> Result<Option<LeaseInfo>, StorageError> {
         let key = ticket_id.to_string();
         let conn = self.read_conn()?;
-        let mut stmt =
-            conn.prepare(&format!("SELECT data FROM {TABLE_LEASES} WHERE id = ?1"))?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT data FROM {TABLE_LEASES} WHERE id = ?1"
+        ))?;
         let mut rows = stmt.query(params![key])?;
         if let Some(row) = rows.next()? {
             let bytes: Vec<u8> = row.get(0)?;
-            let lease: LeaseInfo = bincode::deserialize(&bytes)
-                .map_err(|error| StorageError::Serialization(error.to_string()))?;
+            let lease: LeaseInfo =
+                bincode::deserialize(&bytes).map_err(|error| {
+                    StorageError::Serialization(error.to_string())
+                })?;
             Ok(Some(lease))
         } else {
             Ok(None)
         }
     }
 
-    pub fn remove_lease(&self, ticket_id: &Uuid) -> Result<(), StorageError> {
+    pub fn remove_lease(
+        &self,
+        ticket_id: &Uuid,
+    ) -> Result<(), StorageError> {
         let key = ticket_id.to_string();
         self.with_write(|conn| {
             conn.execute(
@@ -113,12 +140,15 @@ impl RedbIndexStore {
 
     pub fn list_active_leases(&self) -> Result<Vec<LeaseInfo>, StorageError> {
         let conn = self.read_conn()?;
-        let mut stmt = conn.prepare(&format!("SELECT data FROM {TABLE_LEASES}"))?;
+        let mut stmt =
+            conn.prepare(&format!("SELECT data FROM {TABLE_LEASES}"))?;
         let rows = stmt.query_map([], |row| row.get::<_, Vec<u8>>(0))?;
         let mut leases = Vec::new();
         for bytes in rows {
-            let lease: LeaseInfo = bincode::deserialize(&bytes?)
-                .map_err(|error| StorageError::Serialization(error.to_string()))?;
+            let lease: LeaseInfo =
+                bincode::deserialize(&bytes?).map_err(|error| {
+                    StorageError::Serialization(error.to_string())
+                })?;
             leases.push(lease);
         }
         Ok(leases)
@@ -126,7 +156,11 @@ impl RedbIndexStore {
 
     /// BFS reachability check: returns `true` if `target` is reachable from
     /// `start` following outgoing edges. Used for cycle detection.
-    pub fn is_reachable(&self, start: &Uuid, target: &Uuid) -> Result<bool, StorageError> {
+    pub fn is_reachable(
+        &self,
+        start: &Uuid,
+        target: &Uuid,
+    ) -> Result<bool, StorageError> {
         let all_edges = self.list_all_edges()?;
         let mut visited: HashSet<Uuid> = HashSet::new();
         let mut queue: VecDeque<Uuid> = VecDeque::new();

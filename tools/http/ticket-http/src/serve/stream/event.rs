@@ -2,7 +2,10 @@
 //!
 //! All events share the envelope: `id` (monotonic), `event` (name), `data` (JSON).
 
-use chrono::{DateTime, Utc};
+use chrono::{
+    DateTime,
+    Utc,
+};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -47,7 +50,10 @@ impl SseEvent {
     }
 
     /// Build an `axum::response::sse::Event` from this payload.
-    pub fn into_sse_event(self, id: u64) -> axum::response::sse::Event {
+    pub fn into_sse_event(
+        self,
+        id: u64,
+    ) -> axum::response::sse::Event {
         let name = self.event_name();
         let data = self.data_json().unwrap_or_else(|_| "{}".to_string());
         axum::response::sse::Event::default()

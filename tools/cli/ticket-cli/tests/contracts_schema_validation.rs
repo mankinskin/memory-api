@@ -1,10 +1,17 @@
 use std::collections::BTreeMap;
 
 use chrono::Utc;
-use ticket_api::model::edge::EdgeKindRule;
-use ticket_api::model::schema::{FieldSchema, FieldType, TicketTypeSchema, Transition};
-use ticket_api::model::ticket::TicketManifest;
 use serde_json::json;
+use ticket_api::model::{
+    edge::EdgeKindRule,
+    schema::{
+        FieldSchema,
+        FieldType,
+        TicketTypeSchema,
+        Transition,
+    },
+    ticket::TicketManifest,
+};
 use uuid::Uuid;
 
 fn make_schema() -> TicketTypeSchema {
@@ -29,7 +36,11 @@ fn make_schema() -> TicketTypeSchema {
     TicketTypeSchema {
         type_id: "feature".to_string(),
         fields,
-        states: vec!["open".to_string(), "in_progress".to_string(), "done".to_string()],
+        states: vec![
+            "open".to_string(),
+            "in_progress".to_string(),
+            "done".to_string(),
+        ],
         transitions: vec![
             Transition {
                 from: "open".to_string(),
@@ -64,7 +75,9 @@ fn transition_and_edge_kind_validation() {
     schema
         .ensure_transition("open", "in_progress")
         .expect("valid transition");
-    schema.ensure_edge_kind("depends_on").expect("valid edge kind");
+    schema
+        .ensure_edge_kind("depends_on")
+        .expect("valid edge kind");
 
     assert!(schema.ensure_transition("open", "done").is_err());
     assert!(schema.ensure_edge_kind("relates_to").is_err());
@@ -74,7 +87,9 @@ fn transition_and_edge_kind_validation() {
 fn manifest_with_required_fields_passes() {
     let schema = make_schema();
     let mut manifest = TicketManifest::new(Uuid::new_v4(), Utc::now());
-    manifest.extra.insert("title".to_string(), json!("Implement parser"));
+    manifest
+        .extra
+        .insert("title".to_string(), json!("Implement parser"));
 
     schema
         .validate_manifest(&manifest)

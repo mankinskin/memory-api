@@ -1,7 +1,13 @@
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
-use serde_json::{Value, json};
+use clap::{
+    Parser,
+    Subcommand,
+};
+use serde_json::{
+    Value,
+    json,
+};
 
 use spec_api::error::SpecError;
 
@@ -87,7 +93,8 @@ pub enum CliOutput {
 // ── entry point ───────────────────────────────────────────────────────────────
 
 pub fn run(cli: SpecCli) -> Result<CliOutput, CliRunError> {
-    let payload = dispatch::dispatch(cli.command, cli.index_root.as_deref(), cli.json)?;
+    let payload =
+        dispatch::dispatch(cli.command, cli.index_root.as_deref(), cli.json)?;
     if cli.json {
         Ok(CliOutput::Json(payload))
     } else {
@@ -96,10 +103,14 @@ pub fn run(cli: SpecCli) -> Result<CliOutput, CliRunError> {
 }
 
 fn render_human(payload: &Value) -> String {
-    serde_json::to_string_pretty(payload).unwrap_or_else(|_| format!("{:?}", payload))
+    serde_json::to_string_pretty(payload)
+        .unwrap_or_else(|_| format!("{:?}", payload))
 }
 
-pub fn error_output(message: &str, as_json: bool) -> String {
+pub fn error_output(
+    message: &str,
+    as_json: bool,
+) -> String {
     if as_json {
         json!({"status": "error", "message": message}).to_string()
     } else {

@@ -1,5 +1,7 @@
-use std::fs;
-use std::path::Path;
+use std::{
+    fs,
+    path::Path,
+};
 
 use proc_macro2::Span;
 use serde_json::json;
@@ -13,13 +15,15 @@ use syn::{
     },
 };
 
-use crate::error::AuditError;
-use crate::models::{
-    AuditFinding,
-    IndexedFile,
-    Severity,
-    StaticMetricsSummary,
-    TrialStatus,
+use crate::{
+    error::AuditError,
+    models::{
+        AuditFinding,
+        IndexedFile,
+        Severity,
+        StaticMetricsSummary,
+        TrialStatus,
+    },
 };
 
 pub struct StaticMetricsResult {
@@ -46,7 +50,12 @@ pub fn evaluate(
             },
         };
 
-        collect_function_metrics(&file.path, &syntax.items, None, &mut function_metrics);
+        collect_function_metrics(
+            &file.path,
+            &syntax.items,
+            None,
+            &mut function_metrics,
+        );
     }
 
     let high_complexity_functions = function_metrics
@@ -139,7 +148,8 @@ fn collect_function_metrics(
     for item in items {
         match item {
             Item::Fn(item_fn) => {
-                let function_name = qualify_name(module_path, &item_fn.sig.ident.to_string());
+                let function_name =
+                    qualify_name(module_path, &item_fn.sig.ident.to_string());
                 output.push(FunctionMetric {
                     path: file_path.to_string(),
                     name: function_name,
@@ -148,10 +158,13 @@ fn collect_function_metrics(
                     complexity: complexity_for_block(&item_fn.block),
                 });
             },
-            Item::Impl(item_impl) => {
+            Item::Impl(item_impl) =>
                 for impl_item in &item_impl.items {
                     if let ImplItem::Fn(method) = impl_item {
-                        let method_name = qualify_name(module_path, &method.sig.ident.to_string());
+                        let method_name = qualify_name(
+                            module_path,
+                            &method.sig.ident.to_string(),
+                        );
                         output.push(FunctionMetric {
                             path: file_path.to_string(),
                             name: method_name,
@@ -160,11 +173,11 @@ fn collect_function_metrics(
                             complexity: complexity_for_block(&method.block),
                         });
                     }
-                }
-            },
+                },
             Item::Mod(item_mod) => {
                 if let Some((_, nested_items)) = &item_mod.content {
-                    let next_module_path = qualify_name(module_path, &item_mod.ident.to_string());
+                    let next_module_path =
+                        qualify_name(module_path, &item_mod.ident.to_string());
                     collect_function_metrics(
                         file_path,
                         nested_items,
@@ -183,7 +196,8 @@ fn qualify_name(
     name: &str,
 ) -> String {
     match module_path {
-        Some(module_path) if !module_path.is_empty() => format!("{module_path}::{name}"),
+        Some(module_path) if !module_path.is_empty() =>
+            format!("{module_path}::{name}"),
         _ => name.to_string(),
     }
 }

@@ -1,7 +1,10 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::BTreeMap,
+    path::Path,
+};
 
-use crate::error::StorageError;
 use super::schema::EntityTypeSchema;
+use crate::error::StorageError;
 
 /// Registry of entity type schemas.
 ///
@@ -20,7 +23,10 @@ impl SchemaRegistry {
     }
 
     /// Register a schema. Replaces any existing schema with the same `type_id`.
-    pub fn register(&mut self, schema: EntityTypeSchema) {
+    pub fn register(
+        &mut self,
+        schema: EntityTypeSchema,
+    ) {
         self.schemas.insert(schema.type_id.clone(), schema);
     }
 
@@ -28,7 +34,10 @@ impl SchemaRegistry {
     ///
     /// Each file must deserialise into [`EntityTypeSchema`]. The `type_id` field
     /// inside the file determines the registry key (not the filename).
-    pub fn load_dir(&mut self, dir: &Path) -> Result<(), StorageError> {
+    pub fn load_dir(
+        &mut self,
+        dir: &Path,
+    ) -> Result<(), StorageError> {
         for entry in std::fs::read_dir(dir)? {
             let path = entry?.path();
             if path.extension().and_then(|e| e.to_str()) == Some("toml") {
@@ -39,20 +48,27 @@ impl SchemaRegistry {
     }
 
     /// Load a single TOML schema file into the registry.
-    pub fn load_file(&mut self, path: &Path) -> Result<(), StorageError> {
+    pub fn load_file(
+        &mut self,
+        path: &Path,
+    ) -> Result<(), StorageError> {
         let content = std::fs::read_to_string(path)?;
-        let schema: EntityTypeSchema = toml::from_str(&content).map_err(|e| {
-            StorageError::SchemaFileParse {
-                path: path.to_path_buf(),
-                reason: e.to_string(),
-            }
-        })?;
+        let schema: EntityTypeSchema =
+            toml::from_str(&content).map_err(|e| {
+                StorageError::SchemaFileParse {
+                    path: path.to_path_buf(),
+                    reason: e.to_string(),
+                }
+            })?;
         self.schemas.insert(schema.type_id.clone(), schema);
         Ok(())
     }
 
     /// Look up a schema by entity type ID.
-    pub fn get(&self, type_id: &str) -> Option<&EntityTypeSchema> {
+    pub fn get(
+        &self,
+        type_id: &str,
+    ) -> Option<&EntityTypeSchema> {
         self.schemas.get(type_id)
     }
 

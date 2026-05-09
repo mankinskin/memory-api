@@ -16,7 +16,10 @@ async fn main() {
     let index_root = resolve_index_root();
 
     RuleStore::open(&index_root).unwrap_or_else(|err| {
-        eprintln!("Failed to open rule store at {}: {err}", index_root.display());
+        eprintln!(
+            "Failed to open rule store at {}: {err}",
+            index_root.display()
+        );
         std::process::exit(1);
     });
 
@@ -39,7 +42,9 @@ fn resolve_index_root() -> PathBuf {
     if let Some(path) = cwd_rule.filter(|path| path.exists()) {
         return path;
     }
-    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+    if let Ok(home) =
+        std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))
+    {
         return PathBuf::from(home).join(".rule-index");
     }
     PathBuf::from(".rule")

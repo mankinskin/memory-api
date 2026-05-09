@@ -1,11 +1,15 @@
-use super::{types::*, *};
+use super::{
+    types::*,
+    *,
+};
 
 impl TicketServer {
     pub(crate) async fn workflow_tool(
         &self,
         input: WorkflowInput,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace.unwrap_or_else(|| "default".to_string());
+        let workspace =
+            input.workspace.unwrap_or_else(|| "default".to_string());
         let id = input.id.unwrap_or_else(|| "<ticket-id>".to_string());
         let query = input.query.unwrap_or_else(|| "<query>".to_string());
 

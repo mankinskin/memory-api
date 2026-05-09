@@ -1,11 +1,14 @@
 use axum::{
-    extract::{Extension, State},
+    extract::{
+        Extension,
+        State,
+    },
     response::Json,
 };
 use serde::Serialize;
 
-use viewer_api::error::RequestIdExt;
 use crate::serve::AppState;
+use viewer_api::error::RequestIdExt;
 
 #[derive(Serialize)]
 pub struct WorkspaceInfo {

@@ -1,5 +1,7 @@
-use std::collections::BTreeMap;
-use std::path::Path;
+use std::{
+    collections::BTreeMap,
+    path::Path,
+};
 
 use tempfile::TempDir;
 use ticket_api::storage::store::TicketStore;
@@ -11,7 +13,10 @@ pub(super) fn make_sandbox() -> (TempDir, TicketServer) {
     (tmp, server)
 }
 
-pub(super) fn seed_ticket(store_root: &Path, title: &str) -> String {
+pub(super) fn seed_ticket(
+    store_root: &Path,
+    title: &str,
+) -> String {
     let store = TicketStore::open(store_root).expect("open store");
     let ticket_id = store
         .create(

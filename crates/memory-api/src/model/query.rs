@@ -1,4 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use std::collections::BTreeSet;
 
 use crate::error::QueryParseError;
@@ -41,7 +44,9 @@ fn parse_query_internal(
 ) -> Result<Expr, QueryParseError> {
     let tokens = tokenize(input);
     if tokens.is_empty() {
-        return Err(QueryParseError::InvalidExpression("query cannot be empty".to_string()));
+        return Err(QueryParseError::InvalidExpression(
+            "query cannot be empty".to_string(),
+        ));
     }
 
     let mut exprs = Vec::with_capacity(tokens.len());
@@ -57,11 +62,17 @@ fn parse_query_internal(
                 validate_field_key(key, fields)?;
             }
 
-            let value = if raw_value.starts_with('[') && raw_value.ends_with(']') && raw_value.contains(" TO ") {
+            let value = if raw_value.starts_with('[')
+                && raw_value.ends_with(']')
+                && raw_value.contains(" TO ")
+            {
                 let inner = &raw_value[1..raw_value.len() - 1];
-                let (start, end) = inner.split_once(" TO ").ok_or_else(|| {
-                    QueryParseError::InvalidExpression(format!("invalid range expression: {token}"))
-                })?;
+                let (start, end) =
+                    inner.split_once(" TO ").ok_or_else(|| {
+                        QueryParseError::InvalidExpression(format!(
+                            "invalid range expression: {token}"
+                        ))
+                    })?;
                 ValueExpr::Range {
                     start: start.to_string(),
                     end: end.to_string(),
@@ -136,13 +147,12 @@ fn tokenize(input: &str) -> Vec<String> {
             '"' => {
                 in_quotes = !in_quotes;
                 current.push(ch);
-            }
-            c if c.is_whitespace() && !in_quotes => {
+            },
+            c if c.is_whitespace() && !in_quotes =>
                 if !current.is_empty() {
                     tokens.push(current.clone());
                     current.clear();
-                }
-            }
+                },
             _ => current.push(ch),
         }
     }

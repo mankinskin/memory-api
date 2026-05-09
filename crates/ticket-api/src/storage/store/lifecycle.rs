@@ -1,17 +1,30 @@
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::error::StorageError;
-use crate::model::ticket::TicketManifest;
-use crate::storage::ticket_fs::{HistoryRevision, TicketFs};
+use crate::{
+    error::StorageError,
+    model::ticket::TicketManifest,
+    storage::ticket_fs::{
+        HistoryRevision,
+        TicketFs,
+    },
+};
 
 use super::TicketStore;
 
 impl TicketStore {
-    pub fn delete(&self, id: &Uuid) -> Result<(), StorageError> {
+    pub fn delete(
+        &self,
+        id: &Uuid,
+    ) -> Result<(), StorageError> {
         let indexed = self
             .index
             .get_ticket(id)?
@@ -60,7 +73,10 @@ impl TicketStore {
         Ok(())
     }
 
-    pub fn get_history(&self, id: &Uuid) -> Result<Vec<HistoryRevision>, StorageError> {
+    pub fn get_history(
+        &self,
+        id: &Uuid,
+    ) -> Result<Vec<HistoryRevision>, StorageError> {
         let indexed = self
             .index
             .get_ticket(id)?
@@ -85,7 +101,10 @@ impl TicketStore {
             return Err(StorageError::NotFound(*id));
         }
 
-        let target_state = fields.get("state").and_then(Value::as_str).map(str::to_string);
+        let target_state = fields
+            .get("state")
+            .and_then(Value::as_str)
+            .map(str::to_string);
         let mut patch = fields.clone();
         patch.remove("state");
 
@@ -139,18 +158,34 @@ impl TicketStore {
             return Ok((manifest, vec![]));
         }
 
-        let schema = self
-            .schema_registry
-            .get(&indexed.type_id)
-            .ok_or_else(|| StorageError::Other(format!("no schema for type '{}'", indexed.type_id)))?;
-        let path = schema.find_path(current_state, target_state).ok_or_else(|| {
-            StorageError::Other(format!("no path from '{}' to '{}'", current_state, target_state))
-        })?;
+        let schema =
+            self.schema_registry.get(&indexed.type_id).ok_or_else(|| {
+                StorageError::Other(format!(
+                    "no schema for type '{}'",
+                    indexed.type_id
+                ))
+            })?;
+        let path =
+            schema
+                .find_path(current_state, target_state)
+                .ok_or_else(|| {
+                    StorageError::Other(format!(
+                        "no path from '{}' to '{}'",
+                        current_state, target_state
+                    ))
+                })?;
 
         let empty_patch = BTreeMap::new();
         let mut last_manifest = None;
         for state in &path {
-            last_manifest = Some(self.update(id, empty_patch.clone(), None, Some(state), None, author)?);
+            last_manifest = Some(self.update(
+                id,
+                empty_patch.clone(),
+                None,
+                Some(state),
+                None,
+                author,
+            )?);
         }
 
         Ok((last_manifest.unwrap(), path))
@@ -178,12 +213,14 @@ impl TicketStore {
         });
 
         let assets_dir = indexed.path.join("assets");
-        std::fs::create_dir_all(&assets_dir)
-            .map_err(|error| StorageError::Other(format!("create assets dir: {error}")))?;
+        std::fs::create_dir_all(&assets_dir).map_err(|error| {
+            StorageError::Other(format!("create assets dir: {error}"))
+        })?;
 
         let destination = assets_dir.join(&file_name);
-        std::fs::copy(source_path, &destination)
-            .map_err(|error| StorageError::Other(format!("copy asset: {error}")))?;
+        std::fs::copy(source_path, &destination).map_err(|error| {
+            StorageError::Other(format!("copy asset: {error}"))
+        })?;
 
         let mut event = BTreeMap::new();
         event.insert("_event".to_string(), Value::String("attach".to_string()));
@@ -193,7 +230,10 @@ impl TicketStore {
         Ok(destination)
     }
 
-    pub fn list_assets(&self, id: &Uuid) -> Result<Vec<String>, StorageError> {
+    pub fn list_assets(
+        &self,
+        id: &Uuid,
+    ) -> Result<Vec<String>, StorageError> {
         let indexed = self
             .index
             .get_ticket(id)?
@@ -208,9 +248,9 @@ impl TicketStore {
         }
 
         let mut names = Vec::new();
-        for entry in std::fs::read_dir(&assets_dir)
-            .map_err(|error| StorageError::Other(format!("read assets dir: {error}")))?
-        {
+        for entry in std::fs::read_dir(&assets_dir).map_err(|error| {
+            StorageError::Other(format!("read assets dir: {error}"))
+        })? {
             let entry = match entry {
                 Ok(entry) => entry,
                 Err(_) => continue,

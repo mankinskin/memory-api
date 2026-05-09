@@ -1,5 +1,11 @@
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use chrono::{
+    DateTime,
+    Utc,
+};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use std::collections::BTreeSet;
 
 use super::entity::EntityId;
@@ -18,7 +24,9 @@ pub struct EdgeKindRule {
     pub acyclic_enforced: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub struct EdgeKey {
     pub from: EntityId,
     pub to: EntityId,
@@ -43,11 +51,17 @@ pub struct EdgeRegistry {
 impl EdgeRegistry {
     /// Inserts edge identity if it is not present.
     /// Returns `true` if inserted, `false` if it already existed.
-    pub fn insert(&mut self, edge: &EdgeRecord) -> bool {
+    pub fn insert(
+        &mut self,
+        edge: &EdgeRecord,
+    ) -> bool {
         self.keys.insert(edge.key())
     }
 
-    pub fn contains(&self, edge: &EdgeRecord) -> bool {
+    pub fn contains(
+        &self,
+        edge: &EdgeRecord,
+    ) -> bool {
         self.keys.contains(&edge.key())
     }
 }

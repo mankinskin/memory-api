@@ -1,15 +1,29 @@
 use axum::{
-    extract::{Extension, Query, State},
+    extract::{
+        Extension,
+        Query,
+        State,
+    },
     http::StatusCode,
-    response::{IntoResponse, Json, Response},
+    response::{
+        IntoResponse,
+        Json,
+        Response,
+    },
 };
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use uuid::Uuid;
 
-use viewer_api::error::RequestIdExt;
-use crate::serve::{error::storage_err, AppState};
+use crate::serve::{
+    AppState,
+    error::storage_err,
+};
 use ticket_api::model::edge::EdgeRecord;
+use viewer_api::error::RequestIdExt;
 
 #[derive(Deserialize)]
 pub struct EdgesQuery {
@@ -41,7 +55,7 @@ pub async fn list_edges(
         None => {
             return viewer_api::error::ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     tokio::task::spawn_blocking(move || match store.list_all_edges() {
@@ -68,7 +82,7 @@ pub async fn list_edges(
                 items,
             })
             .into_response()
-        }
+        },
         Err(e) => storage_err(e, &rid.0),
     })
     .await
@@ -118,7 +132,7 @@ pub async fn add_edge(
         None => {
             return viewer_api::error::ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     let edge = EdgeRecord {
@@ -165,7 +179,7 @@ pub async fn remove_edge(
         None => {
             return viewer_api::error::ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     let edge = EdgeRecord {

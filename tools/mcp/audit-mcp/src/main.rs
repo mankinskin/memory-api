@@ -18,7 +18,10 @@ async fn main() {
         PathBuf::from(".")
     });
 
-    eprintln!("audit-mcp starting (base_dir: {})", format_output_path(&base_dir));
+    eprintln!(
+        "audit-mcp starting (base_dir: {})",
+        format_output_path(&base_dir)
+    );
 
     if let Err(err) = server::run_mcp_server(base_dir).await {
         eprintln!("Fatal error: {err}");

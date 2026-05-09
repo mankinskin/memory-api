@@ -1,13 +1,32 @@
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
-use rmcp::{ErrorData as McpError, model::CallToolResult};
-use serde_json::{Value, json};
+use rmcp::{
+    ErrorData as McpError,
+    model::CallToolResult,
+};
+use serde_json::{
+    Value,
+    json,
+};
 
-use rule_api::{ImportedRuleBlock, MarkdownImportOptions, RuleManifest, import_markdown_blocks};
+use rule_api::{
+    ImportedRuleBlock,
+    MarkdownImportOptions,
+    RuleManifest,
+    import_markdown_blocks,
+};
 
-use super::{ImportRuleFileInput, RuleServer};
+use super::{
+    ImportRuleFileInput,
+    RuleServer,
+};
 
 impl RuleServer {
     pub(super) async fn rule_import_file_tool(
@@ -32,8 +51,12 @@ fn import_file(
     input: &ImportRuleFileInput,
 ) -> Result<Vec<Value>, McpError> {
     let path = PathBuf::from(&input.path);
-    let content = fs::read_to_string(&path)
-        .map_err(|err| McpError::invalid_params(format!("read {}: {err}", path.display()), None))?;
+    let content = fs::read_to_string(&path).map_err(|err| {
+        McpError::invalid_params(
+            format!("read {}: {err}", path.display()),
+            None,
+        )
+    })?;
     let default_section = input
         .default_section
         .clone()
@@ -49,7 +72,12 @@ fn import_file(
         .source_repo
         .as_deref()
         .or_else(|| input.repo_scope.first().map(String::as_str))
-        .ok_or_else(|| McpError::invalid_params("at least one repo_scope is required".to_string(), None))?;
+        .ok_or_else(|| {
+            McpError::invalid_params(
+                "at least one repo_scope is required".to_string(),
+                None,
+            )
+        })?;
     let source_path = path.to_string_lossy().replace('\\', "/");
     let target_root = input.target_root.as_ref().map(PathBuf::from);
 
@@ -65,7 +93,8 @@ fn import_file(
         manifest.set_order_key(imported.order_key);
         manifest.set_repo_scopes(input.repo_scope.iter().map(String::as_str));
         if !input.path_scope.is_empty() {
-            manifest.set_path_scopes(input.path_scope.iter().map(String::as_str));
+            manifest
+                .set_path_scopes(input.path_scope.iter().map(String::as_str));
         }
         manifest.set_source_location(
             source_repo,
@@ -133,7 +162,10 @@ fn import_patch(manifest: &RuleManifest) -> BTreeMap<String, Value> {
     patch
 }
 
-fn imported_rule_json(imported: &ImportedRuleBlock, action: &str) -> Value {
+fn imported_rule_json(
+    imported: &ImportedRuleBlock,
+    action: &str,
+) -> Value {
     json!({
         "action": action,
         "slug": imported.slug,

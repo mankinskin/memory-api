@@ -4,26 +4,45 @@ mod generated_targets;
 #[cfg(test)]
 mod tests;
 
-pub use self::filter::RuleFilter;
-pub use self::generated_targets::GeneratedTargetRecord;
+pub use self::{
+    filter::RuleFilter,
+    generated_targets::GeneratedTargetRecord,
+};
 
-use std::collections::{BTreeMap, HashMap};
-use std::fs;
-use std::path::Path;
+use std::{
+    collections::{
+        BTreeMap,
+        HashMap,
+    },
+    fs,
+    path::Path,
+};
 
 use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
-use memory_api::error::StorageError;
-use memory_api::model::entity::EntityManifest;
-use memory_api::storage::entity_fs::EntityFs;
-use memory_api::storage::entity_store::{EntityStore, ScanReport};
-use memory_api::storage::indexed::IndexedEntity;
+use memory_api::{
+    error::StorageError,
+    model::entity::EntityManifest,
+    storage::{
+        entity_fs::EntityFs,
+        entity_store::{
+            EntityStore,
+            ScanReport,
+        },
+        indexed::IndexedEntity,
+    },
+};
 
-use crate::default_schema::rule_schema_registry;
-use crate::error::RuleError;
-use crate::manifest::{RuleId, RuleManifest};
+use crate::{
+    default_schema::rule_schema_registry,
+    error::RuleError,
+    manifest::{
+        RuleId,
+        RuleManifest,
+    },
+};
 
 const RULE_MANIFEST_FILE: &str = "rule.toml";
 const RULE_LOCK_FILE: &str = ".rule-lock";
@@ -53,7 +72,10 @@ impl RuleStore {
         &self.inner
     }
 
-    pub fn scan(&mut self, reindex: bool) -> Result<ScanReport, RuleError> {
+    pub fn scan(
+        &mut self,
+        reindex: bool,
+    ) -> Result<ScanReport, RuleError> {
         let report = self.inner.scan(reindex)?;
         self.rebuild_slug_index()?;
         Ok(report)
@@ -63,7 +85,9 @@ impl RuleStore {
         let mut next = HashMap::new();
         for indexed in self.inner.list_indexed(false)? {
             let manifest = self.inner.fs.read(&indexed.path)?;
-            if let Some(slug) = manifest.extra.get("slug").and_then(Value::as_str) {
+            if let Some(slug) =
+                manifest.extra.get("slug").and_then(Value::as_str)
+            {
                 next.insert(slug.to_string(), indexed.id);
             }
         }
@@ -71,7 +95,10 @@ impl RuleStore {
         Ok(())
     }
 
-    pub fn resolve_id(&self, id_or_slug: &str) -> Result<Uuid, RuleError> {
+    pub fn resolve_id(
+        &self,
+        id_or_slug: &str,
+    ) -> Result<Uuid, RuleError> {
         if let Ok(uuid) = id_or_slug.parse::<Uuid>() {
             return Ok(uuid);
         }
@@ -91,9 +118,9 @@ impl RuleStore {
         manifest: &RuleManifest,
         target_root: Option<&Path>,
     ) -> Result<RuleId, RuleError> {
-        let slug = manifest
-            .slug()
-            .ok_or_else(|| RuleError::InvalidSlug("missing slug".to_string()))?;
+        let slug = manifest.slug().ok_or_else(|| {
+            RuleError::InvalidSlug("missing slug".to_string())
+        })?;
         validate_slug(slug)?;
 
         if let Some(existing) = self.slug_index.get(slug) {
@@ -118,7 +145,9 @@ impl RuleStore {
         self.inner
             .schema_registry()
             .get(RULE_ENTRY_TYPE_ID)
-            .ok_or_else(|| RuleError::Asset("missing rule-entry schema".to_string()))?
+            .ok_or_else(|| {
+                RuleError::Asset("missing rule-entry schema".to_string())
+            })?
             .validate_manifest(&entity)
             .map_err(|err| RuleError::Asset(err.to_string()))?;
 
@@ -141,13 +170,19 @@ impl RuleStore {
             manifest.state(),
             Some(RULE_ENTRY_TYPE_ID),
         )?;
-        let _ = self.inner.fs.append_history(&folder, entity.extra.clone(), None);
+        let _ =
+            self.inner
+                .fs
+                .append_history(&folder, entity.extra.clone(), None);
         self.slug_index.insert(slug.to_string(), manifest.id);
 
         Ok(manifest.id)
     }
 
-    pub fn get(&self, id_or_slug: &str) -> Result<RuleManifest, RuleError> {
+    pub fn get(
+        &self,
+        id_or_slug: &str,
+    ) -> Result<RuleManifest, RuleError> {
         let uuid = self.resolve_id(id_or_slug)?;
         let indexed = self
             .inner
@@ -177,11 +212,15 @@ impl RuleStore {
                 validate_slug(new_slug)?;
                 if let Some(existing) = self.slug_index.get(new_slug) {
                     if *existing != uuid {
-                        return Err(RuleError::DuplicateSlug(new_slug.to_string()));
+                        return Err(RuleError::DuplicateSlug(
+                            new_slug.to_string(),
+                        ));
                     }
                 }
                 let current = self.inner.fs.read(&indexed.path)?;
-                if let Some(old_slug) = current.extra.get("slug").and_then(Value::as_str) {
+                if let Some(old_slug) =
+                    current.extra.get("slug").and_then(Value::as_str)
+                {
                     self.slug_index.remove(old_slug);
                 }
                 self.slug_index.insert(new_slug.to_string(), uuid);
@@ -190,14 +229,17 @@ impl RuleStore {
 
         if let Some(next_state) = to_state {
             let current_state = indexed.state.as_deref().unwrap_or("draft");
-            if let Some(schema) = self.inner.schema_registry().get(RULE_ENTRY_TYPE_ID) {
+            if let Some(schema) =
+                self.inner.schema_registry().get(RULE_ENTRY_TYPE_ID)
+            {
                 schema
                     .ensure_transition(current_state, next_state)
                     .map_err(|err| RuleError::Asset(err.to_string()))?;
             }
         }
 
-        let updated_entity = self.inner.fs.update(&indexed.path, &patch, to_state)?;
+        let updated_entity =
+            self.inner.fs.update(&indexed.path, &patch, to_state)?;
         let title = updated_entity
             .extra
             .get("title")
@@ -221,13 +263,14 @@ impl RuleStore {
         };
         self.inner.index.insert_ticket(&refreshed)?;
 
-        let body = self.inner.fs.read_description(&indexed.path).or_else(|| {
-            updated_entity
-                .extra
-                .get("body")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        });
+        let body =
+            self.inner.fs.read_description(&indexed.path).or_else(|| {
+                updated_entity
+                    .extra
+                    .get("body")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            });
         self.inner.search.upsert(
             &uuid,
             title.as_deref(),
@@ -236,15 +279,20 @@ impl RuleStore {
             Some(RULE_ENTRY_TYPE_ID),
         )?;
 
-        let _ = self
-            .inner
-            .fs
-            .append_history(&indexed.path, updated_entity.extra.clone(), None);
+        let _ = self.inner.fs.append_history(
+            &indexed.path,
+            updated_entity.extra.clone(),
+            None,
+        );
 
         Ok(entity_to_rule(&updated_entity))
     }
 
-    pub fn update_body(&self, id_or_slug: &str, body: &str) -> Result<(), RuleError> {
+    pub fn update_body(
+        &self,
+        id_or_slug: &str,
+        body: &str,
+    ) -> Result<(), RuleError> {
         let uuid = self.resolve_id(id_or_slug)?;
         let indexed = self
             .inner
@@ -254,7 +302,8 @@ impl RuleStore {
             "body".to_string(),
             Value::String(body.to_string()),
         )]);
-        let updated_entity = self.inner.fs.update(&indexed.path, &patch, None)?;
+        let updated_entity =
+            self.inner.fs.update(&indexed.path, &patch, None)?;
         self.inner.fs.write_description(&indexed.path, body)?;
         self.inner.search.upsert(
             &uuid,
@@ -263,10 +312,11 @@ impl RuleStore {
             updated_entity.extra.get("state").and_then(Value::as_str),
             Some(RULE_ENTRY_TYPE_ID),
         )?;
-        let _ = self
-            .inner
-            .fs
-            .append_history(&indexed.path, updated_entity.extra.clone(), None);
+        let _ = self.inner.fs.append_history(
+            &indexed.path,
+            updated_entity.extra.clone(),
+            None,
+        );
         Ok(())
     }
 
@@ -311,7 +361,9 @@ impl RuleStore {
         filter: &RuleFilter,
         limit: usize,
     ) -> Result<Vec<RuleManifest>, RuleError> {
-        let candidates = self.inner.search(query, limit.saturating_mul(4).max(limit))?;
+        let candidates = self
+            .inner
+            .search(query, limit.saturating_mul(4).max(limit))?;
         let mut rules = Vec::new();
 
         for candidate in candidates {
@@ -335,7 +387,10 @@ impl RuleStore {
         Ok(rules)
     }
 
-    fn resolve_prefix(&self, prefix: &str) -> Result<Option<Uuid>, RuleError> {
+    fn resolve_prefix(
+        &self,
+        prefix: &str,
+    ) -> Result<Option<Uuid>, RuleError> {
         if prefix.len() < 4 {
             return Ok(None);
         }
@@ -354,7 +409,10 @@ impl RuleStore {
         }
     }
 
-    fn hydrate_rule(&self, indexed: &IndexedEntity) -> Result<RuleManifest, RuleError> {
+    fn hydrate_rule(
+        &self,
+        indexed: &IndexedEntity,
+    ) -> Result<RuleManifest, RuleError> {
         let entity = self.inner.fs.read(&indexed.path)?;
         let mut rule = entity_to_rule(&entity);
         if let Some(body) = self.inner.fs.read_description(&indexed.path) {
@@ -370,7 +428,9 @@ fn validate_slug(slug: &str) -> Result<(), RuleError> {
     }
 
     let valid = slug.chars().all(|ch| {
-        ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '/' | '-' | '_' | '.')
+        ch.is_ascii_lowercase()
+            || ch.is_ascii_digit()
+            || matches!(ch, '/' | '-' | '_' | '.')
     });
 
     if valid {

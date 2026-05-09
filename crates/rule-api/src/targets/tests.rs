@@ -1,11 +1,15 @@
-use std::fs;
-use std::path::PathBuf;
+use std::{
+    fs,
+    path::PathBuf,
+};
 
 use tempfile::tempdir;
 
 use super::*;
-use crate::manifest::RuleManifest;
-use crate::store::RuleStore;
+use crate::{
+    manifest::RuleManifest,
+    store::RuleStore,
+};
 
 #[test]
 fn load_render_target_config_parses_targets_and_rejects_duplicates() {
@@ -51,7 +55,9 @@ fn load_render_target_config_parses_targets_and_rejects_duplicates() {
     .unwrap();
 
     let err = load_render_target_config(&path).unwrap_err();
-    assert!(matches!(err, TargetConfigError::DuplicateName(name) if name == "dup"));
+    assert!(
+        matches!(err, TargetConfigError::DuplicateName(name) if name == "dup")
+    );
 }
 
 #[test]
@@ -385,7 +391,10 @@ fn explain_target_reports_node_matches_with_effective_filters() {
     assert_eq!(explained.nodes.len(), 1);
     assert_eq!(explained.nodes[0].nodes.len(), 1);
     assert_eq!(
-        explained.nodes[0].nodes[0].effective_filter.section.as_deref(),
+        explained.nodes[0].nodes[0]
+            .effective_filter
+            .section
+            .as_deref(),
         Some("agent-rules/operating-principles")
     );
     assert_eq!(explained.nodes[0].nodes[0].matched_rules.len(), 1);

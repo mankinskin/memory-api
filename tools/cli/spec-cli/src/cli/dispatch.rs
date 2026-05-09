@@ -1,10 +1,17 @@
-use std::path::{Path, PathBuf};
+use std::path::{
+    Path,
+    PathBuf,
+};
 
 use serde_json::Value;
 
 use spec_api::SpecStore;
 
-use crate::cli::{CliRunError, SpecCommandCli, commands};
+use crate::cli::{
+    CliRunError,
+    SpecCommandCli,
+    commands,
+};
 
 pub(super) fn dispatch(
     command: SpecCommandCli,
@@ -47,7 +54,9 @@ fn dispatch_mutating(
         SpecCommandCli::Scan(args) => commands::cmd_scan(args, store),
         SpecCommandCli::Section(args) => commands::cmd_section(args, store),
         SpecCommandCli::Bootstrap(args) => commands::cmd_bootstrap(args, store),
-        _ => unreachable!("command_mutates keeps non-mutating commands out of this path"),
+        _ => unreachable!(
+            "command_mutates keeps non-mutating commands out of this path"
+        ),
     }
 }
 
@@ -63,7 +72,9 @@ fn dispatch_read_only(
         SpecCommandCli::Tree(args) => commands::cmd_tree(args, store),
         SpecCommandCli::Refs(args) => commands::cmd_refs(args, store),
         SpecCommandCli::Health(args) => commands::cmd_health(args, store),
-        _ => unreachable!("command_mutates keeps mutating commands out of this path"),
+        _ => unreachable!(
+            "command_mutates keeps mutating commands out of this path"
+        ),
     }
 }
 
@@ -75,14 +86,14 @@ fn resolve_index_root(override_path: Option<&Path>) -> PathBuf {
         return PathBuf::from(env_val);
     }
     // Default: .spec/ in current working directory
-    let cwd_spec = std::env::current_dir()
-        .ok()
-        .map(|d| d.join(".spec"));
+    let cwd_spec = std::env::current_dir().ok().map(|d| d.join(".spec"));
     if let Some(p) = cwd_spec.filter(|p| p.exists()) {
         return p;
     }
     // Fallback: ~/.spec-index via HOME env var
-    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+    if let Ok(home) =
+        std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))
+    {
         return PathBuf::from(home).join(".spec-index");
     }
     PathBuf::from(".spec")

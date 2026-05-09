@@ -1,4 +1,7 @@
-use rmcp::schemars::{self, JsonSchema};
+use rmcp::schemars::{
+    self,
+    JsonSchema,
+};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, JsonSchema)]

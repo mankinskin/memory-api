@@ -5,7 +5,10 @@
 //! to `TicketStore`).  Clients that reconnect after a gap should use the
 //! snapshot to rebuild their local state.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::Duration,
+};
 
 use crate::serve::stream::emitter::HookEmitter;
 use ticket_api::storage::store::TicketStore;
@@ -22,7 +25,8 @@ pub fn spawn_reconcile(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(RECONCILE_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        interval
+            .set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
             interval.tick().await;
@@ -43,8 +47,12 @@ pub fn spawn_reconcile(
             let (node_count, edge_count) = tokio::task::spawn_blocking({
                 let store = Arc::clone(&store);
                 move || {
-                    let nodes = store.list(None, None, None).map(|v| v.len()).unwrap_or(0);
-                    let edges = store.list_all_edges().map(|v| v.len()).unwrap_or(0);
+                    let nodes = store
+                        .list(None, None, None)
+                        .map(|v| v.len())
+                        .unwrap_or(0);
+                    let edges =
+                        store.list_all_edges().map(|v| v.len()).unwrap_or(0);
                     (nodes, edges)
                 }
             })

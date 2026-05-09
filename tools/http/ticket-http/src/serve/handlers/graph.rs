@@ -1,8 +1,15 @@
 use axum::{
-    extract::{Extension, Query, State},
+    extract::{
+        Extension,
+        Query,
+        State,
+    },
     response::Response,
 };
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
@@ -27,9 +34,15 @@ pub struct SubgraphQuery {
     pub limit_edges: usize,
 }
 
-fn default_depth() -> usize { 2 }
-fn default_limit_nodes() -> usize { 500 }
-fn default_limit_edges() -> usize { 2000 }
+fn default_depth() -> usize {
+    2
+}
+fn default_limit_nodes() -> usize {
+    500
+}
+fn default_limit_edges() -> usize {
+    2000
+}
 
 #[derive(Serialize)]
 pub struct NodeItem {
@@ -115,7 +128,9 @@ pub struct HealthCheckQuery {
     pub direction: Option<String>,
 }
 
-fn default_health_depth() -> usize { 6 }
+fn default_health_depth() -> usize {
+    6
+}
 
 #[derive(Serialize)]
 pub struct HealthCheckResponse {

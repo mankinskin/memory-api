@@ -1,21 +1,32 @@
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
-use serde_json::{Value, json};
+use clap::{
+    Parser,
+    Subcommand,
+};
+use serde_json::{
+    Value,
+    json,
+};
 use uuid::Uuid;
 
-use ticket_api::contracts::command_schema::{CommandEnvelope, ErrorEnvelope};
-use ticket_api::error::StorageError;
-use ticket_api::storage::board::BoardError;
+use ticket_api::{
+    contracts::command_schema::{
+        CommandEnvelope,
+        ErrorEnvelope,
+    },
+    error::StorageError,
+    storage::board::BoardError,
+};
 
 #[path = "cli/args.rs"]
 mod args;
+#[path = "cli/batch.rs"]
+mod batch;
 #[path = "cli/commands/mod.rs"]
 mod commands;
 #[path = "cli/dispatch.rs"]
 mod dispatch;
-#[path = "cli/batch.rs"]
-mod batch;
 #[path = "cli/helpers.rs"]
 mod helpers;
 #[path = "cli/human_output.rs"]
@@ -186,8 +197,12 @@ pub fn run(cli: TicketCli) -> Result<CliOutput, CliRunError> {
         cli.dry_run,
     )?;
     if cli.json {
-        let request_id = cli.request_id.unwrap_or_else(|| Uuid::new_v4().to_string());
-        let envelope = CommandEnvelope { request_id, payload };
+        let request_id =
+            cli.request_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+        let envelope = CommandEnvelope {
+            request_id,
+            payload,
+        };
         Ok(CliOutput::Json(json!(envelope)))
     } else {
         Ok(CliOutput::Text(render_human(payload)))
@@ -200,13 +215,21 @@ fn render_human(payload: Value) -> String {
     human_output::render_human_readable(&payload)
 }
 
-pub fn error_output(message: &str, as_json: bool) -> String {
+pub fn error_output(
+    message: &str,
+    as_json: bool,
+) -> String {
     if as_json {
         serde_json::to_string_pretty(&ErrorEnvelope {
             code: "invalid_request".to_string(),
             message: message.to_string(),
         })
-        .unwrap_or_else(|_| format!("{{\"code\":\"invalid_request\",\"message\":\"{}\"}}", message))
+        .unwrap_or_else(|_| {
+            format!(
+                "{{\"code\":\"invalid_request\",\"message\":\"{}\"}}",
+                message
+            )
+        })
     } else {
         message.to_string()
     }
@@ -220,8 +243,8 @@ where
     TicketCli::try_parse_from(args)
 }
 
-pub fn payload_as_json_object(payload: &Value) -> Option<&serde_json::Map<String, Value>> {
+pub fn payload_as_json_object(
+    payload: &Value
+) -> Option<&serde_json::Map<String, Value>> {
     payload.as_object()
 }
-
-

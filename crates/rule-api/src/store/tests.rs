@@ -142,7 +142,10 @@ fn search_can_filter_rule_results_after_full_text_match() {
         .unwrap();
 
     assert_eq!(filtered.len(), 1);
-    assert_eq!(filtered[0].slug(), Some("memory-api/github/readme/overview"));
+    assert_eq!(
+        filtered[0].slug(),
+        Some("memory-api/github/readme/overview")
+    );
 }
 
 #[test]
@@ -167,7 +170,9 @@ fn update_changes_slug_state_and_body() {
             BTreeMap::from([
                 (
                     "slug".to_string(),
-                    Value::String("shared/agents/update-test-renamed".to_string()),
+                    Value::String(
+                        "shared/agents/update-test-renamed".to_string(),
+                    ),
                 ),
                 (
                     "title".to_string(),
@@ -195,7 +200,11 @@ fn generated_target_records_round_trip_and_delete() {
     let output_path = dir.path().join(".github/README.md");
 
     let record = store
-        .upsert_generated_target(&config_path, "context-engine-github-readme", &output_path)
+        .upsert_generated_target(
+            &config_path,
+            "context-engine-github-readme",
+            &output_path,
+        )
         .unwrap();
 
     let listed = store.list_generated_targets(&config_path).unwrap();
@@ -203,7 +212,12 @@ fn generated_target_records_round_trip_and_delete() {
     assert_eq!(listed[0], record);
 
     store.delete_generated_target(&record.slug).unwrap();
-    assert!(store.list_generated_targets(&config_path).unwrap().is_empty());
+    assert!(
+        store
+            .list_generated_targets(&config_path)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]

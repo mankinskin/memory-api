@@ -1,18 +1,29 @@
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{
+    path::PathBuf,
+    sync::Arc,
+};
 
 use rmcp::{
-    ErrorData as McpError, ServerHandler, ServiceExt,
-    handler::server::{tool::ToolRouter, wrapper::Parameters},
+    ErrorData as McpError,
+    ServerHandler,
+    ServiceExt,
+    handler::server::{
+        tool::ToolRouter,
+        wrapper::Parameters,
+    },
     model::*,
-    tool, tool_handler, tool_router,
+    tool,
+    tool_handler,
+    tool_router,
     transport::stdio,
 };
 use serde::Serialize;
 use tokio::sync::Mutex;
 
-use spec_api::error::SpecError;
-use spec_api::SpecStore;
+use spec_api::{
+    SpecStore,
+    error::SpecError,
+};
 
 mod query;
 mod sections;
@@ -41,17 +52,23 @@ impl SpecServer {
         }
     }
 
-    fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
-        let text = serde_json::to_string_pretty(value)
-            .map_err(|e| McpError::internal_error(format!("serialization: {e}"), None))?;
+    fn json_result<T: Serialize>(
+        value: &T
+    ) -> Result<CallToolResult, McpError> {
+        let text = serde_json::to_string_pretty(value).map_err(|e| {
+            McpError::internal_error(format!("serialization: {e}"), None)
+        })?;
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
     fn spec_err(e: SpecError) -> McpError {
         match &e {
-            SpecError::NotFound(_) => McpError::invalid_params(e.to_string(), None),
-            SpecError::InvalidSlug(_) => McpError::invalid_params(e.to_string(), None),
-            SpecError::DuplicateSlug(_) => McpError::invalid_params(e.to_string(), None),
+            SpecError::NotFound(_) =>
+                McpError::invalid_params(e.to_string(), None),
+            SpecError::InvalidSlug(_) =>
+                McpError::invalid_params(e.to_string(), None),
+            SpecError::DuplicateSlug(_) =>
+                McpError::invalid_params(e.to_string(), None),
             _ => McpError::internal_error(format!("spec error: {e}"), None),
         }
     }
@@ -70,7 +87,8 @@ impl SpecServer {
         f: impl FnOnce(&mut SpecStore) -> Result<T, McpError>,
     ) -> Result<T, McpError> {
         let _guard = self.store_lock.lock().await;
-        let mut store = SpecStore::open(&self.index_root).map_err(Self::spec_err)?;
+        let mut store =
+            SpecStore::open(&self.index_root).map_err(Self::spec_err)?;
         store.scan(false).map_err(Self::spec_err)?;
         let result = f(&mut store);
         drop(store);
@@ -134,7 +152,10 @@ impl SpecServer {
         self.spec_list_tool(input).await
     }
 
-    #[tool(name = "spec_search", description = "Full-text search across specs.")]
+    #[tool(
+        name = "spec_search",
+        description = "Full-text search across specs."
+    )]
     pub async fn spec_search(
         &self,
         Parameters(input): Parameters<SearchSpecsInput>,
@@ -183,7 +204,10 @@ impl SpecServer {
         self.spec_section_add_tool(input).await
     }
 
-    #[tool(name = "spec_section_list", description = "List sections of a spec.")]
+    #[tool(
+        name = "spec_section_list",
+        description = "List sections of a spec."
+    )]
     pub async fn spec_section_list(
         &self,
         Parameters(input): Parameters<SpecRefInput>,
@@ -199,7 +223,10 @@ impl SpecServer {
         self.spec_section_get_tool(input).await
     }
 
-    #[tool(name = "spec_section_delete", description = "Delete a section from a spec.")]
+    #[tool(
+        name = "spec_section_delete",
+        description = "Delete a section from a spec."
+    )]
     pub async fn spec_section_delete(
         &self,
         Parameters(input): Parameters<SectionRefInput>,
@@ -207,7 +234,10 @@ impl SpecServer {
         self.spec_section_delete_tool(input).await
     }
 
-    #[tool(name = "spec_scan", description = "Scan and reindex all spec roots.")]
+    #[tool(
+        name = "spec_scan",
+        description = "Scan and reindex all spec roots."
+    )]
     pub async fn spec_scan(
         &self,
         Parameters(input): Parameters<ScanInput>,
@@ -246,7 +276,7 @@ impl ServerHandler for SpecServer {
 // ── Server startup ────────────────────────────────────────────────────────────
 
 pub async fn run_mcp_server(
-    index_root: PathBuf,
+    index_root: PathBuf
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let server = SpecServer::new(index_root);
 

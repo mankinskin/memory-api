@@ -1,23 +1,58 @@
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::fmt::Write;
+use std::{
+    collections::{
+        HashMap,
+        HashSet,
+        VecDeque,
+    },
+    fmt::Write,
+};
 
 use chrono::Utc;
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 use uuid::Uuid;
 
-use ticket_api::model::edge::EdgeRecord;
-use ticket_api::storage::TicketStore;
+use ticket_api::{
+    model::edge::EdgeRecord,
+    storage::TicketStore,
+};
 
-use crate::cli::{CliRunError, LinkArgs, LinksArgs, SubgraphArgs, TopgraphArgs, UnlinkArgs};
+use crate::cli::{
+    CliRunError,
+    LinkArgs,
+    LinksArgs,
+    SubgraphArgs,
+    TopgraphArgs,
+    UnlinkArgs,
+};
 
-pub(crate) fn cmd_link(args: LinkArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_link(
+    args: LinkArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let from = resolve_uuid_prefix(&args.from, store)?;
     let to = resolve_uuid_prefix(&args.to, store)?;
-    let from_title = store.get(&from).ok()
-        .and_then(|m| m.extra.get("title").and_then(Value::as_str).map(String::from))
+    let from_title = store
+        .get(&from)
+        .ok()
+        .and_then(|m| {
+            m.extra
+                .get("title")
+                .and_then(Value::as_str)
+                .map(String::from)
+        })
         .unwrap_or_else(|| from.to_string());
-    let to_title = store.get(&to).ok()
-        .and_then(|m| m.extra.get("title").and_then(Value::as_str).map(String::from))
+    let to_title = store
+        .get(&to)
+        .ok()
+        .and_then(|m| {
+            m.extra
+                .get("title")
+                .and_then(Value::as_str)
+                .map(String::from)
+        })
         .unwrap_or_else(|| to.to_string());
     let edge = EdgeRecord {
         from,
@@ -38,14 +73,31 @@ pub(crate) fn cmd_link(args: LinkArgs, store: &TicketStore) -> Result<Value, Cli
     }))
 }
 
-pub(crate) fn cmd_unlink(args: UnlinkArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_unlink(
+    args: UnlinkArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let from = resolve_uuid_prefix(&args.from, store)?;
     let to = resolve_uuid_prefix(&args.to, store)?;
-    let from_title = store.get(&from).ok()
-        .and_then(|m| m.extra.get("title").and_then(Value::as_str).map(String::from))
+    let from_title = store
+        .get(&from)
+        .ok()
+        .and_then(|m| {
+            m.extra
+                .get("title")
+                .and_then(Value::as_str)
+                .map(String::from)
+        })
         .unwrap_or_else(|| from.to_string());
-    let to_title = store.get(&to).ok()
-        .and_then(|m| m.extra.get("title").and_then(Value::as_str).map(String::from))
+    let to_title = store
+        .get(&to)
+        .ok()
+        .and_then(|m| {
+            m.extra
+                .get("title")
+                .and_then(Value::as_str)
+                .map(String::from)
+        })
         .unwrap_or_else(|| to.to_string());
     let edge = EdgeRecord {
         from,
@@ -66,11 +118,17 @@ pub(crate) fn cmd_unlink(args: UnlinkArgs, store: &TicketStore) -> Result<Value,
     }))
 }
 
-pub(crate) fn cmd_links(args: LinksArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_links(
+    args: LinksArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let raw_edges = if args.all {
         store.list_all_edges()?
     } else {
-        let id_str = args.id.as_ref().expect("clap ensures id is present when --all is not set");
+        let id_str = args
+            .id
+            .as_ref()
+            .expect("clap ensures id is present when --all is not set");
         let id = resolve_uuid_prefix(id_str, store)?;
         store.edges_from(&id)?
     };
@@ -95,18 +153,40 @@ pub(crate) fn cmd_links(args: LinksArgs, store: &TicketStore) -> Result<Value, C
 
 // ── subgraph / topgraph ────────────────────────────────────────────────────────
 
-pub(crate) fn cmd_subgraph(args: SubgraphArgs, store: &TicketStore) -> Result<Value, CliRunError> {
-    graph_traversal("subgraph", &args.root, args.depth, &args.direction, &args.edge_kind, false, store)
+pub(crate) fn cmd_subgraph(
+    args: SubgraphArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    graph_traversal(
+        "subgraph",
+        &args.root,
+        args.depth,
+        &args.direction,
+        &args.edge_kind,
+        false,
+        store,
+    )
 }
 
-pub(crate) fn cmd_topgraph(args: TopgraphArgs, store: &TicketStore) -> Result<Value, CliRunError> {
-    graph_traversal("topgraph", &args.root, args.depth, &args.direction, &args.edge_kind, true, store)
+pub(crate) fn cmd_topgraph(
+    args: TopgraphArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    graph_traversal(
+        "topgraph",
+        &args.root,
+        args.depth,
+        &args.direction,
+        &args.edge_kind,
+        true,
+        store,
+    )
 }
 
 type TraversalNode = (Uuid, Option<String>, Option<String>, usize);
 
 struct TraversalData {
-    node_list:    Vec<TraversalNode>,
+    node_list: Vec<TraversalNode>,
     unique_edges: Vec<EdgeRecord>,
 }
 
@@ -120,11 +200,18 @@ fn graph_traversal(
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
     let root = resolve_uuid_prefix(root_str, store)?;
-    let traversal = collect_graph_data(root, depth.min(8), direction, edge_kind_filter, store)?;
+    let traversal = collect_graph_data(
+        root,
+        depth.min(8),
+        direction,
+        edge_kind_filter,
+        store,
+    )?;
     let json_nodes = graph_json_nodes(&traversal.node_list);
     let json_edges = graph_json_edges(&traversal.unique_edges);
     let edge_refs: Vec<&EdgeRecord> = traversal.unique_edges.iter().collect();
-    let tree = render_ascii_tree(root, &traversal.node_list, &edge_refs, reverse_tree);
+    let tree =
+        render_ascii_tree(root, &traversal.node_list, &edge_refs, reverse_tree);
 
     Ok(json!({
         "command": command_name,
@@ -166,8 +253,12 @@ fn collect_graph_data(
         }
 
         for edge in &all_edges {
-            let Some(neighbor) = matching_neighbor(edge, current_id, direction, edge_kind_filter)
-            else {
+            let Some(neighbor) = matching_neighbor(
+                edge,
+                current_id,
+                direction,
+                edge_kind_filter,
+            ) else {
                 continue;
             };
             collected_edges.push(edge.clone());
@@ -211,7 +302,10 @@ fn matching_neighbor(
     }
 }
 
-fn edge_neighbor(edge: &EdgeRecord, current_id: Uuid) -> Option<(Uuid, bool)> {
+fn edge_neighbor(
+    edge: &EdgeRecord,
+    current_id: Uuid,
+) -> Option<(Uuid, bool)> {
     if edge.from == current_id {
         Some((edge.to, true))
     } else if edge.to == current_id {
@@ -221,7 +315,10 @@ fn edge_neighbor(edge: &EdgeRecord, current_id: Uuid) -> Option<(Uuid, bool)> {
     }
 }
 
-fn direction_allows(direction: &str, is_outbound: bool) -> bool {
+fn direction_allows(
+    direction: &str,
+    is_outbound: bool,
+) -> bool {
     match direction {
         "out" => is_outbound,
         "in" => !is_outbound,
@@ -233,7 +330,9 @@ fn dedupe_edges(collected_edges: Vec<EdgeRecord>) -> Vec<EdgeRecord> {
     let mut seen_edges = HashSet::new();
     collected_edges
         .into_iter()
-        .filter(|edge| seen_edges.insert((edge.from, edge.to, edge.kind.clone())))
+        .filter(|edge| {
+            seen_edges.insert((edge.from, edge.to, edge.kind.clone()))
+        })
         .collect()
 }
 
@@ -295,9 +394,15 @@ fn render_ascii_tree(
     let mut children: HashMap<Uuid, Vec<(&str, Uuid)>> = HashMap::new();
     for edge in edges {
         if reverse_tree {
-            children.entry(edge.to).or_default().push((&edge.kind, edge.from));
+            children
+                .entry(edge.to)
+                .or_default()
+                .push((&edge.kind, edge.from));
         } else {
-            children.entry(edge.from).or_default().push((&edge.kind, edge.to));
+            children
+                .entry(edge.from)
+                .or_default()
+                .push((&edge.kind, edge.to));
         }
     }
 
@@ -305,7 +410,9 @@ fn render_ascii_tree(
     let short_id = &root.to_string()[..8];
     let (title, state) = node_info
         .get(&root)
-        .map(|(t, s)| (t.as_deref().unwrap_or("?"), s.as_deref().unwrap_or("?")))
+        .map(|(t, s)| {
+            (t.as_deref().unwrap_or("?"), s.as_deref().unwrap_or("?"))
+        })
         .unwrap_or(("?", "?"));
     let _ = writeln!(out, "{title} ({short_id}) [{state}]");
 
@@ -313,7 +420,15 @@ fn render_ascii_tree(
     let mut visited = HashSet::new();
     visited.insert(root);
 
-    render_children(&mut out, &mut visited, root, &children, &node_info, "", reverse_tree);
+    render_children(
+        &mut out,
+        &mut visited,
+        root,
+        &children,
+        &node_info,
+        "",
+        reverse_tree,
+    );
     out
 }
 
@@ -338,7 +453,9 @@ fn render_children(
         let short_id = &child_id.to_string()[..8];
         let (title, state) = node_info
             .get(child_id)
-            .map(|(t, s)| (t.as_deref().unwrap_or("?"), s.as_deref().unwrap_or("?")))
+            .map(|(t, s)| {
+                (t.as_deref().unwrap_or("?"), s.as_deref().unwrap_or("?"))
+            })
             .unwrap_or(("?", "?"));
 
         // In a topgraph the child actually depends on the parent, so flip the arrow.
@@ -350,11 +467,25 @@ fn render_children(
 
         let already_visited = !visited.insert(*child_id);
         if already_visited {
-            let _ = writeln!(out, "{prefix}{connector}{edge_label} {title} ({short_id}) [{state}] (→ see above)");
+            let _ = writeln!(
+                out,
+                "{prefix}{connector}{edge_label} {title} ({short_id}) [{state}] (→ see above)"
+            );
         } else {
-            let _ = writeln!(out, "{prefix}{connector}{edge_label} {title} ({short_id}) [{state}]");
+            let _ = writeln!(
+                out,
+                "{prefix}{connector}{edge_label} {title} ({short_id}) [{state}]"
+            );
             let next_prefix = format!("{prefix}{child_prefix}");
-            render_children(out, visited, *child_id, children, node_info, &next_prefix, reverse_tree);
+            render_children(
+                out,
+                visited,
+                *child_id,
+                children,
+                node_info,
+                &next_prefix,
+                reverse_tree,
+            );
         }
     }
 }

@@ -1,5 +1,8 @@
 use chrono::Utc;
-use ticket_api::model::edge::{EdgeRecord, EdgeRegistry};
+use ticket_api::model::edge::{
+    EdgeRecord,
+    EdgeRegistry,
+};
 use uuid::Uuid;
 
 #[test]

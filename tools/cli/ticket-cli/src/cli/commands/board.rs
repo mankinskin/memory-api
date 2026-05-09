@@ -1,54 +1,93 @@
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 use uuid::Uuid;
 
-use ticket_api::storage::board::{BoardConfig, BoardEntryStatus, BoardError};
-use ticket_api::storage::TicketStore;
+use ticket_api::storage::{
+    TicketStore,
+    board::{
+        BoardConfig,
+        BoardEntryStatus,
+        BoardError,
+    },
+};
 
-use crate::cli::{BoardArgs, BoardCleanCommand, BoardCommand, CliRunError};
+use crate::cli::{
+    BoardArgs,
+    BoardCleanCommand,
+    BoardCommand,
+    CliRunError,
+};
 
 use super::resolve_uuid_prefix;
 
 mod render;
 
-use self::render::{config_to_json, entry_to_json, render_board_human};
+use self::render::{
+    config_to_json,
+    entry_to_json,
+    render_board_human,
+};
 
 // ── entry point ────────────────────────────────────────────────────────────────
 
-pub(crate) fn cmd_board(args: BoardArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_board(
+    args: BoardArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     match args.command {
         BoardCommand::Show { agent } => cmd_board_show(agent.as_deref(), store),
-        BoardCommand::CheckIn { id, agent, intent, files, ttl_secs } => {
-            cmd_board_check_in(id, agent, intent, files, ttl_secs, store)
-        }
-        BoardCommand::CheckOut { id, agent, reason } => {
-            cmd_board_check_out(id, agent, reason, store)
-        }
-        BoardCommand::Heartbeat { entry_id } => cmd_board_heartbeat(entry_id, store),
+        BoardCommand::CheckIn {
+            id,
+            agent,
+            intent,
+            files,
+            ttl_secs,
+        } => cmd_board_check_in(id, agent, intent, files, ttl_secs, store),
+        BoardCommand::CheckOut { id, agent, reason } =>
+            cmd_board_check_out(id, agent, reason, store),
+        BoardCommand::Heartbeat { entry_id } =>
+            cmd_board_heartbeat(entry_id, store),
         BoardCommand::Configure {
             max_wip,
             stale_after_secs,
             completed_audit_window_secs,
-        } => cmd_board_configure(max_wip, stale_after_secs, completed_audit_window_secs, store),
+        } => cmd_board_configure(
+            max_wip,
+            stale_after_secs,
+            completed_audit_window_secs,
+            store,
+        ),
         BoardCommand::Clean(clean_args) => match clean_args.command {
-            BoardCleanCommand::Preview { include_stale } => {
-                cmd_board_clean_preview(include_stale, store)
-            }
-            BoardCleanCommand::Apply { token, include_stale } => {
-                cmd_board_clean_apply(token, include_stale, store)
-            }
+            BoardCleanCommand::Preview { include_stale } =>
+                cmd_board_clean_preview(include_stale, store),
+            BoardCleanCommand::Apply {
+                token,
+                include_stale,
+            } => cmd_board_clean_apply(token, include_stale, store),
         },
-        BoardCommand::UpdateFiles { id, agent, add, remove } => {
-            cmd_board_update_files(id, agent, add, remove, store)
-        }
-        BoardCommand::RenameFile { id, agent, from, to } => {
-            cmd_board_rename_file(id, agent, from, to, store)
-        }
+        BoardCommand::UpdateFiles {
+            id,
+            agent,
+            add,
+            remove,
+        } => cmd_board_update_files(id, agent, add, remove, store),
+        BoardCommand::RenameFile {
+            id,
+            agent,
+            from,
+            to,
+        } => cmd_board_rename_file(id, agent, from, to, store),
     }
 }
 
 // ── show ──────────────────────────────────────────────────────────────────────
 
-fn cmd_board_show(agent: Option<&str>, store: &TicketStore) -> Result<Value, CliRunError> {
+fn cmd_board_show(
+    agent: Option<&str>,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let mut snap = store.board_show(agent)?;
 
     // When an agent is supplied, also refresh heartbeats for that agent's active
@@ -143,7 +182,9 @@ fn cmd_board_check_out(
         let snap = store.board_show(None)?;
         snap.entries
             .into_iter()
-            .find(|e| e.ticket_id == ticket_id && e.status == BoardEntryStatus::Active)
+            .find(|e| {
+                e.ticket_id == ticket_id && e.status == BoardEntryStatus::Active
+            })
             .map(|e| e.agent_id)
             .ok_or_else(|| {
                 CliRunError::BadRequest(format!(
@@ -170,7 +211,10 @@ fn cmd_board_check_out(
 
 // ── heartbeat ─────────────────────────────────────────────────────────────────
 
-fn cmd_board_heartbeat(entry_id: String, store: &TicketStore) -> Result<Value, CliRunError> {
+fn cmd_board_heartbeat(
+    entry_id: String,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let eid = entry_id.parse::<Uuid>().map_err(|_| {
         CliRunError::BadRequest(format!(
             "invalid entry_id '{entry_id}': expected a UUID"
@@ -197,20 +241,26 @@ fn cmd_board_configure(
     completed_audit_window_secs: Option<u64>,
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
-    let new_config = if max_wip.is_none() && stale_after_secs.is_none() && completed_audit_window_secs.is_none() {
+    let new_config = if max_wip.is_none()
+        && stale_after_secs.is_none()
+        && completed_audit_window_secs.is_none()
+    {
         // Read-only path.
         None
     } else {
         let current = store.board_configure(None).map_err(board_err_to_cli)?;
         Some(BoardConfig {
             max_wip: max_wip.unwrap_or(current.max_wip),
-            stale_after_secs: stale_after_secs.unwrap_or(current.stale_after_secs),
+            stale_after_secs: stale_after_secs
+                .unwrap_or(current.stale_after_secs),
             completed_audit_window_secs: completed_audit_window_secs
                 .unwrap_or(current.completed_audit_window_secs),
         })
     };
 
-    let config = store.board_configure(new_config).map_err(board_err_to_cli)?;
+    let config = store
+        .board_configure(new_config)
+        .map_err(board_err_to_cli)?;
 
     Ok(json!({
         "command": "board_configure",

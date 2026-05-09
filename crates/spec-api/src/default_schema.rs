@@ -1,5 +1,7 @@
-use memory_api::model::schema::EntityTypeSchema;
-use memory_api::model::schema_registry::SchemaRegistry;
+use memory_api::model::{
+    schema::EntityTypeSchema,
+    schema_registry::SchemaRegistry,
+};
 
 /// The raw TOML content of the built-in `specification` schema.
 pub const SPECIFICATION_SCHEMA_TOML: &str =

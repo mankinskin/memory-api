@@ -1,8 +1,15 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{
+    HashMap,
+    HashSet,
+    VecDeque,
+};
 
 use ticket_api::model::edge::EdgeRecord;
 
-use super::{types::*, *};
+use super::{
+    types::*,
+    *,
+};
 
 struct GraphRequest {
     workspace: String,
@@ -99,7 +106,11 @@ fn traverse_graph(
     all_edges: &[EdgeRecord],
     request: &GraphRequest,
 ) -> Result<TraversalResult, McpError> {
-    let adjacency = build_adjacency(all_edges, &request.direction, request.edge_kind.as_deref());
+    let adjacency = build_adjacency(
+        all_edges,
+        &request.direction,
+        request.edge_kind.as_deref(),
+    );
     let mut state = TraversalState::new(root);
 
     while let Some((current_id, current_depth)) = state.queue.pop_front() {
@@ -116,7 +127,13 @@ fn traverse_graph(
             continue;
         }
 
-        extend_neighbors(&mut state, &adjacency, current_id, current_depth, request.edge_limit);
+        extend_neighbors(
+            &mut state,
+            &adjacency,
+            current_id,
+            current_depth,
+            request.edge_limit,
+        );
     }
 
     Ok(TraversalResult {
@@ -134,7 +151,9 @@ fn record_node(
     current_depth: usize,
 ) -> Result<(), McpError> {
     state.max_depth_reached = state.max_depth_reached.max(current_depth);
-    state.nodes.push(build_node(store, current_id, current_depth)?);
+    state
+        .nodes
+        .push(build_node(store, current_id, current_depth)?);
     Ok(())
 }
 
@@ -187,7 +206,10 @@ fn build_adjacency(
     adjacency
 }
 
-fn edge_kind_matches(edge_kind: Option<&str>, actual_kind: &str) -> bool {
+fn edge_kind_matches(
+    edge_kind: Option<&str>,
+    actual_kind: &str,
+) -> bool {
     match edge_kind {
         Some("all") | None => true,
         Some(kind) => kind == actual_kind,

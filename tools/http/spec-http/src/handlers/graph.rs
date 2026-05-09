@@ -1,18 +1,33 @@
 //! Graph view: all specs as nodes, parent->child + shared-code-ref edges.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{
+    BTreeMap,
+    BTreeSet,
+};
 
 use axum::{
-    extract::{Extension, State},
-    response::{IntoResponse, Json, Response},
+    extract::{
+        Extension,
+        State,
+    },
+    response::{
+        IntoResponse,
+        Json,
+        Response,
+    },
 };
 use serde::Serialize;
-use spec_api::{SpecManifest, SpecStore};
+use spec_api::{
+    SpecManifest,
+    SpecStore,
+};
 
 use viewer_api::error::RequestIdExt;
 
-use crate::error::storage_err;
-use crate::state::SpecAppState;
+use crate::{
+    error::storage_err,
+    state::SpecAppState,
+};
 
 #[derive(Serialize)]
 pub struct GraphNodeMetrics {
@@ -23,20 +38,21 @@ pub struct GraphNodeMetrics {
 
 #[derive(Serialize)]
 pub struct GraphNode {
-    pub id:        String,
-    pub slug:      Option<String>,
-    pub title:     Option<String>,
-    pub state:     Option<String>,
+    pub id: String,
+    pub slug: Option<String>,
+    pub title: Option<String>,
+    pub state: Option<String>,
     pub component: Option<String>,
-    pub scope:     Option<String>,
-    pub summary:   Option<String>,
-    pub metrics:   GraphNodeMetrics,
+    pub scope: Option<String>,
+    pub summary: Option<String>,
+    pub summary_markdown: Option<String>,
+    pub metrics: GraphNodeMetrics,
 }
 
 #[derive(Serialize)]
 pub struct GraphEdge {
     pub from: String,
-    pub to:   String,
+    pub to: String,
     /// One of: `"parent"` (parent -> child in the spec tree) or
     /// `"code_ref"` (two specs share at least one referenced file).
     pub kind: String,
@@ -45,13 +61,13 @@ pub struct GraphEdge {
 #[derive(Serialize)]
 pub struct GraphResponse {
     pub request_id: String,
-    pub nodes:      Vec<GraphNode>,
-    pub edges:      Vec<GraphEdge>,
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
 }
 
 /// `GET /api/specs/graph` - full dependency graph of every spec.
 pub async fn get_graph(
-    State(state):   State<SpecAppState>,
+    State(state): State<SpecAppState>,
     Extension(rid): Extension<RequestIdExt>,
 ) -> Response {
     let mut store = state.store.lock().await;
@@ -73,7 +89,10 @@ pub async fn get_graph(
     .into_response()
 }
 
-fn load_specs(store: &mut SpecStore, request_id: &str) -> Result<Vec<SpecManifest>, Response> {
+fn load_specs(
+    store: &mut SpecStore,
+    request_id: &str,
+) -> Result<Vec<SpecManifest>, Response> {
     let all = match store.entity_store().list_indexed(false) {
         Ok(all) => all,
         Err(err) => return Err(storage_err(err, request_id)),
@@ -92,28 +111,38 @@ fn load_specs(store: &mut SpecStore, request_id: &str) -> Result<Vec<SpecManifes
     Ok(specs)
 }
 
-fn build_nodes(store: &mut SpecStore, specs: &[SpecManifest]) -> Vec<GraphNode> {
+fn build_nodes(
+    store: &mut SpecStore,
+    specs: &[SpecManifest],
+) -> Vec<GraphNode> {
     let child_counts = count_children(specs);
 
     specs
         .iter()
         .map(|spec| {
             let id = spec.id.to_string();
-            let section_count = store.list_sections(&id).map(|sections| sections.len()).unwrap_or(0);
-            let summary = store
+            let section_count = store
+                .list_sections(&id)
+                .map(|sections| sections.len())
+                .unwrap_or(0);
+            let (summary, summary_markdown) = store
                 .get_full(&id)
                 .ok()
-                .and_then(|(_, body)| summarize_body(&body));
+                .map(|(_, body)| {
+                    (summarize_body(&body), summarize_body_markdown(&body))
+                })
+                .unwrap_or((None, None));
 
             GraphNode {
-                id:        id.clone(),
-                slug:      spec.slug().map(str::to_string),
-                title:     spec.title().map(str::to_string),
-                state:     spec.state().map(str::to_string),
+                id: id.clone(),
+                slug: spec.slug().map(str::to_string),
+                title: spec.title().map(str::to_string),
+                state: spec.state().map(str::to_string),
                 component: spec.component().map(str::to_string),
-                scope:     spec.scope().map(str::to_string),
+                scope: spec.scope().map(str::to_string),
                 summary,
-                metrics:   GraphNodeMetrics {
+                summary_markdown,
+                metrics: GraphNodeMetrics {
                     child_count: child_counts.get(&id).copied().unwrap_or(0),
                     code_ref_count: spec.code_refs.len(),
                     section_count,
@@ -133,7 +162,7 @@ fn count_children(specs: &[SpecManifest]) -> BTreeMap<String, usize> {
     counts
 }
 
-fn summarize_body(body: &str) -> Option<String> {
+fn first_meaningful_block(body: &str) -> Vec<String> {
     let mut lines = Vec::new();
     let mut saw_content = false;
 
@@ -150,7 +179,16 @@ fn summarize_body(body: &str) -> Option<String> {
         }
 
         saw_content = true;
-        lines.push(line);
+        lines.push(line.to_string());
+    }
+
+    lines
+}
+
+fn summarize_body(body: &str) -> Option<String> {
+    let lines = first_meaningful_block(body);
+    if lines.is_empty() {
+        return None;
     }
 
     let summary = lines.join(" ");
@@ -168,14 +206,30 @@ fn summarize_body(body: &str) -> Option<String> {
     }
 }
 
-fn build_edges(specs: &[SpecManifest], nodes: &[GraphNode]) -> Vec<GraphEdge> {
-    let known: BTreeSet<String> = nodes.iter().map(|node| node.id.clone()).collect();
+fn summarize_body_markdown(body: &str) -> Option<String> {
+    let lines = first_meaningful_block(body);
+    if lines.is_empty() {
+        return None;
+    }
+
+    Some(lines.join("\n"))
+}
+
+fn build_edges(
+    specs: &[SpecManifest],
+    nodes: &[GraphNode],
+) -> Vec<GraphEdge> {
+    let known: BTreeSet<String> =
+        nodes.iter().map(|node| node.id.clone()).collect();
     let mut edges = parent_edges(specs, &known);
     edges.extend(code_ref_edges(specs));
     edges
 }
 
-fn parent_edges(specs: &[SpecManifest], known: &BTreeSet<String>) -> Vec<GraphEdge> {
+fn parent_edges(
+    specs: &[SpecManifest],
+    known: &BTreeSet<String>,
+) -> Vec<GraphEdge> {
     let mut edges = Vec::new();
     for spec in specs {
         let Some(parent_id) = spec.parent() else {
@@ -184,7 +238,7 @@ fn parent_edges(specs: &[SpecManifest], known: &BTreeSet<String>) -> Vec<GraphEd
         if known.contains(parent_id) {
             edges.push(GraphEdge {
                 from: parent_id.to_string(),
-                to:   spec.id.to_string(),
+                to: spec.id.to_string(),
                 kind: "parent".to_string(),
             });
         }
@@ -194,7 +248,8 @@ fn parent_edges(specs: &[SpecManifest], known: &BTreeSet<String>) -> Vec<GraphEd
 
 fn code_ref_edges(specs: &[SpecManifest]) -> Vec<GraphEdge> {
     let mut by_file: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-    let id_strings: Vec<String> = specs.iter().map(|spec| spec.id.to_string()).collect();
+    let id_strings: Vec<String> =
+        specs.iter().map(|spec| spec.id.to_string()).collect();
 
     for (index, spec) in specs.iter().enumerate() {
         for code_ref in &spec.code_refs {
@@ -227,7 +282,7 @@ fn code_ref_edges(specs: &[SpecManifest]) -> Vec<GraphEdge> {
                 if seen.insert(key.clone()) {
                     edges.push(GraphEdge {
                         from: key.0,
-                        to:   key.1,
+                        to: key.1,
                         kind: "code_ref".to_string(),
                     });
                 }
@@ -254,6 +309,24 @@ mod tests {
         let summary = summarize_body(body).expect("summary should exist");
 
         assert!(summary.starts_with("This is the first meaningful paragraph"));
+        assert!(!summary.contains("Heading"));
+        assert!(!summary.contains("Second paragraph"));
+    }
+
+    #[test]
+    fn summarize_body_markdown_preserves_inline_markdown_from_first_block() {
+        let body = concat!(
+            "# Heading\n\n",
+            "This keeps *emphasis* and [links](https://example.test).\n",
+            "Still the same block.\n\n",
+            "Second paragraph."
+        );
+
+        let summary =
+            summarize_body_markdown(body).expect("summary should exist");
+
+        assert!(summary.contains("*emphasis*"));
+        assert!(summary.contains("[links](https://example.test)"));
         assert!(!summary.contains("Heading"));
         assert!(!summary.contains("Second paragraph"));
     }

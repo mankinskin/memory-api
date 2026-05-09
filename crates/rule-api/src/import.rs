@@ -30,11 +30,15 @@ pub fn import_markdown_blocks(
         }
 
         let heading_info = extract_heading_info(&chunk);
-        let is_heading_only =
-            heading_info.is_some() && chunk.lines.iter().all(|line| is_heading_line(line));
+        let is_heading_only = heading_info.is_some()
+            && chunk.lines.iter().all(|line| is_heading_line(line));
 
         if let Some((level, heading_slug, _)) = &heading_info {
-            update_heading_path(&mut heading_path, *level, heading_slug.clone());
+            update_heading_path(
+                &mut heading_path,
+                *level,
+                heading_slug.clone(),
+            );
 
             if is_heading_only {
                 pending_heading = Some(chunk);
@@ -148,7 +152,10 @@ fn markdown_chunks(content: &str) -> Vec<Chunk> {
     chunks
 }
 
-fn merge_chunks(first: Chunk, second: Chunk) -> Chunk {
+fn merge_chunks(
+    first: Chunk,
+    second: Chunk,
+) -> Chunk {
     let mut lines = first.lines;
     lines.push(String::new());
     lines.extend(second.lines);
@@ -188,7 +195,11 @@ fn extract_heading_info(chunk: &Chunk) -> Option<(usize, String, String)> {
     None
 }
 
-fn update_heading_path(path: &mut Vec<String>, level: usize, slug: String) {
+fn update_heading_path(
+    path: &mut Vec<String>,
+    level: usize,
+    slug: String,
+) {
     let keep = level.saturating_sub(1);
     path.truncate(keep);
     path.push(slug);
@@ -264,9 +275,15 @@ mod tests {
         assert_eq!(blocks.len(), 3);
         assert_eq!(blocks[0].section, "opening");
         assert_eq!(blocks[0].slug, "shared/agents/opening/l1");
-        assert_eq!(blocks[0].body, "# Opening\n\nStart with the concrete anchor.");
+        assert_eq!(
+            blocks[0].body,
+            "# Opening\n\nStart with the concrete anchor."
+        );
         assert_eq!(blocks[1].section, "opening/validation");
-        assert_eq!(blocks[1].body, "## Validation\n\n- Run the focused check\n- Then tests");
+        assert_eq!(
+            blocks[1].body,
+            "## Validation\n\n- Run the focused check\n- Then tests"
+        );
         assert_eq!(blocks[2].section, "opening/validation");
         assert_eq!(blocks[2].body, "Final note.");
         assert_eq!(blocks[2].order_key, 3);

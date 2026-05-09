@@ -3,13 +3,23 @@
 use axum::{
     Router,
     middleware,
-    routing::{delete, get, patch, post},
+    routing::{
+        delete,
+        get,
+        patch,
+        post,
+    },
 };
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{
+    Any,
+    CorsLayer,
+};
 use viewer_api::middleware::request_id::add_request_id;
 
-use crate::handlers;
-use crate::state::SpecAppState;
+use crate::{
+    handlers,
+    state::SpecAppState,
+};
 
 /// Build the full Axum router.
 pub fn build_router(state: SpecAppState) -> Router {
@@ -37,7 +47,8 @@ pub fn build_router(state: SpecAppState) -> Router {
         .route("/api/specs", post(handlers::specs::create_spec))
         .route(
             "/api/specs/{id}",
-            patch(handlers::specs::update_spec).delete(handlers::specs::delete_spec),
+            patch(handlers::specs::update_spec)
+                .delete(handlers::specs::delete_spec),
         )
         .route(
             "/api/specs/{id}/refs/validate",

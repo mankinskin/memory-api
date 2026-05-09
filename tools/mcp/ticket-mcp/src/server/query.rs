@@ -1,10 +1,19 @@
-use ticket_api::{storage::ticket_fs::TicketFs, workspace::WorkspaceConfig};
+use ticket_api::{
+    storage::ticket_fs::TicketFs,
+    workspace::WorkspaceConfig,
+};
 
-use super::{types::*, *};
+use super::{
+    types::*,
+    *,
+};
 
 impl TicketServer {
     pub(crate) async fn health_tool(&self) -> Result<CallToolResult, McpError> {
-        match self.with_store(|store| store.list(None, None, Some(0))).await {
+        match self
+            .with_store(|store| store.list(None, None, Some(0)))
+            .await
+        {
             Ok(_) => Self::json_result(&serde_json::json!({
                 "status": "ok",
                 "service": "ticket-mcp",
@@ -17,7 +26,9 @@ impl TicketServer {
         }
     }
 
-    pub(crate) async fn list_workspaces_tool(&self) -> Result<CallToolResult, McpError> {
+    pub(crate) async fn list_workspaces_tool(
+        &self
+    ) -> Result<CallToolResult, McpError> {
         let config = WorkspaceConfig::load();
         let workspaces = if config.workspaces.is_empty() {
             vec!["default".to_string()]
@@ -38,8 +49,10 @@ impl TicketServer {
         let workspace = input.workspace.clone();
         let items = if let Some(query) = input.query.as_deref() {
             let limit = input.limit.unwrap_or(100).min(1000);
-            self.with_store(|store| search_ticket_summaries(store, query, limit))
-                .await?
+            self.with_store(|store| {
+                search_ticket_summaries(store, query, limit)
+            })
+            .await?
         } else {
             self.with_store(|store| listed_ticket_summaries(store, &input))
                 .await?
@@ -85,10 +98,18 @@ impl TicketServer {
             let indexed = store
                 .get_indexed(&id)
                 .map_err(Self::store_err)?
-                .ok_or_else(|| McpError::invalid_params(format!("ticket not found: {id}"), None))?;
+                .ok_or_else(|| {
+                    McpError::invalid_params(
+                        format!("ticket not found: {id}"),
+                        None,
+                    )
+                })?;
 
             if indexed.deleted {
-                return Err(McpError::invalid_params(format!("ticket deleted: {id}"), None));
+                return Err(McpError::invalid_params(
+                    format!("ticket deleted: {id}"),
+                    None,
+                ));
             }
 
             Self::json_result(&serde_json::json!({
@@ -162,11 +183,18 @@ fn listed_ticket_summaries(
         .collect())
 }
 
-fn indexed_updated_at(store: &TicketStore, id: &Uuid) -> chrono::DateTime<chrono::Utc> {
+fn indexed_updated_at(
+    store: &TicketStore,
+    id: &Uuid,
+) -> chrono::DateTime<chrono::Utc> {
     store
         .get_indexed(id)
         .ok()
         .flatten()
         .map(|ticket| ticket.updated_at)
-        .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::UNIX_EPOCH))
+        .unwrap_or_else(|| {
+            chrono::DateTime::<chrono::Utc>::from(
+                std::time::SystemTime::UNIX_EPOCH,
+            )
+        })
 }

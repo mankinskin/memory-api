@@ -1,5 +1,7 @@
-use std::ffi::OsString;
-use std::path::PathBuf;
+use std::{
+    ffi::OsString,
+    path::PathBuf,
+};
 
 use clap::{
     Args,
@@ -12,17 +14,19 @@ use serde_json::{
     json,
 };
 
-use audit_api::audit::audit;
-use audit_api::error::AuditError;
-use audit_api::models::{
-    AuditConfig,
-    AuditReport,
-    TrialStatus,
-};
-use audit_api::summary::{
-    AuditSummaryBy,
-    AuditSummaryReport,
-    summarize_report,
+use audit_api::{
+    audit::audit,
+    error::AuditError,
+    models::{
+        AuditConfig,
+        AuditReport,
+        TrialStatus,
+    },
+    summary::{
+        AuditSummaryBy,
+        AuditSummaryReport,
+        summarize_report,
+    },
 };
 
 #[derive(Debug, Parser)]
@@ -87,7 +91,8 @@ pub enum SummaryByArg {
 impl From<SummaryByArg> for AuditSummaryBy {
     fn from(value: SummaryByArg) -> Self {
         match value {
-            SummaryByArg::Crate | SummaryByArg::Package => AuditSummaryBy::Crate,
+            SummaryByArg::Crate | SummaryByArg::Package =>
+                AuditSummaryBy::Crate,
             SummaryByArg::Category => AuditSummaryBy::Category,
             SummaryByArg::Severity => AuditSummaryBy::Severity,
             SummaryByArg::Metric => AuditSummaryBy::Metric,
@@ -124,7 +129,7 @@ pub fn run(cli: AuditCli) -> Result<CliOutput, CliRunError> {
             } else {
                 Ok(CliOutput::Text(render_human(&report)))
             }
-        }
+        },
         AuditCommand::Summary(summary) => {
             let report = run_audit(&summary.args)?;
             let summary = summarize_report(&report, summary.by.into())?;
@@ -133,7 +138,7 @@ pub fn run(cli: AuditCli) -> Result<CliOutput, CliRunError> {
             } else {
                 Ok(CliOutput::Text(render_summary_human(&summary)))
             }
-        }
+        },
     }
 }
 
@@ -161,7 +166,12 @@ pub fn error_output(
             "code": "invalid_request",
             "message": message,
         }))
-        .unwrap_or_else(|_| format!("{{\"code\":\"invalid_request\",\"message\":{:?}}}", message))
+        .unwrap_or_else(|_| {
+            format!(
+                "{{\"code\":\"invalid_request\",\"message\":{:?}}}",
+                message
+            )
+        })
     } else {
         message.to_string()
     }
@@ -218,11 +228,8 @@ fn render_human(report: &AuditReport) -> String {
     } else {
         lines.push(format!("Findings: {}", report.findings.len()));
         for finding in &report.findings {
-            let mut line = format!(
-                "- [{:?}] {}",
-                finding.severity,
-                finding.summary
-            );
+            let mut line =
+                format!("- [{:?}] {}", finding.severity, finding.summary);
             if let Some(path) = &finding.path {
                 line.push_str(&format!(" ({path})"));
             }
@@ -295,13 +302,17 @@ fn render_test_metric(metric: &audit_api::models::TestSummary) -> String {
     }
 }
 
-fn render_coverage_metric(metric: &audit_api::models::CoverageSummary) -> String {
+fn render_coverage_metric(
+    metric: &audit_api::models::CoverageSummary
+) -> String {
     match metric.status {
         TrialStatus::Collected => metric
             .line_percent
             .map(|value| format!("{value:.1}%"))
             .unwrap_or_else(|| "n/a".to_string()),
-        TrialStatus::Unavailable | TrialStatus::NotApplicable | TrialStatus::Failed => metric
+        TrialStatus::Unavailable
+        | TrialStatus::NotApplicable
+        | TrialStatus::Failed => metric
             .details
             .clone()
             .unwrap_or_else(|| "unavailable".to_string()),

@@ -4,15 +4,24 @@
 //! `GET /api/schema/{type_id}?workspace=<name>` — single type schema.
 
 use axum::{
-    extract::{Extension, Path, Query, State},
+    extract::{
+        Extension,
+        Path,
+        Query,
+        State,
+    },
     http::StatusCode,
-    response::{IntoResponse, Json, Response},
+    response::{
+        IntoResponse,
+        Json,
+        Response,
+    },
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-use viewer_api::error::RequestIdExt;
 use crate::serve::AppState;
+use viewer_api::error::RequestIdExt;
 
 #[derive(serde::Deserialize)]
 pub struct SchemaQuery {
@@ -66,7 +75,9 @@ pub struct SchemaDetailResponse {
 
 // ── Conversion helpers ────────────────────────────────────────────────────────
 
-fn schema_to_wire(s: &ticket_api::model::schema::TicketTypeSchema) -> TypeSchema {
+fn schema_to_wire(
+    s: &ticket_api::model::schema::TicketTypeSchema
+) -> TypeSchema {
     use ticket_api::model::schema::FieldType;
 
     let fields = s
@@ -141,7 +152,7 @@ pub async fn list_schemas(
         None => {
             return viewer_api::error::ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     let registry = store.schema_registry();
@@ -174,7 +185,7 @@ pub async fn get_schema(
         None => {
             return viewer_api::error::ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     let registry = store.schema_registry();
@@ -194,17 +205,33 @@ pub async fn get_schema(
 
 #[cfg(test)]
 mod tests {
-    use super::{get_schema, list_schemas, SchemaQuery};
+    use super::{
+        SchemaQuery,
+        get_schema,
+        list_schemas,
+    };
     use axum::{
         body::to_bytes,
-        extract::{Extension, Path, Query, State},
+        extract::{
+            Extension,
+            Path,
+            Query,
+            State,
+        },
         http::StatusCode,
     };
     use std::sync::Arc;
-    use ticket_api::{model::filesystem::ScanRoot, storage::store::TicketStore};
+    use ticket_api::{
+        model::filesystem::ScanRoot,
+        storage::store::TicketStore,
+    };
     use viewer_api::error::RequestIdExt;
 
-    use crate::serve::{AppState, StreamBroker, WorkspaceRegistry};
+    use crate::serve::{
+        AppState,
+        StreamBroker,
+        WorkspaceRegistry,
+    };
 
     fn make_state(dir: &std::path::Path) -> AppState {
         let store = Arc::new(TicketStore::open(dir).expect("open store"));
@@ -239,7 +266,8 @@ mod tests {
         let bytes = to_bytes(response.into_body(), 1024 * 1024)
             .await
             .expect("body");
-        let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&bytes).expect("json");
 
         assert_eq!(payload["workspace"], "default");
         assert_eq!(payload["request_id"], "rid-schema");
@@ -303,7 +331,8 @@ mod tests {
         let bytes = to_bytes(response.into_body(), 1024 * 1024)
             .await
             .expect("body");
-        let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&bytes).expect("json");
 
         assert_eq!(payload["schema"]["type_id"], "tracker-improvement");
         assert!(payload["schema"]["fields"]["title"].is_object());

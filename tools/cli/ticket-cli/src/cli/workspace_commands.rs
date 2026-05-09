@@ -1,8 +1,14 @@
 use std::path::PathBuf;
 
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 
-use ticket_api::workspace::{self, WorkspaceConfig};
+use ticket_api::workspace::{
+    self,
+    WorkspaceConfig,
+};
 
 use super::{
     WorkspaceArgs,
@@ -15,7 +21,9 @@ use super::{
 pub(super) fn workspace_command_mutates(command: &WorkspaceSubCommand) -> bool {
     matches!(
         command,
-        WorkspaceSubCommand::New(_) | WorkspaceSubCommand::Use(_) | WorkspaceSubCommand::Remove(_)
+        WorkspaceSubCommand::New(_)
+            | WorkspaceSubCommand::Use(_)
+            | WorkspaceSubCommand::Remove(_)
     )
 }
 
@@ -152,14 +160,20 @@ fn resolve_workspace_path(name: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(name))
 }
 
-fn save_config(config: &mut WorkspaceConfig, command: &str) -> Option<Value> {
+fn save_config(
+    config: &mut WorkspaceConfig,
+    command: &str,
+) -> Option<Value> {
     config
         .save()
         .err()
         .map(|error| error_response(command, error.to_string()))
 }
 
-fn error_response(command: &str, message: impl Into<String>) -> Value {
+fn error_response(
+    command: &str,
+    message: impl Into<String>,
+) -> Value {
     json!({
         "command": command,
         "status": "error",

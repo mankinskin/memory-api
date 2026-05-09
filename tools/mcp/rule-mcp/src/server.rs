@@ -1,11 +1,20 @@
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{
+    path::PathBuf,
+    sync::Arc,
+};
 
 use rmcp::{
-    ErrorData as McpError, ServerHandler, ServiceExt,
-    handler::server::{tool::ToolRouter, wrapper::Parameters},
+    ErrorData as McpError,
+    ServerHandler,
+    ServiceExt,
+    handler::server::{
+        tool::ToolRouter,
+        wrapper::Parameters,
+    },
     model::*,
-    tool, tool_handler, tool_router,
+    tool,
+    tool_handler,
+    tool_router,
     transport::stdio,
 };
 use serde::Serialize;
@@ -37,9 +46,12 @@ impl RuleServer {
         }
     }
 
-    fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
-        let text = serde_json::to_string_pretty(value)
-            .map_err(|err| McpError::internal_error(format!("serialization: {err}"), None))?;
+    fn json_result<T: Serialize>(
+        value: &T
+    ) -> Result<CallToolResult, McpError> {
+        let text = serde_json::to_string_pretty(value).map_err(|err| {
+            McpError::internal_error(format!("serialization: {err}"), None)
+        })?;
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
@@ -48,9 +60,8 @@ impl RuleServer {
             rule_api::error::RuleError::NotFound(_)
             | rule_api::error::RuleError::DuplicateSlug(_)
             | rule_api::error::RuleError::InvalidSlug(_)
-            | rule_api::error::RuleError::AmbiguousPrefix(_) => {
-                McpError::invalid_params(err.to_string(), None)
-            }
+            | rule_api::error::RuleError::AmbiguousPrefix(_) =>
+                McpError::invalid_params(err.to_string(), None),
             _ => McpError::internal_error(format!("rule error: {err}"), None),
         }
     }
@@ -68,7 +79,8 @@ impl RuleServer {
         f: impl FnOnce(&mut RuleStore) -> Result<T, McpError>,
     ) -> Result<T, McpError> {
         let _guard = self.store_lock.lock().await;
-        let mut store = RuleStore::open(&self.index_root).map_err(Self::rule_err)?;
+        let mut store =
+            RuleStore::open(&self.index_root).map_err(Self::rule_err)?;
         store.scan(false).map_err(Self::rule_err)?;
         let result = f(&mut store);
         drop(store);
@@ -86,7 +98,10 @@ impl RuleServer {
         self.rule_create_tool(input).await
     }
 
-    #[tool(name = "rule_get", description = "Get a rule by UUID, prefix, or slug.")]
+    #[tool(
+        name = "rule_get",
+        description = "Get a rule by UUID, prefix, or slug."
+    )]
     pub async fn rule_get(
         &self,
         Parameters(input): Parameters<RuleRefInput>,
@@ -94,7 +109,10 @@ impl RuleServer {
         self.rule_get_tool(input).await
     }
 
-    #[tool(name = "rule_import_file", description = "Import markdown blocks from an existing file into canonical rule entries.")]
+    #[tool(
+        name = "rule_import_file",
+        description = "Import markdown blocks from an existing file into canonical rule entries."
+    )]
     pub async fn rule_import_file(
         &self,
         Parameters(input): Parameters<ImportRuleFileInput>,
@@ -102,7 +120,10 @@ impl RuleServer {
         self.rule_import_file_tool(input).await
     }
 
-    #[tool(name = "rule_update", description = "Update a rule entry's fields, state, or body.")]
+    #[tool(
+        name = "rule_update",
+        description = "Update a rule entry's fields, state, or body."
+    )]
     pub async fn rule_update(
         &self,
         Parameters(input): Parameters<UpdateRuleInput>,
@@ -110,7 +131,10 @@ impl RuleServer {
         self.rule_update_tool(input).await
     }
 
-    #[tool(name = "rule_list", description = "List rules with optional metadata filters.")]
+    #[tool(
+        name = "rule_list",
+        description = "List rules with optional metadata filters."
+    )]
     pub async fn rule_list(
         &self,
         Parameters(input): Parameters<ListRulesInput>,
@@ -118,7 +142,10 @@ impl RuleServer {
         self.rule_list_tool(input).await
     }
 
-    #[tool(name = "rule_generate_file", description = "Render deterministic markdown with provenance comments from canonical rule entries.")]
+    #[tool(
+        name = "rule_generate_file",
+        description = "Render deterministic markdown with provenance comments from canonical rule entries."
+    )]
     pub async fn rule_generate_file(
         &self,
         Parameters(input): Parameters<GenerateRuleFileInput>,
@@ -126,7 +153,10 @@ impl RuleServer {
         self.rule_generate_file_tool(input).await
     }
 
-    #[tool(name = "rule_generate_target", description = "Render a named configured markdown target from canonical rule entries.")]
+    #[tool(
+        name = "rule_generate_target",
+        description = "Render a named configured markdown target from canonical rule entries."
+    )]
     pub async fn rule_generate_target(
         &self,
         Parameters(input): Parameters<GenerateRuleTargetInput>,
@@ -134,7 +164,10 @@ impl RuleServer {
         self.rule_generate_target_tool(input).await
     }
 
-    #[tool(name = "rule_explain_target", description = "Preview a named configured markdown target as an outline with matched entries per node.")]
+    #[tool(
+        name = "rule_explain_target",
+        description = "Preview a named configured markdown target as an outline with matched entries per node."
+    )]
     pub async fn rule_explain_target(
         &self,
         Parameters(input): Parameters<ExplainRuleTargetInput>,
@@ -142,7 +175,10 @@ impl RuleServer {
         self.rule_explain_target_tool(input).await
     }
 
-    #[tool(name = "rule_search", description = "Full-text search over rule entries.")]
+    #[tool(
+        name = "rule_search",
+        description = "Full-text search over rule entries."
+    )]
     pub async fn rule_search(
         &self,
         Parameters(input): Parameters<SearchRulesInput>,
@@ -150,7 +186,10 @@ impl RuleServer {
         self.rule_search_tool(input).await
     }
 
-    #[tool(name = "rule_scan", description = "Run a scan/reindex over registered rule scan roots.")]
+    #[tool(
+        name = "rule_scan",
+        description = "Run a scan/reindex over registered rule scan roots."
+    )]
     pub async fn rule_scan(
         &self,
         Parameters(input): Parameters<ScanInput>,
@@ -158,7 +197,10 @@ impl RuleServer {
         self.rule_scan_tool(input).await
     }
 
-    #[tool(name = "rule_add_root", description = "Register a directory as a rule scan root.")]
+    #[tool(
+        name = "rule_add_root",
+        description = "Register a directory as a rule scan root."
+    )]
     pub async fn rule_add_root(
         &self,
         Parameters(input): Parameters<AddRootInput>,
@@ -182,7 +224,7 @@ impl ServerHandler for RuleServer {
 }
 
 pub async fn run_mcp_server(
-    index_root: PathBuf,
+    index_root: PathBuf
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let server = RuleServer::new(index_root);
 

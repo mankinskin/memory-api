@@ -1,21 +1,48 @@
 use std::collections::BTreeMap;
 
 use axum::{
-    extract::{Extension, Path, Query, State},
-    http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Json, Response},
+    extract::{
+        Extension,
+        Path,
+        Query,
+        State,
+    },
+    http::{
+        HeaderMap,
+        StatusCode,
+    },
+    response::{
+        IntoResponse,
+        Json,
+        Response,
+    },
 };
 use serde_json::Value;
 use uuid::Uuid;
 
-use viewer_api::auth::extract_bearer_token;
-use viewer_api::error::{ApiError, RequestIdExt};
+use viewer_api::{
+    auth::extract_bearer_token,
+    error::{
+        ApiError,
+        RequestIdExt,
+    },
+};
 
-use crate::serve::{AppState, error::storage_err};
+use crate::serve::{
+    AppState,
+    error::storage_err,
+};
 
 use super::types::{
-    CancelTicketBody, CloseTicketBody, CreateTicketBody, DeleteResponse, MutationResponse,
-    MutationWorkspaceParam, RevertTicketBody, TicketDetail, UpdateTicketBody,
+    CancelTicketBody,
+    CloseTicketBody,
+    CreateTicketBody,
+    DeleteResponse,
+    MutationResponse,
+    MutationWorkspaceParam,
+    RevertTicketBody,
+    TicketDetail,
+    UpdateTicketBody,
 };
 
 /// `POST /api/tickets?workspace=<name>`
@@ -32,7 +59,7 @@ pub async fn create_ticket(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     let extra = body.fields.unwrap_or_default();
@@ -95,7 +122,7 @@ pub async fn update_ticket(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     let patch = body.fields.unwrap_or_default();
@@ -149,17 +176,18 @@ pub async fn close_ticket(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     let target = body.target_state.as_deref().unwrap_or("done").to_string();
     let author = author_from_headers(&headers);
 
     tokio::task::spawn_blocking(move || {
-        let (manifest, _path) = match store.close(&id, &target, author.as_deref()) {
-            Ok(result) => result,
-            Err(e) => return storage_err(e, &rid.0),
-        };
+        let (manifest, _path) =
+            match store.close(&id, &target, author.as_deref()) {
+                Ok(result) => result,
+                Err(e) => return storage_err(e, &rid.0),
+            };
 
         Json(MutationResponse {
             request_id: rid.0.clone(),
@@ -193,7 +221,7 @@ pub async fn cancel_ticket(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     let author = author_from_headers(&headers);
@@ -203,7 +231,14 @@ pub async fn cancel_ticket(
     }
 
     tokio::task::spawn_blocking(move || {
-        let manifest = match store.update(&id, patch, None, Some("cancelled"), None, author.as_deref()) {
+        let manifest = match store.update(
+            &id,
+            patch,
+            None,
+            Some("cancelled"),
+            None,
+            author.as_deref(),
+        ) {
             Ok(manifest) => manifest,
             Err(e) => return storage_err(e, &rid.0),
         };
@@ -241,7 +276,7 @@ pub async fn revert_ticket(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     let revision = body.revision;
@@ -253,20 +288,27 @@ pub async fn revert_ticket(
             Err(e) => return storage_err(e, &rid.0),
         };
 
-        let target_rev = match revisions.iter().find(|revision_entry| revision_entry.rev == revision) {
+        let target_rev = match revisions
+            .iter()
+            .find(|revision_entry| revision_entry.rev == revision)
+        {
             Some(revision_entry) => revision_entry.clone(),
             None => {
                 return ApiError::bad_request(
                     "revision_not_found",
-                    &format!("revision {} does not exist for this ticket", revision),
+                    &format!(
+                        "revision {} does not exist for this ticket",
+                        revision
+                    ),
                     &rid.0,
                 )
                 .into_response_with_status(StatusCode::BAD_REQUEST);
-            }
+            },
         };
 
         match store.apply_revert(&id, target_rev.fields, author.as_deref()) {
-            Ok(_new_rev) => current_ticket_response(&store, &rid.0, &params.workspace, &id),
+            Ok(_new_rev) =>
+                current_ticket_response(&store, &rid.0, &params.workspace, &id),
             Err(e) => storage_err(e, &rid.0),
         }
     })
@@ -290,7 +332,7 @@ pub async fn undo_ticket(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     let author = author_from_headers(&headers);
@@ -313,7 +355,8 @@ pub async fn undo_ticket(
         let prev_fields = revisions[revisions.len() - 2].fields.clone();
 
         match store.apply_revert(&id, prev_fields, author.as_deref()) {
-            Ok(_new_rev) => current_ticket_response(&store, &rid.0, &params.workspace, &id),
+            Ok(_new_rev) =>
+                current_ticket_response(&store, &rid.0, &params.workspace, &id),
             Err(e) => storage_err(e, &rid.0),
         }
     })
@@ -335,7 +378,7 @@ pub async fn delete_ticket(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     tokio::task::spawn_blocking(move || match store.delete(&id) {

@@ -2,8 +2,10 @@ use ticket_mcp::server;
 
 use std::path::PathBuf;
 
-use ticket_api::storage::store::TicketStore;
-use ticket_api::workspace::WorkspaceConfig;
+use ticket_api::{
+    storage::store::TicketStore,
+    workspace::WorkspaceConfig,
+};
 
 #[tokio::main]
 async fn main() {
@@ -23,7 +25,10 @@ async fn main() {
         });
 
     TicketStore::open(&index_root).unwrap_or_else(|e| {
-        eprintln!("Failed to open ticket store at {}: {e}", index_root.display());
+        eprintln!(
+            "Failed to open ticket store at {}: {e}",
+            index_root.display()
+        );
         std::process::exit(1);
     });
 

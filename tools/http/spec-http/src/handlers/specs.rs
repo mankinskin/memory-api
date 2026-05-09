@@ -1,17 +1,31 @@
 use axum::{
-    extract::{Extension, Path, Query, State},
+    extract::{
+        Extension,
+        Path,
+        Query,
+        State,
+    },
     http::StatusCode,
-    response::{IntoResponse, Json, Response},
+    response::{
+        IntoResponse,
+        Json,
+        Response,
+    },
 };
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
 use spec_api::SpecManifest;
 use viewer_api::error::RequestIdExt;
 
-use crate::error::spec_err;
-use crate::state::SpecAppState;
+use crate::{
+    error::spec_err,
+    state::SpecAppState,
+};
 
 // ── Query/Path extractors ─────────────────────────────────────────────────────
 
@@ -119,7 +133,10 @@ fn spec_to_detail(spec: &SpecManifest) -> SpecDetail {
     }
 }
 
-fn matches_query(spec: &SpecManifest, query: &str) -> bool {
+fn matches_query(
+    spec: &SpecManifest,
+    query: &str,
+) -> bool {
     let needle = query.trim().to_lowercase();
     if needle.is_empty() {
         return true;
@@ -131,7 +148,10 @@ fn matches_query(spec: &SpecManifest, query: &str) -> bool {
         .any(|field| field.to_lowercase().contains(&needle))
 }
 
-fn matches_list_params(spec: &SpecManifest, params: &ListParams) -> bool {
+fn matches_list_params(
+    spec: &SpecManifest,
+    params: &ListParams,
+) -> bool {
     if let Some(state) = params.state.as_deref() {
         if spec.state() != Some(state) {
             return false;
@@ -207,7 +227,7 @@ pub async fn search_specs(
                 items,
             })
             .into_response()
-        }
+        },
         Err(e) => crate::error::storage_err(e, &rid.0),
     }
 }
@@ -356,7 +376,8 @@ mod tests {
 
     #[test]
     fn matches_query_treats_blank_input_as_match_all() {
-        let spec = SpecManifest::new("spec-viewer", "Spec Viewer", "spec-viewer");
+        let spec =
+            SpecManifest::new("spec-viewer", "Spec Viewer", "spec-viewer");
 
         assert!(matches_query(&spec, ""));
         assert!(matches_query(&spec, "   "));

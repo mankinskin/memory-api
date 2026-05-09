@@ -6,18 +6,33 @@
 //! `ticket batch` command.
 
 use axum::{
-    extract::{Extension, Json, State},
+    extract::{
+        Extension,
+        Json,
+        State,
+    },
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::{
+        IntoResponse,
+        Response,
+    },
 };
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde::{
+    Deserialize,
+    Serialize,
+};
+use serde_json::{
+    Value,
+    json,
+};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-use ticket_api::model::edge::EdgeRecord;
-use ticket_api::storage::store::TicketStore;
+use ticket_api::{
+    model::edge::EdgeRecord,
+    storage::store::TicketStore,
+};
 use viewer_api::error::RequestIdExt;
 
 use crate::serve::AppState;
@@ -105,24 +120,36 @@ enum BatchUndoOp {
 }
 
 /// Apply a single rollback operation, appending any error description to `errors`.
-fn apply_batch_undo(undo: BatchUndoOp, store: &TicketStore, errors: &mut Vec<String>) {
+fn apply_batch_undo(
+    undo: BatchUndoOp,
+    store: &TicketStore,
+    errors: &mut Vec<String>,
+) {
     match undo {
-        BatchUndoOp::Delete { id } => {
+        BatchUndoOp::Delete { id } =>
             if let Err(e) = store.delete(&id) {
                 errors.push(format!("rollback delete {id}: {e}"));
-            }
-        }
-        BatchUndoOp::RestoreUpdate { id, saved_extra, saved_state } => {
+            },
+        BatchUndoOp::RestoreUpdate {
+            id,
+            saved_extra,
+            saved_state,
+        } => {
             if let Err(e) = store.force_restore(&id, saved_extra, saved_state) {
                 errors.push(format!("rollback restore {id}: {e}"));
             }
-        }
+        },
         BatchUndoOp::RemoveEdge { from, to, kind } => {
-            let edge = EdgeRecord { from, to, kind, created_at: Utc::now() };
+            let edge = EdgeRecord {
+                from,
+                to,
+                kind,
+                created_at: Utc::now(),
+            };
             if let Err(e) = store.remove_edge(edge) {
                 errors.push(format!("rollback remove_edge {from}->{to}: {e}"));
             }
-        }
+        },
     }
 }
 
@@ -150,7 +177,12 @@ fn dispatch_command(
     store: &TicketStore,
 ) -> Result<(Value, Option<BatchUndoOp>), ticket_api::error::StorageError> {
     match cmd {
-        BatchCommand::Create { type_id, title, fields, description } => {
+        BatchCommand::Create {
+            type_id,
+            title,
+            fields,
+            description,
+        } => {
             let id = store.create(
                 None,
                 &type_id,
@@ -174,12 +206,23 @@ fn dispatch_command(
                 "fields": manifest.extra,
             });
             Ok((result, Some(BatchUndoOp::Delete { id })))
-        }
+        },
 
-        BatchCommand::Update { id, fields, state, from_state } => {
+        BatchCommand::Update {
+            id,
+            fields,
+            state,
+            from_state,
+        } => {
             let pre = snapshot_ticket(store, &id);
-            let manifest =
-                store.update(&id, fields, from_state.as_deref(), state.as_deref(), None, None)?;
+            let manifest = store.update(
+                &id,
+                fields,
+                from_state.as_deref(),
+                state.as_deref(),
+                None,
+                None,
+            )?;
             let created_at = store
                 .get_indexed(&id)
                 .ok()
@@ -192,13 +235,15 @@ fn dispatch_command(
                 "created_at": created_at,
                 "fields": manifest.extra,
             });
-            let undo = pre.map(|(saved_extra, saved_state)| BatchUndoOp::RestoreUpdate {
-                id,
-                saved_extra,
-                saved_state,
+            let undo = pre.map(|(saved_extra, saved_state)| {
+                BatchUndoOp::RestoreUpdate {
+                    id,
+                    saved_extra,
+                    saved_state,
+                }
             });
             Ok((result, undo))
-        }
+        },
 
         BatchCommand::Close { id, target_state } => {
             let pre = snapshot_ticket(store, &id);
@@ -216,13 +261,15 @@ fn dispatch_command(
                 "created_at": created_at,
                 "fields": manifest.extra,
             });
-            let undo = pre.map(|(saved_extra, saved_state)| BatchUndoOp::RestoreUpdate {
-                id,
-                saved_extra,
-                saved_state,
+            let undo = pre.map(|(saved_extra, saved_state)| {
+                BatchUndoOp::RestoreUpdate {
+                    id,
+                    saved_extra,
+                    saved_state,
+                }
             });
             Ok((result, undo))
-        }
+        },
 
         BatchCommand::Cancel { id, reason } => {
             let pre = snapshot_ticket(store, &id);
@@ -230,8 +277,14 @@ fn dispatch_command(
             if let Some(r) = reason {
                 patch.insert("cancel_reason".to_string(), Value::String(r));
             }
-            let manifest =
-                store.update(&id, patch, None, Some("cancelled"), None, None)?;
+            let manifest = store.update(
+                &id,
+                patch,
+                None,
+                Some("cancelled"),
+                None,
+                None,
+            )?;
             let created_at = store
                 .get_indexed(&id)
                 .ok()
@@ -244,16 +297,23 @@ fn dispatch_command(
                 "created_at": created_at,
                 "fields": manifest.extra,
             });
-            let undo = pre.map(|(saved_extra, saved_state)| BatchUndoOp::RestoreUpdate {
-                id,
-                saved_extra,
-                saved_state,
+            let undo = pre.map(|(saved_extra, saved_state)| {
+                BatchUndoOp::RestoreUpdate {
+                    id,
+                    saved_extra,
+                    saved_state,
+                }
             });
             Ok((result, undo))
-        }
+        },
 
         BatchCommand::Link { from, to, kind } => {
-            let edge = EdgeRecord { from, to, kind: kind.clone(), created_at: Utc::now() };
+            let edge = EdgeRecord {
+                from,
+                to,
+                kind: kind.clone(),
+                created_at: Utc::now(),
+            };
             store.add_edge(edge)?;
             let result = json!({
                 "op": "link",
@@ -262,10 +322,15 @@ fn dispatch_command(
                 "kind": kind.clone(),
             });
             Ok((result, Some(BatchUndoOp::RemoveEdge { from, to, kind })))
-        }
+        },
 
         BatchCommand::Unlink { from, to, kind } => {
-            let edge = EdgeRecord { from, to, kind: kind.clone(), created_at: Utc::now() };
+            let edge = EdgeRecord {
+                from,
+                to,
+                kind: kind.clone(),
+                created_at: Utc::now(),
+            };
             store.remove_edge(edge)?;
             let result = json!({
                 "op": "unlink",
@@ -275,7 +340,7 @@ fn dispatch_command(
             });
             // Unlink has no rollback entry (matches CLI batch behaviour).
             Ok((result, None))
-        }
+        },
     }
 }
 
@@ -303,7 +368,7 @@ pub async fn batch_tickets(
         None => {
             return viewer_api::error::ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     let workspace = body.workspace;
@@ -323,7 +388,7 @@ pub async fn batch_tickets(
                         undo_stack.push(u);
                     }
                     results.push(result);
-                }
+                },
                 Err(e) => {
                     let mut rollback_errors: Vec<String> = Vec::new();
                     for undo in undo_stack.into_iter().rev() {
@@ -345,7 +410,7 @@ pub async fn batch_tickets(
                         })),
                     )
                         .into_response();
-                }
+                },
             }
         }
 

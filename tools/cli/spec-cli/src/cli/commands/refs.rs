@@ -1,11 +1,23 @@
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 
-use spec_api::SpecStore;
-use spec_api::code_ref::validate_refs;
+use spec_api::{
+    SpecStore,
+    code_ref::validate_refs,
+};
 
-use crate::cli::{CliRunError, RefsArgs, RefsSubcommand};
+use crate::cli::{
+    CliRunError,
+    RefsArgs,
+    RefsSubcommand,
+};
 
-pub(crate) fn cmd_refs(args: RefsArgs, store: &SpecStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_refs(
+    args: RefsArgs,
+    store: &SpecStore,
+) -> Result<Value, CliRunError> {
     let spec = store.get(&args.id)?;
 
     match args.subcommand {
@@ -24,7 +36,8 @@ pub(crate) fn cmd_refs(args: RefsArgs, store: &SpecStore) -> Result<Value, CliRu
                     })
                 })
                 .collect();
-            let all_valid = results.iter().all(|r| r.file_exists && r.line_range_valid);
+            let all_valid =
+                results.iter().all(|r| r.file_exists && r.line_range_valid);
             Ok(json!({
                 "command": "refs_validate",
                 "status": "ok",
@@ -33,7 +46,7 @@ pub(crate) fn cmd_refs(args: RefsArgs, store: &SpecStore) -> Result<Value, CliRu
                 "count": items.len(),
                 "results": items,
             }))
-        }
+        },
         None => {
             let refs: Vec<Value> = spec
                 .code_refs
@@ -56,6 +69,6 @@ pub(crate) fn cmd_refs(args: RefsArgs, store: &SpecStore) -> Result<Value, CliRu
                 "count": refs.len(),
                 "refs": refs,
             }))
-        }
+        },
     }
 }

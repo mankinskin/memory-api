@@ -1,20 +1,39 @@
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 
 use ticket_api::storage::TicketStore;
 
-use crate::cli::{CancelArgs, ClaimArgs, CloseArgs, CliRunError, UnclaimArgs};
+use crate::cli::{
+    CancelArgs,
+    ClaimArgs,
+    CliRunError,
+    CloseArgs,
+    UnclaimArgs,
+};
 
 fn resolve_author(explicit: Option<&str>) -> Option<String> {
-    explicit
-        .map(str::to_string)
-        .or_else(|| std::env::var("TICKET_AUTHOR").ok().filter(|s| !s.is_empty()))
+    explicit.map(str::to_string).or_else(|| {
+        std::env::var("TICKET_AUTHOR")
+            .ok()
+            .filter(|s| !s.is_empty())
+    })
 }
 
-pub(crate) fn cmd_close(args: CloseArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_close(
+    args: CloseArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let author = resolve_author(args.author.as_deref());
-    let (manifest, path) = store.close(&id, &args.to_state, author.as_deref())?;
-    let title = manifest.extra.get("title").and_then(Value::as_str).unwrap_or("-");
+    let (manifest, path) =
+        store.close(&id, &args.to_state, author.as_deref())?;
+    let title = manifest
+        .extra
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("-");
     Ok(json!({
         "command": "close",
         "status": "ok",
@@ -25,11 +44,18 @@ pub(crate) fn cmd_close(args: CloseArgs, store: &TicketStore) -> Result<Value, C
     }))
 }
 
-pub(crate) fn cmd_cancel(args: CancelArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_cancel(
+    args: CancelArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let author = resolve_author(args.author.as_deref());
     let (manifest, path) = store.close(&id, "cancelled", author.as_deref())?;
-    let title = manifest.extra.get("title").and_then(Value::as_str).unwrap_or("-");
+    let title = manifest
+        .extra
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("-");
     Ok(json!({
         "command": "cancel",
         "status": "ok",
@@ -39,17 +65,20 @@ pub(crate) fn cmd_cancel(args: CancelArgs, store: &TicketStore) -> Result<Value,
     }))
 }
 
-pub(crate) fn cmd_claim(args: ClaimArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_claim(
+    args: ClaimArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
 
     // Enforce per-ticket exclusivity: `claim` is a single-agent lease, so a
     // different agent already holding the ticket must cause an explicit failure.
     let snap = store.board_show(None)?;
-    if let Some(holder) = snap
-        .entries
-        .iter()
-        .find(|e| e.ticket_id == id && e.status == ticket_api::BoardEntryStatus::Active && e.agent_id != args.agent_id)
-    {
+    if let Some(holder) = snap.entries.iter().find(|e| {
+        e.ticket_id == id
+            && e.status == ticket_api::BoardEntryStatus::Active
+            && e.agent_id != args.agent_id
+    }) {
         return Err(CliRunError::BadRequest(format!(
             "lease conflict: ticket already claimed by agent '{}' (entry {})",
             holder.agent_id, holder.entry_id,
@@ -72,16 +101,22 @@ pub(crate) fn cmd_claim(args: ClaimArgs, store: &TicketStore) -> Result<Value, C
     }))
 }
 
-pub(crate) fn cmd_unclaim(args: UnclaimArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_unclaim(
+    args: UnclaimArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let manifest = store.get(&id)?;
-    let title = manifest.extra.get("title").and_then(Value::as_str).unwrap_or("-");
+    let title = manifest
+        .extra
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("-");
     // Determine agent_id from the active board snapshot (find any active entry for this ticket).
     let snap = store.board_show(None)?;
-    let entry = snap
-        .entries
-        .iter()
-        .find(|e| e.ticket_id == id && e.status == ticket_api::BoardEntryStatus::Active);
+    let entry = snap.entries.iter().find(|e| {
+        e.ticket_id == id && e.status == ticket_api::BoardEntryStatus::Active
+    });
     if let Some(e) = entry {
         store.board_check_out(&id, &e.agent_id, args.reason.as_deref())?;
     }

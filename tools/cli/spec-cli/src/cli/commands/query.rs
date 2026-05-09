@@ -1,11 +1,23 @@
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 
 use memory_api::model::filesystem::ScanRoot;
 use spec_api::SpecStore;
 
-use crate::cli::{AddRootArgs, CliRunError, HealthArgs, ScanArgs, SearchArgs};
+use crate::cli::{
+    AddRootArgs,
+    CliRunError,
+    HealthArgs,
+    ScanArgs,
+    SearchArgs,
+};
 
-pub(crate) fn cmd_search(args: SearchArgs, store: &SpecStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_search(
+    args: SearchArgs,
+    store: &SpecStore,
+) -> Result<Value, CliRunError> {
     let results = store.entity_store().search(&args.query, args.limit)?;
     let items: Vec<Value> = results
         .iter()
@@ -29,7 +41,10 @@ pub(crate) fn cmd_search(args: SearchArgs, store: &SpecStore) -> Result<Value, C
     }))
 }
 
-pub(crate) fn cmd_scan(args: ScanArgs, store: &mut SpecStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_scan(
+    args: ScanArgs,
+    store: &mut SpecStore,
+) -> Result<Value, CliRunError> {
     let report = store.scan(args.force)?;
     Ok(json!({
         "command": "scan",
@@ -41,8 +56,12 @@ pub(crate) fn cmd_scan(args: ScanArgs, store: &mut SpecStore) -> Result<Value, C
     }))
 }
 
-pub(crate) fn cmd_add_root(args: AddRootArgs, store: &SpecStore) -> Result<Value, CliRunError> {
-    let path = std::fs::canonicalize(&args.path).unwrap_or_else(|_| args.path.clone());
+pub(crate) fn cmd_add_root(
+    args: AddRootArgs,
+    store: &SpecStore,
+) -> Result<Value, CliRunError> {
+    let path =
+        std::fs::canonicalize(&args.path).unwrap_or_else(|_| args.path.clone());
     let label = args.label.unwrap_or_else(|| {
         path.file_name()
             .and_then(|n| n.to_str())
@@ -61,7 +80,10 @@ pub(crate) fn cmd_add_root(args: AddRootArgs, store: &SpecStore) -> Result<Value
     }))
 }
 
-pub(crate) fn cmd_health(args: HealthArgs, store: &SpecStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_health(
+    args: HealthArgs,
+    store: &SpecStore,
+) -> Result<Value, CliRunError> {
     let specs = if args.all {
         let all = store.entity_store().list_indexed(false)?;
         all.iter()

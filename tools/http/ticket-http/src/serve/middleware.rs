@@ -7,14 +7,20 @@
 use axum::{
     body::Body,
     extract::State,
-    http::{Request, StatusCode},
+    http::{
+        Request,
+        StatusCode,
+    },
     middleware::Next,
     response::Response,
 };
 
 use viewer_api::{
     auth::extract_bearer_token,
-    error::{ApiError, RequestIdExt},
+    error::{
+        ApiError,
+        RequestIdExt,
+    },
 };
 
 use super::AppState;

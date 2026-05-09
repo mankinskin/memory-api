@@ -20,15 +20,30 @@
 //! 360 tickets + ~630 edges, matching production workspace size.
 //! The BFS tree from root visits exactly 39 nodes at depth ≤ 4.
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{
+    BenchmarkId,
+    Criterion,
+    Throughput,
+    criterion_group,
+    criterion_main,
+};
 use std::{
-    collections::{HashMap, VecDeque},
-    sync::{Arc, OnceLock},
+    collections::{
+        HashMap,
+        VecDeque,
+    },
+    sync::{
+        Arc,
+        OnceLock,
+    },
     thread,
 };
 use tempfile::TempDir;
 use ticket_api::{
-    model::{edge::EdgeRecord, filesystem::ScanRoot},
+    model::{
+        edge::EdgeRecord,
+        filesystem::ScanRoot,
+    },
     storage::store::TicketStore,
 };
 use uuid::Uuid;
@@ -110,20 +125,30 @@ fn build_fixture() -> Fixture {
     }
     // depth 2: 2 children per depth-1
     for i in 0..5usize {
-        store.add_edge(linked(ids[1 + i], ids[6 + i * 2])).expect("add d2a edge");
-        store.add_edge(linked(ids[1 + i], ids[6 + i * 2 + 1])).expect("add d2b edge");
+        store
+            .add_edge(linked(ids[1 + i], ids[6 + i * 2]))
+            .expect("add d2a edge");
+        store
+            .add_edge(linked(ids[1 + i], ids[6 + i * 2 + 1]))
+            .expect("add d2b edge");
     }
     // depth 3: 1 child per depth-2
     for i in 0..10usize {
-        store.add_edge(linked(ids[6 + i], ids[16 + i])).expect("add d3 edge");
+        store
+            .add_edge(linked(ids[6 + i], ids[16 + i]))
+            .expect("add d3 edge");
     }
     // depth 4: first 8 depth-3 nodes get 1 child; last 2 get 0; pad to 13
     for i in 0..8usize {
-        store.add_edge(linked(ids[16 + i], ids[26 + i])).expect("add d4a edge");
+        store
+            .add_edge(linked(ids[16 + i], ids[26 + i]))
+            .expect("add d4a edge");
     }
     // 5 more to reach 13 depth-4 nodes (nodes 34-38 as second children of d3[0..4])
     for i in 0..5usize {
-        store.add_edge(linked(ids[16 + i], ids[34 + i])).expect("add d4b edge");
+        store
+            .add_edge(linked(ids[16 + i], ids[34 + i]))
+            .expect("add d4b edge");
     }
 
     let bfs_node_ids: Vec<Uuid> = (0..39).map(|i| ids[i]).collect();
@@ -162,19 +187,30 @@ fn fixture() -> &'static Fixture {
 // ── BFS helpers (mirrors graph.rs) ────────────────────────────────────────────
 
 fn build_adjacency(edges: &[EdgeRecord]) -> HashMap<Uuid, Vec<AdjEntry>> {
-    let mut adj: HashMap<Uuid, Vec<AdjEntry>> = HashMap::with_capacity(edges.len() * 2);
+    let mut adj: HashMap<Uuid, Vec<AdjEntry>> =
+        HashMap::with_capacity(edges.len() * 2);
     for e in edges {
-        adj.entry(e.from)
-            .or_default()
-            .push((e.to, e.from, e.to, e.kind.clone()));
-        adj.entry(e.to)
-            .or_default()
-            .push((e.from, e.from, e.to, e.kind.clone()));
+        adj.entry(e.from).or_default().push((
+            e.to,
+            e.from,
+            e.to,
+            e.kind.clone(),
+        ));
+        adj.entry(e.to).or_default().push((
+            e.from,
+            e.from,
+            e.to,
+            e.kind.clone(),
+        ));
     }
     adj
 }
 
-fn run_bfs(adj: &HashMap<Uuid, Vec<AdjEntry>>, root: Uuid, depth_limit: usize) -> HashMap<Uuid, usize> {
+fn run_bfs(
+    adj: &HashMap<Uuid, Vec<AdjEntry>>,
+    root: Uuid,
+    depth_limit: usize,
+) -> HashMap<Uuid, usize> {
     let mut visited: HashMap<Uuid, usize> = HashMap::new();
     let mut queue: VecDeque<(Uuid, usize)> = VecDeque::new();
     queue.push_back((root, 0));
@@ -284,8 +320,11 @@ fn bench_pipeline_concurrent(c: &mut Criterion) {
                                 let edges = store.list_all_edges().unwrap();
                                 let adj = build_adjacency(&edges);
                                 let visited = run_bfs(&adj, root, 4);
-                                let ids: Vec<Uuid> = visited.keys().copied().collect();
-                                criterion::black_box(store.get_indexed_many(&ids).unwrap())
+                                let ids: Vec<Uuid> =
+                                    visited.keys().copied().collect();
+                                criterion::black_box(
+                                    store.get_indexed_many(&ids).unwrap(),
+                                )
                             })
                         })
                         .collect();

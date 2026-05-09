@@ -1,10 +1,21 @@
 use axum::{
-    body::{Body, to_bytes},
-    http::{Method, Request, StatusCode, header},
+    body::{
+        Body,
+        to_bytes,
+    },
+    http::{
+        Method,
+        Request,
+        StatusCode,
+        header,
+    },
 };
 use tower::ServiceExt;
 
-use super::support::{make_app, seed_spec};
+use super::support::{
+    make_app,
+    seed_spec,
+};
 
 #[tokio::test]
 async fn list_sections_returns_empty_for_new_spec() {

@@ -1,23 +1,43 @@
 use std::collections::BTreeMap;
 
-use serde_json::{Map, Value, json};
+use serde_json::{
+    Map,
+    Value,
+    json,
+};
 
-use ticket_api::storage::TicketStore;
-use ticket_api::storage::ticket_fs::TicketFs;
+use ticket_api::storage::{
+    TicketStore,
+    ticket_fs::TicketFs,
+};
 
 use crate::cli::{
-    CliRunError, CreateArgs, IdArgs, ListArgs, ReproArgs, UpdateArgs,
-    current_git_commit, default_repro_summary, normalize_repro_timestamp,
-    parse_fields, parse_fields_to_json, repro_summary_from_fields,
+    CliRunError,
+    CreateArgs,
+    IdArgs,
+    ListArgs,
+    ReproArgs,
+    UpdateArgs,
+    current_git_commit,
+    default_repro_summary,
+    normalize_repro_timestamp,
+    parse_fields,
+    parse_fields_to_json,
+    repro_summary_from_fields,
 };
 
 fn resolve_author(explicit: Option<&str>) -> Option<String> {
-    explicit
-        .map(str::to_string)
-        .or_else(|| std::env::var("TICKET_AUTHOR").ok().filter(|s| !s.is_empty()))
+    explicit.map(str::to_string).or_else(|| {
+        std::env::var("TICKET_AUTHOR")
+            .ok()
+            .filter(|s| !s.is_empty())
+    })
 }
 
-pub(crate) fn cmd_create(args: CreateArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_create(
+    args: CreateArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let type_id = args.ticket_type.as_deref().unwrap_or("tracker-improvement");
     let extra = parse_fields_to_json(&args.fields)?;
     let target_root = args.target_root.as_deref();
@@ -26,7 +46,9 @@ pub(crate) fn cmd_create(args: CreateArgs, store: &TicketStore) -> Result<Value,
         .body_file
         .map(|p| {
             std::fs::read_to_string(&p).map_err(|e| {
-                CliRunError::InvalidFieldPatch(format!("cannot read body-file: {e}"))
+                CliRunError::InvalidFieldPatch(format!(
+                    "cannot read body-file: {e}"
+                ))
             })
         })
         .transpose()?;
@@ -42,8 +64,16 @@ pub(crate) fn cmd_create(args: CreateArgs, store: &TicketStore) -> Result<Value,
     )?;
 
     let manifest = store.get(&id)?;
-    let title = manifest.extra.get("title").and_then(Value::as_str).unwrap_or("-");
-    let state = manifest.extra.get("state").and_then(Value::as_str).unwrap_or("open");
+    let title = manifest
+        .extra
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("-");
+    let state = manifest
+        .extra
+        .get("state")
+        .and_then(Value::as_str)
+        .unwrap_or("open");
 
     Ok(json!({
         "command": "create",
@@ -56,7 +86,10 @@ pub(crate) fn cmd_create(args: CreateArgs, store: &TicketStore) -> Result<Value,
     }))
 }
 
-pub(crate) fn cmd_get(args: IdArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_get(
+    args: IdArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let manifest = store.get(&id)?;
     Ok(json!({
@@ -70,12 +103,18 @@ pub(crate) fn cmd_get(args: IdArgs, store: &TicketStore) -> Result<Value, CliRun
     }))
 }
 
-pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_update(
+    args: UpdateArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let author = resolve_author(args.author.as_deref());
 
     if args.undo {
-        if args.to_state.is_some() || args.from_state.is_some() || !args.fields.is_empty() {
+        if args.to_state.is_some()
+            || args.from_state.is_some()
+            || !args.fields.is_empty()
+        {
             return Err(CliRunError::BadRequest(
                 "--undo cannot be combined with --to-state, --from-state, or --field".into(),
             ));
@@ -88,7 +127,8 @@ pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value,
         }
         let prev = &revisions[revisions.len() - 2];
         let prev_rev = prev.rev;
-        let new_rev = store.apply_revert(&id, prev.fields.clone(), author.as_deref())?;
+        let new_rev =
+            store.apply_revert(&id, prev.fields.clone(), author.as_deref())?;
         let updated = store.get(&id)?;
         return Ok(json!({
             "command": "update",
@@ -110,8 +150,16 @@ pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value,
         args.description.as_deref(),
         author.as_deref(),
     )?;
-    let title = manifest.extra.get("title").and_then(Value::as_str).unwrap_or("-");
-    let state = manifest.extra.get("state").and_then(Value::as_str).unwrap_or("open");
+    let title = manifest
+        .extra
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("-");
+    let state = manifest
+        .extra
+        .get("state")
+        .and_then(Value::as_str)
+        .unwrap_or("open");
 
     // Optional board check-in after a successful update.
     let board_entry_json: Option<Value> = if args.board_check_in {
@@ -120,12 +168,18 @@ pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value,
                 return Err(CliRunError::BadRequest(
                     "--board-check-in requires --board-agent".into(),
                 ));
-            }
+            },
             Some(ref agent) => {
                 let ttl = args.board_ttl_secs.unwrap_or(3600);
                 let intent = args.board_intent.as_deref().unwrap_or("");
                 let entry = store
-                    .board_check_in(&id, agent, ttl, intent, args.board_files.clone())
+                    .board_check_in(
+                        &id,
+                        agent,
+                        ttl,
+                        intent,
+                        args.board_files.clone(),
+                    )
                     .map_err(|e| CliRunError::Board(e))?;
                 Some(json!({
                     "entry_id": entry.entry_id,
@@ -136,7 +190,7 @@ pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value,
                     "checked_in_at": entry.checked_in_at,
                     "ttl_secs": entry.ttl_secs,
                 }))
-            }
+            },
         }
     } else {
         None
@@ -154,14 +208,19 @@ pub(crate) fn cmd_update(args: UpdateArgs, store: &TicketStore) -> Result<Value,
         }
     });
 
-    if let (Some(entry), Some(obj)) = (board_entry_json, response.as_object_mut()) {
+    if let (Some(entry), Some(obj)) =
+        (board_entry_json, response.as_object_mut())
+    {
         obj.insert("board_entry".to_string(), entry);
     }
 
     Ok(response)
 }
 
-pub(crate) fn cmd_repro(args: ReproArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_repro(
+    args: ReproArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let manifest = store.get(&id)?;
     let mut reproductions = manifest
@@ -194,10 +253,7 @@ pub(crate) fn cmd_repro(args: ReproArgs, store: &TicketStore) -> Result<Value, C
     let mut patch = BTreeMap::new();
     patch.insert("reproductions".to_string(), Value::Array(reproductions));
     patch.insert("last_reproduced_at".to_string(), Value::String(at));
-    patch.insert(
-        "last_reproduced_commit".to_string(),
-        Value::String(commit),
-    );
+    patch.insert("last_reproduced_commit".to_string(), Value::String(commit));
     patch.insert(
         "last_reproduction_outcome".to_string(),
         Value::String(outcome),
@@ -226,10 +282,12 @@ pub(crate) fn cmd_repro(args: ReproArgs, store: &TicketStore) -> Result<Value, C
     }))
 }
 
-pub(crate) fn cmd_list(args: ListArgs, store: &TicketStore) -> Result<Value, CliRunError> {
-    let field_filters: Vec<(String, String)> = parse_fields(&args.where_clauses)?
-        .into_iter()
-        .collect();
+pub(crate) fn cmd_list(
+    args: ListArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    let field_filters: Vec<(String, String)> =
+        parse_fields(&args.where_clauses)?.into_iter().collect();
     let items = store.list_extended(
         args.state.as_deref(),
         args.ticket_type.as_deref(),
@@ -273,11 +331,24 @@ pub(crate) fn cmd_list(args: ListArgs, store: &TicketStore) -> Result<Value, Cli
     }))
 }
 
-pub(crate) fn cmd_delete(args: IdArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_delete(
+    args: IdArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let manifest = store.get(&id)?;
-    let title = manifest.extra.get("title").and_then(Value::as_str).unwrap_or("-").to_string();
-    let ticket_type = manifest.extra.get("type").and_then(Value::as_str).unwrap_or("-").to_string();
+    let title = manifest
+        .extra
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("-")
+        .to_string();
+    let ticket_type = manifest
+        .extra
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("-")
+        .to_string();
     store.delete(&id)?;
     Ok(json!({
         "command": "delete",
@@ -288,11 +359,14 @@ pub(crate) fn cmd_delete(args: IdArgs, store: &TicketStore) -> Result<Value, Cli
     }))
 }
 
-pub(crate) fn cmd_describe(args: IdArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_describe(
+    args: IdArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
-    let indexed = store
-        .get_indexed(&id)?
-        .ok_or_else(|| CliRunError::BadRequest(format!("ticket not found: {}", id)))?;
+    let indexed = store.get_indexed(&id)?.ok_or_else(|| {
+        CliRunError::BadRequest(format!("ticket not found: {}", id))
+    })?;
     if indexed.deleted {
         return Err(CliRunError::BadRequest(format!("ticket deleted: {}", id)));
     }

@@ -1,12 +1,26 @@
 use std::collections::BTreeMap;
 
-use rmcp::{ErrorData as McpError, model::CallToolResult};
-use serde_json::{Value, json};
+use rmcp::{
+    ErrorData as McpError,
+    model::CallToolResult,
+};
+use serde_json::{
+    Value,
+    json,
+};
 
-use rule_api::{RuleFilter, RuleManifest};
+use rule_api::{
+    RuleFilter,
+    RuleManifest,
+};
 
 use super::{
-    CreateRuleInput, ListRulesInput, RuleRefInput, RuleServer, SearchRulesInput, UpdateRuleInput,
+    CreateRuleInput,
+    ListRulesInput,
+    RuleRefInput,
+    RuleServer,
+    SearchRulesInput,
+    UpdateRuleInput,
 };
 
 impl RuleServer {
@@ -197,7 +211,9 @@ fn rule_summary_json(rule: &RuleManifest) -> Value {
     })
 }
 
-fn parse_fields(fields: &[String]) -> Result<BTreeMap<String, Value>, McpError> {
+fn parse_fields(
+    fields: &[String]
+) -> Result<BTreeMap<String, Value>, McpError> {
     let mut patch = BTreeMap::new();
     for field in fields {
         let (key, value) = field.split_once('=').ok_or_else(|| {
@@ -206,7 +222,10 @@ fn parse_fields(fields: &[String]) -> Result<BTreeMap<String, Value>, McpError> 
                 None,
             )
         })?;
-        patch.insert(key.trim().to_string(), Value::String(value.trim().to_string()));
+        patch.insert(
+            key.trim().to_string(),
+            Value::String(value.trim().to_string()),
+        );
     }
     Ok(patch)
 }

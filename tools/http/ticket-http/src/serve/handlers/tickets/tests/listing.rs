@@ -1,12 +1,25 @@
 use axum::{
     body::to_bytes,
-    extract::{Extension, Query, State},
+    extract::{
+        Extension,
+        Query,
+        State,
+    },
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::Arc,
+};
 use viewer_api::error::RequestIdExt;
 
-use super::{make_state, make_store};
-use super::super::{WorkspaceParam, list_tickets};
+use super::{
+    super::{
+        WorkspaceParam,
+        list_tickets,
+    },
+    make_state,
+    make_store,
+};
 
 #[tokio::test]
 async fn search_list_uses_persisted_updated_at() {
@@ -49,7 +62,8 @@ async fn search_list_uses_persisted_updated_at() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("read body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json body");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json body");
 
     let got = payload["items"][0]["updated_at"]
         .as_str()

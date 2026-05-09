@@ -1,5 +1,7 @@
-use std::fs;
-use std::path::Path;
+use std::{
+    fs,
+    path::Path,
+};
 
 use serde::Deserialize;
 
@@ -42,7 +44,8 @@ pub fn is_repo_relative_path_excluded(
     }
 
     exclude_paths.iter().any(|excluded| {
-        normalized == *excluded || normalized.starts_with(&format!("{excluded}/"))
+        normalized == *excluded
+            || normalized.starts_with(&format!("{excluded}/"))
     })
 }
 

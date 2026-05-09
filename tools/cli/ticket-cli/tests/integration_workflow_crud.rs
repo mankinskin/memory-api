@@ -7,7 +7,10 @@
 
 mod common;
 
-use common::{Sandbox, create_ticket};
+use common::{
+    Sandbox,
+    create_ticket,
+};
 
 // ---------------------------------------------------------------------------
 // CRUD
@@ -46,7 +49,13 @@ fn create_multiple_and_list_all() {
     let s = Sandbox::new();
 
     for title in &["Alpha feature", "Beta fix", "Gamma refactor"] {
-        let r = s.ticket_json(&["create", "--title", title, "--type", "tracker-improvement"]);
+        let r = s.ticket_json(&[
+            "create",
+            "--title",
+            title,
+            "--type",
+            "tracker-improvement",
+        ]);
         assert_eq!(r["status"], "ok");
     }
 
@@ -225,7 +234,10 @@ fn scan_reindex_preserves_searchability() {
     // Search must still return the correct result.
     let results = s.ticket_json(&["search", "benchmark"]);
     assert_eq!(results["count"].as_u64().unwrap(), 1);
-    assert_eq!(results["results"][0]["title"], "Performance benchmark suite");
+    assert_eq!(
+        results["results"][0]["title"],
+        "Performance benchmark suite"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +264,9 @@ fn claim_conflict_and_unclaim_cycle() {
     // Agent-2 attempts to claim the same ticket — must fail (lease conflict).
     let (_code, stderr) = s.ticket_fail(&["claim", &id, "--agent", "agent-2"]);
     assert!(
-        stderr.contains("agent-1") || stderr.contains("lease") || stderr.contains("conflict"),
+        stderr.contains("agent-1")
+            || stderr.contains("lease")
+            || stderr.contains("conflict"),
         "expected a lease-conflict error mentioning agent-1, got: {stderr}"
     );
 
@@ -371,4 +385,3 @@ fn unlink_removes_existing_edge() {
     let after = s.ticket_json(&["links", id_a]);
     assert_eq!(after["count"].as_u64().unwrap(), 0);
 }
-

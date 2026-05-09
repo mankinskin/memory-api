@@ -1,7 +1,11 @@
 use std::path::PathBuf;
 
 use spec_api::SpecStore;
-use spec_http::{ServeConfig, SpecAppState, start_server};
+use spec_http::{
+    ServeConfig,
+    SpecAppState,
+    start_server,
+};
 
 #[tokio::main]
 async fn main() {
@@ -24,16 +28,16 @@ async fn main() {
             "--port" => {
                 i += 1;
                 port = args[i].parse().expect("invalid port");
-            }
+            },
             "--host" => {
                 i += 1;
                 host = args[i].clone();
-            }
+            },
             "--index-root" => {
                 i += 1;
                 index_root = Some(args[i].clone());
-            }
-            _ => {}
+            },
+            _ => {},
         }
         i += 1;
     }

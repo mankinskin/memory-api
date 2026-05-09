@@ -1,13 +1,23 @@
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::error::{ProtocolError, StorageError};
-use crate::model::ticket::TicketManifest;
-use crate::storage::index::RedbIndexStore;
-use crate::storage::indexed::IndexedTicket;
+use crate::{
+    error::{
+        ProtocolError,
+        StorageError,
+    },
+    model::ticket::TicketManifest,
+    storage::{
+        index::RedbIndexStore,
+        indexed::IndexedTicket,
+    },
+};
 
 use super::TicketStore;
 
@@ -51,7 +61,11 @@ impl TicketStore {
         required_checks: Vec<String>,
     ) -> Result<TicketManifest, StorageError> {
         let manifest = self.get(ticket_id)?;
-        let current_state = manifest.extra.get("state").and_then(|value| value.as_str()).unwrap_or("");
+        let current_state = manifest
+            .extra
+            .get("state")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
 
         if current_state != "in-review" {
             return Err(ProtocolError::ValidateInvalidState {
@@ -62,7 +76,11 @@ impl TicketStore {
             .into());
         }
 
-        let worker_id = manifest.extra.get("working_by").and_then(|value| value.as_str()).unwrap_or("");
+        let worker_id = manifest
+            .extra
+            .get("working_by")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
         if !worker_id.is_empty() && worker_id == validator_id {
             return Err(ProtocolError::ValidateSameIdentity {
                 identity: validator_id.to_string(),
@@ -71,14 +89,28 @@ impl TicketStore {
         }
 
         let mut patch = BTreeMap::new();
-        patch.insert("validator_id".to_string(), Value::String(validator_id.to_string()));
-        patch.insert("validation_status".to_string(), Value::String("in-progress".to_string()));
-        patch.insert("validation_profile".to_string(), Value::String(validation_profile.to_string()));
+        patch.insert(
+            "validator_id".to_string(),
+            Value::String(validator_id.to_string()),
+        );
+        patch.insert(
+            "validation_status".to_string(),
+            Value::String("in-progress".to_string()),
+        );
+        patch.insert(
+            "validation_profile".to_string(),
+            Value::String(validation_profile.to_string()),
+        );
         patch.insert(
             "required_checks".to_string(),
-            Value::Array(required_checks.into_iter().map(Value::String).collect()),
+            Value::Array(
+                required_checks.into_iter().map(Value::String).collect(),
+            ),
         );
-        patch.insert("assignment_id".to_string(), Value::String(assignment_id.to_string()));
+        patch.insert(
+            "assignment_id".to_string(),
+            Value::String(assignment_id.to_string()),
+        );
 
         self.update(ticket_id, patch, None, None, None, None)
     }
@@ -98,7 +130,11 @@ impl TicketStore {
         }
 
         let manifest = self.get(ticket_id)?;
-        let current_state = manifest.extra.get("state").and_then(|value| value.as_str()).unwrap_or("");
+        let current_state = manifest
+            .extra
+            .get("state")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
         if current_state != "in-review" {
             return Err(ProtocolError::ValidateInvalidState {
                 ticket: *ticket_id,
@@ -113,7 +149,8 @@ impl TicketStore {
             .get("validator_id")
             .and_then(|value| value.as_str())
             .unwrap_or("");
-        if !recorded_validator.is_empty() && recorded_validator != validator_id {
+        if !recorded_validator.is_empty() && recorded_validator != validator_id
+        {
             return Err(ProtocolError::ValidateAssignmentMismatch.into());
         }
 
@@ -125,23 +162,43 @@ impl TicketStore {
         };
 
         let mut patch = BTreeMap::new();
-        patch.insert("validation_status".to_string(), Value::String(status_str.to_string()));
-        patch.insert("assignment_id".to_string(), Value::String(assignment_id.to_string()));
+        patch.insert(
+            "validation_status".to_string(),
+            Value::String(status_str.to_string()),
+        );
+        patch.insert(
+            "assignment_id".to_string(),
+            Value::String(assignment_id.to_string()),
+        );
         patch.insert(
             "evidence_refs".to_string(),
-            Value::Array(evidence_refs.iter().map(|value| Value::String(value.clone())).collect()),
+            Value::Array(
+                evidence_refs
+                    .iter()
+                    .map(|value| Value::String(value.clone()))
+                    .collect(),
+            ),
         );
         if let Some(summary) = summary {
-            patch.insert("validation_summary".to_string(), Value::String(summary.to_string()));
+            patch.insert(
+                "validation_summary".to_string(),
+                Value::String(summary.to_string()),
+            );
         }
         if !bug_links.is_empty() {
             patch.insert(
                 "bug_links".to_string(),
-                Value::Array(bug_links.iter().map(|id| Value::String(id.to_string())).collect()),
+                Value::Array(
+                    bug_links
+                        .iter()
+                        .map(|id| Value::String(id.to_string()))
+                        .collect(),
+                ),
             );
         }
 
-        let _updated = self.update(ticket_id, patch, from_state, new_state, None, None)?;
+        let _updated =
+            self.update(ticket_id, patch, from_state, new_state, None, None)?;
 
         Ok(ValidationResultOutcome {
             ticket_id: *ticket_id,
@@ -162,7 +219,11 @@ impl TicketStore {
         }
 
         let manifest = self.get(ticket_id)?;
-        let current_state = manifest.extra.get("state").and_then(|value| value.as_str()).unwrap_or("");
+        let current_state = manifest
+            .extra
+            .get("state")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
         if current_state != "done" {
             return Err(ProtocolError::ReleaseInvalidState {
                 ticket: *ticket_id,
@@ -186,10 +247,15 @@ impl TicketStore {
         }
 
         let mut patch = BTreeMap::new();
-        patch.insert("release_target".to_string(), Value::String(release_target.to_string()));
+        patch.insert(
+            "release_target".to_string(),
+            Value::String(release_target.to_string()),
+        );
         patch.insert(
             "assignment_chain".to_string(),
-            Value::Array(assignment_chain.into_iter().map(Value::String).collect()),
+            Value::Array(
+                assignment_chain.into_iter().map(Value::String).collect(),
+            ),
         );
 
         self.update(ticket_id, patch, Some("done"), Some("done"), None, None)
@@ -207,14 +273,22 @@ impl TicketStore {
             .collect();
 
         if candidates.is_empty() {
-            return Err(ProtocolError::ReleaseTargetNotFound(release_target.to_string()).into());
+            return Err(ProtocolError::ReleaseTargetNotFound(
+                release_target.to_string(),
+            )
+            .into());
         }
 
         let mut gates = BTreeMap::new();
         let mut blocking_reasons = Vec::new();
 
         for gate in required_gates {
-            let (status, reason) = evaluate_gate(gate.as_str(), &candidates, release_target, &self.index)?;
+            let (status, reason) = evaluate_gate(
+                gate.as_str(),
+                &candidates,
+                release_target,
+                &self.index,
+            )?;
             if let Some(reason) = reason {
                 blocking_reasons.push(format!("{gate}: {reason}"));
             }
@@ -239,7 +313,8 @@ impl TicketStore {
             return Err(ProtocolError::ReleaseMergeMetadataMissing.into());
         }
 
-        let gate_outcome = self.release_gate_check(release_target, required_gates)?;
+        let gate_outcome =
+            self.release_gate_check(release_target, required_gates)?;
         let failing_gates: Vec<_> = gate_outcome
             .gates
             .iter()
@@ -262,17 +337,23 @@ impl TicketStore {
             .collect();
 
         if to_promote.is_empty() {
-            return Err(ProtocolError::ReleaseTicketStateInvalid(
-                format!("no done tickets found for target '{release_target}'"),
-            )
+            return Err(ProtocolError::ReleaseTicketStateInvalid(format!(
+                "no done tickets found for target '{release_target}'"
+            ))
             .into());
         }
 
         let mut promoted_ticket_count = 0usize;
         for ticket_id in &to_promote {
             let mut patch = BTreeMap::new();
-            patch.insert("release_version".to_string(), Value::String(release_version.to_string()));
-            patch.insert("merge_commit".to_string(), Value::String(merge_commit.to_string()));
+            patch.insert(
+                "release_version".to_string(),
+                Value::String(release_version.to_string()),
+            );
+            patch.insert(
+                "merge_commit".to_string(),
+                Value::String(merge_commit.to_string()),
+            );
             self.update(ticket_id, patch, None, None, None, None)?;
             promoted_ticket_count += 1;
         }
@@ -305,7 +386,7 @@ fn evaluate_gate(
                     Some("some tickets are not yet done".to_string()),
                 ))
             }
-        }
+        },
         "R2" | "R3" | "R4" => Ok((GateStatus::Pass, None)),
         unknown => Ok((
             GateStatus::Fail,

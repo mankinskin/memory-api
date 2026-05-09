@@ -15,7 +15,8 @@ fn history_revision_backward_compat_no_author() {
 
 #[test]
 fn history_revision_with_author() {
-    let json = r#"{"rev":2,"ts":"2025-01-02T00:00:00Z","fields":{},"author":"alice"}"#;
+    let json =
+        r#"{"rev":2,"ts":"2025-01-02T00:00:00Z","fields":{},"author":"alice"}"#;
     let rev: HistoryRevision = serde_json::from_str(json)
         .expect("should deserialize revision with author");
     assert_eq!(rev.author, Some("alice".to_string()));
@@ -31,5 +32,8 @@ fn history_revision_none_author_is_skipped_in_serialization() {
     };
     let json = serde_json::to_string(&rev).expect("serialize");
     let value: Value = serde_json::from_str(&json).unwrap();
-    assert!(value.get("author").is_none(), "author key should be absent when None");
+    assert!(
+        value.get("author").is_none(),
+        "author key should be absent when None"
+    );
 }

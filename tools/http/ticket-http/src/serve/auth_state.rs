@@ -10,13 +10,19 @@
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Mutex,
+        atomic::{
+            AtomicU64,
+            Ordering,
+        },
     },
 };
 
 use arc_swap::ArcSwap;
-use chrono::{DateTime, Utc};
+use chrono::{
+    DateTime,
+    Utc,
+};
 use std::sync::Arc;
 use viewer_api::auth::TokenSet;
 
@@ -67,7 +73,9 @@ impl AuthState {
     }
 
     /// Convenience: build from a literal token string (testing / CLI flag).
-    pub fn from_literal(token: impl Into<String>) -> Result<Self, TokenLoadError> {
+    pub fn from_literal(
+        token: impl Into<String>
+    ) -> Result<Self, TokenLoadError> {
         Self::from_source(TokenSource::Literal(token.into()))
     }
 
@@ -82,7 +90,10 @@ impl AuthState {
     }
 
     /// Validate a raw bearer token against the current token set.
-    pub fn validate(&self, raw: &str) -> bool {
+    pub fn validate(
+        &self,
+        raw: &str,
+    ) -> bool {
         self.current.load().contains(raw)
     }
 
@@ -90,19 +101,23 @@ impl AuthState {
     ///
     /// On validation failure the previous set is retained.
     /// Returns the new generation number on success.
-    pub fn reload(&self, source: &TokenSource) -> Result<u64, TokenLoadError> {
+    pub fn reload(
+        &self,
+        source: &TokenSource,
+    ) -> Result<u64, TokenLoadError> {
         match load_token_set(source) {
             Ok(new_set) => {
                 self.current.store(Arc::new(new_set));
-                let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+                let generation =
+                    self.generation.fetch_add(1, Ordering::SeqCst) + 1;
                 *self.last_reload_ts.lock().unwrap() = Some(Utc::now());
                 tracing::info!(generation, "auth.reload.success");
                 Ok(generation)
-            }
+            },
             Err(e) => {
                 tracing::warn!(error = %e, "auth.reload.failed — retaining previous token set");
                 Err(e)
-            }
+            },
         }
     }
 
@@ -124,7 +139,7 @@ fn load_token_set(source: &TokenSource) -> Result<TokenSet, TokenLoadError> {
             let t = std::env::var("TICKET_SERVE_TOKEN")
                 .map_err(|_| TokenLoadError::EnvMissing)?;
             vec![t]
-        }
+        },
         TokenSource::File(path) => {
             if !path.exists() {
                 return Err(TokenLoadError::FileMissing(path.clone()));
@@ -140,7 +155,7 @@ fn load_token_set(source: &TokenSource) -> Result<TokenSet, TokenLoadError> {
                 return Err(TokenLoadError::NoSource);
             }
             tokens
-        }
+        },
     };
 
     Ok(TokenSet::new(raw))

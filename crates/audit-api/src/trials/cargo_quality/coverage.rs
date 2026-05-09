@@ -1,12 +1,30 @@
-use std::path::Path;
-use std::process::Command;
+use std::{
+    path::Path,
+    process::Command,
+};
 
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 
-use crate::error::AuditError;
-use crate::models::{AuditFinding, CoverageSummary, Severity, TrialStatus};
+use crate::{
+    error::AuditError,
+    models::{
+        AuditFinding,
+        CoverageSummary,
+        Severity,
+        TrialStatus,
+    },
+};
 
-use super::{CoverageTrialResult, append_package_args, cargo_scope, run_command, trim_output};
+use super::{
+    CoverageTrialResult,
+    append_package_args,
+    cargo_scope,
+    run_command,
+    trim_output,
+};
 
 pub(super) fn collect_coverage(
     repo_root: &Path,
@@ -21,7 +39,9 @@ pub(super) fn collect_coverage(
                 line_percent: None,
                 covered_lines: None,
                 total_lines: None,
-                details: Some("No Cargo.toml found at the repository root.".to_string()),
+                details: Some(
+                    "No Cargo.toml found at the repository root.".to_string(),
+                ),
             },
             findings: Vec::new(),
         });
@@ -34,7 +54,10 @@ pub(super) fn collect_coverage(
                 line_percent: None,
                 covered_lines: None,
                 total_lines: None,
-                details: Some("All workspace Cargo packages are excluded by config.".to_string()),
+                details: Some(
+                    "All workspace Cargo packages are excluded by config."
+                        .to_string(),
+                ),
             },
             findings: Vec::new(),
         });
@@ -128,14 +151,13 @@ pub(super) fn collect_coverage(
         .get("count")
         .and_then(Value::as_u64)
         .map(|value| value as usize);
-    let line_percent = lines
-        .get("percent")
-        .and_then(Value::as_f64)
-        .or_else(|| match (covered_lines, total_lines) {
-            (Some(covered_lines), Some(total_lines)) if total_lines > 0 => {
-                Some((covered_lines as f64 / total_lines as f64) * 100.0)
-            },
-            _ => None,
+    let line_percent =
+        lines.get("percent").and_then(Value::as_f64).or_else(|| {
+            match (covered_lines, total_lines) {
+                (Some(covered_lines), Some(total_lines)) if total_lines > 0 =>
+                    Some((covered_lines as f64 / total_lines as f64) * 100.0),
+                _ => None,
+            }
         });
 
     let mut findings = Vec::new();

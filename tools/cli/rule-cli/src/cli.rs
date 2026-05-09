@@ -1,7 +1,10 @@
 use std::ffi::OsString;
 
 use clap::Parser;
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 
 mod args;
 mod dispatch;
@@ -37,12 +40,16 @@ pub fn run(cli: RuleCli) -> Result<CliOutput, CliRunError> {
         Ok(CliOutput::Json(payload))
     } else {
         Ok(CliOutput::Text(
-            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| format!("{payload:?}")),
+            serde_json::to_string_pretty(&payload)
+                .unwrap_or_else(|_| format!("{payload:?}")),
         ))
     }
 }
 
-pub fn error_output(message: &str, as_json: bool) -> String {
+pub fn error_output(
+    message: &str,
+    as_json: bool,
+) -> String {
     if as_json {
         json!({"status": "error", "message": message}).to_string()
     } else {

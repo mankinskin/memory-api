@@ -1,15 +1,27 @@
-use std::collections::HashSet;
-use std::path::Path;
+use std::{
+    collections::HashSet,
+    path::Path,
+};
 
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::error::StorageError;
-use crate::model::filesystem::{ParseDiagnostic, ScanRoot};
-use crate::storage::index::RedbIndexStore;
-use crate::storage::indexed::IndexedTicket;
-use crate::storage::search::TantivySearchIndex;
-use crate::storage::ticket_fs::{TicketFs, TicketScanEntry};
+use crate::{
+    error::StorageError,
+    model::filesystem::{
+        ParseDiagnostic,
+        ScanRoot,
+    },
+    storage::{
+        index::RedbIndexStore,
+        indexed::IndexedTicket,
+        search::TantivySearchIndex,
+        ticket_fs::{
+            TicketFs,
+            TicketScanEntry,
+        },
+    },
+};
 
 use super::TicketStore;
 
@@ -20,7 +32,10 @@ pub struct ScanReport {
 }
 
 impl TicketStore {
-    pub fn add_scan_root(&self, root: ScanRoot) -> Result<(), StorageError> {
+    pub fn add_scan_root(
+        &self,
+        root: ScanRoot,
+    ) -> Result<(), StorageError> {
         self.index.add_scan_root(&root)
     }
 
@@ -28,7 +43,10 @@ impl TicketStore {
         self.index.list_scan_roots()
     }
 
-    pub fn scan(&self, reindex: bool) -> Result<ScanReport, StorageError> {
+    pub fn scan(
+        &self,
+        reindex: bool,
+    ) -> Result<ScanReport, StorageError> {
         if reindex {
             self.search.clear_all()?;
         }
@@ -38,7 +56,8 @@ impl TicketStore {
             path: self.index_root.join("tickets"),
             label: "default".to_string(),
         };
-        let all_roots: Vec<&ScanRoot> = std::iter::once(&default_root).chain(roots.iter()).collect();
+        let all_roots: Vec<&ScanRoot> =
+            std::iter::once(&default_root).chain(roots.iter()).collect();
 
         let mut integrated = 0usize;
         let mut diagnostics = Vec::new();
@@ -75,7 +94,10 @@ impl TicketStore {
         })
     }
 
-    pub fn integrate_orphan(&self, path: &Path) -> Result<bool, StorageError> {
+    pub fn integrate_orphan(
+        &self,
+        path: &Path,
+    ) -> Result<bool, StorageError> {
         let id: Uuid = match path
             .file_name()
             .and_then(|name| name.to_str())
@@ -142,7 +164,7 @@ fn integrate_entry(
             existing.state = state.clone();
             existing.deleted = false;
             existing
-        }
+        },
         None => IndexedTicket {
             id: entry.id,
             path: entry.path.clone(),

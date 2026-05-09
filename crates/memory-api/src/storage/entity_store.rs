@@ -1,17 +1,35 @@
-use std::path::{Path, PathBuf};
+use std::path::{
+    Path,
+    PathBuf,
+};
 
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::error::StorageError;
-use crate::model::edge::EdgeRecord;
-use crate::model::filesystem::{ParseDiagnostic, ScanRoot};
-use crate::model::query::parse_query;
-use crate::model::schema_registry::SchemaRegistry;
-use crate::storage::entity_fs::{EntityFs, EntityScanEntry};
-use crate::storage::index::RedbIndexStore;
-use crate::storage::indexed::IndexedEntity;
-use crate::storage::search::{SearchResult, TantivySearchIndex};
+use crate::{
+    error::StorageError,
+    model::{
+        edge::EdgeRecord,
+        filesystem::{
+            ParseDiagnostic,
+            ScanRoot,
+        },
+        query::parse_query,
+        schema_registry::SchemaRegistry,
+    },
+    storage::{
+        entity_fs::{
+            EntityFs,
+            EntityScanEntry,
+        },
+        index::RedbIndexStore,
+        indexed::IndexedEntity,
+        search::{
+            SearchResult,
+            TantivySearchIndex,
+        },
+    },
+};
 
 /// Result of a full scan across all registered roots.
 pub struct ScanReport {
@@ -39,7 +57,10 @@ impl EntityStore {
     ///
     /// `index_root` is the directory for SQLite + Tantivy index files.
     /// `fs` provides the filesystem layout configuration for entity folders.
-    pub fn open(index_root: &Path, fs: EntityFs) -> Result<Self, StorageError> {
+    pub fn open(
+        index_root: &Path,
+        fs: EntityFs,
+    ) -> Result<Self, StorageError> {
         Self::open_with(index_root, fs, SchemaRegistry::new())
     }
 
@@ -71,7 +92,10 @@ impl EntityStore {
 
     // ── Scan-root management ────────────────────────────────────────
 
-    pub fn add_scan_root(&self, root: ScanRoot) -> Result<(), StorageError> {
+    pub fn add_scan_root(
+        &self,
+        root: ScanRoot,
+    ) -> Result<(), StorageError> {
         self.index.add_scan_root(&root)
     }
 
@@ -81,24 +105,37 @@ impl EntityStore {
 
     // ── Index queries ───────────────────────────────────────────────
 
-    pub fn get_indexed(&self, id: &Uuid) -> Result<Option<IndexedEntity>, StorageError> {
+    pub fn get_indexed(
+        &self,
+        id: &Uuid,
+    ) -> Result<Option<IndexedEntity>, StorageError> {
         self.index.get_ticket(id)
     }
 
-    pub fn list_indexed(&self, include_deleted: bool) -> Result<Vec<IndexedEntity>, StorageError> {
+    pub fn list_indexed(
+        &self,
+        include_deleted: bool,
+    ) -> Result<Vec<IndexedEntity>, StorageError> {
         self.index.list_tickets(include_deleted)
     }
 
     // ── Full-text search ────────────────────────────────────────────
 
-    pub fn search(&self, query_expr: &str, limit: usize) -> Result<Vec<SearchResult>, StorageError> {
+    pub fn search(
+        &self,
+        query_expr: &str,
+        limit: usize,
+    ) -> Result<Vec<SearchResult>, StorageError> {
         let expr = parse_query(query_expr)?;
         self.search.search(&expr, limit)
     }
 
     // ── Edge management ─────────────────────────────────────────────
 
-    pub fn add_edge(&self, edge: EdgeRecord) -> Result<(), StorageError> {
+    pub fn add_edge(
+        &self,
+        edge: EdgeRecord,
+    ) -> Result<(), StorageError> {
         // Enforce acyclicity when the schema says so.
         let is_acyclic = self
             .schema_registry
@@ -114,11 +151,17 @@ impl EntityStore {
         self.index.insert_edge(&edge)
     }
 
-    pub fn remove_edge(&self, edge: EdgeRecord) -> Result<(), StorageError> {
+    pub fn remove_edge(
+        &self,
+        edge: EdgeRecord,
+    ) -> Result<(), StorageError> {
         self.index.delete_edge(&edge)
     }
 
-    pub fn edges_from(&self, id: &Uuid) -> Result<Vec<EdgeRecord>, StorageError> {
+    pub fn edges_from(
+        &self,
+        id: &Uuid,
+    ) -> Result<Vec<EdgeRecord>, StorageError> {
         self.index.edges_from(id)
     }
 
@@ -133,7 +176,10 @@ impl EntityStore {
     ///
     /// When `reindex` is `true`, the search index is cleared first and
     /// stale SQLite entries are pruned.
-    pub fn scan(&self, reindex: bool) -> Result<ScanReport, StorageError> {
+    pub fn scan(
+        &self,
+        reindex: bool,
+    ) -> Result<ScanReport, StorageError> {
         if reindex {
             self.search.clear_all()?;
         }
@@ -143,9 +189,8 @@ impl EntityStore {
             path: self.index_root.join("entities"),
             label: "default".into(),
         };
-        let all_roots: Vec<&ScanRoot> = std::iter::once(&default_root)
-            .chain(roots.iter())
-            .collect();
+        let all_roots: Vec<&ScanRoot> =
+            std::iter::once(&default_root).chain(roots.iter()).collect();
 
         let mut integrated = 0usize;
         let mut diagnostics = Vec::new();
@@ -183,7 +228,11 @@ impl EntityStore {
         })
     }
 
-    fn integrate_entry(&self, entry: EntityScanEntry, reindex: bool) -> Result<(), StorageError> {
+    fn integrate_entry(
+        &self,
+        entry: EntityScanEntry,
+        reindex: bool,
+    ) -> Result<(), StorageError> {
         let type_id = entry
             .manifest
             .extra
@@ -212,7 +261,7 @@ impl EntityStore {
                 existing.state = state.clone();
                 existing.deleted = false;
                 existing
-            }
+            },
             None => IndexedEntity {
                 id: entry.id,
                 path: entry.path.clone(),

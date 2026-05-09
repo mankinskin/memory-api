@@ -1,20 +1,43 @@
-use std::collections::BTreeMap;
-use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs::{
+        self,
+        File,
+        OpenOptions,
+    },
+    io::{
+        BufRead,
+        BufReader,
+        Write,
+    },
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
 use chrono::Utc;
 use fs4::fs_std::FileExt;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::error::StorageError;
-use crate::model::filesystem::{
-    TICKET_ASSETS_DIR, TICKET_HISTORY_FILE, TICKET_LOCK_FILE, TICKET_MANIFEST_FILE,
-    parse_ticket_manifest_toml,
+use crate::{
+    error::StorageError,
+    model::{
+        filesystem::{
+            TICKET_ASSETS_DIR,
+            TICKET_HISTORY_FILE,
+            TICKET_LOCK_FILE,
+            TICKET_MANIFEST_FILE,
+            parse_ticket_manifest_toml,
+        },
+        ticket::TicketManifest,
+    },
 };
-use crate::model::ticket::TicketManifest;
 
 #[cfg(test)]
 mod tests;
@@ -67,7 +90,10 @@ impl TicketFs {
         if final_dir.exists() {
             return Err(StorageError::Io(std::io::Error::new(
                 std::io::ErrorKind::AlreadyExists,
-                format!("ticket folder already exists: {}", final_dir.display()),
+                format!(
+                    "ticket folder already exists: {}",
+                    final_dir.display()
+                ),
             )));
         }
 
@@ -92,12 +118,12 @@ impl TicketFs {
     pub fn read(ticket_path: &Path) -> Result<TicketManifest, StorageError> {
         let manifest_path = ticket_path.join(TICKET_MANIFEST_FILE);
         let content = fs::read_to_string(&manifest_path)?;
-        parse_ticket_manifest_toml(manifest_path.clone(), &content).map_err(|d| {
-            StorageError::ParseError {
+        parse_ticket_manifest_toml(manifest_path.clone(), &content).map_err(
+            |d| StorageError::ParseError {
                 path: d.path,
                 reason: d.reason,
-            }
-        })
+            },
+        )
     }
 
     /// Apply a field patch to the manifest on disk.
@@ -125,9 +151,10 @@ impl TicketFs {
             }
             // Apply state change.
             if let Some(state) = new_state {
-                manifest
-                    .extra
-                    .insert("state".to_string(), Value::String(state.to_string()));
+                manifest.extra.insert(
+                    "state".to_string(),
+                    Value::String(state.to_string()),
+                );
             }
             write_manifest(ticket_path, &manifest)?;
             Ok(manifest)
@@ -164,9 +191,14 @@ impl TicketFs {
     ///
     /// Returns `(valid_paths, parse_diagnostics)`.
     pub fn scan_root(
-        scan_root: &Path,
-    ) -> Result<(Vec<TicketScanEntry>, Vec<crate::model::filesystem::ParseDiagnostic>), StorageError>
-    {
+        scan_root: &Path
+    ) -> Result<
+        (
+            Vec<TicketScanEntry>,
+            Vec<crate::model::filesystem::ParseDiagnostic>,
+        ),
+        StorageError,
+    > {
         let mut valid = Vec::new();
         let mut diags = Vec::new();
 
@@ -181,10 +213,13 @@ impl TicketFs {
         Ok((valid, diags))
     }
 
-    fn scan_root_dir(scan_root: &Path) -> Result<Option<fs::ReadDir>, StorageError> {
+    fn scan_root_dir(
+        scan_root: &Path
+    ) -> Result<Option<fs::ReadDir>, StorageError> {
         match fs::read_dir(scan_root) {
             Ok(read_dir) => Ok(Some(read_dir)),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound =>
+                Ok(None),
             Err(error) => Err(StorageError::Io(error)),
         }
     }
@@ -200,7 +235,7 @@ impl TicketFs {
 
         match load_scan_entry(candidate.id, path, candidate.manifest_path) {
             Ok(Some(entry)) => valid.push(entry),
-            Ok(None) => {}
+            Ok(None) => {},
             Err(diag) => diags.push(diag),
         }
     }
@@ -210,7 +245,9 @@ impl TicketFs {
     /// Read all history revisions for a ticket (oldest first).
     ///
     /// Returns an empty vec if no `history.ndjson` exists yet.
-    pub fn read_history(ticket_path: &Path) -> Result<Vec<HistoryRevision>, StorageError> {
+    pub fn read_history(
+        ticket_path: &Path
+    ) -> Result<Vec<HistoryRevision>, StorageError> {
         let path = ticket_path.join(TICKET_HISTORY_FILE);
         if !path.exists() {
             return Ok(Vec::new());
@@ -251,7 +288,8 @@ impl TicketFs {
         };
         let line = serde_json::to_string(&entry)
             .map_err(|e| StorageError::Serialization(e.to_string()))?;
-        let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
+        let mut file =
+            OpenOptions::new().create(true).append(true).open(&path)?;
         writeln!(file, "{}", line)?;
         Ok(rev)
     }
@@ -282,10 +320,14 @@ impl TicketFs {
     }
 
     /// Write or overwrite the `description.md` file for a ticket.
-    pub fn write_description(ticket_path: &Path, text: &str) -> Result<(), StorageError> {
+    pub fn write_description(
+        ticket_path: &Path,
+        text: &str,
+    ) -> Result<(), StorageError> {
         let lock_path = ticket_path.join(TICKET_LOCK_FILE);
         let lock_file = acquire_lock(&lock_path)?;
-        let result = fs::write(ticket_path.join("description.md"), text).map_err(StorageError::Io);
+        let result = fs::write(ticket_path.join("description.md"), text)
+            .map_err(StorageError::Io);
         release_lock(&lock_file, &lock_path);
         result
     }
@@ -317,7 +359,10 @@ fn scan_candidate_path(
         return None;
     }
 
-    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
     if name.ends_with(".tmp") || name.ends_with(".deleted") {
         return None;
     }
@@ -339,7 +384,8 @@ fn load_scan_entry(
     id: Uuid,
     path: PathBuf,
     manifest_path: PathBuf,
-) -> Result<Option<TicketScanEntry>, crate::model::filesystem::ParseDiagnostic> {
+) -> Result<Option<TicketScanEntry>, crate::model::filesystem::ParseDiagnostic>
+{
     match TicketFs::read(&path) {
         Ok(manifest) => {
             let is_deleted = manifest
@@ -352,10 +398,9 @@ fn load_scan_entry(
             } else {
                 Ok(Some(TicketScanEntry { id, path, manifest }))
             }
-        }
-        Err(StorageError::ParseError { path, reason }) => {
-            Err(crate::model::filesystem::ParseDiagnostic { path, reason })
-        }
+        },
+        Err(StorageError::ParseError { path, reason }) =>
+            Err(crate::model::filesystem::ParseDiagnostic { path, reason }),
         Err(error) => Err(crate::model::filesystem::ParseDiagnostic {
             path: manifest_path,
             reason: error.to_string(),
@@ -365,8 +410,12 @@ fn load_scan_entry(
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-fn write_manifest(dir: &Path, manifest: &TicketManifest) -> Result<(), StorageError> {
-    let toml_str = crate::model::manifest_format::format_manifest_toml(manifest);
+fn write_manifest(
+    dir: &Path,
+    manifest: &TicketManifest,
+) -> Result<(), StorageError> {
+    let toml_str =
+        crate::model::manifest_format::format_manifest_toml(manifest);
     let path = dir.join(TICKET_MANIFEST_FILE);
     fs::write(&path, toml_str)?;
     Ok(())
@@ -374,12 +423,14 @@ fn write_manifest(dir: &Path, manifest: &TicketManifest) -> Result<(), StorageEr
 
 fn acquire_lock(lock_path: &Path) -> Result<File, StorageError> {
     let file = File::create(lock_path)?;
-    file.lock_exclusive()
-        .map_err(|e| StorageError::Io(e))?;
+    file.lock_exclusive().map_err(|e| StorageError::Io(e))?;
     Ok(file)
 }
 
-fn release_lock(file: &File, lock_path: &Path) {
+fn release_lock(
+    file: &File,
+    lock_path: &Path,
+) {
     let _ = file.unlock();
     let _ = fs::remove_file(lock_path);
 }

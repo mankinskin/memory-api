@@ -1,5 +1,7 @@
-use std::collections::BTreeMap;
-use std::fs;
+use std::{
+    collections::BTreeMap,
+    fs,
+};
 
 use memory_api::model::filesystem::ScanRoot;
 use serde_json::Value;
@@ -22,7 +24,10 @@ fn setup() -> (TempDir, SpecStore) {
     (tmp, store)
 }
 
-fn make_spec(slug: &str, title: &str) -> SpecManifest {
+fn make_spec(
+    slug: &str,
+    title: &str,
+) -> SpecManifest {
     SpecManifest::new(slug, title, "test-component")
 }
 
@@ -50,7 +55,10 @@ fn create_get_update_delete_spec() {
     assert_eq!(full2.1, "body v2");
 
     store.delete("root/overview").unwrap();
-    assert!(matches!(store.get("root/overview"), Err(SpecError::NotFound(_))));
+    assert!(matches!(
+        store.get("root/overview"),
+        Err(SpecError::NotFound(_))
+    ));
 }
 
 #[test]
@@ -59,7 +67,10 @@ fn duplicate_slug_is_rejected() {
     let a = make_spec("a/spec", "A");
     let b = make_spec("a/spec", "B");
     store.create(&a, "body", None).unwrap();
-    assert!(matches!(store.create(&b, "body", None), Err(SpecError::DuplicateSlug(_))));
+    assert!(matches!(
+        store.create(&b, "body", None),
+        Err(SpecError::DuplicateSlug(_))
+    ));
 }
 
 #[test]

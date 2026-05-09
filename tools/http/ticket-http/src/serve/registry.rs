@@ -1,9 +1,16 @@
 //! Workspace registry: maps workspace names to `TicketStore` instances.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{
+        HashMap,
+        HashSet,
+    },
     path::PathBuf,
-    sync::{Arc, Condvar, Mutex},
+    sync::{
+        Arc,
+        Condvar,
+        Mutex,
+    },
 };
 
 use ticket_api::{
@@ -26,13 +33,19 @@ pub struct WorkspaceRegistry {
 #[cfg(test)]
 mod tests {
     use super::WorkspaceRegistry;
-    use std::sync::{Arc, Barrier};
-    use std::thread;
+    use std::{
+        sync::{
+            Arc,
+            Barrier,
+        },
+        thread,
+    };
 
     #[test]
     fn concurrent_get_returns_shared_store_instance() {
         let dir = tempfile::tempdir().expect("create tempdir");
-        let registry = Arc::new(WorkspaceRegistry::single(dir.path().to_path_buf()));
+        let registry =
+            Arc::new(WorkspaceRegistry::single(dir.path().to_path_buf()));
 
         let workers = 8usize;
         let barrier = Arc::new(Barrier::new(workers));
@@ -43,9 +56,7 @@ mod tests {
             let barrier = Arc::clone(&barrier);
             handles.push(thread::spawn(move || {
                 barrier.wait();
-                registry
-                    .get("default")
-                    .expect("workspace should open")
+                registry.get("default").expect("workspace should open")
             }));
         }
 
@@ -55,7 +66,8 @@ mod tests {
             .expect("thread should join without panic");
 
         for handle in handles {
-            let store = handle.join().expect("thread should join without panic");
+            let store =
+                handle.join().expect("thread should join without panic");
             assert!(
                 Arc::ptr_eq(&first, &store),
                 "all concurrent gets should return the same cached store instance"
@@ -118,14 +130,20 @@ impl WorkspaceRegistry {
     }
 
     /// Return `true` if a workspace with the given name is registered.
-    pub fn contains(&self, name: &str) -> bool {
+    pub fn contains(
+        &self,
+        name: &str,
+    ) -> bool {
         self.paths.contains_key(name)
     }
 
     /// Get or lazily open the `TicketStore` for `workspace`.
     ///
     /// Returns `None` if the workspace name is not registered.
-    pub fn get(&self, workspace: &str) -> Option<Arc<TicketStore>> {
+    pub fn get(
+        &self,
+        workspace: &str,
+    ) -> Option<Arc<TicketStore>> {
         let path = self.paths.get(workspace)?.clone();
 
         {
@@ -145,7 +163,9 @@ impl WorkspaceRegistry {
                     break;
                 }
                 opening = self.opening_cv.wait(opening).unwrap();
-                if let Some(existing) = self.stores.lock().unwrap().get(workspace).cloned() {
+                if let Some(existing) =
+                    self.stores.lock().unwrap().get(workspace).cloned()
+                {
                     return Some(existing);
                 }
             }
@@ -157,7 +177,7 @@ impl WorkspaceRegistry {
             Err(e) => {
                 tracing::warn!(workspace, error = %e, "failed to open workspace store");
                 None
-            }
+            },
         };
 
         let result = {
@@ -177,7 +197,9 @@ impl WorkspaceRegistry {
         self.opening_cv.notify_all();
 
         if result.is_none() {
-            if let Some(existing) = self.stores.lock().unwrap().get(workspace).cloned() {
+            if let Some(existing) =
+                self.stores.lock().unwrap().get(workspace).cloned()
+            {
                 return Some(existing);
             }
         }

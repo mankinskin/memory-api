@@ -1,24 +1,28 @@
-use std::collections::BTreeSet;
-use std::path::Path;
+use std::{
+    collections::BTreeSet,
+    path::Path,
+};
 
 use chrono::Utc;
 
-use crate::config::{
-    AuditFileConfig,
-    format_output_path,
-};
-use crate::error::AuditError;
-use crate::index::RepositoryIndex;
-use crate::models::{
-    AuditConfig,
-    AuditMetrics,
-    AuditReport,
-    AuditRunInfo,
-};
-use crate::trials::{
-    cargo_quality,
-    file_length,
-    static_metrics,
+use crate::{
+    config::{
+        AuditFileConfig,
+        format_output_path,
+    },
+    error::AuditError,
+    index::RepositoryIndex,
+    models::{
+        AuditConfig,
+        AuditMetrics,
+        AuditReport,
+        AuditRunInfo,
+    },
+    trials::{
+        cargo_quality,
+        file_length,
+        static_metrics,
+    },
 };
 
 pub fn audit(
@@ -36,7 +40,8 @@ pub fn audit(
     let sync = index.sync_source_files(&file_config.exclude_paths)?;
     let indexed_files = index.indexed_files()?;
 
-    let file_length_result = file_length::evaluate(&indexed_files, config.max_file_lines);
+    let file_length_result =
+        file_length::evaluate(&indexed_files, config.max_file_lines);
     let static_metrics_result = static_metrics::evaluate(
         &repo_root,
         &indexed_files,
@@ -46,7 +51,10 @@ pub fn audit(
         &repo_root,
         &file_config.exclude_paths,
     )?;
-    let test_results = cargo_quality::collect_test_success(&repo_root, &file_config.exclude_paths)?;
+    let test_results = cargo_quality::collect_test_success(
+        &repo_root,
+        &file_config.exclude_paths,
+    )?;
     let coverage_result = cargo_quality::collect_coverage(
         &repo_root,
         &file_config.exclude_paths,
@@ -100,7 +108,9 @@ pub fn audit(
     })
 }
 
-fn collect_instructions(findings: &[crate::models::AuditFinding]) -> Vec<String> {
+fn collect_instructions(
+    findings: &[crate::models::AuditFinding]
+) -> Vec<String> {
     let mut unique = BTreeSet::new();
     for finding in findings {
         for instruction in &finding.instructions {

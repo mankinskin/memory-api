@@ -1,39 +1,45 @@
 use clap::error::ErrorKind;
 
-use audit_cli::cli::{CliOutput, error_output, parse_cli_from, run};
+use audit_cli::cli::{
+    CliOutput,
+    error_output,
+    parse_cli_from,
+    run,
+};
 
 fn main() {
-	let cli = match parse_cli_from(std::env::args_os()) {
-		Ok(cli) => cli,
-		Err(err) => {
-			if matches!(
-				err.kind(),
-				ErrorKind::DisplayHelp
-					| ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
-					| ErrorKind::DisplayVersion
-			) {
-				print!("{err}");
-				std::process::exit(0);
-			}
-			let wants_json = std::env::args().any(|arg| arg == "--json");
-			eprintln!("{}", error_output(&err.to_string(), wants_json));
-			std::process::exit(2);
-		},
-	};
+    let cli = match parse_cli_from(std::env::args_os()) {
+        Ok(cli) => cli,
+        Err(err) => {
+            if matches!(
+                err.kind(),
+                ErrorKind::DisplayHelp
+                    | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+                    | ErrorKind::DisplayVersion
+            ) {
+                print!("{err}");
+                std::process::exit(0);
+            }
+            let wants_json = std::env::args().any(|arg| arg == "--json");
+            eprintln!("{}", error_output(&err.to_string(), wants_json));
+            std::process::exit(2);
+        },
+    };
 
-	match run(cli) {
-		Ok(CliOutput::Json(value)) => match serde_json::to_string_pretty(&value) {
-			Ok(rendered) => println!("{rendered}"),
-			Err(err) => {
-				eprintln!("{}", error_output(&err.to_string(), true));
-				std::process::exit(1);
-			},
-		},
-		Ok(CliOutput::Text(text)) => println!("{text}"),
-		Err(err) => {
-			let wants_json = std::env::args().any(|arg| arg == "--json");
-			eprintln!("{}", error_output(&err.to_string(), wants_json));
-			std::process::exit(1);
-		},
-	}
+    match run(cli) {
+        Ok(CliOutput::Json(value)) =>
+            match serde_json::to_string_pretty(&value) {
+                Ok(rendered) => println!("{rendered}"),
+                Err(err) => {
+                    eprintln!("{}", error_output(&err.to_string(), true));
+                    std::process::exit(1);
+                },
+            },
+        Ok(CliOutput::Text(text)) => println!("{text}"),
+        Err(err) => {
+            let wants_json = std::env::args().any(|arg| arg == "--json");
+            eprintln!("{}", error_output(&err.to_string(), wants_json));
+            std::process::exit(1);
+        },
+    }
 }

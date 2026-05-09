@@ -2,8 +2,20 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-use crate::execution::provider::{ProviderError, StartSubagentRequest, StartSubagentResponse, SubagentProvider};
-use crate::execution::sandbox::{SandboxError, SandboxHandle, SandboxManager, SandboxSpec};
+use crate::execution::{
+    provider::{
+        ProviderError,
+        StartSubagentRequest,
+        StartSubagentResponse,
+        SubagentProvider,
+    },
+    sandbox::{
+        SandboxError,
+        SandboxHandle,
+        SandboxManager,
+        SandboxSpec,
+    },
+};
 
 #[derive(Debug, Error)]
 pub enum RunnerError {
@@ -11,7 +23,9 @@ pub enum RunnerError {
     Sandbox(#[from] SandboxError),
     #[error("runner.provider: {0}")]
     Provider(#[from] ProviderError),
-    #[error("runner.cleanup_failed_after_provider_error: provider={provider_error}, cleanup={cleanup_error}")]
+    #[error(
+        "runner.cleanup_failed_after_provider_error: provider={provider_error}, cleanup={cleanup_error}"
+    )]
     CleanupAfterProviderError {
         provider_error: String,
         cleanup_error: SandboxError,
@@ -42,18 +56,32 @@ pub struct AssignmentRunReceipt {
 }
 
 pub trait SandboxProvisioner {
-    fn provision(&self, spec: &SandboxSpec) -> Result<SandboxHandle, SandboxError>;
-    fn cleanup(&self, spec: &SandboxSpec, handle: &SandboxHandle) -> Result<(), SandboxError>;
+    fn provision(
+        &self,
+        spec: &SandboxSpec,
+    ) -> Result<SandboxHandle, SandboxError>;
+    fn cleanup(
+        &self,
+        spec: &SandboxSpec,
+        handle: &SandboxHandle,
+    ) -> Result<(), SandboxError>;
 }
 
 pub struct GitSandboxProvisioner;
 
 impl SandboxProvisioner for GitSandboxProvisioner {
-    fn provision(&self, spec: &SandboxSpec) -> Result<SandboxHandle, SandboxError> {
+    fn provision(
+        &self,
+        spec: &SandboxSpec,
+    ) -> Result<SandboxHandle, SandboxError> {
         SandboxManager::provision(spec)
     }
 
-    fn cleanup(&self, spec: &SandboxSpec, handle: &SandboxHandle) -> Result<(), SandboxError> {
+    fn cleanup(
+        &self,
+        spec: &SandboxSpec,
+        handle: &SandboxHandle,
+    ) -> Result<(), SandboxError> {
         SandboxManager::cleanup(spec, handle)
     }
 }
@@ -73,7 +101,11 @@ where
     P: SubagentProvider,
     S: SandboxProvisioner,
 {
-    pub fn new(provider: P, sandbox: S, config: RunnerConfig) -> Self {
+    pub fn new(
+        provider: P,
+        sandbox: S,
+        config: RunnerConfig,
+    ) -> Self {
         Self {
             provider,
             sandbox,
@@ -107,14 +139,15 @@ where
         let StartSubagentResponse { run_id, status } = match provider_resp {
             Ok(resp) => resp,
             Err(err) => {
-                if let Err(cleanup_error) = self.sandbox.cleanup(&spec, &handle) {
+                if let Err(cleanup_error) = self.sandbox.cleanup(&spec, &handle)
+                {
                     return Err(RunnerError::CleanupAfterProviderError {
                         provider_error: err.to_string(),
                         cleanup_error,
                     });
                 }
                 return Err(RunnerError::Provider(err));
-            }
+            },
         };
 
         Ok(AssignmentRunReceipt {
@@ -128,15 +161,35 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use std::sync::{Arc, Mutex};
-
-    use crate::execution::provider::{ProviderError, StartSubagentRequest, StartSubagentResponse, SubagentProvider};
-    use crate::execution::runner::{
-        AssignmentRunRequest, AssignmentRunner, GitSandboxProvisioner, RunnerConfig, RunnerError,
-        SandboxProvisioner,
+    use std::{
+        path::PathBuf,
+        sync::{
+            Arc,
+            Mutex,
+        },
     };
-    use crate::execution::sandbox::{SandboxError, SandboxHandle, SandboxSpec};
+
+    use crate::execution::{
+        provider::{
+            ProviderError,
+            StartSubagentRequest,
+            StartSubagentResponse,
+            SubagentProvider,
+        },
+        runner::{
+            AssignmentRunRequest,
+            AssignmentRunner,
+            GitSandboxProvisioner,
+            RunnerConfig,
+            RunnerError,
+            SandboxProvisioner,
+        },
+        sandbox::{
+            SandboxError,
+            SandboxHandle,
+            SandboxSpec,
+        },
+    };
 
     struct FakeProvider {
         ok_response: Option<StartSubagentResponse>,
@@ -173,11 +226,18 @@ mod tests {
     }
 
     impl SandboxProvisioner for FakeSandbox {
-        fn provision(&self, _spec: &SandboxSpec) -> Result<SandboxHandle, SandboxError> {
+        fn provision(
+            &self,
+            _spec: &SandboxSpec,
+        ) -> Result<SandboxHandle, SandboxError> {
             Ok(self.handle.clone())
         }
 
-        fn cleanup(&self, _spec: &SandboxSpec, _handle: &SandboxHandle) -> Result<(), SandboxError> {
+        fn cleanup(
+            &self,
+            _spec: &SandboxSpec,
+            _handle: &SandboxHandle,
+        ) -> Result<(), SandboxError> {
             let mut count = self.cleanup_count.lock().expect("lock");
             *count += 1;
             if self.cleanup_ok {
@@ -259,7 +319,9 @@ mod tests {
             prompt: "do the task".to_string(),
         };
 
-        let err = runner.start_assignment(&req).expect_err("expected provider error");
+        let err = runner
+            .start_assignment(&req)
+            .expect_err("expected provider error");
         assert!(matches!(err, RunnerError::Provider(_)));
         assert_eq!(*cleanup_count.lock().expect("lock"), 1);
     }
@@ -289,7 +351,9 @@ mod tests {
             prompt: "do the task".to_string(),
         };
 
-        let err = runner.start_assignment(&req).expect_err("expected cleanup error");
+        let err = runner
+            .start_assignment(&req)
+            .expect_err("expected cleanup error");
         assert!(matches!(err, RunnerError::CleanupAfterProviderError { .. }));
     }
 

@@ -2,10 +2,16 @@ use serde_json::Value;
 
 use ticket_api::storage::TicketStore;
 
-use super::super::commands;
-use super::super::{CliRunError, TicketCommandCli};
+use super::super::{
+    CliRunError,
+    TicketCommandCli,
+    commands,
+};
 
-pub(super) fn batch_dispatch(cmd: TicketCommandCli, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(super) fn batch_dispatch(
+    cmd: TicketCommandCli,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     match cmd {
         TicketCommandCli::Create(_)
         | TicketCommandCli::Get(_)
@@ -39,7 +45,10 @@ pub(super) fn batch_dispatch(cmd: TicketCommandCli, store: &TicketStore) -> Resu
     }
 }
 
-fn batch_dispatch_core(cmd: TicketCommandCli, store: &TicketStore) -> Result<Value, CliRunError> {
+fn batch_dispatch_core(
+    cmd: TicketCommandCli,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     match cmd {
         TicketCommandCli::Create(args) => commands::cmd_create(args, store),
         TicketCommandCli::Get(args) => commands::cmd_get(args, store),
@@ -55,24 +64,30 @@ fn batch_dispatch_core(cmd: TicketCommandCli, store: &TicketStore) -> Result<Val
     }
 }
 
-fn batch_dispatch_query(cmd: TicketCommandCli, store: &TicketStore) -> Result<Value, CliRunError> {
+fn batch_dispatch_query(
+    cmd: TicketCommandCli,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     match cmd {
         TicketCommandCli::Subgraph(args) => commands::cmd_subgraph(args, store),
         TicketCommandCli::Topgraph(args) => commands::cmd_topgraph(args, store),
-        TicketCommandCli::Search(args) | TicketCommandCli::Query(args) => {
-            commands::cmd_search(args, store)
-        }
+        TicketCommandCli::Search(args) | TicketCommandCli::Query(args) =>
+            commands::cmd_search(args, store),
         TicketCommandCli::Health(args) => commands::cmd_health(args, store),
         TicketCommandCli::Close(args) => commands::cmd_close(args, store),
         TicketCommandCli::Cancel(args) => commands::cmd_cancel(args, store),
         TicketCommandCli::Status(args) => commands::cmd_status(args, store),
-        TicketCommandCli::ReadyOverview(args) => commands::cmd_ready_overview(args, store),
+        TicketCommandCli::ReadyOverview(args) =>
+            commands::cmd_ready_overview(args, store),
         TicketCommandCli::Next(args) => commands::cmd_next(args, store),
         _ => unreachable!("handled in batch query dispatch"),
     }
 }
 
-fn batch_dispatch_ops(cmd: TicketCommandCli, store: &TicketStore) -> Result<Value, CliRunError> {
+fn batch_dispatch_ops(
+    cmd: TicketCommandCli,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     match cmd {
         TicketCommandCli::Attach(args) => commands::cmd_attach(args, store),
         TicketCommandCli::Assets(args) => commands::cmd_assets(args, store),
@@ -86,8 +101,12 @@ fn batch_dispatch_ops(cmd: TicketCommandCli, store: &TicketStore) -> Result<Valu
     }
 }
 
-fn batch_dispatch_forbidden(cmd: TicketCommandCli) -> Result<Value, CliRunError> {
-    Err(CliRunError::BadRequest(forbidden_batch_message(cmd).to_string()))
+fn batch_dispatch_forbidden(
+    cmd: TicketCommandCli
+) -> Result<Value, CliRunError> {
+    Err(CliRunError::BadRequest(
+        forbidden_batch_message(cmd).to_string(),
+    ))
 }
 
 fn forbidden_batch_message(cmd: TicketCommandCli) -> &'static str {
@@ -96,13 +115,17 @@ fn forbidden_batch_message(cmd: TicketCommandCli) -> &'static str {
         TicketCommandCli::Watch(_) => "'watch' cannot be used in a batch",
         TicketCommandCli::Batch(_) => "'batch' cannot be nested",
         TicketCommandCli::Scan(_) => "'scan' cannot be used in a batch",
-        TicketCommandCli::Claim(_) | TicketCommandCli::Unclaim(_) | TicketCommandCli::Leases => {
-            "lease commands cannot be used in a batch"
-        }
+        TicketCommandCli::Claim(_)
+        | TicketCommandCli::Unclaim(_)
+        | TicketCommandCli::Leases =>
+            "lease commands cannot be used in a batch",
         TicketCommandCli::AddRoot(_) => "'add-root' cannot be used in a batch",
-        TicketCommandCli::ExportCommandSchema => "'export-command-schema' cannot be used in a batch",
-        TicketCommandCli::Workspace(_) => "'workspace' cannot be used in a batch",
-        TicketCommandCli::FinalizeMerge(_) => "'finalize-merge' is not supported in a batch",
+        TicketCommandCli::ExportCommandSchema =>
+            "'export-command-schema' cannot be used in a batch",
+        TicketCommandCli::Workspace(_) =>
+            "'workspace' cannot be used in a batch",
+        TicketCommandCli::FinalizeMerge(_) =>
+            "'finalize-merge' is not supported in a batch",
         _ => unreachable!("handled before forbidden batch dispatch"),
     }
 }

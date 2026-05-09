@@ -1,6 +1,13 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{
+    HashMap,
+    HashSet,
+    VecDeque,
+};
 
-use ticket_api::{model::edge::EdgeRecord, storage::indexed::IndexedTicket};
+use ticket_api::{
+    model::edge::EdgeRecord,
+    storage::indexed::IndexedTicket,
+};
 
 use super::*;
 
@@ -72,11 +79,16 @@ fn tickets_in_scope(
         return explicit_tickets(store, ids);
     }
     if all {
-        return store.list(None, None, None).map_err(TicketServer::store_err);
+        return store
+            .list(None, None, None)
+            .map_err(TicketServer::store_err);
     }
 
     let root_str = root.ok_or_else(|| {
-        McpError::invalid_params("one of 'root', 'all', or 'ids' is required", None)
+        McpError::invalid_params(
+            "one of 'root', 'all', or 'ids' is required",
+            None,
+        )
     })?;
 
     root_scope_tickets(
@@ -88,12 +100,17 @@ fn tickets_in_scope(
     )
 }
 
-fn explicit_tickets(store: &TicketStore, ids: &[String]) -> Result<Vec<IndexedTicket>, McpError> {
+fn explicit_tickets(
+    store: &TicketStore,
+    ids: &[String],
+) -> Result<Vec<IndexedTicket>, McpError> {
     let mut tickets = Vec::new();
 
     for id_str in ids {
         let id = TicketServer::resolve_uuid_with(store, id_str)?;
-        if let Some(ticket) = store.get_indexed(&id).map_err(TicketServer::store_err)? {
+        if let Some(ticket) =
+            store.get_indexed(&id).map_err(TicketServer::store_err)?
+        {
             if !ticket.deleted {
                 tickets.push(ticket);
             }
@@ -111,7 +128,8 @@ fn root_scope_tickets(
     all_edges: &[EdgeRecord],
 ) -> Result<Vec<IndexedTicket>, McpError> {
     let root_id = TicketServer::resolve_uuid_with(store, root_str)?;
-    let scope_ids = collect_scope_ids(root_id, depth_limit, direction, all_edges);
+    let scope_ids =
+        collect_scope_ids(root_id, depth_limit, direction, all_edges);
 
     Ok(scope_ids
         .iter()
@@ -144,10 +162,14 @@ fn collect_scope_ids(
             if !relevant_scope_edge(edge) {
                 continue;
             }
-            let Some((neighbor, is_outbound)) = adjacent_ticket(edge, current_id) else {
+            let Some((neighbor, is_outbound)) =
+                adjacent_ticket(edge, current_id)
+            else {
                 continue;
             };
-            if direction_matches(direction, is_outbound) && !visited.contains(&neighbor) {
+            if direction_matches(direction, is_outbound)
+                && !visited.contains(&neighbor)
+            {
                 queue.push_back((neighbor, depth + 1));
             }
         }
@@ -160,7 +182,10 @@ fn relevant_scope_edge(edge: &EdgeRecord) -> bool {
     edge.kind == "depends_on" || edge.kind == "linked"
 }
 
-fn adjacent_ticket(edge: &EdgeRecord, current_id: Uuid) -> Option<(Uuid, bool)> {
+fn adjacent_ticket(
+    edge: &EdgeRecord,
+    current_id: Uuid,
+) -> Option<(Uuid, bool)> {
     if edge.from == current_id {
         Some((edge.to, true))
     } else if edge.to == current_id {
@@ -170,7 +195,10 @@ fn adjacent_ticket(edge: &EdgeRecord, current_id: Uuid) -> Option<(Uuid, bool)> 
     }
 }
 
-fn direction_matches(direction: &str, is_outbound: bool) -> bool {
+fn direction_matches(
+    direction: &str,
+    is_outbound: bool,
+) -> bool {
     match direction {
         "out" => is_outbound,
         "in" => !is_outbound,
@@ -178,13 +206,19 @@ fn direction_matches(direction: &str, is_outbound: bool) -> bool {
     }
 }
 
-fn build_health_context(tickets: Vec<IndexedTicket>, all_edges: Vec<EdgeRecord>) -> HealthContext {
+fn build_health_context(
+    tickets: Vec<IndexedTicket>,
+    all_edges: Vec<EdgeRecord>,
+) -> HealthContext {
     let done_ids = done_ticket_ids(&tickets);
-    let ticket_ids: HashSet<Uuid> = tickets.iter().map(|ticket| ticket.id).collect();
+    let ticket_ids: HashSet<Uuid> =
+        tickets.iter().map(|ticket| ticket.id).collect();
     let mut unresolved_deps: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
 
     for edge in &all_edges {
-        if edge.kind == "depends_on" && ticket_ids.contains(&edge.from) && !done_ids.contains(&edge.to)
+        if edge.kind == "depends_on"
+            && ticket_ids.contains(&edge.from)
+            && !done_ids.contains(&edge.to)
         {
             unresolved_deps.entry(edge.from).or_default().push(edge.to);
         }

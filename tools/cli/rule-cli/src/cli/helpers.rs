@@ -1,11 +1,25 @@
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
-use rule_api::{RuleFilter, RuleManifest};
-use serde_json::{Value, json};
+use rule_api::{
+    RuleFilter,
+    RuleManifest,
+};
+use serde_json::{
+    Value,
+    json,
+};
 
-use super::{CliRunError, FilterArgs};
+use super::{
+    CliRunError,
+    FilterArgs,
+};
 
 pub(super) fn resolve_index_root(explicit: Option<&Path>) -> PathBuf {
     if let Some(path) = explicit {
@@ -17,12 +31,16 @@ pub(super) fn resolve_index_root(explicit: Option<&Path>) -> PathBuf {
     if let Ok(path) = std::env::var("TICKET_INDEX_ROOT") {
         return PathBuf::from(path);
     }
-    if let Some(path) = std::env::current_dir().ok().map(|dir| dir.join(".rule")) {
+    if let Some(path) =
+        std::env::current_dir().ok().map(|dir| dir.join(".rule"))
+    {
         if path.exists() {
             return path;
         }
     }
-    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+    if let Ok(home) =
+        std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))
+    {
         return PathBuf::from(home).join(".rule-index");
     }
     PathBuf::from(".rule")
@@ -33,8 +51,12 @@ pub(super) fn read_body(
     body_file: Option<&Path>,
 ) -> Result<String, CliRunError> {
     match (inline, body_file) {
-        (_, Some(path)) => fs::read_to_string(path)
-            .map_err(|err| CliRunError::BadRequest(format!("read body file {}: {err}", path.display()))),
+        (_, Some(path)) => fs::read_to_string(path).map_err(|err| {
+            CliRunError::BadRequest(format!(
+                "read body file {}: {err}",
+                path.display()
+            ))
+        }),
         (Some(body), None) => Ok(body),
         (None, None) => Ok(String::new()),
     }
@@ -46,9 +68,13 @@ pub(super) fn read_optional_body(
 ) -> Result<Option<String>, CliRunError> {
     match (inline, body_file) {
         (Some(body), None) => Ok(Some(body)),
-        (None, Some(path)) => fs::read_to_string(path)
-            .map(Some)
-            .map_err(|err| CliRunError::BadRequest(format!("read body file {}: {err}", path.display()))),
+        (None, Some(path)) =>
+            fs::read_to_string(path).map(Some).map_err(|err| {
+                CliRunError::BadRequest(format!(
+                    "read body file {}: {err}",
+                    path.display()
+                ))
+            }),
         (None, None) => Ok(None),
         (Some(_), Some(_)) => Err(CliRunError::BadRequest(
             "choose either --body or --body-file".to_string(),
@@ -99,13 +125,20 @@ pub(super) fn list_filter(args: &FilterArgs) -> RuleFilter {
     }
 }
 
-pub(super) fn parse_fields(fields: &[String]) -> Result<BTreeMap<String, Value>, CliRunError> {
+pub(super) fn parse_fields(
+    fields: &[String]
+) -> Result<BTreeMap<String, Value>, CliRunError> {
     let mut patch = BTreeMap::new();
     for field in fields {
         let (key, value) = field.split_once('=').ok_or_else(|| {
-            CliRunError::BadRequest(format!("invalid field format '{field}', expected key=value"))
+            CliRunError::BadRequest(format!(
+                "invalid field format '{field}', expected key=value"
+            ))
         })?;
-        patch.insert(key.trim().to_string(), Value::String(value.trim().to_string()));
+        patch.insert(
+            key.trim().to_string(),
+            Value::String(value.trim().to_string()),
+        );
     }
     Ok(patch)
 }

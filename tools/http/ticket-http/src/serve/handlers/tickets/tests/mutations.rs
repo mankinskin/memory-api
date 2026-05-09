@@ -1,15 +1,33 @@
 use axum::{
     Json,
     body::to_bytes,
-    extract::{Extension, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    extract::{
+        Extension,
+        Path,
+        Query,
+        State,
+    },
+    http::{
+        HeaderMap,
+        StatusCode,
+    },
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::Arc,
+};
 use viewer_api::error::RequestIdExt;
 
-use super::{make_state, make_store};
-use super::super::{
-    CreateTicketBody, MutationWorkspaceParam, UpdateTicketBody, create_ticket, update_ticket,
+use super::{
+    super::{
+        CreateTicketBody,
+        MutationWorkspaceParam,
+        UpdateTicketBody,
+        create_ticket,
+        update_ticket,
+    },
+    make_state,
+    make_store,
 };
 
 #[tokio::test]
@@ -37,7 +55,8 @@ async fn create_ticket_returns_201_with_new_ticket() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
 
     assert_eq!(payload["workspace"], "default");
     assert_eq!(payload["request_id"], "rid-create");
@@ -75,7 +94,8 @@ async fn create_ticket_with_extra_fields_and_description() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["ticket"]["fields"]["priority"], "high");
 }
 
@@ -125,7 +145,8 @@ async fn update_ticket_patches_fields() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["ticket"]["fields"]["title"], "Updated title");
 }
 
@@ -169,6 +190,7 @@ async fn update_ticket_transitions_state() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["ticket"]["fields"]["state"], "ready");
 }

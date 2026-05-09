@@ -1,10 +1,18 @@
 use std::collections::BTreeMap;
 
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 
 use ticket_api::storage::TicketStore;
 
-use crate::cli::{CliRunError, DiffArgs, HistoryArgs, RevertArgs};
+use crate::cli::{
+    CliRunError,
+    DiffArgs,
+    HistoryArgs,
+    RevertArgs,
+};
 
 pub(crate) fn cmd_history(
     args: HistoryArgs,
@@ -27,14 +35,20 @@ pub(crate) fn cmd_history(
     }))
 }
 
-fn parse_rev_spec(spec: &str, max_rev: u64) -> Option<u64> {
+fn parse_rev_spec(
+    spec: &str,
+    max_rev: u64,
+) -> Option<u64> {
     if spec == "latest" {
         return Some(max_rev);
     }
     spec.parse::<u64>().ok()
 }
 
-pub(crate) fn cmd_diff(args: DiffArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_diff(
+    args: DiffArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let revisions = store.get_history(&id)?;
     if revisions.is_empty() {
@@ -44,17 +58,25 @@ pub(crate) fn cmd_diff(args: DiffArgs, store: &TicketStore) -> Result<Value, Cli
     }
     let max_rev = revisions.last().map(|r| r.rev).unwrap_or(0);
     let from_rev = parse_rev_spec(&args.from, max_rev).ok_or_else(|| {
-        CliRunError::BadRequest(format!("invalid revision specifier: {}", args.from))
+        CliRunError::BadRequest(format!(
+            "invalid revision specifier: {}",
+            args.from
+        ))
     })?;
     let to_rev = parse_rev_spec(&args.to, max_rev).ok_or_else(|| {
-        CliRunError::BadRequest(format!("invalid revision specifier: {}", args.to))
+        CliRunError::BadRequest(format!(
+            "invalid revision specifier: {}",
+            args.to
+        ))
     })?;
 
     let find_rev = |n: u64| revisions.iter().find(|r| r.rev == n).cloned();
-    let from = find_rev(from_rev)
-        .ok_or_else(|| CliRunError::BadRequest(format!("revision {} not found", from_rev)))?;
-    let to = find_rev(to_rev)
-        .ok_or_else(|| CliRunError::BadRequest(format!("revision {} not found", to_rev)))?;
+    let from = find_rev(from_rev).ok_or_else(|| {
+        CliRunError::BadRequest(format!("revision {} not found", from_rev))
+    })?;
+    let to = find_rev(to_rev).ok_or_else(|| {
+        CliRunError::BadRequest(format!("revision {} not found", to_rev))
+    })?;
 
     let mut added: BTreeMap<&str, &Value> = BTreeMap::new();
     let mut removed: BTreeMap<&str, &Value> = BTreeMap::new();
@@ -64,11 +86,11 @@ pub(crate) fn cmd_diff(args: DiffArgs, store: &TicketStore) -> Result<Value, Cli
         match from.fields.get(k) {
             None => {
                 added.insert(k.as_str(), v);
-            }
+            },
             Some(old) if old != v => {
                 changed.insert(k.as_str(), (old, v));
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
     for (k, v) in &from.fields {
@@ -79,7 +101,9 @@ pub(crate) fn cmd_diff(args: DiffArgs, store: &TicketStore) -> Result<Value, Cli
 
     let changed_json: serde_json::Map<String, Value> = changed
         .into_iter()
-        .map(|(k, (old, new))| (k.to_string(), json!({ "from": old, "to": new })))
+        .map(|(k, (old, new))| {
+            (k.to_string(), json!({ "from": old, "to": new }))
+        })
         .collect();
 
     Ok(json!({
@@ -94,7 +118,10 @@ pub(crate) fn cmd_diff(args: DiffArgs, store: &TicketStore) -> Result<Value, Cli
     }))
 }
 
-pub(crate) fn cmd_revert(args: RevertArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_revert(
+    args: RevertArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let revisions = store.get_history(&id)?;
     if revisions.is_empty() {
@@ -103,14 +130,23 @@ pub(crate) fn cmd_revert(args: RevertArgs, store: &TicketStore) -> Result<Value,
         ));
     }
     let max_rev = revisions.last().map(|r| r.rev).unwrap_or(0);
-    let target_rev = parse_rev_spec(&args.to_sha, max_rev).ok_or_else(|| {
-        CliRunError::BadRequest(format!("invalid revision specifier: {}", args.to_sha))
-    })?;
+    let target_rev =
+        parse_rev_spec(&args.to_sha, max_rev).ok_or_else(|| {
+            CliRunError::BadRequest(format!(
+                "invalid revision specifier: {}",
+                args.to_sha
+            ))
+        })?;
     let snapshot = revisions
         .iter()
         .find(|r| r.rev == target_rev)
         .cloned()
-        .ok_or_else(|| CliRunError::BadRequest(format!("revision {} not found", target_rev)))?;
+        .ok_or_else(|| {
+            CliRunError::BadRequest(format!(
+                "revision {} not found",
+                target_rev
+            ))
+        })?;
 
     let new_rev = store.apply_revert(&id, snapshot.fields, None)?;
     let updated = store.get(&id)?;

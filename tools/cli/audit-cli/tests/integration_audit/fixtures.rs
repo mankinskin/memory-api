@@ -1,5 +1,7 @@
-use std::fs;
-use std::path::Path;
+use std::{
+    fs,
+    path::Path,
+};
 
 pub(super) fn write_sample_repo(repo_root: &Path) {
     fs::create_dir_all(repo_root.join("src")).expect("create src dir");
@@ -199,8 +201,11 @@ mod tests {
         .map(|index| format!("print({index})"))
         .collect::<Vec<_>>()
         .join("\n");
-    fs::write(repo_root.join("scripts/helper.py"), format!("{helper_script}\n"))
-        .expect("write helper.py");
+    fs::write(
+        repo_root.join("scripts/helper.py"),
+        format!("{helper_script}\n"),
+    )
+    .expect("write helper.py");
 }
 
 pub(super) fn assert_unix_formatted_output_value(value: &serde_json::Value) {
@@ -209,6 +214,12 @@ pub(super) fn assert_unix_formatted_output_value(value: &serde_json::Value) {
 }
 
 pub(super) fn assert_unix_formatted_output_text(text: &str) {
-    assert!(!text.contains('\\'), "expected Unix-style path separators: {text}");
-    assert!(!text.contains("//?/"), "expected no Windows extended path prefix: {text}");
+    assert!(
+        !text.contains('\\'),
+        "expected Unix-style path separators: {text}"
+    );
+    assert!(
+        !text.contains("//?/"),
+        "expected no Windows extended path prefix: {text}"
+    );
 }

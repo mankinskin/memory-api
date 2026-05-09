@@ -1,17 +1,41 @@
-use std::collections::BTreeMap;
-use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs::{
+        self,
+        File,
+        OpenOptions,
+    },
+    io::{
+        BufRead,
+        BufReader,
+        Write,
+    },
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
 use chrono::Utc;
 use fs4::fs_std::FileExt;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::error::StorageError;
-use crate::model::filesystem::{EntityFolderConfig, ParseDiagnostic, parse_entity_manifest_toml};
-use crate::model::entity::EntityManifest;
+use crate::{
+    error::StorageError,
+    model::{
+        entity::EntityManifest,
+        filesystem::{
+            EntityFolderConfig,
+            ParseDiagnostic,
+            parse_entity_manifest_toml,
+        },
+    },
+};
 
 /// A single immutable revision snapshot stored in `history.ndjson`.
 ///
@@ -53,7 +77,10 @@ pub struct EntityFs {
 }
 
 impl EntityFs {
-    pub const fn new(manifest_file: &'static str, lock_file: &'static str) -> Self {
+    pub const fn new(
+        manifest_file: &'static str,
+        lock_file: &'static str,
+    ) -> Self {
         Self {
             config: EntityFolderConfig::new(manifest_file, lock_file),
         }
@@ -83,7 +110,10 @@ impl EntityFs {
         if final_dir.exists() {
             return Err(StorageError::Io(std::io::Error::new(
                 std::io::ErrorKind::AlreadyExists,
-                format!("entity folder already exists: {}", final_dir.display()),
+                format!(
+                    "entity folder already exists: {}",
+                    final_dir.display()
+                ),
             )));
         }
 
@@ -102,15 +132,18 @@ impl EntityFs {
     }
 
     /// Read and parse the manifest from an existing entity folder.
-    pub fn read(&self, entity_path: &Path) -> Result<EntityManifest, StorageError> {
+    pub fn read(
+        &self,
+        entity_path: &Path,
+    ) -> Result<EntityManifest, StorageError> {
         let manifest_path = entity_path.join(self.config.manifest_file);
         let content = fs::read_to_string(&manifest_path)?;
-        parse_entity_manifest_toml(manifest_path.clone(), &content).map_err(|d| {
-            StorageError::ParseError {
+        parse_entity_manifest_toml(manifest_path.clone(), &content).map_err(
+            |d| StorageError::ParseError {
                 path: d.path,
                 reason: d.reason,
-            }
-        })
+            },
+        )
     }
 
     /// Apply a field patch to the manifest on disk.
@@ -135,9 +168,10 @@ impl EntityFs {
                 manifest.extra.insert(k.clone(), v.clone());
             }
             if let Some(state) = new_state {
-                manifest
-                    .extra
-                    .insert("state".to_string(), Value::String(state.to_string()));
+                manifest.extra.insert(
+                    "state".to_string(),
+                    Value::String(state.to_string()),
+                );
             }
             self.write_manifest(entity_path, &manifest)?;
             Ok(manifest)
@@ -148,7 +182,10 @@ impl EntityFs {
     }
 
     /// Soft-delete an entity by writing a `deleted = true` marker in the manifest.
-    pub fn mark_deleted(&self, entity_path: &Path) -> Result<(), StorageError> {
+    pub fn mark_deleted(
+        &self,
+        entity_path: &Path,
+    ) -> Result<(), StorageError> {
         let lock_path = entity_path.join(self.config.lock_file);
         let lock_file = acquire_lock(&lock_path)?;
 
@@ -171,7 +208,8 @@ impl EntityFs {
     pub fn scan_root(
         &self,
         scan_root: &Path,
-    ) -> Result<(Vec<EntityScanEntry>, Vec<ParseDiagnostic>), StorageError> {
+    ) -> Result<(Vec<EntityScanEntry>, Vec<ParseDiagnostic>), StorageError>
+    {
         let mut valid = Vec::new();
         let mut diags = Vec::new();
 
@@ -186,7 +224,7 @@ impl EntityFs {
 
             match self.load_scan_entry(path, id) {
                 Ok(Some(entry)) => valid.push(entry),
-                Ok(None) => {}
+                Ok(None) => {},
                 Err(diag) => diags.push(diag),
             }
         }
@@ -210,9 +248,8 @@ impl EntityFs {
         match self.read(&path) {
             Ok(manifest) if entity_is_deleted(&manifest) => Ok(None),
             Ok(manifest) => Ok(Some(EntityScanEntry { id, path, manifest })),
-            Err(StorageError::ParseError { path, reason }) => {
-                Err(ParseDiagnostic { path, reason })
-            }
+            Err(StorageError::ParseError { path, reason }) =>
+                Err(ParseDiagnostic { path, reason }),
             Err(error) => Err(ParseDiagnostic {
                 path: manifest_path,
                 reason: error.to_string(),
@@ -223,7 +260,10 @@ impl EntityFs {
     // ── history ───────────────────────────────────────────────────────────────
 
     /// Read all history revisions for an entity (oldest first).
-    pub fn read_history(&self, entity_path: &Path) -> Result<Vec<HistoryRevision>, StorageError> {
+    pub fn read_history(
+        &self,
+        entity_path: &Path,
+    ) -> Result<Vec<HistoryRevision>, StorageError> {
         let path = entity_path.join(self.config.history_file);
         if !path.exists() {
             return Ok(Vec::new());
@@ -262,13 +302,17 @@ impl EntityFs {
         };
         let line = serde_json::to_string(&entry)
             .map_err(|e| StorageError::Serialization(e.to_string()))?;
-        let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
+        let mut file =
+            OpenOptions::new().create(true).append(true).open(&path)?;
         writeln!(file, "{}", line)?;
         Ok(rev)
     }
 
     /// Ensure the assets subdirectory exists inside `entity_path`.
-    pub fn ensure_assets_dir(&self, entity_path: &Path) -> Result<(), StorageError> {
+    pub fn ensure_assets_dir(
+        &self,
+        entity_path: &Path,
+    ) -> Result<(), StorageError> {
         let assets = entity_path.join(self.config.assets_dir);
         if !assets.exists() {
             fs::create_dir_all(&assets)?;
@@ -277,7 +321,10 @@ impl EntityFs {
     }
 
     /// Reformat an existing entity's manifest to canonical field ordering.
-    pub fn reformat(&self, entity_path: &Path) -> Result<(), StorageError> {
+    pub fn reformat(
+        &self,
+        entity_path: &Path,
+    ) -> Result<(), StorageError> {
         let lock_path = entity_path.join(self.config.lock_file);
         let lock_file = acquire_lock(&lock_path)?;
         let result = (|| -> Result<(), StorageError> {
@@ -290,24 +337,37 @@ impl EntityFs {
     }
 
     /// Write or overwrite the `description.md` file for an entity.
-    pub fn write_description(&self, entity_path: &Path, text: &str) -> Result<(), StorageError> {
+    pub fn write_description(
+        &self,
+        entity_path: &Path,
+        text: &str,
+    ) -> Result<(), StorageError> {
         let lock_path = entity_path.join(self.config.lock_file);
         let lock_file = acquire_lock(&lock_path)?;
-        let result = fs::write(entity_path.join("description.md"), text).map_err(StorageError::Io);
+        let result = fs::write(entity_path.join("description.md"), text)
+            .map_err(StorageError::Io);
         release_lock(&lock_file, &lock_path);
         result
     }
 
     /// Read text content of `description.md`. Returns `None` if not present.
-    pub fn read_description(&self, entity_path: &Path) -> Option<String> {
+    pub fn read_description(
+        &self,
+        entity_path: &Path,
+    ) -> Option<String> {
         let desc = entity_path.join("description.md");
         fs::read_to_string(&desc).ok()
     }
 
     // ── internal ──────────────────────────────────────────────────────────────
 
-    fn write_manifest(&self, dir: &Path, manifest: &EntityManifest) -> Result<(), StorageError> {
-        let toml_str = crate::model::manifest_format::format_manifest_toml(manifest);
+    fn write_manifest(
+        &self,
+        dir: &Path,
+        manifest: &EntityManifest,
+    ) -> Result<(), StorageError> {
+        let toml_str =
+            crate::model::manifest_format::format_manifest_toml(manifest);
         let path = dir.join(self.config.manifest_file);
         fs::write(&path, toml_str)?;
         Ok(())
@@ -322,13 +382,16 @@ fn acquire_lock(lock_path: &Path) -> Result<File, StorageError> {
     Ok(file)
 }
 
-fn release_lock(file: &File, lock_path: &Path) {
+fn release_lock(
+    file: &File,
+    lock_path: &Path,
+) {
     let _ = file.unlock();
     let _ = fs::remove_file(lock_path);
 }
 
 fn read_scan_root(
-    scan_root: &Path,
+    scan_root: &Path
 ) -> Result<Option<fs::ReadDir>, StorageError> {
     match fs::read_dir(scan_root) {
         Ok(read_dir) => Ok(Some(read_dir)),
@@ -364,8 +427,8 @@ fn entity_is_deleted(manifest: &EntityManifest) -> bool {
 #[cfg(test)]
 mod tests {
     use super::HistoryRevision;
-    use std::collections::BTreeMap;
     use serde_json::Value;
+    use std::collections::BTreeMap;
 
     #[test]
     fn history_revision_backward_compat_no_author() {
@@ -373,7 +436,10 @@ mod tests {
         let rev: HistoryRevision = serde_json::from_str(json)
             .expect("should deserialize legacy revision without author field");
         assert_eq!(rev.rev, 1);
-        assert_eq!(rev.author, None, "author should be None for legacy entries");
+        assert_eq!(
+            rev.author, None,
+            "author should be None for legacy entries"
+        );
     }
 
     #[test]
@@ -394,6 +460,9 @@ mod tests {
         };
         let json = serde_json::to_string(&rev).expect("serialize");
         let v: Value = serde_json::from_str(&json).unwrap();
-        assert!(v.get("author").is_none(), "author key should be absent when None");
+        assert!(
+            v.get("author").is_none(),
+            "author key should be absent when None"
+        );
     }
 }

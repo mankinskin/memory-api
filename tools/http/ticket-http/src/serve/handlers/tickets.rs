@@ -1,16 +1,18 @@
-#[path = "tickets/types.rs"]
-mod types;
-#[path = "tickets/read.rs"]
-mod read;
-#[path = "tickets/mutations.rs"]
-mod mutations;
 #[path = "tickets/assets.rs"]
 mod assets;
+#[path = "tickets/mutations.rs"]
+mod mutations;
+#[path = "tickets/read.rs"]
+mod read;
 #[cfg(test)]
 #[path = "tickets/tests.rs"]
 mod tests;
+#[path = "tickets/types.rs"]
+mod types;
 
-pub use self::assets::*;
-pub use self::mutations::*;
-pub use self::read::*;
-pub use self::types::*;
+pub use self::{
+    assets::*,
+    mutations::*,
+    read::*,
+    types::*,
+};

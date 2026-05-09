@@ -5,7 +5,14 @@ pub mod workspace;
 
 // Re-export board types at the crate root for convenient access.
 pub use storage::{
-    BoardCleanPreview, BoardCleanResult, BoardConfig, BoardEntry, BoardEntryStatus, BoardError,
-    BoardReconcileResult, BoardSnapshot, ReconcileAction,
+    BoardCleanPreview,
+    BoardCleanResult,
+    BoardConfig,
+    BoardEntry,
+    BoardEntryStatus,
+    BoardError,
+    BoardReconcileResult,
+    BoardSnapshot,
+    EntityStore,
+    ReconcileAction,
 };
-pub use storage::EntityStore;

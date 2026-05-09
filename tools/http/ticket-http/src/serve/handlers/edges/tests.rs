@@ -1,20 +1,41 @@
 use axum::{
     Json,
     body::to_bytes,
-    extract::{Extension, Query, State},
+    extract::{
+        Extension,
+        Query,
+        State,
+    },
     http::StatusCode,
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::Arc,
+};
 use uuid::Uuid;
 use viewer_api::error::RequestIdExt;
 
-use ticket_api::{model::filesystem::ScanRoot, storage::store::TicketStore};
+use ticket_api::{
+    model::filesystem::ScanRoot,
+    storage::store::TicketStore,
+};
 
-use crate::serve::{AppState, StreamBroker, WorkspaceRegistry};
+use crate::serve::{
+    AppState,
+    StreamBroker,
+    WorkspaceRegistry,
+};
 
-use super::{EdgeBody, EdgeMutationQuery, add_edge, remove_edge};
+use super::{
+    EdgeBody,
+    EdgeMutationQuery,
+    add_edge,
+    remove_edge,
+};
 
-fn make_state_with_store(dir: &std::path::Path) -> (AppState, Arc<TicketStore>) {
+fn make_state_with_store(
+    dir: &std::path::Path
+) -> (AppState, Arc<TicketStore>) {
     let store = Arc::new(TicketStore::open(dir).expect("open store"));
     store
         .add_scan_root(ScanRoot {
@@ -71,7 +92,8 @@ async fn add_edge_returns_201_with_edge_detail() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
 
     assert_eq!(payload["workspace"], "default");
     assert_eq!(payload["edge"]["from"], from_id.to_string());
@@ -106,7 +128,8 @@ async fn add_edge_self_referential_depends_on_returns_422() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["code"], "edge.cycle_detected");
 }
 
@@ -153,7 +176,8 @@ async fn remove_edge_returns_200_with_edge_detail() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["edge"]["from"], from_id.to_string());
     assert_eq!(payload["edge"]["to"], to_id.to_string());
     assert_eq!(payload["edge"]["kind"], "depends_on");
@@ -224,20 +248,21 @@ async fn sse_edge_events_emitted_on_add_and_remove() {
     )
     .await;
 
-    let event = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-        loop {
-            match rx.recv().await {
-                Ok((_id, ev)) => {
-                    if ev.event_name() == "edge.upsert" {
-                        return ev;
-                    }
+    let event =
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                match rx.recv().await {
+                    Ok((_id, ev)) =>
+                        if ev.event_name() == "edge.upsert" {
+                            return ev;
+                        },
+                    Err(_) =>
+                        panic!("channel closed before edge.upsert received"),
                 }
-                Err(_) => panic!("channel closed before edge.upsert received"),
             }
-        }
-    })
-    .await
-    .expect("edge.upsert event within timeout");
+        })
+        .await
+        .expect("edge.upsert event within timeout");
 
     assert_eq!(event.event_name(), "edge.upsert");
 
@@ -256,20 +281,21 @@ async fn sse_edge_events_emitted_on_add_and_remove() {
     )
     .await;
 
-    let del_event = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-        loop {
-            match rx.recv().await {
-                Ok((_id, ev)) => {
-                    if ev.event_name() == "edge.delete" {
-                        return ev;
-                    }
+    let del_event =
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                match rx.recv().await {
+                    Ok((_id, ev)) =>
+                        if ev.event_name() == "edge.delete" {
+                            return ev;
+                        },
+                    Err(_) =>
+                        panic!("channel closed before edge.delete received"),
                 }
-                Err(_) => panic!("channel closed before edge.delete received"),
             }
-        }
-    })
-    .await
-    .expect("edge.delete event within timeout");
+        })
+        .await
+        .expect("edge.delete event within timeout");
 
     assert_eq!(del_event.event_name(), "edge.delete");
 }

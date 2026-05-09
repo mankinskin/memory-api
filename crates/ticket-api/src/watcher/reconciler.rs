@@ -1,11 +1,24 @@
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use std::path::PathBuf;
-use std::sync::mpsc;
-use std::time::Duration;
+use notify::{
+    Event,
+    EventKind,
+    RecommendedWatcher,
+    RecursiveMode,
+    Watcher,
+};
+use std::{
+    path::PathBuf,
+    sync::mpsc,
+    time::Duration,
+};
 
-use crate::error::StorageError;
-use crate::storage::store::{ScanReport, TicketStore};
-use crate::watcher::events::WatchEventKind;
+use crate::{
+    error::StorageError,
+    storage::store::{
+        ScanReport,
+        TicketStore,
+    },
+    watcher::events::WatchEventKind,
+};
 
 /// A structured event emitted by the reconciler for external consumers.
 pub struct ReconcileEvent {
@@ -15,7 +28,10 @@ pub struct ReconcileEvent {
 
 /// Perform a one-shot reconciliation pass over all scan roots.
 /// This is the command-line equivalent of `ticket scan`.
-pub fn reconcile_once(store: &TicketStore, reindex: bool) -> Result<ScanReport, StorageError> {
+pub fn reconcile_once(
+    store: &TicketStore,
+    reindex: bool,
+) -> Result<ScanReport, StorageError> {
     store.scan(reindex)
 }
 
@@ -29,16 +45,21 @@ pub fn reconcile_once(store: &TicketStore, reindex: bool) -> Result<ScanReport, 
 /// # Note
 /// This is a best-effort watching layer. Crash safety and correctness are
 /// guaranteed by `ticket scan --reindex`, not by the watcher alone.
-pub fn start_watcher(
-    store: &TicketStore,
-) -> Result<WatchHandle, StorageError> {
+pub fn start_watcher(store: &TicketStore) -> Result<WatchHandle, StorageError> {
     let roots = store.list_scan_roots()?;
     let default_root = store.index_root.join("tickets");
 
     let (tx, rx) = mpsc::channel();
-    let mut watcher: RecommendedWatcher =
-        Watcher::new(tx, notify::Config::default().with_poll_interval(Duration::from_secs(2)))
-            .map_err(|e| StorageError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+    let mut watcher: RecommendedWatcher = Watcher::new(
+        tx,
+        notify::Config::default().with_poll_interval(Duration::from_secs(2)),
+    )
+    .map_err(|e| {
+        StorageError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })?;
 
     // Watch default root.
     if default_root.exists() {
@@ -51,7 +72,10 @@ pub fn start_watcher(
         }
     }
 
-    Ok(WatchHandle { _watcher: watcher, rx })
+    Ok(WatchHandle {
+        _watcher: watcher,
+        rx,
+    })
 }
 
 /// Opaque handle that keeps the filesystem watcher alive.
@@ -92,8 +116,15 @@ pub fn classify_event(event: &Event) -> WatchEventKind {
 ///
 /// Returns only if the watcher channel closes (which happens when the OS
 /// reports a fatal error).
-pub fn run_watch_loop(handle: &WatchHandle, store: &TicketStore, debounce_ms: u64) {
-    use std::time::{Duration, Instant};
+pub fn run_watch_loop(
+    handle: &WatchHandle,
+    store: &TicketStore,
+    debounce_ms: u64,
+) {
+    use std::time::{
+        Duration,
+        Instant,
+    };
 
     let debounce = Duration::from_millis(debounce_ms);
     let mut pending_paths: Vec<std::path::PathBuf> = Vec::new();
@@ -107,13 +138,13 @@ pub fn run_watch_loop(handle: &WatchHandle, store: &TicketStore, debounce_ms: u6
                     pending_paths.push(path);
                 }
                 last_event = Some(Instant::now());
-            }
+            },
             Some(Err(_)) => {
                 // Watcher error — fall through to debounce-check.
-            }
+            },
             None => {
                 // No event right now — check if the debounce window has elapsed.
-            }
+            },
         }
 
         // Check if we have pending events and the debounce window has elapsed.

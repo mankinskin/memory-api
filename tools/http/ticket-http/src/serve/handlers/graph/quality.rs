@@ -1,21 +1,38 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{
+        HashMap,
+        HashSet,
+        VecDeque,
+    },
     sync::Arc,
 };
 
 use axum::{
     http::StatusCode,
-    response::{IntoResponse, Json, Response},
+    response::{
+        IntoResponse,
+        Json,
+        Response,
+    },
 };
 use ticket_api::{
     model::edge::EdgeRecord,
-    storage::{indexed::IndexedTicket, store::TicketStore},
+    storage::{
+        indexed::IndexedTicket,
+        store::TicketStore,
+    },
 };
 use uuid::Uuid;
 
-use crate::serve::{error::storage_err, AppState};
+use crate::serve::{
+    AppState,
+    error::storage_err,
+};
 
-use super::{HealthCheckQuery, HealthCheckResponse};
+use super::{
+    HealthCheckQuery,
+    HealthCheckResponse,
+};
 
 mod findings;
 
@@ -31,23 +48,26 @@ pub(super) async fn handle_health_check(
     request_id: String,
     params: HealthCheckQuery,
 ) -> Response {
-    let store = match resolve_workspace_store(&state, &params.workspace, &request_id) {
-        Ok(store) => store,
-        Err(response) => return response,
-    };
+    let store =
+        match resolve_workspace_store(&state, &params.workspace, &request_id) {
+            Ok(store) => store,
+            Err(response) => return response,
+        };
 
     let all_edges = match store.list_all_edges() {
         Ok(edges) => edges,
         Err(error) => return storage_err(error, &request_id),
     };
 
-    let tickets = match tickets_in_scope(&store, &params, &all_edges, &request_id) {
-        Ok(tickets) => tickets,
-        Err(response) => return response,
-    };
+    let tickets =
+        match tickets_in_scope(&store, &params, &all_edges, &request_id) {
+            Ok(tickets) => tickets,
+            Err(response) => return response,
+        };
 
     let context = build_health_context(&tickets, &all_edges);
-    let (summary, findings) = collect_findings(&store, &tickets, &all_edges, &context);
+    let (summary, findings) =
+        collect_findings(&store, &tickets, &all_edges, &context);
     let tickets_checked = tickets
         .iter()
         .filter(|ticket| !context.done_ids.contains(&ticket.id))
@@ -88,7 +108,10 @@ fn tickets_in_scope(
     }
 }
 
-fn list_all_tickets(store: &TicketStore, request_id: &str) -> Result<Vec<IndexedTicket>, Response> {
+fn list_all_tickets(
+    store: &TicketStore,
+    request_id: &str,
+) -> Result<Vec<IndexedTicket>, Response> {
     store
         .list(None, None, None)
         .map_err(|error| storage_err(error, request_id))
@@ -138,7 +161,8 @@ fn collect_scope_ids(
         }
 
         for edge in all_edges {
-            let Some(neighbor) = scope_neighbor(edge, current_id, direction) else {
+            let Some(neighbor) = scope_neighbor(edge, current_id, direction)
+            else {
                 continue;
             };
             if !visited.contains(&neighbor) {
@@ -150,7 +174,11 @@ fn collect_scope_ids(
     collected_ids
 }
 
-fn scope_neighbor(edge: &EdgeRecord, current_id: Uuid, direction: &str) -> Option<Uuid> {
+fn scope_neighbor(
+    edge: &EdgeRecord,
+    current_id: Uuid,
+    direction: &str,
+) -> Option<Uuid> {
     if edge.kind != "depends_on" && edge.kind != "linked" {
         return None;
     }
@@ -163,7 +191,10 @@ fn scope_neighbor(edge: &EdgeRecord, current_id: Uuid, direction: &str) -> Optio
     }
 }
 
-fn edge_neighbor(edge: &EdgeRecord, current_id: Uuid) -> Option<(Uuid, bool)> {
+fn edge_neighbor(
+    edge: &EdgeRecord,
+    current_id: Uuid,
+) -> Option<(Uuid, bool)> {
     if edge.from == current_id {
         Some((edge.to, true))
     } else if edge.to == current_id {
@@ -173,7 +204,10 @@ fn edge_neighbor(edge: &EdgeRecord, current_id: Uuid) -> Option<(Uuid, bool)> {
     }
 }
 
-fn direction_allows(direction: &str, is_outbound: bool) -> bool {
+fn direction_allows(
+    direction: &str,
+    is_outbound: bool,
+) -> bool {
     match direction {
         "out" => is_outbound,
         "in" => !is_outbound,
@@ -181,17 +215,25 @@ fn direction_allows(direction: &str, is_outbound: bool) -> bool {
     }
 }
 
-fn load_live_tickets(store: &TicketStore, ids: &[Uuid]) -> Vec<IndexedTicket> {
+fn load_live_tickets(
+    store: &TicketStore,
+    ids: &[Uuid],
+) -> Vec<IndexedTicket> {
     ids.iter()
         .filter_map(|id| store.get_indexed(id).ok().flatten())
         .filter(|ticket| !ticket.deleted)
         .collect()
 }
 
-fn build_health_context(tickets: &[IndexedTicket], all_edges: &[EdgeRecord]) -> HealthContext {
-    let ticket_ids: HashSet<Uuid> = tickets.iter().map(|ticket| ticket.id).collect();
+fn build_health_context(
+    tickets: &[IndexedTicket],
+    all_edges: &[EdgeRecord],
+) -> HealthContext {
+    let ticket_ids: HashSet<Uuid> =
+        tickets.iter().map(|ticket| ticket.id).collect();
     let done_ids = done_ticket_ids(tickets);
-    let unresolved_deps = unresolved_dependency_map(all_edges, &ticket_ids, &done_ids);
+    let unresolved_deps =
+        unresolved_dependency_map(all_edges, &ticket_ids, &done_ids);
 
     HealthContext {
         done_ids,
@@ -200,7 +242,8 @@ fn build_health_context(tickets: &[IndexedTicket], all_edges: &[EdgeRecord]) -> 
 }
 
 fn done_ticket_ids(tickets: &[IndexedTicket]) -> HashSet<Uuid> {
-    let done_states: HashSet<&str> = ["done", "cancelled"].into_iter().collect();
+    let done_states: HashSet<&str> =
+        ["done", "cancelled"].into_iter().collect();
     tickets
         .iter()
         .filter(|ticket| {
@@ -227,7 +270,10 @@ fn unresolved_dependency_map(
         if !ticket_ids.contains(&edge.from) || done_ids.contains(&edge.to) {
             continue;
         }
-        unresolved.entry(edge.from).or_insert_with(Vec::new).push(edge.to);
+        unresolved
+            .entry(edge.from)
+            .or_insert_with(Vec::new)
+            .push(edge.to);
     }
     unresolved
 }

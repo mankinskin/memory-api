@@ -1,9 +1,16 @@
 use std::collections::BTreeMap;
 
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 use ticket_api::{
     model::edge::EdgeRecord,
-    storage::{indexed::IndexedTicket, store::TicketStore, ticket_fs::TicketFs},
+    storage::{
+        indexed::IndexedTicket,
+        store::TicketStore,
+        ticket_fs::TicketFs,
+    },
 };
 use uuid::Uuid;
 
@@ -22,7 +29,14 @@ pub(super) fn collect_findings(
         if context.done_ids.contains(&ticket.id) {
             continue;
         }
-        append_ticket_findings(store, ticket, all_edges, context, &mut summary, &mut findings);
+        append_ticket_findings(
+            store,
+            ticket,
+            all_edges,
+            context,
+            &mut summary,
+            &mut findings,
+        );
     }
 
     (summary, findings)
@@ -41,8 +55,12 @@ fn append_ticket_findings(
 
     append_description_findings(ticket, &short_id, title, summary, findings);
     append_title_finding(ticket, &short_id, summary, findings);
-    append_dependency_state_finding(ticket, &short_id, title, context, summary, findings);
-    append_dangling_edge_findings(store, ticket, all_edges, &short_id, title, summary, findings);
+    append_dependency_state_finding(
+        ticket, &short_id, title, context, summary, findings,
+    );
+    append_dangling_edge_findings(
+        store, ticket, all_edges, &short_id, title, summary, findings,
+    );
 }
 
 fn append_description_findings(
@@ -83,7 +101,7 @@ fn append_description_findings(
                     }),
                 );
             }
-        }
+        },
     }
 }
 
@@ -180,7 +198,10 @@ fn dangling_dependency_targets(
         .collect()
 }
 
-fn depends_on_target(edge: &EdgeRecord, ticket_id: Uuid) -> Option<Uuid> {
+fn depends_on_target(
+    edge: &EdgeRecord,
+    ticket_id: Uuid,
+) -> Option<Uuid> {
     if edge.from == ticket_id && edge.kind == "depends_on" {
         Some(edge.to)
     } else {
@@ -188,7 +209,10 @@ fn depends_on_target(edge: &EdgeRecord, ticket_id: Uuid) -> Option<Uuid> {
     }
 }
 
-fn ticket_exists(store: &TicketStore, ticket_id: Uuid) -> bool {
+fn ticket_exists(
+    store: &TicketStore,
+    ticket_id: Uuid,
+) -> bool {
     store
         .get_indexed(&ticket_id)
         .ok()

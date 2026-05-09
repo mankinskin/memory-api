@@ -1,22 +1,42 @@
 use std::collections::BTreeMap;
 
 use chrono::Utc;
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 
-use ticket_api::error::StorageError;
-use ticket_api::storage::TicketStore;
-use ticket_api::storage::ticket_fs::TicketFs;
+use ticket_api::{
+    error::StorageError,
+    storage::{
+        TicketStore,
+        ticket_fs::TicketFs,
+    },
+};
 
 use crate::cli::{
-    AddRootArgs, AttachArgs, CliRunError, FmtArgs, HealthArgs, IdArgs, NextArgs, ReadyOverviewArgs,
-    ScanArgs, ServeCliArgs, StatusArgs, WatchArgs,
+    AddRootArgs,
+    AttachArgs,
+    CliRunError,
+    FmtArgs,
+    HealthArgs,
+    IdArgs,
+    NextArgs,
+    ReadyOverviewArgs,
+    ScanArgs,
+    ServeCliArgs,
+    StatusArgs,
+    WatchArgs,
 };
 
 mod health;
 mod next;
 mod status;
 
-pub(crate) fn cmd_scan(args: ScanArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_scan(
+    args: ScanArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let reindex = args.reindex || args.force;
     let report = store.scan(reindex)?;
     let diags: Vec<Value> = report
@@ -38,11 +58,21 @@ pub(crate) fn cmd_scan(args: ScanArgs, store: &TicketStore) -> Result<Value, Cli
     Ok(result)
 }
 
-pub(crate) fn cmd_attach(args: AttachArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_attach(
+    args: AttachArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let dest = store.attach(&id, &args.path, args.asset_name.as_deref())?;
-    let title = store.get(&id).ok()
-        .and_then(|m| m.extra.get("title").and_then(Value::as_str).map(String::from))
+    let title = store
+        .get(&id)
+        .ok()
+        .and_then(|m| {
+            m.extra
+                .get("title")
+                .and_then(Value::as_str)
+                .map(String::from)
+        })
         .unwrap_or_else(|| "-".to_string());
     Ok(json!({
         "command": "attach",
@@ -53,7 +83,10 @@ pub(crate) fn cmd_attach(args: AttachArgs, store: &TicketStore) -> Result<Value,
     }))
 }
 
-pub(crate) fn cmd_assets(args: IdArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_assets(
+    args: IdArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let names = store.list_assets(&id)?;
     Ok(json!({
@@ -96,7 +129,10 @@ pub(crate) fn cmd_audit(store: &TicketStore) -> Result<Value, CliRunError> {
     }))
 }
 
-pub(crate) fn cmd_add_root(args: AddRootArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_add_root(
+    args: AddRootArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     use ticket_api::model::filesystem::ScanRoot;
     let path = args.path.canonicalize().unwrap_or(args.path.clone());
     std::fs::create_dir_all(&path).map_err(StorageError::Io)?;
@@ -112,9 +148,16 @@ pub(crate) fn cmd_add_root(args: AddRootArgs, store: &TicketStore) -> Result<Val
     }))
 }
 
-pub(crate) fn cmd_serve(args: ServeCliArgs, store: TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_serve(
+    args: ServeCliArgs,
+    store: TicketStore,
+) -> Result<Value, CliRunError> {
     use ticket_api::workspace::WorkspaceConfig;
-    use ticket_http::serve::{ServeConfig, WorkspaceRegistry, serve};
+    use ticket_http::serve::{
+        ServeConfig,
+        WorkspaceRegistry,
+        serve,
+    };
 
     let registry = if args.workspace.is_some() {
         WorkspaceRegistry::single_opened(std::sync::Arc::new(store))
@@ -135,7 +178,11 @@ pub(crate) fn cmd_serve(args: ServeCliArgs, store: TicketStore) -> Result<Value,
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .map_err(|e| CliRunError::BadRequest(format!("failed to start tokio runtime: {e}")))?;
+        .map_err(|e| {
+            CliRunError::BadRequest(format!(
+                "failed to start tokio runtime: {e}"
+            ))
+        })?;
 
     rt.block_on(async {
         serve(config, registry)
@@ -146,8 +193,14 @@ pub(crate) fn cmd_serve(args: ServeCliArgs, store: TicketStore) -> Result<Value,
     Err(CliRunError::BadRequest("server exited unexpectedly".into()))
 }
 
-pub(crate) fn cmd_watch(args: WatchArgs, store: &TicketStore) -> Result<Value, CliRunError> {
-    use ticket_api::watcher::reconciler::{run_watch_loop, start_watcher};
+pub(crate) fn cmd_watch(
+    args: WatchArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    use ticket_api::watcher::reconciler::{
+        run_watch_loop,
+        start_watcher,
+    };
     eprintln!(
         "Starting filesystem watcher (debounce={}ms). Press Ctrl+C to stop.",
         args.debounce_ms
@@ -157,7 +210,10 @@ pub(crate) fn cmd_watch(args: WatchArgs, store: &TicketStore) -> Result<Value, C
     Ok(json!({ "command": "watch", "status": "stopped" }))
 }
 
-pub(crate) fn cmd_status(args: StatusArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_status(
+    args: StatusArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     status::run(args, store)
 }
 
@@ -173,9 +229,9 @@ pub(crate) fn cmd_ready_overview(
         store,
     )?;
 
-    let scope = args
-        .scope
-        .unwrap_or_else(|| "ready tickets currently open in the active index".to_string());
+    let scope = args.scope.unwrap_or_else(|| {
+        "ready tickets currently open in the active index".to_string()
+    });
 
     Ok(json!({
         "command": "ready_overview",
@@ -188,19 +244,30 @@ pub(crate) fn cmd_ready_overview(
     }))
 }
 
-pub(crate) fn cmd_next(args: NextArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_next(
+    args: NextArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     next::run(args, store)
 }
 
-pub(crate) fn cmd_health(args: HealthArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(crate) fn cmd_health(
+    args: HealthArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     health::run(args, store)
 }
 
 // ── fmt (canonical field ordering) ────────────────────────────────────────────
 
-pub(crate) fn cmd_fmt(args: FmtArgs, store: &TicketStore) -> Result<Value, CliRunError> {
-    use ticket_api::model::filesystem::TICKET_MANIFEST_FILE;
-    use ticket_api::model::manifest_format;
+pub(crate) fn cmd_fmt(
+    args: FmtArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    use ticket_api::model::{
+        filesystem::TICKET_MANIFEST_FILE,
+        manifest_format,
+    };
 
     // Use the same ticket enumeration as `health --all`: iterate via the index
     // so we pick up every non-deleted ticket regardless of scan-root registration.
@@ -225,7 +292,7 @@ pub(crate) fn cmd_fmt(args: FmtArgs, store: &TicketStore) -> Result<Value, CliRu
                     "error": e.to_string(),
                 }));
                 continue;
-            }
+            },
         };
 
         if manifest_format::is_canonically_ordered(&raw) {
@@ -245,7 +312,7 @@ pub(crate) fn cmd_fmt(args: FmtArgs, store: &TicketStore) -> Result<Value, CliRu
                         "path": manifest_path,
                         "error": e.to_string(),
                     }));
-                }
+                },
             }
         }
     }

@@ -1,6 +1,11 @@
 use clap::error::ErrorKind;
 
-use ticket_cli::cli::{CliOutput, error_output, parse_cli_from, run};
+use ticket_cli::cli::{
+    CliOutput,
+    error_output,
+    parse_cli_from,
+    run,
+};
 
 fn main() {
     let cli = match parse_cli_from(std::env::args_os()) {
@@ -19,7 +24,7 @@ fn main() {
             let rendered = error_output(&err.to_string(), wants_json);
             eprintln!("{rendered}");
             std::process::exit(2);
-        }
+        },
     };
 
     match run(cli) {
@@ -29,14 +34,14 @@ fn main() {
                 Err(err) => {
                     eprintln!("{}", error_output(&err.to_string(), true));
                     std::process::exit(1);
-                }
+                },
             }
-        }
+        },
         Ok(CliOutput::Text(text)) => println!("{text}"),
         Err(err) => {
             let wants_json = std::env::args().any(|a| a == "--json");
             eprintln!("{}", error_output(&err.to_string(), wants_json));
             std::process::exit(1);
-        }
+        },
     }
 }

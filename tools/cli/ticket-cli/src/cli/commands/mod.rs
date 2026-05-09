@@ -14,12 +14,15 @@ pub(crate) use lifecycle::*;
 pub(crate) use ops::*;
 pub(crate) use query::*;
 
-use uuid::Uuid;
-use ticket_api::storage::TicketStore;
 use crate::cli::CliRunError;
+use ticket_api::storage::TicketStore;
+use uuid::Uuid;
 
 /// Resolve a UUID string that may be a full UUID or a hex prefix (>= 8 chars).
-pub(crate) fn resolve_uuid_prefix(s: &str, store: &TicketStore) -> Result<Uuid, CliRunError> {
+pub(crate) fn resolve_uuid_prefix(
+    s: &str,
+    store: &TicketStore,
+) -> Result<Uuid, CliRunError> {
     if let Ok(id) = s.parse::<Uuid>() {
         return Ok(id);
     }

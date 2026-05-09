@@ -1,18 +1,26 @@
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::Path;
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::Path,
+};
 
 use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
-use memory_api::error::StorageError;
-use memory_api::model::entity::EntityManifest;
-use memory_api::storage::indexed::IndexedEntity;
+use memory_api::{
+    error::StorageError,
+    model::entity::EntityManifest,
+    storage::indexed::IndexedEntity,
+};
 
 use crate::error::RuleError;
 
-use super::{GENERATED_TARGET_ROOT_DIR, GENERATED_TARGET_TYPE_ID, RuleStore};
+use super::{
+    GENERATED_TARGET_ROOT_DIR,
+    GENERATED_TARGET_TYPE_ID,
+    RuleStore,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeneratedTargetRecord {
@@ -37,7 +45,9 @@ impl RuleStore {
             }
 
             let entity = self.inner.fs.read(&indexed.path)?;
-            let Some(record) = generated_target_from_entity(indexed.id, &entity) else {
+            let Some(record) =
+                generated_target_from_entity(indexed.id, &entity)
+            else {
                 continue;
             };
 
@@ -71,10 +81,7 @@ impl RuleStore {
             }
 
             let patch = BTreeMap::from([
-                (
-                    "title".to_string(),
-                    Value::String(target_name.to_string()),
-                ),
+                ("title".to_string(), Value::String(target_name.to_string())),
                 (
                     "config_path".to_string(),
                     Value::String(config_path.clone()),
@@ -88,7 +95,10 @@ impl RuleStore {
                     Value::String(output_path.clone()),
                 ),
             ]);
-            let updated = self.inner.fs.update(&indexed.path, &patch, Some("active"))?;
+            let updated =
+                self.inner
+                    .fs
+                    .update(&indexed.path, &patch, Some("active"))?;
 
             let refreshed = IndexedEntity {
                 id: existing_id,
@@ -108,27 +118,41 @@ impl RuleStore {
                 Some("active"),
                 Some(GENERATED_TARGET_TYPE_ID),
             )?;
-            let _ = self
-                .inner
-                .fs
-                .append_history(&indexed.path, updated.extra.clone(), None);
+            let _ = self.inner.fs.append_history(
+                &indexed.path,
+                updated.extra.clone(),
+                None,
+            );
 
             return generated_target_from_entity(existing_id, &updated)
-                .ok_or_else(|| RuleError::Asset("invalid generated-target manifest".to_string()));
+                .ok_or_else(|| {
+                    RuleError::Asset(
+                        "invalid generated-target manifest".to_string(),
+                    )
+                });
         }
 
         let id = Uuid::new_v4();
-        let entity = generated_target_entity(id, &slug, &config_path, target_name, &output_path);
+        let entity = generated_target_entity(
+            id,
+            &slug,
+            &config_path,
+            target_name,
+            &output_path,
+        );
         self.inner
             .schema_registry()
             .get(GENERATED_TARGET_TYPE_ID)
-            .ok_or_else(|| RuleError::Asset("missing generated-target schema".to_string()))?
+            .ok_or_else(|| {
+                RuleError::Asset("missing generated-target schema".to_string())
+            })?
             .validate_manifest(&entity)
             .map_err(|err| RuleError::Asset(err.to_string()))?;
 
         let root = self.inner.index_root.join(GENERATED_TARGET_ROOT_DIR);
         fs::create_dir_all(&root).map_err(StorageError::Io)?;
-        let folder = self.inner.fs.create(&entity, &root, Some(&output_path))?;
+        let folder =
+            self.inner.fs.create(&entity, &root, Some(&output_path))?;
         let indexed = IndexedEntity {
             id,
             path: folder.clone(),
@@ -147,14 +171,21 @@ impl RuleStore {
             Some("active"),
             Some(GENERATED_TARGET_TYPE_ID),
         )?;
-        let _ = self.inner.fs.append_history(&folder, entity.extra.clone(), None);
+        let _ =
+            self.inner
+                .fs
+                .append_history(&folder, entity.extra.clone(), None);
         self.slug_index.insert(slug, id);
 
-        generated_target_from_entity(id, &entity)
-            .ok_or_else(|| RuleError::Asset("invalid generated-target manifest".to_string()))
+        generated_target_from_entity(id, &entity).ok_or_else(|| {
+            RuleError::Asset("invalid generated-target manifest".to_string())
+        })
     }
 
-    pub fn delete_generated_target(&mut self, slug: &str) -> Result<(), RuleError> {
+    pub fn delete_generated_target(
+        &mut self,
+        slug: &str,
+    ) -> Result<(), RuleError> {
         let uuid = self.resolve_id(slug)?;
         let indexed = self
             .inner
@@ -166,7 +197,9 @@ impl RuleStore {
         }
 
         let entity = self.inner.fs.read(&indexed.path)?;
-        if let Some(existing_slug) = entity.extra.get("slug").and_then(Value::as_str) {
+        if let Some(existing_slug) =
+            entity.extra.get("slug").and_then(Value::as_str)
+        {
             self.slug_index.remove(existing_slug);
         }
         self.inner.fs.mark_deleted(&indexed.path)?;
@@ -192,18 +225,12 @@ fn generated_target_entity(
         created_at: Utc::now(),
         extra: BTreeMap::from([
             ("slug".to_string(), Value::String(slug.to_string())),
-            (
-                "title".to_string(),
-                Value::String(target_name.to_string()),
-            ),
+            ("title".to_string(), Value::String(target_name.to_string())),
             (
                 "type".to_string(),
                 Value::String(GENERATED_TARGET_TYPE_ID.to_string()),
             ),
-            (
-                "state".to_string(),
-                Value::String("active".to_string()),
-            ),
+            ("state".to_string(), Value::String("active".to_string())),
             (
                 "config_path".to_string(),
                 Value::String(config_path.to_string()),
@@ -233,7 +260,10 @@ fn generated_target_from_entity(
     })
 }
 
-fn generated_target_slug(config_path: &str, target_name: &str) -> String {
+fn generated_target_slug(
+    config_path: &str,
+    target_name: &str,
+) -> String {
     format!(
         "generated-targets/{}/{}",
         sanitize_slug_fragment(config_path),

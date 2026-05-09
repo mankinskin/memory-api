@@ -38,7 +38,13 @@ fn history_initial_revision_on_create() {
 fn history_accumulates_revisions_on_update() {
     let s = Sandbox::new();
 
-    let created = s.ticket_json(&["create", "--title", "Feature A", "--type", "tracker-improvement"]);
+    let created = s.ticket_json(&[
+        "create",
+        "--title",
+        "Feature A",
+        "--type",
+        "tracker-improvement",
+    ]);
     let id = created["id"].as_str().expect("id");
 
     s.ticket_json(&["update", id, "--to-state", "ready"]);
@@ -58,7 +64,13 @@ fn history_accumulates_revisions_on_update() {
 fn history_limit_caps_entries() {
     let s = Sandbox::new();
 
-    let created = s.ticket_json(&["create", "--title", "Ticket X", "--type", "tracker-improvement"]);
+    let created = s.ticket_json(&[
+        "create",
+        "--title",
+        "Ticket X",
+        "--type",
+        "tracker-improvement",
+    ]);
     let id = created["id"].as_str().expect("id");
 
     s.ticket_json(&["update", id, "--to-state", "ready"]);
@@ -81,7 +93,13 @@ fn history_limit_caps_entries() {
 fn diff_detects_state_change() {
     let s = Sandbox::new();
 
-    let created = s.ticket_json(&["create", "--title", "Diffable", "--type", "tracker-improvement"]);
+    let created = s.ticket_json(&[
+        "create",
+        "--title",
+        "Diffable",
+        "--type",
+        "tracker-improvement",
+    ]);
     let id = created["id"].as_str().expect("id");
 
     s.ticket_json(&["update", id, "--to-state", "ready"]);
@@ -102,7 +120,13 @@ fn diff_detects_state_change() {
 fn diff_to_latest_resolves_correctly() {
     let s = Sandbox::new();
 
-    let created = s.ticket_json(&["create", "--title", "Latest test", "--type", "tracker-improvement"]);
+    let created = s.ticket_json(&[
+        "create",
+        "--title",
+        "Latest test",
+        "--type",
+        "tracker-improvement",
+    ]);
     let id = created["id"].as_str().expect("id");
 
     s.ticket_json(&["update", id, "--field", "note=added"]);
@@ -117,7 +141,13 @@ fn diff_to_latest_resolves_correctly() {
 fn diff_same_revision_is_empty() {
     let s = Sandbox::new();
 
-    let created = s.ticket_json(&["create", "--title", "Static", "--type", "tracker-improvement"]);
+    let created = s.ticket_json(&[
+        "create",
+        "--title",
+        "Static",
+        "--type",
+        "tracker-improvement",
+    ]);
     let id = created["id"].as_str().expect("id");
 
     let diff = s.ticket_json(&["diff", id, "--from", "1", "--to", "1"]);
@@ -142,7 +172,13 @@ fn diff_same_revision_is_empty() {
 fn revert_creates_new_revision_with_old_state() {
     let s = Sandbox::new();
 
-    let created = s.ticket_json(&["create", "--title", "Revertable", "--type", "tracker-improvement"]);
+    let created = s.ticket_json(&[
+        "create",
+        "--title",
+        "Revertable",
+        "--type",
+        "tracker-improvement",
+    ]);
     let id = created["id"].as_str().expect("id");
 
     // Advance state to ready (rev 2).
@@ -167,7 +203,13 @@ fn revert_creates_new_revision_with_old_state() {
 fn revert_forward_only_history_never_shrinks() {
     let s = Sandbox::new();
 
-    let created = s.ticket_json(&["create", "--title", "Forward only", "--type", "tracker-improvement"]);
+    let created = s.ticket_json(&[
+        "create",
+        "--title",
+        "Forward only",
+        "--type",
+        "tracker-improvement",
+    ]);
     let id = created["id"].as_str().expect("id");
 
     s.ticket_json(&["update", id, "--field", "note=v2"]);
@@ -183,5 +225,9 @@ fn revert_forward_only_history_never_shrinks() {
 
     let after = s.ticket_json(&["history", id]);
     let after_count = after["count"].as_u64().unwrap_or(0);
-    assert_eq!(after_count, before_count + 1, "revert adds exactly one revision");
+    assert_eq!(
+        after_count,
+        before_count + 1,
+        "revert adds exactly one revision"
+    );
 }

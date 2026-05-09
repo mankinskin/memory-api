@@ -3,24 +3,48 @@
 use axum::{
     Router,
     middleware,
-    routing::{delete, get, patch, post},
+    routing::{
+        delete,
+        get,
+        patch,
+        post,
+    },
 };
 
 use viewer_api::middleware::request_id::add_request_id;
 
-use super::{AppState, handlers, middleware as mw};
+use super::{
+    AppState,
+    handlers,
+    middleware as mw,
+};
 
 /// Build the full Axum router.
 pub fn build_router(state: AppState) -> Router {
     let read_routes = Router::new()
         .route("/healthz", get(handlers::health::healthz))
-        .route("/api/workspaces", get(handlers::workspaces::list_workspaces))
+        .route(
+            "/api/workspaces",
+            get(handlers::workspaces::list_workspaces),
+        )
         .route("/api/tickets", get(handlers::tickets::list_tickets))
         .route("/api/tickets/{id}", get(handlers::tickets::get_ticket))
-        .route("/api/tickets/{id}/description", get(handlers::tickets::get_ticket_description))
-        .route("/api/tickets/{id}/history", get(handlers::tickets::get_ticket_history))
-        .route("/api/tickets/{id}/files", get(handlers::tickets::list_ticket_files))
-        .route("/api/tickets/{id}/asset", get(handlers::tickets::get_ticket_asset))
+        .route(
+            "/api/tickets/{id}/description",
+            get(handlers::tickets::get_ticket_description),
+        )
+        .route(
+            "/api/tickets/{id}/history",
+            get(handlers::tickets::get_ticket_history),
+        )
+        .route(
+            "/api/tickets/{id}/files",
+            get(handlers::tickets::list_ticket_files),
+        )
+        .route(
+            "/api/tickets/{id}/asset",
+            get(handlers::tickets::get_ticket_asset),
+        )
         .route("/api/edges", get(handlers::edges::list_edges))
         .route("/api/schema", get(handlers::schema::list_schemas))
         .route("/api/schema/{type_id}", get(handlers::schema::get_schema))
@@ -34,17 +58,34 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/tickets", post(handlers::tickets::create_ticket))
         .route(
             "/api/tickets/{id}",
-            patch(handlers::tickets::update_ticket).delete(handlers::tickets::delete_ticket),
+            patch(handlers::tickets::update_ticket)
+                .delete(handlers::tickets::delete_ticket),
         )
-        .route("/api/tickets/{id}/close", post(handlers::tickets::close_ticket))
-        .route("/api/tickets/{id}/cancel", post(handlers::tickets::cancel_ticket))
-        .route("/api/tickets/{id}/undo", post(handlers::tickets::undo_ticket))
-        .route("/api/tickets/{id}/revert", post(handlers::tickets::revert_ticket))
+        .route(
+            "/api/tickets/{id}/close",
+            post(handlers::tickets::close_ticket),
+        )
+        .route(
+            "/api/tickets/{id}/cancel",
+            post(handlers::tickets::cancel_ticket),
+        )
+        .route(
+            "/api/tickets/{id}/undo",
+            post(handlers::tickets::undo_ticket),
+        )
+        .route(
+            "/api/tickets/{id}/revert",
+            post(handlers::tickets::revert_ticket),
+        )
         .route(
             "/api/edges",
-            post(handlers::edges::add_edge).delete(handlers::edges::remove_edge),
+            post(handlers::edges::add_edge)
+                .delete(handlers::edges::remove_edge),
         )
-        .route_layer(middleware::from_fn_with_state(state.clone(), mw::write_auth));
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            mw::write_auth,
+        ));
 
     read_routes
         .merge(write_routes)
@@ -61,14 +102,32 @@ mod tests {
     //! real TCP socket required.
 
     use super::build_router;
-    use crate::serve::{AppState, StreamBroker, WorkspaceRegistry};
+    use crate::serve::{
+        AppState,
+        StreamBroker,
+        WorkspaceRegistry,
+    };
 
     use axum::{
-        body::{Body, to_bytes},
-        http::{Method, Request, StatusCode, header},
+        body::{
+            Body,
+            to_bytes,
+        },
+        http::{
+            Method,
+            Request,
+            StatusCode,
+            header,
+        },
     };
-    use std::{collections::BTreeMap, sync::Arc};
-    use ticket_api::{model::filesystem::ScanRoot, storage::store::TicketStore};
+    use std::{
+        collections::BTreeMap,
+        sync::Arc,
+    };
+    use ticket_api::{
+        model::filesystem::ScanRoot,
+        storage::store::TicketStore,
+    };
     use tower::ServiceExt;
     use uuid::Uuid;
 
@@ -97,7 +156,10 @@ mod tests {
     }
 
     /// Create a ticket via the store and return its UUID string.
-    fn create_ticket(dir: &std::path::Path, title: &str) -> (Arc<TicketStore>, Uuid) {
+    fn create_ticket(
+        dir: &std::path::Path,
+        title: &str,
+    ) -> (Arc<TicketStore>, Uuid) {
         let store = Arc::new(TicketStore::open(dir).expect("open store"));
         store
             .add_scan_root(ScanRoot {
@@ -143,7 +205,8 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
-        let payload: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let payload: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap();
         assert_eq!(payload["ticket"]["fields"]["state"], "new");
         assert_eq!(payload["ticket"]["fields"]["title"], "Router revert test");
         // request_id header is injected by middleware — must be present.
@@ -171,7 +234,8 @@ mod tests {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
         let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
-        let payload: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let payload: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap();
         assert_eq!(payload["code"], "revision_not_found");
     }
 
@@ -232,7 +296,8 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
-        let payload: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let payload: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap();
         assert_eq!(payload["count"], 2);
         // Oldest-first: first entry is the initial creation revision.
         assert_eq!(payload["entries"][0]["rev"], 1);
@@ -247,10 +312,14 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn concurrent_subgraph_requests_all_complete() {
         use std::sync::Arc;
-        use tokio::time::{Duration, timeout};
+        use tokio::time::{
+            Duration,
+            timeout,
+        };
 
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
+        let store =
+            Arc::new(TicketStore::open(dir.path()).expect("open store"));
         store
             .add_scan_root(ScanRoot {
                 path: dir.path().join("tickets"),
@@ -314,10 +383,14 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn concurrent_list_requests_all_complete() {
         use std::sync::Arc;
-        use tokio::time::{Duration, timeout};
+        use tokio::time::{
+            Duration,
+            timeout,
+        };
 
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
+        let store =
+            Arc::new(TicketStore::open(dir.path()).expect("open store"));
         store
             .add_scan_root(ScanRoot {
                 path: dir.path().join("tickets"),

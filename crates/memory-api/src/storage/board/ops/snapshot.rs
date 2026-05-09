@@ -4,8 +4,16 @@ use chrono::Utc;
 
 use crate::storage::index::RedbIndexStore;
 
-use super::{load_all_entries, read_board_config};
-use super::super::{BoardEntry, BoardEntryStatus, BoardError, BoardSnapshot};
+use super::{
+    super::{
+        BoardEntry,
+        BoardEntryStatus,
+        BoardError,
+        BoardSnapshot,
+    },
+    load_all_entries,
+    read_board_config,
+};
 
 impl RedbIndexStore {
     pub fn board_snapshot(

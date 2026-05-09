@@ -1,15 +1,24 @@
-use std::fs;
-use std::path::Path;
+use std::{
+    fs,
+    path::Path,
+};
 
 use spec_api::SpecStore;
-use spec_cli::{BootstrapArgs, cmd_bootstrap};
+use spec_cli::{
+    BootstrapArgs,
+    cmd_bootstrap,
+};
 use tempfile::TempDir;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Create a minimal Rust crate in `dir` with a given set of source files.
 /// `files` is a list of (relative-path-under-src, content) tuples.
-fn make_crate(dir: &Path, name: &str, files: &[(&str, &str)]) {
+fn make_crate(
+    dir: &Path,
+    name: &str,
+    files: &[(&str, &str)],
+) {
     let cargo_toml = format!(
         "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n"
     );
@@ -31,7 +40,10 @@ fn open_store(tmp: &TempDir) -> SpecStore {
     SpecStore::open(tmp.path()).unwrap()
 }
 
-fn bootstrap_args(crate_dir: &Path, dry_run: bool) -> BootstrapArgs {
+fn bootstrap_args(
+    crate_dir: &Path,
+    dry_run: bool,
+) -> BootstrapArgs {
     BootstrapArgs {
         crate_path: crate_dir.to_path_buf(),
         component: None,
@@ -61,7 +73,10 @@ fn bootstrap_dry_run_returns_correct_count() {
     // dry_run must be true and would_create must be > 0
     assert_eq!(result["dry_run"], true);
     let would_create = result["would_create"].as_u64().unwrap_or(0);
-    assert!(would_create > 0, "expected would_create > 0, got {would_create}");
+    assert!(
+        would_create > 0,
+        "expected would_create > 0, got {would_create}"
+    );
 
     // Nothing should have been written to the store
     let list = store.entity_store().list_indexed(false).unwrap();
@@ -76,7 +91,10 @@ fn bootstrap_creates_root_and_module_specs() {
     make_crate(
         crate_tmp.path(),
         "my-crate",
-        &[("store.rs", "pub struct Store;\npub fn open() -> Store { Store }\n")],
+        &[(
+            "store.rs",
+            "pub struct Store;\npub fn open() -> Store { Store }\n",
+        )],
     );
 
     let mut store = open_store(&index_tmp);
@@ -86,7 +104,10 @@ fn bootstrap_creates_root_and_module_specs() {
     assert_eq!(result["dry_run"], false);
     let created = result["created"].as_u64().unwrap_or(0);
     // Root spec + at least the store.rs module spec
-    assert!(created >= 2, "expected at least 2 specs created, got {created}");
+    assert!(
+        created >= 2,
+        "expected at least 2 specs created, got {created}"
+    );
 
     // Root crate spec exists
     let root = store.resolve_id("my-crate");
@@ -175,7 +196,10 @@ fn bootstrap_module_body_contains_items() {
     make_crate(
         crate_tmp.path(),
         "my-crate",
-        &[("store.rs", "pub struct Store;\npub enum State { Open, Closed }\n")],
+        &[(
+            "store.rs",
+            "pub struct Store;\npub enum State { Open, Closed }\n",
+        )],
     );
 
     let mut store = open_store(&index_tmp);

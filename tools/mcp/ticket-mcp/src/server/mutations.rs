@@ -1,9 +1,15 @@
 use std::collections::BTreeMap;
 
 use serde_json::Value;
-use ticket_api::{model::edge::EdgeRecord, model::ticket::TicketManifest};
+use ticket_api::model::{
+    edge::EdgeRecord,
+    ticket::TicketManifest,
+};
 
-use super::{types::*, *};
+use super::{
+    types::*,
+    *,
+};
 
 impl TicketServer {
     pub(crate) async fn update_ticket_tool(
@@ -232,11 +238,14 @@ impl TicketServer {
         let (previous_rev, new_rev, updated) = self
             .with_store_ext(move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
-                let revisions = store.get_history(&id).map_err(Self::store_err)?;
+                let revisions =
+                    store.get_history(&id).map_err(Self::store_err)?;
                 if revisions.len() < 2 {
-                    return Err(Self::store_err(ticket_api::error::StorageError::Database(
-                        "cannot undo: not enough history revisions".into(),
-                    )));
+                    return Err(Self::store_err(
+                        ticket_api::error::StorageError::Database(
+                            "cannot undo: not enough history revisions".into(),
+                        ),
+                    ));
                 }
                 let previous = &revisions[revisions.len() - 2];
                 let new_rev = store
@@ -258,14 +267,22 @@ impl TicketServer {
     }
 }
 
-fn parse_field_patch(fields: &[String]) -> Result<BTreeMap<String, Value>, McpError> {
+fn parse_field_patch(
+    fields: &[String]
+) -> Result<BTreeMap<String, Value>, McpError> {
     let mut patch = BTreeMap::new();
 
     for raw in fields {
         let (key, value) = raw.split_once('=').ok_or_else(|| {
-            McpError::invalid_params(format!("invalid field format '{raw}', expected key=value"), None)
+            McpError::invalid_params(
+                format!("invalid field format '{raw}', expected key=value"),
+                None,
+            )
         })?;
-        patch.insert(key.trim().to_string(), Value::String(value.trim().to_string()));
+        patch.insert(
+            key.trim().to_string(),
+            Value::String(value.trim().to_string()),
+        );
     }
 
     Ok(patch)

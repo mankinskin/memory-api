@@ -4,23 +4,41 @@ use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
-use ticket_api::model::edge::EdgeRecord;
-use ticket_api::storage::TicketStore;
+use ticket_api::{
+    model::edge::EdgeRecord,
+    storage::TicketStore,
+};
 
-use super::super::commands;
-use super::super::{BoardArgs, BoardCommand, TicketCommandCli};
+use super::super::{
+    BoardArgs,
+    BoardCommand,
+    TicketCommandCli,
+    commands,
+};
 
 #[derive(Debug)]
 pub(super) enum BatchUndoOp {
-    Delete { id: Uuid },
+    Delete {
+        id: Uuid,
+    },
     RestoreUpdate {
         id: Uuid,
         saved_extra: BTreeMap<String, Value>,
         saved_state: Option<String>,
     },
-    RemoveEdge { from: Uuid, to: Uuid, kind: String },
-    BoardCheckOut { ticket_id: Uuid, agent_id: String },
-    BoardCheckIn { ticket_id: Uuid, agent_id: String },
+    RemoveEdge {
+        from: Uuid,
+        to: Uuid,
+        kind: String,
+    },
+    BoardCheckOut {
+        ticket_id: Uuid,
+        agent_id: String,
+    },
+    BoardCheckIn {
+        ticket_id: Uuid,
+        agent_id: String,
+    },
 }
 
 pub(super) enum BatchUndoContext {
@@ -31,17 +49,26 @@ pub(super) enum BatchUndoContext {
         saved_state: Option<String>,
     },
     Link,
-    BoardCheckIn { ticket_ref: String, agent_id: String },
-    BoardCheckOut { ticket_ref: String, agent_id: Option<String> },
+    BoardCheckIn {
+        ticket_ref: String,
+        agent_id: String,
+    },
+    BoardCheckOut {
+        ticket_ref: String,
+        agent_id: Option<String>,
+    },
 }
 
-pub(super) fn apply_batch_undo(undo: BatchUndoOp, store: &TicketStore, errors: &mut Vec<String>) {
+pub(super) fn apply_batch_undo(
+    undo: BatchUndoOp,
+    store: &TicketStore,
+    errors: &mut Vec<String>,
+) {
     match undo {
-        BatchUndoOp::Delete { id } => {
+        BatchUndoOp::Delete { id } =>
             if let Err(e) = store.delete(&id) {
                 errors.push(format!("rollback delete {id}: {e}"));
-            }
-        }
+            },
         BatchUndoOp::RestoreUpdate {
             id,
             saved_extra,
@@ -50,7 +77,7 @@ pub(super) fn apply_batch_undo(undo: BatchUndoOp, store: &TicketStore, errors: &
             if let Err(e) = store.force_restore(&id, saved_extra, saved_state) {
                 errors.push(format!("rollback restore {id}: {e}"));
             }
-        }
+        },
         BatchUndoOp::RemoveEdge { from, to, kind } => {
             let edge = EdgeRecord {
                 from,
@@ -61,17 +88,37 @@ pub(super) fn apply_batch_undo(undo: BatchUndoOp, store: &TicketStore, errors: &
             if let Err(e) = store.remove_edge(edge) {
                 errors.push(format!("rollback remove_edge {from}->{to}: {e}"));
             }
-        }
-        BatchUndoOp::BoardCheckOut { ticket_id, agent_id } => {
-            if let Err(e) = store.board_check_out(&ticket_id, &agent_id, Some("batch rollback")) {
-                errors.push(format!("rollback board_check_out {ticket_id}/{agent_id}: {e}"));
+        },
+        BatchUndoOp::BoardCheckOut {
+            ticket_id,
+            agent_id,
+        } => {
+            if let Err(e) = store.board_check_out(
+                &ticket_id,
+                &agent_id,
+                Some("batch rollback"),
+            ) {
+                errors.push(format!(
+                    "rollback board_check_out {ticket_id}/{agent_id}: {e}"
+                ));
             }
-        }
-        BatchUndoOp::BoardCheckIn { ticket_id, agent_id } => {
-            if let Err(e) = store.board_check_in(&ticket_id, &agent_id, 3600, "batch rollback", vec![]) {
-                errors.push(format!("rollback board_check_in {ticket_id}/{agent_id}: {e}"));
+        },
+        BatchUndoOp::BoardCheckIn {
+            ticket_id,
+            agent_id,
+        } => {
+            if let Err(e) = store.board_check_in(
+                &ticket_id,
+                &agent_id,
+                3600,
+                "batch rollback",
+                vec![],
+            ) {
+                errors.push(format!(
+                    "rollback board_check_in {ticket_id}/{agent_id}: {e}"
+                ));
             }
-        }
+        },
     }
 }
 
@@ -81,20 +128,21 @@ pub(super) fn capture_batch_undo_context(
 ) -> Option<BatchUndoContext> {
     match cmd {
         TicketCommandCli::Create(_) => Some(BatchUndoContext::Create),
-        TicketCommandCli::Update(args) => capture_update_undo_context(&args.id, store),
+        TicketCommandCli::Update(args) =>
+            capture_update_undo_context(&args.id, store),
         TicketCommandCli::Link(_) => Some(BatchUndoContext::Link),
-        TicketCommandCli::Board(BoardArgs { command: BoardCommand::CheckIn { id, agent, .. } }) => {
-            Some(BatchUndoContext::BoardCheckIn {
-                ticket_ref: id.clone(),
-                agent_id: agent.clone(),
-            })
-        }
-        TicketCommandCli::Board(BoardArgs { command: BoardCommand::CheckOut { id, agent, .. } }) => {
-            Some(BatchUndoContext::BoardCheckOut {
-                ticket_ref: id.clone(),
-                agent_id: agent.clone(),
-            })
-        }
+        TicketCommandCli::Board(BoardArgs {
+            command: BoardCommand::CheckIn { id, agent, .. },
+        }) => Some(BatchUndoContext::BoardCheckIn {
+            ticket_ref: id.clone(),
+            agent_id: agent.clone(),
+        }),
+        TicketCommandCli::Board(BoardArgs {
+            command: BoardCommand::CheckOut { id, agent, .. },
+        }) => Some(BatchUndoContext::BoardCheckOut {
+            ticket_ref: id.clone(),
+            agent_id: agent.clone(),
+        }),
         _ => None,
     }
 }
@@ -127,7 +175,10 @@ pub(super) fn batch_undo_from_result(
     }
 }
 
-fn capture_update_undo_context(id: &str, store: &TicketStore) -> Option<BatchUndoContext> {
+fn capture_update_undo_context(
+    id: &str,
+    store: &TicketStore,
+) -> Option<BatchUndoContext> {
     let ticket_id = commands::resolve_uuid_prefix(id, store).ok()?;
     let indexed = store.get_indexed(&ticket_id).ok().flatten()?;
 
@@ -161,7 +212,8 @@ fn board_check_in_undo(
     store: &TicketStore,
 ) -> Option<BatchUndoOp> {
     if let Some(ticket_id) = result_uuid(result, "ticket_id") {
-        let resolved_agent = result_string(result, "agent_id").unwrap_or(agent_id);
+        let resolved_agent =
+            result_string(result, "agent_id").unwrap_or(agent_id);
         return Some(BatchUndoOp::BoardCheckOut {
             ticket_id,
             agent_id: resolved_agent,
@@ -170,7 +222,10 @@ fn board_check_in_undo(
 
     commands::resolve_uuid_prefix(ticket_ref, store)
         .ok()
-        .map(|ticket_id| BatchUndoOp::BoardCheckOut { ticket_id, agent_id })
+        .map(|ticket_id| BatchUndoOp::BoardCheckOut {
+            ticket_id,
+            agent_id,
+        })
 }
 
 fn board_check_out_undo(
@@ -188,13 +243,22 @@ fn board_check_out_undo(
     }
 
     let ticket_id = commands::resolve_uuid_prefix(ticket_ref, store).ok()?;
-    agent_id.map(|agent_id| BatchUndoOp::BoardCheckIn { ticket_id, agent_id })
+    agent_id.map(|agent_id| BatchUndoOp::BoardCheckIn {
+        ticket_id,
+        agent_id,
+    })
 }
 
-fn result_uuid(result: &Value, field: &str) -> Option<Uuid> {
+fn result_uuid(
+    result: &Value,
+    field: &str,
+) -> Option<Uuid> {
     result.get(field)?.as_str()?.parse().ok()
 }
 
-fn result_string(result: &Value, field: &str) -> Option<String> {
+fn result_string(
+    result: &Value,
+    field: &str,
+) -> Option<String> {
     result.get(field)?.as_str().map(str::to_string)
 }

@@ -1,7 +1,13 @@
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use chrono::{
+    DateTime,
+    Utc,
+};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -16,7 +22,10 @@ pub struct EntityManifest {
 }
 
 impl EntityManifest {
-    pub fn new(id: EntityId, created_at: DateTime<Utc>) -> Self {
+    pub fn new(
+        id: EntityId,
+        created_at: DateTime<Utc>,
+    ) -> Self {
         Self {
             id,
             created_at,

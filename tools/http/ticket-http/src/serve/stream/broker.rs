@@ -3,8 +3,11 @@
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Mutex,
+        atomic::{
+            AtomicU64,
+            Ordering,
+        },
     },
 };
 
@@ -54,7 +57,11 @@ impl StreamBroker {
     ///
     /// Non-blocking: if no receivers exist or the channel is full, the event is
     /// silently dropped (metrics are the caller's responsibility).
-    pub fn emit(&self, workspace: &str, event: SseEvent) {
+    pub fn emit(
+        &self,
+        workspace: &str,
+        event: SseEvent,
+    ) {
         let map = self.channels.lock().unwrap();
         if let Some(tx) = map.get(workspace) {
             let id = next_event_id();
@@ -64,14 +71,20 @@ impl StreamBroker {
     }
 
     /// Ensure a channel exists for `workspace` (call when a workspace is opened).
-    pub fn ensure_channel(&self, workspace: &str) {
+    pub fn ensure_channel(
+        &self,
+        workspace: &str,
+    ) {
         let mut map = self.channels.lock().unwrap();
         map.entry(workspace.to_string())
             .or_insert_with(|| broadcast::channel(CHANNEL_CAPACITY).0);
     }
 
     /// Number of active subscribers for a specific workspace.
-    pub fn workspace_subscriber_count(&self, workspace: &str) -> usize {
+    pub fn workspace_subscriber_count(
+        &self,
+        workspace: &str,
+    ) -> usize {
         self.channels
             .lock()
             .unwrap()

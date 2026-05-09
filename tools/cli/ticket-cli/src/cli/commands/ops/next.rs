@@ -1,20 +1,38 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{
+    HashMap,
+    HashSet,
+};
 
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 use ticket_api::{
-    BoardEntryStatus, BoardSnapshot,
+    BoardEntryStatus,
+    BoardSnapshot,
     model::edge::EdgeRecord,
-    storage::{indexed::IndexedTicket, store::TicketStore, ticket_fs::TicketFs},
+    storage::{
+        indexed::IndexedTicket,
+        store::TicketStore,
+        ticket_fs::TicketFs,
+    },
 };
 use uuid::Uuid;
 
-use crate::cli::{CliRunError, NextArgs};
+use crate::cli::{
+    CliRunError,
+    NextArgs,
+};
 
 const DONE_STATES: &[&str] = &["done", "cancelled"];
 
-pub(super) fn run(args: NextArgs, store: &TicketStore) -> Result<Value, CliRunError> {
+pub(super) fn run(
+    args: NextArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
     let board_snap = store.board_show(None).ok();
-    let tickets = filtered_tickets(store.list(None, None, None)?, args.filter.as_deref());
+    let tickets =
+        filtered_tickets(store.list(None, None, None)?, args.filter.as_deref());
     let done_ids = done_ticket_ids(&tickets);
     let all_edges = store.list_all_edges()?;
     let blockers = unresolved_blockers(&all_edges, &done_ids);
@@ -24,8 +42,10 @@ pub(super) fn run(args: NextArgs, store: &TicketStore) -> Result<Value, CliRunEr
     let priority_map = read_priorities(&candidates);
     sort_candidates(&mut candidates, &state_index, &priority_map);
 
-    let excluded_by_board = excluded_by_board(board_snap.as_ref(), &candidates, args.no_board);
-    let candidates = filter_board_candidates(candidates, board_snap.as_ref(), args.no_board);
+    let excluded_by_board =
+        excluded_by_board(board_snap.as_ref(), &candidates, args.no_board);
+    let candidates =
+        filter_board_candidates(candidates, board_snap.as_ref(), args.no_board);
     let limited_candidates = limit_candidates(candidates, args.limit);
     let dependency_count = dependency_counts(&all_edges);
 
@@ -40,16 +60,15 @@ pub(super) fn run(args: NextArgs, store: &TicketStore) -> Result<Value, CliRunEr
     }))
 }
 
-fn filtered_tickets(tickets: Vec<IndexedTicket>, filter: Option<&str>) -> Vec<IndexedTicket> {
+fn filtered_tickets(
+    tickets: Vec<IndexedTicket>,
+    filter: Option<&str>,
+) -> Vec<IndexedTicket> {
     match filter {
         Some(prefix) => tickets
             .into_iter()
             .filter(|ticket| {
-                ticket
-                    .title
-                    .as_deref()
-                    .unwrap_or("")
-                    .starts_with(prefix)
+                ticket.title.as_deref().unwrap_or("").starts_with(prefix)
             })
             .collect(),
         None => tickets,
@@ -77,7 +96,10 @@ fn unresolved_blockers(
     let mut blockers = HashMap::new();
     for edge in all_edges {
         if edge.kind == "depends_on" && !done_ids.contains(&edge.to) {
-            blockers.entry(edge.from).or_insert_with(Vec::new).push(edge.to);
+            blockers
+                .entry(edge.from)
+                .or_insert_with(Vec::new)
+                .push(edge.to);
         }
     }
     blockers
@@ -108,7 +130,11 @@ fn candidate_tickets<'a>(
                 .map(|state| !DONE_STATES.contains(&state))
                 .unwrap_or(true)
         })
-        .filter(|ticket| blockers.get(&ticket.id).map_or(true, |deps| deps.is_empty()))
+        .filter(|ticket| {
+            blockers
+                .get(&ticket.id)
+                .map_or(true, |deps| deps.is_empty())
+        })
         .collect()
 }
 
@@ -116,7 +142,11 @@ fn read_priorities(candidates: &[&IndexedTicket]) -> HashMap<Uuid, String> {
     let mut priority_map = HashMap::new();
     for ticket in candidates {
         if let Ok(manifest) = TicketFs::read(&ticket.path) {
-            if let Some(priority) = manifest.extra.get("priority").and_then(|value| value.as_str()) {
+            if let Some(priority) = manifest
+                .extra
+                .get("priority")
+                .and_then(|value| value.as_str())
+            {
                 priority_map.insert(ticket.id, priority.to_string());
             }
         }
@@ -138,9 +168,16 @@ fn sort_candidates(
         right_index
             .cmp(&left_index)
             .then_with(|| {
-                let left_priority = priority_map.get(&left.id).map(|value| value.as_str()).unwrap_or("");
-                let right_priority = priority_map.get(&right.id).map(|value| value.as_str()).unwrap_or("");
-                priority_weight(left_priority).cmp(&priority_weight(right_priority))
+                let left_priority = priority_map
+                    .get(&left.id)
+                    .map(|value| value.as_str())
+                    .unwrap_or("");
+                let right_priority = priority_map
+                    .get(&right.id)
+                    .map(|value| value.as_str())
+                    .unwrap_or("");
+                priority_weight(left_priority)
+                    .cmp(&priority_weight(right_priority))
             })
             .then_with(|| left.created_at.cmp(&right.created_at))
     });
@@ -166,14 +203,16 @@ fn excluded_by_board(
         return Vec::new();
     }
 
-    let candidate_ids: HashSet<Uuid> = candidates.iter().map(|ticket| ticket.id).collect();
+    let candidate_ids: HashSet<Uuid> =
+        candidates.iter().map(|ticket| ticket.id).collect();
     board_snap
         .map(|snapshot| {
             snapshot
                 .entries
                 .iter()
                 .filter(|entry| {
-                    tracked_by_board(entry.status.clone()) && candidate_ids.contains(&entry.ticket_id)
+                    tracked_by_board(entry.status.clone())
+                        && candidate_ids.contains(&entry.ticket_id)
                 })
                 .map(|entry| {
                     json!({
@@ -221,7 +260,10 @@ fn tracked_by_board(status: BoardEntryStatus) -> bool {
     status == BoardEntryStatus::Active || status == BoardEntryStatus::Stale
 }
 
-fn limit_candidates<'a>(mut candidates: Vec<&'a IndexedTicket>, limit: usize) -> Vec<&'a IndexedTicket> {
+fn limit_candidates<'a>(
+    mut candidates: Vec<&'a IndexedTicket>,
+    limit: usize,
+) -> Vec<&'a IndexedTicket> {
     candidates.truncate(limit);
     candidates
 }

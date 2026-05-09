@@ -18,7 +18,11 @@ pub fn evaluate(
 ) -> FileLengthResult {
     let mut findings = Vec::new();
     let total_lines = files.iter().map(|file| file.line_count).sum::<usize>();
-    let max_lines = files.iter().map(|file| file.line_count).max().unwrap_or_default();
+    let max_lines = files
+        .iter()
+        .map(|file| file.line_count)
+        .max()
+        .unwrap_or_default();
 
     for file in files.iter().filter(|file| file.line_count > threshold) {
         findings.push(AuditFinding {
@@ -65,7 +69,10 @@ pub fn evaluate(
     }
 }
 
-fn average(total: usize, count: usize) -> f64 {
+fn average(
+    total: usize,
+    count: usize,
+) -> f64 {
     if count == 0 {
         0.0
     } else {

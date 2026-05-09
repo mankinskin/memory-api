@@ -1,17 +1,31 @@
-use std::path::Path;
-use std::path::PathBuf;
-
-use serde_json::{Value, json};
-
-use ticket_api::contracts::command_schema::{
-    export_command_schema, export_command_schema_json,
+use std::path::{
+    Path,
+    PathBuf,
 };
-use ticket_api::model::schema_registry::SchemaRegistry;
-use ticket_api::storage::TicketStore;
+
+use serde_json::{
+    Value,
+    json,
+};
+
+use ticket_api::{
+    contracts::command_schema::{
+        export_command_schema,
+        export_command_schema_json,
+    },
+    model::schema_registry::SchemaRegistry,
+    storage::TicketStore,
+};
 
 use super::{
-    CliRunError, TicketCommandCli, commands, batch,
-    workspace_commands::{cmd_workspace, workspace_command_mutates},
+    CliRunError,
+    TicketCommandCli,
+    batch,
+    commands,
+    workspace_commands::{
+        cmd_workspace,
+        workspace_command_mutates,
+    },
 };
 
 pub(super) fn dispatch(
@@ -22,7 +36,8 @@ pub(super) fn dispatch(
     dry_run: bool,
 ) -> Result<Value, CliRunError> {
     match command {
-        TicketCommandCli::ExportCommandSchema => export_command_schema_payload(),
+        TicketCommandCli::ExportCommandSchema =>
+            export_command_schema_payload(),
         TicketCommandCli::Workspace(args) => dispatch_workspace(args, dry_run),
         other => dispatch_store_backed(
             other,
@@ -41,48 +56,70 @@ fn dry_run_command_payload(command: &TicketCommandCli) -> Option<Value> {
 
 fn dry_run_payload_core(command: &TicketCommandCli) -> Option<Value> {
     match command {
-        TicketCommandCli::Create(_) => Some(dry_run_payload("create", "create ticket")),
-        TicketCommandCli::Update(_) => Some(dry_run_payload("update", "update ticket")),
-        TicketCommandCli::Repro(_) => Some(dry_run_payload("repro", "record repro metadata")),
-        TicketCommandCli::Delete(_) => Some(dry_run_payload("delete", "soft-delete ticket")),
-        TicketCommandCli::Scan(_) => Some(dry_run_payload("scan", "scan/reindex ticket roots")),
-        TicketCommandCli::Claim(_) => Some(dry_run_payload("claim", "claim ticket lease")),
-        TicketCommandCli::Unclaim(_) => Some(dry_run_payload("unclaim", "release ticket lease")),
-        TicketCommandCli::AddRoot(_) => Some(dry_run_payload("add_root", "register scan root")),
-        TicketCommandCli::Batch(_) => Some(dry_run_payload("batch", "execute CLI batch commands")),
+        TicketCommandCli::Create(_) =>
+            Some(dry_run_payload("create", "create ticket")),
+        TicketCommandCli::Update(_) =>
+            Some(dry_run_payload("update", "update ticket")),
+        TicketCommandCli::Repro(_) =>
+            Some(dry_run_payload("repro", "record repro metadata")),
+        TicketCommandCli::Delete(_) =>
+            Some(dry_run_payload("delete", "soft-delete ticket")),
+        TicketCommandCli::Scan(_) =>
+            Some(dry_run_payload("scan", "scan/reindex ticket roots")),
+        TicketCommandCli::Claim(_) =>
+            Some(dry_run_payload("claim", "claim ticket lease")),
+        TicketCommandCli::Unclaim(_) =>
+            Some(dry_run_payload("unclaim", "release ticket lease")),
+        TicketCommandCli::AddRoot(_) =>
+            Some(dry_run_payload("add_root", "register scan root")),
+        TicketCommandCli::Batch(_) =>
+            Some(dry_run_payload("batch", "execute CLI batch commands")),
         _ => None,
     }
 }
 
 fn dry_run_payload_history(command: &TicketCommandCli) -> Option<Value> {
     match command {
-        TicketCommandCli::Revert(_) => Some(dry_run_payload("revert", "apply historical snapshot")),
-        TicketCommandCli::FinalizeMerge(_) => {
-            Some(dry_run_payload("finalize_merge", "record merge metadata"))
-        }
-        TicketCommandCli::Link(_) => Some(dry_run_payload("link", "add directed edge")),
-        TicketCommandCli::Unlink(_) => Some(dry_run_payload("unlink", "remove directed edge")),
-        TicketCommandCli::Close(_) => Some(dry_run_payload("close", "fast-forward ticket state")),
-        TicketCommandCli::Cancel(_) => {
-            Some(dry_run_payload("cancel", "cancel ticket via state transition"))
-        }
-        TicketCommandCli::Attach(_) => Some(dry_run_payload("attach", "attach asset to ticket")),
+        TicketCommandCli::Revert(_) =>
+            Some(dry_run_payload("revert", "apply historical snapshot")),
+        TicketCommandCli::FinalizeMerge(_) =>
+            Some(dry_run_payload("finalize_merge", "record merge metadata")),
+        TicketCommandCli::Link(_) =>
+            Some(dry_run_payload("link", "add directed edge")),
+        TicketCommandCli::Unlink(_) =>
+            Some(dry_run_payload("unlink", "remove directed edge")),
+        TicketCommandCli::Close(_) =>
+            Some(dry_run_payload("close", "fast-forward ticket state")),
+        TicketCommandCli::Cancel(_) => Some(dry_run_payload(
+            "cancel",
+            "cancel ticket via state transition",
+        )),
+        TicketCommandCli::Attach(_) =>
+            Some(dry_run_payload("attach", "attach asset to ticket")),
         _ => None,
     }
 }
 
 fn dry_run_payload_runtime(command: &TicketCommandCli) -> Option<Value> {
     match command {
-        TicketCommandCli::Watch(_) => Some(dry_run_payload("watch", "start watcher/reconcile loop")),
-        TicketCommandCli::Serve(_) => Some(dry_run_payload("serve", "start HTTP server")),
-        TicketCommandCli::Workspace(_) => Some(dry_run_payload("workspace", "workspace config writes")),
-        TicketCommandCli::Fmt(_) => Some(dry_run_payload("fmt", "reformat ticket.toml files")),
-        TicketCommandCli::Board(_) => Some(dry_run_payload("board", "board state mutation")),
+        TicketCommandCli::Watch(_) =>
+            Some(dry_run_payload("watch", "start watcher/reconcile loop")),
+        TicketCommandCli::Serve(_) =>
+            Some(dry_run_payload("serve", "start HTTP server")),
+        TicketCommandCli::Workspace(_) =>
+            Some(dry_run_payload("workspace", "workspace config writes")),
+        TicketCommandCli::Fmt(_) =>
+            Some(dry_run_payload("fmt", "reformat ticket.toml files")),
+        TicketCommandCli::Board(_) =>
+            Some(dry_run_payload("board", "board state mutation")),
         _ => None,
     }
 }
 
-fn dry_run_payload(command: &str, action: &str) -> Value {
+fn dry_run_payload(
+    command: &str,
+    action: &str,
+) -> Value {
     json!({
         "command": command,
         "status": "ok",
@@ -155,7 +192,10 @@ fn open_store(
     TicketStore::open_with(&index_root, registry).map_err(CliRunError::from)
 }
 
-fn dispatch_store_command(command: TicketCommandCli, store: TicketStore) -> Result<Value, CliRunError> {
+fn dispatch_store_command(
+    command: TicketCommandCli,
+    store: TicketStore,
+) -> Result<Value, CliRunError> {
     match command {
         TicketCommandCli::Create(_)
         | TicketCommandCli::Get(_)
@@ -166,7 +206,8 @@ fn dispatch_store_command(command: TicketCommandCli, store: TicketStore) -> Resu
         | TicketCommandCli::Delete(_)
         | TicketCommandCli::Scan(_)
         | TicketCommandCli::Claim(_)
-        | TicketCommandCli::Unclaim(_) => dispatch_store_command_core(command, &store),
+        | TicketCommandCli::Unclaim(_) =>
+            dispatch_store_command_core(command, &store),
         TicketCommandCli::Leases
         | TicketCommandCli::Search(_)
         | TicketCommandCli::Query(_)
@@ -175,7 +216,8 @@ fn dispatch_store_command(command: TicketCommandCli, store: TicketStore) -> Resu
         | TicketCommandCli::History(_)
         | TicketCommandCli::Diff(_)
         | TicketCommandCli::Revert(_)
-        | TicketCommandCli::FinalizeMerge(_) => dispatch_store_command_history(command, &store),
+        | TicketCommandCli::FinalizeMerge(_) =>
+            dispatch_store_command_history(command, &store),
         TicketCommandCli::Link(_)
         | TicketCommandCli::Unlink(_)
         | TicketCommandCli::Links(_)
@@ -184,7 +226,8 @@ fn dispatch_store_command(command: TicketCommandCli, store: TicketStore) -> Resu
         | TicketCommandCli::Watch(_)
         | TicketCommandCli::Status(_)
         | TicketCommandCli::ReadyOverview(_)
-        | TicketCommandCli::Next(_) => dispatch_store_command_graph(command, &store),
+        | TicketCommandCli::Next(_) =>
+            dispatch_store_command_graph(command, &store),
         TicketCommandCli::Serve(_)
         | TicketCommandCli::Close(_)
         | TicketCommandCli::Cancel(_)
@@ -193,10 +236,12 @@ fn dispatch_store_command(command: TicketCommandCli, store: TicketStore) -> Resu
         | TicketCommandCli::Health(_)
         | TicketCommandCli::Audit
         | TicketCommandCli::Fmt(_)
-        | TicketCommandCli::Board(_) => dispatch_store_command_ops(command, store),
-        TicketCommandCli::ExportCommandSchema | TicketCommandCli::Workspace(_) => {
+        | TicketCommandCli::Board(_) =>
+            dispatch_store_command_ops(command, store),
+        TicketCommandCli::ExportCommandSchema
+        | TicketCommandCli::Workspace(_) => {
             unreachable!("handled before store dispatch")
-        }
+        },
     }
 }
 
@@ -240,7 +285,7 @@ fn dispatch_store_command_history(
                 "id": id,
                 "merge_commit": args.merge_commit
             }))
-        }
+        },
         _ => unreachable!("handled in history store dispatch"),
     }
 }
@@ -257,7 +302,8 @@ fn dispatch_store_command_graph(
         TicketCommandCli::Topgraph(args) => commands::cmd_topgraph(args, store),
         TicketCommandCli::Watch(args) => commands::cmd_watch(args, store),
         TicketCommandCli::Status(args) => commands::cmd_status(args, store),
-        TicketCommandCli::ReadyOverview(args) => commands::cmd_ready_overview(args, store),
+        TicketCommandCli::ReadyOverview(args) =>
+            commands::cmd_ready_overview(args, store),
         TicketCommandCli::Next(args) => commands::cmd_next(args, store),
         _ => unreachable!("handled in graph store dispatch"),
     }
@@ -289,10 +335,11 @@ mod tests {
 
     #[test]
     fn dry_run_payload_is_returned_for_mutating_command() {
-        let payload = dry_run_command_payload(&TicketCommandCli::Delete(IdArgs {
-            id: Uuid::new_v4().to_string(),
-        }))
-        .expect("delete should be dry-runnable");
+        let payload =
+            dry_run_command_payload(&TicketCommandCli::Delete(IdArgs {
+                id: Uuid::new_v4().to_string(),
+            }))
+            .expect("delete should be dry-runnable");
         assert_eq!(payload["dry_run"], json!(true));
         assert_eq!(payload["command"], json!("delete"));
     }

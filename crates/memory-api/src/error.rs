@@ -76,32 +76,48 @@ pub enum StorageError {
 #[derive(Debug, Error)]
 pub enum ProtocolError {
     // ── validation errors ─────────────────────────────────────────────────────
-    #[error("validate.invalid_state: ticket {ticket} is in state '{actual}', expected '{expected}'")]
+    #[error(
+        "validate.invalid_state: ticket {ticket} is in state '{actual}', expected '{expected}'"
+    )]
     ValidateInvalidState {
         ticket: Uuid,
         actual: String,
         expected: String,
     },
-    #[error("validate.same_identity: validator and worker must have different identities (got '{identity}')")]
+    #[error(
+        "validate.same_identity: validator and worker must have different identities (got '{identity}')"
+    )]
     ValidateSameIdentity { identity: String },
-    #[error("validate.assignment_mismatch: validator_id does not match the assigned validator for this ticket")]
+    #[error(
+        "validate.assignment_mismatch: validator_id does not match the assigned validator for this ticket"
+    )]
     ValidateAssignmentMismatch,
-    #[error("validate.missing_evidence: evidence_refs must contain at least one entry")]
+    #[error(
+        "validate.missing_evidence: evidence_refs must contain at least one entry"
+    )]
     ValidateMissingEvidence,
     // ── release errors ────────────────────────────────────────────────────────
-    #[error("release.invalid_state: ticket {ticket} is in state '{actual}', expected '{expected}'")]
+    #[error(
+        "release.invalid_state: ticket {ticket} is in state '{actual}', expected '{expected}'"
+    )]
     ReleaseInvalidState {
         ticket: Uuid,
         actual: String,
         expected: String,
     },
-    #[error("release.validation_not_passed: ticket {ticket} has validation_status '{status}'")]
+    #[error(
+        "release.validation_not_passed: ticket {ticket} has validation_status '{status}'"
+    )]
     ReleaseValidationNotPassed { ticket: Uuid, status: String },
-    #[error("release.assignment_chain_missing: assignment_chain must not be empty")]
+    #[error(
+        "release.assignment_chain_missing: assignment_chain must not be empty"
+    )]
     ReleaseAssignmentChainMissing,
     #[error("release.gates_not_satisfied: {0}")]
     ReleaseGatesNotSatisfied(String),
-    #[error("release.merge_metadata_missing: merge_commit is required for promote")]
+    #[error(
+        "release.merge_metadata_missing: merge_commit is required for promote"
+    )]
     ReleaseMergeMetadataMissing,
     #[error("release.target_not_found: no tickets found for target '{0}'")]
     ReleaseTargetNotFound(String),
@@ -113,17 +129,28 @@ pub enum ProtocolError {
 impl ProtocolError {
     pub fn code(&self) -> &'static str {
         match self {
-            ProtocolError::ValidateInvalidState { .. } => "validate.invalid_state",
-            ProtocolError::ValidateSameIdentity { .. } => "validate.same_identity",
-            ProtocolError::ValidateAssignmentMismatch => "validate.assignment_mismatch",
-            ProtocolError::ValidateMissingEvidence => "validate.missing_evidence",
-            ProtocolError::ReleaseInvalidState { .. } => "release.invalid_state",
-            ProtocolError::ReleaseValidationNotPassed { .. } => "release.validation_not_passed",
-            ProtocolError::ReleaseAssignmentChainMissing => "release.assignment_chain_missing",
-            ProtocolError::ReleaseGatesNotSatisfied(_) => "release.gates_not_satisfied",
-            ProtocolError::ReleaseMergeMetadataMissing => "release.merge_metadata_missing",
-            ProtocolError::ReleaseTargetNotFound(_) => "release.target_not_found",
-            ProtocolError::ReleaseTicketStateInvalid(_) => "release.ticket_state_invalid",
+            ProtocolError::ValidateInvalidState { .. } =>
+                "validate.invalid_state",
+            ProtocolError::ValidateSameIdentity { .. } =>
+                "validate.same_identity",
+            ProtocolError::ValidateAssignmentMismatch =>
+                "validate.assignment_mismatch",
+            ProtocolError::ValidateMissingEvidence =>
+                "validate.missing_evidence",
+            ProtocolError::ReleaseInvalidState { .. } =>
+                "release.invalid_state",
+            ProtocolError::ReleaseValidationNotPassed { .. } =>
+                "release.validation_not_passed",
+            ProtocolError::ReleaseAssignmentChainMissing =>
+                "release.assignment_chain_missing",
+            ProtocolError::ReleaseGatesNotSatisfied(_) =>
+                "release.gates_not_satisfied",
+            ProtocolError::ReleaseMergeMetadataMissing =>
+                "release.merge_metadata_missing",
+            ProtocolError::ReleaseTargetNotFound(_) =>
+                "release.target_not_found",
+            ProtocolError::ReleaseTicketStateInvalid(_) =>
+                "release.ticket_state_invalid",
         }
     }
 }

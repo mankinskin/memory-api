@@ -1,16 +1,25 @@
-use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    ffi::OsStr,
+    path::{
+        Path,
+        PathBuf,
+    },
+    process::Command,
+};
 
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum SandboxError {
-    #[error("sandbox.invalid.repo_root: path does not contain a .git directory")]
+    #[error(
+        "sandbox.invalid.repo_root: path does not contain a .git directory"
+    )]
     InvalidRepoRoot,
     #[error("sandbox.invalid.assignment_id")]
     InvalidAssignmentId,
-    #[error("sandbox.git.command_failed: {command} (status={status}, stderr={stderr})")]
+    #[error(
+        "sandbox.git.command_failed: {command} (status={status}, stderr={stderr})"
+    )]
     GitCommandFailed {
         command: String,
         status: i32,
@@ -50,7 +59,9 @@ pub struct SandboxHandle {
 pub struct SandboxManager;
 
 impl SandboxManager {
-    pub fn provision(spec: &SandboxSpec) -> Result<SandboxHandle, SandboxError> {
+    pub fn provision(
+        spec: &SandboxSpec
+    ) -> Result<SandboxHandle, SandboxError> {
         if !spec.repo_root.join(".git").exists() {
             return Err(SandboxError::InvalidRepoRoot);
         }
@@ -78,11 +89,19 @@ impl SandboxManager {
         })
     }
 
-    pub fn cleanup(spec: &SandboxSpec, handle: &SandboxHandle) -> Result<(), SandboxError> {
+    pub fn cleanup(
+        spec: &SandboxSpec,
+        handle: &SandboxHandle,
+    ) -> Result<(), SandboxError> {
         if handle.worktree_path.exists() {
             run_git(
                 &spec.repo_root,
-                ["worktree", "remove", "--force", to_utf8_path(&handle.worktree_path)?],
+                [
+                    "worktree",
+                    "remove",
+                    "--force",
+                    to_utf8_path(&handle.worktree_path)?,
+                ],
             )?;
         }
 
@@ -115,7 +134,10 @@ fn to_utf8_path(path: &Path) -> Result<&str, SandboxError> {
     })
 }
 
-fn run_git<I, S>(repo_root: &Path, args: I) -> Result<(), SandboxError>
+fn run_git<I, S>(
+    repo_root: &Path,
+    args: I,
+) -> Result<(), SandboxError>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -143,12 +165,16 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{SandboxSpec, sanitize_assignment_id};
+    use super::{
+        SandboxSpec,
+        sanitize_assignment_id,
+    };
     use std::path::PathBuf;
 
     #[test]
     fn sanitize_assignment_replaces_unsafe_chars() {
-        let value = sanitize_assignment_id("ticket/123:alpha").expect("sanitize");
+        let value =
+            sanitize_assignment_id("ticket/123:alpha").expect("sanitize");
         assert_eq!(value, "ticket-123-alpha");
     }
 

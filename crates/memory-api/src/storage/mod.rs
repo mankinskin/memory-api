@@ -6,8 +6,15 @@ pub mod indexed;
 pub mod schema;
 pub mod search;
 
-pub use entity_store::EntityStore;
 pub use board::{
-    BoardCleanPreview, BoardCleanResult, BoardConfig, BoardEntry, BoardEntryStatus, BoardError,
-    BoardReconcileResult, BoardSnapshot, ReconcileAction,
+    BoardCleanPreview,
+    BoardCleanResult,
+    BoardConfig,
+    BoardEntry,
+    BoardEntryStatus,
+    BoardError,
+    BoardReconcileResult,
+    BoardSnapshot,
+    ReconcileAction,
 };
+pub use entity_store::EntityStore;

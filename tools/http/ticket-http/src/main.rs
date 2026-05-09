@@ -3,9 +3,14 @@
 //! Usage:
 //!   ticket-http --port 4000 [--host 127.0.0.1] [--workspace default]
 
-use ticket_api::workspace::WorkspaceConfig;
-use ticket_api::storage::store::TicketStore;
-use ticket_http::serve::{ServeConfig, WorkspaceRegistry};
+use ticket_api::{
+    storage::store::TicketStore,
+    workspace::WorkspaceConfig,
+};
+use ticket_http::serve::{
+    ServeConfig,
+    WorkspaceRegistry,
+};
 
 fn main() {
     let mut port: u16 = 4000;
@@ -16,31 +21,29 @@ fn main() {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--port" => {
+            "--port" =>
                 if let Some(v) = args.next() {
                     port = v.parse().unwrap_or(port);
-                }
-            }
-            "--host" => {
+                },
+            "--host" =>
                 if let Some(v) = args.next() {
                     host = v;
-                }
-            }
+                },
             "--workspace" => {
                 workspace = args.next();
-            }
+            },
             "--index-root" => {
                 index_root = args.next();
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
     let store = {
-        let root = index_root
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| {
-                let (path, _source) = ticket_api::workspace::resolve_workspace();
+        let root =
+            index_root.map(std::path::PathBuf::from).unwrap_or_else(|| {
+                let (path, _source) =
+                    ticket_api::workspace::resolve_workspace();
                 path
             });
         TicketStore::open(&root).expect("failed to open ticket store")

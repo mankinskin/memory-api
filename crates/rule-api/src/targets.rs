@@ -1,13 +1,29 @@
-use std::collections::HashSet;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use thiserror::Error;
 
-use crate::error::RuleError;
-use crate::manifest::{RuleId, RuleManifest};
-use crate::store::{RuleFilter, RuleStore};
+use crate::{
+    error::RuleError,
+    manifest::{
+        RuleId,
+        RuleManifest,
+    },
+    store::{
+        RuleFilter,
+        RuleStore,
+    },
+};
 
 #[cfg(test)]
 mod tests;
@@ -95,11 +111,23 @@ pub struct RenderTarget {
 }
 
 impl RenderTargetFilter {
-    pub fn merged_with(&self, child: &RenderTargetFilter) -> Self {
+    pub fn merged_with(
+        &self,
+        child: &RenderTargetFilter,
+    ) -> Self {
         Self {
-            repo_scope: child.repo_scope.clone().or_else(|| self.repo_scope.clone()),
-            file_kind: child.file_kind.clone().or_else(|| self.file_kind.clone()),
-            path_scope: child.path_scope.clone().or_else(|| self.path_scope.clone()),
+            repo_scope: child
+                .repo_scope
+                .clone()
+                .or_else(|| self.repo_scope.clone()),
+            file_kind: child
+                .file_kind
+                .clone()
+                .or_else(|| self.file_kind.clone()),
+            path_scope: child
+                .path_scope
+                .clone()
+                .or_else(|| self.path_scope.clone()),
             section: child.section.clone().or_else(|| self.section.clone()),
             state: child.state.clone().or_else(|| self.state.clone()),
         }
@@ -129,7 +157,10 @@ impl RenderTargetNode {
         }
     }
 
-    pub fn effective_filter(&self, inherited: &RenderTargetFilter) -> RenderTargetFilter {
+    pub fn effective_filter(
+        &self,
+        inherited: &RenderTargetFilter,
+    ) -> RenderTargetFilter {
         inherited.merged_with(&self.local_filter())
     }
 }
@@ -172,7 +203,14 @@ pub fn collect_target_rules(
     let mut seen = HashSet::<RuleId>::new();
 
     for node in target.ordered_nodes() {
-        collect_target_node_rules(store, target, &node, &inherited, &mut seen, &mut collected)?;
+        collect_target_node_rules(
+            store,
+            target,
+            &node,
+            &inherited,
+            &mut seen,
+            &mut collected,
+        )?;
     }
 
     Ok(collected)
@@ -233,7 +271,9 @@ fn collect_target_node_rules(
     }
 
     for child in &node.nodes {
-        collect_target_node_rules(store, target, child, &effective, seen, collected)?;
+        collect_target_node_rules(
+            store, target, child, &effective, seen, collected,
+        )?;
     }
 
     Ok(())
@@ -303,34 +343,50 @@ fn rule_match_summary(rule: &RuleManifest) -> ExplainedRuleMatch {
 #[derive(Debug, Error)]
 pub enum TargetConfigError {
     #[error("read render target config {path}: {source}")]
-    Io { path: PathBuf, source: std::io::Error },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("parse render target config {path} as TOML: {source}")]
-    ParseToml { path: PathBuf, source: toml::de::Error },
+    ParseToml {
+        path: PathBuf,
+        source: toml::de::Error,
+    },
     #[error("parse render target config {path} as YAML: {source}")]
-    ParseYaml { path: PathBuf, source: serde_yaml::Error },
+    ParseYaml {
+        path: PathBuf,
+        source: serde_yaml::Error,
+    },
     #[error("render target not found: {0}")]
     NotFound(String),
     #[error("duplicate render target name: {0}")]
     DuplicateName(String),
 }
 
-pub fn load_render_target_config(path: &Path) -> Result<RenderTargetConfig, TargetConfigError> {
-    let content = fs::read_to_string(path).map_err(|source| TargetConfigError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    let config: RenderTargetConfig = match path.extension().and_then(|extension| extension.to_str()) {
-        Some("yaml" | "yml") => serde_yaml::from_str(&content).map_err(|source| {
-            TargetConfigError::ParseYaml {
-                path: path.to_path_buf(),
-                source,
-            }
-        })?,
-        _ => toml::from_str(&content).map_err(|source| TargetConfigError::ParseToml {
+pub fn load_render_target_config(
+    path: &Path
+) -> Result<RenderTargetConfig, TargetConfigError> {
+    let content =
+        fs::read_to_string(path).map_err(|source| TargetConfigError::Io {
             path: path.to_path_buf(),
             source,
-        })?,
-    };
+        })?;
+    let config: RenderTargetConfig =
+        match path.extension().and_then(|extension| extension.to_str()) {
+            Some("yaml" | "yml") =>
+                serde_yaml::from_str(&content).map_err(|source| {
+                    TargetConfigError::ParseYaml {
+                        path: path.to_path_buf(),
+                        source,
+                    }
+                })?,
+            _ => toml::from_str(&content).map_err(|source| {
+                TargetConfigError::ParseToml {
+                    path: path.to_path_buf(),
+                    source,
+                }
+            })?,
+        };
 
     let mut names = HashSet::new();
     for target in &config.targets {
@@ -353,7 +409,10 @@ pub fn render_target_by_name<'a>(
         .ok_or_else(|| TargetConfigError::NotFound(name.to_string()))
 }
 
-pub fn resolve_render_target_output(config_path: &Path, target: &RenderTarget) -> PathBuf {
+pub fn resolve_render_target_output(
+    config_path: &Path,
+    target: &RenderTarget,
+) -> PathBuf {
     let output = PathBuf::from(&target.output_path);
     if output.is_absolute() {
         output

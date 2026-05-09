@@ -1,7 +1,10 @@
 use std::fs;
 
 mod common;
-use common::{Sandbox, create_ticket};
+use common::{
+    Sandbox,
+    create_ticket,
+};
 
 /// Regression test for: `scan --reindex` must purge stale Tantivy entries.
 ///

@@ -1,16 +1,32 @@
 use std::path::PathBuf;
 
 use axum::{
-    extract::{Extension, Query, State},
+    extract::{
+        Extension,
+        Query,
+        State,
+    },
     http::StatusCode,
-    response::{IntoResponse, Json, Response},
+    response::{
+        IntoResponse,
+        Json,
+        Response,
+    },
 };
 use serde::Deserialize;
 
-use viewer_api::error::{ApiError, RequestIdExt};
+use viewer_api::error::{
+    ApiError,
+    RequestIdExt,
+};
 
-use crate::error::{spec_err, storage_err};
-use crate::state::SpecAppState;
+use crate::{
+    error::{
+        spec_err,
+        storage_err,
+    },
+    state::SpecAppState,
+};
 
 /// GET /healthz
 pub async fn healthz() -> &'static str {
@@ -47,8 +63,12 @@ pub async fn health_check(
             Err(e) => return spec_err(e, &rid.0),
         }
     } else {
-        return ApiError::new("spec.missing_param", "provide id or all=true", &rid.0)
-            .into_response_with_status(StatusCode::BAD_REQUEST);
+        return ApiError::new(
+            "spec.missing_param",
+            "provide id or all=true",
+            &rid.0,
+        )
+        .into_response_with_status(StatusCode::BAD_REQUEST);
     };
 
     let mut issues = Vec::new();
@@ -122,10 +142,12 @@ pub async fn add_root(
             .unwrap_or("specs")
             .to_string()
     });
-    match store.entity_store().add_scan_root(memory_api::model::filesystem::ScanRoot {
-        path: path.clone(),
-        label: label.clone(),
-    }) {
+    match store.entity_store().add_scan_root(
+        memory_api::model::filesystem::ScanRoot {
+            path: path.clone(),
+            label: label.clone(),
+        },
+    ) {
         Ok(()) => (
             StatusCode::CREATED,
             Json(serde_json::json!({

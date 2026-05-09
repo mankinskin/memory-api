@@ -1,16 +1,33 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
-use rmcp::{ErrorData as McpError, model::CallToolResult};
+use rmcp::{
+    ErrorData as McpError,
+    model::CallToolResult,
+};
 use serde_json::json;
 
 use rule_api::{
-    RenderTarget, RuleFilter, collect_target_rules, explain_target, load_render_target_config,
-    render_markdown_file, render_target_by_name, resolve_render_target_output,
+    RenderTarget,
+    RuleFilter,
+    collect_target_rules,
+    explain_target,
+    load_render_target_config,
+    render_markdown_file,
+    render_target_by_name,
+    resolve_render_target_output,
 };
 
 use super::{
-    ExplainRuleTargetInput, GenerateRuleFileInput, GenerateRuleTargetInput, RuleServer,
+    ExplainRuleTargetInput,
+    GenerateRuleFileInput,
+    GenerateRuleTargetInput,
+    RuleServer,
 };
 
 impl RuleServer {
@@ -33,10 +50,16 @@ impl RuleServer {
             let rendered = render_markdown_file(&rules);
 
             if input.check {
-                let output = input.output_path.as_deref().expect("validated output path");
+                let output = input
+                    .output_path
+                    .as_deref()
+                    .expect("validated output path");
                 ensure_generated_output_matches(output, &rendered)?;
             } else if !input.dry_run {
-                let output = input.output_path.as_deref().expect("validated output path");
+                let output = input
+                    .output_path
+                    .as_deref()
+                    .expect("validated output path");
                 write_generated_output(output, &rendered)?;
             }
 
@@ -63,10 +86,18 @@ impl RuleServer {
         self.with_store(|store| {
             validate_generate_target_input(&input)?;
             let config_path = PathBuf::from(&input.config_path);
-            let config = load_render_target_config(&config_path).map_err(Self::target_config_err)?;
-            let target = render_target_by_name(&config, &input.target).map_err(Self::target_config_err)?;
+            let config = load_render_target_config(&config_path)
+                .map_err(Self::target_config_err)?;
+            let target = render_target_by_name(&config, &input.target)
+                .map_err(Self::target_config_err)?;
             let output = resolve_render_target_output(&config_path, target);
-            let payload = generate_target_payload(store, target, input.dry_run, input.check, &output)?;
+            let payload = generate_target_payload(
+                store,
+                target,
+                input.dry_run,
+                input.check,
+                &output,
+            )?;
 
             Self::json_result(&json!({
                 "status": "ok",
@@ -91,10 +122,13 @@ impl RuleServer {
     ) -> Result<CallToolResult, McpError> {
         self.with_store(|store| {
             let config_path = PathBuf::from(&input.config_path);
-            let config = load_render_target_config(&config_path).map_err(Self::target_config_err)?;
-            let target = render_target_by_name(&config, &input.target).map_err(Self::target_config_err)?;
+            let config = load_render_target_config(&config_path)
+                .map_err(Self::target_config_err)?;
+            let target = render_target_by_name(&config, &input.target)
+                .map_err(Self::target_config_err)?;
             let output = resolve_render_target_output(&config_path, target);
-            let outline = explain_target(store, target).map_err(Self::rule_err)?;
+            let outline =
+                explain_target(store, target).map_err(Self::rule_err)?;
 
             Self::json_result(&json!({
                 "status": "ok",
@@ -107,7 +141,9 @@ impl RuleServer {
     }
 }
 
-fn validate_generate_input(input: &GenerateRuleFileInput) -> Result<(), McpError> {
+fn validate_generate_input(
+    input: &GenerateRuleFileInput
+) -> Result<(), McpError> {
     if input.check && input.dry_run {
         return Err(McpError::invalid_params(
             "choose either check or dry_run".to_string(),
@@ -125,7 +161,9 @@ fn validate_generate_input(input: &GenerateRuleFileInput) -> Result<(), McpError
     Ok(())
 }
 
-fn validate_generate_target_input(input: &GenerateRuleTargetInput) -> Result<(), McpError> {
+fn validate_generate_target_input(
+    input: &GenerateRuleTargetInput
+) -> Result<(), McpError> {
     if input.check && input.dry_run {
         return Err(McpError::invalid_params(
             "choose either check or dry_run".to_string(),
@@ -136,7 +174,10 @@ fn validate_generate_target_input(input: &GenerateRuleTargetInput) -> Result<(),
     Ok(())
 }
 
-fn ensure_generated_output_matches(output: &str, rendered: &str) -> Result<(), McpError> {
+fn ensure_generated_output_matches(
+    output: &str,
+    rendered: &str,
+) -> Result<(), McpError> {
     let path = PathBuf::from(output);
     let existing = fs::read_to_string(&path).map_err(|err| {
         McpError::invalid_params(
@@ -155,16 +196,25 @@ fn ensure_generated_output_matches(output: &str, rendered: &str) -> Result<(), M
     }
 }
 
-fn write_generated_output(output: &str, rendered: &str) -> Result<(), McpError> {
+fn write_generated_output(
+    output: &str,
+    rendered: &str,
+) -> Result<(), McpError> {
     let path = PathBuf::from(output);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| {
-            McpError::internal_error(format!("create {}: {err}", parent.display()), None)
+            McpError::internal_error(
+                format!("create {}: {err}", parent.display()),
+                None,
+            )
         })?;
     }
 
     fs::write(&path, rendered).map_err(|err| {
-        McpError::internal_error(format!("write generated file {}: {err}", path.display()), None)
+        McpError::internal_error(
+            format!("write generated file {}: {err}", path.display()),
+            None,
+        )
     })
 }
 
@@ -180,11 +230,15 @@ fn generate_target_payload(
     check: bool,
     output: &Path,
 ) -> Result<GenerateTargetPayload, McpError> {
-    let rules = collect_target_rules(store, target).map_err(RuleServer::rule_err)?;
+    let rules =
+        collect_target_rules(store, target).map_err(RuleServer::rule_err)?;
     let rendered = render_markdown_file(&rules);
 
     if check {
-        ensure_generated_output_matches(output.to_string_lossy().as_ref(), &rendered)?;
+        ensure_generated_output_matches(
+            output.to_string_lossy().as_ref(),
+            &rendered,
+        )?;
     } else if !dry_run {
         write_generated_output(output.to_string_lossy().as_ref(), &rendered)?;
     }

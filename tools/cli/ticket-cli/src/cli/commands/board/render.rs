@@ -1,11 +1,25 @@
 use std::fmt::Write as FmtWrite;
 
-use chrono::{DateTime, Utc};
-use serde_json::{Value, json};
+use chrono::{
+    DateTime,
+    Utc,
+};
+use serde_json::{
+    Value,
+    json,
+};
 
-use ticket_api::storage::board::{BoardConfig, BoardEntry, BoardEntryStatus, BoardSnapshot};
+use ticket_api::storage::board::{
+    BoardConfig,
+    BoardEntry,
+    BoardEntryStatus,
+    BoardSnapshot,
+};
 
-pub(super) fn entry_to_json(entry: &BoardEntry, config: &BoardConfig) -> Value {
+pub(super) fn entry_to_json(
+    entry: &BoardEntry,
+    config: &BoardConfig,
+) -> Value {
     let age_secs = heartbeat_age_secs(entry, Utc::now());
 
     json!({
@@ -48,7 +62,10 @@ pub(super) fn render_board_human(snap: &BoardSnapshot) -> String {
     out
 }
 
-fn write_summary(out: &mut String, snap: &BoardSnapshot) {
+fn write_summary(
+    out: &mut String,
+    snap: &BoardSnapshot,
+) {
     let _ = writeln!(
         out,
         "Board: [{}/{} active] [{} stale{}] [{} conflict{}]",
@@ -65,7 +82,11 @@ fn warning_suffix(count: u32) -> &'static str {
     if count > 0 { " ⚠" } else { "" }
 }
 
-fn write_table(out: &mut String, snap: &BoardSnapshot, now: DateTime<Utc>) {
+fn write_table(
+    out: &mut String,
+    snap: &BoardSnapshot,
+    now: DateTime<Utc>,
+) {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
@@ -79,7 +100,12 @@ fn write_table(out: &mut String, snap: &BoardSnapshot, now: DateTime<Utc>) {
     }
 }
 
-fn write_entry_row(out: &mut String, entry: &BoardEntry, config: &BoardConfig, now: DateTime<Utc>) {
+fn write_entry_row(
+    out: &mut String,
+    entry: &BoardEntry,
+    config: &BoardConfig,
+    now: DateTime<Utc>,
+) {
     let age_secs = heartbeat_age_secs(entry, now);
     let _ = writeln!(
         out,
@@ -93,7 +119,10 @@ fn write_entry_row(out: &mut String, entry: &BoardEntry, config: &BoardConfig, n
     );
 }
 
-fn write_warnings(out: &mut String, warnings: &[String]) {
+fn write_warnings(
+    out: &mut String,
+    warnings: &[String],
+) {
     if warnings.is_empty() {
         return;
     }
@@ -119,12 +148,21 @@ fn write_file_ownership(
     }
 }
 
-fn heartbeat_age_secs(entry: &BoardEntry, now: DateTime<Utc>) -> u64 {
+fn heartbeat_age_secs(
+    entry: &BoardEntry,
+    now: DateTime<Utc>,
+) -> u64 {
     (now - entry.last_heartbeat).num_seconds().max(0) as u64
 }
 
-fn entry_status(entry: &BoardEntry, config: &BoardConfig, age_secs: u64) -> &'static str {
-    if entry.status == BoardEntryStatus::Active && age_secs > config.stale_after_secs {
+fn entry_status(
+    entry: &BoardEntry,
+    config: &BoardConfig,
+    age_secs: u64,
+) -> &'static str {
+    if entry.status == BoardEntryStatus::Active
+        && age_secs > config.stale_after_secs
+    {
         return "stale";
     }
 
@@ -137,7 +175,8 @@ fn entry_status(entry: &BoardEntry, config: &BoardConfig, age_secs: u64) -> &'st
 }
 
 fn short_ticket(entry: &BoardEntry) -> String {
-    entry.ticket_id
+    entry
+        .ticket_id
         .simple()
         .to_string()
         .chars()
@@ -145,7 +184,10 @@ fn short_ticket(entry: &BoardEntry) -> String {
         .collect()
 }
 
-fn truncate_field(value: &str, width: usize) -> String {
+fn truncate_field(
+    value: &str,
+    width: usize,
+) -> String {
     if value.len() > width {
         format!("{}…", &value[..width - 1])
     } else {

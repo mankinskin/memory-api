@@ -1,11 +1,33 @@
-use std::path::{Path, PathBuf};
+use std::path::{
+    Path,
+    PathBuf,
+};
 
-use tantivy::schema::{Field, Schema, Value as TantivyValue, FAST, STORED, STRING, TEXT};
-use tantivy::{Index, IndexWriter, TantivyDocument, TantivyError, Term};
+use tantivy::{
+    Index,
+    IndexWriter,
+    TantivyDocument,
+    TantivyError,
+    Term,
+    schema::{
+        FAST,
+        Field,
+        STORED,
+        STRING,
+        Schema,
+        TEXT,
+        Value as TantivyValue,
+    },
+};
 use uuid::Uuid;
 
-use crate::error::StorageError;
-use crate::model::query::{Expr, ValueExpr};
+use crate::{
+    error::StorageError,
+    model::query::{
+        Expr,
+        ValueExpr,
+    },
+};
 
 pub struct SearchResult {
     pub id: Uuid,
@@ -52,7 +74,10 @@ impl TantivySearchIndex {
         // MmapDirectory handles are released between operations.
         open_or_create_index(dir, schema)?;
 
-        Ok(Self { dir: dir.to_path_buf(), fields })
+        Ok(Self {
+            dir: dir.to_path_buf(),
+            fields,
+        })
     }
 
     /// Open a fresh `Index` handle for a single operation, then drop it.
@@ -79,7 +104,10 @@ impl TantivySearchIndex {
     ) -> Result<(), StorageError> {
         let index = self.open_index()?;
         let mut writer = Self::make_writer(&index)?;
-        writer.delete_term(Term::from_field_text(self.fields.id, &id.to_string()));
+        writer.delete_term(Term::from_field_text(
+            self.fields.id,
+            &id.to_string(),
+        ));
 
         let mut d = TantivyDocument::default();
         d.add_text(self.fields.id, id.to_string());
@@ -95,9 +123,9 @@ impl TantivySearchIndex {
         if let Some(tp) = entity_type {
             d.add_text(self.fields.ticket_type, tp);
         }
-        writer
-            .add_document(d)
-            .map_err(|e: TantivyError| StorageError::SearchIndex(e.to_string()))?;
+        writer.add_document(d).map_err(|e: TantivyError| {
+            StorageError::SearchIndex(e.to_string())
+        })?;
         writer
             .commit()
             .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
@@ -111,13 +139,19 @@ impl TantivySearchIndex {
         Ok(())
     }
 
-    pub fn remove(&self, id: &Uuid) -> Result<(), StorageError> {
+    pub fn remove(
+        &self,
+        id: &Uuid,
+    ) -> Result<(), StorageError> {
         let index = self.open_index()?;
         let mut writer = Self::make_writer(&index)?;
-        writer.delete_term(Term::from_field_text(self.fields.id, &id.to_string()));
-        writer
-            .commit()
-            .map_err(|e: TantivyError| StorageError::SearchIndex(e.to_string()))?;
+        writer.delete_term(Term::from_field_text(
+            self.fields.id,
+            &id.to_string(),
+        ));
+        writer.commit().map_err(|e: TantivyError| {
+            StorageError::SearchIndex(e.to_string())
+        })?;
         writer
             .wait_merging_threads()
             .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
@@ -128,12 +162,12 @@ impl TantivySearchIndex {
     pub fn clear_all(&self) -> Result<(), StorageError> {
         let index = self.open_index()?;
         let mut writer = Self::make_writer(&index)?;
-        writer
-            .delete_all_documents()
-            .map_err(|e: TantivyError| StorageError::SearchIndex(e.to_string()))?;
-        writer
-            .commit()
-            .map_err(|e: TantivyError| StorageError::SearchIndex(e.to_string()))?;
+        writer.delete_all_documents().map_err(|e: TantivyError| {
+            StorageError::SearchIndex(e.to_string())
+        })?;
+        writer.commit().map_err(|e: TantivyError| {
+            StorageError::SearchIndex(e.to_string())
+        })?;
         writer
             .wait_merging_threads()
             .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
@@ -142,9 +176,21 @@ impl TantivySearchIndex {
 
     /// Search using a parsed `Expr` AST.
     /// Returns up to `limit` results ordered by relevance score.
-    pub fn search(&self, expr: &Expr, limit: usize) -> Result<Vec<SearchResult>, StorageError> {
-        use tantivy::collector::TopDocs;
-        use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, TermQuery};
+    pub fn search(
+        &self,
+        expr: &Expr,
+        limit: usize,
+    ) -> Result<Vec<SearchResult>, StorageError> {
+        use tantivy::{
+            collector::TopDocs,
+            query::{
+                AllQuery,
+                BooleanQuery,
+                Occur,
+                Query,
+                TermQuery,
+            },
+        };
 
         let index = self.open_index()?;
         let reader = index
@@ -167,7 +213,8 @@ impl TantivySearchIndex {
                 .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
 
             let id_str = get_text(&doc, self.fields.id, &schema);
-            let id: Uuid = match id_str.as_deref().and_then(|s| s.parse().ok()) {
+            let id: Uuid = match id_str.as_deref().and_then(|s| s.parse().ok())
+            {
                 Some(u) => u,
                 None => continue,
             };
@@ -184,10 +231,15 @@ impl TantivySearchIndex {
         }
 
         // Suppress unused import warnings — these are used inside expr_to_query.
-        let _ = (AllQuery, BooleanQuery::new(vec![]), Occur::Must, TermQuery::new(
-            Term::from_field_text(self.fields.id, ""),
-            Default::default(),
-        ));
+        let _ = (
+            AllQuery,
+            BooleanQuery::new(vec![]),
+            Occur::Must,
+            TermQuery::new(
+                Term::from_field_text(self.fields.id, ""),
+                Default::default(),
+            ),
+        );
 
         Ok(results)
     }
@@ -196,7 +248,10 @@ impl TantivySearchIndex {
 /// Open the Tantivy index at `dir`, or create it from `schema` if the
 /// directory is empty.  If the directory is non-empty but the index cannot be
 /// opened (e.g. corrupt meta.json), the directory is wiped and recreated.
-fn open_or_create_index(dir: &Path, schema: Schema) -> Result<Index, StorageError> {
+fn open_or_create_index(
+    dir: &Path,
+    schema: Schema,
+) -> Result<Index, StorageError> {
     if dir
         .read_dir()
         .map(|mut d| d.next().is_some())
@@ -209,7 +264,7 @@ fn open_or_create_index(dir: &Path, schema: Schema) -> Result<Index, StorageErro
                 std::fs::create_dir_all(dir)?;
                 Index::create_in_dir(dir, schema)
                     .map_err(|e| StorageError::SearchIndex(e.to_string()))
-            }
+            },
         }
     } else {
         Index::create_in_dir(dir, schema)
@@ -223,12 +278,26 @@ fn build_schema() -> (Schema, SearchFields) {
     let title = builder.add_text_field("title", TEXT | STORED);
     let body = builder.add_text_field("body", TEXT | STORED);
     let state = builder.add_text_field("state", STRING | STORED | FAST);
-    let ticket_type = builder.add_text_field("ticket_type", STRING | STORED | FAST);
+    let ticket_type =
+        builder.add_text_field("ticket_type", STRING | STORED | FAST);
     let schema = builder.build();
-    (schema, SearchFields { id, title, body, state, ticket_type })
+    (
+        schema,
+        SearchFields {
+            id,
+            title,
+            body,
+            state,
+            ticket_type,
+        },
+    )
 }
 
-fn get_text(doc: &TantivyDocument, field: Field, _schema: &Schema) -> Option<String> {
+fn get_text(
+    doc: &TantivyDocument,
+    field: Field,
+    _schema: &Schema,
+) -> Option<String> {
     doc.get_first(field)
         .and_then(|v| TantivyValue::as_str(&v))
         .map(str::to_string)
@@ -253,8 +322,10 @@ fn full_text_query(
 ) -> Box<dyn tantivy::query::Query> {
     use tantivy::query::AllQuery;
 
-    let mut query_parser =
-        tantivy::query::QueryParser::for_index(index, vec![fields.title, fields.body]);
+    let mut query_parser = tantivy::query::QueryParser::for_index(
+        index,
+        vec![fields.title, fields.body],
+    );
     query_parser.set_conjunction_by_default();
     match query_parser.parse_query(text) {
         Ok(query) => query,
@@ -307,7 +378,11 @@ fn and_expr_to_query(
     fields: &SearchFields,
     index: &Index,
 ) -> Box<dyn tantivy::query::Query> {
-    use tantivy::query::{AllQuery, BooleanQuery, Occur};
+    use tantivy::query::{
+        AllQuery,
+        BooleanQuery,
+        Occur,
+    };
 
     if exprs.is_empty() {
         return Box::new(AllQuery);
@@ -320,7 +395,10 @@ fn and_expr_to_query(
     Box::new(BooleanQuery::new(clauses))
 }
 
-fn truncate_snippet(text: &str, max_chars: usize) -> String {
+fn truncate_snippet(
+    text: &str,
+    max_chars: usize,
+) -> String {
     let mut s: String = text.chars().take(max_chars).collect();
     if text.chars().count() > max_chars {
         s.push_str("…");

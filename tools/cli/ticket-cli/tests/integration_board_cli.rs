@@ -6,7 +6,10 @@
 
 mod common;
 
-use common::{Sandbox, create_ticket};
+use common::{
+    Sandbox,
+    create_ticket,
+};
 
 // ---------------------------------------------------------------------------
 // Full lifecycle: check-in → heartbeat → update-files → show → check-out → show
@@ -31,14 +34,23 @@ fn board_full_lifecycle() {
         "--ttl-secs",
         "3600",
     ]);
-    assert_eq!(check_in["status"], "ok", "check-in should succeed: {check_in}");
+    assert_eq!(
+        check_in["status"], "ok",
+        "check-in should succeed: {check_in}"
+    );
     assert_eq!(check_in["agent_id"], "agent-alpha");
-    let entry_id = check_in["entry_id"].as_str().expect("entry_id must be present").to_string();
+    let entry_id = check_in["entry_id"]
+        .as_str()
+        .expect("entry_id must be present")
+        .to_string();
     assert_eq!(check_in["owned_files"].as_array().unwrap().len(), 1);
 
     // ── heartbeat ─────────────────────────────────────────────────────────────
     let heartbeat = s.ticket_json(&["board", "heartbeat", &entry_id]);
-    assert_eq!(heartbeat["status"], "ok", "heartbeat should succeed: {heartbeat}");
+    assert_eq!(
+        heartbeat["status"], "ok",
+        "heartbeat should succeed: {heartbeat}"
+    );
     assert_eq!(heartbeat["entry_id"], entry_id.as_str());
 
     // ── update-files ──────────────────────────────────────────────────────────
@@ -53,7 +65,10 @@ fn board_full_lifecycle() {
         "--remove",
         "src/foo.rs",
     ]);
-    assert_eq!(update_files["status"], "ok", "update-files should succeed: {update_files}");
+    assert_eq!(
+        update_files["status"], "ok",
+        "update-files should succeed: {update_files}"
+    );
     let files = update_files["owned_files"].as_array().unwrap();
     assert!(
         files.iter().any(|f| f.as_str() == Some("src/bar.rs")),
@@ -66,7 +81,10 @@ fn board_full_lifecycle() {
 
     // ── show — assert active count = 1 ────────────────────────────────────────
     let show_active = s.ticket_json(&["board", "show"]);
-    assert_eq!(show_active["status"], "ok", "show should succeed: {show_active}");
+    assert_eq!(
+        show_active["status"], "ok",
+        "show should succeed: {show_active}"
+    );
     assert_eq!(
         show_active["active_count"].as_u64().unwrap(),
         1,
@@ -87,12 +105,18 @@ fn board_full_lifecycle() {
         "--reason",
         "done with feature X",
     ]);
-    assert_eq!(check_out["status"], "ok", "check-out should succeed: {check_out}");
+    assert_eq!(
+        check_out["status"], "ok",
+        "check-out should succeed: {check_out}"
+    );
     assert_eq!(check_out["agent_id"], "agent-alpha");
 
     // ── show — assert active count = 0 ────────────────────────────────────────
     let show_after = s.ticket_json(&["board", "show"]);
-    assert_eq!(show_after["status"], "ok", "show after check-out should succeed");
+    assert_eq!(
+        show_after["status"], "ok",
+        "show after check-out should succeed"
+    );
     assert_eq!(
         show_after["active_count"].as_u64().unwrap(),
         0,
@@ -123,11 +147,17 @@ fn board_configure_round_trip() {
         &new_max.to_string(),
     ]);
     assert_eq!(patched["status"], "ok");
-    assert_eq!(patched["config"]["max_wip"].as_u64().unwrap(), new_max as u64);
+    assert_eq!(
+        patched["config"]["max_wip"].as_u64().unwrap(),
+        new_max as u64
+    );
 
     // Read back and verify persistence.
     let readback = s.ticket_json(&["board", "configure"]);
-    assert_eq!(readback["config"]["max_wip"].as_u64().unwrap(), new_max as u64);
+    assert_eq!(
+        readback["config"]["max_wip"].as_u64().unwrap(),
+        new_max as u64
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -141,20 +171,31 @@ fn board_clean_preview_and_apply() {
 
     // Check in.
     let ci = s.ticket_json(&[
-        "board", "check-in", &ticket_id, "--agent", "agent-beta",
+        "board",
+        "check-in",
+        &ticket_id,
+        "--agent",
+        "agent-beta",
     ]);
     assert_eq!(ci["status"], "ok");
 
     // Check out (marks entry completed).
     let co = s.ticket_json(&[
-        "board", "check-out", &ticket_id, "--agent", "agent-beta",
+        "board",
+        "check-out",
+        &ticket_id,
+        "--agent",
+        "agent-beta",
     ]);
     assert_eq!(co["status"], "ok");
 
     // Preview — should see 1 completed entry eligible for removal.
     let preview = s.ticket_json(&["board", "clean", "preview"]);
     assert_eq!(preview["status"], "ok");
-    let token = preview["token"].as_str().expect("token must be present").to_string();
+    let token = preview["token"]
+        .as_str()
+        .expect("token must be present")
+        .to_string();
     assert!(preview["entry_count"].as_u64().unwrap() >= 1);
 
     // Apply.
@@ -209,7 +250,11 @@ fn board_show_with_agent_refreshes_heartbeat() {
     let ticket_id = create_ticket(&s, "Heartbeat refresh ticket");
 
     let ci = s.ticket_json(&[
-        "board", "check-in", &ticket_id, "--agent", "agent-delta",
+        "board",
+        "check-in",
+        &ticket_id,
+        "--agent",
+        "agent-delta",
     ]);
     assert_eq!(ci["status"], "ok");
 
@@ -262,6 +307,10 @@ fn update_board_check_in_without_agent_fails() {
     let s = Sandbox::new();
     let ticket_id = create_ticket(&s, "Missing agent ticket");
 
-    let (code, _stderr) = s.ticket_fail(&["update", &ticket_id, "--board-check-in"]);
-    assert!(code != 0, "should exit non-zero when --board-agent is missing");
+    let (code, _stderr) =
+        s.ticket_fail(&["update", &ticket_id, "--board-check-in"]);
+    assert!(
+        code != 0,
+        "should exit non-zero when --board-agent is missing"
+    );
 }

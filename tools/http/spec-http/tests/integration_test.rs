@@ -4,8 +4,16 @@
 //! — no TCP socket needed.
 
 use axum::{
-    body::{Body, to_bytes},
-    http::{Method, Request, StatusCode, header},
+    body::{
+        Body,
+        to_bytes,
+    },
+    http::{
+        Method,
+        Request,
+        StatusCode,
+        header,
+    },
 };
 use tower::ServiceExt;
 
@@ -14,7 +22,10 @@ mod sections;
 #[path = "integration_test/support.rs"]
 mod support;
 
-use support::{make_app, seed_spec};
+use support::{
+    make_app,
+    seed_spec,
+};
 
 // ── healthz ──────────────────────────────────────────────────────────────────
 
@@ -348,4 +359,3 @@ async fn health_check_with_all_flag() {
     assert!(payload.get("specs_checked").is_some());
     assert!(payload.get("issues").is_some());
 }
-

@@ -10,9 +10,14 @@
 
 #![allow(dead_code)]
 
-use std::io::Write;
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::{
+    io::Write,
+    path::PathBuf,
+    process::{
+        Command,
+        Stdio,
+    },
+};
 
 use tempfile::TempDir;
 
@@ -40,7 +45,10 @@ impl Sandbox {
     pub fn new() -> Self {
         let dir = TempDir::new().expect("failed to create sandbox temp dir");
         let index_root = dir.path().to_path_buf();
-        Self { _dir: dir, index_root }
+        Self {
+            _dir: dir,
+            index_root,
+        }
     }
 
     // ------------------------------------------------------------------
@@ -61,7 +69,10 @@ impl Sandbox {
     ///
     /// Panics with full diagnostic output if the command exits non-zero or the
     /// output cannot be parsed as JSON.
-    pub fn ticket_json(&self, args: &[&str]) -> serde_json::Value {
+    pub fn ticket_json(
+        &self,
+        args: &[&str],
+    ) -> serde_json::Value {
         let out = self
             .base()
             .arg("--json")
@@ -94,7 +105,10 @@ impl Sandbox {
     /// Run `ticket --json <args>` and **expect** it to exit with a non-zero code.
     ///
     /// Panics if the command succeeds instead.  Returns `(exit_code, stderr)`.
-    pub fn ticket_fail(&self, args: &[&str]) -> (i32, String) {
+    pub fn ticket_fail(
+        &self,
+        args: &[&str],
+    ) -> (i32, String) {
         let out = self
             .base()
             .arg("--json")
@@ -118,7 +132,11 @@ impl Sandbox {
     /// Run `ticket --json <args>` and feed `stdin_payload` to stdin.
     ///
     /// Panics if the command exits non-zero. Returns envelope `payload`.
-    pub fn ticket_json_stdin(&self, args: &[&str], stdin_payload: &str) -> serde_json::Value {
+    pub fn ticket_json_stdin(
+        &self,
+        args: &[&str],
+        stdin_payload: &str,
+    ) -> serde_json::Value {
         let mut child = self
             .base()
             .arg("--json")
@@ -169,7 +187,10 @@ impl Sandbox {
 
 /// Create a `tracker-improvement` ticket with the given title.
 /// Returns the UUID string of the created ticket.
-pub fn create_ticket(s: &Sandbox, title: &str) -> String {
+pub fn create_ticket(
+    s: &Sandbox,
+    title: &str,
+) -> String {
     let r = s.ticket_json(&[
         "create",
         "--title",
@@ -177,7 +198,9 @@ pub fn create_ticket(s: &Sandbox, title: &str) -> String {
         "--type",
         "tracker-improvement",
     ]);
-    assert_eq!(r["status"], "ok", "create should succeed for title '{title}'");
+    assert_eq!(
+        r["status"], "ok",
+        "create should succeed for title '{title}'"
+    );
     r["id"].as_str().expect("id must be a string").to_string()
 }
-

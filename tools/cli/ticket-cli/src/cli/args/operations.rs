@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use clap::{Args, ValueEnum};
+use clap::{
+    Args,
+    ValueEnum,
+};
 
 #[derive(Debug, Args)]
 pub struct StatusArgs {

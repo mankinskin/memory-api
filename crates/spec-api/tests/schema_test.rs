@@ -1,5 +1,10 @@
-use spec_api::default_schema::{specification_schema, SPECIFICATION_SCHEMA_TOML};
-use spec_api::spec_schema_registry;
+use spec_api::{
+    default_schema::{
+        SPECIFICATION_SCHEMA_TOML,
+        specification_schema,
+    },
+    spec_schema_registry,
+};
 
 #[test]
 fn test_specification_schema_toml_parses() {
@@ -14,7 +19,15 @@ fn test_specification_schema_states() {
     let states: Vec<&str> = schema.states.iter().map(String::as_str).collect();
     assert_eq!(
         states,
-        &["draft", "reviewed", "approved", "implemented", "verified", "deprecated", "cancelled"]
+        &[
+            "draft",
+            "reviewed",
+            "approved",
+            "implemented",
+            "verified",
+            "deprecated",
+            "cancelled"
+        ]
     );
 }
 
@@ -88,7 +101,10 @@ fn test_specification_schema_edge_rules() {
 
     let parent_of = &schema.edge_rules["parent_of"];
     assert!(parent_of.directed, "parent_of must be directed");
-    assert!(parent_of.acyclic_enforced, "parent_of must enforce acyclicity");
+    assert!(
+        parent_of.acyclic_enforced,
+        "parent_of must enforce acyclicity"
+    );
 }
 
 #[test]

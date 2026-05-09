@@ -2,13 +2,26 @@ use chrono::Utc;
 use rusqlite::params;
 use uuid::Uuid;
 
-use crate::storage::index::RedbIndexStore;
-use crate::storage::schema::{TABLE_BOARD_ACTIVE_INDEX, TABLE_BOARD_ENTRIES};
+use crate::storage::{
+    index::RedbIndexStore,
+    schema::{
+        TABLE_BOARD_ACTIVE_INDEX,
+        TABLE_BOARD_ENTRIES,
+    },
+};
 
-use super::{load_all_entries, read_board_config};
-use super::super::{
-    BoardCleanPreview, BoardCleanResult, BoardEntryStatus, BoardError,
-    compute_clean_token, db_err, parse_clean_token,
+use super::{
+    super::{
+        BoardCleanPreview,
+        BoardCleanResult,
+        BoardEntryStatus,
+        BoardError,
+        compute_clean_token,
+        db_err,
+        parse_clean_token,
+    },
+    load_all_entries,
+    read_board_config,
 };
 
 impl RedbIndexStore {
@@ -24,7 +37,8 @@ impl RedbIndexStore {
                 .filter(|entry| {
                     matches!(
                         entry.status,
-                        BoardEntryStatus::Completed | BoardEntryStatus::Conflict
+                        BoardEntryStatus::Completed
+                            | BoardEntryStatus::Conflict
                     ) || (include_stale && entry.is_stale_at(now))
                 })
                 .map(|entry| entry.entry_id)
@@ -58,7 +72,8 @@ impl RedbIndexStore {
                 .filter(|entry| {
                     matches!(
                         entry.status,
-                        BoardEntryStatus::Completed | BoardEntryStatus::Conflict
+                        BoardEntryStatus::Completed
+                            | BoardEntryStatus::Conflict
                     ) || (include_stale && entry.is_stale_at(now))
                 })
                 .map(|entry| entry.entry_id)
@@ -84,7 +99,9 @@ impl RedbIndexStore {
             }
 
             let mut index_stmt = conn
-                .prepare(&format!("SELECT key, value FROM {TABLE_BOARD_ACTIVE_INDEX}"))
+                .prepare(&format!(
+                    "SELECT key, value FROM {TABLE_BOARD_ACTIVE_INDEX}"
+                ))
                 .map_err(db_err)?;
             let to_remove: Vec<String> = index_stmt
                 .query_map([], |row| {
@@ -101,7 +118,9 @@ impl RedbIndexStore {
 
             for key in &to_remove {
                 conn.execute(
-                    &format!("DELETE FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1"),
+                    &format!(
+                        "DELETE FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1"
+                    ),
                     params![key],
                 )
                 .map_err(db_err)?;

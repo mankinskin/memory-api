@@ -1,12 +1,24 @@
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::error::StorageError;
-use crate::storage::board::{
-    BoardCleanPreview, BoardCleanResult, BoardConfig, BoardEntry, BoardError, BoardSnapshot,
-    ReconcileAction,
+use crate::{
+    error::StorageError,
+    storage::{
+        board::{
+            BoardCleanPreview,
+            BoardCleanResult,
+            BoardConfig,
+            BoardEntry,
+            BoardError,
+            BoardSnapshot,
+            ReconcileAction,
+        },
+        indexed::{
+            IndexedTicket,
+            LeaseInfo,
+        },
+    },
 };
-use crate::storage::indexed::{IndexedTicket, LeaseInfo};
 
 use super::TicketStore;
 
@@ -41,7 +53,10 @@ impl TicketStore {
         Ok(lease)
     }
 
-    pub fn unclaim(&self, ticket_id: &Uuid) -> Result<(), StorageError> {
+    pub fn unclaim(
+        &self,
+        ticket_id: &Uuid,
+    ) -> Result<(), StorageError> {
         self.index.remove_lease(ticket_id)
     }
 
@@ -57,12 +72,16 @@ impl TicketStore {
         intent: &str,
         owned_files: Vec<String>,
     ) -> Result<BoardEntry, BoardError> {
-        let entry = self
-            .index
-            .board_check_in_atomic(*ticket_id, agent_id, ttl_secs, intent, owned_files)?;
+        let entry = self.index.board_check_in_atomic(
+            *ticket_id,
+            agent_id,
+            ttl_secs,
+            intent,
+            owned_files,
+        )?;
 
         match self.claim(ticket_id, agent_id, ttl_secs, Some(intent)) {
-            Ok(_) | Err(StorageError::LeaseConflict { .. }) => {}
+            Ok(_) | Err(StorageError::LeaseConflict { .. }) => {},
             Err(error) => return Err(BoardError::Storage(error)),
         }
 
@@ -75,37 +94,51 @@ impl TicketStore {
         agent_id: &str,
         handoff_reason: Option<&str>,
     ) -> Result<BoardEntry, BoardError> {
-        let entry = self
-            .index
-            .board_complete_entry(ticket_id, agent_id, handoff_reason)?;
+        let entry = self.index.board_complete_entry(
+            ticket_id,
+            agent_id,
+            handoff_reason,
+        )?;
 
         match self.unclaim(ticket_id) {
-            Ok(_) | Err(StorageError::NotFound(_)) => {}
+            Ok(_) | Err(StorageError::NotFound(_)) => {},
             Err(error) => return Err(BoardError::Storage(error)),
         }
 
         Ok(entry)
     }
 
-    pub fn board_heartbeat(&self, entry_id: &Uuid) -> Result<BoardEntry, BoardError> {
+    pub fn board_heartbeat(
+        &self,
+        entry_id: &Uuid,
+    ) -> Result<BoardEntry, BoardError> {
         self.index.board_refresh_heartbeat(entry_id)
     }
 
-    pub fn board_show(&self, agent_id: Option<&str>) -> Result<BoardSnapshot, BoardError> {
+    pub fn board_show(
+        &self,
+        agent_id: Option<&str>,
+    ) -> Result<BoardSnapshot, BoardError> {
         self.index.board_snapshot(agent_id)
     }
 
-    pub fn board_configure(&self, config: Option<BoardConfig>) -> Result<BoardConfig, BoardError> {
+    pub fn board_configure(
+        &self,
+        config: Option<BoardConfig>,
+    ) -> Result<BoardConfig, BoardError> {
         match config {
             None => self.index.board_read_config(),
             Some(config) => {
                 self.index.board_write_config(&config)?;
                 Ok(config)
-            }
+            },
         }
     }
 
-    pub fn board_clean_preview(&self, include_stale: bool) -> Result<BoardCleanPreview, BoardError> {
+    pub fn board_clean_preview(
+        &self,
+        include_stale: bool,
+    ) -> Result<BoardCleanPreview, BoardError> {
         self.index.board_clean_preview_atomic(include_stale)
     }
 
@@ -124,7 +157,8 @@ impl TicketStore {
         add: Vec<String>,
         remove: Vec<String>,
     ) -> Result<BoardEntry, BoardError> {
-        self.index.board_update_files_atomic(*ticket_id, agent_id, add, remove)
+        self.index
+            .board_update_files_atomic(*ticket_id, agent_id, add, remove)
     }
 
     pub fn board_rename_file(
@@ -138,7 +172,11 @@ impl TicketStore {
             .board_rename_file_atomic(*ticket_id, agent_id, old_path, new_path)
     }
 
-    pub(super) fn board_reconcile(&self, ticket_id: &Uuid, is_revert: bool) {
+    pub(super) fn board_reconcile(
+        &self,
+        ticket_id: &Uuid,
+        is_revert: bool,
+    ) {
         if is_revert {
             self.log_revert_reconcile_warning(ticket_id);
             return;
@@ -152,7 +190,10 @@ impl TicketStore {
         }
     }
 
-    fn log_revert_reconcile_warning(&self, ticket_id: &Uuid) {
+    fn log_revert_reconcile_warning(
+        &self,
+        ticket_id: &Uuid,
+    ) {
         match self.index.board_find_active_for_ticket(*ticket_id) {
             Ok(Some((entry, _))) => {
                 let state = self
@@ -168,21 +209,25 @@ impl TicketStore {
                     current_state = %state,
                     "board_reconcile: stale intent — ticket reverted but active board entry remains"
                 );
-            }
-            Ok(None) => {}
+            },
+            Ok(None) => {},
             Err(error) => {
                 tracing::warn!(
                     ticket_id = %ticket_id,
                     error = %error,
                     "board_reconcile: failed to look up active entry during revert"
                 );
-            }
+            },
         }
     }
 
-    fn ticket_is_terminal(&self, ticket_id: &Uuid) -> Option<bool> {
+    fn ticket_is_terminal(
+        &self,
+        ticket_id: &Uuid,
+    ) -> Option<bool> {
         match self.index.get_ticket(ticket_id) {
-            Ok(Some(indexed)) => Some(self.indexed_ticket_is_terminal(&indexed)),
+            Ok(Some(indexed)) =>
+                Some(self.indexed_ticket_is_terminal(&indexed)),
             Ok(None) => Some(true),
             Err(error) => {
                 tracing::warn!(
@@ -191,19 +236,30 @@ impl TicketStore {
                     "board_reconcile: failed to fetch ticket — skipping"
                 );
                 None
-            }
+            },
         }
     }
 
-    fn indexed_ticket_is_terminal(&self, indexed: &IndexedTicket) -> bool {
+    fn indexed_ticket_is_terminal(
+        &self,
+        indexed: &IndexedTicket,
+    ) -> bool {
         let current_state = indexed.state.as_deref().unwrap_or("");
-        self.schema_registry.get(&indexed.type_id).is_some_and(|schema| {
-            schema.terminal_states.contains(&current_state.to_string())
-                || !schema.transitions.iter().any(|transition| transition.from == current_state)
-        })
+        self.schema_registry
+            .get(&indexed.type_id)
+            .is_some_and(|schema| {
+                schema.terminal_states.contains(&current_state.to_string())
+                    || !schema
+                        .transitions
+                        .iter()
+                        .any(|transition| transition.from == current_state)
+            })
     }
 
-    fn complete_active_board_entries(&self, ticket_id: &Uuid) {
+    fn complete_active_board_entries(
+        &self,
+        ticket_id: &Uuid,
+    ) {
         match self.index.board_complete_all_for_ticket(*ticket_id) {
             Ok(entry_ids) if !entry_ids.is_empty() => {
                 tracing::debug!(
@@ -212,15 +268,15 @@ impl TicketStore {
                     action = ?ReconcileAction::MarkedCompleted { entry_id: entry_ids[0] },
                     "board_reconcile: marked active entries completed"
                 );
-            }
-            Ok(_) => {}
+            },
+            Ok(_) => {},
             Err(error) => {
                 tracing::warn!(
                     ticket_id = %ticket_id,
                     error = %error,
                     "board_reconcile: failed to complete board entries"
                 );
-            }
+            },
         }
     }
 }

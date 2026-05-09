@@ -1,14 +1,24 @@
 use std::path::PathBuf;
 
 use axum::{
-    extract::{Extension, Path, State},
-    response::{IntoResponse, Json, Response},
+    extract::{
+        Extension,
+        Path,
+        State,
+    },
+    response::{
+        IntoResponse,
+        Json,
+        Response,
+    },
 };
 
 use viewer_api::error::RequestIdExt;
 
-use crate::error::spec_err;
-use crate::state::SpecAppState;
+use crate::{
+    error::spec_err,
+    state::SpecAppState,
+};
 
 /// GET /api/specs/:id/tree — hierarchy subtree.
 pub async fn get_tree(
@@ -91,7 +101,8 @@ pub async fn validate_refs(
         Err(e) => return spec_err(e, &rid.0),
     };
     let workspace_root = PathBuf::from(&body.workspace_root);
-    let results = spec_api::code_ref::validate_refs(&spec.code_refs, &workspace_root);
+    let results =
+        spec_api::code_ref::validate_refs(&spec.code_refs, &workspace_root);
     let all_valid = results.iter().all(|r| r.file_exists && r.line_range_valid);
     let items: Vec<serde_json::Value> = results
         .iter()

@@ -10,7 +10,10 @@ use spec_mcp::server::*;
 #[path = "smoke_test/support.rs"]
 mod support;
 
-use support::{extract_json, make_sandbox};
+use support::{
+    extract_json,
+    make_sandbox,
+};
 
 // ── tests ────────────────────────────────────────────────────────────────────
 
@@ -163,7 +166,11 @@ async fn spec_section_lifecycle() {
     let json = extract_json(result);
     assert_eq!(json["count"], 1);
     let sections = json["sections"].as_array().unwrap();
-    assert!(sections.iter().any(|s| s.as_str().unwrap().contains("design")));
+    assert!(
+        sections
+            .iter()
+            .any(|s| s.as_str().unwrap().contains("design"))
+    );
 
     // Get section
     let result = server
@@ -175,7 +182,12 @@ async fn spec_section_lifecycle() {
         .expect("section_get");
     let json = extract_json(result);
     assert_eq!(json["status"], "ok");
-    assert!(json["content"].as_str().unwrap().contains("Key design notes"));
+    assert!(
+        json["content"]
+            .as_str()
+            .unwrap()
+            .contains("Key design notes")
+    );
 
     // Delete section
     let result = server
@@ -216,10 +228,7 @@ async fn spec_tree_and_health() {
         }))
         .await
         .expect("create parent");
-    let parent_id = extract_json(result)["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let parent_id = extract_json(result)["id"].as_str().unwrap().to_string();
 
     // Create child
     let result = server
@@ -233,10 +242,7 @@ async fn spec_tree_and_health() {
         }))
         .await
         .expect("create child");
-    let _child_id = extract_json(result)["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let _child_id = extract_json(result)["id"].as_str().unwrap().to_string();
 
     // Tree from parent
     let result = server
@@ -326,10 +332,7 @@ async fn spec_refs_validate_empty() {
         }))
         .await
         .expect("create");
-    let spec_id = extract_json(result)["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let spec_id = extract_json(result)["id"].as_str().unwrap().to_string();
 
     let result = server
         .spec_refs_validate(Parameters(RefsValidateInput {

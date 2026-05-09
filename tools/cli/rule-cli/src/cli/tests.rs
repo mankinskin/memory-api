@@ -1,7 +1,13 @@
-use std::fs;
-use std::path::PathBuf;
+use std::{
+    fs,
+    path::PathBuf,
+};
 
-use rule_api::{RuleFilter, RuleManifest, RuleStore};
+use rule_api::{
+    RuleFilter,
+    RuleManifest,
+    RuleStore,
+};
 use tempfile::tempdir;
 
 use super::*;
@@ -35,9 +41,12 @@ fn parse_search_command_with_filter_flags() {
     match cli.command {
         RuleCommandCli::Search(args) => {
             assert_eq!(args.query, "discovery");
-            assert_eq!(args.filter.repo_scope.as_deref(), Some("context-engine"));
+            assert_eq!(
+                args.filter.repo_scope.as_deref(),
+                Some("context-engine")
+            );
             assert_eq!(args.limit, 5);
-        }
+        },
         _ => panic!("expected search command"),
     }
 }
@@ -58,7 +67,7 @@ fn parse_sync_targets_command() {
             assert_eq!(args.config, PathBuf::from("rule-targets.yaml"));
             assert!(args.dry_run);
             assert!(!args.check);
-        }
+        },
         _ => panic!("expected sync-targets command"),
     }
 }
@@ -104,7 +113,8 @@ fn generate_file_writes_deterministic_markdown_with_provenance() {
 
     assert!(rendered.starts_with("<!-- rule-api:file generated=true -->\n\n"));
     let opening_idx = rendered.find("slug=shared/agents/opening").unwrap();
-    let validation_idx = rendered.find("slug=shared/agents/validation").unwrap();
+    let validation_idx =
+        rendered.find("slug=shared/agents/validation").unwrap();
     assert!(opening_idx < validation_idx);
 }
 
@@ -124,7 +134,10 @@ fn import_file_creates_rules_from_markdown_blocks() {
         &ImportFileArgs {
             path: markdown,
             file_kind: "AGENTS".to_string(),
-            repo_scope: vec!["context-engine".to_string(), "memory-viewers".to_string()],
+            repo_scope: vec![
+                "context-engine".to_string(),
+                "memory-viewers".to_string(),
+            ],
             slug_prefix: "shared/agents".to_string(),
             default_section: None,
             path_scope: vec!["AGENTS.md".to_string()],
@@ -157,7 +170,10 @@ fn import_file_creates_rules_from_markdown_blocks() {
     assert_eq!(imported.len(), 2);
     assert_eq!(imported_memory_viewers.len(), 2);
     assert_eq!(imported[0].slug(), Some("shared/agents/opening/l1"));
-    assert_eq!(imported[1].slug(), Some("shared/agents/opening/validation/l5"));
+    assert_eq!(
+        imported[1].slug(),
+        Some("shared/agents/opening/validation/l5")
+    );
 }
 
 #[test]
@@ -208,7 +224,9 @@ fn generate_target_uses_config_output_path() {
     )
     .unwrap();
 
-    let rendered = fs::read_to_string(dir.path().join("generated").join("AGENTS.md")).unwrap();
+    let rendered =
+        fs::read_to_string(dir.path().join("generated").join("AGENTS.md"))
+            .unwrap();
     assert!(rendered.contains("slug=shared/agents/opening"));
     assert!(!rendered.contains("slug=shared/agents/other"));
     assert!(rendered.starts_with("<!-- rule-api:file generated=true -->"));
@@ -263,7 +281,8 @@ fn sync_targets_prunes_removed_outputs_from_previous_sync() {
     )
     .unwrap();
 
-    rendering::sync_targets_payload(&mut store, &config_path, false, false).unwrap();
+    rendering::sync_targets_payload(&mut store, &config_path, false, false)
+        .unwrap();
     assert!(dir.path().join("memory-viewers/.github/README.md").exists());
 
     fs::write(
@@ -279,7 +298,9 @@ fn sync_targets_prunes_removed_outputs_from_previous_sync() {
     )
     .unwrap();
 
-    let payload = rendering::sync_targets_payload(&mut store, &config_path, false, false).unwrap();
+    let payload =
+        rendering::sync_targets_payload(&mut store, &config_path, false, false)
+            .unwrap();
     assert_eq!(payload.generated.len(), 1);
     assert_eq!(payload.removed.len(), 1);
     assert!(!dir.path().join("memory-viewers/.github/README.md").exists());

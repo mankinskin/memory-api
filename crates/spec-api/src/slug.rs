@@ -1,6 +1,6 @@
+use crate::error::SpecError;
 use std::collections::HashMap;
 use uuid::Uuid;
-use crate::error::SpecError;
 
 /// Validate a slug string.
 ///
@@ -16,21 +16,30 @@ pub fn validate_slug(slug: &str) -> Result<(), SpecError> {
         return Err(SpecError::InvalidSlug("slug cannot be empty".into()));
     }
     if slug.starts_with('/') || slug.ends_with('/') {
-        return Err(SpecError::InvalidSlug("slug cannot start or end with '/'".into()));
+        return Err(SpecError::InvalidSlug(
+            "slug cannot start or end with '/'".into(),
+        ));
     }
     for segment in slug.split('/') {
         if segment.is_empty() {
-            return Err(SpecError::InvalidSlug("slug contains empty segment".into()));
-        }
-        if !segment.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
             return Err(SpecError::InvalidSlug(
-                format!("segment '{}' contains invalid characters (only a-z, 0-9, - allowed)", segment)
+                "slug contains empty segment".into(),
             ));
+        }
+        if !segment
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        {
+            return Err(SpecError::InvalidSlug(format!(
+                "segment '{}' contains invalid characters (only a-z, 0-9, - allowed)",
+                segment
+            )));
         }
         if segment.starts_with('-') || segment.ends_with('-') {
-            return Err(SpecError::InvalidSlug(
-                format!("segment '{}' cannot start or end with '-'", segment)
-            ));
+            return Err(SpecError::InvalidSlug(format!(
+                "segment '{}' cannot start or end with '-'",
+                segment
+            )));
         }
     }
     Ok(())
@@ -44,12 +53,16 @@ pub struct SlugIndex {
 
 impl SlugIndex {
     pub fn new() -> Self {
-        Self { map: HashMap::new() }
+        Self {
+            map: HashMap::new(),
+        }
     }
 
     /// Rebuild the index from a list of (slug, id) pairs.
     /// Returns an error if duplicates are found.
-    pub fn rebuild(entries: impl IntoIterator<Item = (String, Uuid)>) -> Result<Self, SpecError> {
+    pub fn rebuild(
+        entries: impl IntoIterator<Item = (String, Uuid)>
+    ) -> Result<Self, SpecError> {
         let mut index = Self::new();
         for (slug, id) in entries {
             index.insert(slug, id)?;
@@ -58,7 +71,11 @@ impl SlugIndex {
     }
 
     /// Insert a slug → UUID mapping. Returns error if slug already exists with a different UUID.
-    pub fn insert(&mut self, slug: String, id: Uuid) -> Result<(), SpecError> {
+    pub fn insert(
+        &mut self,
+        slug: String,
+        id: Uuid,
+    ) -> Result<(), SpecError> {
         validate_slug(&slug)?;
         if let Some(existing) = self.map.get(&slug) {
             if *existing != id {
@@ -70,12 +87,18 @@ impl SlugIndex {
     }
 
     /// Resolve a slug to its UUID.
-    pub fn resolve(&self, slug: &str) -> Option<Uuid> {
+    pub fn resolve(
+        &self,
+        slug: &str,
+    ) -> Option<Uuid> {
         self.map.get(slug).copied()
     }
 
     /// Remove a slug from the index.
-    pub fn remove(&mut self, slug: &str) -> Option<Uuid> {
+    pub fn remove(
+        &mut self,
+        slug: &str,
+    ) -> Option<Uuid> {
         self.map.remove(slug)
     }
 
@@ -195,10 +218,8 @@ mod tests {
     fn test_slug_index_rebuild_duplicate_error() {
         let id1 = Uuid::new_v4();
         let id2 = Uuid::new_v4();
-        let entries = vec![
-            ("same-slug".into(), id1),
-            ("same-slug".into(), id2),
-        ];
+        let entries =
+            vec![("same-slug".into(), id1), ("same-slug".into(), id2)];
         assert!(SlugIndex::rebuild(entries).is_err());
     }
 }

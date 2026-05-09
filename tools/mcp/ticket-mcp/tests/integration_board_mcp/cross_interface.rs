@@ -1,9 +1,17 @@
 use rmcp::handler::server::wrapper::Parameters;
 use serde_json::Value;
 use ticket_api::storage::store::TicketStore;
-use ticket_mcp::server::{BoardShowInput, NextTicketsInput};
+use ticket_mcp::server::{
+    BoardShowInput,
+    NextTicketsInput,
+};
 
-use super::support::{extract_text, make_sandbox, seed_ticket, ws};
+use super::support::{
+    extract_text,
+    make_sandbox,
+    seed_ticket,
+    ws,
+};
 
 #[tokio::test]
 async fn board_show_parity_store_and_mcp() {
@@ -41,7 +49,10 @@ async fn board_show_parity_store_and_mcp() {
         .as_array()
         .expect("entries array");
     assert_eq!(entries.len(), 1, "exactly one entry in snapshot");
-    assert_eq!(entries[0]["agent_id"], "parity-agent", "agent_id must match");
+    assert_eq!(
+        entries[0]["agent_id"], "parity-agent",
+        "agent_id must match"
+    );
     assert_eq!(
         entries[0]["entry_id"].as_str().unwrap_or(""),
         entry.entry_id.to_string(),
@@ -52,7 +63,9 @@ async fn board_show_parity_store_and_mcp() {
         .as_array()
         .expect("owned_files array");
     assert!(
-        owned_files.iter().any(|file| file.as_str() == Some("parity.rs")),
+        owned_files
+            .iter()
+            .any(|file| file.as_str() == Some("parity.rs")),
         "parity.rs must appear in owned_files"
     );
 
@@ -71,7 +84,14 @@ async fn next_tickets_excludes_board_active_and_surfaces_wip_limit() {
         for id_str in [&t_active, &t_free] {
             let uid: uuid::Uuid = id_str.parse().expect("uuid");
             store
-                .update(&uid, Default::default(), None, Some("ready"), None, None)
+                .update(
+                    &uid,
+                    Default::default(),
+                    None,
+                    Some("ready"),
+                    None,
+                    None,
+                )
                 .expect("ready");
         }
 
@@ -101,7 +121,9 @@ async fn next_tickets_excludes_board_active_and_surfaces_wip_limit() {
     let json: Value = serde_json::from_str(&text).expect("valid json");
 
     assert!(
-        json["board"]["wip_limit_reached"].as_bool().unwrap_or(false),
+        json["board"]["wip_limit_reached"]
+            .as_bool()
+            .unwrap_or(false),
         "wip_limit_reached must be true: {json:#?}"
     );
 

@@ -1,17 +1,27 @@
 use std::path::Path;
 
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 use spec_api::{
-    SpecManifest, SpecStore,
+    SpecManifest,
+    SpecStore,
     code_ref::CodeRef,
 };
 use walkdir::WalkDir;
 
-use crate::cli::{BootstrapArgs, CliRunError};
+use crate::cli::{
+    BootstrapArgs,
+    CliRunError,
+};
 
 mod extract;
 
-use extract::{ExtractedItem, extract_public_items};
+use extract::{
+    ExtractedItem,
+    extract_public_items,
+};
 
 // ── One spec to be generated per source file ──────────────────────────────────
 
@@ -67,7 +77,8 @@ pub fn cmd_bootstrap(
     }
 
     // ── Scan all .rs files ─────────────────────────────────────────────────
-    let module_specs = scan_src_dir(&src_dir, &crate_path, &workspace_root, &crate_name);
+    let module_specs =
+        scan_src_dir(&src_dir, &crate_path, &workspace_root, &crate_name);
 
     if module_specs.is_empty() {
         return Ok(json!({
@@ -126,18 +137,20 @@ pub fn cmd_bootstrap(
         Ok(existing) => {
             skipped_count += 1;
             existing
-        }
+        },
         Err(_) => {
-            let mut manifest = SpecManifest::new(&root_slug, &crate_name, &component);
+            let mut manifest =
+                SpecManifest::new(&root_slug, &crate_name, &component);
             manifest.set_scope("public");
             let body = format!(
                 "# {crate_name}\n\nBootstrapped from source analysis.\n\n\
                  See child specs for individual module documentation.\n"
             );
-            let id = store.create(&manifest, &body, args.target_root.as_deref())?;
+            let id =
+                store.create(&manifest, &body, args.target_root.as_deref())?;
             created_count += 1;
             id
-        }
+        },
     };
 
     // ── Create one spec per module file ───────────────────────────────────
@@ -177,7 +190,8 @@ pub fn cmd_bootstrap(
             .collect();
         manifest.code_refs = code_refs;
 
-        let body = build_module_body(&ms.title, &ms.workspace_rel_file, &ms.items);
+        let body =
+            build_module_body(&ms.title, &ms.workspace_rel_file, &ms.items);
 
         store.create(&manifest, &body, args.target_root.as_deref())?;
         created_count += 1;
@@ -213,7 +227,8 @@ fn scan_src_dir(
         let abs_path = entry.path();
 
         // Skip the crate root files (root spec covers these)
-        let file_name = abs_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let file_name =
+            abs_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if file_name == "main.rs" || file_name == "lib.rs" {
             continue;
         }
@@ -289,8 +304,13 @@ fn scan_src_dir(
     specs
 }
 
-fn build_module_body(title: &str, file: &str, items: &[ExtractedItem]) -> String {
-    let mut body = format!("# {title}\n\nSource: `{file}`\n\n## Public API\n\n");
+fn build_module_body(
+    title: &str,
+    file: &str,
+    items: &[ExtractedItem],
+) -> String {
+    let mut body =
+        format!("# {title}\n\nSource: `{file}`\n\n## Public API\n\n");
     for item in items {
         body.push_str(&format!("### `{}` ({:?})\n\n", item.name, item.kind));
         if !item.doc_comment.is_empty() {

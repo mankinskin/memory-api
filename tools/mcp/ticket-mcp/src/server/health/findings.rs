@@ -2,7 +2,11 @@ use std::collections::BTreeMap;
 
 use rmcp::ErrorData as McpError;
 use serde_json::Value;
-use ticket_api::{storage::indexed::IndexedTicket, storage::store::TicketStore, storage::ticket_fs::TicketFs};
+use ticket_api::storage::{
+    indexed::IndexedTicket,
+    store::TicketStore,
+    ticket_fs::TicketFs,
+};
 use uuid::Uuid;
 
 use super::HealthContext;
@@ -42,7 +46,10 @@ fn append_ticket_findings(
     Ok(())
 }
 
-fn append_description_findings(report: &mut HealthReport, ticket: &IndexedTicket) {
+fn append_description_findings(
+    report: &mut HealthReport,
+    ticket: &IndexedTicket,
+) {
     let short_id = short_id(ticket.id);
     let title = ticket.title.as_deref().unwrap_or("?");
     let description = TicketFs::read_description(&ticket.path);
@@ -75,11 +82,14 @@ fn append_description_findings(report: &mut HealthReport, ticket: &IndexedTicket
                 ),
             }),
         ),
-        Some(_) => {}
+        Some(_) => {},
     }
 }
 
-fn append_title_finding(report: &mut HealthReport, ticket: &IndexedTicket) {
+fn append_title_finding(
+    report: &mut HealthReport,
+    ticket: &IndexedTicket,
+) {
     if ticket.title.is_some() && ticket.title.as_deref() != Some("") {
         return;
     }
@@ -170,7 +180,11 @@ fn append_dangling_edge_findings(
     Ok(())
 }
 
-fn record_finding(report: &mut HealthReport, key: &str, finding: Value) {
+fn record_finding(
+    report: &mut HealthReport,
+    key: &str,
+    finding: Value,
+) {
     *report.summary.entry(key.to_string()).or_insert(0) += 1;
     report.findings.push(finding);
 }

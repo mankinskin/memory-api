@@ -1,5 +1,11 @@
 use spec_api::code_ref::SymbolKind;
-use syn::{Attribute, Item, ItemImpl, Visibility, spanned::Spanned};
+use syn::{
+    Attribute,
+    Item,
+    ItemImpl,
+    Visibility,
+    spanned::Spanned,
+};
 
 #[derive(Debug)]
 pub(super) struct ExtractedItem {
@@ -18,7 +24,10 @@ pub(super) fn extract_public_items(ast: &syn::File) -> Vec<ExtractedItem> {
     items
 }
 
-fn collect_item(item: &Item, out: &mut Vec<ExtractedItem>) {
+fn collect_item(
+    item: &Item,
+    out: &mut Vec<ExtractedItem>,
+) {
     match item {
         Item::Struct(item_struct) if is_pub(&item_struct.vis) => {
             out.push(ExtractedItem {
@@ -28,7 +37,7 @@ fn collect_item(item: &Item, out: &mut Vec<ExtractedItem>) {
                 line_end: span_line_end(item_struct.span()),
                 doc_comment: extract_doc_comment(&item_struct.attrs),
             });
-        }
+        },
         Item::Enum(item_enum) if is_pub(&item_enum.vis) => {
             out.push(ExtractedItem {
                 name: item_enum.ident.to_string(),
@@ -37,7 +46,7 @@ fn collect_item(item: &Item, out: &mut Vec<ExtractedItem>) {
                 line_end: span_line_end(item_enum.span()),
                 doc_comment: extract_doc_comment(&item_enum.attrs),
             });
-        }
+        },
         Item::Trait(item_trait) if is_pub(&item_trait.vis) => {
             out.push(ExtractedItem {
                 name: item_trait.ident.to_string(),
@@ -46,7 +55,7 @@ fn collect_item(item: &Item, out: &mut Vec<ExtractedItem>) {
                 line_end: span_line_end(item_trait.span()),
                 doc_comment: extract_doc_comment(&item_trait.attrs),
             });
-        }
+        },
         Item::Fn(item_fn) if is_pub(&item_fn.vis) => {
             out.push(ExtractedItem {
                 name: item_fn.sig.ident.to_string(),
@@ -55,7 +64,7 @@ fn collect_item(item: &Item, out: &mut Vec<ExtractedItem>) {
                 line_end: span_line_end(item_fn.span()),
                 doc_comment: extract_doc_comment(&item_fn.attrs),
             });
-        }
+        },
         Item::Impl(item_impl) => {
             out.push(ExtractedItem {
                 name: impl_type_name(item_impl),
@@ -64,15 +73,15 @@ fn collect_item(item: &Item, out: &mut Vec<ExtractedItem>) {
                 line_end: span_line_end(item_impl.span()),
                 doc_comment: extract_doc_comment(&item_impl.attrs),
             });
-        }
+        },
         Item::Mod(item_mod) if is_pub(&item_mod.vis) => {
             if let Some((_, items)) = &item_mod.content {
                 for inner in items {
                     collect_item(inner, out);
                 }
             }
-        }
-        _ => {}
+        },
+        _ => {},
     }
 }
 

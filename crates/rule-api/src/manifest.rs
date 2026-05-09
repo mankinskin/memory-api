@@ -1,9 +1,17 @@
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use serde_json::Number;
-use serde_json::Value;
+use chrono::{
+    DateTime,
+    Utc,
+};
+use serde::{
+    Deserialize,
+    Serialize,
+};
+use serde_json::{
+    Number,
+    Value,
+};
 use uuid::Uuid;
 
 pub type RuleId = Uuid;
@@ -36,7 +44,13 @@ pub struct RuleManifest {
 }
 
 impl RuleManifest {
-    pub fn new(slug: &str, title: &str, file_kind: &str, section: &str, body: &str) -> Self {
+    pub fn new(
+        slug: &str,
+        title: &str,
+        file_kind: &str,
+        section: &str,
+        body: &str,
+    ) -> Self {
         let mut extra = BTreeMap::new();
         extra.insert("slug".to_string(), Value::String(slug.to_string()));
         extra.insert("title".to_string(), Value::String(title.to_string()));
@@ -52,24 +66,12 @@ impl RuleManifest {
             "file_kind".to_string(),
             Value::String(file_kind.to_string()),
         );
-        extra.insert(
-            "section".to_string(),
-            Value::String(section.to_string()),
-        );
-        extra.insert(
-            "body".to_string(),
-            Value::String(body.to_string()),
-        );
-        extra.insert(
-            "order_key".to_string(),
-            Value::Number(0.into()),
-        );
+        extra.insert("section".to_string(), Value::String(section.to_string()));
+        extra.insert("body".to_string(), Value::String(body.to_string()));
+        extra.insert("order_key".to_string(), Value::Number(0.into()));
         extra.insert("repo_scopes".to_string(), Value::Array(Vec::new()));
         extra.insert("path_scopes".to_string(), Value::Array(Vec::new()));
-        extra.insert(
-            "sentence_anchors".to_string(),
-            Value::Array(Vec::new()),
-        );
+        extra.insert("sentence_anchors".to_string(), Value::Array(Vec::new()));
         extra.insert(
             "feedback_helpful_count".to_string(),
             Value::Number(0.into()),
@@ -82,10 +84,8 @@ impl RuleManifest {
             "feedback_not_helpful_count".to_string(),
             Value::Number(0.into()),
         );
-        extra.insert(
-            "feedback_note_count".to_string(),
-            Value::Number(0.into()),
-        );
+        extra
+            .insert("feedback_note_count".to_string(), Value::Number(0.into()));
         extra.insert(
             "feedback_unresolved_count".to_string(),
             Value::Number(0.into()),
@@ -161,7 +161,9 @@ impl RuleManifest {
     }
 
     pub fn feedback_mixed_count(&self) -> Option<i64> {
-        self.extra.get("feedback_mixed_count").and_then(Value::as_i64)
+        self.extra
+            .get("feedback_mixed_count")
+            .and_then(Value::as_i64)
     }
 
     pub fn feedback_not_helpful_count(&self) -> Option<i64> {
@@ -171,7 +173,9 @@ impl RuleManifest {
     }
 
     pub fn feedback_note_count(&self) -> Option<i64> {
-        self.extra.get("feedback_note_count").and_then(Value::as_i64)
+        self.extra
+            .get("feedback_note_count")
+            .and_then(Value::as_i64)
     }
 
     pub fn feedback_unresolved_count(&self) -> Option<i64> {
@@ -184,25 +188,36 @@ impl RuleManifest {
         self.extra.get("feedback_last_at").and_then(Value::as_str)
     }
 
-    pub fn set_state(&mut self, state: RuleState) {
+    pub fn set_state(
+        &mut self,
+        state: RuleState,
+    ) {
         self.extra.insert(
             "state".to_string(),
             Value::String(state.as_str().to_string()),
         );
     }
 
-    pub fn set_body(&mut self, body: &str) {
+    pub fn set_body(
+        &mut self,
+        body: &str,
+    ) {
         self.extra
             .insert("body".to_string(), Value::String(body.to_string()));
     }
 
-    pub fn set_order_key(&mut self, order_key: i64) {
+    pub fn set_order_key(
+        &mut self,
+        order_key: i64,
+    ) {
         self.extra
             .insert("order_key".to_string(), Value::Number(order_key.into()));
     }
 
-    pub fn set_repo_scopes<I, S>(&mut self, scopes: I)
-    where
+    pub fn set_repo_scopes<I, S>(
+        &mut self,
+        scopes: I,
+    ) where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
@@ -212,8 +227,10 @@ impl RuleManifest {
         );
     }
 
-    pub fn set_path_scopes<I, S>(&mut self, scopes: I)
-    where
+    pub fn set_path_scopes<I, S>(
+        &mut self,
+        scopes: I,
+    ) where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
@@ -223,8 +240,10 @@ impl RuleManifest {
         );
     }
 
-    pub fn set_sentence_anchors<I, S>(&mut self, anchors: I)
-    where
+    pub fn set_sentence_anchors<I, S>(
+        &mut self,
+        anchors: I,
+    ) where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
@@ -294,10 +313,10 @@ impl RuleManifest {
                     "feedback_last_at".to_string(),
                     Value::String(timestamp.to_string()),
                 );
-            }
+            },
             None => {
                 self.extra.remove("feedback_last_at");
-            }
+            },
         }
     }
 }
@@ -313,8 +332,12 @@ where
         .collect()
 }
 
-fn string_array(extra: &BTreeMap<String, Value>, key: &str) -> Vec<String> {
-    extra.get(key)
+fn string_array(
+    extra: &BTreeMap<String, Value>,
+    key: &str,
+) -> Vec<String> {
+    extra
+        .get(key)
         .and_then(Value::as_array)
         .map(|items| {
             items
@@ -361,11 +384,26 @@ mod tests {
         manifest.set_repo_scopes(["context-engine", "memory-api"]);
         manifest.set_path_scopes([".github/**", "AGENTS.md"]);
         manifest.set_sentence_anchors(["p1-s1", "p1-s2"]);
-        manifest.set_source_location("context-engine", ".github/README.md", 4, 12);
-        manifest.set_feedback_summary(3, 1, 0, 2, 1, Some("2026-05-07T14:00:00Z"));
+        manifest.set_source_location(
+            "context-engine",
+            ".github/README.md",
+            4,
+            12,
+        );
+        manifest.set_feedback_summary(
+            3,
+            1,
+            0,
+            2,
+            1,
+            Some("2026-05-07T14:00:00Z"),
+        );
 
         assert_eq!(manifest.order_key(), Some(20));
-        assert_eq!(manifest.repo_scopes(), vec!["context-engine", "memory-api"]);
+        assert_eq!(
+            manifest.repo_scopes(),
+            vec!["context-engine", "memory-api"]
+        );
         assert_eq!(manifest.path_scopes(), vec![".github/**", "AGENTS.md"]);
         assert_eq!(manifest.sentence_anchors(), vec!["p1-s1", "p1-s2"]);
         assert_eq!(manifest.source_repo(), Some("context-engine"));

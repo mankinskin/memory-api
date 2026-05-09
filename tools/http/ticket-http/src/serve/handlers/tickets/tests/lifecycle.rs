@@ -1,17 +1,37 @@
 use axum::{
     Json,
     body::to_bytes,
-    extract::{Extension, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    extract::{
+        Extension,
+        Path,
+        Query,
+        State,
+    },
+    http::{
+        HeaderMap,
+        StatusCode,
+    },
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::Arc,
+};
 use uuid::Uuid;
 use viewer_api::error::RequestIdExt;
 
-use super::{make_state, make_store};
-use super::super::{
-    CancelTicketBody, CloseTicketBody, MutationWorkspaceParam, RevertTicketBody, cancel_ticket,
-    close_ticket, delete_ticket, revert_ticket,
+use super::{
+    super::{
+        CancelTicketBody,
+        CloseTicketBody,
+        MutationWorkspaceParam,
+        RevertTicketBody,
+        cancel_ticket,
+        close_ticket,
+        delete_ticket,
+        revert_ticket,
+    },
+    make_state,
+    make_store,
 };
 
 #[tokio::test]
@@ -49,7 +69,8 @@ async fn close_ticket_fast_forwards_to_done() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["ticket"]["fields"]["state"], "done");
 }
 
@@ -92,7 +113,8 @@ async fn revert_ticket_restores_historical_revision() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["request_id"], "rid-revert");
     assert_eq!(payload["workspace"], "default");
     assert_eq!(payload["ticket"]["fields"]["state"], "new");
@@ -134,7 +156,8 @@ async fn revert_ticket_returns_400_for_unknown_revision() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["code"], "revision_not_found");
 }
 
@@ -175,9 +198,13 @@ async fn cancel_ticket_transitions_to_cancelled_with_reason() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["ticket"]["fields"]["state"], "cancelled");
-    assert_eq!(payload["ticket"]["fields"]["cancel_reason"], "No longer needed");
+    assert_eq!(
+        payload["ticket"]["fields"]["cancel_reason"],
+        "No longer needed"
+    );
 }
 
 #[tokio::test]
@@ -213,7 +240,8 @@ async fn delete_ticket_marks_as_deleted() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["id"], id.to_string());
 
     let indexed = store
@@ -242,7 +270,8 @@ async fn delete_nonexistent_ticket_returns_404_envelope() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["code"], "not_found");
     assert!(payload.get("request_id").is_some());
 }

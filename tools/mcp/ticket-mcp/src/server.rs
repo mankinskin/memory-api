@@ -1,11 +1,20 @@
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{
+    path::PathBuf,
+    sync::Arc,
+};
 
 use rmcp::{
-    ErrorData as McpError, ServerHandler, ServiceExt,
-    handler::server::{tool::ToolRouter, wrapper::Parameters},
+    ErrorData as McpError,
+    ServerHandler,
+    ServiceExt,
+    handler::server::{
+        tool::ToolRouter,
+        wrapper::Parameters,
+    },
     model::*,
-    tool, tool_handler, tool_router,
+    tool,
+    tool_handler,
+    tool_router,
     transport::stdio,
 };
 use serde::Serialize;
@@ -41,9 +50,12 @@ impl TicketServer {
         }
     }
 
-    fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
-        let text = serde_json::to_string_pretty(value)
-            .map_err(|error| McpError::internal_error(format!("serialization: {error}"), None))?;
+    fn json_result<T: Serialize>(
+        value: &T
+    ) -> Result<CallToolResult, McpError> {
+        let text = serde_json::to_string_pretty(value).map_err(|error| {
+            McpError::internal_error(format!("serialization: {error}"), None)
+        })?;
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
@@ -53,23 +65,32 @@ impl TicketServer {
 
     fn board_err(error: ticket_api::BoardError) -> McpError {
         match error {
-            ticket_api::BoardError::Storage(storage_error) => Self::store_err(storage_error),
+            ticket_api::BoardError::Storage(storage_error) =>
+                Self::store_err(storage_error),
             other => McpError::invalid_params(other.to_string(), None),
         }
     }
 
-    fn resolve_uuid_with(store: &TicketStore, value: &str) -> Result<Uuid, McpError> {
+    fn resolve_uuid_with(
+        store: &TicketStore,
+        value: &str,
+    ) -> Result<Uuid, McpError> {
         if let Ok(id) = value.parse::<Uuid>() {
             return Ok(id);
         }
 
         let trimmed = value.trim();
-        if trimmed.len() >= 8 && trimmed.chars().all(|ch| ch.is_ascii_hexdigit()) {
-            let tickets = store.list(None, None, None).map_err(Self::store_err)?;
+        if trimmed.len() >= 8
+            && trimmed.chars().all(|ch| ch.is_ascii_hexdigit())
+        {
+            let tickets =
+                store.list(None, None, None).map_err(Self::store_err)?;
             let prefix_lower = trimmed.to_ascii_lowercase();
             let matches: Vec<Uuid> = tickets
                 .iter()
-                .filter(|ticket| ticket.id.simple().to_string().starts_with(&prefix_lower))
+                .filter(|ticket| {
+                    ticket.id.simple().to_string().starts_with(&prefix_lower)
+                })
                 .map(|ticket| ticket.id)
                 .collect();
 
@@ -80,14 +101,18 @@ impl TicketServer {
                     None,
                 )),
                 count => Err(McpError::invalid_params(
-                    format!("ambiguous prefix '{trimmed}': matches {count} tickets"),
+                    format!(
+                        "ambiguous prefix '{trimmed}': matches {count} tickets"
+                    ),
                     None,
                 )),
             };
         }
 
         Err(McpError::invalid_params(
-            format!("invalid UUID '{value}': expected full UUID or hex prefix (>= 8 chars)"),
+            format!(
+                "invalid UUID '{value}': expected full UUID or hex prefix (>= 8 chars)"
+            ),
             None,
         ))
     }
@@ -97,7 +122,8 @@ impl TicketServer {
         f: impl FnOnce(&TicketStore) -> Result<T, ticket_api::error::StorageError>,
     ) -> Result<T, McpError> {
         let _guard = self.store_lock.lock().await;
-        let store = TicketStore::open(&self.index_root).map_err(Self::store_err)?;
+        let store =
+            TicketStore::open(&self.index_root).map_err(Self::store_err)?;
         let result = f(&store).map_err(Self::store_err);
         drop(store);
         result
@@ -108,7 +134,8 @@ impl TicketServer {
         f: impl FnOnce(&TicketStore) -> Result<T, McpError>,
     ) -> Result<T, McpError> {
         let _guard = self.store_lock.lock().await;
-        let store = TicketStore::open(&self.index_root).map_err(Self::store_err)?;
+        let store =
+            TicketStore::open(&self.index_root).map_err(Self::store_err)?;
         let result = f(&store);
         drop(store);
         result
@@ -117,17 +144,26 @@ impl TicketServer {
 
 #[tool_router]
 impl TicketServer {
-    #[tool(name = "health", description = "Check that the ticket store is accessible.")]
+    #[tool(
+        name = "health",
+        description = "Check that the ticket store is accessible."
+    )]
     async fn health(&self) -> Result<CallToolResult, McpError> {
         self.health_tool().await
     }
 
-    #[tool(name = "list_workspaces", description = "List available ticket workspaces.")]
+    #[tool(
+        name = "list_workspaces",
+        description = "List available ticket workspaces."
+    )]
     async fn list_workspaces(&self) -> Result<CallToolResult, McpError> {
         self.list_workspaces_tool().await
     }
 
-    #[tool(name = "list_tickets", description = "List tickets with optional state/query/limit filters.")]
+    #[tool(
+        name = "list_tickets",
+        description = "List tickets with optional state/query/limit filters."
+    )]
     async fn list_tickets(
         &self,
         Parameters(input): Parameters<ListTicketsInput>,
@@ -143,7 +179,10 @@ impl TicketServer {
         self.get_ticket_tool(input).await
     }
 
-    #[tool(name = "get_ticket_description", description = "Get ticket markdown description by id.")]
+    #[tool(
+        name = "get_ticket_description",
+        description = "Get ticket markdown description by id."
+    )]
     async fn get_ticket_description(
         &self,
         Parameters(input): Parameters<TicketRefInput>,
@@ -151,7 +190,10 @@ impl TicketServer {
         self.get_ticket_description_tool(input).await
     }
 
-    #[tool(name = "list_edges", description = "List ticket graph edges, optionally filtered by edge kind.")]
+    #[tool(
+        name = "list_edges",
+        description = "List ticket graph edges, optionally filtered by edge kind."
+    )]
     async fn list_edges(
         &self,
         Parameters(input): Parameters<ListEdgesInput>,
@@ -159,7 +201,10 @@ impl TicketServer {
         self.list_edges_tool(input).await
     }
 
-    #[tool(name = "subgraph", description = "Fetch dependency subgraph for a root ticket via BFS traversal.")]
+    #[tool(
+        name = "subgraph",
+        description = "Fetch dependency subgraph for a root ticket via BFS traversal."
+    )]
     async fn subgraph(
         &self,
         Parameters(input): Parameters<SubgraphInput>,
@@ -176,7 +221,10 @@ impl TicketServer {
         .await
     }
 
-    #[tool(name = "topgraph", description = "Fetch reverse dependency graph (tickets that depend on the root) via BFS traversal.")]
+    #[tool(
+        name = "topgraph",
+        description = "Fetch reverse dependency graph (tickets that depend on the root) via BFS traversal."
+    )]
     async fn topgraph(
         &self,
         Parameters(input): Parameters<TopgraphInput>,
@@ -193,7 +241,10 @@ impl TicketServer {
         .await
     }
 
-    #[tool(name = "next_tickets", description = "List unblocked tickets in any non-terminal state whose dependencies are all satisfied, ordered by workflow progress (closest to done first), then priority. Designed for worker agents to pick the next implementable item.")]
+    #[tool(
+        name = "next_tickets",
+        description = "List unblocked tickets in any non-terminal state whose dependencies are all satisfied, ordered by workflow progress (closest to done first), then priority. Designed for worker agents to pick the next implementable item."
+    )]
     pub async fn next_tickets(
         &self,
         Parameters(input): Parameters<NextTicketsInput>,
@@ -201,7 +252,10 @@ impl TicketServer {
         self.next_tickets_tool(input).await
     }
 
-    #[tool(name = "health_check", description = "Run health checks on tickets: validates descriptions, titles, dependency state consistency, and dangling edges. Scope by root (BFS subgraph), explicit IDs, or all tickets.")]
+    #[tool(
+        name = "health_check",
+        description = "Run health checks on tickets: validates descriptions, titles, dependency state consistency, and dangling edges. Scope by root (BFS subgraph), explicit IDs, or all tickets."
+    )]
     async fn health_check(
         &self,
         Parameters(input): Parameters<HealthCheckInput>,
@@ -217,7 +271,10 @@ impl TicketServer {
         .await
     }
 
-    #[tool(name = "update_ticket", description = "Update a ticket: apply field patches and/or transition state. Set undo=true to revert to the previous history revision.")]
+    #[tool(
+        name = "update_ticket",
+        description = "Update a ticket: apply field patches and/or transition state. Set undo=true to revert to the previous history revision."
+    )]
     async fn update_ticket(
         &self,
         Parameters(input): Parameters<UpdateTicketInput>,
@@ -225,7 +282,10 @@ impl TicketServer {
         self.update_ticket_tool(input).await
     }
 
-    #[tool(name = "close_ticket", description = "Fast-forward a ticket to a target state by traversing all intermediate transitions (default: done).")]
+    #[tool(
+        name = "close_ticket",
+        description = "Fast-forward a ticket to a target state by traversing all intermediate transitions (default: done)."
+    )]
     async fn close_ticket(
         &self,
         Parameters(input): Parameters<CloseTicketInput>,
@@ -233,7 +293,10 @@ impl TicketServer {
         self.close_ticket_tool(input).await
     }
 
-    #[tool(name = "cancel_ticket", description = "Cancel a ticket (fast-forward to 'cancelled' state).")]
+    #[tool(
+        name = "cancel_ticket",
+        description = "Cancel a ticket (fast-forward to 'cancelled' state)."
+    )]
     async fn cancel_ticket(
         &self,
         Parameters(input): Parameters<CancelTicketInput>,
@@ -241,7 +304,10 @@ impl TicketServer {
         self.cancel_ticket_tool(input).await
     }
 
-    #[tool(name = "create_ticket", description = "Create a new ticket with the given type, optional title, state, fields, and description.")]
+    #[tool(
+        name = "create_ticket",
+        description = "Create a new ticket with the given type, optional title, state, fields, and description."
+    )]
     async fn create_ticket(
         &self,
         Parameters(input): Parameters<CreateTicketInput>,
@@ -249,7 +315,10 @@ impl TicketServer {
         self.create_ticket_tool(input).await
     }
 
-    #[tool(name = "delete_ticket", description = "Soft-delete a ticket. The ticket is marked deleted but its history is preserved.")]
+    #[tool(
+        name = "delete_ticket",
+        description = "Soft-delete a ticket. The ticket is marked deleted but its history is preserved."
+    )]
     async fn delete_ticket(
         &self,
         Parameters(input): Parameters<DeleteTicketInput>,
@@ -257,7 +326,10 @@ impl TicketServer {
         self.delete_ticket_tool(input).await
     }
 
-    #[tool(name = "add_edge", description = "Add a directed edge between two tickets (e.g. depends_on, linked).")]
+    #[tool(
+        name = "add_edge",
+        description = "Add a directed edge between two tickets (e.g. depends_on, linked)."
+    )]
     async fn add_edge(
         &self,
         Parameters(input): Parameters<AddEdgeInput>,
@@ -265,7 +337,10 @@ impl TicketServer {
         self.add_edge_tool(input).await
     }
 
-    #[tool(name = "remove_edge", description = "Remove a directed edge between two tickets.")]
+    #[tool(
+        name = "remove_edge",
+        description = "Remove a directed edge between two tickets."
+    )]
     async fn remove_edge(
         &self,
         Parameters(input): Parameters<RemoveEdgeInput>,
@@ -273,7 +348,10 @@ impl TicketServer {
         self.remove_edge_tool(input).await
     }
 
-    #[tool(name = "workflow", description = "Show ready-to-run ticket MCP call sequences for common tasks.")]
+    #[tool(
+        name = "workflow",
+        description = "Show ready-to-run ticket MCP call sequences for common tasks."
+    )]
     async fn workflow(
         &self,
         Parameters(input): Parameters<WorkflowInput>,
@@ -281,7 +359,10 @@ impl TicketServer {
         self.workflow_tool(input).await
     }
 
-    #[tool(name = "board_show", description = "Read the current draftboard snapshot. When agent_id is supplied, performs a follow-up heartbeat for the caller's active entries and returns the refreshed entry alongside the snapshot.")]
+    #[tool(
+        name = "board_show",
+        description = "Read the current draftboard snapshot. When agent_id is supplied, performs a follow-up heartbeat for the caller's active entries and returns the refreshed entry alongside the snapshot."
+    )]
     pub async fn board_show(
         &self,
         Parameters(input): Parameters<BoardShowInput>,
@@ -289,7 +370,10 @@ impl TicketServer {
         self.board_show_tool(input).await
     }
 
-    #[tool(name = "board_check_in", description = "Register an agent as actively working on a ticket. Returns the new board entry. Fails with WIP limit or file conflict errors.")]
+    #[tool(
+        name = "board_check_in",
+        description = "Register an agent as actively working on a ticket. Returns the new board entry. Fails with WIP limit or file conflict errors."
+    )]
     pub async fn board_check_in(
         &self,
         Parameters(input): Parameters<BoardCheckInInput>,
@@ -297,7 +381,10 @@ impl TicketServer {
         self.board_check_in_tool(input).await
     }
 
-    #[tool(name = "board_check_out", description = "Remove an agent from the draftboard for the given ticket. If agent_id is omitted, the first active entry for the ticket is used.")]
+    #[tool(
+        name = "board_check_out",
+        description = "Remove an agent from the draftboard for the given ticket. If agent_id is omitted, the first active entry for the ticket is used."
+    )]
     pub async fn board_check_out(
         &self,
         Parameters(input): Parameters<BoardCheckOutInput>,
@@ -305,7 +392,10 @@ impl TicketServer {
         self.board_check_out_tool(input).await
     }
 
-    #[tool(name = "board_heartbeat", description = "Refresh the TTL for a board entry to prevent it from going stale. Returns the updated entry with a refreshed last_heartbeat timestamp.")]
+    #[tool(
+        name = "board_heartbeat",
+        description = "Refresh the TTL for a board entry to prevent it from going stale. Returns the updated entry with a refreshed last_heartbeat timestamp."
+    )]
     pub async fn board_heartbeat(
         &self,
         Parameters(input): Parameters<BoardHeartbeatInput>,
@@ -313,7 +403,10 @@ impl TicketServer {
         self.board_heartbeat_tool(input).await
     }
 
-    #[tool(name = "board_configure", description = "Read or update the board configuration. Omit all optional fields to read the current config. Provide any field to patch and persist the updated config.")]
+    #[tool(
+        name = "board_configure",
+        description = "Read or update the board configuration. Omit all optional fields to read the current config. Provide any field to patch and persist the updated config."
+    )]
     pub async fn board_configure(
         &self,
         Parameters(input): Parameters<BoardConfigureInput>,
@@ -321,7 +414,10 @@ impl TicketServer {
         self.board_configure_tool(input).await
     }
 
-    #[tool(name = "board_clean_preview", description = "Preview which board entries would be pruned by a clean operation. Returns a list of candidates and a confirmation token to pass to board_clean_apply.")]
+    #[tool(
+        name = "board_clean_preview",
+        description = "Preview which board entries would be pruned by a clean operation. Returns a list of candidates and a confirmation token to pass to board_clean_apply."
+    )]
     pub async fn board_clean_preview(
         &self,
         Parameters(input): Parameters<BoardCleanPreviewInput>,
@@ -329,7 +425,10 @@ impl TicketServer {
         self.board_clean_preview_tool(input).await
     }
 
-    #[tool(name = "board_clean_apply", description = "Execute a board cleanup using the token obtained from board_clean_preview. Rejects the token if the board has changed materially since the preview.")]
+    #[tool(
+        name = "board_clean_apply",
+        description = "Execute a board cleanup using the token obtained from board_clean_preview. Rejects the token if the board has changed materially since the preview."
+    )]
     pub async fn board_clean_apply(
         &self,
         Parameters(input): Parameters<BoardCleanApplyInput>,
@@ -337,7 +436,10 @@ impl TicketServer {
         self.board_clean_apply_tool(input).await
     }
 
-    #[tool(name = "board_update_files", description = "Add or remove files from an active board entry's owned_files. Conflict detection runs on newly added files.")]
+    #[tool(
+        name = "board_update_files",
+        description = "Add or remove files from an active board entry's owned_files. Conflict detection runs on newly added files."
+    )]
     pub async fn board_update_files(
         &self,
         Parameters(input): Parameters<BoardUpdateFilesInput>,
@@ -345,7 +447,10 @@ impl TicketServer {
         self.board_update_files_tool(input).await
     }
 
-    #[tool(name = "board_rename_file", description = "Atomically rename a file in an active board entry's owned_files: releases the old path and claims the new path in one audited operation.")]
+    #[tool(
+        name = "board_rename_file",
+        description = "Atomically rename a file in an active board entry's owned_files: releases the old path and claims the new path in one audited operation."
+    )]
     pub async fn board_rename_file(
         &self,
         Parameters(input): Parameters<BoardRenameFileInput>,
@@ -353,7 +458,10 @@ impl TicketServer {
         self.board_rename_file_tool(input).await
     }
 
-    #[tool(name = "help", description = "List ticket-mcp tools and their parameters.")]
+    #[tool(
+        name = "help",
+        description = "List ticket-mcp tools and their parameters."
+    )]
     async fn help(&self) -> Result<CallToolResult, McpError> {
         self.help_tool().await
     }
@@ -374,7 +482,7 @@ impl ServerHandler for TicketServer {
 }
 
 pub async fn run_mcp_server(
-    index_root: PathBuf,
+    index_root: PathBuf
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let server = TicketServer::new(index_root);
 

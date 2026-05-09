@@ -1,11 +1,19 @@
 use std::path::PathBuf;
 
 use memory_api::model::filesystem::ScanRoot;
-use rmcp::{ErrorData as McpError, model::CallToolResult};
+use rmcp::{
+    ErrorData as McpError,
+    model::CallToolResult,
+};
 use serde_json::json;
 
 use super::{
-    AddRootInput, ScanInput, SectionAddInput, SectionRefInput, SpecRefInput, SpecServer,
+    AddRootInput,
+    ScanInput,
+    SectionAddInput,
+    SectionRefInput,
+    SpecRefInput,
+    SpecServer,
 };
 
 impl SpecServer {
@@ -31,7 +39,8 @@ impl SpecServer {
         input: SpecRefInput,
     ) -> Result<CallToolResult, McpError> {
         self.with_store(|store| {
-            let sections = store.list_sections(&input.id).map_err(Self::spec_err)?;
+            let sections =
+                store.list_sections(&input.id).map_err(Self::spec_err)?;
             Self::json_result(&json!({
                 "status": "ok",
                 "spec": input.id,
@@ -52,15 +61,21 @@ impl SpecServer {
                 .entity_store()
                 .get_indexed(&uuid)
                 .map_err(Self::storage_err)?
-                .ok_or_else(|| McpError::invalid_params("spec not found", None))?;
+                .ok_or_else(|| {
+                    McpError::invalid_params("spec not found", None)
+                })?;
             let file_name = if input.name.ends_with(".md") {
                 input.name.clone()
             } else {
                 format!("{}.md", input.name)
             };
             let path = indexed.path.join("sections").join(&file_name);
-            let content = std::fs::read_to_string(&path)
-                .map_err(|error| McpError::invalid_params(format!("section not found: {error}"), None))?;
+            let content = std::fs::read_to_string(&path).map_err(|error| {
+                McpError::invalid_params(
+                    format!("section not found: {error}"),
+                    None,
+                )
+            })?;
             Self::json_result(&json!({
                 "status": "ok",
                 "spec": input.id,

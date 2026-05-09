@@ -40,7 +40,9 @@ fn resolve_index_root() -> PathBuf {
     if let Some(p) = cwd_spec.filter(|p| p.exists()) {
         return p;
     }
-    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+    if let Ok(home) =
+        std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))
+    {
         return PathBuf::from(home).join(".spec-index");
     }
     PathBuf::from(".spec")

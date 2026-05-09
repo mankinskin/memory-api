@@ -1,22 +1,44 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{
+        HashMap,
+        HashSet,
+        VecDeque,
+    },
     sync::Arc,
     time::Instant,
 };
 
 use axum::{
     http::StatusCode,
-    response::{IntoResponse, Json, Response},
+    response::{
+        IntoResponse,
+        Json,
+        Response,
+    },
 };
 use ticket_api::{
     model::edge::EdgeRecord,
-    storage::{indexed::IndexedTicket, store::TicketStore, ticket_fs::TicketFs},
+    storage::{
+        indexed::IndexedTicket,
+        store::TicketStore,
+        ticket_fs::TicketFs,
+    },
 };
 use uuid::Uuid;
 
-use crate::serve::{error::storage_err, AppState};
+use crate::serve::{
+    AppState,
+    error::storage_err,
+};
 
-use super::{EdgeItem, NodeItem, SubgraphQuery, SubgraphResponse, SubgraphStats, TopgraphQuery};
+use super::{
+    EdgeItem,
+    NodeItem,
+    SubgraphQuery,
+    SubgraphResponse,
+    SubgraphStats,
+    TopgraphQuery,
+};
 
 type AdjEntry = (Uuid, Uuid, Uuid, String);
 
@@ -83,7 +105,8 @@ pub(super) async fn handle_subgraph(
         request_id = %request_id,
         "subgraph request received"
     );
-    run_graph_request(state, request_id, GraphRequest::from_subgraph(params)).await
+    run_graph_request(state, request_id, GraphRequest::from_subgraph(params))
+        .await
 }
 
 pub(super) async fn handle_topgraph(
@@ -91,7 +114,8 @@ pub(super) async fn handle_topgraph(
     request_id: String,
     params: TopgraphQuery,
 ) -> Response {
-    run_graph_request(state, request_id, GraphRequest::from_topgraph(params)).await
+    run_graph_request(state, request_id, GraphRequest::from_topgraph(params))
+        .await
 }
 
 async fn run_graph_request(
@@ -104,12 +128,17 @@ async fn run_graph_request(
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
-fn bfs_graph(state: AppState, request_id: &str, request: GraphRequest) -> Response {
+fn bfs_graph(
+    state: AppState,
+    request_id: &str,
+    request: GraphRequest,
+) -> Response {
     let total_timer = Instant::now();
-    let store = match resolve_workspace_store(&state, &request.workspace, request_id) {
-        Ok(store) => store,
-        Err(response) => return response,
-    };
+    let store =
+        match resolve_workspace_store(&state, &request.workspace, request_id) {
+            Ok(store) => store,
+            Err(response) => return response,
+        };
 
     let phase_timer = Instant::now();
     let all_edges = match store.list_all_edges() {
@@ -178,21 +207,28 @@ fn resolve_workspace_store(
     })
 }
 
-fn build_adjacency(all_edges: &[EdgeRecord], edge_kind_filter: &str) -> HashMap<Uuid, Vec<AdjEntry>> {
+fn build_adjacency(
+    all_edges: &[EdgeRecord],
+    edge_kind_filter: &str,
+) -> HashMap<Uuid, Vec<AdjEntry>> {
     let mut adjacency = HashMap::new();
     for edge in all_edges {
         if edge_kind_filter != "all" && edge.kind != edge_kind_filter {
             continue;
         }
 
-        adjacency
-            .entry(edge.from)
-            .or_insert_with(Vec::new)
-            .push((edge.to, edge.from, edge.to, edge.kind.clone()));
-        adjacency
-            .entry(edge.to)
-            .or_insert_with(Vec::new)
-            .push((edge.from, edge.from, edge.to, edge.kind.clone()));
+        adjacency.entry(edge.from).or_insert_with(Vec::new).push((
+            edge.to,
+            edge.from,
+            edge.to,
+            edge.kind.clone(),
+        ));
+        adjacency.entry(edge.to).or_insert_with(Vec::new).push((
+            edge.from,
+            edge.from,
+            edge.to,
+            edge.kind.clone(),
+        ));
     }
     adjacency
 }
@@ -254,7 +290,10 @@ fn traverse_graph(
     }
 }
 
-fn direction_allows(direction: &str, is_outbound: bool) -> bool {
+fn direction_allows(
+    direction: &str,
+    is_outbound: bool,
+) -> bool {
     match direction {
         "out" => is_outbound,
         "in" => !is_outbound,
@@ -274,13 +313,19 @@ fn build_nodes(
 
     let mut nodes: Vec<NodeItem> = visited
         .iter()
-        .map(|(node_id, depth)| build_node_item(*node_id, *depth, meta_map.get(node_id)))
+        .map(|(node_id, depth)| {
+            build_node_item(*node_id, *depth, meta_map.get(node_id))
+        })
         .collect();
     nodes.sort_by_key(|node| node.depth);
     Ok(nodes)
 }
 
-fn build_node_item(node_id: Uuid, depth: usize, ticket: Option<&IndexedTicket>) -> NodeItem {
+fn build_node_item(
+    node_id: Uuid,
+    depth: usize,
+    ticket: Option<&IndexedTicket>,
+) -> NodeItem {
     if let Some(ticket) = ticket {
         return NodeItem {
             id: node_id.to_string(),
@@ -303,22 +348,22 @@ fn build_node_item(node_id: Uuid, depth: usize, ticket: Option<&IndexedTicket>) 
 }
 
 fn ticket_priority(ticket: &IndexedTicket) -> Option<String> {
-    TicketFs::read(&ticket.path)
-        .ok()
-        .and_then(|manifest| {
-            manifest
-                .extra
-                .get("priority")
-                .and_then(|value| value.as_str())
-                .map(|priority| priority.to_string())
-        })
+    TicketFs::read(&ticket.path).ok().and_then(|manifest| {
+        manifest
+            .extra
+            .get("priority")
+            .and_then(|value| value.as_str())
+            .map(|priority| priority.to_string())
+    })
 }
 
 fn dedupe_edges(edges: Vec<EdgeItem>) -> Vec<EdgeItem> {
     let mut seen = HashSet::new();
     edges
         .into_iter()
-        .filter(|edge| seen.insert((edge.from.clone(), edge.to.clone(), edge.kind.clone())))
+        .filter(|edge| {
+            seen.insert((edge.from.clone(), edge.to.clone(), edge.kind.clone()))
+        })
         .collect()
 }
 

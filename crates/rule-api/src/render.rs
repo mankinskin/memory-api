@@ -1,6 +1,7 @@
 use crate::manifest::RuleManifest;
 
-pub const GENERATED_FILE_COMMENT: &str = "<!-- rule-api:file generated=true -->";
+pub const GENERATED_FILE_COMMENT: &str =
+    "<!-- rule-api:file generated=true -->";
 
 pub fn render_markdown_file(rules: &[RuleManifest]) -> String {
     let mut rendered = String::from(GENERATED_FILE_COMMENT);
@@ -46,8 +47,7 @@ mod tests {
             rendered,
             format!(
                 "<!-- rule-api:file generated=true -->\n\n<!-- rule-api:entry id={} slug=shared/agents/opening -->\nStart with the concrete anchor.\n\n<!-- rule-api:entry id={} slug=shared/agents/validation -->\nRun the focused check next.\n",
-                first.id,
-                second.id,
+                first.id, second.id,
             )
         );
     }

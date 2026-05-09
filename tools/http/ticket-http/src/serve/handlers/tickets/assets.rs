@@ -1,16 +1,35 @@
 use axum::{
-    extract::{Extension, Path, Query, State},
+    extract::{
+        Extension,
+        Path,
+        Query,
+        State,
+    },
     http::StatusCode,
-    response::{IntoResponse, Json, Response},
+    response::{
+        IntoResponse,
+        Json,
+        Response,
+    },
 };
 use uuid::Uuid;
 
-use viewer_api::error::{ApiError, RequestIdExt};
+use viewer_api::error::{
+    ApiError,
+    RequestIdExt,
+};
 
-use crate::serve::{AppState, error::storage_err};
+use crate::serve::{
+    AppState,
+    error::storage_err,
+};
 
 use super::types::{
-    TicketAssetParam, TicketAssetResponse, TicketFileEntry, TicketFilesResponse, TicketIdParam,
+    TicketAssetParam,
+    TicketAssetResponse,
+    TicketFileEntry,
+    TicketFilesResponse,
+    TicketIdParam,
 };
 
 /// `GET /api/tickets/{id}/files?workspace=<name>`
@@ -29,7 +48,7 @@ pub async fn list_ticket_files(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     tokio::task::spawn_blocking(move || {
@@ -79,7 +98,7 @@ pub async fn get_ticket_asset(
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
-        }
+        },
     };
 
     tokio::task::spawn_blocking(move || {
@@ -119,14 +138,13 @@ fn resolve_ticket_dir(
         Ok(None) => {
             return Err(ApiError::not_found("ticket", request_id)
                 .into_response_with_status(StatusCode::NOT_FOUND));
-        }
+        },
         Err(e) => return Err(storage_err(e, request_id)),
     };
 
     if indexed.deleted {
-        return Err(
-            ApiError::not_found("ticket", request_id).into_response_with_status(StatusCode::NOT_FOUND),
-        );
+        return Err(ApiError::not_found("ticket", request_id)
+            .into_response_with_status(StatusCode::NOT_FOUND));
     }
 
     Ok(indexed.path)
@@ -143,7 +161,10 @@ fn resolve_asset_path(
 
     let canonical_file = match ticket_dir.join(requested_path).canonicalize() {
         Ok(path) => path,
-        Err(_) => return Err((StatusCode::NOT_FOUND, "file not found").into_response()),
+        Err(_) =>
+            return Err(
+                (StatusCode::NOT_FOUND, "file not found").into_response()
+            ),
     };
 
     if !canonical_file.starts_with(&canonical_dir) {
@@ -153,7 +174,9 @@ fn resolve_asset_path(
     Ok(canonical_file)
 }
 
-fn read_asset_content(asset_path: &std::path::Path) -> Result<String, Response> {
+fn read_asset_content(
+    asset_path: &std::path::Path
+) -> Result<String, Response> {
     std::fs::read_to_string(asset_path)
         .map_err(|_| (StatusCode::NOT_FOUND, "file not found").into_response())
 }
@@ -165,8 +188,11 @@ fn collect_ticket_files(
     ticket_dir: &std::path::Path,
     files: &mut Vec<TicketFileEntry>,
 ) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    let mut children: Vec<std::path::PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut children: Vec<std::path::PathBuf> =
+        entries.flatten().map(|entry| entry.path()).collect();
     children.sort();
 
     for child in children {
@@ -175,7 +201,9 @@ fn collect_ticket_files(
             continue;
         }
 
-        let Some(ext) = child.extension() else { continue };
+        let Some(ext) = child.extension() else {
+            continue;
+        };
         if !ext.eq_ignore_ascii_case("md") {
             continue;
         }

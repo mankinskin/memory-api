@@ -21,7 +21,9 @@ pub const REQUIRED_TABLES: [&str; 5] = [
     TABLE_META,
 ];
 
-pub fn ensure_supported_schema_version(found: &str) -> Result<(), StorageSchemaError> {
+pub fn ensure_supported_schema_version(
+    found: &str
+) -> Result<(), StorageSchemaError> {
     if found == SCHEMA_VERSION {
         Ok(())
     } else {

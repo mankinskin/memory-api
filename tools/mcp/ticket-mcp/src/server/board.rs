@@ -1,7 +1,14 @@
 use serde_json::Value;
-use ticket_api::{storage::board::BoardSnapshot, BoardEntry, BoardEntryStatus};
+use ticket_api::{
+    BoardEntry,
+    BoardEntryStatus,
+    storage::board::BoardSnapshot,
+};
 
-use super::{types::*, *};
+use super::{
+    types::*,
+    *,
+};
 
 impl TicketServer {
     pub(crate) async fn board_show_tool(
@@ -13,8 +20,10 @@ impl TicketServer {
 
         self.with_store_ext(move |store| {
             let agent_ref = agent_id.as_deref();
-            let snapshot = store.board_show(agent_ref).map_err(Self::board_err)?;
-            let (heartbeat_entries, final_snapshot) = refresh_snapshot(store, agent_ref, snapshot)?;
+            let snapshot =
+                store.board_show(agent_ref).map_err(Self::board_err)?;
+            let (heartbeat_entries, final_snapshot) =
+                refresh_snapshot(store, agent_ref, snapshot)?;
 
             Self::json_result(&serde_json::json!({
                 "workspace": workspace,
@@ -61,7 +70,8 @@ impl TicketServer {
 
         self.with_store_ext(move |store| {
             let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
-            let agent_id = resolve_checkout_agent(store, ticket_id, agent_id_arg.clone())?;
+            let agent_id =
+                resolve_checkout_agent(store, ticket_id, agent_id_arg.clone())?;
             let entry = store
                 .board_check_out(&ticket_id, &agent_id, reason.as_deref())
                 .map_err(Self::board_err)?;
@@ -84,11 +94,15 @@ impl TicketServer {
         self.with_store_ext(move |store| {
             let entry_id = entry_id_str.parse::<Uuid>().map_err(|_| {
                 McpError::invalid_params(
-                    format!("invalid UUID '{}': expected full UUID", entry_id_str),
+                    format!(
+                        "invalid UUID '{}': expected full UUID",
+                        entry_id_str
+                    ),
                     None,
                 )
             })?;
-            let entry = store.board_heartbeat(&entry_id).map_err(Self::board_err)?;
+            let entry =
+                store.board_heartbeat(&entry_id).map_err(Self::board_err)?;
             Self::json_result(&serde_json::json!({
                 "workspace": workspace,
                 "status": "ok",
@@ -105,7 +119,8 @@ impl TicketServer {
         let workspace = input.workspace;
 
         self.with_store_ext(move |store| {
-            let current = store.board_configure(None).map_err(Self::board_err)?;
+            let current =
+                store.board_configure(None).map_err(Self::board_err)?;
             let config = if input.max_wip.is_none()
                 && input.stale_after_secs.is_none()
                 && input.completed_audit_window_secs.is_none()
@@ -114,12 +129,16 @@ impl TicketServer {
             } else {
                 let updated = ticket_api::BoardConfig {
                     max_wip: input.max_wip.unwrap_or(current.max_wip),
-                    stale_after_secs: input.stale_after_secs.unwrap_or(current.stale_after_secs),
+                    stale_after_secs: input
+                        .stale_after_secs
+                        .unwrap_or(current.stale_after_secs),
                     completed_audit_window_secs: input
                         .completed_audit_window_secs
                         .unwrap_or(current.completed_audit_window_secs),
                 };
-                store.board_configure(Some(updated)).map_err(Self::board_err)?
+                store
+                    .board_configure(Some(updated))
+                    .map_err(Self::board_err)?
             };
 
             Self::json_result(&serde_json::json!({
@@ -235,7 +254,9 @@ fn refresh_snapshot(
         }
     }
 
-    let final_snapshot = store.board_show(agent_id).map_err(TicketServer::board_err)?;
+    let final_snapshot = store
+        .board_show(agent_id)
+        .map_err(TicketServer::board_err)?;
     Ok((refreshed, final_snapshot))
 }
 
@@ -260,7 +281,10 @@ fn resolve_checkout_agent(
     snapshot
         .entries
         .iter()
-        .find(|entry| entry.ticket_id == ticket_id && matches!(entry.status, BoardEntryStatus::Active))
+        .find(|entry| {
+            entry.ticket_id == ticket_id
+                && matches!(entry.status, BoardEntryStatus::Active)
+        })
         .map(|entry| entry.agent_id.clone())
         .ok_or_else(|| {
             McpError::invalid_params(
