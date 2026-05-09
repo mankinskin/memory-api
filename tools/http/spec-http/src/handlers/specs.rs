@@ -119,6 +119,37 @@ fn spec_to_detail(spec: &SpecManifest) -> SpecDetail {
     }
 }
 
+fn matches_query(spec: &SpecManifest, query: &str) -> bool {
+    let needle = query.trim().to_lowercase();
+    if needle.is_empty() {
+        return true;
+    }
+
+    [spec.title(), spec.slug(), spec.component(), spec.state()]
+        .into_iter()
+        .flatten()
+        .any(|field| field.to_lowercase().contains(&needle))
+}
+
+fn matches_list_params(spec: &SpecManifest, params: &ListParams) -> bool {
+    if let Some(state) = params.state.as_deref() {
+        if spec.state() != Some(state) {
+            return false;
+        }
+    }
+
+    if let Some(component) = params.component.as_deref() {
+        if spec.component() != Some(component) {
+            return false;
+        }
+    }
+
+    params
+        .query
+        .as_deref()
+        .is_none_or(|query| matches_query(spec, query))
+}
+
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 pub async fn list_specs(
@@ -134,29 +165,14 @@ pub async fn list_specs(
         Err(e) => return crate::error::storage_err(e, &rid.0),
     };
 
-    let mut items = Vec::new();
-    for indexed in &all {
-        let spec = match store.get(&indexed.id.to_string()) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        if let Some(ref st) = params.state {
-            if spec.state().map(str::to_string).as_deref() != Some(st.as_str()) {
-                continue;
-            }
-        }
-        if let Some(ref comp) = params.component {
-            if spec.component().map(str::to_string).as_deref() != Some(comp.as_str()) {
-                continue;
-            }
-        }
-        items.push(spec_to_summary(&spec));
-        if let Some(limit) = params.limit {
-            if items.len() >= limit {
-                break;
-            }
-        }
-    }
+    let limit = params.limit.unwrap_or(usize::MAX);
+    let items: Vec<SpecSummary> = all
+        .iter()
+        .filter_map(|indexed| store.get(&indexed.id.to_string()).ok())
+        .filter(|spec| matches_list_params(spec, &params))
+        .map(|spec| spec_to_summary(&spec))
+        .take(limit)
+        .collect();
 
     Json(SpecListResponse {
         request_id: rid.0,
@@ -315,5 +331,34 @@ pub async fn delete_spec(
         }))
         .into_response(),
         Err(e) => spec_err(e, &rid.0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::matches_query;
+    use spec_api::SpecManifest;
+
+    #[test]
+    fn matches_query_checks_title_slug_component_and_state() {
+        let mut spec = SpecManifest::new(
+            "context-stack/graph-induction",
+            "Graph Induction",
+            "context-stack",
+        );
+        spec.set_state("draft");
+
+        assert!(matches_query(&spec, "graph"));
+        assert!(matches_query(&spec, "context-stack"));
+        assert!(matches_query(&spec, "draft"));
+        assert!(!matches_query(&spec, "viewer-api"));
+    }
+
+    #[test]
+    fn matches_query_treats_blank_input_as_match_all() {
+        let spec = SpecManifest::new("spec-viewer", "Spec Viewer", "spec-viewer");
+
+        assert!(matches_query(&spec, ""));
+        assert!(matches_query(&spec, "   "));
     }
 }
