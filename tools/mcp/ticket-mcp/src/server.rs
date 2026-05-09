@@ -1,4 +1,3 @@
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -6,399 +5,30 @@ use rmcp::{
     ErrorData as McpError, ServerHandler, ServiceExt,
     handler::server::{tool::ToolRouter, wrapper::Parameters},
     model::*,
-    schemars::{self, JsonSchema},
     tool, tool_handler, tool_router,
     transport::stdio,
 };
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde::Serialize;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use ticket_api::storage::store::TicketStore;
-use ticket_api::storage::ticket_fs::TicketFs;
 
-// ── Output types ─────────────────────────────────────────────────────────────
+mod board;
+mod graph;
+mod health;
+mod mutations;
+mod next_tickets;
+mod query;
+mod types;
+mod workflow;
 
-#[derive(Serialize)]
-struct TicketSummary {
-    id: String,
-    #[serde(rename = "type")]
-    type_id: String,
-    title: Option<String>,
-    state: Option<String>,
-    updated_at: chrono::DateTime<chrono::Utc>,
-}
-
-#[derive(Serialize)]
-struct TicketDetail {
-    id: String,
-    created_at: chrono::DateTime<chrono::Utc>,
-    fields: BTreeMap<String, Value>,
-}
-
-#[derive(Serialize)]
-struct EdgeItem {
-    from: String,
-    to: String,
-    kind: String,
-}
-
-#[derive(Serialize)]
-struct NodeItem {
-    id: String,
-    title: Option<String>,
-    state: Option<String>,
-    depth: usize,
-}
-
-#[derive(Serialize)]
-struct SubgraphResponse {
-    workspace: String,
-    nodes: Vec<NodeItem>,
-    edges: Vec<EdgeItem>,
-    truncated: bool,
-    stats: SubgraphStats,
-}
-
-#[derive(Serialize)]
-struct SubgraphStats {
-    nodes_returned: usize,
-    edges_returned: usize,
-    max_depth_reached: usize,
-}
-
-// ── Input types ──────────────────────────────────────────────────────────────
-
-// ── Input types ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListTicketsInput {
-    pub workspace: String,
-    #[serde(default)]
-    pub state: Option<String>,
-    /// Filter by ticket type (e.g. "tracker-improvement").
-    #[serde(default, rename = "type")]
-    pub type_id: Option<String>,
-    #[serde(default)]
-    pub query: Option<String>,
-    #[serde(default)]
-    pub limit: Option<usize>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct TicketRefInput {
-    pub workspace: String,
-    pub id: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListEdgesInput {
-    pub workspace: String,
-    #[serde(default)]
-    pub kind: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct SubgraphInput {
-    pub workspace: String,
-    pub root: String,
-    #[serde(default)]
-    pub direction: Option<String>,
-    #[serde(default)]
-    pub edge_kind: Option<String>,
-    #[serde(default)]
-    pub depth: Option<usize>,
-    #[serde(default)]
-    pub limit_nodes: Option<usize>,
-    #[serde(default)]
-    pub limit_edges: Option<usize>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct TopgraphInput {
-    pub workspace: String,
-    pub root: String,
-    #[serde(default)]
-    pub direction: Option<String>,
-    #[serde(default)]
-    pub edge_kind: Option<String>,
-    #[serde(default)]
-    pub depth: Option<usize>,
-    #[serde(default)]
-    pub limit_nodes: Option<usize>,
-    #[serde(default)]
-    pub limit_edges: Option<usize>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct HealthCheckInput {
-    pub workspace: String,
-    /// Root ticket for BFS subgraph scope (optional if `all` or `ids` is set).
-    #[serde(default)]
-    pub root: Option<String>,
-    /// Check all tickets in the workspace.
-    #[serde(default)]
-    pub all: bool,
-    /// Explicit list of ticket IDs/prefixes to check (overrides root/all).
-    #[serde(default)]
-    pub ids: Vec<String>,
-    /// BFS depth limit (default: 6, max: 8).
-    #[serde(default)]
-    pub depth: Option<usize>,
-    /// BFS direction: out, in, or both (default: out).
-    #[serde(default)]
-    pub direction: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkflowName {
-    List,
-    TriageOpenTickets,
-    FetchTicketContext,
-    InspectDependencies,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct UpdateTicketInput {
-    pub workspace: String,
-    pub id: String,
-    /// Guard: only transition if current state matches this value.
-    #[serde(default)]
-    pub from_state: Option<String>,
-    /// Optional state to transition to.
-    #[serde(default)]
-    pub to_state: Option<String>,
-    /// Field patches as key=value pairs (e.g. ["priority=high", "owner=alice"]).
-    #[serde(default)]
-    pub fields: Vec<String>,
-    /// If true, revert the ticket to its previous history revision (undo last change).
-    #[serde(default)]
-    pub undo: bool,
-    /// Optional markdown description to write/overwrite as description.md.
-    #[serde(default)]
-    pub description: Option<String>,
-    /// Optional author/agent performing the update.
-    #[serde(default)]
-    pub author: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct CloseTicketInput {
-    pub workspace: String,
-    pub id: String,
-    /// Target state to fast-forward to (default: "done").
-    #[serde(default = "default_close_state")]
-    pub to_state: String,
-    /// Optional author/agent performing the close.
-    #[serde(default)]
-    pub author: Option<String>,
-}
-
-fn default_close_state() -> String {
-    "done".to_string()
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct CancelTicketInput {
-    pub workspace: String,
-    pub id: String,
-    /// Optional author/agent performing the cancellation.
-    #[serde(default)]
-    pub author: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct CreateTicketInput {
-    pub workspace: String,
-    /// Ticket type (e.g. "tracker-improvement").
-    #[serde(rename = "type")]
-    pub type_id: String,
-    /// Ticket title.
-    #[serde(default)]
-    pub title: Option<String>,
-    /// Initial state override (default: schema default).
-    #[serde(default)]
-    pub state: Option<String>,
-    /// Extra field patches as key=value pairs (e.g. ["priority=high"]).
-    #[serde(default)]
-    pub fields: Vec<String>,
-    /// Markdown description body to write as description.md.
-    #[serde(default)]
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct DeleteTicketInput {
-    pub workspace: String,
-    /// Ticket UUID or hex prefix.
-    pub id: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct AddEdgeInput {
-    pub workspace: String,
-    /// Source ticket UUID or hex prefix.
-    pub from: String,
-    /// Target ticket UUID or hex prefix.
-    pub to: String,
-    /// Edge kind (e.g. "depends_on", "linked").
-    pub kind: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct RemoveEdgeInput {
-    pub workspace: String,
-    /// Source ticket UUID or hex prefix.
-    pub from: String,
-    /// Target ticket UUID or hex prefix.
-    pub to: String,
-    /// Edge kind (e.g. "depends_on", "linked").
-    pub kind: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct WorkflowInput {
-    #[serde(default = "default_workflow_name")]
-    pub name: WorkflowName,
-    #[serde(default)]
-    pub workspace: Option<String>,
-    #[serde(default)]
-    pub id: Option<String>,
-    #[serde(default)]
-    pub query: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct NextTicketsInput {
-    pub workspace: String,
-    #[serde(default)]
-    pub limit: Option<usize>,
-    #[serde(default)]
-    pub filter: Option<String>,
-}
-
-fn default_workflow_name() -> WorkflowName {
-    WorkflowName::List
-}
-
-// ── Board input types ────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BoardShowInput {
-    pub workspace: String,
-    /// When supplied, performs a follow-up heartbeat for the caller's active
-    /// entries after the read-only snapshot.
-    #[serde(default)]
-    pub agent_id: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BoardCheckInInput {
-    pub workspace: String,
-    /// Ticket UUID or prefix to check in to.
-    pub ticket_id: String,
-    /// Caller's session identifier.
-    pub agent_id: String,
-    /// Description of planned work.
-    #[serde(default)]
-    pub intent: Option<String>,
-    /// Files the agent will own.
-    #[serde(default)]
-    pub files: Vec<String>,
-    /// Heartbeat TTL in seconds (default: 3600).
-    #[serde(default)]
-    pub ttl_secs: Option<u64>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BoardCheckOutInput {
-    pub workspace: String,
-    /// Ticket UUID or prefix.
-    pub ticket_id: String,
-    /// Agent to check out.  If omitted, the first active entry for the ticket
-    /// is used.
-    #[serde(default)]
-    pub agent_id: Option<String>,
-    /// Optional exit/handoff reason recorded in the audit trail.
-    #[serde(default)]
-    pub reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BoardHeartbeatInput {
-    pub workspace: String,
-    /// Full UUID of the board entry (returned by board_check_in or board_show).
-    pub entry_id: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BoardConfigureInput {
-    pub workspace: String,
-    /// Maximum simultaneous active board entries (0 = unlimited).
-    #[serde(default)]
-    pub max_wip: Option<u32>,
-    /// Seconds before an entry without a heartbeat is considered stale.
-    #[serde(default)]
-    pub stale_after_secs: Option<u64>,
-    /// Seconds to retain completed entries for auditing.
-    #[serde(default)]
-    pub completed_audit_window_secs: Option<u64>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BoardCleanPreviewInput {
-    pub workspace: String,
-    /// Include stale-but-active entries as eviction candidates.
-    #[serde(default)]
-    pub include_stale: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BoardCleanApplyInput {
-    pub workspace: String,
-    /// Confirmation token from board_clean_preview.
-    pub token: String,
-    /// If true, also prune stale entries identified in the preview.
-    #[serde(default)]
-    pub include_stale: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BoardUpdateFilesInput {
-    pub workspace: String,
-    /// Ticket UUID or prefix.
-    pub ticket_id: String,
-    pub agent_id: String,
-    /// Files to add to the entry's ownership.
-    #[serde(default)]
-    pub add: Vec<String>,
-    /// Files to release from the entry's ownership.
-    #[serde(default)]
-    pub remove: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BoardRenameFileInput {
-    pub workspace: String,
-    /// Ticket UUID or prefix.
-    pub ticket_id: String,
-    pub agent_id: String,
-    pub old_path: String,
-    pub new_path: String,
-}
-
-// ── Server ───────────────────────────────────────────────────────────────────
+pub use self::types::*;
 
 #[derive(Clone)]
 pub struct TicketServer {
     index_root: PathBuf,
     tool_router: ToolRouter<Self>,
-    /// Serializes all `TicketStore::open` / drop cycles so that concurrent
-    /// MCP tool calls never race on the SQLite write lock, while still releasing
-    /// the lock between calls so the CLI and other processes can access the
-    /// database.
     store_lock: Arc<Mutex<()>>,
 }
 
@@ -413,52 +43,34 @@ impl TicketServer {
 
     fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
         let text = serde_json::to_string_pretty(value)
-            .map_err(|e| McpError::internal_error(format!("serialization: {e}"), None))?;
+            .map_err(|error| McpError::internal_error(format!("serialization: {error}"), None))?;
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
-    fn store_err(e: ticket_api::error::StorageError) -> McpError {
-        McpError::internal_error(format!("store error: {e}"), None)
+    fn store_err(error: ticket_api::error::StorageError) -> McpError {
+        McpError::internal_error(format!("store error: {error}"), None)
     }
 
-    /// Map a `BoardError` to an `McpError`.  Storage errors become internal
-    /// errors; all domain errors (WIP limits, conflicts, not-found) become
-    /// structured `invalid_params` responses so callers can act on them.
-    fn board_err(e: ticket_api::BoardError) -> McpError {
-        use ticket_api::BoardError;
-        match e {
-            BoardError::Storage(s) => Self::store_err(s),
+    fn board_err(error: ticket_api::BoardError) -> McpError {
+        match error {
+            ticket_api::BoardError::Storage(storage_error) => Self::store_err(storage_error),
             other => McpError::invalid_params(other.to_string(), None),
         }
     }
 
-    /// Resolve a UUID string — accepts full UUIDs directly and hex prefixes
-    /// (>= 8 chars) with a store lookup.
-    ///
-    /// When an existing `&TicketStore` is available (inside `with_store`), pass
-    /// it to avoid a redundant open.  Otherwise pass `None` and this method
-    /// opens its own store (through the lock).
-    fn resolve_uuid_with(
-        store: &TicketStore,
-        s: &str,
-    ) -> Result<Uuid, McpError> {
-        // Try full UUID parse first.
-        if let Ok(id) = s.parse::<Uuid>() {
+    fn resolve_uuid_with(store: &TicketStore, value: &str) -> Result<Uuid, McpError> {
+        if let Ok(id) = value.parse::<Uuid>() {
             return Ok(id);
         }
 
-        // Allow hex prefix of at least 8 characters.
-        let trimmed = s.trim();
-        if trimmed.len() >= 8 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+        let trimmed = value.trim();
+        if trimmed.len() >= 8 && trimmed.chars().all(|ch| ch.is_ascii_hexdigit()) {
             let tickets = store.list(None, None, None).map_err(Self::store_err)?;
             let prefix_lower = trimmed.to_ascii_lowercase();
             let matches: Vec<Uuid> = tickets
                 .iter()
-                .filter(|t| {
-                    // simple-format UUID (no hyphens) for prefix comparison
-                    t.id.simple().to_string().starts_with(&prefix_lower)
-                })
-                .map(|t| t.id)
+                .filter(|ticket| ticket.id.simple().to_string().starts_with(&prefix_lower))
+                .map(|ticket| ticket.id)
                 .collect();
 
             return match matches.len() {
@@ -467,25 +79,19 @@ impl TicketServer {
                     format!("no ticket found matching prefix '{trimmed}'"),
                     None,
                 )),
-                n => Err(McpError::invalid_params(
-                    format!("ambiguous prefix '{trimmed}': matches {n} tickets"),
+                count => Err(McpError::invalid_params(
+                    format!("ambiguous prefix '{trimmed}': matches {count} tickets"),
                     None,
                 )),
             };
         }
 
         Err(McpError::invalid_params(
-            format!("invalid UUID '{s}': expected full UUID or hex prefix (>= 8 chars)"),
+            format!("invalid UUID '{value}': expected full UUID or hex prefix (>= 8 chars)"),
             None,
         ))
     }
 
-    /// Open the store under the serialization lock, run `f`, then drop both
-    /// store and lock before returning.  This guarantees the SQLite write lock
-    /// is released before the MCP response is sent.
-    ///
-    /// The closure returns `StorageError`; it is mapped to `McpError`
-    /// automatically.
     async fn with_store<T>(
         &self,
         f: impl FnOnce(&TicketStore) -> Result<T, ticket_api::error::StorageError>,
@@ -497,8 +103,6 @@ impl TicketServer {
         result
     }
 
-    /// Like `with_store`, but the closure may produce `McpError` directly
-    /// (e.g. when calling `resolve_uuid_with` inside the closure).
     async fn with_store_ext<T>(
         &self,
         f: impl FnOnce(&TicketStore) -> Result<T, McpError>,
@@ -509,410 +113,26 @@ impl TicketServer {
         drop(store);
         result
     }
-
-    async fn bfs_graph(
-        &self,
-        workspace: String,
-        root_str: &str,
-        direction: &str,
-        edge_kind: Option<&str>,
-        depth: Option<usize>,
-        limit_nodes: Option<usize>,
-        limit_edges: Option<usize>,
-    ) -> Result<CallToolResult, McpError> {
-        let root_str = root_str.to_owned();
-        let direction = direction.to_owned();
-        let edge_kind = edge_kind.map(|s| s.to_owned());
-        self.with_store_ext(move |store| {
-        let root = Self::resolve_uuid_with(store, &root_str)?;
-        let depth_limit = depth.unwrap_or(2).min(8);
-        let node_limit = limit_nodes.unwrap_or(500);
-        let edge_limit = limit_edges.unwrap_or(2000);
-        let edge_kind_str = edge_kind.as_deref().unwrap_or("all");
-
-        let mut visited: HashSet<Uuid> = HashSet::new();
-        let mut nodes: Vec<NodeItem> = Vec::new();
-        let mut edges: Vec<EdgeItem> = Vec::new();
-        let mut truncated = false;
-        let mut max_depth_reached = 0;
-
-        let mut queue: VecDeque<(Uuid, usize)> = VecDeque::new();
-        queue.push_back((root, 0));
-
-        while let Some((current_id, current_depth)) = queue.pop_front() {
-            if visited.contains(&current_id) {
-                continue;
-            }
-            if nodes.len() >= node_limit {
-                truncated = true;
-                break;
-            }
-
-            visited.insert(current_id);
-            max_depth_reached = max_depth_reached.max(current_depth);
-
-            let node = match store.get_indexed(&current_id) {
-                Ok(Some(t)) => NodeItem {
-                    id: current_id.to_string(),
-                    title: t.title,
-                    state: t.state,
-                    depth: current_depth,
-                },
-                Ok(None) => NodeItem {
-                    id: current_id.to_string(),
-                    title: None,
-                    state: None,
-                    depth: current_depth,
-                },
-                Err(e) => return Err(Self::store_err(e)),
-            };
-            nodes.push(node);
-
-            if current_depth >= depth_limit {
-                continue;
-            }
-
-            let all_edges = store.list_all_edges().map_err(Self::store_err)?;
-
-            for edge in &all_edges {
-                let kind_ok = edge_kind_str == "all" || edge.kind == edge_kind_str;
-                if !kind_ok {
-                    continue;
-                }
-
-                let (neighbor, is_outbound) = if edge.from == current_id {
-                    (edge.to, true)
-                } else if edge.to == current_id {
-                    (edge.from, false)
-                } else {
-                    continue;
-                };
-
-                let dir_ok = match direction.as_str() {
-                    "out" => is_outbound,
-                    "in" => !is_outbound,
-                    _ => true,
-                };
-                if !dir_ok {
-                    continue;
-                }
-
-                if edges.len() < edge_limit {
-                    edges.push(EdgeItem {
-                        from: edge.from.to_string(),
-                        to: edge.to.to_string(),
-                        kind: edge.kind.clone(),
-                    });
-                }
-
-                if !visited.contains(&neighbor) {
-                    queue.push_back((neighbor, current_depth + 1));
-                }
-            }
-        }
-
-        edges.dedup_by(|a, b| a.from == b.from && a.to == b.to && a.kind == b.kind);
-
-        let stats = SubgraphStats {
-            nodes_returned: nodes.len(),
-            edges_returned: edges.len(),
-            max_depth_reached,
-        };
-        Self::json_result(&SubgraphResponse {
-            workspace,
-            nodes,
-            edges,
-            truncated,
-            stats,
-        })
-        }).await
-    }
-
-    async fn run_health_checks(
-        &self,
-        workspace: &str,
-        root: Option<&str>,
-        all: bool,
-        ids: &[String],
-        depth: Option<usize>,
-        direction: Option<&str>,
-    ) -> Result<CallToolResult, McpError> {
-        let workspace = workspace.to_owned();
-        let root = root.map(|s| s.to_owned());
-        let ids = ids.to_owned();
-        let direction = direction.map(|s| s.to_owned());
-        self.with_store_ext(move |store| {
-        let all_edges = store.list_all_edges().map_err(Self::store_err)?;
-
-        // Collect tickets in scope.
-        let tickets = if !ids.is_empty() {
-            let mut result = Vec::new();
-            for id_str in &ids {
-                let id = Self::resolve_uuid_with(store, id_str)?;
-                if let Some(t) = store.get_indexed(&id).map_err(Self::store_err)? {
-                    if !t.deleted {
-                        result.push(t);
-                    }
-                }
-            }
-            result
-        } else if all {
-            store.list(None, None, None).map_err(Self::store_err)?
-        } else {
-            let root_str = root.as_deref().ok_or_else(|| {
-                McpError::invalid_params("one of 'root', 'all', or 'ids' is required", None)
-            })?;
-            let root_id = Self::resolve_uuid_with(store, root_str)?;
-            let depth_limit = depth.unwrap_or(6).min(8);
-            let direction_str = direction.as_deref().unwrap_or("out");
-
-            let mut visited: HashSet<Uuid> = HashSet::new();
-            let mut collected_ids: Vec<Uuid> = Vec::new();
-            let mut queue: VecDeque<(Uuid, usize)> = VecDeque::new();
-            queue.push_back((root_id, 0));
-
-            while let Some((current_id, d)) = queue.pop_front() {
-                if !visited.insert(current_id) {
-                    continue;
-                }
-                collected_ids.push(current_id);
-                if d >= depth_limit {
-                    continue;
-                }
-                for edge in &all_edges {
-                    let kind_ok = edge.kind == "depends_on" || edge.kind == "linked";
-                    if !kind_ok {
-                        continue;
-                    }
-                    let (neighbor, is_outbound) = if edge.from == current_id {
-                        (edge.to, true)
-                    } else if edge.to == current_id {
-                        (edge.from, false)
-                    } else {
-                        continue;
-                    };
-                    let dir_ok = match direction_str {
-                        "out" => is_outbound,
-                        "in" => !is_outbound,
-                        _ => true,
-                    };
-                    if dir_ok && !visited.contains(&neighbor) {
-                        queue.push_back((neighbor, d + 1));
-                    }
-                }
-            }
-
-            collected_ids
-                .iter()
-                .filter_map(|id| store.get_indexed(id).ok().flatten())
-                .filter(|t| !t.deleted)
-                .collect()
-        };
-
-        // Build lookup sets for edge checks.
-        let ticket_ids: HashSet<Uuid> = tickets.iter().map(|t| t.id).collect();
-        let done_states: HashSet<&str> = ["done", "cancelled"].into_iter().collect();
-
-        let done_ids: HashSet<Uuid> = tickets
-            .iter()
-            .filter(|t| {
-                t.state
-                    .as_deref()
-                    .map(|s| done_states.contains(s))
-                    .unwrap_or(false)
-            })
-            .map(|t| t.id)
-            .collect();
-
-        let mut unresolved_deps: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
-        for edge in &all_edges {
-            if edge.kind == "depends_on" && ticket_ids.contains(&edge.from) {
-                if !done_ids.contains(&edge.to) {
-                    unresolved_deps.entry(edge.from).or_default().push(edge.to);
-                }
-            }
-        }
-
-        let mut findings: Vec<Value> = Vec::new();
-        let mut summary: BTreeMap<&str, u64> = BTreeMap::new();
-
-        for t in &tickets {
-            if done_ids.contains(&t.id) {
-                continue;
-            }
-            let short_id = &t.id.to_string()[..8];
-            let title = t.title.as_deref().unwrap_or("?");
-
-            // 1. Missing description file.
-            let desc = TicketFs::read_description(&t.path);
-            if desc.is_none() {
-                *summary.entry("missing_description").or_insert(0) += 1;
-                findings.push(serde_json::json!({
-                    "ticket_id": t.id, "short_id": short_id, "title": title,
-                    "check": "missing_description", "severity": "error",
-                    "message": "No description.md file — ticket lacks detailed context.",
-                }));
-            } else if let Some(ref body) = desc {
-                let trimmed_len = body.trim().len();
-                if trimmed_len < 50 {
-                    *summary.entry("short_description").or_insert(0) += 1;
-                    findings.push(serde_json::json!({
-                        "ticket_id": t.id, "short_id": short_id, "title": title,
-                        "check": "short_description", "severity": "info",
-                        "message": format!("description.md is very short ({trimmed_len} chars) — consider adding more detail."),
-                    }));
-                }
-            }
-
-            // 3. Missing title.
-            if t.title.is_none() || t.title.as_deref() == Some("") {
-                *summary.entry("missing_title").or_insert(0) += 1;
-                findings.push(serde_json::json!({
-                    "ticket_id": t.id, "short_id": short_id, "title": "(none)",
-                    "check": "missing_title", "severity": "error",
-                    "message": "Ticket has no title.",
-                }));
-            }
-
-            // 4. Has unresolved deps but not in new state.
-            let state = t.state.as_deref().unwrap_or("");
-            let has_unresolved = unresolved_deps.contains_key(&t.id);
-            if has_unresolved && state != "new" {
-                let dep_count = unresolved_deps[&t.id].len();
-                *summary.entry("unblocked_with_deps").or_insert(0) += 1;
-                findings.push(serde_json::json!({
-                    "ticket_id": t.id, "short_id": short_id, "title": title,
-                    "check": "unblocked_with_deps", "severity": "info",
-                    "message": format!("Ticket is '{state}' but has {dep_count} unresolved dependency/ies — may need state review."),
-                }));
-            }
-
-            // 6. Dangling dependency edges.
-            for edge in &all_edges {
-                if edge.from == t.id && edge.kind == "depends_on" {
-                    let target_exists = store
-                        .get_indexed(&edge.to)
-                        .ok()
-                        .flatten()
-                        .map(|tgt| !tgt.deleted)
-                        .unwrap_or(false);
-                    if !target_exists {
-                        let target_short = &edge.to.to_string()[..8];
-                        *summary.entry("dangling_edge").or_insert(0) += 1;
-                        findings.push(serde_json::json!({
-                            "ticket_id": t.id, "short_id": short_id, "title": title,
-                            "check": "dangling_edge", "severity": "error",
-                            "message": format!("depends_on edge points to {target_short} which is deleted or missing."),
-                        }));
-                    }
-                }
-            }
-        }
-
-        let total_checked = tickets.iter().filter(|t| !done_ids.contains(&t.id)).count();
-
-        Self::json_result(&serde_json::json!({
-            "workspace": workspace,
-            "tickets_checked": total_checked,
-            "finding_count": findings.len(),
-            "summary": summary,
-            "findings": findings,
-        }))
-        }).await
-    }
 }
 
 #[tool_router]
 impl TicketServer {
     #[tool(name = "health", description = "Check that the ticket store is accessible.")]
     async fn health(&self) -> Result<CallToolResult, McpError> {
-        match self.with_store(|store| store.list(None, None, Some(0))).await {
-            Ok(_) => Self::json_result(&serde_json::json!({
-                "status": "ok",
-                "service": "ticket-mcp",
-                "mode": "direct",
-            })),
-            Err(e) => Self::json_result(&serde_json::json!({
-                "status": "error",
-                "error": e.to_string(),
-            })),
-        }
+        self.health_tool().await
     }
 
-    #[tool(
-        name = "list_workspaces",
-        description = "List available ticket workspaces."
-    )]
+    #[tool(name = "list_workspaces", description = "List available ticket workspaces.")]
     async fn list_workspaces(&self) -> Result<CallToolResult, McpError> {
-        let config = ticket_api::workspace::WorkspaceConfig::load();
-        let names: Vec<String> = if config.workspaces.is_empty() {
-            vec!["default".to_string()]
-        } else {
-            config.workspaces.keys().cloned().collect()
-        };
-        Self::json_result(&serde_json::json!({
-            "workspaces": names,
-            "active": config.active,
-        }))
+        self.list_workspaces_tool().await
     }
 
-    #[tool(
-        name = "list_tickets",
-        description = "List tickets with optional state/query/limit filters."
-    )]
+    #[tool(name = "list_tickets", description = "List tickets with optional state/query/limit filters.")]
     async fn list_tickets(
         &self,
         Parameters(input): Parameters<ListTicketsInput>,
     ) -> Result<CallToolResult, McpError> {
-        if let Some(q) = &input.query {
-            let limit = input.limit.unwrap_or(100).min(1000);
-            let items: Vec<TicketSummary> = self.with_store(|store| {
-                let results = store.search_tickets(q, limit)?;
-                Ok(results
-                    .into_iter()
-                    .map(|r| {
-                        let updated_at = store
-                            .get_indexed(&r.id)
-                            .ok()
-                            .flatten()
-                            .map(|t| t.updated_at)
-                            .unwrap_or_else(|| {
-                                chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::UNIX_EPOCH)
-                            });
-                        TicketSummary {
-                            id: r.id.to_string(),
-                            type_id: r.ticket_type.unwrap_or_default(),
-                            title: r.title,
-                            state: r.state,
-                            updated_at,
-                        }
-                    })
-                    .collect())
-            }).await?;
-            Self::json_result(&serde_json::json!({
-                "workspace": input.workspace,
-                "items": items,
-            }))
-        } else {
-            let limit = input.limit.map(|l| l.min(1000));
-            let items: Vec<TicketSummary> = self.with_store(|store| {
-                Ok(store
-                    .list(input.state.as_deref(), input.type_id.as_deref(), limit)?
-                    .into_iter()
-                    .map(|t| TicketSummary {
-                        id: t.id.to_string(),
-                        type_id: t.type_id,
-                        title: t.title,
-                        state: t.state,
-                        updated_at: t.updated_at,
-                    })
-                    .collect())
-            }).await?;
-            Self::json_result(&serde_json::json!({
-                "workspace": input.workspace,
-                "items": items,
-            }))
-        }
+        self.list_tickets_tool(input).await
     }
 
     #[tool(name = "get_ticket", description = "Get one ticket by id.")]
@@ -920,79 +140,26 @@ impl TicketServer {
         &self,
         Parameters(input): Parameters<TicketRefInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        self.with_store_ext(move |store| {
-            let id = Self::resolve_uuid_with(store, &input.id)?;
-            let manifest = store.get(&id).map_err(Self::store_err)?;
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "ticket": TicketDetail {
-                    id: manifest.id.to_string(),
-                    created_at: manifest.created_at,
-                    fields: manifest.extra,
-                },
-            }))
-        }).await
+        self.get_ticket_tool(input).await
     }
 
-    #[tool(
-        name = "get_ticket_description",
-        description = "Get ticket markdown description by id."
-    )]
+    #[tool(name = "get_ticket_description", description = "Get ticket markdown description by id.")]
     async fn get_ticket_description(
         &self,
         Parameters(input): Parameters<TicketRefInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        self.with_store_ext(move |store| {
-            let id = Self::resolve_uuid_with(store, &input.id)?;
-            let indexed = store.get_indexed(&id).map_err(Self::store_err)?
-                .ok_or_else(|| McpError::invalid_params(format!("ticket not found: {id}"), None))?;
-
-            if indexed.deleted {
-                return Err(McpError::invalid_params(format!("ticket deleted: {id}"), None));
-            }
-
-            let description = TicketFs::read_description(&indexed.path);
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "id": id.to_string(),
-                "description": description,
-            }))
-        }).await
+        self.get_ticket_description_tool(input).await
     }
 
-    #[tool(
-        name = "list_edges",
-        description = "List ticket graph edges, optionally filtered by edge kind."
-    )]
+    #[tool(name = "list_edges", description = "List ticket graph edges, optionally filtered by edge kind.")]
     async fn list_edges(
         &self,
         Parameters(input): Parameters<ListEdgesInput>,
     ) -> Result<CallToolResult, McpError> {
-        let all = self.with_store(|store| store.list_all_edges()).await?;
-        let items: Vec<EdgeItem> = all
-            .into_iter()
-            .filter(|e| match &input.kind {
-                Some(k) => k == "all" || e.kind == *k,
-                None => true,
-            })
-            .map(|e| EdgeItem {
-                from: e.from.to_string(),
-                to: e.to.to_string(),
-                kind: e.kind,
-            })
-            .collect();
-        Self::json_result(&serde_json::json!({
-            "workspace": input.workspace,
-            "items": items,
-        }))
+        self.list_edges_tool(input).await
     }
 
-    #[tool(
-        name = "subgraph",
-        description = "Fetch dependency subgraph for a root ticket via BFS traversal."
-    )]
+    #[tool(name = "subgraph", description = "Fetch dependency subgraph for a root ticket via BFS traversal.")]
     async fn subgraph(
         &self,
         Parameters(input): Parameters<SubgraphInput>,
@@ -1005,13 +172,11 @@ impl TicketServer {
             input.depth,
             input.limit_nodes,
             input.limit_edges,
-        ).await
+        )
+        .await
     }
 
-    #[tool(
-        name = "topgraph",
-        description = "Fetch reverse dependency graph (tickets that depend on the root) via BFS traversal."
-    )]
+    #[tool(name = "topgraph", description = "Fetch reverse dependency graph (tickets that depend on the root) via BFS traversal.")]
     async fn topgraph(
         &self,
         Parameters(input): Parameters<TopgraphInput>,
@@ -1024,239 +189,19 @@ impl TicketServer {
             input.depth,
             input.limit_nodes,
             input.limit_edges,
-        ).await
+        )
+        .await
     }
 
-    #[tool(
-        name = "next_tickets",
-        description = "List unblocked tickets in any non-terminal state whose dependencies are all satisfied, ordered by workflow progress (closest to done first), then priority. Designed for worker agents to pick the next implementable item."
-    )]
+    #[tool(name = "next_tickets", description = "List unblocked tickets in any non-terminal state whose dependencies are all satisfied, ordered by workflow progress (closest to done first), then priority. Designed for worker agents to pick the next implementable item.")]
     pub async fn next_tickets(
         &self,
         Parameters(input): Parameters<NextTicketsInput>,
     ) -> Result<CallToolResult, McpError> {
-        let limit = input.limit.unwrap_or(20).min(100);
-        let filter = input.filter.clone();
-
-        let (items, board_value, excluded_by_board, warnings) = self.with_store(|store| {
-            // Board snapshot (best-effort; errors are non-fatal).
-            let board_snap = store.board_show(None).ok();
-
-            let all = store.list(None, None, None)?;
-
-            let tickets: Vec<_> = if let Some(ref prefix) = filter {
-                all.into_iter()
-                    .filter(|t| {
-                        t.title
-                            .as_deref()
-                            .unwrap_or("")
-                            .starts_with(prefix.as_str())
-                    })
-                    .collect()
-            } else {
-                all
-            };
-
-            let done_states: &[&str] = &["done", "cancelled"];
-
-            let done_ids: HashSet<Uuid> = tickets
-                .iter()
-                .filter(|t| {
-                    t.state
-                        .as_deref()
-                        .map(|s| done_states.contains(&s))
-                        .unwrap_or(false)
-                })
-                .map(|t| t.id)
-                .collect();
-
-            let all_edges = store.list_all_edges()?;
-            let mut blockers: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
-            for edge in &all_edges {
-                if edge.kind == "depends_on" && !done_ids.contains(&edge.to) {
-                    blockers.entry(edge.from).or_default().push(edge.to);
-                }
-            }
-
-            // Build state-index map for progress sorting.
-            let mut state_index: HashMap<String, usize> = HashMap::new();
-            for type_id in store.schema_registry().type_ids() {
-                if let Some(schema) = store.schema_registry().get(type_id) {
-                    for (i, s) in schema.states.iter().enumerate() {
-                        state_index.entry(s.clone()).or_insert(i);
-                    }
-                }
-            }
-
-            let mut candidates: Vec<_> = tickets
-                .iter()
-                .filter(|t| {
-                    t.state
-                        .as_deref()
-                        .map(|s| !done_states.contains(&s))
-                        .unwrap_or(true)
-                })
-                .filter(|t| blockers.get(&t.id).map_or(true, |b| b.is_empty()))
-                .collect();
-
-            // Read priority for sorting.
-            let mut priority_map: HashMap<Uuid, String> = HashMap::new();
-            for t in &candidates {
-                if let Ok(manifest) = TicketFs::read(&t.path) {
-                    if let Some(p) = manifest.extra.get("priority").and_then(|v| v.as_str()) {
-                        priority_map.insert(t.id, p.to_string());
-                    }
-                }
-            }
-
-            let priority_weight = |p: &str| -> u8 {
-                match p {
-                    "critical" => 0,
-                    "high" => 1,
-                    "medium" => 2,
-                    "low" => 3,
-                    "backlog" => 5,
-                    _ => 4, // none / unset
-                }
-            };
-
-            // Sort by state progress (highest index first), then priority, then oldest.
-            candidates.sort_by(|a, b| {
-                let sa = a.state.as_deref().unwrap_or("");
-                let sb = b.state.as_deref().unwrap_or("");
-                let si_a = state_index.get(sa).copied().unwrap_or(0);
-                let si_b = state_index.get(sb).copied().unwrap_or(0);
-                si_b.cmp(&si_a)
-                    .then_with(|| {
-                        let pa = priority_map.get(&a.id).map(|s| s.as_str()).unwrap_or("");
-                        let pb = priority_map.get(&b.id).map(|s| s.as_str()).unwrap_or("");
-                        priority_weight(pa).cmp(&priority_weight(pb))
-                    })
-                    .then_with(|| a.created_at.cmp(&b.created_at))
-            });
-
-            // --- Board-aware filtering ---
-            let board_ticket_ids: HashSet<Uuid> = board_snap
-                .as_ref()
-                .map(|snap| {
-                    snap.entries
-                        .iter()
-                        .filter(|e| {
-                            e.status == ticket_api::BoardEntryStatus::Active
-                                || e.status == ticket_api::BoardEntryStatus::Stale
-                        })
-                        .map(|e| e.ticket_id)
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            // Collect excluded candidates before filtering.
-            let excluded_by_board: Vec<Value> = board_snap
-                .as_ref()
-                .map(|snap| {
-                    snap.entries
-                        .iter()
-                        .filter(|e| {
-                            (e.status == ticket_api::BoardEntryStatus::Active
-                                || e.status == ticket_api::BoardEntryStatus::Stale)
-                                && candidates.iter().any(|c| c.id == e.ticket_id)
-                        })
-                        .map(|e| {
-                            let status_str = match e.status {
-                                ticket_api::BoardEntryStatus::Active => "active",
-                                ticket_api::BoardEntryStatus::Stale => "stale",
-                                ticket_api::BoardEntryStatus::Conflict => "conflict",
-                                ticket_api::BoardEntryStatus::Completed => "completed",
-                            };
-                            serde_json::json!({
-                                "ticket_id": e.ticket_id.to_string(),
-                                "agent_id": e.agent_id,
-                                "status": status_str,
-                                "intent": e.intent,
-                            })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            candidates.retain(|t| !board_ticket_ids.contains(&t.id));
-            candidates.truncate(limit);
-
-            // Board summary value.
-            let board_value: Value = board_snap
-                .as_ref()
-                .map(|snap| {
-                    serde_json::json!({
-                        "active_count": snap.active_count,
-                        "stale_count": snap.stale_count,
-                        "max_wip": snap.config.max_wip,
-                        "wip_limit_reached": snap.wip_limit_reached,
-                        "warnings": snap.warnings,
-                    })
-                })
-                .unwrap_or(Value::Null);
-
-            // Synthesize per-invocation warnings.
-            let mut warnings: Vec<String> = Vec::new();
-            if let Some(ref snap) = board_snap {
-                let max_wip = snap.config.max_wip;
-                if snap.active_count >= max_wip {
-                    warnings.push(format!(
-                        "WIP limit reached: {}/{} active entries \u{2014} pause new work and reduce the board.",
-                        snap.active_count, max_wip
-                    ));
-                } else if max_wip > 0 && snap.active_count + 1 >= max_wip {
-                    warnings.push(format!(
-                        "Approaching WIP limit: {}/{} active entries.",
-                        snap.active_count, max_wip
-                    ));
-                }
-                if snap.stale_count > 0 {
-                    warnings.push(format!(
-                        "{} stale board entr{} \u{2014} heartbeat has expired; run board heartbeat or clean.",
-                        snap.stale_count,
-                        if snap.stale_count == 1 { "y" } else { "ies" }
-                    ));
-                }
-            }
-
-            let items: Vec<Value> = candidates
-                .iter()
-                .enumerate()
-                .map(|(rank, t)| {
-                    let prio = priority_map
-                        .get(&t.id)
-                        .cloned()
-                        .unwrap_or_else(|| "none".to_string());
-                    serde_json::json!({
-                        "rank": rank + 1,
-                        "id": t.id.to_string(),
-                        "title": t.title,
-                        "state": t.state,
-                        "type": t.type_id,
-                        "priority": prio,
-                        "created_at": t.created_at.to_rfc3339(),
-                    })
-                })
-                .collect();
-
-            Ok((items, board_value, excluded_by_board, warnings))
-        }).await?;
-
-        Self::json_result(&serde_json::json!({
-            "workspace": input.workspace,
-            "count": items.len(),
-            "items": items,
-            "board": board_value,
-            "excluded_by_board": excluded_by_board,
-            "warnings": warnings,
-        }))
+        self.next_tickets_tool(input).await
     }
 
-    #[tool(
-        name = "health_check",
-        description = "Run health checks on tickets: validates descriptions, titles, dependency state consistency, and dangling edges. Scope by root (BFS subgraph), explicit IDs, or all tickets."
-    )]
+    #[tool(name = "health_check", description = "Run health checks on tickets: validates descriptions, titles, dependency state consistency, and dangling edges. Scope by root (BFS subgraph), explicit IDs, or all tickets.")]
     async fn health_check(
         &self,
         Parameters(input): Parameters<HealthCheckInput>,
@@ -1268,757 +213,149 @@ impl TicketServer {
             &input.ids,
             input.depth,
             input.direction.as_deref(),
-        ).await
+        )
+        .await
     }
 
-    #[tool(
-        name = "update_ticket",
-        description = "Update a ticket: apply field patches and/or transition state. Set undo=true to revert to the previous history revision."
-    )]
+    #[tool(name = "update_ticket", description = "Update a ticket: apply field patches and/or transition state. Set undo=true to revert to the previous history revision.")]
     async fn update_ticket(
         &self,
         Parameters(input): Parameters<UpdateTicketInput>,
     ) -> Result<CallToolResult, McpError> {
-        if input.undo {
-            if input.to_state.is_some() || !input.fields.is_empty() {
-                return Err(McpError::invalid_params(
-                    "undo cannot be combined with to_state or fields",
-                    None,
-                ));
-            }
-            let workspace = input.workspace;
-            let id_str = input.id;
-            let (prev_rev, new_rev, updated) = self.with_store_ext(move |store| {
-                let id = Self::resolve_uuid_with(store, &id_str)?;
-                let revisions = store.get_history(&id).map_err(Self::store_err)?;
-                if revisions.len() < 2 {
-                    return Err(Self::store_err(ticket_api::error::StorageError::Database(
-                        "cannot undo: not enough history revisions".into(),
-                    )));
-                }
-                let prev = &revisions[revisions.len() - 2];
-                let prev_rev = prev.rev;
-                let new_rev = store.apply_revert(&id, prev.fields.clone(), None).map_err(Self::store_err)?;
-                let updated = store.get(&id).map_err(Self::store_err)?;
-                Ok((prev_rev, new_rev, updated))
-            }).await?;
-            return Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "status": "ok",
-                "undo": true,
-                "reverted_to": prev_rev,
-                "new_rev": new_rev,
-                "ticket": TicketDetail {
-                    id: updated.id.to_string(),
-                    created_at: updated.created_at,
-                    fields: updated.extra,
-                },
-            }));
-        }
-
-        let mut patch = BTreeMap::new();
-        for raw in &input.fields {
-            let (k, v) = raw.split_once('=').ok_or_else(|| {
-                McpError::invalid_params(format!("invalid field format '{raw}', expected key=value"), None)
-            })?;
-            patch.insert(k.trim().to_string(), Value::String(v.trim().to_string()));
-        }
-        let workspace = input.workspace;
-        let to_state = input.to_state;
-        let from_state = input.from_state;
-        let id_str = input.id;
-        let description = input.description;
-        let author = input.author;
-        let manifest = self.with_store_ext(move |store| {
-            let id = Self::resolve_uuid_with(store, &id_str)?;
-            store.update(&id, patch, from_state.as_deref(), to_state.as_deref(), description.as_deref(), author.as_deref()).map_err(Self::store_err)
-        }).await?;
-        Self::json_result(&serde_json::json!({
-            "workspace": workspace,
-            "status": "ok",
-            "ticket": TicketDetail {
-                id: manifest.id.to_string(),
-                created_at: manifest.created_at,
-                fields: manifest.extra,
-            },
-        }))
+        self.update_ticket_tool(input).await
     }
 
-    #[tool(
-        name = "close_ticket",
-        description = "Fast-forward a ticket to a target state by traversing all intermediate transitions (default: done)."
-    )]
+    #[tool(name = "close_ticket", description = "Fast-forward a ticket to a target state by traversing all intermediate transitions (default: done).")]
     async fn close_ticket(
         &self,
         Parameters(input): Parameters<CloseTicketInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let to_state = input.to_state;
-        let id_str = input.id;
-        let author = input.author;
-        let target_state = to_state.clone();
-        let (manifest, path) = self.with_store_ext(move |store| {
-            let id = Self::resolve_uuid_with(store, &id_str)?;
-            store.close(&id, &to_state, author.as_deref()).map_err(Self::store_err)
-        }).await?;
-        Self::json_result(&serde_json::json!({
-            "workspace": workspace,
-            "status": "ok",
-            "id": manifest.id.to_string(),
-            "target_state": target_state,
-            "traversed_states": path,
-        }))
+        self.close_ticket_tool(input).await
     }
 
-    #[tool(
-        name = "cancel_ticket",
-        description = "Cancel a ticket (fast-forward to 'cancelled' state)."
-    )]
+    #[tool(name = "cancel_ticket", description = "Cancel a ticket (fast-forward to 'cancelled' state).")]
     async fn cancel_ticket(
         &self,
         Parameters(input): Parameters<CancelTicketInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let id_str = input.id;
-        let author = input.author;
-        let (manifest, path) = self.with_store_ext(move |store| {
-            let id = Self::resolve_uuid_with(store, &id_str)?;
-            store.close(&id, "cancelled", author.as_deref()).map_err(Self::store_err)
-        }).await?;
-        Self::json_result(&serde_json::json!({
-            "workspace": workspace,
-            "status": "ok",
-            "id": manifest.id.to_string(),
-            "traversed_states": path,
-        }))
+        self.cancel_ticket_tool(input).await
     }
 
-    #[tool(
-        name = "create_ticket",
-        description = "Create a new ticket with the given type, optional title, state, fields, and description."
-    )]
+    #[tool(name = "create_ticket", description = "Create a new ticket with the given type, optional title, state, fields, and description.")]
     async fn create_ticket(
         &self,
         Parameters(input): Parameters<CreateTicketInput>,
     ) -> Result<CallToolResult, McpError> {
-        let mut extra = BTreeMap::new();
-        for raw in &input.fields {
-            let (k, v) = raw.split_once('=').ok_or_else(|| {
-                McpError::invalid_params(format!("invalid field format '{raw}', expected key=value"), None)
-            })?;
-            extra.insert(k.trim().to_string(), Value::String(v.trim().to_string()));
-        }
-        let workspace = input.workspace;
-        let type_id = input.type_id;
-        let title = input.title;
-        let state = input.state;
-        let description = input.description;
-        let (ticket_id, manifest) = self.with_store_ext(move |store| {
-            let id = store
-                .create(
-                    None,
-                    &type_id,
-                    title.as_deref(),
-                    state.as_deref(),
-                    extra,
-                    None,
-                    description.as_deref(),
-                )
-                .map_err(Self::store_err)?;
-            let manifest = store.get(&id).map_err(Self::store_err)?;
-            Ok((id, manifest))
-        })
-        .await?;
-        Self::json_result(&serde_json::json!({
-            "workspace": workspace,
-            "status": "ok",
-            "id": ticket_id.to_string(),
-            "ticket": TicketDetail {
-                id: manifest.id.to_string(),
-                created_at: manifest.created_at,
-                fields: manifest.extra,
-            },
-        }))
+        self.create_ticket_tool(input).await
     }
 
-    #[tool(
-        name = "delete_ticket",
-        description = "Soft-delete a ticket. The ticket is marked deleted but its history is preserved."
-    )]
+    #[tool(name = "delete_ticket", description = "Soft-delete a ticket. The ticket is marked deleted but its history is preserved.")]
     async fn delete_ticket(
         &self,
         Parameters(input): Parameters<DeleteTicketInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let id_str = input.id;
-        let id = self
-            .with_store_ext(move |store| {
-                let id = Self::resolve_uuid_with(store, &id_str)?;
-                store.delete(&id).map_err(Self::store_err)?;
-                Ok(id)
-            })
-            .await?;
-        Self::json_result(&serde_json::json!({
-            "workspace": workspace,
-            "status": "ok",
-            "id": id.to_string(),
-            "deleted": true,
-        }))
+        self.delete_ticket_tool(input).await
     }
 
-    #[tool(
-        name = "add_edge",
-        description = "Add a directed edge between two tickets (e.g. depends_on, linked)."
-    )]
+    #[tool(name = "add_edge", description = "Add a directed edge between two tickets (e.g. depends_on, linked).")]
     async fn add_edge(
         &self,
         Parameters(input): Parameters<AddEdgeInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let from_str = input.from;
-        let to_str = input.to;
-        let kind = input.kind;
-        self.with_store_ext(move |store| {
-            let from = Self::resolve_uuid_with(store, &from_str)?;
-            let to = Self::resolve_uuid_with(store, &to_str)?;
-            let edge = ticket_api::model::edge::EdgeRecord {
-                from,
-                to,
-                kind: kind.clone(),
-                created_at: chrono::Utc::now(),
-            };
-            store.add_edge(edge).map_err(Self::store_err)?;
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "status": "ok",
-                "edge": EdgeItem { from: from.to_string(), to: to.to_string(), kind },
-            }))
-        })
-        .await
+        self.add_edge_tool(input).await
     }
 
-    #[tool(
-        name = "remove_edge",
-        description = "Remove a directed edge between two tickets."
-    )]
+    #[tool(name = "remove_edge", description = "Remove a directed edge between two tickets.")]
     async fn remove_edge(
         &self,
         Parameters(input): Parameters<RemoveEdgeInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let from_str = input.from;
-        let to_str = input.to;
-        let kind = input.kind;
-        self.with_store_ext(move |store| {
-            let from = Self::resolve_uuid_with(store, &from_str)?;
-            let to = Self::resolve_uuid_with(store, &to_str)?;
-            let edge = ticket_api::model::edge::EdgeRecord {
-                from,
-                to,
-                kind: kind.clone(),
-                created_at: chrono::Utc::now(),
-            };
-            store.remove_edge(edge).map_err(Self::store_err)?;
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "status": "ok",
-                "removed": EdgeItem { from: from.to_string(), to: to.to_string(), kind },
-            }))
-        })
-        .await
+        self.remove_edge_tool(input).await
     }
 
-    #[tool(
-        name = "workflow",
-        description = "Show ready-to-run ticket MCP call sequences for common tasks."
-    )]
+    #[tool(name = "workflow", description = "Show ready-to-run ticket MCP call sequences for common tasks.")]
     async fn workflow(
         &self,
         Parameters(input): Parameters<WorkflowInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace.unwrap_or_else(|| "default".to_string());
-        let id = input.id.unwrap_or_else(|| "<ticket-id>".to_string());
-        let query = input.query.unwrap_or_else(|| "<query>".to_string());
-
-        let payload = match input.name {
-            WorkflowName::List => serde_json::json!({
-                "available": [
-                    "triage_open_tickets",
-                    "fetch_ticket_context",
-                    "inspect_dependencies"
-                ],
-                "note": "Use one of the named workflows to get an ordered sequence of tool calls."
-            }),
-            WorkflowName::TriageOpenTickets => serde_json::json!({
-                "name": "triage_open_tickets",
-                "steps": [
-                    {"tool": "health", "input": {}},
-                    {"tool": "list_workspaces", "input": {}},
-                    {"tool": "list_tickets", "input": {"workspace": workspace, "state": "new", "limit": 50}},
-                    {"tool": "list_tickets", "input": {"workspace": workspace, "state": "in-implementation", "limit": 50}}
-                ]
-            }),
-            WorkflowName::FetchTicketContext => serde_json::json!({
-                "name": "fetch_ticket_context",
-                "steps": [
-                    {"tool": "get_ticket", "input": {"workspace": workspace, "id": id}},
-                    {"tool": "get_ticket_description", "input": {"workspace": workspace, "id": id}},
-                    {"tool": "list_edges", "input": {"workspace": workspace}},
-                    {"tool": "subgraph", "input": {"workspace": workspace, "root": id, "depth": 2}}
-                ]
-            }),
-            WorkflowName::InspectDependencies => serde_json::json!({
-                "name": "inspect_dependencies",
-                "steps": [
-                    {"tool": "list_tickets", "input": {"workspace": workspace, "query": query, "limit": 20}},
-                    {"tool": "list_edges", "input": {"workspace": workspace, "kind": "depends_on"}},
-                    {"tool": "subgraph", "input": {"workspace": workspace, "root": id, "direction": "both", "depth": 3}}
-                ]
-            }),
-        };
-
-        Self::json_result(&payload)
+        self.workflow_tool(input).await
     }
 
-    // ── Board tools ───────────────────────────────────────────────────────────
-
-    #[tool(
-        name = "board_show",
-        description = "Read the current draftboard snapshot. When agent_id is supplied, performs a follow-up heartbeat for the caller's active entries and returns the refreshed entry alongside the snapshot."
-    )]
+    #[tool(name = "board_show", description = "Read the current draftboard snapshot. When agent_id is supplied, performs a follow-up heartbeat for the caller's active entries and returns the refreshed entry alongside the snapshot.")]
     pub async fn board_show(
         &self,
         Parameters(input): Parameters<BoardShowInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let agent_id = input.agent_id;
-        self.with_store_ext(move |store| {
-            let agent_str = agent_id.as_deref();
-            let snap = store.board_show(agent_str).map_err(Self::board_err)?;
-
-            // If an agent_id was provided, heartbeat each of the caller's
-            // active entries and produce a refreshed snapshot.
-            let (heartbeat_entries, final_snap) = if agent_str.is_some() && !snap.caller_entries.is_empty() {
-                let mut refreshed = Vec::new();
-                for entry in &snap.caller_entries {
-                    if let Ok(e) = store.board_heartbeat(&entry.entry_id) {
-                        refreshed.push(e);
-                    }
-                }
-                let fresh_snap = store.board_show(agent_str).map_err(Self::board_err)?;
-                (refreshed, fresh_snap)
-            } else {
-                (Vec::new(), snap)
-            };
-
-            let heartbeat_val: serde_json::Value = if heartbeat_entries.is_empty() {
-                serde_json::Value::Null
-            } else {
-                serde_json::to_value(&heartbeat_entries)
-                    .unwrap_or(serde_json::Value::Null)
-            };
-
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "snapshot": final_snap,
-                "heartbeat": heartbeat_val,
-            }))
-        }).await
+        self.board_show_tool(input).await
     }
 
-    #[tool(
-        name = "board_check_in",
-        description = "Register an agent as actively working on a ticket. Returns the new board entry. Fails with WIP limit or file conflict errors."
-    )]
+    #[tool(name = "board_check_in", description = "Register an agent as actively working on a ticket. Returns the new board entry. Fails with WIP limit or file conflict errors.")]
     pub async fn board_check_in(
         &self,
         Parameters(input): Parameters<BoardCheckInInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let ticket_id_str = input.ticket_id;
-        let agent_id = input.agent_id;
-        let intent = input.intent.unwrap_or_default();
-        let files = input.files;
-        let ttl_secs = input.ttl_secs.unwrap_or(3600);
-        self.with_store_ext(move |store| {
-            let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
-            let entry = store
-                .board_check_in(&ticket_id, &agent_id, ttl_secs, &intent, files)
-                .map_err(Self::board_err)?;
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "status": "ok",
-                "entry": entry,
-            }))
-        }).await
+        self.board_check_in_tool(input).await
     }
 
-    #[tool(
-        name = "board_check_out",
-        description = "Remove an agent from the draftboard for the given ticket. If agent_id is omitted, the first active entry for the ticket is used."
-    )]
+    #[tool(name = "board_check_out", description = "Remove an agent from the draftboard for the given ticket. If agent_id is omitted, the first active entry for the ticket is used.")]
     pub async fn board_check_out(
         &self,
         Parameters(input): Parameters<BoardCheckOutInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let ticket_id_str = input.ticket_id;
-        let agent_id_arg = input.agent_id;
-        let reason = input.reason;
-        self.with_store_ext(move |store| {
-            let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
-
-            // Resolve agent_id: use the provided one, or look up the first
-            // active entry for this ticket from the snapshot.
-            let agent_id = if let Some(a) = agent_id_arg {
-                a
-            } else {
-                let snap = store.board_show(None).map_err(Self::board_err)?;
-                snap.entries
-                    .iter()
-                    .find(|e| {
-                        e.ticket_id == ticket_id
-                            && e.status == ticket_api::BoardEntryStatus::Active
-                    })
-                    .map(|e| e.agent_id.clone())
-                    .ok_or_else(|| McpError::invalid_params(
-                        format!("no active board entry found for ticket {ticket_id}"),
-                        None,
-                    ))?
-            };
-
-            let entry = store
-                .board_check_out(&ticket_id, &agent_id, reason.as_deref())
-                .map_err(Self::board_err)?;
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "status": "ok",
-                "entry": entry,
-            }))
-        }).await
+        self.board_check_out_tool(input).await
     }
 
-    #[tool(
-        name = "board_heartbeat",
-        description = "Refresh the TTL for a board entry to prevent it from going stale. Returns the updated entry with a refreshed last_heartbeat timestamp."
-    )]
+    #[tool(name = "board_heartbeat", description = "Refresh the TTL for a board entry to prevent it from going stale. Returns the updated entry with a refreshed last_heartbeat timestamp.")]
     pub async fn board_heartbeat(
         &self,
         Parameters(input): Parameters<BoardHeartbeatInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let entry_id_str = input.entry_id;
-        self.with_store_ext(move |store| {
-            let entry_id = entry_id_str.parse::<Uuid>().map_err(|_| {
-                McpError::invalid_params(
-                    format!("invalid UUID '{}': expected full UUID", entry_id_str),
-                    None,
-                )
-            })?;
-            let entry = store.board_heartbeat(&entry_id).map_err(Self::board_err)?;
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "status": "ok",
-                "entry": entry,
-            }))
-        }).await
+        self.board_heartbeat_tool(input).await
     }
 
-    #[tool(
-        name = "board_configure",
-        description = "Read or update the board configuration. Omit all optional fields to read the current config. Provide any field to patch and persist the updated config."
-    )]
+    #[tool(name = "board_configure", description = "Read or update the board configuration. Omit all optional fields to read the current config. Provide any field to patch and persist the updated config.")]
     pub async fn board_configure(
         &self,
         Parameters(input): Parameters<BoardConfigureInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        self.with_store_ext(move |store| {
-            // Read current config first.
-            let current = store.board_configure(None).map_err(Self::board_err)?;
-
-            let config = if input.max_wip.is_none()
-                && input.stale_after_secs.is_none()
-                && input.completed_audit_window_secs.is_none()
-            {
-                // Read-only: return current.
-                current
-            } else {
-                // Patch fields and write.
-                let updated = ticket_api::BoardConfig {
-                    max_wip: input.max_wip.unwrap_or(current.max_wip),
-                    stale_after_secs: input.stale_after_secs.unwrap_or(current.stale_after_secs),
-                    completed_audit_window_secs: input
-                        .completed_audit_window_secs
-                        .unwrap_or(current.completed_audit_window_secs),
-                };
-                store.board_configure(Some(updated)).map_err(Self::board_err)?
-            };
-
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "config": config,
-            }))
-        }).await
+        self.board_configure_tool(input).await
     }
 
-    #[tool(
-        name = "board_clean_preview",
-        description = "Preview which board entries would be pruned by a clean operation. Returns a list of candidates and a confirmation token to pass to board_clean_apply."
-    )]
+    #[tool(name = "board_clean_preview", description = "Preview which board entries would be pruned by a clean operation. Returns a list of candidates and a confirmation token to pass to board_clean_apply.")]
     pub async fn board_clean_preview(
         &self,
         Parameters(input): Parameters<BoardCleanPreviewInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let include_stale = input.include_stale.unwrap_or(false);
-        self.with_store_ext(move |store| {
-            let preview = store.board_clean_preview(include_stale).map_err(Self::board_err)?;
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "preview": preview,
-            }))
-        }).await
+        self.board_clean_preview_tool(input).await
     }
 
-    #[tool(
-        name = "board_clean_apply",
-        description = "Execute a board cleanup using the token obtained from board_clean_preview. Rejects the token if the board has changed materially since the preview."
-    )]
+    #[tool(name = "board_clean_apply", description = "Execute a board cleanup using the token obtained from board_clean_preview. Rejects the token if the board has changed materially since the preview.")]
     pub async fn board_clean_apply(
         &self,
         Parameters(input): Parameters<BoardCleanApplyInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let token = input.token;
-        let include_stale = input.include_stale.unwrap_or(false);
-        self.with_store_ext(move |store| {
-            let result = store.board_clean_apply(&token, include_stale).map_err(Self::board_err)?;
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "status": "ok",
-                "result": result,
-            }))
-        }).await
+        self.board_clean_apply_tool(input).await
     }
 
-    #[tool(
-        name = "board_update_files",
-        description = "Add or remove files from an active board entry's owned_files. Conflict detection runs on newly added files."
-    )]
+    #[tool(name = "board_update_files", description = "Add or remove files from an active board entry's owned_files. Conflict detection runs on newly added files.")]
     pub async fn board_update_files(
         &self,
         Parameters(input): Parameters<BoardUpdateFilesInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let ticket_id_str = input.ticket_id;
-        let agent_id = input.agent_id;
-        let add = input.add;
-        let remove = input.remove;
-        self.with_store_ext(move |store| {
-            let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
-            let entry = store
-                .board_update_files(&ticket_id, &agent_id, add, remove)
-                .map_err(Self::board_err)?;
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "status": "ok",
-                "entry": entry,
-            }))
-        }).await
+        self.board_update_files_tool(input).await
     }
 
-    #[tool(
-        name = "board_rename_file",
-        description = "Atomically rename a file in an active board entry's owned_files: releases the old path and claims the new path in one audited operation."
-    )]
+    #[tool(name = "board_rename_file", description = "Atomically rename a file in an active board entry's owned_files: releases the old path and claims the new path in one audited operation.")]
     pub async fn board_rename_file(
         &self,
         Parameters(input): Parameters<BoardRenameFileInput>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
-        let ticket_id_str = input.ticket_id;
-        let agent_id = input.agent_id;
-        let old_path = input.old_path;
-        let new_path = input.new_path;
-        self.with_store_ext(move |store| {
-            let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
-            let entry = store
-                .board_rename_file(&ticket_id, &agent_id, &old_path, &new_path)
-                .map_err(Self::board_err)?;
-            Self::json_result(&serde_json::json!({
-                "workspace": workspace,
-                "status": "ok",
-                "entry": entry,
-            }))
-        }).await
+        self.board_rename_file_tool(input).await
     }
 
-    #[tool(
-        name = "help",
-        description = "List ticket-mcp tools and their parameters."
-    )]
+    #[tool(name = "help", description = "List ticket-mcp tools and their parameters.")]
     async fn help(&self) -> Result<CallToolResult, McpError> {
-        let payload = serde_json::json!({
-            "mode": "direct (no HTTP backend required)",
-            "tools": [
-                "health",
-                "list_workspaces",
-                "list_tickets",
-                "get_ticket",
-                "get_ticket_description",
-                "create_ticket",
-                "delete_ticket",
-                "list_edges",
-                "add_edge",
-                "remove_edge",
-                "subgraph",
-                "topgraph",
-                "health_check",
-                "update_ticket",
-                "close_ticket",
-                "cancel_ticket",
-                "workflow",
-                "next_tickets",
-                "board_show",
-                "board_check_in",
-                "board_check_out",
-                "board_heartbeat",
-                "board_configure",
-                "board_clean_preview",
-                "board_clean_apply",
-                "board_update_files",
-                "board_rename_file",
-            ],
-            "operations": {
-                "health": {
-                    "description": "Check store is accessible",
-                    "required": [],
-                },
-                "list_workspaces": {
-                    "description": "List available workspaces",
-                    "required": [],
-                },
-                "list_tickets": {
-                    "description": "List/search tickets",
-                    "required": ["workspace"],
-                    "optional": ["state", "type", "query", "limit"],
-                },
-                "get_ticket": {
-                    "description": "Get full ticket manifest",
-                    "required": ["workspace", "id"],
-                },
-                "get_ticket_description": {
-                    "description": "Get ticket markdown description",
-                    "required": ["workspace", "id"],
-                },
-                "create_ticket": {
-                    "description": "Create a new ticket",
-                    "required": ["workspace", "type"],
-                    "optional": ["title", "state", "fields", "description"],
-                },
-                "delete_ticket": {
-                    "description": "Soft-delete a ticket",
-                    "required": ["workspace", "id"],
-                },
-                "list_edges": {
-                    "description": "List graph edges",
-                    "required": ["workspace"],
-                    "optional": ["kind"],
-                },
-                "add_edge": {
-                    "description": "Add a directed edge between tickets",
-                    "required": ["workspace", "from", "to", "kind"],
-                },
-                "remove_edge": {
-                    "description": "Remove a directed edge between tickets",
-                    "required": ["workspace", "from", "to", "kind"],
-                },
-                "subgraph": {
-                    "description": "BFS dependency subgraph",
-                    "required": ["workspace", "root"],
-                    "optional": ["direction", "edge_kind", "depth", "limit_nodes", "limit_edges"],
-                },
-                "topgraph": {
-                    "description": "BFS reverse dependency graph",
-                    "required": ["workspace", "root"],
-                    "optional": ["direction", "edge_kind", "depth", "limit_nodes", "limit_edges"],
-                },
-                "health_check": {
-                    "description": "Run health checks on tickets (descriptions, titles, deps, edges)",
-                    "required": ["workspace"],
-                    "optional": ["root", "all", "ids", "depth", "direction"],
-                },
-                "next_tickets": {
-                    "description": "List unblocked ready tickets in priority order for worker agents",
-                    "required": ["workspace"],
-                    "optional": ["limit", "filter"],
-                },
-                "update_ticket": {
-                    "description": "Update ticket fields and/or transition state",
-                    "required": ["workspace", "id"],
-                    "optional": ["from_state", "to_state", "fields", "undo", "description", "author"],
-                },
-                "close_ticket": {
-                    "description": "Fast-forward ticket to target state",
-                    "required": ["workspace", "id"],
-                    "optional": ["to_state", "author"],
-                },
-                "cancel_ticket": {
-                    "description": "Cancel a ticket",
-                    "required": ["workspace", "id"],
-                    "optional": ["author"],
-                },
-                "board_show": {
-                    "description": "Read current draftboard snapshot; optionally refresh caller heartbeat",
-                    "required": ["workspace"],
-                    "optional": ["agent_id"],
-                },
-                "board_check_in": {
-                    "description": "Register agent as working on a ticket",
-                    "required": ["workspace", "ticket_id", "agent_id"],
-                    "optional": ["intent", "files", "ttl_secs"],
-                },
-                "board_check_out": {
-                    "description": "Remove agent from the draftboard for a ticket",
-                    "required": ["workspace", "ticket_id"],
-                    "optional": ["agent_id", "reason"],
-                },
-                "board_heartbeat": {
-                    "description": "Refresh TTL for a board entry (requires full entry UUID)",
-                    "required": ["workspace", "entry_id"],
-                },
-                "board_configure": {
-                    "description": "Read or update board configuration",
-                    "required": ["workspace"],
-                    "optional": ["max_wip", "stale_after_secs", "completed_audit_window_secs"],
-                },
-                "board_clean_preview": {
-                    "description": "Preview board cleanup candidates and obtain a confirmation token",
-                    "required": ["workspace"],
-                    "optional": ["include_stale"],
-                },
-                "board_clean_apply": {
-                    "description": "Execute cleanup using the token from board_clean_preview",
-                    "required": ["workspace", "token"],
-                    "optional": ["include_stale"],
-                },
-                "board_update_files": {
-                    "description": "Add/remove files from a board entry's owned_files",
-                    "required": ["workspace", "ticket_id", "agent_id"],
-                    "optional": ["add", "remove"],
-                },
-                "board_rename_file": {
-                    "description": "Atomically rename a file in a board entry's owned_files",
-                    "required": ["workspace", "ticket_id", "agent_id", "old_path", "new_path"],
-                },
-            },
-            "notes": [
-                "Direct store access — no HTTP backend required.",
-                "Set TICKET_INDEX_ROOT to override workspace resolution.",
-            ],
-        });
-        Self::json_result(&payload)
+        self.help_tool().await
     }
 }
 
@@ -2043,8 +380,8 @@ pub async fn run_mcp_server(
 
     tracing::info!("Starting ticket-mcp server on stdio (direct store access)");
 
-    let service = server.serve(stdio()).await.inspect_err(|err| {
-        eprintln!("Server error: {err:?}");
+    let service = server.serve(stdio()).await.inspect_err(|error| {
+        eprintln!("Server error: {error:?}");
     })?;
 
     service.waiting().await?;

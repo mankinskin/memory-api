@@ -103,6 +103,13 @@ pub(crate) fn cmd_topgraph(args: TopgraphArgs, store: &TicketStore) -> Result<Va
     graph_traversal("topgraph", &args.root, args.depth, &args.direction, &args.edge_kind, true, store)
 }
 
+type TraversalNode = (Uuid, Option<String>, Option<String>, usize);
+
+struct TraversalData {
+    node_list:    Vec<TraversalNode>,
+    unique_edges: Vec<EdgeRecord>,
+}
+
 fn graph_traversal(
     command_name: &str,
     root_str: &str,
@@ -113,90 +120,11 @@ fn graph_traversal(
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
     let root = resolve_uuid_prefix(root_str, store)?;
-    let depth_limit = depth.min(8);
-
-    let all_edges = store.list_all_edges()?;
-
-    // BFS traversal
-    let mut visited: HashSet<Uuid> = HashSet::new();
-    let mut node_list: Vec<(Uuid, Option<String>, Option<String>, usize)> = Vec::new();
-    let mut collected_edges: Vec<&EdgeRecord> = Vec::new();
-    let mut queue: VecDeque<(Uuid, usize)> = VecDeque::new();
-    queue.push_back((root, 0));
-
-    while let Some((current_id, depth)) = queue.pop_front() {
-        if !visited.insert(current_id) {
-            continue;
-        }
-
-        let (title, state) = match store.get_indexed(&current_id)? {
-            Some(t) if !t.deleted => (t.title, t.state),
-            _ => (None, None),
-        };
-        node_list.push((current_id, title, state, depth));
-
-        if depth >= depth_limit {
-            continue;
-        }
-
-        for edge in &all_edges {
-            let kind_ok = edge_kind_filter == "all" || edge.kind == edge_kind_filter;
-            if !kind_ok {
-                continue;
-            }
-
-            let (neighbor, is_outbound) = if edge.from == current_id {
-                (edge.to, true)
-            } else if edge.to == current_id {
-                (edge.from, false)
-            } else {
-                continue;
-            };
-
-            let dir_ok = match direction {
-                "out" => is_outbound,
-                "in" => !is_outbound,
-                _ => true,
-            };
-            if !dir_ok {
-                continue;
-            }
-
-            collected_edges.push(edge);
-
-            if !visited.contains(&neighbor) {
-                queue.push_back((neighbor, depth + 1));
-            }
-        }
-    }
-
-    // Deduplicate edges
-    let mut seen_edges: HashSet<(Uuid, Uuid, &str)> = HashSet::new();
-    let unique_edges: Vec<&EdgeRecord> = collected_edges
-        .into_iter()
-        .filter(|e| seen_edges.insert((e.from, e.to, &e.kind)))
-        .collect();
-
-    // Build JSON nodes/edges for --json output
-    let json_nodes: Vec<Value> = node_list
-        .iter()
-        .map(|(id, title, state, depth)| {
-            json!({
-                "id": id.to_string(),
-                "title": title,
-                "state": state,
-                "depth": depth,
-            })
-        })
-        .collect();
-
-    let json_edges: Vec<Value> = unique_edges
-        .iter()
-        .map(|e| json!({ "from": e.from.to_string(), "to": e.to.to_string(), "kind": &e.kind }))
-        .collect();
-
-    // Build ASCII tree for plain output
-    let tree = render_ascii_tree(root, &node_list, &unique_edges, reverse_tree);
+    let traversal = collect_graph_data(root, depth.min(8), direction, edge_kind_filter, store)?;
+    let json_nodes = graph_json_nodes(&traversal.node_list);
+    let json_edges = graph_json_edges(&traversal.unique_edges);
+    let edge_refs: Vec<&EdgeRecord> = traversal.unique_edges.iter().collect();
+    let tree = render_ascii_tree(root, &traversal.node_list, &edge_refs, reverse_tree);
 
     Ok(json!({
         "command": command_name,
@@ -210,6 +138,130 @@ fn graph_traversal(
             "edges_returned": json_edges.len(),
         },
     }))
+}
+
+fn collect_graph_data(
+    root: Uuid,
+    depth_limit: usize,
+    direction: &str,
+    edge_kind_filter: &str,
+    store: &TicketStore,
+) -> Result<TraversalData, CliRunError> {
+    let all_edges = store.list_all_edges()?;
+    let mut visited = HashSet::new();
+    let mut node_list = Vec::new();
+    let mut collected_edges = Vec::new();
+    let mut queue = VecDeque::from([(root, 0)]);
+
+    while let Some((current_id, depth)) = queue.pop_front() {
+        if !visited.insert(current_id) {
+            continue;
+        }
+
+        let (title, state) = indexed_ticket_state(store, current_id)?;
+        node_list.push((current_id, title, state, depth));
+
+        if depth >= depth_limit {
+            continue;
+        }
+
+        for edge in &all_edges {
+            let Some(neighbor) = matching_neighbor(edge, current_id, direction, edge_kind_filter)
+            else {
+                continue;
+            };
+            collected_edges.push(edge.clone());
+            if !visited.contains(&neighbor) {
+                queue.push_back((neighbor, depth + 1));
+            }
+        }
+    }
+
+    Ok(TraversalData {
+        node_list,
+        unique_edges: dedupe_edges(collected_edges),
+    })
+}
+
+fn indexed_ticket_state(
+    store: &TicketStore,
+    ticket_id: Uuid,
+) -> Result<(Option<String>, Option<String>), CliRunError> {
+    Ok(match store.get_indexed(&ticket_id)? {
+        Some(ticket) if !ticket.deleted => (ticket.title, ticket.state),
+        _ => (None, None),
+    })
+}
+
+fn matching_neighbor(
+    edge: &EdgeRecord,
+    current_id: Uuid,
+    direction: &str,
+    edge_kind_filter: &str,
+) -> Option<Uuid> {
+    if edge_kind_filter != "all" && edge.kind != edge_kind_filter {
+        return None;
+    }
+
+    let (neighbor, is_outbound) = edge_neighbor(edge, current_id)?;
+    if direction_allows(direction, is_outbound) {
+        Some(neighbor)
+    } else {
+        None
+    }
+}
+
+fn edge_neighbor(edge: &EdgeRecord, current_id: Uuid) -> Option<(Uuid, bool)> {
+    if edge.from == current_id {
+        Some((edge.to, true))
+    } else if edge.to == current_id {
+        Some((edge.from, false))
+    } else {
+        None
+    }
+}
+
+fn direction_allows(direction: &str, is_outbound: bool) -> bool {
+    match direction {
+        "out" => is_outbound,
+        "in" => !is_outbound,
+        _ => true,
+    }
+}
+
+fn dedupe_edges(collected_edges: Vec<EdgeRecord>) -> Vec<EdgeRecord> {
+    let mut seen_edges = HashSet::new();
+    collected_edges
+        .into_iter()
+        .filter(|edge| seen_edges.insert((edge.from, edge.to, edge.kind.clone())))
+        .collect()
+}
+
+fn graph_json_nodes(node_list: &[TraversalNode]) -> Vec<Value> {
+    node_list
+        .iter()
+        .map(|(id, title, state, depth)| {
+            json!({
+                "id": id.to_string(),
+                "title": title,
+                "state": state,
+                "depth": depth,
+            })
+        })
+        .collect()
+}
+
+fn graph_json_edges(unique_edges: &[EdgeRecord]) -> Vec<Value> {
+    unique_edges
+        .iter()
+        .map(|edge| {
+            json!({
+                "from": edge.from.to_string(),
+                "to": edge.to.to_string(),
+                "kind": edge.kind,
+            })
+        })
+        .collect()
 }
 
 use super::resolve_uuid_prefix;

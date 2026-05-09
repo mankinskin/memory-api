@@ -1,14 +1,16 @@
-use std::fmt::Write as FmtWrite;
-
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use ticket_api::storage::board::{BoardConfig, BoardEntry, BoardEntryStatus, BoardError};
+use ticket_api::storage::board::{BoardConfig, BoardEntryStatus, BoardError};
 use ticket_api::storage::TicketStore;
 
 use crate::cli::{BoardArgs, BoardCleanCommand, BoardCommand, CliRunError};
 
 use super::resolve_uuid_prefix;
+
+mod render;
+
+use self::render::{config_to_json, entry_to_json, render_board_human};
 
 // ── entry point ────────────────────────────────────────────────────────────────
 
@@ -341,135 +343,4 @@ fn board_err_to_cli(err: BoardError) -> CliRunError {
         }
         BoardError::Storage(_) => CliRunError::Board(err),
     }
-}
-
-// ── JSON helpers ──────────────────────────────────────────────────────────────
-
-fn entry_to_json(entry: &BoardEntry, config: &BoardConfig) -> Value {
-    let now = chrono::Utc::now();
-    let age_secs = (now - entry.last_heartbeat).num_seconds().max(0) as u64;
-    let status_str = if entry.status == BoardEntryStatus::Active
-        && age_secs > config.stale_after_secs
-    {
-        "stale"
-    } else {
-        match &entry.status {
-            BoardEntryStatus::Active => "active",
-            BoardEntryStatus::Stale => "stale",
-            BoardEntryStatus::Conflict => "conflict",
-            BoardEntryStatus::Completed => "completed",
-        }
-    };
-
-    json!({
-        "entry_id": entry.entry_id,
-        "ticket_id": entry.ticket_id,
-        "agent_id": entry.agent_id,
-        "intent": entry.intent,
-        "status": status_str,
-        "checked_in_at": entry.checked_in_at,
-        "last_heartbeat": entry.last_heartbeat,
-        "heartbeat_age_secs": age_secs,
-        "ttl_secs": entry.ttl_secs,
-        "owned_files": entry.owned_files,
-        "handoff_reason": entry.handoff_reason,
-    })
-}
-
-fn config_to_json(config: &BoardConfig) -> Value {
-    json!({
-        "max_wip": config.max_wip,
-        "stale_after_secs": config.stale_after_secs,
-        "completed_audit_window_secs": config.completed_audit_window_secs,
-    })
-}
-
-// ── human-readable rendering ──────────────────────────────────────────────────
-
-fn render_board_human(snap: &ticket_api::storage::board::BoardSnapshot) -> String {
-    let mut out = String::new();
-
-    // WIP meter line
-    let _ = writeln!(
-        out,
-        "Board: [{}/{} active] [{} stale{}] [{} conflict{}]",
-        snap.active_count,
-        snap.config.max_wip,
-        snap.stale_count,
-        if snap.stale_count > 0 { " ⚠" } else { "" },
-        snap.conflict_count,
-        if snap.conflict_count > 0 { " ⚠" } else { "" },
-    );
-
-    if snap.entries.is_empty() {
-        let _ = writeln!(out, "  (no board entries)");
-        return out;
-    }
-
-    // Column header
-    let _ = writeln!(out, "");
-    let _ = writeln!(
-        out,
-        "  {:<10}  {:<36}  {:<18}  {:<20}  {:>12}  {:<10}",
-        "TICKET", "ENTRY ID", "AGENT", "INTENT", "HB AGE (s)", "STATUS"
-    );
-    let _ = writeln!(out, "  {}", "-".repeat(120));
-
-    let now = chrono::Utc::now();
-
-    for entry in &snap.entries {
-        let short_ticket = entry
-            .ticket_id
-            .simple()
-            .to_string()
-            .chars()
-            .take(8)
-            .collect::<String>();
-        let entry_id_str = entry.entry_id.to_string();
-        let agent = if entry.agent_id.len() > 18 {
-            format!("{}…", &entry.agent_id[..17])
-        } else {
-            entry.agent_id.clone()
-        };
-        let intent = if entry.intent.len() > 20 {
-            format!("{}…", &entry.intent[..19])
-        } else {
-            entry.intent.clone()
-        };
-        let age_secs = (now - entry.last_heartbeat).num_seconds().max(0);
-        let is_stale = entry.status == BoardEntryStatus::Active
-            && age_secs as u64 > snap.config.stale_after_secs;
-        let status_str = match &entry.status {
-            BoardEntryStatus::Active if is_stale => "stale",
-            BoardEntryStatus::Active => "active",
-            BoardEntryStatus::Stale => "stale",
-            BoardEntryStatus::Conflict => "conflict",
-            BoardEntryStatus::Completed => "completed",
-        };
-
-        let _ = writeln!(
-            out,
-            "  {:<10}  {:<36}  {:<18}  {:<20}  {:>12}  {:<10}",
-            short_ticket, entry_id_str, agent, intent, age_secs, status_str
-        );
-    }
-
-    // Stale warnings
-    if !snap.warnings.is_empty() {
-        let _ = writeln!(out, "");
-        for w in &snap.warnings {
-            let _ = writeln!(out, "  ⚠  {w}");
-        }
-    }
-
-    // File ownership section
-    if !snap.file_ownership.is_empty() {
-        let _ = writeln!(out, "");
-        let _ = writeln!(out, "File Ownership:");
-        for (path, agents) in &snap.file_ownership {
-            let _ = writeln!(out, "  {path}  →  {}", agents.join(", "));
-        }
-    }
-
-    out
 }

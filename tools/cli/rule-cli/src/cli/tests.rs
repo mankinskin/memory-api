@@ -1,0 +1,287 @@
+use std::fs;
+use std::path::PathBuf;
+
+use rule_api::{RuleFilter, RuleManifest, RuleStore};
+use tempfile::tempdir;
+
+use super::*;
+
+fn sample_rule(
+    slug: &str,
+    title: &str,
+    section: &str,
+    body: &str,
+    order_key: i64,
+) -> RuleManifest {
+    let mut manifest = RuleManifest::new(slug, title, "AGENTS", section, body);
+    manifest.set_repo_scopes(["context-engine"]);
+    manifest.set_order_key(order_key);
+    manifest
+}
+
+#[test]
+fn parse_search_command_with_filter_flags() {
+    let cli = parse_cli_from([
+        "rule",
+        "search",
+        "discovery",
+        "--repo",
+        "context-engine",
+        "--limit",
+        "5",
+    ])
+    .unwrap();
+
+    match cli.command {
+        RuleCommandCli::Search(args) => {
+            assert_eq!(args.query, "discovery");
+            assert_eq!(args.filter.repo_scope.as_deref(), Some("context-engine"));
+            assert_eq!(args.limit, 5);
+        }
+        _ => panic!("expected search command"),
+    }
+}
+
+#[test]
+fn parse_sync_targets_command() {
+    let cli = parse_cli_from([
+        "rule",
+        "sync-targets",
+        "--config",
+        "rule-targets.yaml",
+        "--dry-run",
+    ])
+    .unwrap();
+
+    match cli.command {
+        RuleCommandCli::SyncTargets(args) => {
+            assert_eq!(args.config, PathBuf::from("rule-targets.yaml"));
+            assert!(args.dry_run);
+            assert!(!args.check);
+        }
+        _ => panic!("expected sync-targets command"),
+    }
+}
+
+#[test]
+fn generate_file_writes_deterministic_markdown_with_provenance() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::open(dir.path()).unwrap();
+    let first = sample_rule(
+        "shared/agents/validation",
+        "Validation",
+        "validation",
+        "Run the focused check next.",
+        20,
+    );
+    let second = sample_rule(
+        "shared/agents/opening",
+        "Opening",
+        "opening",
+        "Start with the concrete anchor.",
+        10,
+    );
+    store.create(&first, None).unwrap();
+    store.create(&second, None).unwrap();
+
+    let output = dir.path().join("generated").join("AGENTS.md");
+    dispatch::dispatch(
+        RuleCommandCli::GenerateFile(GenerateFileArgs {
+            file_kind: "AGENTS".to_string(),
+            repo_scope: "context-engine".to_string(),
+            path_scope: None,
+            section: None,
+            state: None,
+            output: Some(output.clone()),
+            dry_run: false,
+            check: false,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    let rendered = fs::read_to_string(&output).unwrap();
+
+    assert!(rendered.starts_with("<!-- rule-api:file generated=true -->\n\n"));
+    let opening_idx = rendered.find("slug=shared/agents/opening").unwrap();
+    let validation_idx = rendered.find("slug=shared/agents/validation").unwrap();
+    assert!(opening_idx < validation_idx);
+}
+
+#[test]
+fn import_file_creates_rules_from_markdown_blocks() {
+    let dir = tempdir().unwrap();
+    let markdown = dir.path().join("AGENTS.md");
+    fs::write(
+        &markdown,
+        "# Opening\n\nStart with the concrete anchor.\n\n## Validation\n\nRun the focused check next.",
+    )
+    .unwrap();
+
+    let mut store = RuleStore::open(dir.path()).unwrap();
+    let items = importing::import_file(
+        &mut store,
+        &ImportFileArgs {
+            path: markdown,
+            file_kind: "AGENTS".to_string(),
+            repo_scope: vec!["context-engine".to_string(), "memory-viewers".to_string()],
+            slug_prefix: "shared/agents".to_string(),
+            default_section: None,
+            path_scope: vec!["AGENTS.md".to_string()],
+            source_repo: Some("context-engine".to_string()),
+            target_root: None,
+            dry_run: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(items.len(), 2);
+    let imported = store
+        .list(
+            &RuleFilter {
+                repo_scope: Some("context-engine".to_string()),
+                ..RuleFilter::default()
+            },
+            None,
+        )
+        .unwrap();
+    let imported_memory_viewers = store
+        .list(
+            &RuleFilter {
+                repo_scope: Some("memory-viewers".to_string()),
+                ..RuleFilter::default()
+            },
+            None,
+        )
+        .unwrap();
+    assert_eq!(imported.len(), 2);
+    assert_eq!(imported_memory_viewers.len(), 2);
+    assert_eq!(imported[0].slug(), Some("shared/agents/opening/l1"));
+    assert_eq!(imported[1].slug(), Some("shared/agents/opening/validation/l5"));
+}
+
+#[test]
+fn generate_target_uses_config_output_path() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut first = sample_rule(
+        "shared/agents/opening",
+        "Opening",
+        "opening",
+        "Start with the concrete anchor.",
+        10,
+    );
+    first.set_path_scopes(["AGENTS.md"]);
+    let mut second = sample_rule(
+        "shared/agents/other",
+        "Other",
+        "other",
+        "Different file target.",
+        20,
+    );
+    second.set_path_scopes([".github/copilot-instructions.md"]);
+    store.create(&first, None).unwrap();
+    store.create(&second, None).unwrap();
+
+    let config_path = dir.path().join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: context-engine-agents\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    path_scope: AGENTS.md\n",
+            "    output_path: generated/AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+
+    dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_path.clone(),
+            target: "context-engine-agents".to_string(),
+            dry_run: false,
+            check: false,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    let rendered = fs::read_to_string(dir.path().join("generated").join("AGENTS.md")).unwrap();
+    assert!(rendered.contains("slug=shared/agents/opening"));
+    assert!(!rendered.contains("slug=shared/agents/other"));
+    assert!(rendered.starts_with("<!-- rule-api:file generated=true -->"));
+}
+
+#[test]
+fn sync_targets_prunes_removed_outputs_from_previous_sync() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::open(dir.path()).unwrap();
+
+    store
+        .create(
+            &sample_rule(
+                "shared/agents/root-readme",
+                "Root README",
+                "root-readme",
+                "Root body.",
+                10,
+            ),
+            None,
+        )
+        .unwrap();
+    store
+        .create(
+            &sample_rule(
+                "shared/agents/nested-readme",
+                "Nested README",
+                "nested-readme",
+                "Nested body.",
+                20,
+            ),
+            None,
+        )
+        .unwrap();
+
+    let config_path = dir.path().join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: root-readme\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    section: root-readme\n",
+            "    output_path: .github/README.md\n",
+            "  - name: nested-readme\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    section: nested-readme\n",
+            "    output_path: memory-viewers/.github/README.md\n",
+        ),
+    )
+    .unwrap();
+
+    rendering::sync_targets_payload(&mut store, &config_path, false, false).unwrap();
+    assert!(dir.path().join("memory-viewers/.github/README.md").exists());
+
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: root-readme\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    section: root-readme\n",
+            "    output_path: .github/README.md\n",
+        ),
+    )
+    .unwrap();
+
+    let payload = rendering::sync_targets_payload(&mut store, &config_path, false, false).unwrap();
+    assert_eq!(payload.generated.len(), 1);
+    assert_eq!(payload.removed.len(), 1);
+    assert!(!dir.path().join("memory-viewers/.github/README.md").exists());
+    assert!(!dir.path().join("memory-viewers/.github").exists());
+}
