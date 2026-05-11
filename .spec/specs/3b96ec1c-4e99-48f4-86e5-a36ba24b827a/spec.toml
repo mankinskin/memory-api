@@ -1,0 +1,17 @@
+id = "3b96ec1c-4e99-48f4-86e5-a36ba24b827a"
+created_at = "2026-05-11T13:30:26.099749700+00:00"
+code_refs = [
+	{ file = "crates/rule-api/src/store/generated_targets.rs", kind = "struct", line_end = 31, line_start = 26, symbol = "GeneratedTargetRecord" },
+	{ file = "crates/rule-api/src/store/generated_targets.rs", kind = "function", line_end = 61, line_start = 35, symbol = "list_generated_targets" },
+	{ file = "crates/rule-api/src/store/generated_targets.rs", kind = "function", line_end = 183, line_start = 63, symbol = "upsert_generated_target" },
+	{ file = "tools/cli/rule-cli/src/cli/rendering.rs", kind = "function", line_end = 137, line_start = 117, symbol = "generate_target_payload" },
+	{ file = "tools/cli/rule-cli/src/cli/rendering.rs", kind = "function", line_end = 205, line_start = 139, symbol = "sync_targets_payload" },
+	{ file = "tools/cli/rule-cli/src/cli/tests.rs", kind = "function", line_end = 305, line_start = 236, symbol = "sync_targets_prunes_removed_outputs_from_previous_sync" },
+]
+title = "memory-api Rule Workspace and README Generation"
+state = "draft"
+component = "rule-api"
+parent = "e815f261-ca7d-4957-8f68-666e1e1dfbfe"
+scope = "public"
+slug = "rule-api/workspaces/memory-api-readme-generation"
+type = "specification"
