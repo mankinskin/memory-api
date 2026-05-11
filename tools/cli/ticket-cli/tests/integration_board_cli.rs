@@ -122,6 +122,16 @@ fn board_full_lifecycle() {
         0,
         "active_count should be 0 after check-out"
     );
+    assert!(
+        show_after["entries"].as_array().unwrap().is_empty(),
+        "completed entries should no longer appear in board show"
+    );
+
+    let history = s.ticket_json(&["board", "history"]);
+    assert_eq!(history["status"], "ok");
+    let history_entries = history["entries"].as_array().unwrap();
+    assert_eq!(history_entries.len(), 1);
+    assert_eq!(history_entries[0]["ticket_id"], ticket_id.as_str());
 }
 
 // ---------------------------------------------------------------------------
@@ -262,6 +272,113 @@ fn board_show_with_agent_refreshes_heartbeat() {
     let show = s.ticket_json(&["board", "show", "--agent", "agent-delta"]);
     assert_eq!(show["status"], "ok");
     assert_eq!(show["active_count"].as_u64().unwrap(), 1);
+}
+
+#[test]
+fn board_show_recommends_next_work_when_board_is_empty() {
+    let s = Sandbox::new();
+    let next_ticket = create_ticket(&s, "Top ticket for board suggestions");
+
+    let show = s.ticket_json(&["board", "show"]);
+    assert_eq!(show["status"], "ok");
+    assert!(show["current_work"].as_array().unwrap().is_empty());
+
+    let recommended = show["recommended_next"].as_array().unwrap();
+    assert!(!recommended.is_empty(), "board should recommend ready work");
+    assert_eq!(recommended[0]["ticket_id"], next_ticket.as_str());
+    assert_eq!(recommended[0]["title"], "Top ticket for board suggestions");
+
+    let actions = show["actions"].as_array().unwrap();
+    assert!(!actions.is_empty(), "board should include actionable guidance");
+
+    let human = show["human"].as_str().unwrap();
+    assert!(human.contains("Current Work:"));
+    assert!(human.contains("(no active board entries)"));
+    assert!(human.contains("Next Up:"));
+    assert!(human.contains("Top ticket for board suggestions"));
+}
+
+#[test]
+fn board_show_excludes_history_and_board_history_lists_recent_completions() {
+    let s = Sandbox::new();
+    let active_ticket = create_ticket(&s, "Active board work");
+    let completed_ticket = create_ticket(&s, "Recently completed board work");
+    let next_ticket = create_ticket(&s, "Ready board follow-up");
+
+    let ready = s.ticket_json(&["update", &next_ticket, "--to-state", "ready"]);
+    assert_eq!(ready["status"], "ok");
+
+    let active = s.ticket_json(&[
+        "board",
+        "check-in",
+        &active_ticket,
+        "--agent",
+        "agent-zeta",
+        "--intent",
+        "active implementation",
+    ]);
+    assert_eq!(active["status"], "ok");
+
+    let completed = s.ticket_json(&[
+        "board",
+        "check-in",
+        &completed_ticket,
+        "--agent",
+        "agent-eta",
+        "--intent",
+        "wrap up",
+    ]);
+    assert_eq!(completed["status"], "ok");
+    let checked_out = s.ticket_json(&[
+        "board",
+        "check-out",
+        &completed_ticket,
+        "--agent",
+        "agent-eta",
+        "--reason",
+        "validated and handed off",
+    ]);
+    assert_eq!(checked_out["status"], "ok");
+
+    let show = s.ticket_json(&["board", "show"]);
+    assert_eq!(show["status"], "ok");
+
+    let current_work = show["current_work"].as_array().unwrap();
+    assert_eq!(current_work.len(), 1);
+    assert_eq!(current_work[0]["ticket_id"], active_ticket.as_str());
+    assert_eq!(current_work[0]["title"], "Active board work");
+    assert_eq!(
+        show["entries"].as_array().unwrap().len(),
+        1,
+        "completed entries should be excluded from board show"
+    );
+
+    let recommended = show["recommended_next"].as_array().unwrap();
+    assert!(!recommended.is_empty());
+    assert_eq!(recommended[0]["ticket_id"], next_ticket.as_str());
+    assert_eq!(recommended[0]["title"], "Ready board follow-up");
+
+    let human = show["human"].as_str().unwrap();
+    let current_index = human.find("Current Work:").unwrap();
+    let next_index = human.find("Next Up:").unwrap();
+    assert!(current_index < next_index);
+    assert!(human.contains("Active board work"));
+    assert!(human.contains("Ready board follow-up"));
+    assert!(!human.contains("Recent Completions:"));
+
+    let history = s.ticket_json(&["board", "history"]);
+    assert_eq!(history["status"], "ok");
+    let history_entries = history["entries"].as_array().unwrap();
+    assert_eq!(history_entries.len(), 1);
+    assert_eq!(history_entries[0]["ticket_id"], completed_ticket.as_str());
+    assert_eq!(
+        history_entries[0]["title"],
+        "Recently completed board work"
+    );
+
+    let history_human = history["human"].as_str().unwrap();
+    assert!(history_human.contains("Completed Work:"));
+    assert!(history_human.contains("Recently completed board work"));
 }
 
 // ---------------------------------------------------------------------------

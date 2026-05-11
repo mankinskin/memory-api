@@ -17,6 +17,12 @@ pub enum BoardCommand {
         #[arg(long)]
         agent: Option<String>,
     },
+    /// Show recently completed board history separately from active board work.
+    History {
+        /// Filter historical entries to a specific agent.
+        #[arg(long)]
+        agent: Option<String>,
+    },
     /// Check an agent in to the board as actively working a ticket.
     #[command(name = "check-in")]
     CheckIn {
@@ -60,7 +66,7 @@ pub enum BoardCommand {
         /// Seconds after which an entry without a heartbeat is considered stale.
         #[arg(long)]
         stale_after_secs: Option<u64>,
-        /// How long completed entries remain visible in the audit window (seconds).
+        /// How long completed entries remain visible in board history (seconds; 0 means all history).
         #[arg(long)]
         completed_audit_window_secs: Option<u64>,
     },

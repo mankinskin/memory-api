@@ -14,6 +14,7 @@ use ticket_mcp::server::{
     BoardCleanPreviewInput,
     BoardConfigureInput,
     BoardHeartbeatInput,
+    BoardHistoryInput,
     BoardRenameFileInput,
     BoardShowInput,
     BoardUpdateFilesInput,
@@ -124,6 +125,22 @@ async fn board_full_lifecycle_mcp() {
     let text = extract_text(&result);
     let json: Value = serde_json::from_str(&text).expect("valid json");
     assert_eq!(json["snapshot"]["active_count"], 0);
+    assert!(
+        json["snapshot"]["entries"].as_array().unwrap().is_empty(),
+        "completed entries should be absent from board_show"
+    );
+
+    let result = server
+        .board_history(Parameters(BoardHistoryInput {
+            workspace: ws(),
+            agent_id: None,
+        }))
+        .await
+        .expect("board_history ok");
+    let text = extract_text(&result);
+    let json: Value = serde_json::from_str(&text).expect("valid json");
+    assert_eq!(json["snapshot"]["completed_count"], 1);
+    assert_eq!(json["snapshot"]["entries"][0]["ticket_id"], ticket_id);
 }
 
 /// board_configure: read then patch max_wip.

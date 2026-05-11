@@ -10,6 +10,7 @@ use crate::{
             BoardConfig,
             BoardEntry,
             BoardError,
+            BoardHistorySnapshot,
             BoardSnapshot,
             ReconcileAction,
         },
@@ -120,6 +121,13 @@ impl TicketStore {
         agent_id: Option<&str>,
     ) -> Result<BoardSnapshot, BoardError> {
         self.index.board_snapshot(agent_id)
+    }
+
+    pub fn board_history(
+        &self,
+        agent_id: Option<&str>,
+    ) -> Result<BoardHistorySnapshot, BoardError> {
+        self.index.board_history_snapshot(agent_id)
     }
 
     pub fn board_configure(

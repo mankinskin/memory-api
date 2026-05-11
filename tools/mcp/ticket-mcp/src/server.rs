@@ -361,13 +361,24 @@ impl TicketServer {
 
     #[tool(
         name = "board_show",
-        description = "Read the current draftboard snapshot. When agent_id is supplied, performs a follow-up heartbeat for the caller's active entries and returns the refreshed entry alongside the snapshot."
+        description = "Read the current draftboard snapshot. Completed history is excluded. When agent_id is supplied, performs a follow-up heartbeat for the caller's active entries and returns the refreshed entry alongside the snapshot."
     )]
     pub async fn board_show(
         &self,
         Parameters(input): Parameters<BoardShowInput>,
     ) -> Result<CallToolResult, McpError> {
         self.board_show_tool(input).await
+    }
+
+    #[tool(
+        name = "board_history",
+        description = "Read recently completed board history separately from the live draftboard. Uses the configured completed_audit_window_secs as the default history window."
+    )]
+    pub async fn board_history(
+        &self,
+        Parameters(input): Parameters<BoardHistoryInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.board_history_tool(input).await
     }
 
     #[tool(

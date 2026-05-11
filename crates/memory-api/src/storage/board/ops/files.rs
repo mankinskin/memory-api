@@ -1,3 +1,4 @@
+use chrono::Utc;
 use rusqlite::params;
 use uuid::Uuid;
 
@@ -163,9 +164,11 @@ impl RedbIndexStore {
                 return Ok(Vec::new());
             }
 
+                let completed_at = Utc::now();
             let mut completed_ids = Vec::new();
             for mut entry in active {
                 entry.status = BoardEntryStatus::Completed;
+                    entry.completed_at = Some(completed_at);
                 conn.execute(
                     &format!(
                         "INSERT OR REPLACE INTO {TABLE_BOARD_ENTRIES} (id, data) VALUES (?1, ?2)"

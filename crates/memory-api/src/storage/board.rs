@@ -35,6 +35,8 @@ pub struct BoardEntry {
     pub status: BoardEntryStatus,
     /// Populated on check-out; not persisted during check-in.
     pub handoff_reason: Option<String>,
+    /// When the entry left the active board and became historical.
+    pub completed_at: Option<DateTime<Utc>>,
 }
 
 impl BoardEntry {
@@ -84,7 +86,7 @@ impl Default for BoardConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BoardSnapshot {
     pub captured_at: DateTime<Utc>,
-    /// All board entries (with stale status computed dynamically).
+    /// Current board entries (with stale status computed dynamically).
     pub entries: Vec<BoardEntry>,
     /// Filtered to the requesting agent's entries when `agent_id` is `Some`.
     pub caller_entries: Vec<BoardEntry>,
@@ -98,6 +100,18 @@ pub struct BoardSnapshot {
     pub file_ownership: BTreeMap<String, Vec<String>>,
     /// Human-readable warnings (e.g. stale entries needing review).
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoardHistorySnapshot {
+    pub captured_at: DateTime<Utc>,
+    /// Recently completed historical entries, newest completion first.
+    pub entries: Vec<BoardEntry>,
+    /// Filtered to the requesting agent's entries when `agent_id` is `Some`.
+    pub caller_entries: Vec<BoardEntry>,
+    pub config: BoardConfig,
+    pub completed_count: u32,
+    pub hidden_completed_count: u32,
 }
 
 // ── Operational maintenance types ─────────────────────────────────────────────
@@ -229,9 +243,13 @@ fn serialize_entry(entry: &BoardEntry) -> Result<Vec<u8>, BoardError> {
 }
 
 fn deserialize_entry(bytes: &[u8]) -> Result<BoardEntry, BoardError> {
-    bincode::deserialize(bytes).map_err(|e| {
-        BoardError::Storage(StorageError::Serialization(e.to_string()))
-    })
+    bincode::deserialize(bytes)
+        .or_else(|_| {
+            bincode::deserialize::<LegacyBoardEntry>(bytes).map(Into::into)
+        })
+        .map_err(|e| {
+            BoardError::Storage(StorageError::Serialization(e.to_string()))
+        })
 }
 
 fn serialize_config(config: &BoardConfig) -> Result<Vec<u8>, BoardError> {
@@ -248,6 +266,40 @@ fn deserialize_config(bytes: &[u8]) -> Result<BoardConfig, BoardError> {
 
 fn db_err(e: rusqlite::Error) -> BoardError {
     BoardError::Storage(StorageError::Database(e.to_string()))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LegacyBoardEntry {
+    entry_id: Uuid,
+    ticket_id: Uuid,
+    agent_id: String,
+    previous_attempt: Option<Uuid>,
+    checked_in_at: DateTime<Utc>,
+    last_heartbeat: DateTime<Utc>,
+    ttl_secs: u64,
+    intent: String,
+    owned_files: Vec<String>,
+    status: BoardEntryStatus,
+    handoff_reason: Option<String>,
+}
+
+impl From<LegacyBoardEntry> for BoardEntry {
+    fn from(entry: LegacyBoardEntry) -> Self {
+        Self {
+            entry_id: entry.entry_id,
+            ticket_id: entry.ticket_id,
+            agent_id: entry.agent_id,
+            previous_attempt: entry.previous_attempt,
+            checked_in_at: entry.checked_in_at,
+            last_heartbeat: entry.last_heartbeat,
+            ttl_secs: entry.ttl_secs,
+            intent: entry.intent,
+            owned_files: entry.owned_files,
+            status: entry.status,
+            handoff_reason: entry.handoff_reason,
+            completed_at: None,
+        }
+    }
 }
 
 mod ops;

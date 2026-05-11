@@ -34,6 +34,26 @@ impl TicketServer {
         .await
     }
 
+    pub(crate) async fn board_history_tool(
+        &self,
+        input: BoardHistoryInput,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let agent_id = input.agent_id;
+
+        self.with_store_ext(move |store| {
+            let snapshot = store
+                .board_history(agent_id.as_deref())
+                .map_err(Self::board_err)?;
+
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "snapshot": snapshot,
+            }))
+        })
+        .await
+    }
+
     pub(crate) async fn board_check_in_tool(
         &self,
         input: BoardCheckInInput,

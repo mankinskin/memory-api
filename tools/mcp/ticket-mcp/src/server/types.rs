@@ -250,6 +250,13 @@ pub struct BoardShowInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct BoardHistoryInput {
+    pub workspace: String,
+    #[serde(default)]
+    pub agent_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct BoardCheckInInput {
     pub workspace: String,
     pub ticket_id: String,

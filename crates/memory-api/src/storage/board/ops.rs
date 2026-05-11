@@ -175,6 +175,7 @@ impl RedbIndexStore {
                 owned_files,
                 status: BoardEntryStatus::Active,
                 handoff_reason: None,
+                completed_at: None,
             };
 
             let entry_bytes = serialize_entry(&new_entry)?;
@@ -229,6 +230,7 @@ impl RedbIndexStore {
 
             entry.status = BoardEntryStatus::Completed;
             entry.handoff_reason = handoff_reason.map(str::to_string);
+            entry.completed_at = Some(Utc::now());
 
             let updated_bytes = serialize_entry(&entry)?;
             conn.execute(

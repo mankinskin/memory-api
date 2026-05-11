@@ -76,6 +76,7 @@ impl TicketServer {
                 "workflow",
                 "next_tickets",
                 "board_show",
+                "board_history",
                 "board_check_in",
                 "board_check_out",
                 "board_heartbeat",
@@ -166,6 +167,11 @@ impl TicketServer {
                 },
                 "board_show": {
                     "description": "Read current draftboard snapshot; optionally refresh caller heartbeat",
+                    "required": ["workspace"],
+                    "optional": ["agent_id"],
+                },
+                "board_history": {
+                    "description": "Read recently completed board history",
                     "required": ["workspace"],
                     "optional": ["agent_id"],
                 },
