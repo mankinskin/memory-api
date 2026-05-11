@@ -20,7 +20,11 @@ use rmcp::{
 use serde::Serialize;
 use tokio::sync::Mutex;
 
-use rule_api::RuleStore;
+use rule_api::{
+    RuleStore,
+    discover_workspace_scan_roots,
+    workspace_root_for_index_root,
+};
 
 mod admin;
 mod generate;
@@ -81,6 +85,16 @@ impl RuleServer {
         let _guard = self.store_lock.lock().await;
         let mut store =
             RuleStore::open(&self.index_root).map_err(Self::rule_err)?;
+        if let Some(workspace_root) =
+            workspace_root_for_index_root(&self.index_root)
+        {
+            for root in discover_workspace_scan_roots(&workspace_root) {
+                store
+                    .entity_store()
+                    .add_scan_root(root)
+                    .map_err(Self::storage_err)?;
+            }
+        }
         store.scan(false).map_err(Self::rule_err)?;
         let result = f(&mut store);
         drop(store);

@@ -1,0 +1,18 @@
+targets:
+  - name: memory-api-readme
+    repo_scope: memory-api
+    file_kind: README
+    path_scope: README.md
+    output_path: README.md
+    nodes:
+      - name: tool-surface
+        section: memory-api
+      - name: tool-screenshots
+        title: Tool Screenshots
+        section: memory-api/user-stories
+      - name: dependency-graph
+        title: Dependency Graph
+        section: memory-api/usage-guide
+      - name: tool-use-examples
+        title: Tool Use Examples
+        section: memory-api/crate-groups

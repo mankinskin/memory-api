@@ -19,6 +19,7 @@ use serde_json::{
 use super::{
     CliRunError,
     FilterArgs,
+    RuleCommandCli,
 };
 
 pub(super) fn resolve_index_root(explicit: Option<&Path>) -> PathBuf {
@@ -44,6 +45,18 @@ pub(super) fn resolve_index_root(explicit: Option<&Path>) -> PathBuf {
         return PathBuf::from(home).join(".rule-index");
     }
     PathBuf::from(".rule")
+}
+
+pub(super) fn resolve_workspace_root(
+    command: &RuleCommandCli,
+    index_root: &Path,
+) -> Option<PathBuf> {
+    command_config_path(command)
+        .or_else(|| rule_api::workspace_root_for_index_root(index_root))
+        .or_else(|| {
+            let cwd = std::env::current_dir().ok()?;
+            cwd.join(".rule").exists().then_some(cwd)
+        })
 }
 
 pub(super) fn read_body(
@@ -164,4 +177,22 @@ pub(super) fn rule_summary_json(rule: &RuleManifest) -> Value {
         "order_key": rule.order_key(),
         "feedback_unresolved_count": rule.feedback_unresolved_count(),
     })
+}
+
+fn command_config_path(command: &RuleCommandCli) -> Option<PathBuf> {
+    let config = match command {
+        RuleCommandCli::GenerateTarget(args) => Some(args.config.as_path()),
+        RuleCommandCli::ExplainTarget(args) => Some(args.config.as_path()),
+        RuleCommandCli::SyncTargets(args) => Some(args.config.as_path()),
+        _ => None,
+    }?;
+
+    let cwd = std::env::current_dir().ok()?;
+    let config = if config.is_absolute() {
+        config.to_path_buf()
+    } else {
+        cwd.join(config)
+    };
+
+    config.parent().map(Path::to_path_buf)
 }

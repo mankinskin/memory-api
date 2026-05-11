@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">memory-api crate surface</title>
+  <desc id="desc">Diagram showing memory-api as the storage foundation with rule-api, spec-api, ticket-api, and audit-api layered above it, plus CLI, MCP, HTTP, and VS Code tool surfaces.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#fbfcfe" />
+      <stop offset="100%" stop-color="#eef4fb" />
+    </linearGradient>
+    <style>
+      .title { font: 700 30px 'Segoe UI', sans-serif; fill: #18334e; }
+      .text { font: 500 18px 'Segoe UI', sans-serif; fill: #18334e; }
+      .small { font: 500 16px 'Segoe UI', sans-serif; fill: #37536c; }
+      .foundation { fill: #d9ecff; stroke: #5c8fbe; stroke-width: 2; rx: 24; }
+      .crate { fill: #ffffff; stroke: #7ea6ca; stroke-width: 2; rx: 18; }
+      .tool { fill: #e6f5ea; stroke: #6eaa88; stroke-width: 2; rx: 16; }
+      .line { stroke: #5f7c97; stroke-width: 3; fill: none; }
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="#5f7c97" />
+    </marker>
+  </defs>
+  <rect width="1280" height="760" fill="url(#bg)" />
+  <text x="90" y="80" class="title">memory-api repository surface</text>
+  <text x="90" y="118" class="text">One storage foundation, four domain crates, and multiple operator-facing tool surfaces.</text>
+
+  <rect x="400" y="520" width="480" height="150" class="foundation" />
+  <text x="445" y="582" class="title">memory-api</text>
+  <text x="445" y="618" class="text">Shared entity storage, filesystem layouts, schemas, index, and search primitives.</text>
+
+  <rect x="110" y="240" width="220" height="135" class="crate" />
+  <text x="145" y="292" class="title">rule-api</text>
+  <text x="145" y="326" class="text">Canonical rules and target generation</text>
+
+  <rect x="380" y="240" width="220" height="135" class="crate" />
+  <text x="420" y="292" class="title">spec-api</text>
+  <text x="420" y="326" class="text">Specs, sections, and code refs</text>
+
+  <rect x="650" y="240" width="220" height="135" class="crate" />
+  <text x="685" y="292" class="title">ticket-api</text>
+  <text x="685" y="326" class="text">Tickets, boards, edges, workflow</text>
+
+  <rect x="920" y="240" width="220" height="135" class="crate" />
+  <text x="960" y="292" class="title">audit-api</text>
+  <text x="960" y="326" class="text">Audit records and review flows</text>
+
+  <rect x="170" y="90" width="220" height="90" class="tool" />
+  <text x="235" y="144" class="title">CLI</text>
+  <text x="205" y="170" class="small">rule, spec, ticket, audit</text>
+
+  <rect x="430" y="90" width="220" height="90" class="tool" />
+  <text x="495" y="144" class="title">MCP</text>
+  <text x="463" y="170" class="small">rule-mcp, spec-mcp, ticket-mcp, audit-mcp</text>
+
+  <rect x="690" y="90" width="220" height="90" class="tool" />
+  <text x="755" y="144" class="title">HTTP</text>
+  <text x="730" y="170" class="small">ticket-http, spec-http</text>
+
+  <rect x="950" y="90" width="220" height="90" class="tool" />
+  <text x="985" y="144" class="title">VS Code</text>
+  <text x="980" y="170" class="small">ticket-vscode</text>
+
+  <path d="M280 180 L220 240" class="line" marker-end="url(#arrow)" />
+  <path d="M540 180 L490 240" class="line" marker-end="url(#arrow)" />
+  <path d="M800 180 L760 240" class="line" marker-end="url(#arrow)" />
+  <path d="M1060 180 L1030 240" class="line" marker-end="url(#arrow)" />
+
+  <path d="M220 375 L500 520" class="line" marker-end="url(#arrow)" />
+  <path d="M490 375 L580 520" class="line" marker-end="url(#arrow)" />
+  <path d="M760 375 L700 520" class="line" marker-end="url(#arrow)" />
+  <path d="M1030 375 L780 520" class="line" marker-end="url(#arrow)" />
+
+  <text x="90" y="715" class="small">The repository README is generated from canonical rules in .rule/rules and should describe these surfaces as entry points for users and maintainers.</text>
+</svg>

@@ -5,6 +5,7 @@ pub mod manifest;
 pub mod render;
 pub mod store;
 pub mod targets;
+pub mod workspace;
 
 pub use default_schema::{
     RULE_ENTRY_SCHEMA_TOML,
@@ -42,4 +43,8 @@ pub use targets::{
     load_render_target_config,
     render_target_by_name,
     resolve_render_target_output,
+};
+pub use workspace::{
+    discover_workspace_scan_roots,
+    workspace_root_for_index_root,
 };

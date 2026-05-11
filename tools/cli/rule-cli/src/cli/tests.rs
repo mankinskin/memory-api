@@ -233,6 +233,77 @@ fn generate_target_uses_config_output_path() {
 }
 
 #[test]
+fn generate_target_collects_rules_from_nested_workspaces() {
+    let dir = tempdir().unwrap();
+    let repo_root = dir.path().join("repo");
+    let parent_index_root = repo_root.join(".rule");
+    let child_workspace = repo_root.join("memory-viewers").join("memory-api");
+    let child_index_root = child_workspace.join(".rule");
+    fs::create_dir_all(&child_workspace).unwrap();
+
+    let mut parent_store = RuleStore::open(&parent_index_root).unwrap();
+    let mut parent_rule = sample_rule(
+        "shared/agents/opening",
+        "Opening",
+        "opening",
+        "Start with the concrete anchor.",
+        10,
+    );
+    parent_rule.set_path_scopes(["AGENTS.md"]);
+    parent_store.create(&parent_rule, None).unwrap();
+
+    let mut child_store = RuleStore::open(&child_index_root).unwrap();
+    let mut child_rule = RuleManifest::new(
+        "memory-api/agents/overview",
+        "Overview",
+        "AGENTS",
+        "overview",
+        "Document memory-api specifics.",
+    );
+    child_rule.set_repo_scopes(["memory-api"]);
+    child_rule.set_path_scopes(["AGENTS.md"]);
+    child_rule.set_order_key(20);
+    child_store.create(&child_rule, None).unwrap();
+
+    let config_path = repo_root.join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: combined-agents\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    path_scope: AGENTS.md\n",
+            "    output_path: generated/AGENTS.md\n",
+            "    nodes:\n",
+            "      - name: opening\n",
+            "        section: opening\n",
+            "      - name: child-overview\n",
+            "        repo_scope: memory-api\n",
+            "        section: overview\n",
+        ),
+    )
+    .unwrap();
+
+    dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_path,
+            target: "combined-agents".to_string(),
+            dry_run: false,
+            check: false,
+        }),
+        &parent_index_root,
+    )
+    .unwrap();
+
+    let rendered =
+        fs::read_to_string(repo_root.join("generated").join("AGENTS.md"))
+            .unwrap();
+    assert!(rendered.contains("slug=shared/agents/opening"));
+    assert!(rendered.contains("slug=memory-api/agents/overview"));
+}
+
+#[test]
 fn sync_targets_prunes_removed_outputs_from_previous_sync() {
     let dir = tempdir().unwrap();
     let mut store = RuleStore::open(dir.path()).unwrap();

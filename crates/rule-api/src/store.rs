@@ -131,13 +131,7 @@ impl RuleStore {
 
         let root = match target_root {
             Some(path) => path.to_path_buf(),
-            None => self
-                .inner
-                .list_scan_roots()?
-                .into_iter()
-                .next()
-                .map(|root| root.path)
-                .unwrap_or_else(|| self.inner.index_root.join("rules")),
+            None => self.inner.index_root.join("rules"),
         };
         fs::create_dir_all(&root).map_err(StorageError::Io)?;
 

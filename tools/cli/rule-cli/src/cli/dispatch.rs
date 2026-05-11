@@ -5,6 +5,7 @@ use rule_api::{
     RuleFilter,
     RuleManifest,
     RuleStore,
+    discover_workspace_scan_roots,
     explain_target,
     load_render_target_config,
     render_markdown_file,
@@ -37,6 +38,7 @@ use super::{
         parse_fields,
         read_body,
         read_optional_body,
+        resolve_workspace_root,
         rule_json,
         rule_summary_json,
     },
@@ -57,6 +59,12 @@ pub(super) fn dispatch(
     index_root: &Path,
 ) -> Result<Value, CliRunError> {
     let mut store = RuleStore::open(index_root)?;
+    if let Some(workspace_root) = resolve_workspace_root(&command, index_root) {
+        for root in discover_workspace_scan_roots(&workspace_root) {
+            store.entity_store().add_scan_root(root)?;
+        }
+        store.scan(false)?;
+    }
 
     match command {
         RuleCommandCli::Create(args) => create_command(&mut store, args),

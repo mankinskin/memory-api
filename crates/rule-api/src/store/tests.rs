@@ -1,3 +1,6 @@
+use std::fs;
+
+use memory_api::model::filesystem::ScanRoot;
 use tempfile::tempdir;
 
 use super::*;
@@ -241,4 +244,34 @@ fn generated_target_upsert_updates_existing_output_path() {
         store.list_generated_targets(&config_path).unwrap()[0].output_path,
         updated.output_path
     );
+}
+
+#[test]
+fn create_defaults_to_local_rules_root_even_with_extra_scan_roots() {
+    let dir = tempdir().unwrap();
+    let index_root = dir.path().join(".rule");
+    let child_rules_root = dir.path().join("nested").join(".rule").join("rules");
+    fs::create_dir_all(&child_rules_root).unwrap();
+
+    let mut store = RuleStore::open(&index_root).unwrap();
+    store
+        .entity_store()
+        .add_scan_root(ScanRoot {
+            path: child_rules_root.clone(),
+            label: "nested".to_string(),
+        })
+        .unwrap();
+
+    let manifest = RuleManifest::new(
+        "shared/agents/local-authoring",
+        "Local Authoring",
+        "AGENTS",
+        "local-authoring",
+        "Rules should default to the local workspace.",
+    );
+    let id = store.create(&manifest, None).unwrap();
+    let indexed = store.entity_store().get_indexed(&id).unwrap().unwrap();
+
+    assert!(indexed.path.starts_with(index_root.join("rules")));
+    assert!(!indexed.path.starts_with(&child_rules_root));
 }
