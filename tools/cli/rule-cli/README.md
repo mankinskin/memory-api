@@ -7,9 +7,9 @@ CLI interface for `rule-api`.
 
 ## Interface
 
-Use `rule` when you are authoring canonical rule entries or rendering generated markdown targets from a local checkout.
+Use `rule` when you are authoring canonical rule entries, recording feedback on generated guidance, or rendering generated markdown targets from a local checkout.
 
-- `create`, `get`, `update`, `list`, `search`: author and inspect rule entries.
+- `create`, `get`, `update`, `feedback`, `list`, `search`: author, review, and annotate rule entries.
 - `import-file`: migrate existing markdown into canonical rule entries.
 - `generate-file`, `generate-target`, `explain-target`, `sync-targets`: render deterministic markdown outputs and inspect target composition.
 - `scan`, `add-root`: maintain nested workspace discovery and scan roots.
@@ -30,11 +30,25 @@ cargo run -p rule-cli --bin rule -- --help
 
 `rule` discovers the nearest `.rule` workspace by walking up from the current directory. Use `--index-root` when you want to point at a different store.
 
+Feedback is rule-entry scoped. If you are reacting to a specific spec entry or generated instruction section, first resolve the canonical rule entry that produced the text, then carry the spec ID, path, and section in the feedback note.
+
 ## Examples
 
 ```bash
 # Search canonical rule entries
 rule search "ticket board"
+
+# Record feedback for a rule entry tied to a spec section
+rule feedback shared/agent-rules/quality-gates/l42 \
+  --rating mixed \
+  --note "Spec target: auth/login :: Rate limits. Needs a concrete edge-case example." \
+  --note-kind suggestion \
+  --session-id session-42 \
+  --agent-or-user-id copilot-gpt-5.4
+
+# Find low-rated or unresolved entries
+rule list --low-rated-only
+rule list --unresolved-only
 
 # Inspect a rendered target before regenerating files
 rule explain-target --config rule-targets.yaml --target memory-api-readme

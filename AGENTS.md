@@ -55,9 +55,9 @@ Use static references as support:
 - **Browser verification is mandatory** for any change to a server interface or frontend feature:
   open the affected viewer in the browser and confirm the feature works visually before marking work done.
 - **Write Playwright end-to-end tests** for all browser-facing features and server interface changes.
-  Ticket-viewer E2E lives under `memory-viewers/ticket-viewer/frontend/dioxus/`; run release coverage there with `npm run test:e2e:release`.
   Shared managed-viewer suites live under `memory-viewers/viewer-api/viewer-api/frontend/dioxus/e2e/shared/`.
   Spec-viewer release E2E lives under `memory-viewers/spec-viewer/frontend/dioxus/`; run it with `npm run test:e2e:release`.
+  Ticket-viewer release E2E lives under `memory-viewers/ticket-viewer/frontend/dioxus/`; run it with `npm run test:e2e:release`.
   Doc-viewer and log-viewer keep local Playwright wrappers under `tools/viewer/doc-viewer/e2e/` and `tools/viewer/log-viewer/e2e/`, importing shared suites from `memory-viewers/viewer-api`.
 - For tracing-based tests, use:
 
@@ -70,6 +70,17 @@ let _tracing = init_test_tracing!(&graph);
 - If public behavior or docs changed, run doc validation workflows.
 - Follow `.github/hooks/` reminders when they fire.
 - Scratch notes belong in temporary files only; do not commit ephemeral notes.
+
+<!-- rule-api:entry id=acd60e9f-71fe-4b9e-9a7f-66fbd262f631 slug=shared/agent-rules/feedback-workflow/l58 -->
+## Feedback Workflow
+
+- Record feedback on canonical rule entries today. `spec-api` entries do not yet expose direct feedback tools or feedback summary fields.
+- When feedback came from a specific generated spec or instruction surface, first locate the canonical rule entry that produced that text. Use `rule search` or `rule_list` / `rule_search` with `repo_scope`, `path_scope`, `section`, or `slug` filters until you have the exact rule ID or slug.
+- Record the feedback on that rule entry with either:
+  - CLI: `rule feedback <id-or-slug> --rating helpful|mixed|not-helpful [--note "..."] [--note-kind note|suggestion] [--session-id <id> --agent-or-user-id <id>]`
+  - MCP: `rule_record_feedback` with `id`, `rating`, optional `note`, optional `note_kind`, and the `session_id` + `agent_or_user_id` pair when a manual session reference is needed.
+- If you are reacting to a native spec entry rather than generated rule text, include the spec ID, path, and section in the feedback note text and open or update the corresponding spec or ticket work. Do not describe that as direct spec-entry feedback when the current storage is rule-entry scoped.
+- Review follow-up queues with `rule list --low-rated-only`, `rule list --unresolved-only`, or the MCP `rule_list` / `rule_search` flags `low_rated_only` and `unresolved_only`.
 
 <!-- rule-api:entry id=dada11d6-d36e-464f-92cf-f0a50e3d7aec slug=shared/agent-rules/escalation-rules/l59 -->
 ## Escalation Rules
