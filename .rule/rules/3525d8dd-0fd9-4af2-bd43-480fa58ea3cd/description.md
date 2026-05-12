@@ -1,6 +1,3 @@
-<!-- rule-api:file generated=true -->
-
-<!-- rule-api:entry id=3525d8dd-0fd9-4af2-bd43-480fa58ea3cd slug=memory-api/readme/tools/mcp/ticket-mcp/l1 -->
 # ticket-mcp
 
 MCP server for `ticket-api`.

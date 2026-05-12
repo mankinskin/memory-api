@@ -1,6 +1,3 @@
-<!-- rule-api:file generated=true -->
-
-<!-- rule-api:entry id=71ffe450-aad5-4c26-af4f-d5d4cfcd8d8f slug=memory-api/readme/tools/cli/ticket-cli/l1 -->
 # ticket-cli
 
 CLI interface for `ticket-api`.
