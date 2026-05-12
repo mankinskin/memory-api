@@ -78,5 +78,9 @@ fn install_contract_sections_record_cli_and_viewer_matrix() {
     assert!(viewer.contains("viewer-ctl install doc-viewer --kind frontend"));
     assert!(viewer.contains("viewer-ctl install log-viewer --kind server"));
     assert!(viewer.contains("viewer-ctl install log-viewer --kind frontend"));
+    assert!(viewer.contains("viewer-ctl install ticket-viewer --kind server"));
+    assert!(viewer.contains("viewer-ctl install ticket-viewer --kind frontend"));
+    assert!(viewer.contains("viewer-ctl install spec-viewer --kind server"));
+    assert!(viewer.contains("viewer-ctl install spec-viewer --kind frontend"));
     assert!(viewer.contains("No first-class uninstall command exists"));
 }
