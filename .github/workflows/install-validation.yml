@@ -1,0 +1,67 @@
+name: Install Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/install-validation.yml'
+      - '.dockerignore'
+      - '.rule/**'
+      - '.spec/**'
+      - 'rule-targets.yaml'
+      - 'crates/**'
+      - 'tools/**'
+      - 'README.md'
+  push:
+    branches: [main, master]
+    paths:
+      - '.github/workflows/install-validation.yml'
+      - '.dockerignore'
+      - '.rule/**'
+      - '.spec/**'
+      - 'rule-targets.yaml'
+      - 'crates/**'
+      - 'tools/**'
+      - 'README.md'
+  workflow_dispatch:
+
+concurrency:
+  group: install-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contract-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "value=$(<tools/install-validation/toolchain.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.value }}
+
+      - name: Validate contract sync
+        shell: bash
+        run: cargo test --manifest-path tools/cli/rule-cli/Cargo.toml --test install_contract_sync -- --nocapture
+
+  docker-cli-validation:
+    runs-on: ubuntu-latest
+    needs: contract-sync
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Docker version
+        run: docker version
+
+      - name: Run Docker CLI install validation
+        shell: bash
+        run: bash tools/install-validation/run-docker-cli-validation.sh

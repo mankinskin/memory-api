@@ -233,6 +233,24 @@ fn generate_target_uses_config_output_path() {
 }
 
 #[test]
+fn add_root_command_creates_missing_directory() {
+    let dir = tempdir().unwrap();
+    let index_root = dir.path().join(".rule");
+    let root = index_root.join("rules");
+
+    dispatch::dispatch(
+        RuleCommandCli::AddRoot(AddRootArgs {
+            path: root.clone(),
+            label: None,
+        }),
+        &index_root,
+    )
+    .unwrap();
+
+    assert!(root.is_dir());
+}
+
+#[test]
 fn generate_target_collects_rules_from_nested_workspaces() {
     let dir = tempdir().unwrap();
     let repo_root = dir.path().join("repo");

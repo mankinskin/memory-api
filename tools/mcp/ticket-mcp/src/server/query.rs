@@ -1,6 +1,5 @@
 use ticket_api::{
     storage::ticket_fs::TicketFs,
-    workspace::WorkspaceConfig,
 };
 
 use super::{
@@ -29,16 +28,9 @@ impl TicketServer {
     pub(crate) async fn list_workspaces_tool(
         &self
     ) -> Result<CallToolResult, McpError> {
-        let config = WorkspaceConfig::load();
-        let workspaces = if config.workspaces.is_empty() {
-            vec!["default".to_string()]
-        } else {
-            config.workspaces.keys().cloned().collect()
-        };
-
         Self::json_result(&serde_json::json!({
-            "workspaces": workspaces,
-            "active": config.active,
+            "workspaces": ["default"],
+            "active": "default",
         }))
     }
 

@@ -13,10 +13,7 @@ use std::{
     },
 };
 
-use ticket_api::{
-    storage::store::TicketStore,
-    workspace::WorkspaceConfig,
-};
+use ticket_api::storage::store::TicketStore;
 
 /// A map from workspace name → lazily-opened `TicketStore`.
 pub struct WorkspaceRegistry {
@@ -77,21 +74,6 @@ mod tests {
 }
 
 impl WorkspaceRegistry {
-    /// Build from a `WorkspaceConfig` (reads `~/.ticket-workspaces.toml`).
-    pub fn from_config(config: &WorkspaceConfig) -> Self {
-        let paths = config
-            .workspaces
-            .iter()
-            .map(|(name, path_str)| (name.clone(), PathBuf::from(path_str)))
-            .collect();
-        Self {
-            paths,
-            stores: Mutex::new(HashMap::new()),
-            opening: Mutex::new(HashSet::new()),
-            opening_cv: Condvar::new(),
-        }
-    }
-
     /// Build with a single pre-loaded workspace named `"default"`.
     pub fn single(path: PathBuf) -> Self {
         let mut paths = HashMap::new();

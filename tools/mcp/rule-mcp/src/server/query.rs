@@ -106,6 +106,7 @@ impl RuleServer {
                 input.repo_scope,
                 input.path_scope,
                 input.slug,
+                input.low_rated_only,
                 input.unresolved_only,
             );
             let rules = store.list(&filter, input.limit).map_err(Self::rule_err)?;
@@ -130,6 +131,7 @@ impl RuleServer {
                 input.repo_scope,
                 input.path_scope,
                 input.slug,
+                input.low_rated_only,
                 input.unresolved_only,
             );
             let rules = store
@@ -175,6 +177,7 @@ fn rule_filter(
     repo_scope: Option<String>,
     path_scope: Option<String>,
     slug: Option<String>,
+    low_rated_only: bool,
     unresolved_only: bool,
 ) -> RuleFilter {
     RuleFilter {
@@ -184,11 +187,12 @@ fn rule_filter(
         repo_scope,
         path_scope,
         slug,
+        has_low_feedback: low_rated_only.then_some(true),
         has_unresolved_feedback: unresolved_only.then_some(true),
     }
 }
 
-fn rule_json(rule: &RuleManifest) -> Value {
+pub(super) fn rule_json(rule: &RuleManifest) -> Value {
     json!({
         "id": rule.id,
         "created_at": rule.created_at,
@@ -207,7 +211,12 @@ fn rule_summary_json(rule: &RuleManifest) -> Value {
         "repo_scopes": rule.repo_scopes(),
         "path_scopes": rule.path_scopes(),
         "order_key": rule.order_key(),
+        "feedback_helpful_count": rule.feedback_helpful_count(),
+        "feedback_mixed_count": rule.feedback_mixed_count(),
+        "feedback_not_helpful_count": rule.feedback_not_helpful_count(),
+        "feedback_note_count": rule.feedback_note_count(),
         "feedback_unresolved_count": rule.feedback_unresolved_count(),
+        "feedback_last_at": rule.feedback_last_at(),
     })
 }
 

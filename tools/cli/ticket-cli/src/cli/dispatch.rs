@@ -137,7 +137,7 @@ fn resolve_index_root(override_path: Option<&Path>) -> PathBuf {
     if let Ok(env_val) = std::env::var("TICKET_INDEX_ROOT") {
         return PathBuf::from(env_val);
     }
-    // Layers 2-4: workspace resolution chain (.ticket-workspace -> active workspace -> default)
+    // Local discovery: nearest .ticket/ walking upward, else ./ .ticket
     let (path, _source) = ticket_api::workspace::resolve_workspace();
     path
 }
@@ -158,7 +158,7 @@ fn dispatch_workspace(
     dry_run: bool,
 ) -> Result<Value, CliRunError> {
     if dry_run && workspace_command_mutates(&args.command) {
-        Ok(dry_run_payload("workspace", "workspace config writes"))
+        Ok(dry_run_payload("workspace", "workspace initialization"))
     } else {
         Ok(cmd_workspace(args))
     }

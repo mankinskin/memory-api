@@ -6,6 +6,9 @@ pub mod search;
 pub mod store;
 pub mod ticket_fs;
 
+#[cfg(test)]
+mod tests;
+
 pub use board::{
     BoardCleanPreview,
     BoardCleanResult,

@@ -2,6 +2,9 @@ mod filter;
 mod generated_targets;
 
 #[cfg(test)]
+mod feedback_tests;
+
+#[cfg(test)]
 mod tests;
 
 pub use self::{
@@ -15,17 +18,29 @@ use std::{
         HashMap,
     },
     fs,
-    path::Path,
+    io::{
+        BufRead,
+        BufReader,
+        Write,
+    },
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
 use chrono::Utc;
-use serde_json::Value;
+use serde_json::{
+    Number,
+    Value,
+};
 use uuid::Uuid;
 
 use memory_api::{
     error::StorageError,
     model::entity::EntityManifest,
     storage::{
+        ensure_gitignore_entries,
         entity_fs::EntityFs,
         entity_store::{
             EntityStore,
@@ -38,6 +53,11 @@ use memory_api::{
 use crate::{
     default_schema::rule_schema_registry,
     error::RuleError,
+    feedback::{
+        FeedbackSummary,
+        RuleFeedbackEvent,
+        RuleFeedbackInput,
+    },
     manifest::{
         RuleId,
         RuleManifest,
@@ -49,6 +69,8 @@ const RULE_LOCK_FILE: &str = ".rule-lock";
 const RULE_ENTRY_TYPE_ID: &str = "rule-entry";
 const GENERATED_TARGET_TYPE_ID: &str = "generated-target";
 const GENERATED_TARGET_ROOT_DIR: &str = "entities";
+const FEEDBACK_DIR: &str = "feedback";
+const FEEDBACK_EVENTS_FILE: &str = "events.ndjson";
 
 pub struct RuleStore {
     inner: EntityStore,
@@ -60,6 +82,7 @@ impl RuleStore {
         let fs = EntityFs::new(RULE_MANIFEST_FILE, RULE_LOCK_FILE);
         let registry = rule_schema_registry();
         let inner = EntityStore::open_with(index_root, fs, registry)?;
+        ensure_gitignore_entries(index_root, &["entities/"])?;
         let mut store = Self {
             inner,
             slug_index: HashMap::new(),
@@ -314,6 +337,33 @@ impl RuleStore {
         Ok(())
     }
 
+    pub fn record_feedback(
+        &mut self,
+        id_or_slug: &str,
+        input: RuleFeedbackInput,
+    ) -> Result<(RuleManifest, RuleFeedbackEvent), RuleError> {
+        let uuid = self.resolve_id(id_or_slug)?;
+        let indexed = self
+            .inner
+            .get_indexed(&uuid)?
+            .ok_or_else(|| RuleError::NotFound(uuid.to_string()))?;
+        if indexed.deleted || indexed.type_id != RULE_ENTRY_TYPE_ID {
+            return Err(RuleError::NotFound(uuid.to_string()));
+        }
+
+        let event = input.into_event();
+        append_feedback_event(&self.inner.fs, &indexed.path, &event)?;
+        let events = read_feedback_events(&self.inner.fs, &indexed.path)?;
+        let summary = FeedbackSummary::from_events(&events);
+        let rule = self.update(
+            id_or_slug,
+            feedback_summary_patch(&summary),
+            None,
+        )?;
+
+        Ok((rule, event))
+    }
+
     pub fn list(
         &self,
         filter: &RuleFilter,
@@ -448,4 +498,103 @@ fn entity_to_rule(entity: &EntityManifest) -> RuleManifest {
         created_at: entity.created_at,
         extra: entity.extra.clone(),
     }
+}
+
+fn feedback_events_path(
+    fs: &EntityFs,
+    entity_path: &Path,
+) -> PathBuf {
+    entity_path
+        .join(fs.config.assets_dir)
+        .join(FEEDBACK_DIR)
+        .join(FEEDBACK_EVENTS_FILE)
+}
+
+fn append_feedback_event(
+    fs: &EntityFs,
+    entity_path: &Path,
+    event: &RuleFeedbackEvent,
+) -> Result<(), RuleError> {
+    fs.ensure_assets_dir(entity_path)?;
+    let path = feedback_events_path(fs, entity_path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(StorageError::Io)?;
+    }
+
+    let line = serde_json::to_string(event)
+        .map_err(|err| StorageError::Serialization(err.to_string()))?;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(StorageError::Io)?;
+    writeln!(file, "{line}").map_err(StorageError::Io)?;
+    Ok(())
+}
+
+fn read_feedback_events(
+    fs: &EntityFs,
+    entity_path: &Path,
+) -> Result<Vec<RuleFeedbackEvent>, RuleError> {
+    let path = feedback_events_path(fs, entity_path);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let file = fs::File::open(&path).map_err(StorageError::Io)?;
+    let reader = BufReader::new(file);
+    let mut events = Vec::new();
+
+    for (index, line) in reader.lines().enumerate() {
+        let line = line.map_err(StorageError::Io)?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let event = serde_json::from_str(&line).map_err(|err| {
+            RuleError::Asset(format!(
+                "invalid feedback event at {}:{}: {err}",
+                path.display(),
+                index + 1,
+            ))
+        })?;
+        events.push(event);
+    }
+
+    Ok(events)
+}
+
+fn feedback_summary_patch(
+    summary: &FeedbackSummary,
+) -> BTreeMap<String, Value> {
+    let mut patch = BTreeMap::from([
+        (
+            "feedback_helpful_count".to_string(),
+            Value::Number(Number::from(summary.helpful_count)),
+        ),
+        (
+            "feedback_mixed_count".to_string(),
+            Value::Number(Number::from(summary.mixed_count)),
+        ),
+        (
+            "feedback_not_helpful_count".to_string(),
+            Value::Number(Number::from(summary.not_helpful_count)),
+        ),
+        (
+            "feedback_note_count".to_string(),
+            Value::Number(Number::from(summary.note_count)),
+        ),
+        (
+            "feedback_unresolved_count".to_string(),
+            Value::Number(Number::from(summary.unresolved_count)),
+        ),
+    ]);
+
+    if let Some(last_at) = &summary.last_at {
+        patch.insert(
+            "feedback_last_at".to_string(),
+            Value::String(last_at.clone()),
+        );
+    }
+
+    patch
 }

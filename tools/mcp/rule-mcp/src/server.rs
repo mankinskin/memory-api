@@ -27,6 +27,7 @@ use rule_api::{
 };
 
 mod admin;
+mod feedback;
 mod generate;
 mod importing;
 mod query;
@@ -143,6 +144,17 @@ impl RuleServer {
         Parameters(input): Parameters<UpdateRuleInput>,
     ) -> Result<CallToolResult, McpError> {
         self.rule_update_tool(input).await
+    }
+
+    #[tool(
+        name = "rule_record_feedback",
+        description = "Attach a rating and optional note to a rule entry, and resync its indexed feedback summary."
+    )]
+    pub async fn rule_record_feedback(
+        &self,
+        Parameters(input): Parameters<RecordFeedbackInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.rule_record_feedback_tool(input).await
     }
 
     #[tool(

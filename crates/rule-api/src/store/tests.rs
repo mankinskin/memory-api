@@ -26,6 +26,21 @@ fn create_and_get_rule_by_slug() {
 }
 
 #[test]
+fn open_creates_gitignore_for_local_rule_artifacts() {
+    let dir = tempdir().unwrap();
+
+    RuleStore::open(dir.path()).unwrap();
+
+    let gitignore =
+        fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+    assert!(gitignore.contains("entities.db"));
+    assert!(gitignore.contains("entities.db-shm"));
+    assert!(gitignore.contains("entities.db-wal"));
+    assert!(gitignore.contains("search_index/"));
+    assert!(gitignore.contains("entities/"));
+}
+
+#[test]
 fn open_rebuilds_slug_index_for_fresh_processes() {
     let dir = tempdir().unwrap();
     let mut store = RuleStore::open(dir.path()).unwrap();

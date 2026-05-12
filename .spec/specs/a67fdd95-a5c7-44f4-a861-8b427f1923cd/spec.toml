@@ -1,0 +1,7 @@
+id = "a67fdd95-a5c7-44f4-a861-8b427f1923cd"
+created_at = "2026-05-12T11:30:32.324840300+00:00"
+title = "Probe Spec"
+state = "draft"
+component = "probe"
+slug = "probe/spec"
+type = "specification"

@@ -1,143 +1,38 @@
-//! Workspace management: named index roots with global registry and per-project
-//! local overrides.
+//! Local index-root discovery helpers shared across the CLI tools.
 //!
-//! ## Resolution order (highest priority first)
-//!
-//! 1. `--index-root` CLI flag / env var  (handled by caller)
-//! 2. `.ticket-workspace` file found by walking up from the current directory
-//! 3. Active workspace in `~/.ticket-workspaces.toml`
-//! 4. Built-in default `~/.ticket-index/`
+//! Tool callers handle explicit overrides (`--index-root`, env vars) first.
+//! This module resolves repo-local roots by walking upward from the current
+//! directory and falling back to a sibling hidden folder in the current repo.
 
-use std::{
-    collections::BTreeMap,
-    path::{
-        Path,
-        PathBuf,
-    },
+use std::path::{
+    Path,
+    PathBuf,
 };
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+pub const TICKET_INDEX_DIR: &str = ".ticket";
 
-/// Filename for the global workspace registry.
-pub const WORKSPACE_CONFIG_FILE: &str = ".ticket-workspaces.toml";
-
-/// Filename searched upward from cwd for a project-local workspace override.
-pub const LOCAL_WORKSPACE_FILE: &str = ".ticket-workspace";
-
-// ── Config file ───────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct WorkspaceConfig {
-    /// Name of the currently active workspace.
-    pub active: Option<String>,
-    /// Named workspaces: name → absolute path string.
-    #[serde(default)]
-    pub workspaces: BTreeMap<String, String>,
+pub fn working_dir() -> Option<PathBuf> {
+    resolve_working_dir(
+        std::env::current_dir().ok().as_deref(),
+        std::env::var_os("PWD")
+            .as_deref()
+            .map(Path::new),
+    )
 }
 
-impl WorkspaceConfig {
-    /// Path to the global workspace registry file.
-    pub fn config_path() -> PathBuf {
-        dirs_home().join(WORKSPACE_CONFIG_FILE)
-    }
-
-    /// Load the global registry. Missing file = empty config (not an error).
-    pub fn load() -> Self {
-        let path = Self::config_path();
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            return Self::default();
-        };
-        toml::from_str(&content).unwrap_or_default()
-    }
-
-    /// Persist the registry back to disk.
-    pub fn save(&self) -> std::io::Result<()> {
-        let path = Self::config_path();
-        let content = toml::to_string_pretty(self).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-        })?;
-        std::fs::write(path, content)
-    }
-
-    /// Register a new workspace. Fails if the name is already taken.
-    pub fn add(
-        &mut self,
-        name: &str,
-        path: PathBuf,
-    ) -> Result<(), String> {
-        if self.workspaces.contains_key(name) {
-            return Err(format!("workspace '{}' already exists", name));
-        }
-        self.workspaces
-            .insert(name.to_string(), path.to_string_lossy().to_string());
-        Ok(())
-    }
-
-    /// Set the active workspace by name. Fails if the name is not registered.
-    pub fn set_active(
-        &mut self,
-        name: &str,
-    ) -> Result<(), String> {
-        if !self.workspaces.contains_key(name) {
-            return Err(format!(
-                "workspace '{}' is not registered; run `ticket workspace new {}` first",
-                name, name
-            ));
-        }
-        self.active = Some(name.to_string());
-        Ok(())
-    }
-
-    /// Remove a workspace from the registry. Does not delete data on disk.
-    pub fn remove(
-        &mut self,
-        name: &str,
-    ) -> Result<(), String> {
-        if self.workspaces.remove(name).is_none() {
-            return Err(format!("workspace '{}' is not registered", name));
-        }
-        if self.active.as_deref() == Some(name) {
-            self.active = None;
-        }
-        Ok(())
-    }
-
-    /// Resolve the active workspace to a path, if one is set and valid.
-    pub fn active_path(&self) -> Option<PathBuf> {
-        let name = self.active.as_deref()?;
-        self.workspaces.get(name).map(PathBuf::from)
-    }
-
-    /// Resolve a name (or absolute path string) from a local `.ticket-workspace` file.
-    pub fn resolve_value(
-        &self,
-        value: &str,
-    ) -> Option<PathBuf> {
-        let p = PathBuf::from(value.trim());
-        if p.is_absolute() {
-            return Some(p);
-        }
-        self.workspaces.get(value.trim()).map(PathBuf::from)
-    }
+pub fn find_local_root(dir_name: &str) -> Option<PathBuf> {
+    let cwd = working_dir()?;
+    find_local_root_from(&cwd, dir_name)
 }
 
-// ── Local .ticket-workspace file ─────────────────────────────────────────────
-
-/// Walk upward from `cwd` looking for a `.ticket-workspace` file.
-pub fn find_local_workspace_file() -> Option<PathBuf> {
-    let cwd = std::env::current_dir().ok()?;
-    find_local_workspace_file_from(&cwd)
-}
-
-/// Walk upward from `start` looking for a `.ticket-workspace` file.
-pub fn find_local_workspace_file_from(start: &Path) -> Option<PathBuf> {
-    let mut dir = start;
+pub fn find_local_root_from(
+    start: &Path,
+    dir_name: &str,
+) -> Option<PathBuf> {
+    let mut dir = start_dir(start);
     loop {
-        let candidate = dir.join(LOCAL_WORKSPACE_FILE);
-        if candidate.is_file() {
+        let candidate = dir.join(dir_name);
+        if candidate.is_dir() {
             return Some(candidate);
         }
         match dir.parent() {
@@ -147,130 +42,185 @@ pub fn find_local_workspace_file_from(start: &Path) -> Option<PathBuf> {
     }
 }
 
-// ── Workspace resolution ──────────────────────────────────────────────────────
+pub fn resolve_local_root(dir_name: &str) -> PathBuf {
+    working_dir()
+        .map(|cwd| resolve_local_root_from(&cwd, dir_name))
+        .unwrap_or_else(|| PathBuf::from(dir_name))
+}
 
-/// The layer that produced the resolved index root — useful for diagnostics.
+pub fn resolve_local_root_from(
+    start: &Path,
+    dir_name: &str,
+) -> PathBuf {
+    find_local_root_from(start, dir_name)
+        .unwrap_or_else(|| start_dir(start).join(dir_name))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceSource {
-    /// `--index-root` flag or env var.
-    Explicit,
-    /// `.ticket-workspace` file found by walking up from cwd.
-    LocalFile(PathBuf),
-    /// Active workspace from `~/.ticket-workspaces.toml`.
-    ActiveWorkspace(String),
-    /// Built-in default `~/.ticket-index/`.
-    Default,
+    Discovered(PathBuf),
+    Default(PathBuf),
 }
 
 impl WorkspaceSource {
     pub fn description(&self) -> String {
         match self {
-            Self::Explicit => "–– (--index-root / env var)".to_string(),
-            Self::LocalFile(p) =>
-                format!("local .ticket-workspace ({})", p.display()),
-            Self::ActiveWorkspace(name) =>
-                format!("active workspace '{}'", name),
-            Self::Default => "built-in default (~/.ticket-index)".to_string(),
+            Self::Discovered(path) =>
+                format!("discovered local .ticket ({})", path.display()),
+            Self::Default(path) =>
+                format!("default local .ticket ({})", path.display()),
         }
     }
 }
 
-/// Resolve the active index root using the full resolution chain.
-///
-/// Returns `(resolved_path, source)`.
 pub fn resolve_workspace() -> (PathBuf, WorkspaceSource) {
-    let config = WorkspaceConfig::load();
-
-    // Layer 2: project-local .ticket-workspace file
-    if let Some(local_file) = find_local_workspace_file() {
-        if let Ok(content) = std::fs::read_to_string(&local_file) {
-            let value = content.trim();
-            if !value.is_empty() {
-                let p = PathBuf::from(value);
-                let resolved = if p.is_absolute() {
-                    p
-                } else {
-                    local_file
-                        .parent()
-                        .unwrap_or_else(|| Path::new("."))
-                        .join(&p)
-                };
-                return (resolved, WorkspaceSource::LocalFile(local_file));
-            }
-        }
-    }
-
-    // Layer 3: active workspace in ~/.ticket-workspaces.toml
-    if let Some(name) = config.active.as_deref() {
-        if let Some(path) = config.active_path() {
-            return (path, WorkspaceSource::ActiveWorkspace(name.to_string()));
-        }
-    }
-
-    // Layer 4: built-in default
-    (dirs_home().join(".ticket-index"), WorkspaceSource::Default)
+    working_dir()
+        .map(|cwd| resolve_workspace_from(&cwd))
+        .unwrap_or_else(|| {
+            let path = PathBuf::from(TICKET_INDEX_DIR);
+            (path.clone(), WorkspaceSource::Default(path))
+        })
 }
 
-// ── Internal helpers ──────────────────────────────────────────────────────────
+pub fn resolve_workspace_from(
+    start: &Path,
+) -> (PathBuf, WorkspaceSource) {
+    if let Some(path) = find_local_root_from(start, TICKET_INDEX_DIR) {
+        return (path.clone(), WorkspaceSource::Discovered(path));
+    }
 
-/// Compute a relative path from `base_dir` to `target`.
-pub fn make_relative_path(
-    base_dir: &Path,
-    target: &Path,
-) -> PathBuf {
-    use std::path::Component;
+    let path = start_dir(start).join(TICKET_INDEX_DIR);
+    (path.clone(), WorkspaceSource::Default(path))
+}
 
-    let base_abs = base_dir
-        .canonicalize()
-        .unwrap_or_else(|_| base_dir.to_path_buf());
-
-    let target_abs = if target.is_absolute() {
-        target.to_path_buf()
+fn start_dir(start: &Path) -> &Path {
+    if start.is_dir() {
+        start
     } else {
-        base_abs.join(target)
-    };
-
-    let base_parts: Vec<Component> = base_abs.components().collect();
-    let target_parts: Vec<Component> = target_abs.components().collect();
-
-    let common = base_parts
-        .iter()
-        .zip(target_parts.iter())
-        .take_while(|(a, b)| a == b)
-        .count();
-
-    if common == 0 {
-        return target_abs;
-    }
-
-    let up_count = base_parts.len() - common;
-    let mut rel = PathBuf::new();
-    for _ in 0..up_count {
-        rel.push("..");
-    }
-    for part in &target_parts[common..] {
-        rel.push(part);
-    }
-
-    if rel.as_os_str().is_empty() {
-        PathBuf::from(".")
-    } else {
-        rel
+        start.parent().unwrap_or(start)
     }
 }
 
-fn dirs_home() -> PathBuf {
+fn resolve_working_dir(
+    cwd: Option<&Path>,
+    pwd: Option<&Path>,
+) -> Option<PathBuf> {
+    cwd.or(pwd).map(normalize_working_dir_path)
+}
+
+fn normalize_working_dir_path(path: &Path) -> PathBuf {
     #[cfg(windows)]
-    return PathBuf::from(
-        std::env::var("USERPROFILE")
-            .or_else(|_| {
-                std::env::var("HOMEDRIVE")
-                    .and_then(|d| std::env::var("HOMEPATH").map(|p| d + &p))
-            })
-            .unwrap_or_else(|_| ".".to_string()),
-    );
+    {
+        let raw = path.to_string_lossy();
+        if let Some(normalized) = normalize_git_bash_pwd(&raw) {
+            return PathBuf::from(normalized);
+        }
+        return PathBuf::from(raw.replace('\\', "/"));
+    }
+
     #[cfg(not(windows))]
-    return PathBuf::from(
-        std::env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-    );
+    {
+        path.to_path_buf()
+    }
+}
+
+#[cfg(windows)]
+fn normalize_git_bash_pwd(raw: &str) -> Option<String> {
+    let bytes = raw.as_bytes();
+    if bytes.len() < 3 || bytes[0] != b'/' || bytes[2] != b'/' {
+        return None;
+    }
+
+    let drive = bytes[1] as char;
+    if !drive.is_ascii_alphabetic() {
+        return None;
+    }
+
+    let mut normalized = String::with_capacity(raw.len());
+    normalized.push(drive.to_ascii_uppercase());
+    normalized.push(':');
+    normalized.push('/');
+    normalized.push_str(&raw[3..]);
+    Some(normalized)
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn find_local_root_from_discovers_parent_workspace() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let nested = repo.join("a").join("b");
+        std::fs::create_dir_all(repo.join(".ticket")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let found = find_local_root_from(&nested, ".ticket").unwrap();
+
+        assert_eq!(found, repo.join(".ticket"));
+    }
+
+    #[test]
+    fn resolve_local_root_from_defaults_to_start_directory() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let nested = repo.join("src");
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let resolved = resolve_local_root_from(&nested, ".spec");
+
+        assert_eq!(resolved, nested.join(".spec"));
+    }
+
+    #[test]
+    fn resolve_workspace_from_reports_default_local_ticket() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let (path, source) = resolve_workspace_from(&repo);
+
+        assert_eq!(path, repo.join(".ticket"));
+        assert_eq!(source, WorkspaceSource::Default(repo.join(".ticket")));
+    }
+
+    #[test]
+    fn resolve_working_dir_prefers_cwd() {
+        let cwd = Path::new("repo/current");
+        let pwd = Path::new("repo/pwd");
+
+        let resolved = resolve_working_dir(Some(cwd), Some(pwd));
+
+        assert_eq!(resolved, Some(normalize_working_dir_path(cwd)));
+    }
+
+    #[test]
+    fn resolve_working_dir_falls_back_to_pwd() {
+        let pwd = Path::new("repo/pwd");
+
+        let resolved = resolve_working_dir(None, Some(pwd));
+
+        assert_eq!(resolved, Some(normalize_working_dir_path(pwd)));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn normalize_working_dir_path_converts_backslashes() {
+        let normalized =
+            normalize_working_dir_path(Path::new(r"C:\repo\memory-api"));
+
+        assert_eq!(normalized, PathBuf::from("C:/repo/memory-api"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn normalize_working_dir_path_converts_git_bash_pwd() {
+        let normalized =
+            normalize_working_dir_path(Path::new("/c/repo/memory-api"));
+
+        assert_eq!(normalized, PathBuf::from("C:/repo/memory-api"));
+    }
 }

@@ -7,9 +7,6 @@ targets:
     nodes:
       - name: tool-surface
         section: memory-api
-      - name: tool-screenshots
-        title: Tool Screenshots
-        section: memory-api/user-stories
       - name: dependency-graph
         title: Dependency Graph
         section: memory-api/usage-guide

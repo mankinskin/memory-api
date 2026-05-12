@@ -5,120 +5,37 @@ use serde_json::{
     json,
 };
 
-use ticket_api::workspace::{
-    self,
-    WorkspaceConfig,
-};
+use ticket_api::storage::TicketStore;
+use ticket_api::workspace;
 
 use super::{
     WorkspaceArgs,
-    WorkspaceNewArgs,
-    WorkspaceRemoveArgs,
+    WorkspaceInitArgs,
     WorkspaceSubCommand,
-    WorkspaceUseArgs,
 };
 
 pub(super) fn workspace_command_mutates(command: &WorkspaceSubCommand) -> bool {
-    matches!(
-        command,
-        WorkspaceSubCommand::New(_)
-            | WorkspaceSubCommand::Use(_)
-            | WorkspaceSubCommand::Remove(_)
-    )
+    matches!(command, WorkspaceSubCommand::Init(_))
 }
 
 pub(super) fn cmd_workspace(args: WorkspaceArgs) -> Value {
     match args.command {
-        WorkspaceSubCommand::List => cmd_workspace_list(),
-        WorkspaceSubCommand::New(args) => cmd_workspace_new(args),
-        WorkspaceSubCommand::Use(args) => cmd_workspace_use(args),
+        WorkspaceSubCommand::Init(args) => cmd_workspace_init(args),
         WorkspaceSubCommand::Current => cmd_workspace_current(),
-        WorkspaceSubCommand::Remove(args) => cmd_workspace_remove(args),
     }
 }
 
-fn cmd_workspace_list() -> Value {
-    let config = WorkspaceConfig::load();
-    let active = config.active.as_deref().unwrap_or("");
-    let workspaces: Vec<Value> = config
-        .workspaces
-        .iter()
-        .map(|(name, path)| {
-            json!({
-                "name": name,
-                "path": path,
-                "active": name == active,
-            })
-        })
-        .collect();
+fn cmd_workspace_init(args: WorkspaceInitArgs) -> Value {
+    let path = args.path.unwrap_or_else(default_workspace_path);
+    if let Err(error) = TicketStore::open(&path) {
+        return error_response("workspace_init", error.to_string());
+    }
 
     json!({
-        "command": "workspace_list",
+        "command": "workspace_init",
         "status": "ok",
-        "active": active_value(active),
-        "workspaces": workspaces,
+        "path": path.to_string_lossy(),
     })
-}
-
-fn cmd_workspace_new(args: WorkspaceNewArgs) -> Value {
-    let path = args.path.unwrap_or_else(default_workspace_path);
-    let mut config = WorkspaceConfig::load();
-    match config.add(&args.name, path.clone()) {
-        Err(error) => error_response("workspace_new", error),
-        Ok(()) => match save_config(&mut config, "workspace_new") {
-            Some(response) => response,
-            None => json!({
-                "command": "workspace_new",
-                "status": "ok",
-                "name": args.name,
-                "path": path.to_string_lossy(),
-            }),
-        },
-    }
-}
-
-fn cmd_workspace_use(args: WorkspaceUseArgs) -> Value {
-    if args.local {
-        cmd_workspace_use_local(args)
-    } else {
-        cmd_workspace_use_global(args)
-    }
-}
-
-fn cmd_workspace_use_local(args: WorkspaceUseArgs) -> Value {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let local_path = cwd.join(ticket_api::workspace::LOCAL_WORKSPACE_FILE);
-    let index_path = resolve_workspace_path(&args.name);
-    let rel = ticket_api::workspace::make_relative_path(&cwd, &index_path);
-    let content = rel.to_string_lossy().replace('\\', "/");
-
-    match std::fs::write(&local_path, &content) {
-        Err(error) => error_response("workspace_use", error.to_string()),
-        Ok(()) => json!({
-            "command": "workspace_use",
-            "status": "ok",
-            "name": args.name,
-            "scope": "local",
-            "path": content,
-            "file": local_path.to_string_lossy(),
-        }),
-    }
-}
-
-fn cmd_workspace_use_global(args: WorkspaceUseArgs) -> Value {
-    let mut config = WorkspaceConfig::load();
-    match config.set_active(&args.name) {
-        Err(error) => error_response("workspace_use", error),
-        Ok(()) => match save_config(&mut config, "workspace_use") {
-            Some(response) => response,
-            None => json!({
-                "command": "workspace_use",
-                "status": "ok",
-                "name": args.name,
-                "scope": "global",
-            }),
-        },
-    }
 }
 
 fn cmd_workspace_current() -> Value {
@@ -131,43 +48,8 @@ fn cmd_workspace_current() -> Value {
     })
 }
 
-fn cmd_workspace_remove(args: WorkspaceRemoveArgs) -> Value {
-    let mut config = WorkspaceConfig::load();
-    match config.remove(&args.name) {
-        Err(error) => error_response("workspace_remove", error),
-        Ok(()) => match save_config(&mut config, "workspace_remove") {
-            Some(response) => response,
-            None => json!({
-                "command": "workspace_remove",
-                "status": "ok",
-                "name": args.name,
-            }),
-        },
-    }
-}
-
 fn default_workspace_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(".ticket")
-}
-
-fn resolve_workspace_path(name: &str) -> PathBuf {
-    WorkspaceConfig::load()
-        .workspaces
-        .get(name)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(name))
-}
-
-fn save_config(
-    config: &mut WorkspaceConfig,
-    command: &str,
-) -> Option<Value> {
-    config
-        .save()
-        .err()
-        .map(|error| error_response(command, error.to_string()))
+    workspace::resolve_workspace().0
 }
 
 fn error_response(
@@ -181,10 +63,26 @@ fn error_response(
     })
 }
 
-fn active_value(active: &str) -> Value {
-    if active.is_empty() {
-        Value::Null
-    } else {
-        Value::String(active.to_string())
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn workspace_init_creates_default_local_ticket_root() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let path = repo.join(".ticket");
+
+        let response = cmd_workspace(WorkspaceArgs {
+            command: WorkspaceSubCommand::Init(WorkspaceInitArgs {
+                path: Some(path.clone()),
+            }),
+        });
+
+        assert_eq!(response["status"], "ok");
+        assert!(path.join(".gitignore").is_file());
     }
 }

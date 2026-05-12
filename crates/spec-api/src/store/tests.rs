@@ -62,6 +62,32 @@ fn create_get_update_delete_spec() {
 }
 
 #[test]
+fn open_creates_gitignore_for_local_spec_artifacts() {
+    let tmp = TempDir::new().unwrap();
+
+    SpecStore::open(tmp.path()).unwrap();
+
+    let gitignore =
+        fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+    assert!(gitignore.contains("entities.db"));
+    assert!(gitignore.contains("entities.db-shm"));
+    assert!(gitignore.contains("entities.db-wal"));
+    assert!(gitignore.contains("search_index/"));
+}
+
+#[test]
+fn open_registers_default_specs_scan_root() {
+    let tmp = TempDir::new().unwrap();
+    let store = SpecStore::open(tmp.path()).unwrap();
+
+    let roots = store.entity_store().list_scan_roots().unwrap();
+
+    assert!(roots.iter().any(|root| {
+        root.path == tmp.path().join("specs") && root.label == "specs"
+    }));
+}
+
+#[test]
 fn duplicate_slug_is_rejected() {
     let (_tmp, mut store) = setup();
     let a = make_spec("a/spec", "A");

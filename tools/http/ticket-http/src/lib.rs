@@ -4,6 +4,11 @@
 //! Can be used as a library (embed the router in another server) or run
 //! as a standalone binary.
 
+extern crate self as viewer_api;
+
+pub mod auth;
+pub mod error;
+pub mod middleware;
 pub mod serve;
 
 // Re-export the key types callers need to embed the HTTP API.

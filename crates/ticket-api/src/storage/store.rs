@@ -8,6 +8,8 @@ use std::{
 };
 
 use chrono::Utc;
+use memory_api::model::filesystem::ScanRoot;
+use memory_api::storage::ensure_sqlite_index_root;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -113,20 +115,29 @@ impl TicketStore {
         index_root: &Path,
         schema_registry: SchemaRegistry,
     ) -> Result<Self, StorageError> {
-        std::fs::create_dir_all(index_root)?;
+        ensure_sqlite_index_root(
+            index_root,
+            "tickets.db",
+            &["search_index/"],
+        )?;
         let db_path = index_root.join("tickets.db");
         let search_dir = index_root.join("search_index");
 
         let index = RedbIndexStore::open(&db_path)?;
         let search = TantivySearchIndex::open_or_create(&search_dir)?;
 
-        Ok(Self {
+        let store = Self {
             index,
             search,
             schema_registry,
             index_root: index_root.to_path_buf(),
             hook: OnceLock::new(),
-        })
+        };
+        store.add_scan_root(ScanRoot {
+            path: index_root.join("tickets"),
+            label: "tickets".to_string(),
+        })?;
+        Ok(store)
     }
 
     /// Access the schema registry to look up type schemas.

@@ -1,8 +1,14 @@
-use std::path::Path;
+use std::{
+    fs,
+    path::Path,
+};
 
 use memory_api::model::filesystem::ScanRoot;
 use rule_api::{
+    FeedbackNoteKind,
+    FeedbackRating,
     RuleFilter,
+    RuleFeedbackInput,
     RuleManifest,
     RuleStore,
     discover_workspace_scan_roots,
@@ -22,6 +28,7 @@ use super::{
     CliRunError,
     CreateArgs,
     ExplainTargetArgs,
+    FeedbackArgs,
     GenerateFileArgs,
     GenerateTargetArgs,
     IdArgs,
@@ -72,6 +79,7 @@ pub(super) fn dispatch(
         RuleCommandCli::ImportFile(args) =>
             import_file_command(&mut store, args),
         RuleCommandCli::Update(args) => update_command(&mut store, args),
+        RuleCommandCli::Feedback(args) => feedback_command(&mut store, args),
         other => dispatch_secondary(other, &mut store),
     }
 }
@@ -95,7 +103,8 @@ fn dispatch_secondary(
         RuleCommandCli::Create(_)
         | RuleCommandCli::Get(_)
         | RuleCommandCli::ImportFile(_)
-        | RuleCommandCli::Update(_) =>
+        | RuleCommandCli::Update(_)
+        | RuleCommandCli::Feedback(_) =>
             unreachable!("handled in primary dispatch"),
     }
 }
@@ -181,6 +190,36 @@ fn update_command(
     }))
 }
 
+fn feedback_command(
+    store: &mut RuleStore,
+    args: FeedbackArgs,
+) -> Result<Value, CliRunError> {
+    let rating = args.rating.parse::<FeedbackRating>().map_err(
+        CliRunError::BadRequest,
+    )?;
+    let note_kind = args
+        .note_kind
+        .as_deref()
+        .map(str::parse::<FeedbackNoteKind>)
+        .transpose()
+        .map_err(CliRunError::BadRequest)?;
+    let input = RuleFeedbackInput::new(
+        rating,
+        args.note,
+        note_kind,
+        args.session_id,
+        args.agent_or_user_id,
+    )
+    .map_err(CliRunError::BadRequest)?;
+    let (rule, event) = store.record_feedback(&args.id, input)?;
+
+    Ok(json!({
+        "status": "ok",
+        "event": event,
+        "rule": rule_json(&rule),
+    }))
+}
+
 fn generate_file_command(
     store: &RuleStore,
     args: GenerateFileArgs,
@@ -193,6 +232,7 @@ fn generate_file_command(
         repo_scope: Some(args.repo_scope.clone()),
         path_scope: args.path_scope.clone(),
         slug: None,
+        has_low_feedback: None,
         has_unresolved_feedback: None,
     };
     let rules = store.list(&filter, None)?;
@@ -331,20 +371,24 @@ fn add_root_command(
     store: &mut RuleStore,
     args: AddRootArgs,
 ) -> Result<Value, CliRunError> {
+    fs::create_dir_all(&args.path)
+        .map_err(memory_api::error::StorageError::Io)?;
+    let path =
+        fs::canonicalize(&args.path).unwrap_or_else(|_| args.path.clone());
     let label = args.label.unwrap_or_else(|| {
-        args.path
+        path
             .file_name()
-            .and_then(|name| name.to_str())
+            .and_then(std::ffi::OsStr::to_str)
             .unwrap_or("rules")
             .to_string()
     });
     store.entity_store().add_scan_root(ScanRoot {
-        path: args.path.clone(),
+        path: path.clone(),
         label: label.clone(),
     })?;
     Ok(json!({
         "status": "ok",
-        "path": args.path,
+        "path": path,
         "label": label,
     }))
 }

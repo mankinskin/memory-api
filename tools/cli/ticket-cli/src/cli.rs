@@ -56,7 +56,7 @@ pub struct TicketCli {
     pub request_id: Option<String>,
 
     /// Root directory for the SQLite index and Tantivy search index.
-    /// Defaults to $TICKET_INDEX_ROOT env var, then ~/.ticket-index/.
+    /// Defaults to $TICKET_INDEX_ROOT, then the nearest local .ticket/.
     #[arg(long, global = true)]
     pub index_root: Option<PathBuf>,
 
@@ -128,7 +128,7 @@ pub enum TicketCommandCli {
     Subgraph(SubgraphArgs),
     /// Show all tickets that depend on a given ticket (reverse dependency tree).
     Topgraph(TopgraphArgs),
-    /// Manage named workspaces (named index roots).
+    /// Inspect or initialize the local ticket workspace root.
     Workspace(WorkspaceArgs),
     /// Watch filesystem scan roots and auto-reconcile on changes.
     Watch(WatchArgs),

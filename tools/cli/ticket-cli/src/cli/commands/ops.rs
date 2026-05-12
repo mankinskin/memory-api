@@ -152,23 +152,13 @@ pub(crate) fn cmd_serve(
     args: ServeCliArgs,
     store: TicketStore,
 ) -> Result<Value, CliRunError> {
-    use ticket_api::workspace::WorkspaceConfig;
     use ticket_http::serve::{
         ServeConfig,
         WorkspaceRegistry,
         serve,
     };
 
-    let registry = if args.workspace.is_some() {
-        WorkspaceRegistry::single_opened(std::sync::Arc::new(store))
-    } else {
-        let config = WorkspaceConfig::load();
-        if config.workspaces.is_empty() {
-            WorkspaceRegistry::single_opened(std::sync::Arc::new(store))
-        } else {
-            WorkspaceRegistry::from_config(&config)
-        }
-    };
+    let registry = WorkspaceRegistry::single_opened(std::sync::Arc::new(store));
 
     let config = ServeConfig {
         host: args.host,

@@ -141,6 +141,7 @@ impl RenderTargetFilter {
             repo_scope: self.repo_scope.clone(),
             path_scope: self.path_scope.clone(),
             slug: None,
+            has_low_feedback: None,
             has_unresolved_feedback: None,
         }
     }

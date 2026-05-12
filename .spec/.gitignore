@@ -1,0 +1,5 @@
+# Excluded local index artifacts created by memory-api tools.
+entities.db
+entities.db-shm
+entities.db-wal
+search_index/

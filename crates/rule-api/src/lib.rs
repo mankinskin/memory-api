@@ -1,5 +1,6 @@
 pub mod default_schema;
 pub mod error;
+pub mod feedback;
 pub mod import;
 pub mod manifest;
 pub mod render;
@@ -11,6 +12,12 @@ pub use default_schema::{
     RULE_ENTRY_SCHEMA_TOML,
     rule_entry_schema,
     rule_schema_registry,
+};
+pub use feedback::{
+    FeedbackNoteKind,
+    FeedbackRating,
+    RuleFeedbackEvent,
+    RuleFeedbackInput,
 };
 pub use import::{
     ImportedRuleBlock,

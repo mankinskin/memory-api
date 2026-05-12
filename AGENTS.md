@@ -55,7 +55,10 @@ Use static references as support:
 - **Browser verification is mandatory** for any change to a server interface or frontend feature:
   open the affected viewer in the browser and confirm the feature works visually before marking work done.
 - **Write Playwright end-to-end tests** for all browser-facing features and server interface changes.
-  E2E tests live under `tools/viewer/e2e/`. Run them with `npx playwright test` from that directory.
+  Ticket-viewer E2E lives under `memory-viewers/ticket-viewer/frontend/dioxus/`; run release coverage there with `npm run test:e2e:release`.
+  Shared managed-viewer suites live under `memory-viewers/viewer-api/viewer-api/frontend/dioxus/e2e/shared/`.
+  Spec-viewer release E2E lives under `memory-viewers/spec-viewer/frontend/dioxus/`; run it with `npm run test:e2e:release`.
+  Doc-viewer and log-viewer keep local Playwright wrappers under `tools/viewer/doc-viewer/e2e/` and `tools/viewer/log-viewer/e2e/`, importing shared suites from `memory-viewers/viewer-api`.
 - For tracing-based tests, use:
 
 <!-- rule-api:entry id=b295a195-616b-4bd0-9181-2d0ae0295965 slug=shared/agent-rules/quality-gates/l51 -->

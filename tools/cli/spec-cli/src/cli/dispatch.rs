@@ -79,22 +79,53 @@ fn dispatch_read_only(
 }
 
 fn resolve_index_root(override_path: Option<&Path>) -> PathBuf {
+    let cwd = memory_api::workspace::working_dir();
+    resolve_index_root_from(override_path, cwd.as_deref())
+}
+
+fn resolve_index_root_from(
+    override_path: Option<&Path>,
+    cwd: Option<&Path>,
+) -> PathBuf {
     if let Some(p) = override_path {
         return p.to_path_buf();
     }
     if let Ok(env_val) = std::env::var("SPEC_INDEX_ROOT") {
         return PathBuf::from(env_val);
     }
-    // Default: .spec/ in current working directory
-    let cwd_spec = std::env::current_dir().ok().map(|d| d.join(".spec"));
-    if let Some(p) = cwd_spec.filter(|p| p.exists()) {
-        return p;
-    }
-    // Fallback: ~/.spec-index via HOME env var
-    if let Ok(home) =
-        std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))
-    {
-        return PathBuf::from(home).join(".spec-index");
+    if let Some(cwd) = cwd {
+        return memory_api::workspace::resolve_local_root_from(cwd, ".spec");
     }
     PathBuf::from(".spec")
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn resolve_index_root_prefers_nearest_parent_spec_dir() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let nested = repo.join("src").join("api");
+        std::fs::create_dir_all(repo.join(".spec")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let resolved = resolve_index_root_from(None, Some(&nested));
+
+        assert_eq!(resolved, repo.join(".spec"));
+    }
+
+    #[test]
+    fn resolve_index_root_defaults_to_current_directory_spec_dir() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let resolved = resolve_index_root_from(None, Some(&repo));
+
+        assert_eq!(resolved, repo.join(".spec"));
+    }
 }

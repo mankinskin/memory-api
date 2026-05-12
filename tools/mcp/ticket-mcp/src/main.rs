@@ -2,10 +2,7 @@ use ticket_mcp::server;
 
 use std::path::PathBuf;
 
-use ticket_api::{
-    storage::store::TicketStore,
-    workspace::WorkspaceConfig,
-};
+use ticket_api::storage::store::TicketStore;
 
 #[tokio::main]
 async fn main() {
@@ -32,12 +29,7 @@ async fn main() {
         std::process::exit(1);
     });
 
-    let config = WorkspaceConfig::load();
-    let workspace_names: Vec<String> = if config.workspaces.is_empty() {
-        vec!["default".to_string()]
-    } else {
-        config.workspaces.keys().cloned().collect()
-    };
+    let workspace_names = vec!["default".to_string()];
 
     eprintln!(
         "ticket-mcp starting (store: {}, workspaces: {:?})",

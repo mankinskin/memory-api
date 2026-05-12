@@ -1,0 +1,11 @@
+.git
+target
+**/node_modules
+.rule/entities.db
+.rule/search_index
+.spec/entities.db
+.spec/search_index
+.ticket/tickets.db
+.ticket/search_index
+.audit/audit.db
+.audit/search_index

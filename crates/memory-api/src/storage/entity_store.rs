@@ -24,6 +24,7 @@ use crate::{
         },
         index::RedbIndexStore,
         indexed::IndexedEntity,
+        local_root::ensure_sqlite_index_root,
         search::{
             SearchResult,
             TantivySearchIndex,
@@ -70,7 +71,11 @@ impl EntityStore {
         fs: EntityFs,
         schema_registry: SchemaRegistry,
     ) -> Result<Self, StorageError> {
-        std::fs::create_dir_all(index_root)?;
+        ensure_sqlite_index_root(
+            index_root,
+            "entities.db",
+            &["search_index/"],
+        )?;
         let db_path = index_root.join("entities.db");
         let search_dir = index_root.join("search_index");
 

@@ -44,6 +44,7 @@ impl RuleServer {
                 repo_scope: Some(input.repo_scope.clone()),
                 path_scope: input.path_scope.clone(),
                 slug: None,
+                has_low_feedback: None,
                 has_unresolved_feedback: None,
             };
             let rules = store.list(&filter, None).map_err(Self::rule_err)?;

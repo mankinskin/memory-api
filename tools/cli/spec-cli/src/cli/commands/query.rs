@@ -3,7 +3,10 @@ use serde_json::{
     json,
 };
 
-use memory_api::model::filesystem::ScanRoot;
+use memory_api::{
+    error::StorageError,
+    model::filesystem::ScanRoot,
+};
 use spec_api::SpecStore;
 
 use crate::cli::{
@@ -60,8 +63,9 @@ pub(crate) fn cmd_add_root(
     args: AddRootArgs,
     store: &SpecStore,
 ) -> Result<Value, CliRunError> {
-    let path =
-        std::fs::canonicalize(&args.path).unwrap_or_else(|_| args.path.clone());
+    std::fs::create_dir_all(&args.path).map_err(StorageError::Io)?;
+    let path = std::fs::canonicalize(&args.path)
+        .unwrap_or_else(|_| args.path.clone());
     let label = args.label.unwrap_or_else(|| {
         path.file_name()
             .and_then(|n| n.to_str())
@@ -78,6 +82,32 @@ pub(crate) fn cmd_add_root(
         "path": path,
         "label": label,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn add_root_creates_missing_directory() {
+        let dir = tempdir().unwrap();
+        let index_root = dir.path().join(".spec");
+        let store = SpecStore::open(&index_root).unwrap();
+        let root = index_root.join("specs");
+
+        cmd_add_root(
+            AddRootArgs {
+                path: root.clone(),
+                label: None,
+            },
+            &store,
+        )
+        .unwrap();
+
+        assert!(root.is_dir());
+    }
 }
 
 pub(crate) fn cmd_health(

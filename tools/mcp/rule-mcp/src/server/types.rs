@@ -21,6 +21,20 @@ pub struct UpdateRuleInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct RecordFeedbackInput {
+    pub id: String,
+    pub rating: String,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub note_kind: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub agent_or_user_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ImportRuleFileInput {
     pub path: String,
     pub file_kind: String,
@@ -77,6 +91,8 @@ pub struct ListRulesInput {
     #[serde(default)]
     pub slug: Option<String>,
     #[serde(default)]
+    pub low_rated_only: bool,
+    #[serde(default)]
     pub unresolved_only: bool,
     #[serde(default)]
     pub limit: Option<usize>,
@@ -97,6 +113,8 @@ pub struct SearchRulesInput {
     pub path_scope: Option<String>,
     #[serde(default)]
     pub slug: Option<String>,
+    #[serde(default)]
+    pub low_rated_only: bool,
     #[serde(default)]
     pub unresolved_only: bool,
     #[serde(default = "default_search_limit")]

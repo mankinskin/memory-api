@@ -31,6 +31,7 @@ pub enum RuleCommandCli {
     #[command(name = "import-file")]
     ImportFile(ImportFileArgs),
     Update(UpdateArgs),
+    Feedback(FeedbackArgs),
     #[command(name = "generate-file")]
     GenerateFile(GenerateFileArgs),
     #[command(name = "generate-target")]
@@ -118,6 +119,21 @@ pub struct UpdateArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct FeedbackArgs {
+    pub id: String,
+    #[arg(long, value_parser = ["helpful", "mixed", "not-helpful"])]
+    pub rating: String,
+    #[arg(long)]
+    pub note: Option<String>,
+    #[arg(long = "note-kind", value_parser = ["note", "suggestion"])]
+    pub note_kind: Option<String>,
+    #[arg(long = "session-id")]
+    pub session_id: Option<String>,
+    #[arg(long = "agent-or-user-id")]
+    pub agent_or_user_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
 pub struct GenerateFileArgs {
     #[arg(long = "file-kind")]
     pub file_kind: String,
@@ -181,6 +197,8 @@ pub struct FilterArgs {
     pub path_scope: Option<String>,
     #[arg(long)]
     pub slug: Option<String>,
+    #[arg(long = "low-rated-only", default_value_t = false)]
+    pub low_rated_only: bool,
     #[arg(long = "unresolved-only", default_value_t = false)]
     pub unresolved_only: bool,
 }
@@ -213,4 +231,48 @@ pub struct AddRootArgs {
     pub path: PathBuf,
     #[arg(long)]
     pub label: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    #[test]
+    fn parse_feedback_command() {
+        let cli = RuleCli::parse_from([
+            "rule",
+            "feedback",
+            "shared/agents/feedback",
+            "--rating",
+            "not-helpful",
+            "--note",
+            "Needs a concrete example.",
+            "--note-kind",
+            "suggestion",
+            "--session-id",
+            "session-42",
+            "--agent-or-user-id",
+            "copilot-gpt-5.4",
+        ]);
+
+        match cli.command {
+            RuleCommandCli::Feedback(args) => {
+                assert_eq!(args.id, "shared/agents/feedback");
+                assert_eq!(args.rating, "not-helpful");
+                assert_eq!(
+                    args.note.as_deref(),
+                    Some("Needs a concrete example.")
+                );
+                assert_eq!(args.note_kind.as_deref(), Some("suggestion"));
+                assert_eq!(args.session_id.as_deref(), Some("session-42"));
+                assert_eq!(
+                    args.agent_or_user_id.as_deref(),
+                    Some("copilot-gpt-5.4")
+                );
+            },
+            _ => panic!("expected feedback command"),
+        }
+    }
 }
