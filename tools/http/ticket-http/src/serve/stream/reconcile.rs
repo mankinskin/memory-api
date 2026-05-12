@@ -13,7 +13,7 @@ use std::{
 use crate::serve::stream::emitter::HookEmitter;
 use ticket_api::storage::store::TicketStore;
 
-const RECONCILE_INTERVAL: Duration = Duration::from_secs(30);
+const RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Spawn a background reconcile task for a single workspace.
 ///
