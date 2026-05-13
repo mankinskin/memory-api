@@ -25,6 +25,7 @@ use crate::cli::{
 };
 
 const DONE_STATES: &[&str] = &["done", "cancelled"];
+const PAUSED_STATES: &[&str] = &["on-hold"];
 
 pub(super) fn run(
     args: NextArgs,
@@ -127,7 +128,10 @@ fn candidate_tickets<'a>(
             ticket
                 .state
                 .as_deref()
-                .map(|state| !DONE_STATES.contains(&state))
+                .map(|state| {
+                    !DONE_STATES.contains(&state)
+                        && !PAUSED_STATES.contains(&state)
+                })
                 .unwrap_or(true)
         })
         .filter(|ticket| {

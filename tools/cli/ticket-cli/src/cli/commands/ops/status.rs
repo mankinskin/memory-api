@@ -24,6 +24,7 @@ use crate::cli::{
 
 const DONE_STATES: &[&str] = &["done", "cancelled"];
 const ACTIVE_STATES: &[&str] = &["ready", "in-implementation", "in-review"];
+const PAUSED_STATES: &[&str] = &["on-hold"];
 
 #[derive(Default)]
 struct StatusSections {
@@ -130,6 +131,18 @@ fn status_sections(
 
         if DONE_STATES.contains(&state) {
             sections.done_count += 1;
+            continue;
+        }
+
+        if PAUSED_STATES.contains(&state) {
+            if show_blocked {
+                sections.blocked.push(json!({
+                    "id": ticket.id,
+                    "title": ticket.title,
+                    "state": state,
+                    "waiting_on": [],
+                }));
+            }
             continue;
         }
 

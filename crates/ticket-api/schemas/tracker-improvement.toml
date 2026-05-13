@@ -17,6 +17,7 @@ states = [
     "ready",
     "in-implementation",
     "in-review",
+    "on-hold",
     "done",
     "cancelled",
 ]
@@ -48,12 +49,20 @@ from = "ready"
 to = "cancelled"
 
 [[transitions]]
+from = "ready"
+to = "on-hold"
+
+[[transitions]]
 from = "in-implementation"
 to = "in-review"
 
 [[transitions]]
 from = "in-implementation"
 to = "cancelled"
+
+[[transitions]]
+from = "in-implementation"
+to = "on-hold"
 
 [[transitions]]
 from = "in-review"
@@ -65,6 +74,26 @@ to = "in-implementation"
 
 [[transitions]]
 from = "in-review"
+to = "cancelled"
+
+[[transitions]]
+from = "in-review"
+to = "on-hold"
+
+[[transitions]]
+from = "on-hold"
+to = "ready"
+
+[[transitions]]
+from = "on-hold"
+to = "in-implementation"
+
+[[transitions]]
+from = "on-hold"
+to = "in-review"
+
+[[transitions]]
+from = "on-hold"
 to = "cancelled"
 
 # ── Field definitions ──────────────────────────────────────────────────────────

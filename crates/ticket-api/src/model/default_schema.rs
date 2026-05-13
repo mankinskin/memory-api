@@ -133,6 +133,7 @@ pub fn tracker_improvement_schema() -> TicketTypeSchema {
         "ready",
         "in-implementation",
         "in-review",
+        "on-hold",
         "done",
         "cancelled",
     ]
@@ -154,7 +155,17 @@ pub fn tracker_improvement_schema() -> TicketTypeSchema {
         // in-review ->
         ("in-review", "done"),
         ("in-review", "in-implementation"),
+        ("in-review", "on-hold"),
+        // on-hold ->
+        ("on-hold", "ready"),
+        ("on-hold", "in-implementation"),
+        ("on-hold", "in-review"),
+        ("on-hold", "cancelled"),
         ("in-review", "cancelled"),
+        // ready ->
+        ("ready", "on-hold"),
+        // in-implementation ->
+        ("in-implementation", "on-hold"),
     ]
     .into_iter()
     .map(|(f, t)| Transition {

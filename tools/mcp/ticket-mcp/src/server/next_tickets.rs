@@ -19,6 +19,8 @@ use super::{
     *,
 };
 
+const PAUSED_STATES: &[&str] = &["on-hold"];
+
 impl TicketServer {
     pub(crate) async fn next_tickets_tool(
         &self,
@@ -131,6 +133,13 @@ fn candidate_tickets<'a>(
     tickets
         .iter()
         .filter(|ticket| !done_ids.contains(&ticket.id))
+        .filter(|ticket| {
+            ticket
+                .state
+                .as_deref()
+                .map(|state| !PAUSED_STATES.contains(&state))
+                .unwrap_or(true)
+        })
         .filter(|ticket| blockers.get(&ticket.id).is_none_or(Vec::is_empty))
         .collect()
 }
