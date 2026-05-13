@@ -251,6 +251,57 @@ fn add_root_command_creates_missing_directory() {
 }
 
 #[test]
+fn feedback_command_self_heals_after_missing_rule_folder() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::open(dir.path()).unwrap();
+    let stale = sample_rule(
+        "shared/agents/stale-rule",
+        "Stale Rule",
+        "stale-rule",
+        "This folder will be deleted before feedback runs.",
+        10,
+    );
+    let healthy = sample_rule(
+        "shared/agents/healthy-rule",
+        "Healthy Rule",
+        "healthy-rule",
+        "This rule should still accept feedback.",
+        20,
+    );
+
+    let stale_id = store.create(&stale, None).unwrap();
+    store.create(&healthy, None).unwrap();
+    let stale_path = store
+        .entity_store()
+        .get_indexed(&stale_id)
+        .unwrap()
+        .unwrap()
+        .path;
+    fs::remove_dir_all(&stale_path).unwrap();
+    drop(store);
+
+    let result = dispatch::dispatch(
+        RuleCommandCli::Feedback(FeedbackArgs {
+            id: "shared/agents/healthy-rule".to_string(),
+            rating: "helpful".to_string(),
+            note: Some("Still accurate after pruning stale rows.".to_string()),
+            note_kind: Some("note".to_string()),
+            session_id: None,
+            agent_or_user_id: None,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    assert_eq!(result["status"], "ok");
+
+    let reopened = RuleStore::open(dir.path()).unwrap();
+    let healthy_rule = reopened.get("shared/agents/healthy-rule").unwrap();
+    assert_eq!(healthy_rule.feedback_helpful_count(), Some(1));
+    assert!(reopened.entity_store().get_indexed(&stale_id).unwrap().is_none());
+}
+
+#[test]
 fn generate_target_collects_rules_from_nested_workspaces() {
     let dir = tempdir().unwrap();
     let repo_root = dir.path().join("repo");

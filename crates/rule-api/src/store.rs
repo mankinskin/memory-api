@@ -87,6 +87,7 @@ impl RuleStore {
             inner,
             slug_index: HashMap::new(),
         };
+        store.prune_missing_index_entries()?;
         store.rebuild_slug_index()?;
         Ok(store)
     }
@@ -107,7 +108,7 @@ impl RuleStore {
     pub fn rebuild_slug_index(&mut self) -> Result<(), RuleError> {
         let mut next = HashMap::new();
         for indexed in self.inner.list_indexed(false)? {
-            let manifest = self.inner.fs.read(&indexed.path)?;
+            let manifest = self.read_indexed_manifest(&indexed)?;
             if let Some(slug) =
                 manifest.extra.get("slug").and_then(Value::as_str)
             {
@@ -116,6 +117,34 @@ impl RuleStore {
         }
         self.slug_index = next;
         Ok(())
+    }
+
+    fn prune_missing_index_entries(&mut self) -> Result<(), RuleError> {
+        let stale_ids: Vec<_> = self
+            .inner
+            .list_indexed(true)?
+            .into_iter()
+            .filter(|indexed| is_missing_index_entry(indexed))
+            .map(|indexed| indexed.id)
+            .collect();
+
+        for id in stale_ids {
+            self.inner.index.remove_ticket(&id)?;
+        }
+
+        Ok(())
+    }
+
+    fn read_indexed_manifest(
+        &self,
+        indexed: &IndexedEntity,
+    ) -> Result<EntityManifest, RuleError> {
+        self.inner.fs.read(&indexed.path).map_err(|err| {
+            RuleError::Asset(format!(
+                "failed to read indexed rule entity at {}: {err}",
+                indexed.path.display()
+            ))
+        })
     }
 
     pub fn resolve_id(
@@ -457,7 +486,7 @@ impl RuleStore {
         &self,
         indexed: &IndexedEntity,
     ) -> Result<RuleManifest, RuleError> {
-        let entity = self.inner.fs.read(&indexed.path)?;
+        let entity = self.read_indexed_manifest(indexed)?;
         let mut rule = entity_to_rule(&entity);
         if let Some(body) = self.inner.fs.read_description(&indexed.path) {
             rule.set_body(&body);
@@ -498,6 +527,11 @@ fn entity_to_rule(entity: &EntityManifest) -> RuleManifest {
         created_at: entity.created_at,
         extra: entity.extra.clone(),
     }
+}
+
+fn is_missing_index_entry(indexed: &IndexedEntity) -> bool {
+    !indexed.path.is_dir()
+        || !indexed.path.join(RULE_MANIFEST_FILE).is_file()
 }
 
 fn feedback_events_path(

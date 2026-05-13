@@ -61,6 +61,31 @@ fn open_rebuilds_slug_index_for_fresh_processes() {
 }
 
 #[test]
+fn open_prunes_stale_index_rows_for_deleted_rule_folders() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::open(dir.path()).unwrap();
+    let manifest = RuleManifest::new(
+        "shared/agents/stale-folder",
+        "Stale Folder",
+        "AGENTS",
+        "stale-folder",
+        "This rule folder will be deleted from disk.",
+    );
+
+    let id = store.create(&manifest, None).unwrap();
+    let indexed = store.entity_store().get_indexed(&id).unwrap().unwrap();
+    fs::remove_dir_all(&indexed.path).unwrap();
+    drop(store);
+
+    let reopened = RuleStore::open(dir.path()).unwrap();
+    assert!(reopened.entity_store().get_indexed(&id).unwrap().is_none());
+    assert!(matches!(
+        reopened.get("shared/agents/stale-folder"),
+        Err(RuleError::NotFound(_))
+    ));
+}
+
+#[test]
 fn list_filters_and_sorts_rules_by_metadata() {
     let dir = tempdir().unwrap();
     let mut store = RuleStore::open(dir.path()).unwrap();
