@@ -1,0 +1,5 @@
+{"rev":1,"ts":"2026-05-05T19:03:51.461169100+00:00","fields":{"state":"new","title":"Add repository QA MCP audit tool","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-05-05T19:06:03.450830300+00:00","fields":{"state":"ready","title":"Add repository QA MCP audit tool","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-05-05T19:06:03.584946100+00:00","fields":{"state":"in-implementation","title":"Add repository QA MCP audit tool","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-05-05T19:23:28.462557500+00:00","fields":{"state":"in-review","title":"Add repository QA MCP audit tool","type":"tracker-improvement"}}
+{"rev":5,"ts":"2026-05-05T19:23:28.621194600+00:00","fields":{"state":"done","title":"Add repository QA MCP audit tool","type":"tracker-improvement"}}

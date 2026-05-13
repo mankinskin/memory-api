@@ -1,0 +1,7 @@
+id = "f15d9e8b-72d2-44d9-965d-9fecbbc02d7f"
+created_at = "2026-05-07T11:41:55.056471100+00:00"
+title = "Build rule-api for generated agent instruction docs"
+state = "in-implementation"
+component = "rule-api"
+priority = "high"
+type = "tracker-improvement"

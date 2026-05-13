@@ -1,0 +1,7 @@
+id = "48b1cefb-dcc5-4cd4-ac41-568e57c97aca"
+created_at = "2026-05-07T11:42:05.949696900+00:00"
+title = "Add rule-api tools to edit and generate agent markdown"
+state = "done"
+component = "rule-api"
+priority = "high"
+type = "tracker-improvement"

@@ -1,0 +1,1 @@
+{"rev":1,"ts":"2026-04-20T21:57:42.217532+00:00","fields":{"code_refs":[{"file":"crates/spec-api/src/error.rs","kind":"enum","line_end":22,"line_start":4,"symbol":"SpecError"}],"component":"spec-api","parent":"86877b97-2df6-46b5-923d-a9e608655fed","scope":"public","slug":"spec-api/error","state":"draft","title":"error","type":"specification"}}

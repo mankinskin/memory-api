@@ -1,0 +1,6 @@
+id = "0db86ac1-45ca-49a6-abc7-dd30b5adbee7"
+created_at = "2026-04-09T19:45:44.550621600+00:00"
+title = "[Board] ticket-api: Core board storage — types, tables, CRUD"
+state = "done"
+priority = "high"
+type = "tracker-improvement"

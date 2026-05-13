@@ -1,0 +1,10 @@
+id = "b0b3c0c6-168f-4b00-93b2-e06ce506855a"
+created_at = "2026-04-20T21:57:42.398154+00:00"
+title = "slug"
+state = "draft"
+code_refs = [{ description = "Validate a slug string.\n\nRules:\n- Must not be empty\n- Segments separated by `/`\n- Each segment: lowercase `[a-z0-9]` and hyphens `-`\n- No empty segments (no `//`, no leading/trailing `/`)\n- No uppercase letters\n- No special chars other than `-` and `/`", file = "crates/spec-api/src/slug.rs", kind = "function", line_end = 37, line_start = 14, symbol = "validate_slug" }, { description = "In-memory slug → UUID index with uniqueness enforcement.", file = "crates/spec-api/src/slug.rs", kind = "struct", line_end = 43, line_start = 41, symbol = "SlugIndex" }, { file = "crates/spec-api/src/slug.rs", kind = "impl", line_end = 90, line_start = 45, symbol = "SlugIndex" }]
+component = "spec-api"
+parent = "86877b97-2df6-46b5-923d-a9e608655fed"
+scope = "public"
+slug = "spec-api/slug"
+type = "specification"

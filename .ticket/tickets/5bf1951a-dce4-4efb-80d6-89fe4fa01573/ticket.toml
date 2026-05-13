@@ -1,0 +1,6 @@
+id = "5bf1951a-dce4-4efb-80d6-89fe4fa01573"
+created_at = "2026-04-14T21:07:43.683627200+00:00"
+title = "ticket-vscode: Fix tree view state grouping — show only same-state tickets per folder with dependency hierarchy"
+state = "done"
+priority = "high"
+type = "tracker-improvement"

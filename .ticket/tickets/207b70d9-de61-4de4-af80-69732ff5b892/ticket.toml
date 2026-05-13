@@ -1,0 +1,8 @@
+id = "207b70d9-de61-4de4-af80-69732ff5b892"
+created_at = "2026-04-14T11:24:55.782643+00:00"
+title = "ticket-vscode: Show ticket description in hover tooltip"
+state = "done"
+component = "ticket-vscode"
+priority = "medium"
+risk_level = "low"
+type = "tracker-improvement"

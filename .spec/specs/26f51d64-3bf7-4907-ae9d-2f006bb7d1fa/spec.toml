@@ -1,0 +1,10 @@
+id = "26f51d64-3bf7-4907-ae9d-2f006bb7d1fa"
+created_at = "2026-04-20T21:57:02.799420100+00:00"
+title = "error"
+state = "draft"
+code_refs = [{ description = "Map a `SpecError` to an Axum `Response` with appropriate HTTP status.", file = "tools/http/spec-http/src/error.rs", kind = "function", line_end = 32, line_start = 10, symbol = "spec_err" }, { description = "Map a `StorageError` to an Axum `Response`.", file = "tools/http/spec-http/src/error.rs", kind = "function", line_end = 45, line_start = 35, symbol = "storage_err" }]
+component = "spec-http"
+parent = "db5c02e5-31f5-4a40-bf9c-2227eab412b2"
+scope = "public"
+slug = "spec-http/error"
+type = "specification"

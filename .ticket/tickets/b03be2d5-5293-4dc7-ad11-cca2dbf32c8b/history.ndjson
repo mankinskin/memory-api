@@ -1,0 +1,3 @@
+{"rev":1,"ts":"2026-04-18T15:00:06.520827200+00:00","fields":{"component":"memory-api","phase":"5","priority":"medium","state":"new","title":"[spec][P5] Cross-entity edges — spec depends_on ticket, ticket implements spec","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-04-18T15:07:10.681285300+00:00","fields":{"component":"memory-api","phase":"5","priority":"medium","state":"new","title":"[spec][P5] Cross-entity edges — spec depends_on ticket, ticket implements spec","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-04-18T21:23:26.142139+00:00","fields":{"component":"memory-api","phase":"5","priority":"medium","state":"ready","title":"[spec][P5] Cross-entity edges — spec depends_on ticket, ticket implements spec","type":"tracker-improvement"}}

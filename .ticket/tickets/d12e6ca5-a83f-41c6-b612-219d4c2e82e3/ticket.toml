@@ -1,0 +1,8 @@
+id = "d12e6ca5-a83f-41c6-b612-219d4c2e82e3"
+created_at = "2026-04-18T15:00:04.901894500+00:00"
+title = "[spec][P3] Spec creation — bootstrap specs for existing interfaces from code analysis"
+state = "done"
+component = "spec-api"
+phase = "3"
+priority = "high"
+type = "tracker-improvement"

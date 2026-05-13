@@ -1,0 +1,3 @@
+{"rev":1,"ts":"2026-04-18T15:00:07.413655800+00:00","fields":{"component":"spec-api","phase":"8","priority":"high","state":"new","title":"[spec][P8] Bootstrap: write spec files for ticket-api interfaces","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-04-18T15:05:34.926412700+00:00","fields":{"component":"spec-api","phase":"8","priority":"high","state":"new","title":"[spec][P8] Bootstrap: write spec files for ticket-api interfaces","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-04-18T21:23:52.753371900+00:00","fields":{"component":"spec-api","phase":"8","priority":"high","state":"ready","title":"[spec][P8] Bootstrap: write spec files for ticket-api interfaces","type":"tracker-improvement"}}

@@ -1,0 +1,9 @@
+id = "5d17db06-c8a0-46bd-a22e-8a783643d7a8"
+created_at = "2026-04-21T11:35:10.422418100+00:00"
+title = "ticket-vscode Extension"
+state = "reviewed"
+code_refs = [{ description = "Extension entry point: activate(), deactivate(), server spawn, workspace resolution, status bar, all command registrations.", file = "tools/ticket-vscode/src/extension.ts", kind = "module", line_end = 742, line_start = 1, symbol = "extension" }, { description = "TicketTreeProvider: TreeDataProvider grouped by state, dependency maps, lazy tooltip resolution, on-disk folder browsing.", file = "tools/ticket-vscode/src/ticketProvider.ts", kind = "module", line_end = 447, line_start = 1, symbol = "ticketProvider" }, { description = "Typed HTTP client for the ticket-viewer REST API: read and mutation endpoints, cursor pagination, error handling.", file = "tools/ticket-vscode/src/api.ts", kind = "module", line_end = 259, line_start = 1, symbol = "api" }, { description = "BrowserBridge: localhost HTTP control server, Simple Browser navigation, Playwright/CDP page automation.", file = "tools/ticket-vscode/src/browserBridge.ts", kind = "module", line_end = 512, line_start = 1, symbol = "BrowserBridge" }]
+component = "ticket-vscode"
+scope = "component"
+slug = "ticket-vscode"
+type = "specification"

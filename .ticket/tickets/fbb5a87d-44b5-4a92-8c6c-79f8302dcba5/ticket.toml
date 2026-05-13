@@ -1,0 +1,8 @@
+id = "fbb5a87d-44b5-4a92-8c6c-79f8302dcba5"
+created_at = "2026-04-18T15:00:04.602567900+00:00"
+title = "[spec][P2] spec-mcp — MCP tool surface for spec-api"
+state = "done"
+component = "spec-mcp"
+phase = "2"
+priority = "high"
+type = "tracker-improvement"

@@ -1,0 +1,3 @@
+{"rev":1,"ts":"2026-04-18T15:00:05.619254500+00:00","fields":{"component":"spec-api","phase":"4","priority":"high","state":"new","title":"[spec][P4] Skill generation — per-crate and per-domain SKILL.md files from spec data","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-04-18T15:03:50.927933500+00:00","fields":{"component":"spec-api","phase":"4","priority":"high","state":"new","title":"[spec][P4] Skill generation — per-crate and per-domain SKILL.md files from spec data","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-04-18T21:23:49.617822300+00:00","fields":{"component":"spec-api","phase":"4","priority":"high","state":"ready","title":"[spec][P4] Skill generation — per-crate and per-domain SKILL.md files from spec data","type":"tracker-improvement"}}

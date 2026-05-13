@@ -1,0 +1,10 @@
+id = "9c33e0fa-2a18-45ba-a837-a04d71638944"
+created_at = "2026-04-20T21:58:15.553251300+00:00"
+title = "query"
+state = "draft"
+code_refs = [{ file = "crates/memory-api/src/model/query.rs", kind = "enum", line_end = 12, line_start = 9, symbol = "ValueExpr" }, { file = "crates/memory-api/src/model/query.rs", kind = "enum", line_end = 19, line_start = 15, symbol = "Expr" }, { file = "crates/memory-api/src/model/query.rs", kind = "function", line_end = 23, line_start = 21, symbol = "parse_query" }, { description = "Strict parsing mode used by contract validation.\n\nRules:\n- keys in `known_fields` are always valid\n- dynamic keys must follow `x_<type>_<field>`\n- unknown keys fail with deterministic hint text", file = "crates/memory-api/src/model/query.rs", kind = "function", line_end = 36, line_start = 31, symbol = "parse_query_strict" }, { file = "crates/memory-api/src/model/query.rs", kind = "function", line_end = 119, line_start = 108, symbol = "is_valid_dynamic_field_key" }]
+component = "memory-api"
+parent = "8074d6f7-b888-4e57-95e6-06dde96384b8"
+scope = "public"
+slug = "memory-api/model/query"
+type = "specification"

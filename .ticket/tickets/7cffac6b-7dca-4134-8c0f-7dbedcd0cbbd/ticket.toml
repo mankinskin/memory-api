@@ -1,0 +1,7 @@
+id = "7cffac6b-7dca-4134-8c0f-7dbedcd0cbbd"
+created_at = "2026-05-11T13:34:34.574564100+00:00"
+title = "Generate memory-api README from repo-local rules"
+state = "ready"
+component = "rule-api"
+priority = "high"
+type = "tracker-improvement"

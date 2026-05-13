@@ -1,0 +1,5 @@
+id = "12197242-b7b4-4212-83a8-4b0b65a4bd7b"
+created_at = "2026-05-03T17:12:26.831041500+00:00"
+title = "[LOG-2a] Audit and normalise context-* tracing field names for log-viewer compatibility"
+state = "new"
+type = "tracker-improvement"

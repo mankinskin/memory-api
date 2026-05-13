@@ -1,0 +1,4 @@
+{"rev":1,"ts":"2026-05-11T13:34:34.261678200+00:00","fields":{"component":"rule-api","priority":"high","state":"ready","title":"Implement nested rule workspaces across submodule repositories","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-05-11T13:39:24.559556400+00:00","fields":{"component":"rule-api","priority":"high","state":"in-implementation","title":"Implement nested rule workspaces across submodule repositories","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-05-12T08:48:01.370028500+00:00","fields":{"component":"rule-api","priority":"high","state":"in-review","title":"Implement nested rule workspaces across submodule repositories","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-05-12T08:48:01.920944100+00:00","fields":{"component":"rule-api","priority":"high","state":"done","title":"Implement nested rule workspaces across submodule repositories","type":"tracker-improvement"}}

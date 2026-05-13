@@ -1,0 +1,8 @@
+id = "ffc578f7-8a18-4536-9a8c-023d42b98d3e"
+created_at = "2026-04-18T15:00:05.342015500+00:00"
+title = "[spec][P3] Spec-to-code sync — detect and update references after file moves"
+state = "ready"
+component = "spec-api"
+phase = "3"
+priority = "medium"
+type = "tracker-improvement"

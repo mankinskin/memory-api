@@ -1,6 +1,10 @@
-use std::path::{
+use std::{
+    path::{
     Path,
     PathBuf,
+    },
+    thread,
+    time::Duration,
 };
 
 use tantivy::{
@@ -63,6 +67,9 @@ pub struct TantivySearchIndex {
     fields: SearchFields,
 }
 
+const SEARCH_IO_RETRY_ATTEMPTS: usize = 8;
+const SEARCH_IO_RETRY_BASE_DELAY_MS: u64 = 25;
+
 impl TantivySearchIndex {
     pub fn open_or_create(dir: &Path) -> Result<Self, StorageError> {
         std::fs::create_dir_all(dir)?;
@@ -92,6 +99,40 @@ impl TantivySearchIndex {
             .map_err(|e| StorageError::SearchIndex(e.to_string()))
     }
 
+    fn is_retryable_search_error(error: &StorageError) -> bool {
+        let StorageError::SearchIndex(message) = error else {
+            return false;
+        };
+
+        let lower = message.to_ascii_lowercase();
+        lower.contains("permissiondenied")
+            || lower.contains("os error 5")
+            || lower.contains("access is denied")
+            || lower.contains("zugriff verweigert")
+    }
+
+    fn with_retry<T, F>(mut op: F) -> Result<T, StorageError>
+    where
+        F: FnMut() -> Result<T, StorageError>,
+    {
+        let mut delay_ms = SEARCH_IO_RETRY_BASE_DELAY_MS;
+        for attempt in 0..SEARCH_IO_RETRY_ATTEMPTS {
+            match op() {
+                Ok(value) => return Ok(value),
+                Err(error)
+                    if attempt + 1 < SEARCH_IO_RETRY_ATTEMPTS
+                        && Self::is_retryable_search_error(&error) =>
+                {
+                    thread::sleep(Duration::from_millis(delay_ms));
+                    delay_ms = (delay_ms * 2).min(500);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+
+        unreachable!("retry loop must return or error")
+    }
+
     /// Index or update an entity document. Deletes any existing document for the
     /// same `id` first to ensure upsert semantics.
     pub fn upsert(
@@ -102,76 +143,85 @@ impl TantivySearchIndex {
         state: Option<&str>,
         entity_type: Option<&str>,
     ) -> Result<(), StorageError> {
-        let index = self.open_index()?;
-        let mut writer = Self::make_writer(&index)?;
-        writer.delete_term(Term::from_field_text(
-            self.fields.id,
-            &id.to_string(),
-        ));
+        Self::with_retry(|| {
+            let index = self.open_index()?;
+            let mut writer = Self::make_writer(&index)?;
+            writer.delete_term(Term::from_field_text(
+                self.fields.id,
+                &id.to_string(),
+            ));
 
-        let mut d = TantivyDocument::default();
-        d.add_text(self.fields.id, id.to_string());
-        if let Some(t) = title {
-            d.add_text(self.fields.title, t);
-        }
-        if let Some(b) = body {
-            d.add_text(self.fields.body, b);
-        }
-        if let Some(s) = state {
-            d.add_text(self.fields.state, s);
-        }
-        if let Some(tp) = entity_type {
-            d.add_text(self.fields.ticket_type, tp);
-        }
-        writer.add_document(d).map_err(|e: TantivyError| {
-            StorageError::SearchIndex(e.to_string())
-        })?;
-        writer
-            .commit()
-            .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
-        // Wait for background merge threads to release all file handles before
-        // returning. On Windows, MmapDirectory only allows FILE_SHARE_READ, so
-        // any handle a merge thread holds will cause PermissionDenied if the
-        // next writer tries to write or GC the same segment file.
-        writer
-            .wait_merging_threads()
-            .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
-        Ok(())
+            let mut d = TantivyDocument::default();
+            d.add_text(self.fields.id, id.to_string());
+            if let Some(t) = title {
+                d.add_text(self.fields.title, t);
+            }
+            if let Some(b) = body {
+                d.add_text(self.fields.body, b);
+            }
+            if let Some(s) = state {
+                d.add_text(self.fields.state, s);
+            }
+            if let Some(tp) = entity_type {
+                d.add_text(self.fields.ticket_type, tp);
+            }
+            writer.add_document(d).map_err(|e: TantivyError| {
+                StorageError::SearchIndex(e.to_string())
+            })?;
+            writer
+                .commit()
+                .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
+            // Wait for background merge threads to release all file handles before
+            // returning. On Windows, MmapDirectory only allows FILE_SHARE_READ, so
+            // any handle a merge thread holds will cause PermissionDenied if the
+            // next writer tries to write or GC the same segment file.
+            writer
+                .wait_merging_threads()
+                .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
+            drop(index);
+            Ok(())
+        })
     }
 
     pub fn remove(
         &self,
         id: &Uuid,
     ) -> Result<(), StorageError> {
-        let index = self.open_index()?;
-        let mut writer = Self::make_writer(&index)?;
-        writer.delete_term(Term::from_field_text(
-            self.fields.id,
-            &id.to_string(),
-        ));
-        writer.commit().map_err(|e: TantivyError| {
-            StorageError::SearchIndex(e.to_string())
-        })?;
-        writer
-            .wait_merging_threads()
-            .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
-        Ok(())
+        Self::with_retry(|| {
+            let index = self.open_index()?;
+            let mut writer = Self::make_writer(&index)?;
+            writer.delete_term(Term::from_field_text(
+                self.fields.id,
+                &id.to_string(),
+            ));
+            writer.commit().map_err(|e: TantivyError| {
+                StorageError::SearchIndex(e.to_string())
+            })?;
+            writer
+                .wait_merging_threads()
+                .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
+            drop(index);
+            Ok(())
+        })
     }
 
     /// Delete every document from the Tantivy index.
     pub fn clear_all(&self) -> Result<(), StorageError> {
-        let index = self.open_index()?;
-        let mut writer = Self::make_writer(&index)?;
-        writer.delete_all_documents().map_err(|e: TantivyError| {
-            StorageError::SearchIndex(e.to_string())
-        })?;
-        writer.commit().map_err(|e: TantivyError| {
-            StorageError::SearchIndex(e.to_string())
-        })?;
-        writer
-            .wait_merging_threads()
-            .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
-        Ok(())
+        Self::with_retry(|| {
+            let index = self.open_index()?;
+            let mut writer = Self::make_writer(&index)?;
+            writer.delete_all_documents().map_err(|e: TantivyError| {
+                StorageError::SearchIndex(e.to_string())
+            })?;
+            writer.commit().map_err(|e: TantivyError| {
+                StorageError::SearchIndex(e.to_string())
+            })?;
+            writer
+                .wait_merging_threads()
+                .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
+            drop(index);
+            Ok(())
+        })
     }
 
     /// Search using a parsed `Expr` AST.

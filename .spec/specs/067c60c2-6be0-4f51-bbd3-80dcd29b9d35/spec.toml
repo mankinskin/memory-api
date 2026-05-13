@@ -1,0 +1,10 @@
+id = "067c60c2-6be0-4f51-bbd3-80dcd29b9d35"
+created_at = "2026-04-20T21:57:03.518750400+00:00"
+title = "routes"
+state = "draft"
+code_refs = [{ description = "Build the full Axum router.", file = "tools/http/spec-http/src/routes.rs", kind = "function", line_end = 65, line_start = 15, symbol = "build_router" }]
+component = "spec-http"
+parent = "db5c02e5-31f5-4a40-bf9c-2227eab412b2"
+scope = "public"
+slug = "spec-http/routes"
+type = "specification"

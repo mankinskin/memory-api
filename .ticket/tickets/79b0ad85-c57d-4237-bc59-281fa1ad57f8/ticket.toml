@@ -1,0 +1,7 @@
+id = "79b0ad85-c57d-4237-bc59-281fa1ad57f8"
+created_at = "2026-04-21T11:15:20.023017900+00:00"
+title = "[spec][vscode] Design and implement spec-vscode VS Code extension"
+state = "new"
+component = "spec-vscode"
+priority = "high"
+type = "tracker-improvement"

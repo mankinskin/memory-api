@@ -1,0 +1,8 @@
+id = "80e25216-7ba9-4fd9-bc80-3311f1d2a604"
+created_at = "2026-04-18T15:00:05.198009100+00:00"
+title = "[spec][P3] Spec-to-code sync — update specs after implementation changes"
+state = "ready"
+component = "spec-api"
+phase = "3"
+priority = "high"
+type = "tracker-improvement"

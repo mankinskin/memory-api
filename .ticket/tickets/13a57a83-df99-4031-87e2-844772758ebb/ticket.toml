@@ -1,0 +1,8 @@
+id = "13a57a83-df99-4031-87e2-844772758ebb"
+created_at = "2026-04-18T15:00:07.131136800+00:00"
+title = "[spec][P8] Bootstrap: write spec files for the spec system itself"
+state = "in-implementation"
+component = "spec-api"
+phase = "8"
+priority = "high"
+type = "tracker-improvement"

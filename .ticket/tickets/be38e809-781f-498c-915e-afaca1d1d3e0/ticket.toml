@@ -1,0 +1,6 @@
+id = "be38e809-781f-498c-915e-afaca1d1d3e0"
+created_at = "2026-04-09T20:48:07.083161+00:00"
+title = "[Board][Validation] Concurrent check-in, crash recovery, and cross-interface consistency"
+state = "done"
+priority = "medium"
+type = "tracker-improvement"

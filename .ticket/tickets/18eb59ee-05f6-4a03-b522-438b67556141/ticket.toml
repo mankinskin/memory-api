@@ -1,0 +1,7 @@
+id = "18eb59ee-05f6-4a03-b522-438b67556141"
+created_at = "2026-05-07T20:41:36.359001100+00:00"
+title = "Design hierarchical rule target schema"
+state = "in-review"
+component = "rule-api"
+priority = "high"
+type = "tracker-improvement"

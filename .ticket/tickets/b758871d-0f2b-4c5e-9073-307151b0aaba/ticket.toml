@@ -1,0 +1,10 @@
+id = "b758871d-0f2b-4c5e-9073-307151b0aaba"
+created_at = "2026-04-08T14:20:48.048699800Z"
+acceptance_criteria = "POST /api/tickets (create with type, title, fields, description); PATCH /api/tickets/{id} (update fields, state transition); POST /api/tickets/{id}/close; POST /api/tickets/{id}/cancel; DELETE /api/tickets/{id} (soft delete); all with workspace param; proper error envelopes; SSE events emitted"
+component = "ticket-http"
+deleted = true
+priority = "critical"
+risk_level = "medium"
+state = "new"
+title = "API: Ticket mutation endpoints — create, update, close, cancel, delete"
+type = "tracker-improvement"

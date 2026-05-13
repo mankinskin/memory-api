@@ -1,0 +1,7 @@
+id = "454405a2-a37e-4be6-b7a7-b96008afa974"
+created_at = "2026-05-07T11:42:07.727787700+00:00"
+title = "Migrate duplicated agent docs into generated rule-api outputs"
+state = "done"
+component = "rule-api"
+priority = "high"
+type = "tracker-improvement"

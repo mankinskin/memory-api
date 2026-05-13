@@ -1,0 +1,4 @@
+{"rev":1,"ts":"2026-05-07T20:41:36.815228800+00:00","fields":{"component":"rule-api","priority":"high","state":"new","title":"Implement deterministic hierarchical rule target evaluation","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-05-08T09:31:01.350486400+00:00","fields":{"component":"rule-api","priority":"high","state":"ready","title":"Implement deterministic hierarchical rule target evaluation","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}
+{"rev":3,"ts":"2026-05-08T09:31:01.481766800+00:00","fields":{"component":"rule-api","priority":"high","state":"in-implementation","title":"Implement deterministic hierarchical rule target evaluation","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}
+{"rev":4,"ts":"2026-05-08T09:31:01.613620+00:00","fields":{"component":"rule-api","priority":"high","state":"in-review","title":"Implement deterministic hierarchical rule target evaluation","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}

@@ -1,0 +1,8 @@
+id = "321f4ec7-03df-4e14-9734-a6af76ace55f"
+created_at = "2026-04-18T15:00:07.873360400+00:00"
+title = "[spec][P8] Bootstrap: write spec files for ticket-vscode interface"
+state = "ready"
+component = "spec-vscode"
+phase = "8"
+priority = "low"
+type = "tracker-improvement"

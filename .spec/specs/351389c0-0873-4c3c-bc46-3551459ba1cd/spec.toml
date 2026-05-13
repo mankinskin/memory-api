@@ -1,0 +1,10 @@
+id = "351389c0-0873-4c3c-bc46-3551459ba1cd"
+created_at = "2026-04-20T21:57:42.556512300+00:00"
+title = "store"
+state = "draft"
+code_refs = [{ description = "The central spec store: wraps `EntityStore` with spec-specific features.\n\nAdds slug uniqueness enforcement, `body.md` management, `sections/` CRUD,\nand parent-child hierarchy traversal on top of the generic entity store.", file = "crates/spec-api/src/store.rs", kind = "struct", line_end = 30, line_start = 27, symbol = "SpecStore" }, { file = "crates/spec-api/src/store.rs", kind = "impl", line_end = 480, line_start = 32, symbol = "SpecStore" }]
+component = "spec-api"
+parent = "86877b97-2df6-46b5-923d-a9e608655fed"
+scope = "public"
+slug = "spec-api/store"
+type = "specification"

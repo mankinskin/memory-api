@@ -1,0 +1,7 @@
+id = "a7d6ba2d-ea15-498f-9195-6ee775ea69a4"
+created_at = "2026-04-18T20:35:07.593796900+00:00"
+title = "ticket-vscode: Replace native tooltip with debounced webview panel beside sidebar"
+state = "done"
+component = "ticket-vscode"
+priority = "high"
+type = "tracker-improvement"

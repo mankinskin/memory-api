@@ -1,0 +1,8 @@
+id = "4b6dc9d5-4932-4573-8635-d477804538ac"
+created_at = "2026-04-18T15:00:04.001689900+00:00"
+title = "[spec][P1] spec-api schema — draft/reviewed/approved/implemented/verified state machine"
+state = "done"
+component = "spec-api"
+phase = "1"
+priority = "high"
+type = "tracker-improvement"

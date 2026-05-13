@@ -1,0 +1,8 @@
+id = "7f0a4dac-37b0-44c8-ba72-4ea0aaabb374"
+created_at = "2026-04-18T15:00:06.980262300+00:00"
+title = "[spec][P7] spec-vscode — VS Code extension for browsing specs with rich HTML viewer"
+state = "ready"
+component = "spec-vscode"
+phase = "7"
+priority = "low"
+type = "tracker-improvement"

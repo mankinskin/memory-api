@@ -1,0 +1,8 @@
+id = "6c00ef55-1531-4494-9bf2-00184740a3b0"
+created_at = "2026-04-18T15:00:05.635911+00:00"
+title = "[spec][P4] Skill generation — master index and cross-references"
+state = "ready"
+component = "spec-api"
+phase = "4"
+priority = "medium"
+type = "tracker-improvement"

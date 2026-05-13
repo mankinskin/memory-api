@@ -1,0 +1,8 @@
+id = "55a1b302-9b33-4389-8962-65362b9b3eb0"
+created_at = "2026-04-18T15:00:04.297442400+00:00"
+title = "[spec][P1] spec-api code references — symbol-level links to implementation files with line ranges"
+state = "done"
+component = "spec-api"
+phase = "1"
+priority = "high"
+type = "tracker-improvement"

@@ -1,0 +1,1 @@
+{"rev":1,"ts":"2026-05-12T15:18:29.685335300+00:00","fields":{"component":"spec-api","priority":"high","risk_level":"medium","state":"new","tags":"spec-api,feedback,integration-tests","title":"[spec-api] Add direct feedback on spec entities with integration tests","type":"tracker-improvement"}}

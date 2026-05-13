@@ -1,0 +1,3 @@
+{"rev":1,"ts":"2026-04-18T15:00:06.669283600+00:00","fields":{"component":"spec-api","phase":"6","priority":"medium","state":"new","title":"[spec][P6] Spec search — full-text search with field predicates","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-04-18T15:07:18.140829300+00:00","fields":{"component":"spec-api","phase":"6","priority":"medium","state":"new","title":"[spec][P6] Spec search — full-text search with field predicates","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-04-18T21:23:51.855538700+00:00","fields":{"component":"spec-api","phase":"6","priority":"medium","state":"ready","title":"[spec][P6] Spec search — full-text search with field predicates","type":"tracker-improvement"}}

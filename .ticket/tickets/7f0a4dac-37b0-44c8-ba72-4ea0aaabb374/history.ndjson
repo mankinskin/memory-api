@@ -1,0 +1,3 @@
+{"rev":1,"ts":"2026-04-18T15:00:07.115042600+00:00","fields":{"component":"spec-vscode","phase":"7","priority":"low","state":"new","title":"[spec][P7] spec-vscode — VS Code extension for browsing specs with rich HTML viewer","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-04-18T15:07:44.291408300+00:00","fields":{"component":"spec-vscode","phase":"7","priority":"low","state":"new","title":"[spec][P7] spec-vscode — VS Code extension for browsing specs with rich HTML viewer","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-04-18T21:23:52.300763400+00:00","fields":{"component":"spec-vscode","phase":"7","priority":"low","state":"ready","title":"[spec][P7] spec-vscode — VS Code extension for browsing specs with rich HTML viewer","type":"tracker-improvement"}}

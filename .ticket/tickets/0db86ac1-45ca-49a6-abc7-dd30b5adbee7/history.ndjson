@@ -1,0 +1,9 @@
+{"rev":1,"ts":"2026-04-09T19:45:44.917918100+00:00","fields":{"priority":"high","state":"new","title":"[Board] ticket-api: Board entries, WIP limits, file ownership, conflict detection","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-04-12T18:37:53.104419+00:00","fields":{"priority":"high","state":"in-refinement","title":"[Board] ticket-api: Core board storage — types, tables, CRUD","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-04-12T18:37:53.419216500+00:00","fields":{"priority":"high","state":"ready","title":"[Board] ticket-api: Core board storage — types, tables, CRUD","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-04-12T19:09:08.492942400+00:00","fields":{"priority":"high","state":"ready","title":"[Board] ticket-api: Core board storage — types, tables, CRUD","type":"tracker-improvement"}}
+{"rev":5,"ts":"2026-04-12T19:09:12.751852600+00:00","fields":{"priority":"high","state":"ready","title":"[Board] ticket-api: Core board storage — types, tables, CRUD","type":"tracker-improvement"}}
+{"rev":6,"ts":"2026-04-12T19:09:30.196663900+00:00","fields":{"priority":"high","state":"in-implementation","title":"[Board] ticket-api: Core board storage — types, tables, CRUD","type":"tracker-improvement"}}
+{"rev":7,"ts":"2026-04-12T19:15:13.106566900+00:00","fields":{"priority":"high","state":"in-review","title":"[Board] ticket-api: Core board storage — types, tables, CRUD","type":"tracker-improvement"}}
+{"rev":8,"ts":"2026-04-12T19:16:43.443896600+00:00","fields":{"priority":"high","state":"in-validation","title":"[Board] ticket-api: Core board storage — types, tables, CRUD","type":"tracker-improvement"}}
+{"rev":9,"ts":"2026-04-12T19:16:43.908497900+00:00","fields":{"priority":"high","state":"done","title":"[Board] ticket-api: Core board storage — types, tables, CRUD","type":"tracker-improvement"}}

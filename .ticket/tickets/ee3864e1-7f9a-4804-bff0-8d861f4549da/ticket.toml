@@ -1,0 +1,7 @@
+id = "ee3864e1-7f9a-4804-bff0-8d861f4549da"
+created_at = "2026-04-18T15:00:03.321446300+00:00"
+title = "Epic: Specification System — memory-api extraction, spec-api, tooling, and skill generation"
+state = "new"
+component = "spec-system"
+priority = "critical"
+type = "tracker-improvement"

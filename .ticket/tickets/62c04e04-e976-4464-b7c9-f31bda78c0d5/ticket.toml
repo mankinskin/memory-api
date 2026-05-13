@@ -1,0 +1,8 @@
+id = "62c04e04-e976-4464-b7c9-f31bda78c0d5"
+created_at = "2026-03-21T02:19:57.856441200+00:00"
+title = "Impl: expose integrate_orphan(path) as public API + wire to reconciler"
+state = "done"
+acceptance_criteria = "Public `TicketStore::integrate_orphan(path)` integrates a single discovered ticket by path; called from watcher reconcile loop; scan also calls it per entry"
+component = "storage"
+risk_level = "low"
+type = "tracker-improvement"
