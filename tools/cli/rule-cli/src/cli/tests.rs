@@ -73,6 +73,35 @@ fn parse_sync_targets_command() {
 }
 
 #[test]
+fn delete_command_removes_rule_by_slug() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::open(dir.path()).unwrap();
+    let rule = sample_rule(
+        "shared/agents/delete-me",
+        "Delete Me",
+        "delete-me",
+        "Delete this rule via the CLI.",
+        10,
+    );
+    store.create(&rule, None).unwrap();
+    drop(store);
+
+    dispatch::dispatch(
+        RuleCommandCli::Delete(IdArgs {
+            id: "shared/agents/delete-me".to_string(),
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    let reopened = RuleStore::open(dir.path()).unwrap();
+    assert!(matches!(
+        reopened.get("shared/agents/delete-me"),
+        Err(rule_api::error::RuleError::NotFound(_))
+    ));
+}
+
+#[test]
 fn generate_file_writes_deterministic_markdown_with_provenance() {
     let dir = tempdir().unwrap();
     let mut store = RuleStore::open(dir.path()).unwrap();

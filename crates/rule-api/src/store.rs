@@ -241,6 +241,43 @@ impl RuleStore {
         self.hydrate_rule(&indexed)
     }
 
+    pub fn delete(
+        &mut self,
+        id_or_slug: &str,
+    ) -> Result<(), RuleError> {
+        let uuid = self.resolve_id(id_or_slug)?;
+        let indexed = self
+            .inner
+            .get_indexed(&uuid)?
+            .ok_or_else(|| RuleError::NotFound(uuid.to_string()))?;
+
+        if indexed.deleted
+            || !matches!(
+                indexed.type_id.as_str(),
+                RULE_ENTRY_TYPE_ID | GENERATED_TARGET_TYPE_ID
+            )
+        {
+            return Err(RuleError::NotFound(id_or_slug.to_string()));
+        }
+
+        let entity = self.inner.fs.read(&indexed.path)?;
+        if let Some(existing_slug) =
+            entity.extra.get("slug").and_then(Value::as_str)
+        {
+            self.slug_index.remove(existing_slug);
+        }
+
+        self.inner.fs.mark_deleted(&indexed.path)?;
+
+        let mut refreshed = indexed.clone();
+        refreshed.deleted = true;
+        refreshed.updated_at = Utc::now();
+        self.inner.index.insert_ticket(&refreshed)?;
+        self.inner.search.remove(&uuid)?;
+
+        Ok(())
+    }
+
     pub fn update(
         &mut self,
         id_or_slug: &str,

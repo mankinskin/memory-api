@@ -236,6 +236,45 @@ fn update_changes_slug_state_and_body() {
 }
 
 #[test]
+fn delete_rule_entry_removes_it_from_lookups() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::open(dir.path()).unwrap();
+    let manifest = RuleManifest::new(
+        "shared/agents/delete-test",
+        "Delete Test",
+        "AGENTS",
+        "delete-test",
+        "Delete this rule entry.",
+    );
+    store.create(&manifest, None).unwrap();
+
+    store.delete("shared/agents/delete-test").unwrap();
+
+    assert!(matches!(
+        store.get("shared/agents/delete-test"),
+        Err(RuleError::NotFound(_))
+    ));
+    assert!(
+        store
+            .list(
+                &RuleFilter {
+                    slug: Some("shared/agents/delete-test".to_string()),
+                    ..RuleFilter::default()
+                },
+                None,
+            )
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        store
+            .search("Delete this rule entry.", &RuleFilter::default(), 10)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
 fn generated_target_records_round_trip_and_delete() {
     let dir = tempdir().unwrap();
     let mut store = RuleStore::open(dir.path()).unwrap();
@@ -261,6 +300,26 @@ fn generated_target_records_round_trip_and_delete() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[test]
+fn delete_can_remove_generated_target_records() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::open(dir.path()).unwrap();
+    let config_path = dir.path().join("rule-targets.yaml");
+    let output_path = dir.path().join(".github/README.md");
+
+    let record = store
+        .upsert_generated_target(
+            &config_path,
+            "context-engine-github-readme",
+            &output_path,
+        )
+        .unwrap();
+
+    store.delete(&record.slug).unwrap();
+
+    assert!(store.list_generated_targets(&config_path).unwrap().is_empty());
 }
 
 #[test]

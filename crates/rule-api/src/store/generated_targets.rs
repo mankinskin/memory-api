@@ -208,6 +208,7 @@ impl RuleStore {
         refreshed.deleted = true;
         refreshed.updated_at = Utc::now();
         self.inner.index.insert_ticket(&refreshed)?;
+        self.inner.search.remove(&uuid)?;
 
         Ok(())
     }

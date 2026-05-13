@@ -76,6 +76,7 @@ pub(super) fn dispatch(
     match command {
         RuleCommandCli::Create(args) => create_command(&mut store, args),
         RuleCommandCli::Get(args) => get_command(&store, args),
+        RuleCommandCli::Delete(args) => delete_command(&mut store, args),
         RuleCommandCli::ImportFile(args) =>
             import_file_command(&mut store, args),
         RuleCommandCli::Update(args) => update_command(&mut store, args),
@@ -102,6 +103,7 @@ fn dispatch_secondary(
         RuleCommandCli::AddRoot(args) => add_root_command(store, args),
         RuleCommandCli::Create(_)
         | RuleCommandCli::Get(_)
+        | RuleCommandCli::Delete(_)
         | RuleCommandCli::ImportFile(_)
         | RuleCommandCli::Update(_)
         | RuleCommandCli::Feedback(_) =>
@@ -157,6 +159,17 @@ fn get_command(
     Ok(json!({
         "status": "ok",
         "rule": rule_json(&rule),
+    }))
+}
+
+fn delete_command(
+    store: &mut RuleStore,
+    args: IdArgs,
+) -> Result<Value, CliRunError> {
+    store.delete(&args.id)?;
+    Ok(json!({
+        "status": "ok",
+        "id": args.id,
     }))
 }
 

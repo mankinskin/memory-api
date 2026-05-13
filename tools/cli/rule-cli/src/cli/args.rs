@@ -28,6 +28,7 @@ pub struct RuleCli {
 pub enum RuleCommandCli {
     Create(CreateArgs),
     Get(IdArgs),
+    Delete(IdArgs),
     #[command(name = "import-file")]
     ImportFile(ImportFileArgs),
     Update(UpdateArgs),
@@ -273,6 +274,22 @@ mod tests {
                 );
             },
             _ => panic!("expected feedback command"),
+        }
+    }
+
+    #[test]
+    fn parse_delete_command() {
+        let cli = RuleCli::parse_from([
+            "rule",
+            "delete",
+            "shared/agents/delete-me",
+        ]);
+
+        match cli.command {
+            RuleCommandCli::Delete(args) => {
+                assert_eq!(args.id, "shared/agents/delete-me");
+            },
+            _ => panic!("expected delete command"),
         }
     }
 }
