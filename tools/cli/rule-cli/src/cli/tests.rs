@@ -148,6 +148,44 @@ fn generate_file_writes_deterministic_markdown_with_provenance() {
 }
 
 #[test]
+fn generate_file_omits_provenance_for_frontmatter_prompt_output() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut prompt = RuleManifest::new(
+        "context-engine/prompts/spec",
+        "Spec Prompt",
+        ".prompt",
+        "spec-prompt",
+        "---\nname: spec\ndescription: Create a spec entry\n---\nCreate a new spec entry.\n",
+    );
+    prompt.set_repo_scopes(["context-engine"]);
+    prompt.set_order_key(10);
+    store.create(&prompt, None).unwrap();
+
+    let output = dir.path().join("generated").join("spec.prompt.md");
+    dispatch::dispatch(
+        RuleCommandCli::GenerateFile(GenerateFileArgs {
+            file_kind: ".prompt".to_string(),
+            repo_scope: "context-engine".to_string(),
+            path_scope: None,
+            section: None,
+            state: None,
+            output: Some(output.clone()),
+            dry_run: false,
+            check: false,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    let rendered = fs::read_to_string(&output).unwrap();
+
+    assert!(rendered.starts_with("---\nname: spec\n"));
+    assert!(!rendered.contains("rule-api:file generated=true"));
+    assert!(!rendered.contains("rule-api:entry id="));
+}
+
+#[test]
 fn import_file_creates_rules_from_markdown_blocks() {
     let dir = tempdir().unwrap();
     let markdown = dir.path().join("AGENTS.md");
