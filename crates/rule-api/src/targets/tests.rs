@@ -117,6 +117,96 @@ fn load_render_target_config_supports_file_folder_tree_structure() {
 }
 
 #[test]
+fn load_render_target_config_preserves_domain_tree_target_order() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("rule-targets.yaml");
+    fs::write(
+        &path,
+        concat!(
+            "files:\n",
+            "  - name: AGENTS.md\n",
+            "    target:\n",
+            "      name: context-engine-agents\n",
+            "      repo_scope: context-engine\n",
+            "      file_kind: AGENTS\n",
+            "      path_scope: AGENTS.md\n",
+            "folders:\n",
+            "  - name: memory-viewers\n",
+            "    files:\n",
+            "      - name: AGENTS.md\n",
+            "        target:\n",
+            "          name: memory-viewers-agents\n",
+            "          repo_scope: memory-viewers\n",
+            "          file_kind: AGENTS\n",
+            "          path_scope: memory-viewers/AGENTS.md\n",
+            "    folders:\n",
+            "      - name: memory-api\n",
+            "        files:\n",
+            "          - name: AGENTS.md\n",
+            "            target:\n",
+            "              name: memory-api-agents\n",
+            "              repo_scope: memory-api\n",
+            "              file_kind: AGENTS\n",
+            "              path_scope: memory-viewers/memory-api/AGENTS.md\n",
+            "  - name: .github\n",
+            "    folders:\n",
+            "      - name: prompts\n",
+            "        files:\n",
+            "          - name: spec.prompt.md\n",
+            "            target:\n",
+            "              name: context-engine-prompt-spec\n",
+            "              repo_scope: context-engine\n",
+            "              file_kind: .prompt\n",
+            "              path_scope: .github/prompts/spec.prompt.md\n",
+            "  - name: .agents\n",
+            "    folders:\n",
+            "      - name: instructions\n",
+            "        files:\n",
+            "          - name: audit.instructions.md\n",
+            "            target:\n",
+            "              name: context-engine-instruction-audit\n",
+            "              repo_scope: context-engine\n",
+            "              file_kind: .instructions\n",
+            "              path_scope: .agents/instructions/audit.instructions.md\n",
+        ),
+    )
+    .unwrap();
+
+    let config = load_render_target_config(&path).unwrap();
+    let names = config
+        .targets
+        .iter()
+        .map(|target| target.name.as_str())
+        .collect::<Vec<_>>();
+    let outputs = config
+        .targets
+        .iter()
+        .map(|target| target.output_path.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        names,
+        vec![
+            "context-engine-agents",
+            "memory-viewers-agents",
+            "memory-api-agents",
+            "context-engine-prompt-spec",
+            "context-engine-instruction-audit",
+        ]
+    );
+    assert_eq!(
+        outputs,
+        vec![
+            "AGENTS.md",
+            "memory-viewers/AGENTS.md",
+            "memory-viewers/memory-api/AGENTS.md",
+            ".github/prompts/spec.prompt.md",
+            ".agents/instructions/audit.instructions.md",
+        ]
+    );
+}
+
+#[test]
 fn load_render_target_config_rejects_duplicate_names_across_tree_targets() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("rule-targets.yaml");

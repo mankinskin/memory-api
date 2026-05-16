@@ -40,14 +40,23 @@ Each in-scope repository should support the same local rule workspace shape:
 - `.rule/rules/<uuid>/description.md`
 - optional repo-local generated target config in `rule-targets.yaml`
 
+Each generated target config may be expressed as a nested file/folder tree that mirrors runtime output paths:
+
+- root-level `files:` entries for outputs in the repo root
+- nested `folders:` entries for runtime directories such as `.github/`, `.agents/`, or `tools/`
+- one file node per generated artifact, with the target definition attached to that file node
+
+This structure is intended to keep large target inventories manageable by grouping outputs by domain and file type without changing target names or rendered destinations.
+
 A parent repo workspace may aggregate child workspaces discovered in nested submodule or subfolder roots, but local authoring remains owned by the repo that contains the rule entry.
 
 ## Usage Guide
 
 1. Author or update local rules from the repo that owns the documentation concern.
-2. Preview composition with `rule explain-target --config rule-targets.yaml --target <name>`.
-3. Regenerate repo-local outputs with `rule sync-targets --config rule-targets.yaml`.
-4. From a parent workspace, generate parent outputs that intentionally include descendant rules where the target configuration calls for them.
+2. Organize `rule-targets.yaml` as a file/folder tree ordered by runtime output structure, domain, and file type when the repo owns many generated artifacts.
+3. Preview composition with `rule explain-target --config rule-targets.yaml --target <name>`.
+4. Regenerate repo-local outputs with `rule sync-targets --config rule-targets.yaml`.
+5. From a parent workspace, generate parent outputs that intentionally include descendant rules where the target configuration calls for them.
 
 ## Non-Goals
 
@@ -58,6 +67,7 @@ A parent repo workspace may aggregate child workspaces discovered in nested subm
 ## Acceptance Criteria
 
 - The nested rule workspace topology is documented for `memory-viewers`, `memory-api`, and `viewer-api`.
+- The target configuration model documents the file/folder tree layout used to keep generated outputs grouped by domain and file type.
 - User stories and local authoring flows are defined for each repo.
 - Child implementation specs can build on this spec without redefining repository ownership or workflow vocabulary.
 - The final implementation must preserve deterministic target generation and explicit rule provenance.

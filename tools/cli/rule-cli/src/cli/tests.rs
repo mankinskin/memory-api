@@ -362,6 +362,74 @@ fn generate_target_supports_folder_tree_config_output() {
 }
 
 #[test]
+fn generate_target_supports_dot_prefixed_prompt_tree_output() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut prompt = RuleManifest::new(
+        "context-engine/prompts/spec",
+        "Spec Prompt",
+        ".prompt",
+        "spec-prompt",
+        "---\nname: spec\n---\nCreate a new spec entry.\n",
+    );
+    prompt.set_repo_scopes(["context-engine"]);
+    prompt.set_path_scopes([".github/prompts/spec.prompt.md"]);
+    prompt.set_order_key(10);
+    store.create(&prompt, None).unwrap();
+
+    let config_path = dir.path().join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "folders:\n",
+            "  - name: .github\n",
+            "    folders:\n",
+            "      - name: prompts\n",
+            "        files:\n",
+            "          - name: spec.prompt.md\n",
+            "            target:\n",
+            "              name: context-engine-prompt-spec\n",
+            "              repo_scope: context-engine\n",
+            "              file_kind: .prompt\n",
+            "              path_scope: .github/prompts/spec.prompt.md\n",
+            "              nodes:\n",
+            "                - name: spec-prompt\n",
+            "                  section: spec-prompt\n",
+        ),
+    )
+    .unwrap();
+
+    dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_path.clone(),
+            target: "context-engine-prompt-spec".to_string(),
+            dry_run: false,
+            check: false,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    let rendered = fs::read_to_string(
+        dir.path().join(".github").join("prompts").join("spec.prompt.md"),
+    )
+    .unwrap();
+    assert!(rendered.starts_with("---\nname: spec\n"));
+    assert!(!rendered.contains("rule-api:file generated=true"));
+
+    dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_path,
+            target: "context-engine-prompt-spec".to_string(),
+            dry_run: false,
+            check: true,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+}
+
+#[test]
 fn add_root_command_creates_missing_directory() {
     let dir = tempdir().unwrap();
     let index_root = dir.path().join(".rule");

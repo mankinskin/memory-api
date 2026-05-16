@@ -1,105 +1,135 @@
-targets:
-  - name: memory-api-readme
+files:
+- name: README.md
+  target:
+    name: memory-api-readme
     repo_scope: memory-api
     file_kind: README
     path_scope: README.md
-    output_path: README.md
     nodes:
-      - name: tool-surface
-        section: memory-api
-      - name: dependency-graph
-        title: Dependency Graph
-        section: memory-api/usage-guide
-      - name: tool-use-examples
-        title: Tool Use Examples
-        section: memory-api/crate-groups
-
-  - name: rule-cli-readme
-    repo_scope: memory-api
-    file_kind: README
-    path_scope: tools/cli/rule-cli/README.md
-    output_path: tools/cli/rule-cli/README.md
-    nodes:
-      - name: onboarding
-        section: tools/cli/rule-cli/readme
-
-  - name: spec-cli-readme
-    repo_scope: memory-api
-    file_kind: README
-    path_scope: tools/cli/spec-cli/README.md
-    output_path: tools/cli/spec-cli/README.md
-    nodes:
-      - name: onboarding
-        section: tools/cli/spec-cli/readme
-
-  - name: ticket-cli-readme
-    repo_scope: memory-api
-    file_kind: README
-    path_scope: tools/cli/ticket-cli/README.md
-    output_path: tools/cli/ticket-cli/README.md
-    nodes:
-      - name: onboarding
-        section: tools/cli/ticket-cli/readme
-
-  - name: audit-cli-readme
-    repo_scope: memory-api
-    file_kind: README
-    path_scope: tools/cli/audit-cli/README.md
-    output_path: tools/cli/audit-cli/README.md
-    nodes:
-      - name: onboarding
-        section: tools/cli/audit-cli/readme
-
-  - name: rule-mcp-readme
-    repo_scope: memory-api
-    file_kind: README
-    path_scope: tools/mcp/rule-mcp/README.md
-    output_path: tools/mcp/rule-mcp/README.md
-    nodes:
-      - name: onboarding
-        section: tools/mcp/rule-mcp/readme
-
-  - name: spec-mcp-readme
-    repo_scope: memory-api
-    file_kind: README
-    path_scope: tools/mcp/spec-mcp/README.md
-    output_path: tools/mcp/spec-mcp/README.md
-    nodes:
-      - name: onboarding
-        section: tools/mcp/spec-mcp/readme
-
-  - name: ticket-mcp-readme
-    repo_scope: memory-api
-    file_kind: README
-    path_scope: tools/mcp/ticket-mcp/README.md
-    output_path: tools/mcp/ticket-mcp/README.md
-    nodes:
-      - name: onboarding
-        section: tools/mcp/ticket-mcp/readme
-
-  - name: audit-mcp-readme
-    repo_scope: memory-api
-    file_kind: README
-    path_scope: tools/mcp/audit-mcp/README.md
-    output_path: tools/mcp/audit-mcp/README.md
-    nodes:
-      - name: onboarding
-        section: tools/mcp/audit-mcp/readme
-
-  - name: ticket-http-readme
-    repo_scope: memory-api
-    file_kind: README
-    path_scope: tools/http/ticket-http/README.md
-    output_path: tools/http/ticket-http/README.md
-    nodes:
-      - name: onboarding
-        section: tools/http/ticket-http/readme
-
-  - name: spec-http-readme
-    repo_scope: memory-api
-    file_kind: README
-    path_scope: tools/http/spec-http/README.md
-    output_path: tools/http/spec-http/README.md
-    nodes:
-      - name: onboarding
-        section: tools/http/spec-http/readme
+    - name: tool-surface
+      section: memory-api
+    - name: dependency-graph
+      title: Dependency Graph
+      section: memory-api/usage-guide
+    - name: tool-use-examples
+      title: Tool Use Examples
+      section: memory-api/crate-groups
+folders:
+- name: tools
+  folders:
+  - name: cli
+    folders:
+    - name: rule-cli
+      files:
+      - name: README.md
+        target:
+          name: rule-cli-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/cli/rule-cli/README.md
+          nodes:
+          - name: onboarding
+            section: tools/cli/rule-cli/readme
+    - name: spec-cli
+      files:
+      - name: README.md
+        target:
+          name: spec-cli-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/cli/spec-cli/README.md
+          nodes:
+          - name: onboarding
+            section: tools/cli/spec-cli/readme
+    - name: ticket-cli
+      files:
+      - name: README.md
+        target:
+          name: ticket-cli-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/cli/ticket-cli/README.md
+          nodes:
+          - name: onboarding
+            section: tools/cli/ticket-cli/readme
+    - name: audit-cli
+      files:
+      - name: README.md
+        target:
+          name: audit-cli-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/cli/audit-cli/README.md
+          nodes:
+          - name: onboarding
+            section: tools/cli/audit-cli/readme
+  - name: mcp
+    folders:
+    - name: rule-mcp
+      files:
+      - name: README.md
+        target:
+          name: rule-mcp-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/mcp/rule-mcp/README.md
+          nodes:
+          - name: onboarding
+            section: tools/mcp/rule-mcp/readme
+    - name: spec-mcp
+      files:
+      - name: README.md
+        target:
+          name: spec-mcp-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/mcp/spec-mcp/README.md
+          nodes:
+          - name: onboarding
+            section: tools/mcp/spec-mcp/readme
+    - name: ticket-mcp
+      files:
+      - name: README.md
+        target:
+          name: ticket-mcp-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/mcp/ticket-mcp/README.md
+          nodes:
+          - name: onboarding
+            section: tools/mcp/ticket-mcp/readme
+    - name: audit-mcp
+      files:
+      - name: README.md
+        target:
+          name: audit-mcp-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/mcp/audit-mcp/README.md
+          nodes:
+          - name: onboarding
+            section: tools/mcp/audit-mcp/readme
+  - name: http
+    folders:
+    - name: ticket-http
+      files:
+      - name: README.md
+        target:
+          name: ticket-http-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/http/ticket-http/README.md
+          nodes:
+          - name: onboarding
+            section: tools/http/ticket-http/readme
+    - name: spec-http
+      files:
+      - name: README.md
+        target:
+          name: spec-http-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/http/spec-http/README.md
+          nodes:
+          - name: onboarding
+            section: tools/http/spec-http/readme
