@@ -34,6 +34,46 @@ pub struct RenderTargetConfig {
     pub targets: Vec<RenderTarget>,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct RawRenderTargetConfig {
+    #[serde(default)]
+    targets: Vec<RenderTarget>,
+    #[serde(default)]
+    folders: Vec<RenderTargetFolder>,
+    #[serde(default)]
+    files: Vec<RenderTargetFile>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct RenderTargetFolder {
+    name: String,
+    #[serde(default)]
+    folders: Vec<RenderTargetFolder>,
+    #[serde(default)]
+    files: Vec<RenderTargetFile>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct RenderTargetFile {
+    name: String,
+    target: RenderTargetDefinition,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct RenderTargetDefinition {
+    name: String,
+    repo_scope: String,
+    file_kind: String,
+    #[serde(default)]
+    path_scope: Option<String>,
+    #[serde(default)]
+    section: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    nodes: Vec<RenderTargetNode>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RenderTargetFilter {
     #[serde(default)]
@@ -193,6 +233,66 @@ impl RenderTarget {
             self.nodes.clone()
         }
     }
+}
+
+impl RawRenderTargetConfig {
+    fn into_render_target_config(self) -> RenderTargetConfig {
+        let mut targets = self.targets;
+        let root = PathBuf::new();
+
+        push_tree_files(&root, self.files, &mut targets);
+        for folder in self.folders {
+            folder.collect_targets(&root, &mut targets);
+        }
+
+        RenderTargetConfig { targets }
+    }
+}
+
+impl RenderTargetFolder {
+    fn collect_targets(
+        self,
+        parent: &Path,
+        targets: &mut Vec<RenderTarget>,
+    ) {
+        let prefix = parent.join(self.name);
+
+        push_tree_files(&prefix, self.files, targets);
+        for folder in self.folders {
+            folder.collect_targets(&prefix, targets);
+        }
+    }
+}
+
+impl RenderTargetFile {
+    fn into_render_target(self, parent: &Path) -> RenderTarget {
+        RenderTarget {
+            name: self.target.name,
+            repo_scope: self.target.repo_scope,
+            file_kind: self.target.file_kind,
+            path_scope: self.target.path_scope,
+            section: self.target.section,
+            state: self.target.state,
+            nodes: self.target.nodes,
+            output_path: tree_output_path(parent, &self.name),
+        }
+    }
+}
+
+fn push_tree_files(
+    parent: &Path,
+    files: Vec<RenderTargetFile>,
+    targets: &mut Vec<RenderTarget>,
+) {
+    for file in files {
+        targets.push(file.into_render_target(parent));
+    }
+}
+
+fn tree_output_path(parent: &Path, name: &str) -> String {
+    let mut path = parent.to_path_buf();
+    path.push(name);
+    path.to_string_lossy().replace('\\', "/")
 }
 
 pub fn collect_target_rules(
@@ -372,21 +472,23 @@ pub fn load_render_target_config(
             path: path.to_path_buf(),
             source,
         })?;
-    let config: RenderTargetConfig =
+    let config =
         match path.extension().and_then(|extension| extension.to_str()) {
             Some("yaml" | "yml") =>
-                serde_yaml::from_str(&content).map_err(|source| {
+                serde_yaml::from_str::<RawRenderTargetConfig>(&content)
+                    .map_err(|source| {
                     TargetConfigError::ParseYaml {
                         path: path.to_path_buf(),
                         source,
                     }
-                })?,
-            _ => toml::from_str(&content).map_err(|source| {
-                TargetConfigError::ParseToml {
+                })?
+                .into_render_target_config(),
+            _ => toml::from_str::<RawRenderTargetConfig>(&content)
+                .map_err(|source| TargetConfigError::ParseToml {
                     path: path.to_path_buf(),
                     source,
-                }
-            })?,
+                })?
+                .into_render_target_config(),
         };
 
     let mut names = HashSet::new();

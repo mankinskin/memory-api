@@ -300,6 +300,68 @@ fn generate_target_uses_config_output_path() {
 }
 
 #[test]
+fn generate_target_supports_folder_tree_config_output() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut rule = sample_rule(
+        "shared/agents/opening",
+        "Opening",
+        "opening",
+        "Start with the concrete anchor.",
+        10,
+    );
+    rule.set_path_scopes(["AGENTS.md"]);
+    store.create(&rule, None).unwrap();
+
+    let config_path = dir.path().join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "folders:\n",
+            "  - name: generated\n",
+            "    folders:\n",
+            "      - name: docs\n",
+            "        files:\n",
+            "          - name: AGENTS.md\n",
+            "            target:\n",
+            "              name: context-engine-agents\n",
+            "              repo_scope: context-engine\n",
+            "              file_kind: AGENTS\n",
+            "              path_scope: AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+
+    dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_path.clone(),
+            target: "context-engine-agents".to_string(),
+            dry_run: false,
+            check: false,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    let rendered = fs::read_to_string(
+        dir.path().join("generated").join("docs").join("AGENTS.md"),
+    )
+    .unwrap();
+    assert!(rendered.contains("slug=shared/agents/opening"));
+
+    dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_path,
+            target: "context-engine-agents".to_string(),
+            dry_run: false,
+            check: true,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+}
+
+#[test]
 fn add_root_command_creates_missing_directory() {
     let dir = tempdir().unwrap();
     let index_root = dir.path().join(".rule");

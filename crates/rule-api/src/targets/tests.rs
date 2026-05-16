@@ -61,6 +61,92 @@ fn load_render_target_config_parses_targets_and_rejects_duplicates() {
 }
 
 #[test]
+fn load_render_target_config_supports_file_folder_tree_structure() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("rule-targets.yaml");
+    fs::write(
+        &path,
+        concat!(
+            "files:\n",
+            "  - name: AGENTS.md\n",
+            "    target:\n",
+            "      name: context-engine-agents\n",
+            "      repo_scope: context-engine\n",
+            "      file_kind: AGENTS\n",
+            "      path_scope: AGENTS.md\n",
+            "folders:\n",
+            "  - name: .github\n",
+            "    files:\n",
+            "      - name: copilot-instructions.md\n",
+            "        target:\n",
+            "          name: context-engine-copilot-instructions\n",
+            "          repo_scope: context-engine\n",
+            "          file_kind: copilot-instructions\n",
+            "          path_scope: .github/copilot-instructions.md\n",
+            "    folders:\n",
+            "      - name: prompts\n",
+            "        files:\n",
+            "          - name: spec.prompt.md\n",
+            "            target:\n",
+            "              name: context-engine-prompt-spec\n",
+            "              repo_scope: context-engine\n",
+            "              file_kind: .prompt\n",
+            "              path_scope: .github/prompts/spec.prompt.md\n",
+            "              nodes:\n",
+            "                - name: spec-prompt\n",
+            "                  section: spec-prompt\n",
+        ),
+    )
+    .unwrap();
+
+    let config = load_render_target_config(&path).unwrap();
+
+    assert_eq!(config.targets.len(), 3);
+    assert_eq!(config.targets[0].name, "context-engine-agents");
+    assert_eq!(config.targets[0].output_path, "AGENTS.md");
+    assert_eq!(
+        config.targets[1].output_path,
+        ".github/copilot-instructions.md"
+    );
+    assert_eq!(
+        config.targets[2].output_path,
+        ".github/prompts/spec.prompt.md"
+    );
+    assert_eq!(config.targets[2].nodes.len(), 1);
+    assert_eq!(config.targets[2].nodes[0].name, "spec-prompt");
+}
+
+#[test]
+fn load_render_target_config_rejects_duplicate_names_across_tree_targets() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("rule-targets.yaml");
+    fs::write(
+        &path,
+        concat!(
+            "targets:\n",
+            "  - name: dup\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    output_path: AGENTS.md\n",
+            "folders:\n",
+            "  - name: .github\n",
+            "    files:\n",
+            "      - name: README.md\n",
+            "        target:\n",
+            "          name: dup\n",
+            "          repo_scope: context-engine\n",
+            "          file_kind: README\n",
+        ),
+    )
+    .unwrap();
+
+    let err = load_render_target_config(&path).unwrap_err();
+    assert!(
+        matches!(err, TargetConfigError::DuplicateName(name) if name == "dup")
+    );
+}
+
+#[test]
 fn load_render_target_config_supports_legacy_toml() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("rule-targets.toml");
