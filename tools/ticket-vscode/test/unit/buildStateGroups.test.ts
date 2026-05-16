@@ -93,6 +93,21 @@ async function buildProvider(
   return provider;
 }
 
+async function waitForProviderReload(
+  provider: TicketTreeProvider,
+  action: () => void,
+): Promise<void> {
+  await new Promise<void>(resolve => {
+    const sub = provider.onDidChangeTreeData(() => {
+      if ((provider as any).state !== 'loading') {
+        sub.dispose();
+        resolve();
+      }
+    });
+    action();
+  });
+}
+
 /** Get all root-level state group items. */
 function getRootGroups(provider: TicketTreeProvider): StateGroupItem[] {
   return provider.getChildren(undefined) as StateGroupItem[];
@@ -326,6 +341,66 @@ describe('TicketTreeProvider — state folder grouping', () => {
       expect(customIdx).toBeGreaterThanOrEqual(0);
       // 'new' is a schema state → should appear before the unknown custom state
       expect(newIdx).toBeLessThan(customIdx);
+    });
+  });
+
+  describe('filter-backed reloads', () => {
+    test('forwards active search and state filters to fetchAllTickets', async () => {
+      const READY = '10000000-0000-0000-0000-000000000001';
+      const provider = await buildProvider([makeTicket(READY, 'ready', 'Needle ticket')], []);
+      const mockApi = api as jest.Mocked<typeof api>;
+
+      mockApi.fetchAllTickets.mockResolvedValueOnce([
+        makeTicket(READY, 'ready', 'Needle ticket'),
+      ]);
+      await waitForProviderReload(provider, () => provider.setSearchQuery('needle'));
+
+      expect(mockApi.fetchAllTickets).toHaveBeenLastCalledWith(
+        'http://localhost:3002',
+        'default',
+        { query: 'needle' },
+      );
+      expect(provider.filterSummary).toContain('needle');
+
+      mockApi.fetchAllTickets.mockResolvedValueOnce([
+        makeTicket(READY, 'ready', 'Needle ticket'),
+      ]);
+      await waitForProviderReload(provider, () => provider.setStateFilter('ready'));
+
+      expect(mockApi.fetchAllTickets).toHaveBeenLastCalledWith(
+        'http://localhost:3002',
+        'default',
+        { query: 'needle', state: 'ready' },
+      );
+      expect(getRootGroups(provider).map(group => group.state)).toEqual(['ready']);
+    });
+
+    test('clearFilters restores the unfiltered ticket groups', async () => {
+      const NEW = '20000000-0000-0000-0000-000000000001';
+      const READY = '20000000-0000-0000-0000-000000000002';
+      const initialTickets = [
+        makeTicket(NEW, 'new', 'New ticket'),
+        makeTicket(READY, 'ready', 'Ready ticket'),
+      ];
+      const provider = await buildProvider(initialTickets, []);
+      const mockApi = api as jest.Mocked<typeof api>;
+
+      mockApi.fetchAllTickets.mockResolvedValueOnce([
+        makeTicket(READY, 'ready', 'Ready ticket'),
+      ]);
+      await waitForProviderReload(provider, () => provider.setStateFilter('ready'));
+      expect(getRootGroups(provider).map(group => group.state)).toEqual(['ready']);
+
+      mockApi.fetchAllTickets.mockResolvedValueOnce(initialTickets);
+      await waitForProviderReload(provider, () => provider.clearFilters());
+
+      expect(mockApi.fetchAllTickets).toHaveBeenLastCalledWith(
+        'http://localhost:3002',
+        'default',
+        {},
+      );
+      expect(getRootGroups(provider).map(group => group.state)).toEqual(['new', 'ready']);
+      expect(provider.filterSummary).toBeUndefined();
     });
   });
 });

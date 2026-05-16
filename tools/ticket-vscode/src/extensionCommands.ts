@@ -40,6 +40,14 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
     }
   }
 
+  function announceFilterChange(): void {
+    const summary = provider.filterSummary;
+    vscode.window.setStatusBarMessage(
+      summary ? `Ticket filters: ${summary}` : 'Ticket filters cleared',
+      4000,
+    );
+  }
+
   context.subscriptions.push(
     vscode.commands.registerCommand('ticket-viewer.openBrowser', () => {
       openTicketViewer(state.serverUrl);
@@ -49,6 +57,55 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
   context.subscriptions.push(
     vscode.commands.registerCommand('ticket-viewer.refresh', () => {
       provider.refresh();
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ticket-viewer.setSearchQuery', async () => {
+      const query = await vscode.window.showInputBox({
+        title: 'Search Tickets',
+        value: provider.filters.query ?? '',
+        prompt: 'Search by ticket title or indexed ticket text. Leave empty to clear.',
+        ignoreFocusOut: true,
+      });
+      if (query === undefined) { return; }
+      provider.setSearchQuery(query);
+      announceFilterChange();
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ticket-viewer.setStateFilter', async () => {
+      const current = provider.filters.state;
+      const states = provider.availableStates.length > 0
+        ? provider.availableStates
+        : TICKET_STATES;
+      const picks = [
+        {
+          label: 'All states',
+          description: current ? 'Clear active state filter' : 'No active state filter',
+          state: undefined as string | undefined,
+        },
+        ...states.map(ticketState => ({
+          label: ticketState,
+          description: ticketState === current ? '← current' : undefined,
+          state: ticketState,
+        })),
+      ];
+      const pick = await vscode.window.showQuickPick(picks, {
+        title: 'Filter Tickets By State',
+        placeHolder: current ?? 'All states',
+      });
+      if (!pick) { return; }
+      provider.setStateFilter(pick.state);
+      announceFilterChange();
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ticket-viewer.clearFilters', () => {
+      provider.clearFilters();
+      announceFilterChange();
     }),
   );
 

@@ -1,7 +1,15 @@
 import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { fetchAllTickets, fetchEdges, fetchSchemas, fetchTicketDescription, type TicketSummary, type EdgeRecord } from './api';
+import {
+  fetchAllTickets,
+  fetchEdges,
+  fetchSchemas,
+  fetchTicketDescription,
+  type EdgeRecord,
+  type TicketListFilters,
+  type TicketSummary,
+} from './api';
 import {
   InfoItem,
   StateGroupItem,
@@ -12,6 +20,11 @@ import {
 } from './ticketTreeItems';
 
 export { StateGroupItem, TicketItem } from './ticketTreeItems';
+
+function normalizeFilterValue(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
 
 // ── Provider ─────────────────────────────────────────────────────────────────
 
@@ -29,6 +42,7 @@ export class TicketTreeProvider
   private _descriptionCache = new Map<string, string | null>();
   /** Ordered state names from the schema endpoint; undefined until first fetch. */
   private _schemaStates: string[] | undefined;
+  private _filters: TicketListFilters = {};
 
   /** Map from ticket ID to TicketSummary for quick lookup. */
   private _ticketMap = new Map<string, TicketSummary>();
@@ -62,9 +76,45 @@ export class TicketTreeProvider
     return this.tickets;
   }
 
+  get filters(): Readonly<TicketListFilters> {
+    return { ...this._filters };
+  }
+
+  get availableStates(): readonly string[] {
+    if (this._schemaStates && this._schemaStates.length > 0) {
+      return this._schemaStates;
+    }
+    return [...new Set(this.tickets
+      .map(ticket => ticket.state)
+      .filter((state): state is string => Boolean(state)))].sort((a, b) => a.localeCompare(b));
+  }
+
+  get filterSummary(): string | undefined {
+    const parts: string[] = [];
+    if (this._filters.query) {
+      parts.push(`query="${this._filters.query}"`);
+    }
+    if (this._filters.state) {
+      parts.push(`state=${this._filters.state}`);
+    }
+    return parts.length > 0 ? parts.join(', ') : undefined;
+  }
+
   refresh(): void {
     this._descriptionCache.clear();
     void this.load();
+  }
+
+  setSearchQuery(query: string): void {
+    this._setFilters({ ...this._filters, query });
+  }
+
+  setStateFilter(state: string | undefined): void {
+    this._setFilters({ ...this._filters, state });
+  }
+
+  clearFilters(): void {
+    this._setFilters({});
   }
 
   /** Update connection settings and reload. */
@@ -130,7 +180,12 @@ export class TicketTreeProvider
     }
 
     if (this.tickets.length === 0) {
-      return [new InfoItem('No tickets found', 'info')];
+      const filterSummary = this.filterSummary;
+      return [new InfoItem(
+        filterSummary ? 'No tickets match current filters' : 'No tickets found',
+        'info',
+        filterSummary ? `Active filters: ${filterSummary}` : undefined,
+      )];
     }
 
     return this.buildStateGroups();
@@ -287,13 +342,31 @@ export class TicketTreeProvider
     return result;
   }
 
+  private _setFilters(filters: TicketListFilters): void {
+    const nextFilters: TicketListFilters = {
+      query: normalizeFilterValue(filters.query),
+      state: normalizeFilterValue(filters.state),
+    };
+
+    if (
+      this._filters.query === nextFilters.query
+      && this._filters.state === nextFilters.state
+    ) {
+      return;
+    }
+
+    this._filters = nextFilters;
+    this._descriptionCache.clear();
+    void this.load();
+  }
+
   private async load(): Promise<void> {
     this.state = 'loading';
     this._onDidChangeTreeData.fire(undefined);
 
     try {
       const [tickets, edges, schemas] = await Promise.all([
-        fetchAllTickets(this._baseUrl, this._workspace),
+        fetchAllTickets(this._baseUrl, this._workspace, this._filters),
         fetchEdges(this._baseUrl, this._workspace, 'depends_on').catch(() => [] as EdgeRecord[]),
         fetchSchemas(this._baseUrl, this._workspace).catch(() => []),
       ]);

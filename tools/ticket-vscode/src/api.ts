@@ -27,6 +27,11 @@ export interface TicketsResponse {
   next_cursor: string | null;
 }
 
+export interface TicketListFilters {
+  query?: string;
+  state?: string;
+}
+
 async function apiFetch<T>(url: string): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -51,9 +56,12 @@ export async function fetchTickets(
   baseUrl: string,
   workspace: string,
   cursor?: string,
+  filters: TicketListFilters = {},
 ): Promise<TicketsResponse> {
   const params = new URLSearchParams({ workspace, limit: '500' });
   if (cursor) { params.set('cursor', cursor); }
+  if (filters.query) { params.set('query', filters.query); }
+  if (filters.state) { params.set('state', filters.state); }
   return apiFetch<TicketsResponse>(`${baseUrl}/api/tickets?${params}`);
 }
 
@@ -61,11 +69,12 @@ export async function fetchTickets(
 export async function fetchAllTickets(
   baseUrl: string,
   workspace: string,
+  filters: TicketListFilters = {},
 ): Promise<TicketSummary[]> {
   const all: TicketSummary[] = [];
   let cursor: string | undefined;
   do {
-    const page = await fetchTickets(baseUrl, workspace, cursor);
+    const page = await fetchTickets(baseUrl, workspace, cursor, filters);
     all.push(...page.items);
     cursor = page.next_cursor ?? undefined;
   } while (cursor);

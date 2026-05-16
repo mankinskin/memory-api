@@ -82,6 +82,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const newCount = tickets.filter(t => t.state === 'new').length;
     const inImplCount = tickets.filter(t => t.state === 'in-implementation').length;
     const prefix = `$(issues) ${state.displayName}`;
+    const filterSummary = provider.filterSummary;
+
+    treeView.message = filterSummary ? `Filters: ${filterSummary}` : undefined;
 
     if (tickets.length === 0) {
       statusBarItem.text = prefix;

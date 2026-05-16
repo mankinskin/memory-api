@@ -47,6 +47,24 @@
         "category": "Ticket Viewer"
       },
       {
+        "command": "ticket-viewer.setSearchQuery",
+        "title": "Search Tickets...",
+        "icon": "$(search)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.setStateFilter",
+        "title": "Filter Tickets By State...",
+        "icon": "$(filter)",
+        "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.clearFilters",
+        "title": "Clear Ticket Filters",
+        "icon": "$(clear-all)",
+        "category": "Ticket Viewer"
+      },
+      {
         "command": "ticket-viewer.startServer",
         "title": "Start Ticket Viewer Server",
         "icon": "$(play)",
@@ -157,19 +175,34 @@
           "group": "navigation@0"
         },
         {
-          "command": "ticket-viewer.openBrowser",
+          "command": "ticket-viewer.setSearchQuery",
           "when": "view == ticket-viewer.tickets",
-          "group": "navigation@3"
+          "group": "navigation@1"
         },
         {
-          "command": "ticket-viewer.startServer",
+          "command": "ticket-viewer.setStateFilter",
           "when": "view == ticket-viewer.tickets",
           "group": "navigation@2"
         },
         {
+          "command": "ticket-viewer.clearFilters",
+          "when": "view == ticket-viewer.tickets",
+          "group": "navigation@3"
+        },
+        {
+          "command": "ticket-viewer.openBrowser",
+          "when": "view == ticket-viewer.tickets",
+          "group": "navigation@6"
+        },
+        {
+          "command": "ticket-viewer.startServer",
+          "when": "view == ticket-viewer.tickets",
+          "group": "navigation@5"
+        },
+        {
           "command": "ticket-viewer.refresh",
           "when": "view == ticket-viewer.tickets",
-          "group": "navigation@1"
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [

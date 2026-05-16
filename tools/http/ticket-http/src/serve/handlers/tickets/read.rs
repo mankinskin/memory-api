@@ -55,12 +55,30 @@ pub async fn list_tickets(
     };
 
     tokio::task::spawn_blocking(move || {
+        let requested_limit = params.limit.unwrap_or(100).min(1000);
+        let state_filter = params.state.as_deref();
         let tickets: Vec<TicketSummary> = if let Some(query) = &params.query {
-            let limit = params.limit.unwrap_or(100).min(1000);
-            match store.search_tickets(query, limit) {
+            let search_limit = if state_filter.is_some() {
+                match store.count_tickets() {
+                    Ok(count) => count.max(requested_limit),
+                    Err(e) => return storage_err(e, &rid.0),
+                }
+            } else {
+                requested_limit
+            };
+
+            match store.search_tickets(query, search_limit) {
                 Ok(results) => {
-                    let mut items = Vec::with_capacity(results.len());
-                    for result in results {
+                    let mut items = Vec::with_capacity(results.len().min(requested_limit));
+                    for result in results
+                        .into_iter()
+                        .filter(|result| {
+                            state_filter.map_or(true, |state| {
+                                result.state.as_deref() == Some(state)
+                            })
+                        })
+                        .take(requested_limit)
+                    {
                         let (created_at, updated_at) =
                             match store.get_indexed(&result.id) {
                                 Ok(Some(indexed)) =>
@@ -84,8 +102,7 @@ pub async fn list_tickets(
                 Err(e) => return storage_err(e, &rid.0),
             }
         } else {
-            let limit = params.limit.map(|value| value.min(1000));
-            match store.list(params.state.as_deref(), None, limit) {
+            match store.list(state_filter, None, Some(requested_limit)) {
                 Ok(items) => items
                     .into_iter()
                     .map(|ticket| TicketSummary {
