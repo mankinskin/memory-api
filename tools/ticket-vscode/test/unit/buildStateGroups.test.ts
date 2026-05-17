@@ -360,6 +360,39 @@ describe('TicketTreeProvider — state folder grouping', () => {
       expect(controls.map(control => control.description)).toEqual(['None', 'All states']);
     });
 
+    test('setLocalSearch filters in-memory tickets without calling fetchAllTickets', async () => {
+      const tickets = [
+        makeTicket('40000000-0000-0000-0000-000000000001', 'new', 'Fix authentication bug'),
+        makeTicket('40000000-0000-0000-0000-000000000002', 'new', 'Add export button'),
+        makeTicket('40000000-0000-0000-0000-000000000003', 'ready', 'Improve logging'),
+      ];
+      const provider = await buildProvider(tickets, []);
+      const mockApi = api as jest.Mocked<typeof api>;
+
+      const callsBefore = mockApi.fetchAllTickets.mock.calls.length;
+      provider.setLocalSearch('auth');
+
+      // No extra server call
+      expect(mockApi.fetchAllTickets.mock.calls.length).toBe(callsBefore);
+
+      // Only the matching 'new' ticket should be visible
+      const groups = getRootGroups(provider);
+      expect(groups.map(g => g.state)).toEqual(['new']);
+      const items = provider.getChildren(groups[0]) as TicketItem[];
+      expect(items.length).toBe(1);
+      expect(items[0].ticket.title).toBe('Fix authentication bug');
+    });
+
+    test('search control description updates live as setLocalSearch is called', async () => {
+      const provider = await buildProvider([makeTicket('50000000-0000-0000-0000-000000000001', 'new')], []);
+
+      provider.setLocalSearch('foo');
+      expect(getRootControls(provider)[0].description).toBe('foo');
+
+      provider.setLocalSearch('');
+      expect(getRootControls(provider)[0].description).toBe('None');
+    });
+
     test('forwards active search and state filters to fetchAllTickets', async () => {
       const READY = '10000000-0000-0000-0000-000000000001';
       const provider = await buildProvider([makeTicket(READY, 'ready', 'Needle ticket')], []);

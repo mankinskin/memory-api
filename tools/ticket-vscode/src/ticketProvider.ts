@@ -44,6 +44,8 @@ export class TicketTreeProvider
   /** Ordered state names from the schema endpoint; undefined until first fetch. */
   private _schemaStates: string[] | undefined;
   private _filters: TicketListFilters = {};
+  /** Client-side substring filter applied live while the search InputBox is open. No server call. */
+  private _localSearch: string = '';
 
   /** Map from ticket ID to TicketSummary for quick lookup. */
   private _ticketMap = new Map<string, TicketSummary>();
@@ -92,7 +94,9 @@ export class TicketTreeProvider
 
   get filterSummary(): string | undefined {
     const parts: string[] = [];
-    if (this._filters.query) {
+    if (this._localSearch) {
+      parts.push(`search="${this._localSearch}"`);
+    } else if (this._filters.query) {
       parts.push(`query="${this._filters.query}"`);
     }
     if (this._filters.state) {
@@ -116,6 +120,12 @@ export class TicketTreeProvider
 
   clearFilters(): void {
     this._setFilters({});
+  }
+
+  /** Apply a client-side substring filter immediately. Fires a tree refresh without a server call. */
+  setLocalSearch(query: string): void {
+    this._localSearch = query;
+    this._onDidChangeTreeData.fire(undefined);
   }
 
   /** Update connection settings and reload. */
@@ -192,7 +202,11 @@ export class TicketTreeProvider
       )];
     }
 
-    return [...filterControls, ...this.buildStateGroups()];
+    const groups = this.buildStateGroups();
+    if (groups.length === 0) {
+      return [...filterControls, new InfoItem(`No tickets match "${this._localSearch}"`, 'info')];
+    }
+    return [...filterControls, ...groups];
   }
 
   // ── Lazy tooltip resolution ────────────────────────────────────────────────
@@ -303,10 +317,20 @@ export class TicketTreeProvider
     return [...folders, ...files];
   }
 
+  /** Tickets visible after applying the client-side _localSearch substring filter. */
+  private _visibleTickets(): TicketSummary[] {
+    const needle = this._localSearch.trim().toLowerCase();
+    if (!needle) { return this.tickets; }
+    return this.tickets.filter(t =>
+      (t.title ?? '').toLowerCase().includes(needle) ||
+      t.id.toLowerCase().includes(needle),
+    );
+  }
+
   private buildStateGroups(): StateGroupItem[] {
-    // 1. Group tickets by state
+    // 1. Group tickets by state (client-side _localSearch is applied first)
     const grouped = new Map<string, TicketSummary[]>();
-    for (const ticket of this.tickets) {
+    for (const ticket of this._visibleTickets()) {
       const s = ticket.state ?? 'unknown';
       let bucket = grouped.get(s);
       if (!bucket) { bucket = []; grouped.set(s, bucket); }
@@ -350,7 +374,7 @@ export class TicketTreeProvider
     return [
       new FilterControlItem(
         'Search Tickets',
-        this._filters.query ?? 'None',
+        this._localSearch || this._filters.query || 'None',
         'search',
         'ticket-viewer.setSearchQuery',
       ),

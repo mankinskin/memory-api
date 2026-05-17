@@ -61,16 +61,36 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('ticket-viewer.setSearchQuery', async () => {
-      const query = await vscode.window.showInputBox({
-        title: 'Search Tickets',
-        value: provider.filters.query ?? '',
-        prompt: 'Search by ticket title or indexed ticket text. Leave empty to clear.',
-        ignoreFocusOut: true,
+    vscode.commands.registerCommand('ticket-viewer.setSearchQuery', () => {
+      const inputBox = vscode.window.createInputBox();
+      inputBox.title = 'Search Tickets';
+      inputBox.value = provider.filters.query ?? '';
+      inputBox.placeholder = 'Type to filter tickets in real time…';
+      inputBox.prompt = 'Enter to fetch from server · Escape to cancel';
+
+      let accepted = false;
+
+      inputBox.onDidChangeValue(value => {
+        provider.setLocalSearch(value);
       });
-      if (query === undefined) { return; }
-      provider.setSearchQuery(query);
-      announceFilterChange();
+
+      inputBox.onDidAccept(() => {
+        accepted = true;
+        const value = inputBox.value;
+        inputBox.hide();
+        provider.setLocalSearch('');
+        provider.setSearchQuery(value);
+        announceFilterChange();
+      });
+
+      inputBox.onDidHide(() => {
+        inputBox.dispose();
+        if (!accepted) {
+          provider.setLocalSearch('');
+        }
+      });
+
+      inputBox.show();
     }),
   );
 
