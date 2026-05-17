@@ -1,0 +1,1 @@
+{"rev":1,"ts":"2026-05-17T16:40:40.664876300+00:00","fields":{"component":"ticket-api","priority":"high","state":"new","tags":"ticket-api,ticket-http,ticket-viewer,workspaces,dependencies,cross-workspace","title":"[ticket-api] Child workspaces surface parent dependency entries","type":"tracker-improvement","workflow_stage":"plan"}}
