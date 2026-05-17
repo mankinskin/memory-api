@@ -142,7 +142,29 @@ export function resolveTicketsDir(workspaceName: string): string | undefined {
   return undefined;
 }
 
-function resolveServerLaunch(config: TicketViewerConfig): {
+function resolveBinaryOnPath(binaryName: string): string | undefined {
+  const pathValue = process.env.PATH ?? '';
+  for (const entry of pathValue.split(path.delimiter)) {
+    if (entry.trim() === '') {
+      continue;
+    }
+
+    const candidate = path.join(entry, binaryName);
+    try {
+      const stat = fs.statSync(candidate);
+      if (!stat.isFile()) {
+        continue;
+      }
+      if (process.platform === 'win32' || (stat.mode & 0o111) !== 0) {
+        return candidate;
+      }
+    } catch { /* not found */ }
+  }
+
+  return undefined;
+}
+
+export function resolveServerLaunch(config: TicketViewerConfig): {
   cmd: string;
   args: string[];
   cwd: string | undefined;
@@ -162,6 +184,11 @@ function resolveServerLaunch(config: TicketViewerConfig): {
   }
 
   const binaryName = process.platform === 'win32' ? 'ticket-viewer.exe' : 'ticket-viewer';
+  const pathBinary = resolveBinaryOnPath(binaryName);
+  if (pathBinary) {
+    return { cmd: pathBinary, args: indexRootArgs, cwd };
+  }
+
   if (detected[0]?.folder.uri.fsPath) {
     const devBinary = path.join(detected[0].folder.uri.fsPath, 'target', 'debug', binaryName);
     if (fs.existsSync(devBinary)) {
@@ -169,8 +196,7 @@ function resolveServerLaunch(config: TicketViewerConfig): {
     }
   }
 
-  const onPath = process.platform === 'win32' ? 'ticket-viewer.exe' : 'ticket-viewer';
-  return { cmd: onPath, args: indexRootArgs, cwd };
+  return { cmd: binaryName, args: indexRootArgs, cwd };
 }
 
 export function startServerTask(

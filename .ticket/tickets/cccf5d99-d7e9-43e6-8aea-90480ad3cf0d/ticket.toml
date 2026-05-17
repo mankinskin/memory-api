@@ -1,7 +1,7 @@
 id = "cccf5d99-d7e9-43e6-8aea-90480ad3cf0d"
 created_at = "2026-05-12T15:24:01.136163400+00:00"
 title = "[ticket-http][ticket-viewer] Bug: query results ignore active state filter"
-state = "new"
+state = "in-review"
 acceptance_criteria = "API combines query and state filters correctly before limiting; regression tests cover query-only/state-only/combined cases; sidebar explorer shows correct filtered results"
 bug_validity = "confirmed"
 component = "ticket-http"

@@ -9,7 +9,7 @@ All settings are under the `ticketViewer` namespace. Read on activation via `vsc
 | `ticketViewer.bridgePort` | `number` | `0` | Port for the Browser Bridge HTTP control server. `0` = auto-assign. |
 | `ticketViewer.cdpPort` | `number` | `0` | Chrome DevTools Protocol port. `0` = auto-discover by probing `[9222, 9223, 9229, 9230]`. |
 | `ticketViewer.autoConnectCdp` | `boolean` | `true` | Attempt CDP auto-connect on startup. Requires `--remote-debugging-port` when launching VS Code. |
-| `ticketViewer.serverBinaryPath` | `string` | `""` | Absolute path to the `ticket-viewer` binary. Empty = auto-detect: checks `target/debug/` inside the workspace folder first, then `PATH`. |
+| `ticketViewer.serverBinaryPath` | `string` | `""` | Absolute path to the `ticket-viewer` binary. Empty = auto-detect: checks `PATH` first, then falls back to `target/debug/` inside the workspace folder. |
 | `ticketViewer.serverWorkingDirectory` | `string` | `""` | Working directory for the server process. Empty = first VS Code workspace folder containing a `.ticket/` directory. |
 
 ## Configuration Change Handling
