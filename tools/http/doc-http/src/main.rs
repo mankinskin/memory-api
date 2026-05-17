@@ -36,9 +36,6 @@ async fn main() {
                 i += 1;
                 repo_root = Some(PathBuf::from(&args[i]));
             },
-            "--workspace" => {
-                i += 1;
-            },
             _ => {},
         }
         i += 1;

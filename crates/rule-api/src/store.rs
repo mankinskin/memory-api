@@ -39,6 +39,7 @@ use uuid::Uuid;
 use memory_api::{
     error::StorageError,
     model::entity::EntityManifest,
+    workspace,
     storage::{
         ensure_gitignore_entries,
         entity_fs::EntityFs,
@@ -79,10 +80,11 @@ pub struct RuleStore {
 
 impl RuleStore {
     pub fn open(index_root: &Path) -> Result<Self, RuleError> {
+        let index_root = workspace::resolve_store_root_from(index_root, ".rule");
         let fs = EntityFs::new(RULE_MANIFEST_FILE, RULE_LOCK_FILE);
         let registry = rule_schema_registry();
-        let inner = EntityStore::open_with(index_root, fs, registry)?;
-        ensure_gitignore_entries(index_root, &["entities/"])?;
+        let inner = EntityStore::open_with(&index_root, fs, registry)?;
+        ensure_gitignore_entries(&index_root, &["entities/"])?;
         let mut store = Self {
             inner,
             slug_index: HashMap::new(),

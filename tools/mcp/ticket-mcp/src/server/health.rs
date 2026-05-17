@@ -35,7 +35,7 @@ impl TicketServer {
         let ids = ids.to_owned();
         let direction = direction.map(str::to_owned);
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let all_edges = store.list_all_edges().map_err(Self::store_err)?;
             let tickets = tickets_in_scope(
                 store,

@@ -28,7 +28,7 @@ impl TicketServer {
         let description = input.description;
         let author = input.author;
         let manifest = self
-            .with_store_ext(move |store| {
+            .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
                 store
                     .update(
@@ -59,7 +59,7 @@ impl TicketServer {
         let author = input.author;
         let target_state = input.to_state.clone();
         let (manifest, path) = self
-            .with_store_ext(move |store| {
+            .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
                 store
                     .close(&id, &input.to_state, author.as_deref())
@@ -84,7 +84,7 @@ impl TicketServer {
         let id_str = input.id;
         let author = input.author;
         let (manifest, path) = self
-            .with_store_ext(move |store| {
+            .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
                 store
                     .close(&id, "cancelled", author.as_deref())
@@ -111,7 +111,7 @@ impl TicketServer {
         let state = input.state;
         let description = input.description;
         let (ticket_id, manifest) = self
-            .with_store_ext(move |store| {
+            .with_store_ext(&workspace.clone(), move |store| {
                 let id = store
                     .create(
                         None,
@@ -143,7 +143,7 @@ impl TicketServer {
         let workspace = input.workspace;
         let id_str = input.id;
         let id = self
-            .with_store_ext(move |store| {
+            .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
                 store.delete(&id).map_err(Self::store_err)?;
                 Ok(id)
@@ -167,7 +167,7 @@ impl TicketServer {
         let to_str = input.to;
         let kind = input.kind;
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let from = Self::resolve_uuid_with(store, &from_str)?;
             let to = Self::resolve_uuid_with(store, &to_str)?;
             let edge = EdgeRecord {
@@ -199,7 +199,7 @@ impl TicketServer {
         let to_str = input.to;
         let kind = input.kind;
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let from = Self::resolve_uuid_with(store, &from_str)?;
             let to = Self::resolve_uuid_with(store, &to_str)?;
             let edge = EdgeRecord {
@@ -236,7 +236,7 @@ impl TicketServer {
         let workspace = input.workspace;
         let id_str = input.id;
         let (previous_rev, new_rev, updated) = self
-            .with_store_ext(move |store| {
+            .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
                 let revisions =
                     store.get_history(&id).map_err(Self::store_err)?;

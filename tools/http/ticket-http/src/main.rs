@@ -1,7 +1,7 @@
 //! Standalone binary for the ticket HTTP server.
 //!
 //! Usage:
-//!   ticket-http --port 4000 [--host 127.0.0.1] [--workspace default]
+//!   ticket-http --port 4000 [--host 127.0.0.1] [--index-root <path>]
 
 use ticket_api::{
     storage::store::TicketStore,
@@ -27,9 +27,6 @@ fn main() {
                 if let Some(v) = args.next() {
                     host = v;
                 },
-            "--workspace" => {
-                let _ = args.next();
-            },
             "--index-root" => {
                 index_root = args.next();
             },

@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use memory_api::{
     error::StorageError,
+    workspace,
     model::filesystem::ScanRoot,
     storage::{
         entity_fs::EntityFs,
@@ -55,9 +56,10 @@ pub struct SpecStore {
 
 impl SpecStore {
     pub fn open(index_root: &Path) -> Result<Self, SpecError> {
+        let index_root = workspace::resolve_store_root_from(index_root, ".spec");
         let fs = EntityFs::new(SPEC_MANIFEST_FILE, SPEC_LOCK_FILE);
         let registry = crate::default_schema::spec_schema_registry();
-        let inner = EntityStore::open_with(index_root, fs, registry)?;
+        let inner = EntityStore::open_with(&index_root, fs, registry)?;
         inner.add_scan_root(ScanRoot {
             path: index_root.join("specs"),
             label: "specs".to_string(),

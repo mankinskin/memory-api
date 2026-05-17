@@ -1,5 +1,8 @@
 use std::{
-    path::PathBuf,
+    path::{
+        Path,
+        PathBuf,
+    },
     sync::Arc,
 };
 
@@ -71,6 +74,42 @@ impl TicketServer {
         }
     }
 
+    fn is_ticket_store_root(path: &Path) -> bool {
+        path.join("tickets").is_dir()
+            || path.join("tickets.db").is_file()
+            || path.join("search_index").is_dir()
+    }
+
+    fn resolve_workspace_root(
+        &self,
+        workspace: &str,
+    ) -> Result<PathBuf, McpError> {
+        let workspace = workspace.trim();
+        if workspace.is_empty() || workspace == "default" {
+            return Ok(self.index_root.clone());
+        }
+
+        let resolved = ticket_api::workspace::resolve_store_root_from(
+            Path::new(workspace),
+            ticket_api::workspace::TICKET_INDEX_DIR,
+        );
+        if resolved
+            .file_name()
+            .and_then(|name| name.to_str())
+            == Some(ticket_api::workspace::TICKET_INDEX_DIR)
+            || Self::is_ticket_store_root(&resolved)
+        {
+            return Ok(resolved);
+        }
+
+        Err(McpError::invalid_params(
+            format!(
+                "invalid workspace '{workspace}': expected 'default', a repo root containing .ticket, the .ticket store itself, a path inside that store, or an existing ticket store root"
+            ),
+            None,
+        ))
+    }
+
     fn resolve_uuid_with(
         store: &TicketStore,
         value: &str,
@@ -119,11 +158,12 @@ impl TicketServer {
 
     async fn with_store<T>(
         &self,
+        workspace: &str,
         f: impl FnOnce(&TicketStore) -> Result<T, ticket_api::error::StorageError>,
     ) -> Result<T, McpError> {
+        let index_root = self.resolve_workspace_root(workspace)?;
         let _guard = self.store_lock.lock().await;
-        let store =
-            TicketStore::open(&self.index_root).map_err(Self::store_err)?;
+        let store = TicketStore::open(&index_root).map_err(Self::store_err)?;
         let result = f(&store).map_err(Self::store_err);
         drop(store);
         result
@@ -131,11 +171,12 @@ impl TicketServer {
 
     async fn with_store_ext<T>(
         &self,
+        workspace: &str,
         f: impl FnOnce(&TicketStore) -> Result<T, McpError>,
     ) -> Result<T, McpError> {
+        let index_root = self.resolve_workspace_root(workspace)?;
         let _guard = self.store_lock.lock().await;
-        let store =
-            TicketStore::open(&self.index_root).map_err(Self::store_err)?;
+        let store = TicketStore::open(&index_root).map_err(Self::store_err)?;
         let result = f(&store);
         drop(store);
         result

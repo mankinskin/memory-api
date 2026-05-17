@@ -21,13 +21,15 @@ async fn main() {
             path
         });
 
-    TicketStore::open(&index_root).unwrap_or_else(|e| {
+    let store = TicketStore::open(&index_root).unwrap_or_else(|e| {
         eprintln!(
             "Failed to open ticket store at {}: {e}",
             index_root.display()
         );
         std::process::exit(1);
     });
+    let index_root = store.index_root.clone();
+    drop(store);
 
     let workspace_names = vec!["default".to_string()];
 

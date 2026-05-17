@@ -18,7 +18,7 @@ impl TicketServer {
         let workspace = input.workspace;
         let agent_id = input.agent_id;
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let agent_ref = agent_id.as_deref();
             let snapshot =
                 store.board_show(agent_ref).map_err(Self::board_err)?;
@@ -41,7 +41,7 @@ impl TicketServer {
         let workspace = input.workspace;
         let agent_id = input.agent_id;
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let snapshot = store
                 .board_history(agent_id.as_deref())
                 .map_err(Self::board_err)?;
@@ -65,7 +65,7 @@ impl TicketServer {
         let files = input.files;
         let ttl_secs = input.ttl_secs.unwrap_or(3600);
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
             let entry = store
                 .board_check_in(&ticket_id, &agent_id, ttl_secs, &intent, files)
@@ -88,7 +88,7 @@ impl TicketServer {
         let agent_id_arg = input.agent_id;
         let reason = input.reason;
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
             let agent_id =
                 resolve_checkout_agent(store, ticket_id, agent_id_arg.clone())?;
@@ -111,7 +111,7 @@ impl TicketServer {
         let workspace = input.workspace;
         let entry_id_str = input.entry_id;
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let entry_id = entry_id_str.parse::<Uuid>().map_err(|_| {
                 McpError::invalid_params(
                     format!(
@@ -138,7 +138,7 @@ impl TicketServer {
     ) -> Result<CallToolResult, McpError> {
         let workspace = input.workspace;
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let current =
                 store.board_configure(None).map_err(Self::board_err)?;
             let config = if input.max_wip.is_none()
@@ -176,7 +176,7 @@ impl TicketServer {
         let workspace = input.workspace;
         let include_stale = input.include_stale.unwrap_or(false);
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let preview = store
                 .board_clean_preview(include_stale)
                 .map_err(Self::board_err)?;
@@ -196,7 +196,7 @@ impl TicketServer {
         let token = input.token;
         let include_stale = input.include_stale.unwrap_or(false);
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let result = store
                 .board_clean_apply(&token, include_stale)
                 .map_err(Self::board_err)?;
@@ -219,7 +219,7 @@ impl TicketServer {
         let add = input.add;
         let remove = input.remove;
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
             let entry = store
                 .board_update_files(&ticket_id, &agent_id, add, remove)
@@ -243,7 +243,7 @@ impl TicketServer {
         let old_path = input.old_path;
         let new_path = input.new_path;
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&workspace.clone(), move |store| {
             let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
             let entry = store
                 .board_rename_file(&ticket_id, &agent_id, &old_path, &new_path)

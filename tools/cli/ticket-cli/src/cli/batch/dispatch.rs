@@ -122,8 +122,6 @@ fn forbidden_batch_message(cmd: TicketCommandCli) -> &'static str {
         TicketCommandCli::AddRoot(_) => "'add-root' cannot be used in a batch",
         TicketCommandCli::ExportCommandSchema =>
             "'export-command-schema' cannot be used in a batch",
-        TicketCommandCli::Workspace(_) =>
-            "'workspace' cannot be used in a batch",
         TicketCommandCli::FinalizeMerge(_) =>
             "'finalize-merge' is not supported in a batch",
         _ => unreachable!("handled before forbidden batch dispatch"),

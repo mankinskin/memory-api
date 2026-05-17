@@ -31,8 +31,6 @@ mod dispatch;
 mod helpers;
 #[path = "cli/human_output.rs"]
 mod human_output;
-#[path = "cli/workspace_commands.rs"]
-mod workspace_commands;
 
 pub use args::*;
 pub(crate) use helpers::*;
@@ -128,8 +126,6 @@ pub enum TicketCommandCli {
     Subgraph(SubgraphArgs),
     /// Show all tickets that depend on a given ticket (reverse dependency tree).
     Topgraph(TopgraphArgs),
-    /// Inspect or initialize the local ticket workspace root.
-    Workspace(WorkspaceArgs),
     /// Watch filesystem scan roots and auto-reconcile on changes.
     Watch(WatchArgs),
     /// Dashboard: current state summary + ready tickets + parallel opportunities.

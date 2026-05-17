@@ -28,6 +28,7 @@ use crate::{
         search::TantivySearchIndex,
         ticket_fs::TicketFs,
     },
+    workspace,
 };
 
 mod board;
@@ -115,8 +116,12 @@ impl TicketStore {
         index_root: &Path,
         schema_registry: SchemaRegistry,
     ) -> Result<Self, StorageError> {
-        ensure_sqlite_index_root(
+        let index_root = workspace::resolve_store_root_from(
             index_root,
+            workspace::TICKET_INDEX_DIR,
+        );
+        ensure_sqlite_index_root(
+            &index_root,
             "tickets.db",
             &["search_index/"],
         )?;
@@ -130,7 +135,7 @@ impl TicketStore {
             index,
             search,
             schema_registry,
-            index_root: index_root.to_path_buf(),
+            index_root: index_root.clone(),
             hook: OnceLock::new(),
         };
         store.add_scan_root(ScanRoot {
@@ -149,8 +154,9 @@ impl TicketStore {
 
     /// Create a new ticket.
     ///
-    /// `target_root`: the scan root directory to place the ticket folder in.
-    /// If `None`, the first registered scan root is used (error if none exist).
+    /// `target_root`: a registered scan root, workspace root, store root, or
+    /// path inside a local `.ticket/` store. If `None`, the first registered
+    /// scan root is used (error if none exist).
     pub fn create(
         &self,
         id: Option<Uuid>,
@@ -165,17 +171,7 @@ impl TicketStore {
         let now = Utc::now();
 
         // Resolve target scan root.
-        let root = match target_root {
-            Some(p) => p.to_path_buf(),
-            None => {
-                let roots = self.index.list_scan_roots()?;
-                roots
-                    .into_iter()
-                    .next()
-                    .map(|r| r.path)
-                    .unwrap_or_else(|| self.index_root.join("tickets"))
-            },
-        };
+        let root = self.resolve_target_root(target_root)?;
         std::fs::create_dir_all(&root)?;
 
         let mut manifest = TicketManifest::new(id, now);
@@ -245,6 +241,55 @@ impl TicketStore {
         }
 
         Ok(id)
+    }
+
+    fn resolve_target_root(
+        &self,
+        target_root: Option<&Path>,
+    ) -> Result<PathBuf, StorageError> {
+        let roots = self.index.list_scan_roots()?;
+
+        let Some(target_root) = target_root else {
+            return Ok(roots
+                .into_iter()
+                .next()
+                .map(|root| root.path)
+                .unwrap_or_else(|| self.index_root.join("tickets")));
+        };
+
+        let requested = if target_root.is_dir() {
+            target_root.to_path_buf()
+        } else {
+            target_root
+                .parent()
+                .unwrap_or(target_root)
+                .to_path_buf()
+        };
+
+        if let Some(root) = roots
+            .iter()
+            .find(|root| root.path == requested)
+            .map(|root| root.path.clone())
+        {
+            return Ok(root);
+        }
+
+        let store_root = workspace::resolve_store_root_from(
+            target_root,
+            workspace::TICKET_INDEX_DIR,
+        );
+        if store_root
+            .file_name()
+            .and_then(|name| name.to_str())
+            == Some(workspace::TICKET_INDEX_DIR)
+        {
+            return Ok(store_root.join("tickets"));
+        }
+
+        Err(StorageError::Other(format!(
+            "invalid ticket root '{}': expected a registered scan root, a workspace root containing .ticket, the .ticket store itself, or a path inside that store",
+            target_root.display()
+        )))
     }
 
     /// Read the full manifest for a ticket by ID.

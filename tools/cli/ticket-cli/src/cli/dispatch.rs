@@ -22,10 +22,6 @@ use super::{
     TicketCommandCli,
     batch,
     commands,
-    workspace_commands::{
-        cmd_workspace,
-        workspace_command_mutates,
-    },
 };
 
 pub(super) fn dispatch(
@@ -38,7 +34,6 @@ pub(super) fn dispatch(
     match command {
         TicketCommandCli::ExportCommandSchema =>
             export_command_schema_payload(),
-        TicketCommandCli::Workspace(args) => dispatch_workspace(args, dry_run),
         other => dispatch_store_backed(
             other,
             index_root_override,
@@ -106,8 +101,6 @@ fn dry_run_payload_runtime(command: &TicketCommandCli) -> Option<Value> {
             Some(dry_run_payload("watch", "start watcher/reconcile loop")),
         TicketCommandCli::Serve(_) =>
             Some(dry_run_payload("serve", "start HTTP server")),
-        TicketCommandCli::Workspace(_) =>
-            Some(dry_run_payload("workspace", "workspace config writes")),
         TicketCommandCli::Fmt(_) =>
             Some(dry_run_payload("fmt", "reformat ticket.toml files")),
         TicketCommandCli::Board(_) =>
@@ -151,17 +144,6 @@ fn export_command_schema_payload() -> Result<Value, CliRunError> {
         "schema": schema,
         "known_commands": export_command_schema().commands,
     }))
-}
-
-fn dispatch_workspace(
-    args: super::WorkspaceArgs,
-    dry_run: bool,
-) -> Result<Value, CliRunError> {
-    if dry_run && workspace_command_mutates(&args.command) {
-        Ok(dry_run_payload("workspace", "workspace initialization"))
-    } else {
-        Ok(cmd_workspace(args))
-    }
 }
 
 fn dispatch_store_backed(
@@ -238,8 +220,7 @@ fn dispatch_store_command(
         | TicketCommandCli::Fmt(_)
         | TicketCommandCli::Board(_) =>
             dispatch_store_command_ops(command, store),
-        TicketCommandCli::ExportCommandSchema
-        | TicketCommandCli::Workspace(_) => {
+        TicketCommandCli::ExportCommandSchema => {
             unreachable!("handled before store dispatch")
         },
     }

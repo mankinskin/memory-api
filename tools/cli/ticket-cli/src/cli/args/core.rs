@@ -18,7 +18,9 @@ pub struct CreateArgs {
     /// Copy the contents of this file into the ticket as description.md.
     #[arg(long = "body-file")]
     pub body_file: Option<PathBuf>,
-    /// Place the ticket in this scan root (defaults to first registered root).
+    /// Place the ticket in a registered scan root, workspace root, store root,
+    /// or path inside a local `.ticket/` store (defaults to the first
+    /// registered root).
     #[arg(long = "root")]
     pub target_root: Option<PathBuf>,
 }

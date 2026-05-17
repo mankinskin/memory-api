@@ -56,6 +56,28 @@ pub fn resolve_local_root_from(
         .unwrap_or_else(|| start_dir(start).join(dir_name))
 }
 
+pub fn resolve_store_root_from(
+    start: &Path,
+    dir_name: &str,
+) -> PathBuf {
+    let normalized = normalize_working_dir_path(start);
+    if normalized
+        .file_name()
+        .and_then(|name| name.to_str())
+        == Some(dir_name)
+    {
+        return normalized;
+    }
+
+    let dir = start_dir(&normalized);
+
+    if dir.file_name().and_then(|name| name.to_str()) == Some(dir_name) {
+        return dir.to_path_buf();
+    }
+
+    find_local_root_from(dir, dir_name).unwrap_or_else(|| dir.to_path_buf())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceSource {
     Discovered(PathBuf),
@@ -173,6 +195,41 @@ mod tests {
         let resolved = resolve_local_root_from(&nested, ".spec");
 
         assert_eq!(resolved, nested.join(".spec"));
+    }
+
+    #[test]
+    fn resolve_store_root_from_uses_existing_hidden_store() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let nested = repo.join("src");
+        std::fs::create_dir_all(repo.join(".ticket")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let resolved = resolve_store_root_from(&nested, ".ticket");
+
+        assert_eq!(resolved, repo.join(".ticket"));
+    }
+
+    #[test]
+    fn resolve_store_root_from_preserves_direct_store_root() {
+        let dir = tempdir().unwrap();
+        let store = dir.path().join(".ticket");
+        std::fs::create_dir_all(&store).unwrap();
+
+        let resolved = resolve_store_root_from(&store, ".ticket");
+
+        assert_eq!(resolved, store);
+    }
+
+    #[test]
+    fn resolve_store_root_from_preserves_non_workspace_directory() {
+        let dir = tempdir().unwrap();
+        let scratch = dir.path().join("scratch");
+        std::fs::create_dir_all(&scratch).unwrap();
+
+        let resolved = resolve_store_root_from(&scratch, ".ticket");
+
+        assert_eq!(resolved, scratch);
     }
 
     #[test]

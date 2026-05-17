@@ -4,31 +4,53 @@ Source: `crates/memory-api/src/workspace.rs`
 
 ## Public API
 
-### `WorkspaceConfig` (Struct)
+### `TICKET_INDEX_DIR` (Const)
 
-### `WorkspaceConfig` (Impl)
+The canonical local ticket store directory name: `.ticket`.
 
-### `find_local_workspace_file` (Function)
+### `working_dir` (Function)
 
-Walk upward from `cwd` looking for a `.ticket-workspace` file.
+Resolve the current working directory from `cwd` or `PWD`, normalizing Git Bash
+paths on Windows.
 
-### `find_local_workspace_file_from` (Function)
+### `find_local_root` (Function)
 
-Walk upward from `start` looking for a `.ticket-workspace` file.
+Walk upward from the working directory looking for a hidden store directory such
+as `.ticket`, `.spec`, or `.rule`.
+
+### `find_local_root_from` (Function)
+
+Walk upward from an explicit `start` path looking for a hidden store directory.
+
+### `resolve_local_root` (Function)
+
+Return the discovered hidden store path or fall back to `<cwd>/<dir_name>`.
+
+### `resolve_local_root_from` (Function)
+
+Return the discovered hidden store path or fall back to `<start_dir>/<dir_name>`.
+
+### `resolve_store_root_from` (Function)
+
+Normalize an explicit repo root, hidden store root, or path inside a hidden
+store back to the owning store root. If no matching hidden store exists, keep
+the direct path unchanged so callers can still open explicit non-workspace test
+stores.
 
 ### `WorkspaceSource` (Enum)
 
-The layer that produced the resolved index root — useful for diagnostics.
+Describe whether `.ticket` came from upward discovery or the local default
+fallback.
 
 ### `WorkspaceSource` (Impl)
 
 ### `resolve_workspace` (Function)
 
-Resolve the active index root using the full resolution chain.
+Resolve the active `.ticket` store from the current working directory.
 
 Returns `(resolved_path, source)`.
 
-### `make_relative_path` (Function)
+### `resolve_workspace_from` (Function)
 
-Compute a relative path from `base_dir` to `target`.
+Resolve the active `.ticket` store from an explicit starting path.
 

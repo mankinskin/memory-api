@@ -79,7 +79,7 @@ impl TicketServer {
             edge_limit: limit_edges.unwrap_or(2000),
         };
 
-        self.with_store_ext(move |store| {
+        self.with_store_ext(&request.workspace.clone(), move |store| {
             let root = Self::resolve_uuid_with(store, &request.root_str)?;
             let all_edges = store.list_all_edges().map_err(Self::store_err)?;
             let traversal = traverse_graph(store, root, &all_edges, &request)?;
