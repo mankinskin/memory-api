@@ -1,0 +1,5 @@
+{"rev":1,"ts":"2026-05-17T20:53:20.242459400+00:00","fields":{"component":"ticket-api","priority":"high","state":"new","title":"[ticket-system] Add dependees to next-ticket ordering","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-05-17T20:55:02.438061100+00:00","fields":{"component":"ticket-api","priority":"high","state":"ready","title":"[ticket-system] Add dependees to next-ticket ordering","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-05-17T20:55:24.556947100+00:00","fields":{"component":"ticket-api","priority":"high","state":"in-implementation","title":"[ticket-system] Add dependees to next-ticket ordering","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-05-17T21:02:32.487172+00:00","fields":{"component":"ticket-api","priority":"high","state":"in-review","title":"[ticket-system] Add dependees to next-ticket ordering","type":"tracker-improvement"}}
+{"rev":5,"ts":"2026-05-17T21:02:36.835562700+00:00","fields":{"component":"ticket-api","priority":"high","state":"done","title":"[ticket-system] Add dependees to next-ticket ordering","type":"tracker-improvement"}}

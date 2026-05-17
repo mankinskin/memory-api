@@ -49,6 +49,8 @@ pub(super) struct BoardRecommendation {
     pub state: Option<String>,
     pub priority: String,
     pub dependency_count: usize,
+    pub dependees: usize,
+    pub created_at: String,
 }
 
 pub(super) fn entry_to_json(
@@ -109,6 +111,8 @@ pub(super) fn board_recommendation_to_json(
         "state": recommendation.state,
         "priority": recommendation.priority,
         "dependency_count": recommendation.dependency_count,
+        "dependees": recommendation.dependees,
+        "created_at": recommendation.created_at,
     })
 }
 
@@ -222,21 +226,23 @@ fn write_next_up(
 
     let _ = writeln!(
         out,
-        "  {:<4}  {:<8}  {:<34}  {:<12}  {:<10}  {:>4}",
-        "RANK", "TICKET", "TITLE", "STATE", "PRIORITY", "DEPS"
+        "  {:<4}  {:<8}  {:<26}  {:<12}  {:<10}  {:>9}  {:>4}  {:<35}",
+        "RANK", "TICKET", "TITLE", "STATE", "PRIORITY", "DEPENDEES", "DEPS", "CREATED_AT"
     );
-    let _ = writeln!(out, "  {}", "-".repeat(86));
+    let _ = writeln!(out, "  {}", "-".repeat(126));
 
     for recommendation in recommended_next {
         let _ = writeln!(
             out,
-            "  {:<4}  {:<8}  {:<34}  {:<12}  {:<10}  {:>4}",
+            "  {:<4}  {:<8}  {:<26}  {:<12}  {:<10}  {:>9}  {:>4}  {:<35}",
             recommendation.rank,
             short_ticket_value(&recommendation.ticket_id),
-            truncate_field(&recommendation.title, 34),
+            truncate_field(&recommendation.title, 26),
             truncate_field(recommendation.state.as_deref().unwrap_or("-"), 12),
             truncate_field(&recommendation.priority, 10),
+            recommendation.dependees,
             recommendation.dependency_count,
+            &recommendation.created_at,
         );
     }
 }

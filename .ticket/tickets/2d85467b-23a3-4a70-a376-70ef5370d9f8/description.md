@@ -1,0 +1,1 @@
+Add an incoming-dependees ranking key to best-next ticket selection. Compute dependees as the count of depends_on edges whose target is the candidate ticket. Keep workflow progress first and priority ahead of chronology, then rank higher-dependee tickets before lower-dependee tickets so CLI next, board recommendations, and MCP next_tickets unblock more downstream work.

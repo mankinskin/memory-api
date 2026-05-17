@@ -41,7 +41,13 @@ pub(super) fn run(
 
     let mut candidates = candidate_tickets(&tickets, &blockers);
     let priority_map = read_priorities(&candidates);
-    sort_candidates(&mut candidates, &state_index, &priority_map);
+    let dependee_count = dependee_counts(&all_edges);
+    sort_candidates(
+        &mut candidates,
+        &state_index,
+        &priority_map,
+        &dependee_count,
+    );
 
     let excluded_by_board =
         excluded_by_board(board_snap.as_ref(), &candidates, args.no_board);
@@ -54,7 +60,12 @@ pub(super) fn run(
         "command": "next",
         "status": "ok",
         "count": limited_candidates.len(),
-        "items": build_items(&limited_candidates, &priority_map, &dependency_count),
+        "items": build_items(
+            &limited_candidates,
+            &priority_map,
+            &dependency_count,
+            &dependee_count,
+        ),
         "excluded_by_board": excluded_by_board,
         "warnings": warnings(board_snap.as_ref()),
     }))
@@ -161,6 +172,7 @@ fn sort_candidates(
     candidates: &mut Vec<&IndexedTicket>,
     state_index: &HashMap<String, usize>,
     priority_map: &HashMap<Uuid, String>,
+    dependee_count: &HashMap<Uuid, usize>,
 ) {
     candidates.sort_by(|left, right| {
         let left_state = left.state.as_deref().unwrap_or("");
@@ -181,6 +193,13 @@ fn sort_candidates(
                     .unwrap_or("");
                 priority_weight(left_priority)
                     .cmp(&priority_weight(right_priority))
+            })
+            .then_with(|| {
+                dependee_count
+                    .get(&right.id)
+                    .copied()
+                    .unwrap_or(0)
+                    .cmp(&dependee_count.get(&left.id).copied().unwrap_or(0))
             })
             .then_with(|| right.created_at.cmp(&left.created_at))
             .then_with(|| ticket_title(left).cmp(ticket_title(right)))
@@ -287,10 +306,21 @@ fn dependency_counts(all_edges: &[EdgeRecord]) -> HashMap<Uuid, usize> {
     counts
 }
 
+fn dependee_counts(all_edges: &[EdgeRecord]) -> HashMap<Uuid, usize> {
+    let mut counts = HashMap::new();
+    for edge in all_edges {
+        if edge.kind == "depends_on" {
+            *counts.entry(edge.to).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
 fn build_items(
     candidates: &[&IndexedTicket],
     priority_map: &HashMap<Uuid, String>,
     dependency_count: &HashMap<Uuid, usize>,
+    dependee_count: &HashMap<Uuid, usize>,
 ) -> Vec<Value> {
     candidates
         .iter()
@@ -308,6 +338,7 @@ fn build_items(
                 "type": ticket.type_id,
                 "priority": priority,
                 "dependency_count": dependency_count.get(&ticket.id).copied().unwrap_or(0),
+                "dependees": dependee_count.get(&ticket.id).copied().unwrap_or(0),
                 "created_at": ticket.created_at.to_rfc3339(),
             })
         })
@@ -394,11 +425,46 @@ mod tests {
             (older.id, String::from("high")),
             (newer.id, String::from("high")),
         ]);
+        let dependee_count = HashMap::new();
 
-        sort_candidates(&mut candidates, &state_index, &priority_map);
+        sort_candidates(
+            &mut candidates,
+            &state_index,
+            &priority_map,
+            &dependee_count,
+        );
 
         assert_eq!(candidates[0].id, newer.id);
         assert_eq!(candidates[1].id, older.id);
+    }
+
+    #[test]
+    fn sort_candidates_prefers_more_dependees_before_newer_tickets() {
+        let older = ticket(
+            "Older ticket",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
+        );
+        let newer = ticket(
+            "Newer ticket",
+            Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap(),
+        );
+        let mut candidates = vec![&newer, &older];
+        let state_index = HashMap::from([(String::from("ready"), 1usize)]);
+        let priority_map = HashMap::from([
+            (older.id, String::from("high")),
+            (newer.id, String::from("high")),
+        ]);
+        let dependee_count = HashMap::from([(older.id, 2usize)]);
+
+        sort_candidates(
+            &mut candidates,
+            &state_index,
+            &priority_map,
+            &dependee_count,
+        );
+
+        assert_eq!(candidates[0].id, older.id);
+        assert_eq!(candidates[1].id, newer.id);
     }
 
     #[test]
@@ -412,8 +478,14 @@ mod tests {
             (alpha.id, String::from("high")),
             (beta.id, String::from("high")),
         ]);
+        let dependee_count = HashMap::new();
 
-        sort_candidates(&mut candidates, &state_index, &priority_map);
+        sort_candidates(
+            &mut candidates,
+            &state_index,
+            &priority_map,
+            &dependee_count,
+        );
 
         assert_eq!(candidates[0].id, alpha.id);
         assert_eq!(candidates[1].id, beta.id);

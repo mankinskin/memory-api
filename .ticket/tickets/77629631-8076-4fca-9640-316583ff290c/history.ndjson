@@ -1,0 +1,5 @@
+{"rev":1,"ts":"2026-05-17T21:11:25.176070100+00:00","fields":{"component":"ticket-api","priority":"high","state":"new","title":"[ticket-system] Expose ordering keys on priority-sorted outputs","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-05-17T21:11:49.222820+00:00","fields":{"component":"ticket-api","priority":"high","state":"ready","title":"[ticket-system] Expose ordering keys on priority-sorted outputs","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-05-17T21:11:53.847130100+00:00","fields":{"component":"ticket-api","priority":"high","state":"in-implementation","title":"[ticket-system] Expose ordering keys on priority-sorted outputs","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-05-17T21:15:03.361659600+00:00","fields":{"component":"ticket-api","priority":"high","state":"in-review","title":"[ticket-system] Expose ordering keys on priority-sorted outputs","type":"tracker-improvement"}}
+{"rev":5,"ts":"2026-05-17T21:15:07.752361200+00:00","fields":{"component":"ticket-api","priority":"high","state":"done","title":"[ticket-system] Expose ordering keys on priority-sorted outputs","type":"tracker-improvement"}}

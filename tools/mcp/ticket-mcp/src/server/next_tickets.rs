@@ -31,28 +31,34 @@ impl TicketServer {
         let workspace = input.workspace;
 
         let (items, excluded_by_board, warnings) = self
-            .with_store(|store| {
+            .with_store(&workspace, |store| {
                 let board_snap = store.board_show(None).ok();
                 let tickets = filtered_tickets(
                     store.list(None, None, None)?,
                     filter.as_deref(),
                 );
                 let done_ids = done_ticket_ids(&tickets);
-                let blockers =
-                    unresolved_blockers(&store.list_all_edges()?, &done_ids);
+                let all_edges = store.list_all_edges()?;
+                let blockers = unresolved_blockers(&all_edges, &done_ids);
                 let state_index = build_state_index(store);
                 let mut candidates =
                     candidate_tickets(&tickets, &done_ids, &blockers);
                 let priority_map = read_priorities(&candidates);
+                let dependee_count = dependee_counts(&all_edges);
 
-                sort_candidates(&mut candidates, &state_index, &priority_map);
+                sort_candidates(
+                    &mut candidates,
+                    &state_index,
+                    &priority_map,
+                    &dependee_count,
+                );
                 let excluded_by_board =
                     excluded_by_board(board_snap.as_ref(), &candidates);
                 filter_board_candidates(&mut candidates, board_snap.as_ref());
                 candidates.truncate(limit);
 
                 Ok((
-                    ranked_items(&candidates, &priority_map),
+                    ranked_items(&candidates, &priority_map, &dependee_count),
                     excluded_by_board,
                     warnings(board_snap.as_ref()),
                 ))
@@ -164,6 +170,7 @@ fn sort_candidates(
     candidates: &mut Vec<&IndexedTicket>,
     state_index: &HashMap<String, usize>,
     priority_map: &HashMap<Uuid, String>,
+    dependee_count: &HashMap<Uuid, usize>,
 ) {
     candidates.sort_by(|left, right| {
         let left_state = left.state.as_deref().unwrap_or("");
@@ -184,6 +191,13 @@ fn sort_candidates(
                     .unwrap_or("");
                 priority_weight(left_priority)
                     .cmp(&priority_weight(right_priority))
+            })
+            .then_with(|| {
+                dependee_count
+                    .get(&right.id)
+                    .copied()
+                    .unwrap_or(0)
+                    .cmp(&dependee_count.get(&left.id).copied().unwrap_or(0))
             })
             .then_with(|| right.created_at.cmp(&left.created_at))
             .then_with(|| ticket_title(left).cmp(ticket_title(right)))
@@ -266,9 +280,22 @@ fn board_status(status: &BoardEntryStatus) -> &'static str {
     }
 }
 
+fn dependee_counts(all_edges: &[EdgeRecord]) -> HashMap<Uuid, usize> {
+    let mut counts = HashMap::new();
+
+    for edge in all_edges {
+        if edge.kind == "depends_on" {
+            *counts.entry(edge.to).or_insert(0) += 1;
+        }
+    }
+
+    counts
+}
+
 fn ranked_items(
     candidates: &[&IndexedTicket],
     priority_map: &HashMap<Uuid, String>,
+    dependee_count: &HashMap<Uuid, usize>,
 ) -> Vec<Value> {
     candidates
         .iter()
@@ -284,6 +311,7 @@ fn ranked_items(
                     .get(&ticket.id)
                     .cloned()
                     .unwrap_or_else(|| "none".to_string()),
+                "dependees": dependee_count.get(&ticket.id).copied().unwrap_or(0),
                 "created_at": ticket.created_at.to_rfc3339(),
             })
         })
@@ -364,11 +392,46 @@ mod tests {
             (older.id, String::from("high")),
             (newer.id, String::from("high")),
         ]);
+        let dependee_count = HashMap::new();
 
-        sort_candidates(&mut candidates, &state_index, &priority_map);
+        sort_candidates(
+            &mut candidates,
+            &state_index,
+            &priority_map,
+            &dependee_count,
+        );
 
         assert_eq!(candidates[0].id, newer.id);
         assert_eq!(candidates[1].id, older.id);
+    }
+
+    #[test]
+    fn sort_candidates_prefers_more_dependees_before_newer_tickets() {
+        let older = ticket(
+            "Older ticket",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
+        );
+        let newer = ticket(
+            "Newer ticket",
+            Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap(),
+        );
+        let mut candidates = vec![&newer, &older];
+        let state_index = HashMap::from([(String::from("ready"), 1usize)]);
+        let priority_map = HashMap::from([
+            (older.id, String::from("high")),
+            (newer.id, String::from("high")),
+        ]);
+        let dependee_count = HashMap::from([(older.id, 2usize)]);
+
+        sort_candidates(
+            &mut candidates,
+            &state_index,
+            &priority_map,
+            &dependee_count,
+        );
+
+        assert_eq!(candidates[0].id, older.id);
+        assert_eq!(candidates[1].id, newer.id);
     }
 
     #[test]
@@ -382,8 +445,14 @@ mod tests {
             (alpha.id, String::from("high")),
             (beta.id, String::from("high")),
         ]);
+        let dependee_count = HashMap::new();
 
-        sort_candidates(&mut candidates, &state_index, &priority_map);
+        sort_candidates(
+            &mut candidates,
+            &state_index,
+            &priority_map,
+            &dependee_count,
+        );
 
         assert_eq!(candidates[0].id, alpha.id);
         assert_eq!(candidates[1].id, beta.id);

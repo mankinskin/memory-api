@@ -329,6 +329,15 @@ fn parse_board_recommendation(value: &Value) -> Option<BoardRecommendation> {
             .get("dependency_count")
             .and_then(Value::as_u64)
             .unwrap_or(0) as usize,
+        dependees: value
+            .get("dependees")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize,
+        created_at: value
+            .get("created_at")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+            .to_string(),
     })
 }
 

@@ -355,6 +355,63 @@ fn next_and_board_prefer_newer_tickets_before_older_ones() {
 }
 
 #[test]
+fn next_and_board_prefer_more_dependees_before_newer_tickets() {
+    let s = Sandbox::new();
+    let older_more_dependees = create_ticket(&s, "Alpha older blocker");
+    let newer_fewer_dependees = create_ticket(&s, "Zulu newer blocker");
+    let dependent_one = create_ticket(&s, "Dependent one");
+    let dependent_two = create_ticket(&s, "Dependent two");
+
+    for ticket_id in [&older_more_dependees, &newer_fewer_dependees] {
+        let ready = s.ticket_json(&["update", ticket_id, "--to-state", "ready"]);
+        assert_eq!(ready["status"], "ok");
+
+        let priority =
+            s.ticket_json(&["update", ticket_id, "--field", "priority=high"]);
+        assert_eq!(priority["status"], "ok");
+    }
+
+    for dependent in [&dependent_one, &dependent_two] {
+        let linked = s.ticket_json(&[
+            "link",
+            "--from",
+            dependent,
+            "--to",
+            &older_more_dependees,
+            "--kind",
+            "depends_on",
+        ]);
+        assert_eq!(linked["status"], "ok");
+    }
+
+    let next = s.ticket_json(&["next"]);
+    assert_eq!(next["status"], "ok");
+    let next_items = next["items"].as_array().unwrap();
+    assert!(next_items.len() >= 2);
+    assert_eq!(next_items[0]["id"], older_more_dependees.as_str());
+    assert_eq!(next_items[0]["dependees"], 2);
+    assert_eq!(next_items[1]["id"], newer_fewer_dependees.as_str());
+    assert_eq!(next_items[1]["dependees"], 0);
+
+    let show = s.ticket_json(&["board", "show"]);
+    assert_eq!(show["status"], "ok");
+    let recommended = show["recommended_next"].as_array().unwrap();
+    assert!(recommended.len() >= 2);
+    assert_eq!(recommended[0]["ticket_id"], older_more_dependees.as_str());
+    assert_eq!(recommended[0]["dependees"], 2);
+    let first_created_at = recommended[0]["created_at"]
+        .as_str()
+        .expect("board show should preserve created_at");
+    assert_eq!(recommended[1]["ticket_id"], newer_fewer_dependees.as_str());
+    assert_eq!(recommended[1]["dependees"], 0);
+
+    let human = show["human"].as_str().unwrap();
+    assert!(human.contains("DEPENDEES"));
+    assert!(human.contains("CREATED_AT"));
+    assert!(human.contains(first_created_at));
+}
+
+#[test]
 fn board_show_excludes_history_and_board_history_lists_recent_completions() {
     let s = Sandbox::new();
     let active_ticket = create_ticket(&s, "Active board work");

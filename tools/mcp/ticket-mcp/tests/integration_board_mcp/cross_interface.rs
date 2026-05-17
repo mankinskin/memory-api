@@ -5,6 +5,7 @@ use serde_json::{
     Value,
     json,
 };
+use ticket_api::model::edge::EdgeRecord;
 use ticket_api::storage::store::TicketStore;
 use ticket_mcp::server::{
     BoardShowInput,
@@ -218,6 +219,91 @@ async fn next_tickets_prefers_newer_candidates_before_older_ones() {
     assert!(items.len() >= 2, "expected at least two candidates: {items:?}");
     assert_eq!(items[0]["id"].as_str(), Some(newer.as_str()));
     assert_eq!(items[1]["id"].as_str(), Some(older.as_str()));
+
+    let _ = tmp;
+}
+
+#[tokio::test]
+async fn next_tickets_prefers_more_dependees_before_newer_candidates() {
+    let (tmp, server) = make_sandbox();
+
+    let older_more_dependees;
+    let newer_fewer_dependees;
+    {
+        let store = TicketStore::open(tmp.path()).expect("open store");
+        let fields = BTreeMap::from([(String::from("priority"), json!("high"))]);
+
+        older_more_dependees = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Alpha older blocker"),
+                Some("ready"),
+                fields.clone(),
+                None,
+                None,
+            )
+            .expect("create older ticket");
+
+        newer_fewer_dependees = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Zulu newer blocker"),
+                Some("ready"),
+                fields,
+                None,
+                None,
+            )
+            .expect("create newer ticket");
+
+        for title in ["Dependent one", "Dependent two"] {
+            let dependent = store
+                .create(
+                    None,
+                    "tracker-improvement",
+                    Some(title),
+                    Some("new"),
+                    BTreeMap::new(),
+                    None,
+                    None,
+                )
+                .expect("create dependent ticket");
+
+            store
+                .add_edge(EdgeRecord {
+                    from: dependent,
+                    to: older_more_dependees,
+                    kind: String::from("depends_on"),
+                    created_at: chrono::Utc::now(),
+                })
+                .expect("add depends_on edge");
+        }
+    }
+
+    let result = server
+        .next_tickets(Parameters(NextTicketsInput {
+            workspace: ws(),
+            limit: None,
+            filter: None,
+        }))
+        .await
+        .expect("next_tickets ok");
+    let text = extract_text(&result);
+    let json: Value = serde_json::from_str(&text).expect("valid json");
+    let items = json["items"].as_array().expect("items array");
+
+    assert!(items.len() >= 2, "expected at least two candidates: {items:?}");
+    assert_eq!(
+        items[0]["id"].as_str(),
+        Some(older_more_dependees.to_string().as_str())
+    );
+    assert_eq!(items[0]["dependees"], 2);
+    assert_eq!(
+        items[1]["id"].as_str(),
+        Some(newer_fewer_dependees.to_string().as_str())
+    );
+    assert_eq!(items[1]["dependees"], 0);
 
     let _ = tmp;
 }

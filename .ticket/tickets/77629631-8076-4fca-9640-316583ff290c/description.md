@@ -1,0 +1,1 @@
+Expose the full best-next ordering metadata anywhere the CLI surfaces the priority-sorted board recommendation list. Preserve dependees and created_at when board show rewraps next candidates, and render those ordering keys in the human Next Up table so a user can see why a ticket ranked ahead of another.
