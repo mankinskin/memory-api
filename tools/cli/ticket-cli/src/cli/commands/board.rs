@@ -46,6 +46,8 @@ use self::render::{
     render_board_human,
 };
 
+const BOARD_RECOMMENDATIONS_LIMIT: usize = 10;
+
 // ── entry point ────────────────────────────────────────────────────────────────
 
 pub(crate) fn cmd_board(
@@ -222,7 +224,7 @@ fn build_board_display(
 
     let next_payload = super::cmd_next(
         NextArgs {
-            limit: 3,
+            limit: BOARD_RECOMMENDATIONS_LIMIT,
             filter: None,
             no_board: false,
         },

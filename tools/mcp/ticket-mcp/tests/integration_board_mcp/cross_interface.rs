@@ -1,5 +1,10 @@
+use std::collections::BTreeMap;
+
 use rmcp::handler::server::wrapper::Parameters;
-use serde_json::Value;
+use serde_json::{
+    Value,
+    json,
+};
 use ticket_api::storage::store::TicketStore;
 use ticket_mcp::server::{
     BoardShowInput,
@@ -73,7 +78,7 @@ async fn board_show_parity_store_and_mcp() {
 }
 
 #[tokio::test]
-async fn next_tickets_excludes_board_active_and_surfaces_wip_limit() {
+async fn next_tickets_excludes_board_active_and_surfaces_wip_warning() {
     let (tmp, server) = make_sandbox();
 
     let t_active = seed_ticket(tmp.path(), "active board ticket");
@@ -120,11 +125,12 @@ async fn next_tickets_excludes_board_active_and_surfaces_wip_limit() {
     let text = extract_text(&result);
     let json: Value = serde_json::from_str(&text).expect("valid json");
 
+    assert!(json.get("board").is_none(), "next_tickets should not return a duplicate board snapshot: {json:#?}");
+
+    let warnings = json["warnings"].as_array().expect("warnings array");
     assert!(
-        json["board"]["wip_limit_reached"]
-            .as_bool()
-            .unwrap_or(false),
-        "wip_limit_reached must be true: {json:#?}"
+        warnings.iter().any(|warning| warning.as_str().unwrap_or("").contains("WIP limit reached")),
+        "wip limit warning must still be surfaced: {warnings:?}"
     );
 
     let excluded = json["excluded_by_board"]
@@ -156,6 +162,62 @@ async fn next_tickets_excludes_board_active_and_surfaces_wip_limit() {
             .any(|candidate| candidate["id"].as_str().unwrap_or("") == t_active),
         "board-active ticket must not appear in items: {items:?}"
     );
+
+    let _ = tmp;
+}
+
+#[tokio::test]
+async fn next_tickets_prefers_newer_candidates_before_older_ones() {
+    let (tmp, server) = make_sandbox();
+
+    let older;
+    let newer;
+    {
+        let store = TicketStore::open(tmp.path()).expect("open store");
+        let fields = BTreeMap::from([(String::from("priority"), json!("high"))]);
+
+        older = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Alpha older candidate"),
+                Some("ready"),
+                fields.clone(),
+                None,
+                None,
+            )
+            .expect("create older ticket")
+            .to_string();
+
+        newer = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Zulu newer candidate"),
+                Some("ready"),
+                fields,
+                None,
+                None,
+            )
+            .expect("create newer ticket")
+            .to_string();
+    }
+
+    let result = server
+        .next_tickets(Parameters(NextTicketsInput {
+            workspace: ws(),
+            limit: None,
+            filter: None,
+        }))
+        .await
+        .expect("next_tickets ok");
+    let text = extract_text(&result);
+    let json: Value = serde_json::from_str(&text).expect("valid json");
+    let items = json["items"].as_array().expect("items array");
+
+    assert!(items.len() >= 2, "expected at least two candidates: {items:?}");
+    assert_eq!(items[0]["id"].as_str(), Some(newer.as_str()));
+    assert_eq!(items[1]["id"].as_str(), Some(older.as_str()));
 
     let _ = tmp;
 }

@@ -299,6 +299,62 @@ fn board_show_recommends_next_work_when_board_is_empty() {
 }
 
 #[test]
+fn board_show_lists_ten_recommendations_when_available() {
+    let s = Sandbox::new();
+    let mut ticket_ids = Vec::new();
+
+    for index in 1..=12 {
+        let title = format!("Candidate {:02}", index);
+        ticket_ids.push((title.clone(), create_ticket(&s, &title)));
+    }
+
+    let show = s.ticket_json(&["board", "show"]);
+    assert_eq!(show["status"], "ok");
+
+    let recommended = show["recommended_next"].as_array().unwrap();
+    assert_eq!(recommended.len(), 10, "board show should surface 10 next-up entries when available");
+    assert_eq!(recommended[0]["title"], "Candidate 12");
+    assert_eq!(recommended[9]["title"], "Candidate 03");
+
+    let human = show["human"].as_str().unwrap();
+    assert!(human.contains("Candidate 12"));
+    assert!(human.contains("Candidate 03"));
+    assert!(!human.contains("Candidate 02"));
+    assert!(!human.contains("Candidate 01"));
+}
+
+#[test]
+fn next_and_board_prefer_newer_tickets_before_older_ones() {
+    let s = Sandbox::new();
+    let older = create_ticket(&s, "Alpha older candidate");
+    let newer = create_ticket(&s, "Zulu newer candidate");
+
+    for ticket_id in [&older, &newer] {
+        let ready = s.ticket_json(&["update", ticket_id, "--to-state", "ready"]);
+        assert_eq!(ready["status"], "ok");
+
+        let priority =
+            s.ticket_json(&["update", ticket_id, "--field", "priority=high"]);
+        assert_eq!(priority["status"], "ok");
+    }
+
+    let next = s.ticket_json(&["next"]);
+    assert_eq!(next["status"], "ok");
+    assert!(next.get("board").is_none(), "ticket next should not embed a duplicate board summary");
+    let next_items = next["items"].as_array().unwrap();
+    assert!(next_items.len() >= 2);
+    assert_eq!(next_items[0]["id"], newer.as_str());
+    assert_eq!(next_items[1]["id"], older.as_str());
+
+    let show = s.ticket_json(&["board", "show"]);
+    assert_eq!(show["status"], "ok");
+    let recommended = show["recommended_next"].as_array().unwrap();
+    assert!(recommended.len() >= 2);
+    assert_eq!(recommended[0]["ticket_id"], newer.as_str());
+    assert_eq!(recommended[1]["ticket_id"], older.as_str());
+}
+
+#[test]
 fn board_show_excludes_history_and_board_history_lists_recent_completions() {
     let s = Sandbox::new();
     let active_ticket = create_ticket(&s, "Active board work");

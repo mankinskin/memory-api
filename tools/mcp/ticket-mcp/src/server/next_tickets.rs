@@ -30,7 +30,7 @@ impl TicketServer {
         let filter = input.filter;
         let workspace = input.workspace;
 
-        let (items, board_value, excluded_by_board, warnings) = self
+        let (items, excluded_by_board, warnings) = self
             .with_store(|store| {
                 let board_snap = store.board_show(None).ok();
                 let tickets = filtered_tickets(
@@ -53,7 +53,6 @@ impl TicketServer {
 
                 Ok((
                     ranked_items(&candidates, &priority_map),
-                    board_value(board_snap.as_ref()),
                     excluded_by_board,
                     warnings(board_snap.as_ref()),
                 ))
@@ -64,7 +63,6 @@ impl TicketServer {
             "workspace": workspace,
             "count": items.len(),
             "items": items,
-            "board": board_value,
             "excluded_by_board": excluded_by_board,
             "warnings": warnings,
         }))
@@ -187,8 +185,14 @@ fn sort_candidates(
                 priority_weight(left_priority)
                     .cmp(&priority_weight(right_priority))
             })
-            .then_with(|| left.created_at.cmp(&right.created_at))
+            .then_with(|| right.created_at.cmp(&left.created_at))
+            .then_with(|| ticket_title(left).cmp(ticket_title(right)))
+            .then_with(|| left.id.cmp(&right.id))
     });
+}
+
+fn ticket_title(ticket: &IndexedTicket) -> &str {
+    ticket.title.as_deref().unwrap_or("")
 }
 
 fn priority_weight(priority: &str) -> u8 {
@@ -286,20 +290,6 @@ fn ranked_items(
         .collect()
 }
 
-fn board_value(board_snap: Option<&BoardSnapshot>) -> Value {
-    let Some(snapshot) = board_snap else {
-        return Value::Null;
-    };
-
-    serde_json::json!({
-        "active_count": snapshot.active_count,
-        "stale_count": snapshot.stale_count,
-        "max_wip": snapshot.config.max_wip,
-        "wip_limit_reached": snapshot.wip_limit_reached,
-        "warnings": snapshot.warnings.clone(),
-    })
-}
-
 fn warnings(board_snap: Option<&BoardSnapshot>) -> Vec<String> {
     let Some(snapshot) = board_snap else {
         return Vec::new();
@@ -329,4 +319,73 @@ fn warnings(board_snap: Option<&BoardSnapshot>) -> Vec<String> {
     }
 
     warnings
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use chrono::{
+        TimeZone,
+        Utc,
+    };
+
+    use super::*;
+
+    fn ticket(
+        title: &str,
+        created_at: chrono::DateTime<Utc>,
+    ) -> IndexedTicket {
+        IndexedTicket {
+            id: Uuid::new_v4(),
+            path: PathBuf::from(title),
+            type_id: "tracker-improvement".to_string(),
+            title: Some(title.to_string()),
+            state: Some("ready".to_string()),
+            created_at,
+            updated_at: created_at,
+            deleted: false,
+        }
+    }
+
+    #[test]
+    fn sort_candidates_prefers_newer_tickets_before_older_ones() {
+        let older = ticket(
+            "Older ticket",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
+        );
+        let newer = ticket(
+            "Newer ticket",
+            Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap(),
+        );
+        let mut candidates = vec![&older, &newer];
+        let state_index = HashMap::from([(String::from("ready"), 1usize)]);
+        let priority_map = HashMap::from([
+            (older.id, String::from("high")),
+            (newer.id, String::from("high")),
+        ]);
+
+        sort_candidates(&mut candidates, &state_index, &priority_map);
+
+        assert_eq!(candidates[0].id, newer.id);
+        assert_eq!(candidates[1].id, older.id);
+    }
+
+    #[test]
+    fn sort_candidates_uses_title_as_last_tiebreaker() {
+        let created_at = Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap();
+        let beta = ticket("Beta ticket", created_at);
+        let alpha = ticket("Alpha ticket", created_at);
+        let mut candidates = vec![&beta, &alpha];
+        let state_index = HashMap::from([(String::from("ready"), 1usize)]);
+        let priority_map = HashMap::from([
+            (alpha.id, String::from("high")),
+            (beta.id, String::from("high")),
+        ]);
+
+        sort_candidates(&mut candidates, &state_index, &priority_map);
+
+        assert_eq!(candidates[0].id, alpha.id);
+        assert_eq!(candidates[1].id, beta.id);
+    }
 }
