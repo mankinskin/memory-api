@@ -300,6 +300,71 @@ fn generate_target_uses_config_output_path() {
 }
 
 #[test]
+fn generate_target_preserves_existing_crlf_output() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut rule = sample_rule(
+        "shared/agents/opening",
+        "Opening",
+        "opening",
+        "Start with the concrete anchor.",
+        10,
+    );
+    rule.set_path_scopes(["AGENTS.md"]);
+    store.create(&rule, None).unwrap();
+
+    let config_path = dir.path().join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: context-engine-agents\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    path_scope: AGENTS.md\n",
+            "    output_path: generated/AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+
+    let output = dir.path().join("generated").join("AGENTS.md");
+    fs::create_dir_all(output.parent().unwrap()).unwrap();
+    fs::write(&output, "legacy\r\ncontent\r\n").unwrap();
+
+    dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_path.clone(),
+            target: "context-engine-agents".to_string(),
+            dry_run: false,
+            check: false,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    let rendered_bytes = fs::read(&output).unwrap();
+    let rendered = String::from_utf8(rendered_bytes.clone()).unwrap();
+    assert!(rendered.contains("slug=shared/agents/opening"));
+    assert!(rendered_bytes.windows(2).any(|window| window == b"\r\n"));
+    for (index, byte) in rendered_bytes.iter().enumerate() {
+        if *byte == b'\n' {
+            assert!(index > 0 && rendered_bytes[index - 1] == b'\r');
+        }
+    }
+
+    dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_path,
+            target: "context-engine-agents".to_string(),
+            dry_run: false,
+            check: true,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+}
+
+#[test]
 fn generate_target_supports_folder_tree_config_output() {
     let dir = tempdir().unwrap();
     let mut store = RuleStore::open(dir.path()).unwrap();

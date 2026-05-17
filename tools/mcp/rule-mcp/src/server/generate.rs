@@ -18,6 +18,7 @@ use rule_api::{
     collect_target_rules,
     explain_target,
     load_render_target_config,
+    prepare_generated_output,
     render_markdown_file,
     render_target_by_name,
     resolve_render_target_output,
@@ -186,8 +187,9 @@ fn ensure_generated_output_matches(
             None,
         )
     })?;
+    let expected = prepare_generated_output(rendered, Some(&existing));
 
-    if existing == rendered {
+    if existing == expected {
         Ok(())
     } else {
         Err(McpError::invalid_params(
@@ -202,6 +204,8 @@ fn write_generated_output(
     rendered: &str,
 ) -> Result<(), McpError> {
     let path = PathBuf::from(output);
+    let existing = fs::read_to_string(&path).ok();
+    let prepared = prepare_generated_output(rendered, existing.as_deref());
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| {
             McpError::internal_error(
@@ -211,7 +215,7 @@ fn write_generated_output(
         })?;
     }
 
-    fs::write(&path, rendered).map_err(|err| {
+    fs::write(&path, prepared).map_err(|err| {
         McpError::internal_error(
             format!("write generated file {}: {err}", path.display()),
             None,

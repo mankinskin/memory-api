@@ -46,6 +46,11 @@ Each generated target config may be expressed as a nested file/folder tree that 
 - nested `folders:` entries for runtime directories such as `.github/`, `.agents/`, or `tools/`
 - one file node per generated artifact, with the target definition attached to that file node
 
+When a generated target overwrites an existing tracked file, the generator should
+preserve that file's current newline convention instead of rewriting it to a
+different line-ending style. Newly created outputs may continue to use the
+canonical LF rendering.
+
 This structure is intended to keep large target inventories manageable by grouping outputs by domain and file type without changing target names or rendered destinations.
 
 A parent repo workspace may aggregate child workspaces discovered in nested submodule or subfolder roots, but local authoring remains owned by the repo that contains the rule entry.
@@ -71,3 +76,4 @@ A parent repo workspace may aggregate child workspaces discovered in nested subm
 - User stories and local authoring flows are defined for each repo.
 - Child implementation specs can build on this spec without redefining repository ownership or workflow vocabulary.
 - The final implementation must preserve deterministic target generation and explicit rule provenance.
+- Re-running target generation must not introduce byte-only diffs solely from newline normalization when an output file already exists.

@@ -8,6 +8,9 @@ code_refs = [
 	{ file = "crates/rule-api/src/manifest.rs", kind = "function", line_end = 241, line_start = 230, symbol = "set_path_scopes" },
 	{ file = "crates/rule-api/src/targets.rs", kind = "struct", line_end = 34, line_start = 27, symbol = "RenderTargetConfig" },
 	{ file = "crates/rule-api/src/targets/tests.rs", kind = "function", line_end = 61, line_start = 15, symbol = "load_render_target_config_parses_targets_and_rejects_duplicates" },
+	{ description = "Normalize newly rendered output to LF and then adapt rewrites to the existing file's newline sequence.", file = "crates/rule-api/src/render.rs", kind = "function", line_end = 59, line_start = 51, symbol = "prepare_generated_output" },
+	{ description = "CLI generated-target checks and writes compare against newline-adapted output so existing files keep their current newline convention.", file = "tools/cli/rule-cli/src/cli/rendering.rs", kind = "function", line_end = 112, line_start = 76, symbol = "write_generated_output" },
+	{ description = "The MCP generation surface uses the same newline-preserving rewrite behavior as the CLI path.", file = "tools/mcp/rule-mcp/src/server/generate.rs", kind = "function", line_end = 221, line_start = 202, symbol = "write_generated_output" },
 ]
 title = "Rule Workspace Topology and Composition"
 state = "draft"

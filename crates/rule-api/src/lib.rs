@@ -30,6 +30,7 @@ pub use manifest::{
 };
 pub use render::{
     GENERATED_FILE_COMMENT,
+    prepare_generated_output,
     render_markdown_file,
 };
 pub use store::{

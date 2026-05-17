@@ -9,6 +9,7 @@ use rule_api::{
     RuleStore,
     collect_target_rules,
     load_render_target_config,
+    prepare_generated_output,
     render_markdown_file,
     resolve_render_target_output,
 };
@@ -82,8 +83,9 @@ pub(super) fn ensure_generated_output_matches(
             output.display()
         ))
     })?;
+    let expected = prepare_generated_output(rendered, Some(&existing));
 
-    if existing == rendered {
+    if existing == expected {
         Ok(())
     } else {
         Err(CliRunError::BadRequest(format!(
@@ -97,6 +99,9 @@ pub(super) fn write_generated_output(
     output: &Path,
     rendered: &str,
 ) -> Result<(), CliRunError> {
+    let existing = fs::read_to_string(output).ok();
+    let prepared = prepare_generated_output(rendered, existing.as_deref());
+
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent).map_err(|err| {
             CliRunError::BadRequest(format!(
@@ -106,7 +111,7 @@ pub(super) fn write_generated_output(
         })?;
     }
 
-    fs::write(output, rendered).map_err(|err| {
+    fs::write(output, prepared).map_err(|err| {
         CliRunError::BadRequest(format!(
             "write generated file {}: {err}",
             output.display()
