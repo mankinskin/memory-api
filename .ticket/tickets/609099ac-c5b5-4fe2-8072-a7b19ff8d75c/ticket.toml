@@ -1,0 +1,8 @@
+id = "609099ac-c5b5-4fe2-8072-a7b19ff8d75c"
+created_at = "2026-05-17T12:20:00+00:00"
+title = "[doc-api] Support cargo metadata outputs as docs workspace inputs"
+state = "in-review"
+acceptance_criteria = "doc-api ingests cargo metadata outputs as docs workspace inputs with focused multi-package workspace coverage"
+component = "doc-api"
+priority = "high"
+type = "tracker-improvement"
