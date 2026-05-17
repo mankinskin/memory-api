@@ -31,6 +31,27 @@ export class StateGroupItem extends vscode.TreeItem {
   }
 }
 
+/** Always-visible root-level control for search/filter actions. */
+export class FilterControlItem extends vscode.TreeItem {
+  readonly kind = 'filterControl' as const;
+
+  constructor(
+    label: string,
+    description: string,
+    icon: string,
+    commandId: string,
+  ) {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.description = description;
+    this.contextValue = 'filterControl';
+    this.iconPath = new vscode.ThemeIcon(icon);
+    this.command = {
+      command: commandId,
+      title: label,
+    };
+  }
+}
+
 /** Item representing a single ticket. Collapsible when it has dependency children. */
 export class TicketItem extends vscode.TreeItem {
   readonly kind = 'ticket' as const;
@@ -101,6 +122,7 @@ export class TicketFolderItem extends vscode.TreeItem {
 }
 
 export type TreeNode =
+  | FilterControlItem
   | StateGroupItem
   | TicketItem
   | TicketFileItem

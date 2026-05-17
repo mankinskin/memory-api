@@ -13,6 +13,7 @@
  */
 
 import { TicketTreeProvider, StateGroupItem, TicketItem } from '../../src/ticketProvider';
+import { FilterControlItem } from '../../src/ticketTreeItems';
 import type { TicketSummary, EdgeRecord } from '../../src/api';
 
 // Mock the API module so we can inject controlled test data.
@@ -110,7 +111,13 @@ async function waitForProviderReload(
 
 /** Get all root-level state group items. */
 function getRootGroups(provider: TicketTreeProvider): StateGroupItem[] {
-  return provider.getChildren(undefined) as StateGroupItem[];
+  return (provider.getChildren(undefined) as Array<StateGroupItem | FilterControlItem>)
+    .filter((item): item is StateGroupItem => item instanceof StateGroupItem);
+}
+
+function getRootControls(provider: TicketTreeProvider): FilterControlItem[] {
+  return (provider.getChildren(undefined) as Array<StateGroupItem | FilterControlItem>)
+    .filter((item): item is FilterControlItem => item instanceof FilterControlItem);
 }
 
 /** Get the state group for the given state, or null. */
@@ -345,6 +352,14 @@ describe('TicketTreeProvider — state folder grouping', () => {
   });
 
   describe('filter-backed reloads', () => {
+    test('shows visible root controls for search and state filter', async () => {
+      const provider = await buildProvider([makeTicket('30000000-0000-0000-0000-000000000001', 'new')], []);
+
+      const controls = getRootControls(provider);
+      expect(controls.map(control => control.label)).toEqual(['Search Tickets', 'Filter By State']);
+      expect(controls.map(control => control.description)).toEqual(['None', 'All states']);
+    });
+
     test('forwards active search and state filters to fetchAllTickets', async () => {
       const READY = '10000000-0000-0000-0000-000000000001';
       const provider = await buildProvider([makeTicket(READY, 'ready', 'Needle ticket')], []);
@@ -372,6 +387,7 @@ describe('TicketTreeProvider — state folder grouping', () => {
         'default',
         { query: 'needle', state: 'ready' },
       );
+      expect(getRootControls(provider).map(control => control.description)).toEqual(['needle', 'ready']);
       expect(getRootGroups(provider).map(group => group.state)).toEqual(['ready']);
     });
 

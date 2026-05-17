@@ -11,6 +11,7 @@ import {
   type TicketSummary,
 } from './api';
 import {
+  FilterControlItem,
   InfoItem,
   StateGroupItem,
   TicketFileItem,
@@ -148,6 +149,8 @@ export class TicketTreeProvider
   }
 
   getChildren(element?: TreeNode): TreeNode[] {
+    const filterControls = this._buildFilterControls();
+
     if (element instanceof StateGroupItem) {
       return element.rootTickets.map(t => this._makeTicketItem(t, element.state));
     }
@@ -166,11 +169,12 @@ export class TicketTreeProvider
     if (element !== undefined) { return []; }
 
     if (this.state === 'loading' && this.tickets.length === 0) {
-      return [new InfoItem('Loading tickets…', 'loading~spin')];
+      return [...filterControls, new InfoItem('Loading tickets…', 'loading~spin')];
     }
 
     if (this.state === 'error') {
       return [
+        ...filterControls,
         new InfoItem(
           'Server not reachable',
           'error',
@@ -181,14 +185,14 @@ export class TicketTreeProvider
 
     if (this.tickets.length === 0) {
       const filterSummary = this.filterSummary;
-      return [new InfoItem(
+      return [...filterControls, new InfoItem(
         filterSummary ? 'No tickets match current filters' : 'No tickets found',
         'info',
         filterSummary ? `Active filters: ${filterSummary}` : undefined,
       )];
     }
 
-    return this.buildStateGroups();
+    return [...filterControls, ...this.buildStateGroups()];
   }
 
   // ── Lazy tooltip resolution ────────────────────────────────────────────────
@@ -340,6 +344,23 @@ export class TicketTreeProvider
       }
     }
     return result;
+  }
+
+  private _buildFilterControls(): FilterControlItem[] {
+    return [
+      new FilterControlItem(
+        'Search Tickets',
+        this._filters.query ?? 'None',
+        'search',
+        'ticket-viewer.setSearchQuery',
+      ),
+      new FilterControlItem(
+        'Filter By State',
+        this._filters.state ?? 'All states',
+        'filter',
+        'ticket-viewer.setStateFilter',
+      ),
+    ];
   }
 
   private _setFilters(filters: TicketListFilters): void {
