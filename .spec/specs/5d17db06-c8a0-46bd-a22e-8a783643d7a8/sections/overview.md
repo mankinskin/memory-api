@@ -5,4 +5,4 @@ The `ticket-vscode` extension is a VS Code sidebar integration for the ticket sy
 - Zero-friction: auto-start the server, auto-detect the workspace, auto-refresh the tree.
 - Mirror the ticket CLI's capability surface in a GUI idiom (QuickPick, InputBox, confirmations).
 - Keep the extension thin: it is an HTTP client wrapper over the `ticket-viewer` API; all business logic lives in `ticket-api`.
-- Provide an escape hatch to the Dioxus SPA via VS Code's Simple Browser when richer UI is needed.
+- Provide an escape hatch to the Dioxus SPA via an external Chromium-family browser window when richer UI is needed, with a fallback to the system external browser if Chromium is unavailable.

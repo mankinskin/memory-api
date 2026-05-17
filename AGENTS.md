@@ -10,6 +10,9 @@ Global working rules for this repository. Keep this file small and stable.
 
 - Gather context before coding. Do not guess.
 - Read existing tests to infer expected behavior.
+- For implementation work, create or update the relevant ticket(s) before editing code.
+- For new or changed requirements and goals, create or update the relevant spec before implementation proceeds.
+- Keep the ticket, spec, validation, and documentation trail current so review and status summaries stay accurate.
 - Prefer bash commands over PowerShell/cmd.
 - Use Unix-style paths (`/`) in commands and docs.
 - Read test logs in `target/test-logs/` for debugging instead of relying on truncated test stdout.
@@ -42,18 +45,21 @@ Use static references as support:
 <!-- rule-api:entry id=84fa9769-cff9-4d89-9068-5ff8ed283d30 slug=shared/agent-rules/task-routing/l34 -->
 ## Task Routing
 
-- Simple fix (1-2 files): gather context, implement, test.
-- Bug fix: follow `.github/prompts/debug-test.prompt.md` when available.
-- Feature or refactor (>5 files, >100 LOC, or unclear scope): use `.github/prompts/tickets.prompt.md` and plan first.
-- Unfamiliar module or unclear behavior: follow `.github/prompts/research.prompt.md` when available.
+- Any requested implementation or behavior change: create or update the tracking ticket(s) first, then create or update the relevant spec before editing files.
+- Simple fix (1-2 files): after the ticket/spec setup when requirements or behavior change, gather context, implement, validate, update docs, verify spec links, and move the ticket to `in-review`.
+- Bug fix: after the ticket/spec setup, follow `.github/prompts/debug-test.prompt.md` when available.
+- Feature or refactor (>5 files, >100 LOC, or unclear scope): use `.github/prompts/tickets.prompt.md` to establish the ticket set, then `.github/prompts/spec.prompt.md` to update the spec before implementation.
+- Unfamiliar module or unclear behavior: follow `.github/prompts/research.prompt.md` when available before locking the spec or implementation plan.
 - Swarm execution: use `.github/prompts/swarm-worker.prompt.md`.
 
 <!-- rule-api:entry id=397b0447-135e-4d35-ad05-bcc69047d2c0 slug=shared/agent-rules/quality-gates/l42 -->
 ## Quality Gates
 
-- Tests relevant to your change must pass before completion.
+- Relevant validation must pass before completion. If a required check repeatedly fails, stop expanding scope and record the failing command, log or manual result, and blocker clearly in the ticket/spec status summary.
+- Before a ticket moves to `in-review`, ensure the relevant spec is updated for the changed requirements or goals and links the related tickets, updated docs, and test or validation results.
 - **Browser verification is mandatory** for any change to a server interface or frontend feature:
-  open the affected viewer in the browser and confirm the feature works visually before marking work done.
+  open the affected viewer in an external fullscreen Chromium-family browser, not VS Code's integrated browser, and confirm the feature works visually before marking work done.
+- Record the browser window or display resolution used for manual visual validation whenever layout, rendering, or responsive behavior could affect the result.
 - **Write Playwright end-to-end tests** for all browser-facing features and server interface changes.
   Shared managed-viewer suites live under `memory-viewers/viewer-api/viewer-api/frontend/dioxus/e2e/shared/`.
   Spec-viewer release E2E lives under `memory-viewers/spec-viewer/frontend/dioxus/`; run it with `npm run test:e2e:release`.
@@ -67,7 +73,8 @@ let _tracing = init_test_tracing!(&graph);
 ```
 
 <!-- rule-api:entry id=a172249f-b82b-45ea-86a9-4826beec7cc1 slug=shared/agent-rules/quality-gates/l55 -->
-- If public behavior or docs changed, run doc validation workflows.
+- If public behavior or docs changed, update the docs and run doc validation workflows.
+- When dedicated test, doc, or cross-store-link tooling is missing or partial, use the strongest available command or manual check and call out the limitation explicitly in the status summary and spec traceability.
 - Follow `.github/hooks/` reminders when they fire.
 - Scratch notes belong in temporary files only; do not commit ephemeral notes.
 

@@ -55,6 +55,62 @@ export interface ServerHandle {
   serverUrl: string;
 }
 
+function preferredBrowserCandidates(): string[] {
+  if (process.platform === 'win32') {
+    const roots = [
+      process.env.PROGRAMFILES,
+      process.env['PROGRAMFILES(X86)'],
+      process.env.LOCALAPPDATA,
+    ].filter((value): value is string => typeof value === 'string' && value !== '');
+
+    return [
+      'chrome.exe',
+      'chromium.exe',
+      'msedge.exe',
+      ...roots.flatMap(root => [
+        path.join(root, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        path.join(root, 'Chromium', 'Application', 'chrome.exe'),
+        path.join(root, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      ]),
+    ];
+  }
+
+  if (process.platform === 'darwin') {
+    return [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    ];
+  }
+
+  return [
+    'google-chrome',
+    'google-chrome-stable',
+    'chromium-browser',
+    'chromium',
+    'microsoft-edge',
+    'microsoft-edge-stable',
+  ];
+}
+
+function resolvePreferredBrowserBinary(): string | undefined {
+  for (const candidate of preferredBrowserCandidates()) {
+    if (path.isAbsolute(candidate)) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+      continue;
+    }
+
+    const resolved = resolveBinaryOnPath(candidate);
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  return undefined;
+}
+
 export function detectTicketWorkspaces(): DetectedWorkspace[] {
   const folders = vscode.workspace.workspaceFolders ?? [];
   return folders.flatMap(folder => {
@@ -128,7 +184,21 @@ export async function resolveActiveWorkspace(
 }
 
 export function openTicketViewer(url: string): void {
-  void vscode.commands.executeCommand('simpleBrowser.show', url);
+  const browserBinary = resolvePreferredBrowserBinary();
+  if (!browserBinary) {
+    void vscode.env.openExternal(vscode.Uri.parse(url));
+    return;
+  }
+
+  const child = spawn(browserBinary, ['--new-window', '--start-fullscreen', url], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  child.on('error', () => {
+    void vscode.env.openExternal(vscode.Uri.parse(url));
+  });
+  child.unref();
 }
 
 export function resolveTicketsDir(workspaceName: string): string | undefined {
