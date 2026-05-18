@@ -209,7 +209,7 @@
         {
           "command": "ticket-viewer.copyId",
           "when": "view == ticket-viewer.tickets && viewItem == ticket",
-          "group": "inline"
+          "group": "0_open@2"
         },
         {
           "command": "ticket-viewer.editTitle",

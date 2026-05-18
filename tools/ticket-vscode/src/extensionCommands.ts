@@ -162,14 +162,6 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
 
   context.subscriptions.push(
     vscode.commands.registerCommand('ticket-viewer.openTicket', (item: TicketItem) => {
-      const ticketsDir = resolveTicketsDir(state.workspace);
-      if (ticketsDir) {
-        const descPath = path.join(ticketsDir, item.ticket.id, 'description.md');
-        if (fs.existsSync(descPath)) {
-          void vscode.commands.executeCommand('markdown.showPreviewToSide', vscode.Uri.file(descPath));
-          return;
-        }
-      }
       const ticketUrl = `${state.serverUrl}/workspace/${encodeURIComponent(state.workspace)}/ticket/${encodeURIComponent(item.ticket.id)}`;
       openTicketViewer(ticketUrl);
     }),

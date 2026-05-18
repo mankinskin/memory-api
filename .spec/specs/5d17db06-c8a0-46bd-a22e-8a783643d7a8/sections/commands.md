@@ -7,9 +7,9 @@ All 20 commands are prefixed `ticket-viewer.*`. Commands are registered in `exte
 | `ticket-viewer.openBrowser` | Open Ticket Viewer in Browser | view/title (nav@3) | Prefers an external Chromium-family browser in a new fullscreen window; falls back to the system external browser |
 | `ticket-viewer.refresh` | Refresh Tickets | view/title (nav@1) | Calls `provider.refresh()` |
 | `ticket-viewer.startServer` | Start Ticket Viewer Server | view/title (nav@2) | Kills existing process; calls `startServerTask()`; re-attaches provider |
-| `ticket-viewer.openTicket` | Open Ticket | (command only, invoked by tree item click) | Opens `description.md` as Markdown preview; falls back to the SPA URL with the same external Chromium-first policy |
+| `ticket-viewer.openTicket` | Open Ticket | (command only, invoked by tree item click) | Opens `serverUrl/workspace/:ws/ticket/:id` with the same external Chromium-first policy used by `openBrowser`; ticket clicks do not preview `description.md` |
 | `ticket-viewer.openInTicketViewer` | Open in Ticket Viewer | view/item/context (0_open@1) | Opens `serverUrl/workspace/:ws/ticket/:id` with the same external Chromium-first policy |
-| `ticket-viewer.copyId` | Copy Ticket ID | view/item/context (inline) | Writes `ticket.id` to clipboard; shows status bar flash |
+| `ticket-viewer.copyId` | Copy Ticket ID | view/item/context (0_open@2) | Writes `ticket.id` to clipboard; shows status bar flash |
 | `ticket-viewer.selectWorkspace` | Select Ticket Workspace | (palette) | QuickPick from detected `.ticket/` folders; saves selection to `workspaceState` |
 | `ticket-viewer.bridgeStatus` | Browser Bridge: Status | (palette) | Shows `showInformationMessage` with bridge port, CDP status, and current URL |
 

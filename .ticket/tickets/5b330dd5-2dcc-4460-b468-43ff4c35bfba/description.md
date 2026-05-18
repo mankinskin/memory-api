@@ -1,0 +1,36 @@
+# ticket-vscode: Open clicked tickets in viewer and expose Copy ID in context menu
+
+## Problem
+
+The current `ticket-vscode` tree click behavior still routes through `ticket-viewer.openTicket`, which prefers opening `description.md` when the local ticket folder exists. That means clicking a ticket does not reliably navigate to the ticket viewer detail URL.
+
+The extension also contributes `ticket-viewer.copyId` only in the `inline` tree-item menu group. VS Code renders that as a hover action, but it does not give users an explicit right-click context-menu entry for copying the ticket ID.
+
+## Desired Behavior
+
+1. Clicking a ticket in the tree opens the ticket viewer at the selected ticket detail URL.
+2. Right-clicking a ticket shows a `Copy Ticket ID` context-menu entry.
+3. Existing commands for previewing or editing `description.md` remain available as explicit actions.
+
+## Implementation Notes
+
+- Update `tools/ticket-vscode/src/extensionCommands.ts` so `ticket-viewer.openTicket` always opens the ticket-viewer detail URL.
+- Update `tools/ticket-vscode/package.json` so `ticket-viewer.copyId` is available from the right-click context menu for ticket items.
+- Add focused unit coverage for the click command behavior and the menu contribution.
+- Update the `ticket-vscode` spec command matrix to reflect the new interaction contract.
+
+## Acceptance Criteria
+
+- [ ] Clicking a ticket in the tree opens `{serverUrl}/workspace/{workspace}/ticket/{ticketId}` in the ticket viewer.
+- [ ] Clicking a ticket no longer opens `description.md` as the primary action.
+- [ ] Right-clicking a ticket shows `Copy Ticket ID` in the context menu.
+- [ ] `npm run test:unit -- --runInBand --runTestsByPath test/unit/extensionCommands.test.ts test/unit/packageContributions.test.ts` passes.
+- [ ] `npm run compile` passes.
+
+## Validation
+
+- Passed: `npm run test:unit -- --runInBand --runTestsByPath test/unit/extensionCommands.test.ts test/unit/packageContributions.test.ts`
+- Passed: `npm run compile`
+- Passed: `spec.exe refs 5d17db06 validate --json`
+- Passed: `spec.exe health 5d17db06 --json`
+- Not run in this session: live VS Code Extension Host / external browser manual verification of the click flow.

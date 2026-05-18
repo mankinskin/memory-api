@@ -34,6 +34,9 @@ export class Uri {
   static file(path: string): Uri {
     return new Uri(path);
   }
+  static parse(path: string): Uri {
+    return new Uri(path);
+  }
   constructor(public fsPath: string) {}
 }
 
@@ -75,12 +78,26 @@ export class CancellationToken {
 export const window = {
   showErrorMessage: jest.fn(),
   showInformationMessage: jest.fn(),
+  showWarningMessage: jest.fn(),
+  showQuickPick: jest.fn(),
+  showInputBox: jest.fn(),
+  setStatusBarMessage: jest.fn(),
+};
+
+export const env = {
+  clipboard: {
+    writeText: jest.fn(() => Promise.resolve()),
+  },
+  openExternal: jest.fn(() => Promise.resolve(true)),
 };
 
 export const workspace = {
   getConfiguration: jest.fn(() => ({
     get: jest.fn(),
   })),
+  onDidChangeWorkspaceFolders: jest.fn(() => ({ dispose: () => {} })),
+  onDidChangeConfiguration: jest.fn(() => ({ dispose: () => {} })),
+  workspaceFolders: [],
 };
 
 export const commands = {
