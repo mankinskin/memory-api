@@ -30,6 +30,7 @@ use super::types::{
     TicketFileEntry,
     TicketFilesResponse,
     TicketIdParam,
+    ticket_ref_for_id,
 };
 
 /// `GET /api/tickets/{id}/files?workspace=<name>`
@@ -72,8 +73,17 @@ pub async fn list_ticket_files(
 
         Json(TicketFilesResponse {
             request_id: rid.0.clone(),
+            active_workspace: params.workspace.clone(),
             workspace: params.workspace.clone(),
             id: id.to_string(),
+            ticket_ref: match ticket_ref_for_id(
+                &store,
+                &params.workspace,
+                &id,
+            ) {
+                Ok(ticket_ref) => ticket_ref,
+                Err(e) => return storage_err(e, &rid.0),
+            },
             files,
         })
         .into_response()
@@ -117,8 +127,17 @@ pub async fn get_ticket_asset(
 
         Json(TicketAssetResponse {
             request_id: rid.0.clone(),
+            active_workspace: params.workspace.clone(),
             workspace: params.workspace.clone(),
             id: id.to_string(),
+            ticket_ref: match ticket_ref_for_id(
+                &store,
+                &params.workspace,
+                &id,
+            ) {
+                Ok(ticket_ref) => ticket_ref,
+                Err(e) => return storage_err(e, &rid.0),
+            },
             path: params.path.clone(),
             content,
         })

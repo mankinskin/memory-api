@@ -59,9 +59,11 @@ async fn create_ticket_returns_201_with_new_ticket() {
         serde_json::from_slice(&bytes).expect("json");
 
     assert_eq!(payload["workspace"], "default");
+    assert_eq!(payload["active_workspace"], "default");
     assert_eq!(payload["request_id"], "rid-create");
     assert_eq!(payload["ticket"]["fields"]["title"], "My new ticket");
     assert_eq!(payload["ticket"]["fields"]["state"], "new");
+    assert_eq!(payload["ticket"]["ticket_ref"]["workspace"], "default");
 }
 
 #[tokio::test]

@@ -43,6 +43,7 @@ use super::types::{
     RevertTicketBody,
     TicketDetail,
     UpdateTicketBody,
+    ticket_ref_for_id,
 };
 
 /// `POST /api/tickets?workspace=<name>`
@@ -68,6 +69,8 @@ pub async fn create_ticket(
     let description = body.description;
 
     tokio::task::spawn_blocking(move || {
+        let request_id = rid.0.clone();
+        let workspace = params.workspace.clone();
         let id = match store.create(
             None,
             &type_id,
@@ -78,23 +81,29 @@ pub async fn create_ticket(
             description.as_deref(),
         ) {
             Ok(id) => id,
-            Err(e) => return storage_err(e, &rid.0),
+            Err(e) => return storage_err(e, &request_id),
         };
 
         let manifest = match store.get(&id) {
             Ok(manifest) => manifest,
-            Err(e) => return storage_err(e, &rid.0),
+            Err(e) => return storage_err(e, &request_id),
         };
 
         let created_at = indexed_created_at(&store, &id);
+        let ticket_ref = match ticket_ref_for_id(&store, &workspace, &id) {
+            Ok(ticket_ref) => ticket_ref,
+            Err(e) => return storage_err(e, &request_id),
+        };
 
         (
             StatusCode::CREATED,
             Json(MutationResponse {
-                request_id: rid.0,
-                workspace: params.workspace,
+                request_id,
+                active_workspace: workspace.clone(),
+                workspace,
                 ticket: TicketDetail {
                     id: manifest.id.to_string(),
+                    ticket_ref,
                     created_at,
                     fields: manifest.extra,
                 },
@@ -132,6 +141,8 @@ pub async fn update_ticket(
     let author = author_from_headers(&headers);
 
     tokio::task::spawn_blocking(move || {
+        let request_id = rid.0.clone();
+        let workspace = params.workspace.clone();
         let manifest = match store.update(
             &id,
             patch,
@@ -141,14 +152,21 @@ pub async fn update_ticket(
             author.as_deref(),
         ) {
             Ok(manifest) => manifest,
-            Err(e) => return storage_err(e, &rid.0),
+            Err(e) => return storage_err(e, &request_id),
+        };
+
+        let ticket_ref = match ticket_ref_for_id(&store, &workspace, &id) {
+            Ok(ticket_ref) => ticket_ref,
+            Err(e) => return storage_err(e, &request_id),
         };
 
         Json(MutationResponse {
-            request_id: rid.0,
-            workspace: params.workspace,
+            request_id,
+            active_workspace: workspace.clone(),
+            workspace,
             ticket: TicketDetail {
                 id: manifest.id.to_string(),
+                ticket_ref,
                 created_at: indexed_created_at(&store, &id),
                 fields: manifest.extra,
             },
@@ -191,9 +209,18 @@ pub async fn close_ticket(
 
         Json(MutationResponse {
             request_id: rid.0.clone(),
+            active_workspace: params.workspace.clone(),
             workspace: params.workspace.clone(),
             ticket: TicketDetail {
                 id: manifest.id.to_string(),
+                ticket_ref: match ticket_ref_for_id(
+                    &store,
+                    &params.workspace,
+                    &id,
+                ) {
+                    Ok(ticket_ref) => ticket_ref,
+                    Err(e) => return storage_err(e, &rid.0),
+                },
                 created_at: indexed_created_at(&store, &id),
                 fields: manifest.extra,
             },
@@ -245,9 +272,18 @@ pub async fn cancel_ticket(
 
         Json(MutationResponse {
             request_id: rid.0.clone(),
+            active_workspace: params.workspace.clone(),
             workspace: params.workspace.clone(),
             ticket: TicketDetail {
                 id: manifest.id.to_string(),
+                ticket_ref: match ticket_ref_for_id(
+                    &store,
+                    &params.workspace,
+                    &id,
+                ) {
+                    Ok(ticket_ref) => ticket_ref,
+                    Err(e) => return storage_err(e, &rid.0),
+                },
                 created_at: indexed_created_at(&store, &id),
                 fields: manifest.extra,
             },
@@ -382,12 +418,25 @@ pub async fn delete_ticket(
     };
 
     tokio::task::spawn_blocking(move || match store.delete(&id) {
-        Ok(()) => Json(DeleteResponse {
-            request_id: rid.0.clone(),
-            workspace: params.workspace.clone(),
-            id: id.to_string(),
-        })
-        .into_response(),
+        Ok(()) => {
+            let ticket_ref = match ticket_ref_for_id(
+                &store,
+                &params.workspace,
+                &id,
+            ) {
+                Ok(ticket_ref) => ticket_ref,
+                Err(e) => return storage_err(e, &rid.0),
+            };
+
+            Json(DeleteResponse {
+                request_id: rid.0.clone(),
+                active_workspace: params.workspace.clone(),
+                workspace: params.workspace.clone(),
+                id: id.to_string(),
+                ticket_ref,
+            })
+            .into_response()
+        },
         Err(e) => storage_err(e, &rid.0),
     })
     .await
@@ -423,9 +472,14 @@ fn current_ticket_response(
 
     Json(MutationResponse {
         request_id: request_id.to_string(),
+        active_workspace: workspace.to_string(),
         workspace: workspace.to_string(),
         ticket: TicketDetail {
             id: manifest.id.to_string(),
+            ticket_ref: match ticket_ref_for_id(store, workspace, id) {
+                Ok(ticket_ref) => ticket_ref,
+                Err(e) => return storage_err(e, request_id),
+            },
             created_at: indexed_created_at(store, id),
             fields: manifest.extra,
         },

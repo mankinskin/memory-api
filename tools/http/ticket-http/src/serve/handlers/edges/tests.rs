@@ -95,9 +95,14 @@ async fn add_edge_returns_201_with_edge_detail() {
     let payload: serde_json::Value =
         serde_json::from_slice(&bytes).expect("json");
 
+    assert_eq!(payload["active_workspace"], "default");
     assert_eq!(payload["workspace"], "default");
     assert_eq!(payload["edge"]["from"], from_id.to_string());
     assert_eq!(payload["edge"]["to"], to_id.to_string());
+    assert_eq!(payload["edge"]["from_ref"]["workspace"], "default");
+    assert_eq!(payload["edge"]["from_ref"]["id"], from_id.to_string());
+    assert_eq!(payload["edge"]["to_ref"]["workspace"], "default");
+    assert_eq!(payload["edge"]["to_ref"]["id"], to_id.to_string());
     assert_eq!(payload["edge"]["kind"], "depends_on");
 }
 
@@ -178,8 +183,13 @@ async fn remove_edge_returns_200_with_edge_detail() {
         .expect("body");
     let payload: serde_json::Value =
         serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(payload["active_workspace"], "default");
     assert_eq!(payload["edge"]["from"], from_id.to_string());
     assert_eq!(payload["edge"]["to"], to_id.to_string());
+    assert_eq!(payload["edge"]["from_ref"]["workspace"], "default");
+    assert_eq!(payload["edge"]["from_ref"]["id"], from_id.to_string());
+    assert_eq!(payload["edge"]["to_ref"]["workspace"], "default");
+    assert_eq!(payload["edge"]["to_ref"]["id"], to_id.to_string());
     assert_eq!(payload["edge"]["kind"], "depends_on");
 }
 

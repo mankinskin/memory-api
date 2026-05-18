@@ -21,6 +21,11 @@ use uuid::Uuid;
 use crate::serve::{
     AppState,
     error::storage_err,
+    handlers::tickets::{
+        TicketRef,
+        ticket_ref_from_indexed,
+    },
+    registry::ResolvedIndexedTicket,
 };
 use ticket_api::model::edge::EdgeRecord;
 use viewer_api::error::RequestIdExt;
@@ -35,12 +40,15 @@ pub struct EdgesQuery {
 pub struct EdgeItem {
     pub from: String,
     pub to: String,
+    pub from_ref: TicketRef,
+    pub to_ref: TicketRef,
     pub kind: String,
 }
 
 #[derive(Serialize)]
 pub struct EdgesResponse {
     pub request_id: String,
+    pub active_workspace: String,
     pub workspace: String,
     pub items: Vec<EdgeItem>,
 }
@@ -57,33 +65,63 @@ pub async fn list_edges(
                 .into_response_with_status(StatusCode::NOT_FOUND);
         },
     };
+    let state = state.clone();
+    let request_id = rid.0.clone();
+    let active_workspace = params.workspace.clone();
+    let kind = params.kind.clone();
 
     tokio::task::spawn_blocking(move || match store.list_all_edges() {
         Ok(edges) => {
-            let items: Vec<EdgeItem> = edges
+            let filtered: Vec<EdgeRecord> = edges
                 .into_iter()
                 .filter(|e| {
-                    if let Some(k) = &params.kind {
+                    if let Some(k) = &kind {
                         k == "all" || &e.kind == k
                     } else {
                         true
                     }
                 })
-                .map(|e| EdgeItem {
-                    from: e.from.to_string(),
-                    to: e.to.to_string(),
-                    kind: e.kind,
-                })
                 .collect();
+            let mut edge_ids = Vec::with_capacity(filtered.len() * 2);
+            for edge in &filtered {
+                edge_ids.push(edge.from);
+                edge_ids.push(edge.to);
+            }
+            edge_ids.sort();
+            edge_ids.dedup();
+
+            let resolved = match state
+                .registry
+                .resolve_indexed_many(&active_workspace, &edge_ids)
+            {
+                Ok(resolved) => resolved,
+                Err(error) => return storage_err(error, &request_id),
+            };
+            let items = match filtered
+                .into_iter()
+                .map(|edge| {
+                    edge_item_from_record(
+                        &resolved,
+                        &active_workspace,
+                        edge,
+                        &request_id,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(items) => items,
+                Err(response) => return response,
+            };
 
             Json(EdgesResponse {
-                request_id: rid.0.clone(),
-                workspace: params.workspace.clone(),
+                request_id: request_id.clone(),
+                active_workspace: active_workspace.clone(),
+                workspace: active_workspace.clone(),
                 items,
             })
             .into_response()
         },
-        Err(e) => storage_err(e, &rid.0),
+        Err(e) => storage_err(e, &request_id),
     })
     .await
     .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
@@ -109,6 +147,7 @@ pub struct EdgeBody {
 #[derive(Serialize)]
 pub struct EdgeMutationResponse {
     pub request_id: String,
+    pub active_workspace: String,
     pub workspace: String,
     pub edge: EdgeItem,
 }
@@ -134,6 +173,9 @@ pub async fn add_edge(
                 .into_response_with_status(StatusCode::NOT_FOUND);
         },
     };
+    let state = state.clone();
+    let request_id = rid.0.clone();
+    let active_workspace = params.workspace.clone();
 
     let edge = EdgeRecord {
         from: body.from_id,
@@ -141,22 +183,43 @@ pub async fn add_edge(
         kind: body.kind.clone(),
         created_at: Utc::now(),
     };
+    let from_id = body.from_id;
+    let to_id = body.to_id;
+    let edge_kind = body.kind;
 
     tokio::task::spawn_blocking(move || match store.add_edge(edge) {
-        Ok(()) => (
-            StatusCode::CREATED,
-            Json(EdgeMutationResponse {
-                request_id: rid.0,
-                workspace: params.workspace,
-                edge: EdgeItem {
-                    from: body.from_id.to_string(),
-                    to: body.to_id.to_string(),
-                    kind: body.kind,
-                },
-            }),
-        )
-            .into_response(),
-        Err(e) => storage_err(e, &rid.0),
+        Ok(()) => {
+            let resolved = match state
+                .registry
+                .resolve_indexed_many(&active_workspace, &[from_id, to_id])
+            {
+                Ok(resolved) => resolved,
+                Err(error) => return storage_err(error, &request_id),
+            };
+            let edge = match edge_item(
+                &resolved,
+                &active_workspace,
+                from_id,
+                to_id,
+                edge_kind,
+                &request_id,
+            ) {
+                Ok(edge) => edge,
+                Err(response) => return response,
+            };
+
+            (
+                StatusCode::CREATED,
+                Json(EdgeMutationResponse {
+                    request_id: request_id.clone(),
+                    active_workspace: active_workspace.clone(),
+                    workspace: active_workspace.clone(),
+                    edge,
+                }),
+            )
+                .into_response()
+        },
+        Err(e) => storage_err(e, &request_id),
     })
     .await
     .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
@@ -181,6 +244,9 @@ pub async fn remove_edge(
                 .into_response_with_status(StatusCode::NOT_FOUND);
         },
     };
+    let state = state.clone();
+    let request_id = rid.0.clone();
+    let active_workspace = params.workspace.clone();
 
     let edge = EdgeRecord {
         from: body.from_id,
@@ -188,22 +254,96 @@ pub async fn remove_edge(
         kind: body.kind.clone(),
         created_at: Utc::now(),
     };
+    let from_id = body.from_id;
+    let to_id = body.to_id;
+    let edge_kind = body.kind;
 
     tokio::task::spawn_blocking(move || match store.remove_edge(edge) {
-        Ok(()) => Json(EdgeMutationResponse {
-            request_id: rid.0,
-            workspace: params.workspace,
-            edge: EdgeItem {
-                from: body.from_id.to_string(),
-                to: body.to_id.to_string(),
-                kind: body.kind,
-            },
-        })
-        .into_response(),
-        Err(e) => storage_err(e, &rid.0),
+        Ok(()) => {
+            let resolved = match state
+                .registry
+                .resolve_indexed_many(&active_workspace, &[from_id, to_id])
+            {
+                Ok(resolved) => resolved,
+                Err(error) => return storage_err(error, &request_id),
+            };
+            let edge = match edge_item(
+                &resolved,
+                &active_workspace,
+                from_id,
+                to_id,
+                edge_kind,
+                &request_id,
+            ) {
+                Ok(edge) => edge,
+                Err(response) => return response,
+            };
+
+            Json(EdgeMutationResponse {
+                request_id: request_id.clone(),
+                active_workspace: active_workspace.clone(),
+                workspace: active_workspace.clone(),
+                edge,
+            })
+            .into_response()
+        },
+        Err(e) => storage_err(e, &request_id),
     })
     .await
     .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+fn edge_item_from_record(
+    resolved: &std::collections::HashMap<Uuid, ResolvedIndexedTicket>,
+    active_workspace: &str,
+    edge: EdgeRecord,
+    request_id: &str,
+) -> Result<EdgeItem, Response> {
+    edge_item(
+        resolved,
+        active_workspace,
+        edge.from,
+        edge.to,
+        edge.kind,
+        request_id,
+    )
+}
+
+fn edge_item(
+    resolved: &std::collections::HashMap<Uuid, ResolvedIndexedTicket>,
+    active_workspace: &str,
+    from_id: Uuid,
+    to_id: Uuid,
+    kind: String,
+    request_id: &str,
+) -> Result<EdgeItem, Response> {
+    Ok(EdgeItem {
+        from: from_id.to_string(),
+        to: to_id.to_string(),
+        from_ref: resolve_edge_ref(resolved, active_workspace, from_id, request_id)?,
+        to_ref: resolve_edge_ref(resolved, active_workspace, to_id, request_id)?,
+        kind,
+    })
+}
+
+fn resolve_edge_ref(
+    resolved: &std::collections::HashMap<Uuid, ResolvedIndexedTicket>,
+    active_workspace: &str,
+    id: Uuid,
+    request_id: &str,
+) -> Result<TicketRef, Response> {
+    match resolved.get(&id) {
+        Some(ticket) => ticket_ref_from_indexed(
+            &ticket.store,
+            &ticket.workspace,
+            &ticket.ticket,
+        )
+        .map_err(|error| storage_err(error, request_id)),
+        None => Ok(TicketRef {
+            workspace: active_workspace.to_string(),
+            id: id.to_string(),
+        }),
+    }
 }
 
 #[cfg(test)]

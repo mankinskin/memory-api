@@ -32,13 +32,17 @@ use crate::serve::{
 use ticket_api::storage::ticket_fs::TicketFs;
 
 use super::types::{
+    HistoryEntry,
     TicketDescriptionResponse,
     TicketDetail,
     TicketDetailResponse,
+    TicketHistoryResponse,
     TicketIdParam,
     TicketSummary,
     TicketsResponse,
     WorkspaceParam,
+    ticket_ref_for_id,
+    ticket_ref_from_indexed,
 };
 
 pub async fn list_tickets(
@@ -89,6 +93,14 @@ pub async fn list_tickets(
 
                         items.push(TicketSummary {
                             id: result.id.to_string(),
+                            ticket_ref: match ticket_ref_for_id(
+                                &store,
+                                &params.workspace,
+                                &result.id,
+                            ) {
+                                Ok(ticket_ref) => ticket_ref,
+                                Err(e) => return storage_err(e, &rid.0),
+                            },
                             type_id: result.ticket_type.unwrap_or_default(),
                             title: result.title,
                             state: result.state,
@@ -103,24 +115,37 @@ pub async fn list_tickets(
             }
         } else {
             match store.list(state_filter, None, Some(requested_limit)) {
-                Ok(items) => items
-                    .into_iter()
-                    .map(|ticket| TicketSummary {
-                        id: ticket.id.to_string(),
-                        type_id: ticket.type_id,
-                        title: ticket.title,
-                        state: ticket.state,
-                        created_at: ticket.created_at,
-                        updated_at: ticket.updated_at,
-                        fields: BTreeMap::new(),
-                    })
-                    .collect(),
+                Ok(items) => {
+                    let mut summaries = Vec::with_capacity(items.len());
+                    for ticket in items {
+                        let ticket_ref = match ticket_ref_from_indexed(
+                            &store,
+                            &params.workspace,
+                            &ticket,
+                        ) {
+                            Ok(ticket_ref) => ticket_ref,
+                            Err(e) => return storage_err(e, &rid.0),
+                        };
+                        summaries.push(TicketSummary {
+                            id: ticket.id.to_string(),
+                            ticket_ref,
+                            type_id: ticket.type_id,
+                            title: ticket.title,
+                            state: ticket.state,
+                            created_at: ticket.created_at,
+                            updated_at: ticket.updated_at,
+                            fields: BTreeMap::new(),
+                        });
+                    }
+                    summaries
+                },
                 Err(e) => return storage_err(e, &rid.0),
             }
         };
 
         Json(TicketsResponse {
             request_id: rid.0.clone(),
+            active_workspace: params.workspace.clone(),
             workspace: params.workspace.clone(),
             items: tickets,
             next_cursor: None,
@@ -146,16 +171,29 @@ pub async fn get_ticket(
     };
 
     tokio::task::spawn_blocking(move || match store.get(&id) {
-        Ok(manifest) => Json(TicketDetailResponse {
-            request_id: rid.0.clone(),
-            workspace: params.workspace.clone(),
-            ticket: TicketDetail {
-                id: manifest.id.to_string(),
-                created_at: manifest.created_at,
-                fields: manifest.extra.into_iter().collect(),
-            },
-        })
-        .into_response(),
+        Ok(manifest) => {
+            let ticket_ref = match ticket_ref_for_id(
+                &store,
+                &params.workspace,
+                &id,
+            ) {
+                Ok(ticket_ref) => ticket_ref,
+                Err(e) => return storage_err(e, &rid.0),
+            };
+
+            Json(TicketDetailResponse {
+                request_id: rid.0.clone(),
+                active_workspace: params.workspace.clone(),
+                workspace: params.workspace.clone(),
+                ticket: TicketDetail {
+                    id: manifest.id.to_string(),
+                    ticket_ref,
+                    created_at: manifest.created_at,
+                    fields: manifest.extra.into_iter().collect(),
+                },
+            })
+            .into_response()
+        },
         Err(e) => storage_err(e, &rid.0),
     })
     .await
@@ -197,10 +235,21 @@ pub async fn get_ticket_description(
                 .into_response_with_status(StatusCode::NOT_FOUND);
         }
 
+        let ticket_ref = match ticket_ref_from_indexed(
+            &store,
+            &params.workspace,
+            &indexed,
+        ) {
+            Ok(ticket_ref) => ticket_ref,
+            Err(e) => return storage_err(e, &rid.0),
+        };
+
         Json(TicketDescriptionResponse {
             request_id: rid.0.clone(),
+            active_workspace: params.workspace.clone(),
             workspace: params.workspace.clone(),
             id: id.to_string(),
+            ticket_ref,
             description: TicketFs::read_description(&indexed.path),
         })
         .into_response()
@@ -228,24 +277,33 @@ pub async fn get_ticket_history(
 
     tokio::task::spawn_blocking(move || match store.get_history(&id) {
         Ok(revisions) => {
-            let entries: Vec<serde_json::Value> = revisions
+            let ticket_ref = match ticket_ref_for_id(
+                &store,
+                &params.workspace,
+                &id,
+            ) {
+                Ok(ticket_ref) => ticket_ref,
+                Err(e) => return storage_err(e, &rid.0),
+            };
+
+            let entries = revisions
                 .into_iter()
-                .map(|revision| {
-                    serde_json::json!({
-                        "rev": revision.rev,
-                        "ts": revision.ts,
-                        "author": revision.author,
-                        "fields": revision.fields,
-                    })
+                .map(|revision| HistoryEntry {
+                    rev: revision.rev,
+                    ts: revision.ts,
+                    author: revision.author,
+                    fields: revision.fields,
                 })
-                .collect();
-            Json(serde_json::json!({
-                "request_id": &rid.0,
-                "workspace": &params.workspace,
-                "id": id.to_string(),
-                "count": entries.len(),
-                "entries": entries,
-            }))
+                .collect::<Vec<_>>();
+            Json(TicketHistoryResponse {
+                request_id: rid.0.clone(),
+                active_workspace: params.workspace.clone(),
+                workspace: params.workspace.clone(),
+                id: id.to_string(),
+                ticket_ref,
+                count: entries.len() as u64,
+                entries,
+            })
             .into_response()
         },
         Err(e) => storage_err(e, &rid.0),

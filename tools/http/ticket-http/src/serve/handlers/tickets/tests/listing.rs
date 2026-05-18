@@ -2,6 +2,7 @@ use axum::{
     body::to_bytes,
     extract::{
         Extension,
+        Path,
         Query,
         State,
     },
@@ -14,6 +15,9 @@ use viewer_api::error::RequestIdExt;
 
 use super::{
     super::{
+        TicketIdParam,
+        get_ticket,
+        get_ticket_history,
         WorkspaceParam,
         list_tickets,
     },
@@ -73,6 +77,9 @@ async fn search_list_uses_persisted_updated_at() {
         .with_timezone(&chrono::Utc);
 
     assert_eq!(got, expected_updated_at);
+    assert_eq!(payload["active_workspace"], "default");
+    assert_eq!(payload["items"][0]["ticket_ref"]["workspace"], "default");
+    assert_eq!(payload["items"][0]["ticket_ref"]["id"], id.to_string());
 }
 
 #[tokio::test]
@@ -130,6 +137,113 @@ async fn state_only_list_filters_items() {
     assert_eq!(items.len(), 1);
     assert_eq!(items[0]["id"].as_str(), Some(ready_id.as_str()));
     assert_eq!(items[0]["state"].as_str(), Some("ready"));
+}
+
+#[tokio::test]
+async fn list_tickets_uses_scan_root_label_for_ticket_ref_workspace() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = make_store(dir.path());
+    let child_root = dir.path().join("child").join("tickets");
+    std::fs::create_dir_all(&child_root).expect("mkdir child root");
+
+    store
+        .add_scan_root(ticket_api::model::filesystem::ScanRoot {
+            path: child_root.clone(),
+            label: "child".to_string(),
+        })
+        .expect("add child scan root");
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("child-owned ticket"),
+            Some("ready"),
+            BTreeMap::new(),
+            Some(child_root.as_path()),
+            None,
+        )
+        .expect("create child ticket");
+
+    let state = make_state(Arc::clone(&store));
+    let response = list_tickets(
+        State(state),
+        Extension(RequestIdExt("rid-child".to_string())),
+        Query(WorkspaceParam {
+            workspace: "default".to_string(),
+            state: None,
+            query: Some("child-owned".to_string()),
+            limit: Some(10),
+            cursor: None,
+        }),
+    )
+    .await;
+
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("read body");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json body");
+
+    assert_eq!(payload["items"][0]["ticket_ref"]["workspace"], "child");
+    assert_eq!(payload["items"][0]["ticket_ref"]["id"], id.to_string());
+}
+
+#[tokio::test]
+async fn get_ticket_and_history_include_ticket_refs() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = make_store(dir.path());
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("detail ticket"),
+            None,
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .expect("create ticket");
+
+    let state = make_state(Arc::clone(&store));
+    let detail = get_ticket(
+        State(state.clone()),
+        Extension(RequestIdExt("rid-detail".to_string())),
+        Path(id),
+        Query(TicketIdParam {
+            workspace: "default".to_string(),
+        }),
+    )
+    .await;
+    let detail_bytes = to_bytes(detail.into_body(), 1024 * 1024)
+        .await
+        .expect("detail body");
+    let detail_payload: serde_json::Value =
+        serde_json::from_slice(&detail_bytes).expect("detail json");
+
+    assert_eq!(detail_payload["active_workspace"], "default");
+    assert_eq!(detail_payload["ticket"]["ticket_ref"]["workspace"], "default");
+    assert_eq!(detail_payload["ticket"]["ticket_ref"]["id"], id.to_string());
+
+    let history = get_ticket_history(
+        State(state),
+        Extension(RequestIdExt("rid-history".to_string())),
+        Path(id),
+        Query(TicketIdParam {
+            workspace: "default".to_string(),
+        }),
+    )
+    .await;
+    let history_bytes = to_bytes(history.into_body(), 1024 * 1024)
+        .await
+        .expect("history body");
+    let history_payload: serde_json::Value =
+        serde_json::from_slice(&history_bytes).expect("history json");
+
+    assert_eq!(history_payload["active_workspace"], "default");
+    assert_eq!(history_payload["ticket_ref"]["workspace"], "default");
+    assert_eq!(history_payload["ticket_ref"]["id"], id.to_string());
 }
 
 #[tokio::test]

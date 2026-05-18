@@ -29,6 +29,11 @@ use uuid::Uuid;
 use crate::serve::{
     AppState,
     error::storage_err,
+    handlers::tickets::{
+        TicketRef,
+        ticket_ref_from_indexed,
+    },
+    registry::ResolvedIndexedTicket,
 };
 
 use super::{
@@ -42,6 +47,13 @@ use super::{
 
 type AdjEntry = (Uuid, Uuid, Uuid, String);
 
+#[derive(Clone)]
+struct RawEdgeItem {
+    from: Uuid,
+    to: Uuid,
+    kind: String,
+}
+
 struct GraphRequest {
     workspace: String,
     root: Uuid,
@@ -54,7 +66,7 @@ struct GraphRequest {
 
 struct TraversalResult {
     visited: HashMap<Uuid, usize>,
-    edges: Vec<EdgeItem>,
+    edges: Vec<RawEdgeItem>,
     truncated: bool,
     max_depth_reached: usize,
 }
@@ -134,11 +146,10 @@ fn bfs_graph(
     request: GraphRequest,
 ) -> Response {
     let total_timer = Instant::now();
-    let store =
-        match resolve_workspace_store(&state, &request.workspace, request_id) {
-            Ok(store) => store,
-            Err(response) => return response,
-        };
+    let store = match resolve_workspace_store(&state, &request.workspace, request_id) {
+        Ok(store) => store,
+        Err(response) => return response,
+    };
 
     let phase_timer = Instant::now();
     let all_edges = match store.list_all_edges() {
@@ -158,11 +169,24 @@ fn bfs_graph(
     );
     let phase2_end_ms = phase_timer.elapsed().as_millis();
 
-    let nodes = match build_nodes(&store, &traversal.visited, request_id) {
+    let resolved = match resolve_graph_tickets(&state, &request.workspace, &traversal, request_id) {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
+
+    let nodes = match build_nodes(&resolved, &traversal.visited, &request.workspace, request_id) {
         Ok(nodes) => nodes,
         Err(response) => return response,
     };
-    let edges = dedupe_edges(traversal.edges);
+    let edges = match build_edges(
+        dedupe_edges(traversal.edges),
+        &resolved,
+        &request.workspace,
+        request_id,
+    ) {
+        Ok(edges) => edges,
+        Err(response) => return response,
+    };
     let phase3_end_ms = phase_timer.elapsed().as_millis();
 
     let stats = SubgraphStats {
@@ -186,6 +210,7 @@ fn bfs_graph(
 
     Json(SubgraphResponse {
         request_id: request_id.to_string(),
+        active_workspace: request.workspace.clone(),
         workspace: request.workspace,
         nodes,
         edges,
@@ -269,9 +294,9 @@ fn traverse_graph(
                     continue;
                 }
                 if edges.len() < limit_edges {
-                    edges.push(EdgeItem {
-                        from: edge_from.to_string(),
-                        to: edge_to.to_string(),
+                    edges.push(RawEdgeItem {
+                        from: *edge_from,
+                        to: *edge_to,
                         kind: edge_kind.clone(),
                     });
                 }
@@ -301,22 +326,43 @@ fn direction_allows(
     }
 }
 
+fn resolve_graph_tickets(
+    state: &AppState,
+    active_workspace: &str,
+    traversal: &TraversalResult,
+    request_id: &str,
+) -> Result<HashMap<Uuid, ResolvedIndexedTicket>, Response> {
+    let mut ids: Vec<Uuid> = traversal.visited.keys().copied().collect();
+    for edge in &traversal.edges {
+        ids.push(edge.from);
+        ids.push(edge.to);
+    }
+    ids.sort();
+    ids.dedup();
+    state
+        .registry
+        .resolve_indexed_many(active_workspace, &ids)
+        .map_err(|error| storage_err(error, request_id))
+}
+
 fn build_nodes(
-    store: &TicketStore,
+    resolved: &HashMap<Uuid, ResolvedIndexedTicket>,
     visited: &HashMap<Uuid, usize>,
+    active_workspace: &str,
     request_id: &str,
 ) -> Result<Vec<NodeItem>, Response> {
-    let node_ids: Vec<Uuid> = visited.keys().copied().collect();
-    let meta_map = store
-        .get_indexed_many(&node_ids)
-        .map_err(|error| storage_err(error, request_id))?;
-
-    let mut nodes: Vec<NodeItem> = visited
+    let mut nodes = visited
         .iter()
         .map(|(node_id, depth)| {
-            build_node_item(*node_id, *depth, meta_map.get(node_id))
+            build_node_item(
+                *node_id,
+                *depth,
+                resolved.get(node_id),
+                active_workspace,
+                request_id,
+            )
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
     nodes.sort_by_key(|node| node.depth);
     Ok(nodes)
 }
@@ -324,27 +370,37 @@ fn build_nodes(
 fn build_node_item(
     node_id: Uuid,
     depth: usize,
-    ticket: Option<&IndexedTicket>,
-) -> NodeItem {
+    ticket: Option<&ResolvedIndexedTicket>,
+    active_workspace: &str,
+    request_id: &str,
+) -> Result<NodeItem, Response> {
     if let Some(ticket) = ticket {
-        return NodeItem {
+        let ticket_ref = ticket_ref_from_indexed(
+            &ticket.store,
+            &ticket.workspace,
+            &ticket.ticket,
+        )
+        .map_err(|error| storage_err(error, request_id))?;
+        return Ok(NodeItem {
             id: node_id.to_string(),
-            title: ticket.title.clone(),
-            state: ticket.state.clone(),
+            ticket_ref,
+            title: ticket.ticket.title.clone(),
+            state: ticket.ticket.state.clone(),
             depth,
-            ticket_type: Some(ticket.type_id.clone()),
-            priority: ticket_priority(ticket),
-        };
+            ticket_type: Some(ticket.ticket.type_id.clone()),
+            priority: ticket_priority(&ticket.ticket),
+        });
     }
 
-    NodeItem {
+    Ok(NodeItem {
         id: node_id.to_string(),
+        ticket_ref: fallback_ticket_ref(active_workspace, node_id),
         title: None,
         state: None,
         depth,
         ticket_type: None,
         priority: None,
-    }
+    })
 }
 
 fn ticket_priority(ticket: &IndexedTicket) -> Option<String> {
@@ -357,13 +413,68 @@ fn ticket_priority(ticket: &IndexedTicket) -> Option<String> {
     })
 }
 
-fn dedupe_edges(edges: Vec<EdgeItem>) -> Vec<EdgeItem> {
+fn build_edges(
+    edges: Vec<RawEdgeItem>,
+    resolved: &HashMap<Uuid, ResolvedIndexedTicket>,
+    active_workspace: &str,
+    request_id: &str,
+) -> Result<Vec<EdgeItem>, Response> {
+    edges
+        .into_iter()
+        .map(|edge| {
+            Ok(EdgeItem {
+                from: edge.from.to_string(),
+                to: edge.to.to_string(),
+                from_ref: resolve_edge_ref(
+                    resolved,
+                    active_workspace,
+                    edge.from,
+                    request_id,
+                )?,
+                to_ref: resolve_edge_ref(
+                    resolved,
+                    active_workspace,
+                    edge.to,
+                    request_id,
+                )?,
+                kind: edge.kind,
+            })
+        })
+        .collect()
+}
+
+fn resolve_edge_ref(
+    resolved: &HashMap<Uuid, ResolvedIndexedTicket>,
+    active_workspace: &str,
+    id: Uuid,
+    request_id: &str,
+) -> Result<TicketRef, Response> {
+    match resolved.get(&id) {
+        Some(ticket) => ticket_ref_from_indexed(
+            &ticket.store,
+            &ticket.workspace,
+            &ticket.ticket,
+        )
+        .map_err(|error| storage_err(error, request_id)),
+        None => Ok(fallback_ticket_ref(active_workspace, id)),
+    }
+}
+
+fn fallback_ticket_ref(
+    active_workspace: &str,
+    id: Uuid,
+) -> TicketRef {
+    TicketRef {
+        workspace: active_workspace.to_string(),
+        id: id.to_string(),
+    }
+}
+
+fn dedupe_edges(edges: Vec<RawEdgeItem>) -> Vec<RawEdgeItem> {
     let mut seen = HashSet::new();
     edges
         .into_iter()
-        .filter(|edge| {
-            seen.insert((edge.from.clone(), edge.to.clone(), edge.kind.clone()))
-        })
+        .filter(|edge| seen.insert((edge.from, edge.to, edge.kind.clone())))
         .collect()
 }
 

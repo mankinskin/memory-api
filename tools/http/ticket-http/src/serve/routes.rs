@@ -4,7 +4,6 @@ use axum::{
     Router,
     middleware,
     routing::{
-        delete,
         get,
         patch,
         post,
@@ -377,6 +376,16 @@ mod tests {
         }
     }
 
+    fn open_workspace_store(dir: &std::path::Path) -> Arc<TicketStore> {
+        let store = Arc::new(TicketStore::open(dir).expect("open store"));
+        store
+            .add_scan_root(ScanRoot {
+                path: dir.join("tickets"),
+                label: "default".into(),
+            })
+            .expect("add scan root");
+        store
+    }
     /// Verify that multiple concurrent ticket-list requests all complete.
     /// The list handler hits the storage layer on every call; running 8 at
     /// once confirms there is no mutex starvation or deadlock.
@@ -387,7 +396,6 @@ mod tests {
             Duration,
             timeout,
         };
-
         let dir = tempfile::tempdir().expect("tempdir");
         let store =
             Arc::new(TicketStore::open(dir.path()).expect("open store"));
@@ -435,5 +443,161 @@ mod tests {
             let resp = handle.await.expect("task panicked");
             assert_eq!(resp.status(), StatusCode::OK);
         }
+    }
+
+    #[tokio::test]
+    async fn descendant_ticket_ref_from_list_is_followable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let child_dir = dir.path().join("child");
+        std::fs::create_dir_all(&child_dir).expect("create child dir");
+
+        let parent_store = open_workspace_store(dir.path());
+        let child_store = open_workspace_store(&child_dir);
+
+        let child_id = child_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Child ticket"),
+                None,
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create child ticket");
+
+        parent_store
+            .add_scan_root(ScanRoot {
+                path: child_dir.join("tickets"),
+                label: "child".into(),
+            })
+            .expect("add child scan root");
+        parent_store.scan(false).expect("scan child workspace");
+
+        let app = make_router_from_store(Arc::clone(&parent_store));
+
+        let list_request = Request::builder()
+            .method(Method::GET)
+            .uri("/api/tickets?workspace=default")
+            .body(Body::empty())
+            .unwrap();
+
+        let list_response = app.clone().oneshot(list_request).await.unwrap();
+        assert_eq!(list_response.status(), StatusCode::OK);
+
+        let list_bytes = to_bytes(list_response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let list_payload: serde_json::Value =
+            serde_json::from_slice(&list_bytes).unwrap();
+        assert_eq!(list_payload["items"][0]["ticket_ref"]["workspace"], "child");
+        assert_eq!(list_payload["items"][0]["ticket_ref"]["id"], child_id.to_string());
+
+        let detail_request = Request::builder()
+            .method(Method::GET)
+            .uri(format!("/api/tickets/{child_id}?workspace=child"))
+            .body(Body::empty())
+            .unwrap();
+
+        let detail_response = app.oneshot(detail_request).await.unwrap();
+        assert_eq!(detail_response.status(), StatusCode::OK);
+
+        let detail_bytes = to_bytes(detail_response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let detail_payload: serde_json::Value =
+            serde_json::from_slice(&detail_bytes).unwrap();
+        assert_eq!(detail_payload["active_workspace"], "child");
+        assert_eq!(detail_payload["ticket"]["ticket_ref"]["workspace"], "child");
+        assert_eq!(detail_payload["ticket"]["ticket_ref"]["id"], child_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn ancestor_graph_ref_from_child_workspace_is_followable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let child_dir = dir.path().join("child");
+        std::fs::create_dir_all(&child_dir).expect("create child dir");
+
+        let parent_store = open_workspace_store(dir.path());
+        let child_store = open_workspace_store(&child_dir);
+
+        let parent_id = parent_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Parent ticket"),
+                None,
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create parent ticket");
+        let child_id = child_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Child ticket"),
+                None,
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create child ticket");
+
+        child_store
+            .add_edge(ticket_api::model::edge::EdgeRecord {
+                from: child_id,
+                to: parent_id,
+                kind: "depends_on".into(),
+                created_at: chrono::Utc::now(),
+            })
+            .expect("add mixed-workspace edge");
+
+        let app = make_router_from_store(Arc::clone(&child_store));
+
+        let graph_request = Request::builder()
+            .method(Method::GET)
+            .uri(format!(
+                "/api/graph/subgraph?workspace=default&root={child_id}&depth=1"
+            ))
+            .body(Body::empty())
+            .unwrap();
+
+        let graph_response = app.clone().oneshot(graph_request).await.unwrap();
+        assert_eq!(graph_response.status(), StatusCode::OK);
+
+        let graph_bytes = to_bytes(graph_response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let graph_payload: serde_json::Value =
+            serde_json::from_slice(&graph_bytes).unwrap();
+
+        let parent_node = graph_payload["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == parent_id.to_string())
+            .expect("parent node present");
+        assert_eq!(parent_node["ticket_ref"]["workspace"], "..");
+        assert_eq!(parent_node["ticket_ref"]["id"], parent_id.to_string());
+        assert_eq!(graph_payload["edges"][0]["to_ref"]["workspace"], "..");
+
+        let history_request = Request::builder()
+            .method(Method::GET)
+            .uri(format!("/api/tickets/{parent_id}/history?workspace=.."))
+            .body(Body::empty())
+            .unwrap();
+
+        let history_response = app.oneshot(history_request).await.unwrap();
+        assert_eq!(history_response.status(), StatusCode::OK);
+
+        let history_bytes = to_bytes(history_response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let history_payload: serde_json::Value =
+            serde_json::from_slice(&history_bytes).unwrap();
+        assert_eq!(history_payload["active_workspace"], "..");
+        assert_eq!(history_payload["ticket_ref"]["workspace"], "..");
+        assert_eq!(history_payload["ticket_ref"]["id"], parent_id.to_string());
     }
 }

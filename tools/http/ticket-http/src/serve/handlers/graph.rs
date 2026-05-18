@@ -16,6 +16,7 @@ use uuid::Uuid;
 use viewer_api::error::RequestIdExt;
 
 use crate::serve::AppState;
+use crate::serve::handlers::tickets::TicketRef;
 
 mod quality;
 mod traversal;
@@ -47,6 +48,7 @@ fn default_limit_edges() -> usize {
 #[derive(Serialize)]
 pub struct NodeItem {
     pub id: String,
+    pub ticket_ref: TicketRef,
     pub title: Option<String>,
     pub state: Option<String>,
     pub depth: usize,
@@ -60,6 +62,8 @@ pub struct NodeItem {
 pub struct EdgeItem {
     pub from: String,
     pub to: String,
+    pub from_ref: TicketRef,
+    pub to_ref: TicketRef,
     pub kind: String,
 }
 
@@ -77,6 +81,7 @@ pub struct SubgraphStats {
 #[derive(Serialize)]
 pub struct SubgraphResponse {
     pub request_id: String,
+    pub active_workspace: String,
     pub workspace: String,
     pub nodes: Vec<NodeItem>,
     pub edges: Vec<EdgeItem>,

@@ -13,7 +13,14 @@ use std::{
     },
 };
 
-use ticket_api::storage::store::TicketStore;
+use ticket_api::{
+    error::StorageError,
+    storage::{
+        indexed::IndexedTicket,
+        store::TicketStore,
+    },
+};
+use uuid::Uuid;
 
 /// A map from workspace name → lazily-opened `TicketStore`.
 pub struct WorkspaceRegistry {
@@ -25,6 +32,13 @@ pub struct WorkspaceRegistry {
     opening: Mutex<HashSet<String>>,
     /// Notifies waiters when a workspace open attempt completes.
     opening_cv: Condvar,
+}
+
+#[derive(Clone)]
+pub struct ResolvedIndexedTicket {
+    pub workspace: String,
+    pub store: Arc<TicketStore>,
+    pub ticket: IndexedTicket,
 }
 
 #[cfg(test)]
@@ -94,6 +108,7 @@ impl WorkspaceRegistry {
         let path = store.index_root.clone();
         let mut paths = HashMap::new();
         paths.insert("default".into(), path);
+        extend_related_paths(&mut paths, &store);
         let mut stores = HashMap::new();
         stores.insert("default".into(), store);
         Self {
@@ -109,6 +124,47 @@ impl WorkspaceRegistry {
         let mut names: Vec<_> = self.paths.keys().cloned().collect();
         names.sort();
         names
+    }
+
+    pub fn resolve_indexed_many(
+        &self,
+        active_workspace: &str,
+        ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, ResolvedIndexedTicket>, StorageError> {
+        let mut resolved = HashMap::new();
+        let mut remaining = ids.to_vec();
+        let mut workspace_names = self.workspace_names();
+        if let Some(index) = workspace_names
+            .iter()
+            .position(|workspace| workspace == active_workspace)
+        {
+            let active = workspace_names.remove(index);
+            workspace_names.insert(0, active);
+        }
+
+        for workspace in workspace_names {
+            if remaining.is_empty() {
+                break;
+            }
+
+            let Some(store) = self.get(&workspace) else {
+                continue;
+            };
+            let found = store.get_indexed_many(&remaining)?;
+            remaining.retain(|id| !found.contains_key(id));
+            for (id, ticket) in found {
+                if ticket.deleted {
+                    continue;
+                }
+                resolved.entry(id).or_insert_with(|| ResolvedIndexedTicket {
+                    workspace: workspace.clone(),
+                    store: Arc::clone(&store),
+                    ticket,
+                });
+            }
+        }
+
+        Ok(resolved)
     }
 
     /// Return `true` if a workspace with the given name is registered.
@@ -188,4 +244,82 @@ impl WorkspaceRegistry {
 
         result
     }
+}
+
+fn extend_related_paths(
+    paths: &mut HashMap<String, PathBuf>,
+    store: &TicketStore,
+) {
+    for (name, path) in discover_descendant_workspace_paths(store) {
+        paths.entry(name).or_insert(path);
+    }
+    for (name, path) in discover_ancestor_workspace_paths(store) {
+        paths.entry(name).or_insert(path);
+    }
+}
+
+fn discover_descendant_workspace_paths(
+    store: &TicketStore,
+) -> Vec<(String, PathBuf)> {
+    let Ok(scan_roots) = store.list_scan_roots() else {
+        return Vec::new();
+    };
+
+    scan_roots
+        .into_iter()
+        .filter_map(|root| {
+            let index_root = root.path.parent()?.to_path_buf();
+            if index_root == store.index_root {
+                return None;
+            }
+            Some((root.label, index_root))
+        })
+        .collect()
+}
+
+fn discover_ancestor_workspace_paths(
+    store: &TicketStore,
+) -> Vec<(String, PathBuf)> {
+    let active_workspace_root = workspace_root_for_store(store);
+
+    let mut current = active_workspace_root.parent();
+    let mut depth = 1usize;
+    let mut ancestors = Vec::new();
+
+    while let Some(dir) = current {
+        if let Some(candidate) = detect_store_root(dir) {
+            ancestors.push((ancestor_label(depth), candidate));
+        }
+        current = dir.parent();
+        depth += 1;
+    }
+
+    ancestors
+}
+
+fn workspace_root_for_store(store: &TicketStore) -> &std::path::Path {
+    match store.index_root.file_name().and_then(|name| name.to_str()) {
+        Some(".ticket") => store.index_root.parent().unwrap_or(&store.index_root),
+        _ => &store.index_root,
+    }
+}
+
+fn detect_store_root(dir: &std::path::Path) -> Option<PathBuf> {
+    if dir.join("tickets.db").is_file() {
+        return Some(dir.to_path_buf());
+    }
+
+    let hidden = dir.join(".ticket");
+    if hidden.join("tickets.db").is_file() {
+        return Some(hidden);
+    }
+
+    None
+}
+
+fn ancestor_label(depth: usize) -> String {
+    std::iter::repeat("..")
+        .take(depth)
+        .collect::<Vec<_>>()
+        .join("/")
 }

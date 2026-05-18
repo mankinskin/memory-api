@@ -117,6 +117,8 @@ async fn revert_ticket_restores_historical_revision() {
         serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["request_id"], "rid-revert");
     assert_eq!(payload["workspace"], "default");
+    assert_eq!(payload["active_workspace"], "default");
+    assert_eq!(payload["ticket"]["ticket_ref"]["workspace"], "default");
     assert_eq!(payload["ticket"]["fields"]["state"], "new");
     assert_eq!(payload["ticket"]["fields"]["title"], "Revert me");
 }
@@ -243,6 +245,8 @@ async fn delete_ticket_marks_as_deleted() {
     let payload: serde_json::Value =
         serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["id"], id.to_string());
+    assert_eq!(payload["ticket_ref"]["workspace"], "default");
+    assert_eq!(payload["ticket_ref"]["id"], id.to_string());
 
     let indexed = store
         .get_indexed(&id)
