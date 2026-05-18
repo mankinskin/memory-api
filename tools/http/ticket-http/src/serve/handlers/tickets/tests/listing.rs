@@ -83,6 +83,230 @@ async fn search_list_uses_persisted_updated_at() {
 }
 
 #[tokio::test]
+async fn search_list_matches_description_body_content() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = make_store(dir.path());
+
+    let matching_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("title-only decoy"),
+            Some("ready"),
+            BTreeMap::new(),
+            None,
+            Some("body-only-needle search phrase lives in description"),
+        )
+        .expect("create matching ticket");
+
+    store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("another ticket"),
+            Some("ready"),
+            BTreeMap::new(),
+            None,
+            Some("different body content"),
+        )
+        .expect("create non-matching ticket");
+
+    let state = make_state(Arc::clone(&store));
+
+    let response = list_tickets(
+        State(state),
+        Extension(RequestIdExt("rid-body-search".to_string())),
+        Query(WorkspaceParam {
+            workspace: "default".to_string(),
+            state: None,
+            query: Some("body-only-needle".to_string()),
+            limit: Some(10),
+            cursor: None,
+        }),
+    )
+    .await;
+
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("read body");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json body");
+    let items = payload["items"].as_array().expect("items array");
+    let matching_id = matching_id.to_string();
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["id"].as_str(), Some(matching_id.as_str()));
+}
+
+#[tokio::test]
+async fn search_list_matches_substring_partial_terms() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = make_store(dir.path());
+
+    let matching_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Firecracker control plane foundation"),
+            Some("ready"),
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .expect("create matching ticket");
+
+    store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Crackle runtime notes"),
+            Some("ready"),
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .expect("create non-matching ticket");
+
+    let state = make_state(Arc::clone(&store));
+
+    let response = list_tickets(
+        State(state),
+        Extension(RequestIdExt("rid-substring-search".to_string())),
+        Query(WorkspaceParam {
+            workspace: "default".to_string(),
+            state: None,
+            query: Some("cracker".to_string()),
+            limit: Some(10),
+            cursor: None,
+        }),
+    )
+    .await;
+
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("read body");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json body");
+    let items = payload["items"].as_array().expect("items array");
+    let matching_id = matching_id.to_string();
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["id"].as_str(), Some(matching_id.as_str()));
+}
+
+#[tokio::test]
+async fn search_list_supports_id_field_predicates() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = make_store(dir.path());
+
+    let matching_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("field predicate target"),
+            Some("ready"),
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .expect("create matching ticket");
+
+    store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("another ticket"),
+            Some("ready"),
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .expect("create non-matching ticket");
+
+    let state = make_state(Arc::clone(&store));
+
+    let response = list_tickets(
+        State(state),
+        Extension(RequestIdExt("rid-id-search".to_string())),
+        Query(WorkspaceParam {
+            workspace: "default".to_string(),
+            state: None,
+            query: Some(format!("id:{matching_id}")),
+            limit: Some(10),
+            cursor: None,
+        }),
+    )
+    .await;
+
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("read body");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json body");
+    let items = payload["items"].as_array().expect("items array");
+    let matching_id = matching_id.to_string();
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["id"].as_str(), Some(matching_id.as_str()));
+}
+
+#[tokio::test]
+async fn search_list_supports_title_field_substring_predicates() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = make_store(dir.path());
+
+    let matching_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Firecracker control plane foundation"),
+            Some("ready"),
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .expect("create matching ticket");
+
+    store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Sandbox notes"),
+            Some("ready"),
+            BTreeMap::new(),
+            None,
+            Some("firecracker only appears in the description"),
+        )
+        .expect("create body-only decoy");
+
+    let state = make_state(Arc::clone(&store));
+
+    let response = list_tickets(
+        State(state),
+        Extension(RequestIdExt("rid-title-substring-search".to_string())),
+        Query(WorkspaceParam {
+            workspace: "default".to_string(),
+            state: None,
+            query: Some("title:cracker".to_string()),
+            limit: Some(10),
+            cursor: None,
+        }),
+    )
+    .await;
+
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("read body");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json body");
+    let items = payload["items"].as_array().expect("items array");
+    let matching_id = matching_id.to_string();
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["id"].as_str(), Some(matching_id.as_str()));
+}
+
+#[tokio::test]
 async fn state_only_list_filters_items() {
     let dir = tempfile::tempdir().expect("tempdir");
     let store = make_store(dir.path());

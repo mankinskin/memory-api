@@ -370,16 +370,92 @@ fn full_text_query(
     fields: &SearchFields,
     index: &Index,
 ) -> Box<dyn tantivy::query::Query> {
-    use tantivy::query::AllQuery;
+    use tantivy::query::{
+        AllQuery,
+        BooleanQuery,
+        Occur,
+    };
 
     let mut query_parser = tantivy::query::QueryParser::for_index(
         index,
         vec![fields.title, fields.body],
     );
     query_parser.set_conjunction_by_default();
-    match query_parser.parse_query(text) {
-        Ok(query) => query,
-        Err(_) => Box::new(AllQuery),
+    let exact_query = query_parser.parse_query(text).ok();
+    let substring_query = substring_query_for_fields(
+        text,
+        &[fields.title, fields.body],
+    );
+
+    match (exact_query, substring_query) {
+        (Some(exact_query), Some(substring_query)) => Box::new(
+            BooleanQuery::new(vec![
+                (Occur::Should, exact_query),
+                (Occur::Should, substring_query),
+            ]),
+        ),
+        (Some(exact_query), None) => exact_query,
+        (None, Some(substring_query)) => substring_query,
+        (None, None) => Box::new(AllQuery),
+    }
+}
+
+fn substring_query_for_fields(
+    text: &str,
+    fields: &[Field],
+) -> Option<Box<dyn tantivy::query::Query>> {
+    use tantivy::query::{
+        BooleanQuery,
+        Occur,
+        RegexQuery,
+    };
+
+    let needle = text.trim().to_ascii_lowercase();
+    if needle.is_empty() || needle.chars().any(char::is_whitespace) {
+        return None;
+    }
+
+    let pattern = format!(".*{}.*", regex::escape(&needle));
+
+    let clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> =
+        fields
+            .iter()
+            .copied()
+            .filter_map(|field| {
+                RegexQuery::from_pattern(&pattern, field)
+                    .ok()
+                    .map(|query| {
+                        (
+                            Occur::Should,
+                            Box::new(query) as Box<dyn tantivy::query::Query>,
+                        )
+                    })
+            })
+            .collect();
+
+    if clauses.is_empty() {
+        None
+    } else {
+        Some(Box::new(BooleanQuery::new(clauses)))
+    }
+}
+
+fn title_field_query(
+    text: &str,
+    fields: &SearchFields,
+) -> Box<dyn tantivy::query::Query> {
+    use tantivy::query::{
+        BooleanQuery,
+        Occur,
+    };
+
+    let exact_query = term_query(fields.title, text);
+    match substring_query_for_fields(text, &[fields.title]) {
+        Some(substring_query) => Box::new(BooleanQuery::new(vec![
+            (Occur::Should, exact_query),
+            (Occur::Should, substring_query),
+        ])),
+        None => exact_query,
     }
 }
 
@@ -395,6 +471,9 @@ fn field_expr_to_query(
     };
 
     match value {
+        ValueExpr::Text(text) if key == "title" => {
+            title_field_query(text, fields)
+        },
         ValueExpr::Text(text) => term_query(field, text),
         ValueExpr::Range { .. } => Box::new(AllQuery),
     }
