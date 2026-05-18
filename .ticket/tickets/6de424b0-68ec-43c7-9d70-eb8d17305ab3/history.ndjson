@@ -1,0 +1,1 @@
+{"rev":1,"ts":"2026-05-18T10:56:19.200991900+00:00","fields":{"component":"ticket-vscode","priority":"high","risk_level":"medium","state":"ready","title":"[ticket-vscode] Validate Rust/WASM parity across desktop, web, and remote hosts","type":"tracker-improvement"}}

@@ -1,0 +1,8 @@
+id = "a592900c-f513-4ec2-8dd2-53dbd04aac7b"
+created_at = "2026-05-18T10:54:32.059113900+00:00"
+title = "ticket-vscode Rust/WASM port"
+state = "draft"
+component = "ticket-vscode"
+scope = "internal"
+slug = "ticket-vscode/rust-wasm-port"
+type = "specification"

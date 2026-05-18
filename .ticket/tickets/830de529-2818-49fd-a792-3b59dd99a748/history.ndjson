@@ -1,0 +1,4 @@
+{"rev":1,"ts":"2026-05-18T20:32:02.517816+00:00","fields":{"state":"ready","title":"[spec-api] Normalize spec create target roots into .spec/specs","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-05-18T20:32:18.831966100+00:00","fields":{"state":"in-implementation","title":"[spec-api] Normalize spec create target roots into .spec/specs","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-05-18T20:41:48.929632600+00:00","fields":{"state":"in-review","title":"[spec-api] Normalize spec create target roots into .spec/specs","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-05-18T20:41:51.177260200+00:00","fields":{"state":"done","title":"[spec-api] Normalize spec create target roots into .spec/specs","type":"tracker-improvement"}}

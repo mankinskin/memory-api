@@ -1,0 +1,5 @@
+id = "830de529-2818-49fd-a792-3b59dd99a748"
+created_at = "2026-05-18T20:32:02.403332600+00:00"
+title = "[spec-api] Normalize spec create target roots into .spec/specs"
+state = "done"
+type = "tracker-improvement"

@@ -261,6 +261,8 @@ impl EntityStore {
 
         let indexed = match self.index.get_ticket(&entry.id)? {
             Some(mut existing) => {
+                existing.path = entry.path.clone();
+                existing.type_id = type_id.clone();
                 existing.updated_at = now;
                 existing.title = title.clone();
                 existing.state = state.clone();

@@ -1,0 +1,1 @@
+{"rev":1,"ts":"2026-05-18T10:56:16.596152100+00:00","fields":{"component":"ticket-vscode","priority":"high","risk_level":"high","state":"ready","title":"[ticket-vscode] Extract portable Rust core for ticket/domain logic","type":"tracker-improvement"}}

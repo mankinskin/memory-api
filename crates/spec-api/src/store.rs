@@ -1,7 +1,10 @@
 use std::{
     collections::BTreeMap,
     fs,
-    path::Path,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
 use chrono::Utc;
@@ -48,6 +51,7 @@ use self::helpers::{
 
 const SPEC_MANIFEST_FILE: &str = "spec.toml";
 const SPEC_LOCK_FILE: &str = ".spec-lock";
+const SPEC_INDEX_DIR: &str = ".spec";
 
 pub struct SpecStore {
     inner: EntityStore,
@@ -56,7 +60,8 @@ pub struct SpecStore {
 
 impl SpecStore {
     pub fn open(index_root: &Path) -> Result<Self, SpecError> {
-        let index_root = workspace::resolve_store_root_from(index_root, ".spec");
+        let index_root =
+            workspace::resolve_store_root_from(index_root, SPEC_INDEX_DIR);
         let fs = EntityFs::new(SPEC_MANIFEST_FILE, SPEC_LOCK_FILE);
         let registry = crate::default_schema::spec_schema_registry();
         let inner = EntityStore::open_with(&index_root, fs, registry)?;
@@ -149,17 +154,7 @@ impl SpecStore {
             }
         }
 
-        let root = match target_root {
-            Some(path) => path.to_path_buf(),
-            None => {
-                let roots = self.inner.list_scan_roots()?;
-                roots
-                    .into_iter()
-                    .next()
-                    .map(|root| root.path)
-                    .unwrap_or_else(|| self.inner.index_root.join("specs"))
-            },
-        };
+        let root = self.resolve_target_root(target_root)?;
         fs::create_dir_all(&root).map_err(StorageError::Io)?;
 
         let entity = spec_to_entity(manifest);
@@ -208,6 +203,53 @@ impl SpecStore {
                 .append_history(&folder, entity.extra.clone(), None);
 
         Ok(manifest.id)
+    }
+
+    fn resolve_target_root(
+        &self,
+        target_root: Option<&Path>,
+    ) -> Result<PathBuf, StorageError> {
+        let roots = self.inner.list_scan_roots()?;
+
+        let Some(target_root) = target_root else {
+            return Ok(roots
+                .into_iter()
+                .next()
+                .map(|root| root.path)
+                .unwrap_or_else(|| self.inner.index_root.join("specs")));
+        };
+
+        let requested = if target_root.is_dir() {
+            target_root.to_path_buf()
+        } else {
+            target_root
+                .parent()
+                .unwrap_or(target_root)
+                .to_path_buf()
+        };
+
+        if let Some(root) = roots
+            .iter()
+            .find(|root| root.path == requested)
+            .map(|root| root.path.clone())
+        {
+            return Ok(root);
+        }
+
+        let store_root =
+            workspace::resolve_store_root_from(target_root, SPEC_INDEX_DIR);
+        if store_root
+            .file_name()
+            .and_then(|name| name.to_str())
+            == Some(SPEC_INDEX_DIR)
+        {
+            return Ok(store_root.join("specs"));
+        }
+
+        Err(StorageError::Other(format!(
+            "invalid spec root '{}': expected a registered scan root, a workspace root containing .spec, the .spec store itself, or a path inside that store",
+            target_root.display()
+        )))
     }
 
     pub fn get(
