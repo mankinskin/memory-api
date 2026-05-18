@@ -1,49 +1,62 @@
 # Problem
 
-The ticket-viewer and ticket-vscode frontends both assume that a single selected workspace owns every result returned from the frontend-facing ticket endpoints.
+The ticket-viewer and ticket-vscode frontends still model `workspace` as one route or query string that owns every returned record. On the server side both `ticket-viewer` and `ticket-http` resolve one local store from cwd or `--index-root` and register it as `default`, which then leaks into the SPA route as `/workspace/default`.
 
-That assumption breaks as soon as we want to show child-workspace tickets in one UI. The current response shapes only carry `workspace` at the top level of the response, while the individual ticket summaries, descriptions, and related records are still keyed by bare ticket id or are otherwise interpreted as belonging to the currently selected workspace.
+That produces two distinct problems:
 
-We need a frontend endpoint redesign that can aggregate child-workspace results without losing reversibility: every returned ticket-like record must be mappable back to one concrete `(workspace, ticket id)` pair.
+- the visible URL is misleading because `default` is not the real workspace identity; it is a registry alias for the server-selected store
+- mixed child-workspace results are not reversible because ticket-like items do not carry origin workspace
 
-# Current frontend endpoint surface
+The current contract is not sufficient for tickets, descriptions, history, file lists, assets, graph nodes, edge endpoints, SSE updates, or mutation follow-up flows when child workspaces are included.
 
-The current frontend code paths use these workspace-scoped endpoints:
+# Relevant code evidence
 
-- `GET /api/workspaces`
-- `GET /api/tickets?workspace=...&state=...&query=...&limit=...`
-- `GET /api/tickets/{id}?workspace=...`
-- `GET /api/tickets/{id}/description?workspace=...`
-- `GET /api/edges?workspace=...`
-- `GET /api/schema?workspace=...`
-- `GET /api/graph/subgraph?workspace=...&root=...&depth=...`
-- `GET /api/stream?workspace=...`
+- `memory-viewers/ticket-viewer/src/main.rs` parses `--workspace` but still resolves the local store with `ticket_api::workspace::resolve_workspace()` and registers it via `WorkspaceRegistry::single_opened(...)`.
+- `memory-viewers/memory-api/tools/http/ticket-http/src/main.rs` does the same for standalone serve mode.
+- `memory-viewers/ticket-viewer/frontend/dioxus/src/routes.rs` redirects `/` to `/workspace/default`.
+- `memory-viewers/ticket-viewer/frontend/dioxus/src/api.rs` builds ticket, detail, history, files, asset, graph, and stream calls around one `workspace` query parameter.
+- `memory-viewers/ticket-viewer/frontend/dioxus/src/types.rs` and `memory-viewers/memory-api/tools/ticket-vscode/src/api.ts` keep `workspace` on the response envelope while individual ticket records remain bare ids.
+- `memory-viewers/memory-api/tools/http/ticket-http/src/serve/handlers/tickets/types.rs` and `memory-viewers/memory-api/tools/http/ticket-http/src/serve/handlers/graph.rs` return ticket and graph payloads without per-item workspace provenance.
 
-Relevant code evidence:
+# Goal
 
-- `memory-viewers/ticket-viewer/frontend/dioxus/src/types.rs` keeps `workspace` on the response envelope, not on `TicketSummary` or `TicketDetail`.
-- `memory-viewers/ticket-viewer/frontend/dioxus/src/api.rs` always builds list/get URLs around one `workspace` query parameter.
-- `memory-viewers/memory-api/tools/ticket-vscode/src/api.ts` returns `TicketsResponse.workspace` with `TicketSummary` items that do not carry workspace identity.
-- `memory-viewers/ticket-viewer/src/main.rs` still opens `WorkspaceRegistry::single_opened(...)`, which reinforces the single-workspace frontend contract.
+Define the frontend/backend contract for server-selected workspace context plus per-item workspace ownership so ticket-viewer and ticket-vscode can consume child-workspace tickets without guessing.
 
-# Redesign goals
+# Contract decisions required
 
-Define the frontend endpoint migration for child-workspace ticket integration.
+1. Distinguish `server-selected active workspace context` from `origin workspace of a returned ticket reference`.
+2. Remove the requirement that the primary viewer route encode `/workspace/default`; define the replacement route and deep-link model for root navigation and child-ticket deep links.
+3. Define a reversible ticket reference shape, for example `{ workspace, id }`, for every ticket-like payload.
+4. Define request semantics for selecting scope:
+   - active server workspace resolved from cwd or start parameters
+   - optional child-workspace inclusion
+   - optional explicit include or exclude lists
+   - any reverse-direction ancestor dependency expansion needed for graph or dependency views
+5. Define response changes for:
+   - `/api/workspaces`
+   - `/api/tickets`
+   - `/api/tickets/{id}`
+   - `/api/tickets/{id}/description`
+   - `/api/tickets/{id}/history`
+   - `/api/tickets/{id}/files`
+   - `/api/tickets/{id}/asset`
+   - `/api/edges`
+   - `/api/schema` and `/api/schema/{type_id}`
+   - `/api/graph/subgraph`
+   - `/api/stream`
+   - any mutation response that echoes a ticket reference after edit, undo, revert, close, or cancel
+6. Define a backward-compatible migration strategy for existing callers that still operate on one local store.
 
-The redesign should:
+# Acceptance Criteria
 
-- make the returned identity reversible, for example by introducing an explicit per-item ticket reference such as `{ workspace, id }`
-- define which list/get endpoints gain per-item workspace identity and how supporting responses (description, graph, edges, schema, stream) should represent origin workspace
-- specify how clients ask for child-workspace tickets, including default behavior and optional include/exclude workspace selectors
-- stay backward-compatible long enough for ticket-viewer and ticket-vscode to migrate cleanly
-
-# Acceptance criteria
-
-- The current frontend endpoint inventory is documented for ticket-viewer and ticket-vscode, with the existing single-workspace assumptions called out explicitly.
-- The redesign specifies a reversible per-item ticket identity for aggregated child-workspace results.
-- The redesign specifies request semantics for explicit workspace scope plus include/exclude child workspaces, with backward-compatible defaults.
-- The redesign identifies the migration expectations for ticket-viewer and ticket-vscode, including how routes and deep links can still resolve to `/workspace/{workspace}/ticket/{id}` or an equivalent workspace-aware destination.
+- The current frontend endpoint inventory explicitly covers list, detail, description, history, files, asset, graph, stream, and mutation follow-up flows and calls out the fake `/workspace/default` route as legacy behavior to remove.
+- The redesign specifies separate concepts for server-selected workspace context and per-item origin workspace.
+- The redesign defines a reversible ticket reference contract for aggregated child-workspace results and for follow-up asset, history, and edit requests.
+- The redesign defines request semantics for child-workspace inclusion, explicit workspace filters, and any reverse-direction ancestor dependency expansion.
+- The redesign defines the root-route and deep-link migration so ticket-viewer no longer needs to expose `/workspace/default`, while still supporting stable links to child-owned tickets.
+- The redesign identifies migration expectations for ticket-viewer and ticket-vscode, including any compatibility window or transitional response fields.
 
 # Notes
 
-Existing completed workspace-selection work is prior art, not a replacement for this redesign. The key gap here is item-level workspace identity in frontend-facing list/get responses, not the existence of a single workspace picker.
+- `80b4b77f` is prior art for workspace picking and auth; it does not solve per-item workspace provenance.
+- `cccf5d99` is an unrelated explorer filter bug and should not block this design ticket.
