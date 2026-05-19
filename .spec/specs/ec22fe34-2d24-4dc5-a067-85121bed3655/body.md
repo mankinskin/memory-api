@@ -28,13 +28,14 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - `ticket board show` must expose at least 10 `Next Up` recommendations when at least 10 candidates exist.
 - `ticket next` and `ticket-mcp` `next_tickets` must not embed a second board snapshot; `board show` remains the single board surface, while `next` surfaces only candidate data plus board-aware exclusions or warnings when relevant.
 - `ticket next`, `ticket board show` recommendation JSON, and `ticket-mcp` `next_tickets` items must surface the derived numeric `dependees` field.
-- The CLI `ticket board show` human `Next Up` table must print the ordering keys that explain the current ranking: state, priority, dependees, and created_at.
+- The CLI `ticket board show` human `Next Up` section must render each recommendation as a compact labeled card that keeps all surfaced recommendation keys while prioritizing rank, short ticket id, and title.
 - Tool descriptions and user-facing contract text must describe the actual ordering keys.
 
 ### Compatibility
 
 - Existing board-aware exclusion behavior stays unchanged.
 - Board-aware warnings and `excluded_by_board` metadata may remain on `next` surfaces, but full board load/state belongs to `board show`.
+- Human-readable `ticket board show` output must stop after the board-specific dashboard instead of appending a second raw structured dump; `--json` remains the full machine-readable payload surface.
 - Existing state and priority ranking stay ahead of `dependees`, chronology, and title ordering.
 
 ## Acceptance criteria
@@ -44,7 +45,8 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - `ticket board show` returns 10 `recommended_next` entries when at least 10 candidates are available.
 - `ticket-mcp` `next_tickets` returns higher-`dependees` tickets ahead of lower-`dependees` tickets when state and priority are equal, even when the lower-`dependees` ticket is newer.
 - `ticket next`, `ticket board show`, and `ticket-mcp` `next_tickets` surface the numeric `dependees` field for each recommended item.
-- `ticket board show` recommendation JSON preserves `created_at`, and the CLI `Next Up` table prints both `dependees` and `created_at` for each recommended ticket.
+- `ticket board show` recommendation JSON preserves `created_at`, and the CLI `Next Up` cards print all recommendation keys while formatting `created_at` as a compact human timestamp that includes the year.
+- Default non-JSON `ticket board show` output does not append the generic structured `[recommended_next]` dump after the board-specific human renderer.
 - `ticket next` and `ticket-mcp` `next_tickets` do not return a top-level `board` snapshot field.
 - When state, priority, `dependees`, and creation timestamp are equal, the ordering falls back to title order.
 
@@ -52,8 +54,10 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 
 - Tracking ticket: `.ticket/tickets/2d85467b-23a3-4a70-a376-70ef5370d9f8`
 - Tracking ticket: `.ticket/tickets/77629631-8076-4fca-9640-316583ff290c`
+- Tracking ticket: `.ticket/tickets/11450369-0d45-4922-988f-49bc88fd4079`
 - Updated interface contract text: `tools/mcp/ticket-mcp/src/server.rs`
 - Updated CLI contract text: `tools/cli/ticket-cli/src/cli.rs`
+- Updated CLI human-output serializer: `tools/cli/ticket-cli/src/cli/human_output.rs`
 - Updated CLI board renderer: `tools/cli/ticket-cli/src/cli/commands/board/render.rs`
 
 ## Validation
@@ -62,4 +66,5 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - `cargo test -p ticket-mcp dependees -- --nocapture`
 - `cargo test -p ticket-cli next_and_board_prefer_more_dependees_before_newer_tickets -- --nocapture`
 - `cargo test -p ticket-cli board_show_lists_ten_recommendations_when_available -- --nocapture`
+- `cargo test -p ticket-cli board_show_text_output_stops_after_dashboard -- --nocapture`
 - `spec refs ec22fe34 validate --json --workspace-root .`

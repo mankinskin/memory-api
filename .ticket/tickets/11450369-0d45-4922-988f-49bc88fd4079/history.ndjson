@@ -1,0 +1,7 @@
+{"rev":1,"ts":"2026-05-19T12:45:21.213604800+00:00","fields":{"state":"new","title":"[ticket-cli] Render board show recommendations as pretty cards","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-05-19T12:46:03.678350900+00:00","fields":{"component":"ticket-api","priority":"high","state":"new","title":"[ticket-cli] Render board show recommendations as pretty cards","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-05-19T12:46:04.186633500+00:00","fields":{"component":"ticket-api","priority":"high","state":"ready","title":"[ticket-cli] Render board show recommendations as pretty cards","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-05-19T12:46:04.904282800+00:00","fields":{"component":"ticket-api","priority":"high","state":"in-implementation","title":"[ticket-cli] Render board show recommendations as pretty cards","type":"tracker-improvement"}}
+{"rev":5,"ts":"2026-05-19T12:52:51.923230700+00:00","fields":{"component":"ticket-api","priority":"high","state":"in-review","title":"[ticket-cli] Render board show recommendations as pretty cards","type":"tracker-improvement"}}
+{"rev":6,"ts":"2026-05-19T15:16:52.523450400+00:00","fields":{"component":"ticket-api","priority":"high","state":"in-implementation","title":"[ticket-cli] Render board show recommendations as pretty cards","type":"tracker-improvement"}}
+{"rev":7,"ts":"2026-05-19T15:19:03.560511700+00:00","fields":{"component":"ticket-api","priority":"high","state":"in-review","title":"[ticket-cli] Render board show recommendations as pretty cards","type":"tracker-improvement"}}

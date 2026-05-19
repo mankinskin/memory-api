@@ -2,6 +2,8 @@ use std::fmt::Write as FmtWrite;
 
 use chrono::{
     DateTime,
+    Datelike,
+    Timelike,
     Utc,
 };
 use serde_json::{
@@ -224,25 +226,37 @@ fn write_next_up(
         return;
     }
 
-    let _ = writeln!(
-        out,
-        "  {:<4}  {:<8}  {:<26}  {:<12}  {:<10}  {:>9}  {:>4}  {:<35}",
-        "RANK", "TICKET", "TITLE", "STATE", "PRIORITY", "DEPENDEES", "DEPS", "CREATED_AT"
-    );
-    let _ = writeln!(out, "  {}", "-".repeat(126));
+    for (index, recommendation) in recommended_next.iter().enumerate() {
+        if index > 0 {
+            let _ = writeln!(out);
+        } else {
+            let _ = writeln!(out);
+        }
 
-    for recommendation in recommended_next {
         let _ = writeln!(
             out,
-            "  {:<4}  {:<8}  {:<26}  {:<12}  {:<10}  {:>9}  {:>4}  {:<35}",
+            "  #{}  {}  {}",
             recommendation.rank,
             short_ticket_value(&recommendation.ticket_id),
-            truncate_field(&recommendation.title, 26),
-            truncate_field(recommendation.state.as_deref().unwrap_or("-"), 12),
-            truncate_field(&recommendation.priority, 10),
+            recommendation.title,
+        );
+        let _ = writeln!(
+            out,
+            "  state: {}  priority: {}  dependees: {}  dependency_count: {}",
+            recommendation.state.as_deref().unwrap_or("-"),
+            recommendation.priority,
             recommendation.dependees,
             recommendation.dependency_count,
-            &recommendation.created_at,
+        );
+        let _ = writeln!(
+            out,
+            "  created_at: {}",
+            format_pretty_created_at(&recommendation.created_at),
+        );
+        let _ = writeln!(
+            out,
+            "  ticket_id: {}",
+            recommendation.ticket_id,
         );
     }
 }
@@ -384,6 +398,23 @@ fn short_ticket_id(ticket_id: &Uuid) -> String {
 
 fn short_ticket_value(ticket_id: &str) -> String {
     ticket_id.chars().take(8).collect()
+}
+
+fn format_pretty_created_at(created_at: &str) -> String {
+    let Ok(timestamp) = DateTime::parse_from_rfc3339(created_at) else {
+        return created_at.to_string();
+    };
+
+    let timestamp = timestamp.with_timezone(&Utc);
+    let month = timestamp.format("%b");
+
+    format!(
+        "{month} {} {} {:02}:{:02} UTC",
+        timestamp.day(),
+        timestamp.year(),
+        timestamp.hour(),
+        timestamp.minute()
+    )
 }
 
 fn truncate_field(

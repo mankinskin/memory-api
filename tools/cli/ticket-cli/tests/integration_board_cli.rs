@@ -6,10 +6,36 @@
 
 mod common;
 
+use std::process::Command;
+
+use chrono::{
+    DateTime,
+    Datelike,
+    Timelike,
+    Utc,
+};
+
 use common::{
     Sandbox,
     create_ticket,
 };
+
+const TICKET: &str = env!("CARGO_BIN_EXE_ticket");
+
+fn format_expected_board_created_at(created_at: &str) -> String {
+    let timestamp = DateTime::parse_from_rfc3339(created_at)
+        .expect("board recommendation created_at should be RFC3339")
+        .with_timezone(&Utc);
+    let month = timestamp.format("%b");
+
+    format!(
+        "{month} {} {} {:02}:{:02} UTC",
+        timestamp.day(),
+        timestamp.year(),
+        timestamp.hour(),
+        timestamp.minute()
+    )
+}
 
 // ---------------------------------------------------------------------------
 // Full lifecycle: check-in → heartbeat → update-files → show → check-out → show
@@ -324,6 +350,37 @@ fn board_show_lists_ten_recommendations_when_available() {
 }
 
 #[test]
+fn board_show_text_output_stops_after_dashboard() {
+    let s = Sandbox::new();
+    let next_ticket = create_ticket(&s, "Top ticket for board suggestions");
+
+    let out = Command::new(TICKET)
+        .arg("--index-root")
+        .arg(&s.index_root)
+        .args(["board", "show"])
+        .output()
+        .expect("failed to run ticket board show");
+
+    assert!(
+        out.status.success(),
+        "board show should succeed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+
+    let stdout = String::from_utf8(out.stdout)
+        .expect("board show stdout should be valid UTF-8");
+    let short_ticket = &next_ticket[..8];
+
+    assert!(stdout.contains("Board: [0/5 active]"));
+    assert!(stdout.contains("Next Up:"));
+    assert!(stdout.contains(&format!("#1  {short_ticket}  Top ticket for board suggestions")));
+    assert!(stdout.contains(&format!("ticket_id: {next_ticket}")));
+    assert!(!stdout.contains("board_show ok"));
+    assert!(!stdout.contains("[recommended_next]"));
+}
+
+#[test]
 fn next_and_board_prefer_newer_tickets_before_older_ones() {
     let s = Sandbox::new();
     let older = create_ticket(&s, "Alpha older candidate");
@@ -402,13 +459,17 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
     let first_created_at = recommended[0]["created_at"]
         .as_str()
         .expect("board show should preserve created_at");
+    let pretty_created_at = format_expected_board_created_at(first_created_at);
     assert_eq!(recommended[1]["ticket_id"], newer_fewer_dependees.as_str());
     assert_eq!(recommended[1]["dependees"], 0);
 
     let human = show["human"].as_str().unwrap();
-    assert!(human.contains("DEPENDEES"));
-    assert!(human.contains("CREATED_AT"));
-    assert!(human.contains(first_created_at));
+    assert!(human.contains(&format!("#1  {}  Alpha older blocker", &older_more_dependees[..8])));
+    assert!(human.contains("state: ready  priority: high  dependees: 2  dependency_count: 0"));
+    assert!(human.contains(&format!("created_at: {pretty_created_at}")));
+    assert!(human.contains(&format!("ticket_id: {older_more_dependees}")));
+    assert!(!human.contains("DEPENDEES"));
+    assert!(!human.contains(first_created_at));
 }
 
 #[test]
