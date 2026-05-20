@@ -35,7 +35,10 @@ use ticket_api::{
 };
 use viewer_api::error::RequestIdExt;
 
-use crate::serve::AppState;
+use crate::serve::{
+    AppState,
+    error::task_join_err,
+};
 
 // ── Request / response types ──────────────────────────────────────────────────
 
@@ -374,6 +377,8 @@ pub async fn batch_tickets(
     let workspace = body.workspace;
     let commands = body.commands;
     let total = commands.len();
+    let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || {
         let mut results: Vec<Value> = Vec::with_capacity(total);
@@ -397,7 +402,7 @@ pub async fn batch_tickets(
                     return (
                         StatusCode::UNPROCESSABLE_ENTITY,
                         Json(json!({
-                            "request_id": rid.0,
+                            "request_id": task_request_id.clone(),
                             "workspace": workspace,
                             "status": "error",
                             "failed_at": index,
@@ -415,7 +420,7 @@ pub async fn batch_tickets(
         }
 
         Json(BatchResponse {
-            request_id: rid.0,
+            request_id: task_request_id.clone(),
             workspace,
             status: "ok",
             count: results.len(),
@@ -424,7 +429,7 @@ pub async fn batch_tickets(
         .into_response()
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "batch request"))
 }
 
 #[cfg(test)]

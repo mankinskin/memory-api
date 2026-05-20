@@ -25,10 +25,8 @@ impl TicketStore {
         &self,
         id: &Uuid,
     ) -> Result<(), StorageError> {
-        let indexed = self
-            .index
-            .get_ticket(id)?
-            .ok_or(StorageError::NotFound(*id))?;
+        let indexed =
+            self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
         if indexed.deleted {
             return Err(StorageError::NotFound(*id));
         }
@@ -50,7 +48,7 @@ impl TicketStore {
         saved_extra: BTreeMap<String, Value>,
         saved_state: Option<String>,
     ) -> Result<(), StorageError> {
-        let indexed = match self.index.get_ticket(id)? {
+        let indexed = match self.get_indexed(id)? {
             Some(ticket) => ticket,
             None => return Ok(()),
         };
@@ -77,10 +75,8 @@ impl TicketStore {
         &self,
         id: &Uuid,
     ) -> Result<Vec<HistoryRevision>, StorageError> {
-        let indexed = self
-            .index
-            .get_ticket(id)?
-            .ok_or(StorageError::NotFound(*id))?;
+        let indexed =
+            self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
         if indexed.deleted {
             return Err(StorageError::NotFound(*id));
         }
@@ -93,10 +89,8 @@ impl TicketStore {
         fields: BTreeMap<String, Value>,
         author: Option<&str>,
     ) -> Result<u64, StorageError> {
-        let indexed = self
-            .index
-            .get_ticket(id)?
-            .ok_or(StorageError::NotFound(*id))?;
+        let indexed =
+            self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
         if indexed.deleted {
             return Err(StorageError::NotFound(*id));
         }
@@ -143,10 +137,8 @@ impl TicketStore {
         target_state: &str,
         author: Option<&str>,
     ) -> Result<(TicketManifest, Vec<String>), StorageError> {
-        let indexed = self
-            .index
-            .get_ticket(id)?
-            .ok_or(StorageError::NotFound(*id))?;
+        let indexed =
+            self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
         if indexed.deleted {
             return Err(StorageError::NotFound(*id));
         }
@@ -197,10 +189,8 @@ impl TicketStore {
         source_path: &Path,
         asset_name: Option<&str>,
     ) -> Result<PathBuf, StorageError> {
-        let indexed = self
-            .index
-            .get_ticket(id)?
-            .ok_or(StorageError::NotFound(*id))?;
+        let indexed =
+            self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
         if indexed.deleted {
             return Err(StorageError::NotFound(*id));
         }
@@ -234,10 +224,8 @@ impl TicketStore {
         &self,
         id: &Uuid,
     ) -> Result<Vec<String>, StorageError> {
-        let indexed = self
-            .index
-            .get_ticket(id)?
-            .ok_or(StorageError::NotFound(*id))?;
+        let indexed =
+            self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
         if indexed.deleted {
             return Err(StorageError::NotFound(*id));
         }

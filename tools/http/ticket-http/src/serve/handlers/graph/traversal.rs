@@ -28,7 +28,10 @@ use uuid::Uuid;
 
 use crate::serve::{
     AppState,
-    error::storage_err,
+    error::{
+        storage_err,
+        task_join_err,
+    },
     handlers::tickets::{
         TicketRef,
         ticket_ref_from_indexed,
@@ -135,9 +138,12 @@ async fn run_graph_request(
     request_id: String,
     request: GraphRequest,
 ) -> Response {
-    tokio::task::spawn_blocking(move || bfs_graph(state, &request_id, request))
+    let task_request_id = request_id.clone();
+    tokio::task::spawn_blocking(move || bfs_graph(state, &task_request_id, request))
         .await
-        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        .unwrap_or_else(|_| {
+            task_join_err(&request_id, "graph traversal request")
+        })
 }
 
 fn bfs_graph(

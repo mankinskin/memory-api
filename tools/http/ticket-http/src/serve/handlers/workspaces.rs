@@ -22,13 +22,21 @@ pub struct WorkspacesResponse {
     pub workspaces: Vec<WorkspaceInfo>,
 }
 
-fn preferred_active_workspace(workspace_names: &[String]) -> String {
-    workspace_names
+fn preferred_active_workspace(
+    primary_workspace: &str,
+    workspace_names: &[String],
+) -> String {
+    if workspace_names
         .iter()
-        .find(|name| name.as_str() == "default")
+        .any(|name| name == primary_workspace)
+    {
+        return primary_workspace.to_string();
+    }
+
+    workspace_names
+        .first()
         .cloned()
-        .or_else(|| workspace_names.first().cloned())
-        .unwrap_or_else(|| "default".to_string())
+        .unwrap_or_else(|| primary_workspace.to_string())
 }
 
 pub async fn list_workspaces(
@@ -36,7 +44,10 @@ pub async fn list_workspaces(
     Extension(rid): Extension<RequestIdExt>,
 ) -> Json<WorkspacesResponse> {
     let workspace_names = state.registry.workspace_names();
-    let active_workspace = preferred_active_workspace(&workspace_names);
+    let active_workspace = preferred_active_workspace(
+        state.registry.primary_workspace_name(),
+        &workspace_names,
+    );
     let workspaces = workspace_names
         .into_iter()
         .map(|name| WorkspaceInfo { name })
@@ -54,14 +65,20 @@ mod tests {
     use super::preferred_active_workspace;
 
     #[test]
-    fn preferred_active_workspace_prefers_default() {
-        let workspaces = vec!["child".to_string(), "default".to_string()];
-        assert_eq!(preferred_active_workspace(&workspaces), "default");
+    fn preferred_active_workspace_prefers_primary_workspace() {
+        let workspaces = vec!["child".to_string(), "context-engine".to_string()];
+        assert_eq!(
+            preferred_active_workspace("context-engine", &workspaces),
+            "context-engine"
+        );
     }
 
     #[test]
     fn preferred_active_workspace_falls_back_to_first() {
-        let workspaces = vec!["child".to_string(), "../..".to_string()];
-        assert_eq!(preferred_active_workspace(&workspaces), "child");
+        let workspaces = vec!["child".to_string(), "memory-api".to_string()];
+        assert_eq!(
+            preferred_active_workspace("context-engine", &workspaces),
+            "child"
+        );
     }
 }

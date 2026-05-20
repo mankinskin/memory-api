@@ -41,6 +41,13 @@ fn make_router(dir: &std::path::Path) -> axum::Router {
     crate::serve::routes::build_router(state)
 }
 
+fn primary_workspace_name(dir: &std::path::Path) -> String {
+    crate::serve::registry::canonical_workspace_name_for_index_root(
+        dir,
+        "workspace",
+    )
+}
+
 async fn post_batch(
     app: axum::Router,
     body: serde_json::Value,
@@ -62,11 +69,12 @@ async fn post_batch(
 async fn batch_create_returns_ok() {
     let dir = tempfile::tempdir().unwrap();
     let app = make_router(dir.path());
+    let workspace = primary_workspace_name(dir.path());
 
     let (status, resp) = post_batch(
         app,
         json!({
-            "workspace": "default",
+            "workspace": workspace,
             "commands": [
                 {"op": "create", "type": "tracker-improvement", "title": "Batch A"},
                 {"op": "create", "type": "tracker-improvement", "title": "Batch B"},
@@ -90,11 +98,12 @@ async fn batch_create_returns_ok() {
 async fn batch_rolls_back_on_failure() {
     let dir = tempfile::tempdir().unwrap();
     let app = make_router(dir.path());
+    let workspace = primary_workspace_name(dir.path());
 
     let (status, resp) = post_batch(
         app,
         json!({
-            "workspace": "default",
+            "workspace": workspace,
             "commands": [
                 {"op": "create", "type": "tracker-improvement", "title": "Should be rolled back"},
                 {"op": "close", "id": "00000000-0000-0000-0000-000000000000"},
@@ -120,6 +129,7 @@ async fn batch_rolls_back_on_failure() {
 #[tokio::test]
 async fn batch_link_and_unlink() {
     let dir = tempfile::tempdir().unwrap();
+    let workspace = primary_workspace_name(dir.path());
 
     let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
     store
@@ -160,7 +170,7 @@ async fn batch_link_and_unlink() {
     let (status, resp) = post_batch(
         app,
         json!({
-            "workspace": "default",
+            "workspace": workspace,
             "commands": [
                 {"op": "link", "from": id_a.to_string(), "to": id_b.to_string(), "kind": "depends_on"},
                 {"op": "unlink", "from": id_a.to_string(), "to": id_b.to_string(), "kind": "depends_on"},
@@ -197,11 +207,12 @@ async fn batch_unknown_workspace_returns_404() {
 async fn batch_empty_commands_returns_ok() {
     let dir = tempfile::tempdir().unwrap();
     let app = make_router(dir.path());
+    let workspace = primary_workspace_name(dir.path());
 
     let (status, resp) = post_batch(
         app,
         json!({
-            "workspace": "default",
+            "workspace": workspace,
             "commands": []
         }),
     )

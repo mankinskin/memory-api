@@ -162,10 +162,11 @@ mod tests {
             Arc::new(WorkspaceRegistry::single(dir.path().to_path_buf())),
             Arc::new(StreamBroker::new()),
         );
+        let workspace = state.registry.primary_workspace_name().to_string();
 
-        let mut rx = state.broker.subscribe("default");
+        let mut rx = state.broker.subscribe(&workspace);
         let store = state
-            .ensure_workspace_runtime("default")
+            .ensure_workspace_runtime(&workspace)
             .expect("workspace should initialize");
 
         store
@@ -190,7 +191,7 @@ mod tests {
         let (_, event) = rx.recv().await.expect("should receive hook event");
         match event {
             SseEvent::TicketUpsert(payload) => {
-                assert_eq!(payload.workspace, "default");
+                assert_eq!(payload.workspace, workspace);
                 assert_eq!(
                     payload.ticket.title.as_deref(),
                     Some("runtime wiring regression")
@@ -222,6 +223,7 @@ mod tests {
 
     async fn post_create(
         app: axum::Router,
+        workspace: &str,
         auth_header: Option<&str>,
     ) -> axum::http::StatusCode {
         use axum::http::{
@@ -238,7 +240,7 @@ mod tests {
 
         let mut req = Request::builder()
             .method("POST")
-            .uri("/api/tickets?workspace=default")
+            .uri(format!("/api/tickets?workspace={workspace}"))
             .header(header::CONTENT_TYPE, "application/json");
 
         if let Some(val) = auth_header {
@@ -256,8 +258,9 @@ mod tests {
     async fn write_auth_rejects_when_token_missing() {
         let dir = tempfile::tempdir().expect("tempdir");
         let state = make_state_with_auth(dir.path(), "secret-token");
+        let workspace = state.registry.primary_workspace_name().to_string();
         let app = crate::serve::routes::build_router(state);
-        let status = post_create(app, None).await;
+        let status = post_create(app, &workspace, None).await;
         assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED);
     }
 
@@ -265,8 +268,9 @@ mod tests {
     async fn write_auth_rejects_invalid_token() {
         let dir = tempfile::tempdir().expect("tempdir");
         let state = make_state_with_auth(dir.path(), "secret-token");
+        let workspace = state.registry.primary_workspace_name().to_string();
         let app = crate::serve::routes::build_router(state);
-        let status = post_create(app, Some("Bearer wrong-token")).await;
+        let status = post_create(app, &workspace, Some("Bearer wrong-token")).await;
         assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED);
     }
 
@@ -274,8 +278,9 @@ mod tests {
     async fn write_auth_allows_valid_token() {
         let dir = tempfile::tempdir().expect("tempdir");
         let state = make_state_with_auth(dir.path(), "secret-token");
+        let workspace = state.registry.primary_workspace_name().to_string();
         let app = crate::serve::routes::build_router(state);
-        let status = post_create(app, Some("Bearer secret-token")).await;
+        let status = post_create(app, &workspace, Some("Bearer secret-token")).await;
         // 201 Created or 422 (validation) is acceptable — not 401
         assert_ne!(status, axum::http::StatusCode::UNAUTHORIZED);
     }
@@ -284,8 +289,9 @@ mod tests {
     async fn write_auth_passes_through_when_disabled() {
         let dir = tempfile::tempdir().expect("tempdir");
         let state = make_state_no_auth(dir.path());
+        let workspace = state.registry.primary_workspace_name().to_string();
         let app = crate::serve::routes::build_router(state);
-        let status = post_create(app, None).await;
+        let status = post_create(app, &workspace, None).await;
         assert_ne!(status, axum::http::StatusCode::UNAUTHORIZED);
     }
 }

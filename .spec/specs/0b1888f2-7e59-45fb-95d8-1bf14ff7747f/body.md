@@ -9,6 +9,8 @@ Today, nested workspace work mostly focuses on parent workspaces aggregating des
 - Workspace resolution opens one local ticket index root for the active workspace.
 - Ticket and graph views generally assume returned ticket-like records belong to the selected workspace unless a broader workspace-aware contract says otherwise.
 - Existing nested workspace planning emphasizes parent aggregation of child results, not child visibility into parent-owned dependency endpoints.
+- The current HTTP contract still leaks synthetic workspace aliases such as `default` and `..`, which forces frontend callers to guess when a name is a transport shortcut instead of a concrete owning workspace.
+- Storage and resolution failures can still collapse into opaque `500 internal_error` responses even when the backend already knows the missing workspace, ticket, or on-disk path that triggered the failure.
 
 ## Required behavior
 
@@ -23,10 +25,22 @@ Today, nested workspace work mostly focuses on parent workspaces aggregating des
 - Any dependency, graph, or related ticket surface that mixes child-owned and ancestor-owned records must return enough identity to map each entry back to one concrete `(workspace, ticket id)` pair.
 - Frontend consumers must be able to distinguish local and ancestor-owned dependency endpoints without guessing from route context.
 
+### Concrete workspace names
+
+- Every public workspace identifier emitted by ticket HTTP endpoints must use the owning workspace folder name.
+- Synthetic aliases such as `default`, `..`, and `../..` are not valid public workspace names for list, detail, history, graph, edge, or workspaces responses.
+- The primary workspace exposed by a single opened store must use that store's workspace folder name as `active_workspace`, and follow-up requests must reuse that exact name.
+
+### Actionable error envelopes
+
+- Workspace and ticket resolution failures must return typed error envelopes with actionable `code` and `message` fields instead of a generic `internal_error` body.
+- Missing on-disk ticket data, invalid workspace names, and similar resolution misses must not collapse into an opaque 500 when the backend can classify them as a concrete failure mode.
+- If a request still reaches a true internal failure path, the response must identify the failed operation and preserve the `request_id` so the caller can report the issue without guessing.
+
 ### Compatibility
 
 - Existing single-workspace behavior remains unchanged when no ancestor-child relationship is involved.
-- Backward-compatible defaults should remain available for callers that only need local workspace results.
+- Local-only callers still receive a single active workspace, but that workspace is identified by its concrete folder name rather than a synthetic alias.
 
 ## Traceability
 
@@ -38,4 +52,5 @@ Today, nested workspace work mostly focuses on parent workspaces aggregating des
 - A child workspace can resolve dependency endpoints owned by an ancestor workspace without dropping the relationship.
 - Mixed local and ancestor dependency results preserve explicit workspace ownership per returned ticket reference.
 - Dependency and graph consumers can render parent-owned endpoints from a child workspace without inferring ownership from the active route alone.
-- The cross-workspace behavior is documented with backward-compatible defaults for local-only callers.
+- Root and nested workspace endpoints expose folder-name workspace identifiers only; no public response emits `default` or relative-path aliases.
+- Resolution failures return actionable error envelopes that identify the concrete storage or workspace failure mode instead of a generic `internal_error` message.

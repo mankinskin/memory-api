@@ -16,6 +16,11 @@ use ticket_api::{
     },
 };
 
+use crate::serve::registry::{
+    canonical_workspace_name_for_index_root,
+    store_root_for_scan_root,
+};
+
 #[derive(Deserialize)]
 pub struct WorkspaceParam {
     pub workspace: String,
@@ -32,7 +37,7 @@ pub struct TicketIdParam {
     pub workspace: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct TicketRef {
     pub workspace: String,
     pub id: String,
@@ -244,7 +249,14 @@ fn owning_workspace_for_path(
         let depth = root.path.components().count();
         if depth > best_depth {
             best_depth = depth;
-            best_label = root.label;
+            best_label = store_root_for_scan_root(&root.path)
+                .map(|index_root| {
+                    canonical_workspace_name_for_index_root(
+                        &index_root,
+                        &root.label,
+                    )
+                })
+                .unwrap_or(root.label);
         }
     }
 

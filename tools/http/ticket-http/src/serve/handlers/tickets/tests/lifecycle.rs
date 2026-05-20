@@ -52,13 +52,14 @@ async fn close_ticket_fast_forwards_to_done() {
         .expect("create");
 
     let state = make_state(Arc::clone(&store));
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let response = close_ticket(
         State(state),
         Extension(RequestIdExt("rid-close".to_string())),
         Path(id),
         Query(MutationWorkspaceParam {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         HeaderMap::new(),
         Json(CloseTicketBody { target_state: None }),
@@ -96,13 +97,14 @@ async fn revert_ticket_restores_historical_revision() {
         .expect("update to ready");
 
     let state = make_state(Arc::clone(&store));
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let response = revert_ticket(
         State(state),
         Extension(RequestIdExt("rid-revert".to_string())),
         Path(id),
         Query(MutationWorkspaceParam {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         HeaderMap::new(),
         Json(RevertTicketBody { revision: 1 }),
@@ -116,9 +118,9 @@ async fn revert_ticket_restores_historical_revision() {
     let payload: serde_json::Value =
         serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["request_id"], "rid-revert");
-    assert_eq!(payload["workspace"], "default");
-    assert_eq!(payload["active_workspace"], "default");
-    assert_eq!(payload["ticket"]["ticket_ref"]["workspace"], "default");
+    assert_eq!(payload["workspace"], workspace);
+    assert_eq!(payload["active_workspace"], workspace.clone());
+    assert_eq!(payload["ticket"]["ticket_ref"]["workspace"], workspace);
     assert_eq!(payload["ticket"]["fields"]["state"], "new");
     assert_eq!(payload["ticket"]["fields"]["title"], "Revert me");
 }
@@ -141,13 +143,14 @@ async fn revert_ticket_returns_400_for_unknown_revision() {
         .expect("create");
 
     let state = make_state(Arc::clone(&store));
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let response = revert_ticket(
         State(state),
         Extension(RequestIdExt("rid".to_string())),
         Path(id),
         Query(MutationWorkspaceParam {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         HeaderMap::new(),
         Json(RevertTicketBody { revision: 999 }),
@@ -181,13 +184,14 @@ async fn cancel_ticket_transitions_to_cancelled_with_reason() {
         .expect("create");
 
     let state = make_state(Arc::clone(&store));
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let response = cancel_ticket(
         State(state),
         Extension(RequestIdExt("rid-cancel".to_string())),
         Path(id),
         Query(MutationWorkspaceParam {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         HeaderMap::new(),
         Json(CancelTicketBody {
@@ -227,13 +231,14 @@ async fn delete_ticket_marks_as_deleted() {
         .expect("create");
 
     let state = make_state(Arc::clone(&store));
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let response = delete_ticket(
         State(state.clone()),
         Extension(RequestIdExt("rid-delete".to_string())),
         Path(id),
         Query(MutationWorkspaceParam {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
     )
     .await;
@@ -245,7 +250,7 @@ async fn delete_ticket_marks_as_deleted() {
     let payload: serde_json::Value =
         serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["id"], id.to_string());
-    assert_eq!(payload["ticket_ref"]["workspace"], "default");
+    assert_eq!(payload["ticket_ref"]["workspace"], workspace);
     assert_eq!(payload["ticket_ref"]["id"], id.to_string());
 
     let indexed = store
@@ -259,13 +264,14 @@ async fn delete_ticket_marks_as_deleted() {
 async fn delete_nonexistent_ticket_returns_404_envelope() {
     let dir = tempfile::tempdir().expect("tempdir");
     let state = make_state(make_store(dir.path()));
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let response = delete_ticket(
         State(state),
         Extension(RequestIdExt("rid".to_string())),
         Path(Uuid::new_v4()),
         Query(MutationWorkspaceParam {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
     )
     .await;
@@ -276,6 +282,6 @@ async fn delete_nonexistent_ticket_returns_404_envelope() {
         .expect("body");
     let payload: serde_json::Value =
         serde_json::from_slice(&bytes).expect("json");
-    assert_eq!(payload["code"], "not_found");
+    assert_eq!(payload["code"], "ticket.not_found");
     assert!(payload.get("request_id").is_some());
 }

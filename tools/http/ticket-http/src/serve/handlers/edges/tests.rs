@@ -68,6 +68,7 @@ fn create_ticket(store: &TicketStore) -> Uuid {
 async fn add_edge_returns_201_with_edge_detail() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (state, store) = make_state_with_store(dir.path());
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let from_id = create_ticket(&store);
     let to_id = create_ticket(&store);
@@ -76,7 +77,7 @@ async fn add_edge_returns_201_with_edge_detail() {
         State(state),
         Extension(RequestIdExt("rid-add".to_string())),
         Query(EdgeMutationQuery {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         Json(EdgeBody {
             from_id,
@@ -95,13 +96,13 @@ async fn add_edge_returns_201_with_edge_detail() {
     let payload: serde_json::Value =
         serde_json::from_slice(&bytes).expect("json");
 
-    assert_eq!(payload["active_workspace"], "default");
-    assert_eq!(payload["workspace"], "default");
+    assert_eq!(payload["active_workspace"], workspace.clone());
+    assert_eq!(payload["workspace"], workspace.clone());
     assert_eq!(payload["edge"]["from"], from_id.to_string());
     assert_eq!(payload["edge"]["to"], to_id.to_string());
-    assert_eq!(payload["edge"]["from_ref"]["workspace"], "default");
+    assert_eq!(payload["edge"]["from_ref"]["workspace"], workspace.clone());
     assert_eq!(payload["edge"]["from_ref"]["id"], from_id.to_string());
-    assert_eq!(payload["edge"]["to_ref"]["workspace"], "default");
+    assert_eq!(payload["edge"]["to_ref"]["workspace"], workspace);
     assert_eq!(payload["edge"]["to_ref"]["id"], to_id.to_string());
     assert_eq!(payload["edge"]["kind"], "depends_on");
 }
@@ -110,6 +111,7 @@ async fn add_edge_returns_201_with_edge_detail() {
 async fn add_edge_self_referential_depends_on_returns_422() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (state, store) = make_state_with_store(dir.path());
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let id = create_ticket(&store);
 
@@ -117,7 +119,7 @@ async fn add_edge_self_referential_depends_on_returns_422() {
         State(state),
         Extension(RequestIdExt("rid-cycle".to_string())),
         Query(EdgeMutationQuery {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         Json(EdgeBody {
             from_id: id,
@@ -142,6 +144,7 @@ async fn add_edge_self_referential_depends_on_returns_422() {
 async fn remove_edge_returns_200_with_edge_detail() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (state, store) = make_state_with_store(dir.path());
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let from_id = create_ticket(&store);
     let to_id = create_ticket(&store);
@@ -150,7 +153,7 @@ async fn remove_edge_returns_200_with_edge_detail() {
         State(state.clone()),
         Extension(RequestIdExt("rid-setup".to_string())),
         Query(EdgeMutationQuery {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         Json(EdgeBody {
             from_id,
@@ -165,7 +168,7 @@ async fn remove_edge_returns_200_with_edge_detail() {
         State(state),
         Extension(RequestIdExt("rid-remove".to_string())),
         Query(EdgeMutationQuery {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         Json(EdgeBody {
             from_id,
@@ -183,12 +186,12 @@ async fn remove_edge_returns_200_with_edge_detail() {
         .expect("body");
     let payload: serde_json::Value =
         serde_json::from_slice(&bytes).expect("json");
-    assert_eq!(payload["active_workspace"], "default");
+    assert_eq!(payload["active_workspace"], workspace.clone());
     assert_eq!(payload["edge"]["from"], from_id.to_string());
     assert_eq!(payload["edge"]["to"], to_id.to_string());
-    assert_eq!(payload["edge"]["from_ref"]["workspace"], "default");
+    assert_eq!(payload["edge"]["from_ref"]["workspace"], workspace.clone());
     assert_eq!(payload["edge"]["from_ref"]["id"], from_id.to_string());
-    assert_eq!(payload["edge"]["to_ref"]["workspace"], "default");
+    assert_eq!(payload["edge"]["to_ref"]["workspace"], workspace);
     assert_eq!(payload["edge"]["to_ref"]["id"], to_id.to_string());
     assert_eq!(payload["edge"]["kind"], "depends_on");
 }
@@ -197,6 +200,7 @@ async fn remove_edge_returns_200_with_edge_detail() {
 async fn add_edge_cycle_detection_indirect() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (state, store) = make_state_with_store(dir.path());
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let a = create_ticket(&store);
     let b = create_ticket(&store);
@@ -205,7 +209,7 @@ async fn add_edge_cycle_detection_indirect() {
         State(state.clone()),
         Extension(RequestIdExt("rid-1".to_string())),
         Query(EdgeMutationQuery {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         Json(EdgeBody {
             from_id: b,
@@ -220,7 +224,7 @@ async fn add_edge_cycle_detection_indirect() {
         State(state),
         Extension(RequestIdExt("rid-2".to_string())),
         Query(EdgeMutationQuery {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         Json(EdgeBody {
             from_id: a,
@@ -238,8 +242,9 @@ async fn add_edge_cycle_detection_indirect() {
 async fn sse_edge_events_emitted_on_add_and_remove() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (state, store) = make_state_with_store(dir.path());
+    let workspace = state.registry.primary_workspace_name().to_string();
 
-    let mut rx = state.broker.subscribe("default");
+    let mut rx = state.broker.subscribe(&workspace);
     let from_id = create_ticket(&store);
     let to_id = create_ticket(&store);
 
@@ -247,7 +252,7 @@ async fn sse_edge_events_emitted_on_add_and_remove() {
         State(state.clone()),
         Extension(RequestIdExt("rid-sse-add".to_string())),
         Query(EdgeMutationQuery {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         Json(EdgeBody {
             from_id,
@@ -280,7 +285,7 @@ async fn sse_edge_events_emitted_on_add_and_remove() {
         State(state),
         Extension(RequestIdExt("rid-sse-rm".to_string())),
         Query(EdgeMutationQuery {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         Json(EdgeBody {
             from_id,

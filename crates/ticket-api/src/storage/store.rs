@@ -16,6 +16,7 @@ use uuid::Uuid;
 use crate::{
     error::StorageError,
     model::{
+        filesystem::TICKET_MANIFEST_FILE,
         schema_registry::SchemaRegistry,
         ticket::{
             TicketId,
@@ -103,6 +104,91 @@ impl TicketStore {
     fn hook(&self) -> Option<&dyn StoreHook> {
         self.hook.get().map(|b| b.as_ref())
     }
+
+    fn normalize_path(path: PathBuf) -> PathBuf {
+        #[cfg(windows)]
+        {
+            let raw = path.to_string_lossy().replace('\\', "/");
+            let normalized = raw
+                .strip_prefix("//?/")
+                .or_else(|| raw.strip_prefix(r"\\?\"))
+                .unwrap_or(&raw);
+            PathBuf::from(normalized)
+        }
+
+        #[cfg(not(windows))]
+        {
+            path
+        }
+    }
+
+    fn normalize_existing_path(path: &Path) -> PathBuf {
+        std::fs::canonicalize(path)
+            .map(Self::normalize_path)
+            .unwrap_or_else(|_| Self::normalize_path(path.to_path_buf()))
+    }
+
+    fn resolved_candidate_matches(
+        candidate: &Path,
+        marker_file: Option<&str>,
+    ) -> bool {
+        match marker_file {
+            Some(marker_file) => candidate.join(marker_file).is_file(),
+            None => candidate.is_dir(),
+        }
+    }
+
+    fn resolve_indexed_path(
+        &self,
+        path: &Path,
+        marker_file: Option<&str>,
+    ) -> PathBuf {
+        if Self::resolved_candidate_matches(path, marker_file) {
+            return Self::normalize_existing_path(path);
+        }
+
+        for base in self.index_root.ancestors() {
+            let candidate = base.join(path);
+            if Self::resolved_candidate_matches(&candidate, marker_file) {
+                return Self::normalize_existing_path(&candidate);
+            }
+        }
+
+        Self::normalize_path(path.to_path_buf())
+    }
+
+    pub(super) fn resolve_ticket_path(
+        &self,
+        path: &Path,
+    ) -> PathBuf {
+        self.resolve_indexed_path(path, Some(TICKET_MANIFEST_FILE))
+    }
+
+    pub(super) fn resolve_scan_root_path(
+        &self,
+        path: &Path,
+    ) -> PathBuf {
+        self.resolve_indexed_path(path, None)
+    }
+
+    pub(super) fn normalize_indexed_ticket(
+        &self,
+        mut indexed: IndexedTicket,
+    ) -> IndexedTicket {
+        indexed.path = self.resolve_ticket_path(&indexed.path);
+        indexed
+    }
+
+    pub(super) fn normalize_indexed_tickets(
+        &self,
+        tickets: Vec<IndexedTicket>,
+    ) -> Vec<IndexedTicket> {
+        tickets
+            .into_iter()
+            .map(|ticket| self.normalize_indexed_ticket(ticket))
+            .collect()
+    }
+
     /// Open (or create) a ticket store rooted at `index_root` using built-in schemas.
     pub fn open(index_root: &Path) -> Result<Self, StorageError> {
         Self::open_with(index_root, SchemaRegistry::with_builtins())
@@ -125,6 +211,7 @@ impl TicketStore {
             "tickets.db",
             &["search_index/"],
         )?;
+        let index_root = Self::normalize_existing_path(&index_root);
         let db_path = index_root.join("tickets.db");
         let search_dir = index_root.join("search_index");
 
@@ -196,7 +283,8 @@ impl TicketStore {
             schema.validate_manifest(&manifest)?;
         }
 
-        let ticket_path = TicketFs::create(&manifest, &root, body)?;
+        let ticket_path =
+            Self::normalize_existing_path(&TicketFs::create(&manifest, &root, body)?);
 
         let indexed = IndexedTicket {
             id,
@@ -247,7 +335,7 @@ impl TicketStore {
         &self,
         target_root: Option<&Path>,
     ) -> Result<PathBuf, StorageError> {
-        let roots = self.index.list_scan_roots()?;
+        let roots = self.list_scan_roots()?;
 
         let Some(target_root) = target_root else {
             return Ok(roots
@@ -265,6 +353,7 @@ impl TicketStore {
                 .unwrap_or(target_root)
                 .to_path_buf()
         };
+        let requested = self.resolve_scan_root_path(&requested);
 
         if let Some(root) = roots
             .iter()
@@ -283,7 +372,7 @@ impl TicketStore {
             .and_then(|name| name.to_str())
             == Some(workspace::TICKET_INDEX_DIR)
         {
-            return Ok(store_root.join("tickets"));
+            return Ok(self.resolve_scan_root_path(&store_root.join("tickets")));
         }
 
         Err(StorageError::Other(format!(
@@ -297,10 +386,8 @@ impl TicketStore {
         &self,
         id: &Uuid,
     ) -> Result<TicketManifest, StorageError> {
-        let indexed = self
-            .index
-            .get_ticket(id)?
-            .ok_or(StorageError::NotFound(*id))?;
+        let indexed =
+            self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
         if indexed.deleted {
             return Err(StorageError::NotFound(*id));
         }
@@ -312,7 +399,10 @@ impl TicketStore {
         &self,
         id: &Uuid,
     ) -> Result<Option<IndexedTicket>, StorageError> {
-        self.index.get_ticket(id)
+        Ok(self
+            .index
+            .get_ticket(id)?
+            .map(|ticket| self.normalize_indexed_ticket(ticket)))
     }
 
     /// Fetch multiple tickets by ID in a single ReDB read transaction.
@@ -325,7 +415,12 @@ impl TicketStore {
         ids: &[Uuid],
     ) -> Result<std::collections::HashMap<Uuid, IndexedTicket>, StorageError>
     {
-        self.index.get_tickets_by_ids(ids)
+        Ok(self
+            .index
+            .get_tickets_by_ids(ids)?
+            .into_iter()
+            .map(|(id, ticket)| (id, self.normalize_indexed_ticket(ticket)))
+            .collect())
     }
 
     /// Update a ticket: apply field patches, optional state transition, and optional description.
@@ -338,10 +433,8 @@ impl TicketStore {
         description: Option<&str>,
         author: Option<&str>,
     ) -> Result<TicketManifest, StorageError> {
-        let mut indexed = self
-            .index
-            .get_ticket(id)?
-            .ok_or(StorageError::NotFound(*id))?;
+        let mut indexed =
+            self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
         if indexed.deleted {
             return Err(StorageError::NotFound(*id));
         }
@@ -424,5 +517,70 @@ impl TicketStore {
         self.board_reconcile(id, false);
 
         Ok(updated_manifest)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use tempfile::tempdir;
+
+    use super::*;
+    use crate::model::filesystem::ScanRoot;
+
+    #[test]
+    fn recovers_ticket_paths_from_relative_index_entries() {
+        let tmp = tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        let store_root = repo.join("viewer").join(".ticket");
+        std::fs::create_dir_all(&store_root).unwrap();
+
+        let store = TicketStore::open(&store_root).unwrap();
+        let ticket_id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Recover relative ticket paths"),
+                None,
+                Default::default(),
+                None,
+                Some("Detailed context for recovery test."),
+            )
+            .unwrap();
+
+        let absolute_scan_root = store.index_root.join("tickets");
+        let absolute_ticket_path = absolute_scan_root.join(ticket_id.to_string());
+        let relative_scan_root = PathBuf::from("viewer/.ticket/tickets");
+
+        store
+            .index
+            .add_scan_root(&ScanRoot {
+                path: relative_scan_root.clone(),
+                label: "relative".to_string(),
+            })
+            .unwrap();
+
+        let mut indexed = store.index.get_ticket(&ticket_id).unwrap().unwrap();
+        indexed.path = relative_scan_root.join(ticket_id.to_string());
+        store.index.insert_ticket(&indexed).unwrap();
+
+        let roots = store.list_scan_roots().unwrap();
+        assert_eq!(
+            roots
+                .iter()
+                .filter(|root| root.path == absolute_scan_root)
+                .count(),
+            1
+        );
+        assert!(roots.iter().all(|root| root.path.is_absolute()));
+
+        let indexed = store.get_indexed(&ticket_id).unwrap().unwrap();
+        assert_eq!(indexed.path, absolute_ticket_path);
+        assert_eq!(
+            TicketFs::read_description(&indexed.path).as_deref(),
+            Some("Detailed context for recovery test.")
+        );
+        assert!(store.get(&ticket_id).is_ok());
     }
 }

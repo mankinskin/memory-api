@@ -130,6 +130,13 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
+    fn primary_workspace_name(dir: &std::path::Path) -> String {
+        crate::serve::registry::canonical_workspace_name_for_index_root(
+            dir,
+            "workspace",
+        )
+    }
+
     fn make_router(dir: &std::path::Path) -> axum::Router {
         let store = Arc::new(TicketStore::open(dir).expect("open store"));
         store
@@ -184,6 +191,7 @@ mod tests {
     async fn revert_route_returns_200_with_restored_state() {
         let dir = tempfile::tempdir().expect("tempdir");
         let (store, id) = create_ticket(dir.path(), "Router revert test");
+        let workspace = primary_workspace_name(dir.path());
 
         // Advance state so there is a revision 1 (new) and revision 2 (ready).
         store
@@ -195,7 +203,7 @@ mod tests {
         let body = serde_json::json!({ "revision": 1 }).to_string();
         let request = Request::builder()
             .method(Method::POST)
-            .uri(format!("/api/tickets/{id}/revert?workspace=default"))
+            .uri(format!("/api/tickets/{id}/revert?workspace={workspace}"))
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from(body))
             .unwrap();
@@ -210,13 +218,14 @@ mod tests {
         assert_eq!(payload["ticket"]["fields"]["title"], "Router revert test");
         // request_id header is injected by middleware — must be present.
         assert!(payload.get("request_id").is_some());
-        assert_eq!(payload["workspace"], "default");
+        assert_eq!(payload["workspace"], workspace);
     }
 
     #[tokio::test]
     async fn revert_route_returns_400_for_missing_revision() {
         let dir = tempfile::tempdir().expect("tempdir");
         let (_store, id) = create_ticket(dir.path(), "T");
+        let workspace = primary_workspace_name(dir.path());
 
         let app = make_router_from_store(Arc::clone(&_store));
 
@@ -224,7 +233,7 @@ mod tests {
         let body = serde_json::json!({ "revision": 99 }).to_string();
         let request = Request::builder()
             .method(Method::POST)
-            .uri(format!("/api/tickets/{id}/revert?workspace=default"))
+            .uri(format!("/api/tickets/{id}/revert?workspace={workspace}"))
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from(body))
             .unwrap();
@@ -242,12 +251,13 @@ mod tests {
     async fn revert_route_returns_404_for_unknown_ticket() {
         let dir = tempfile::tempdir().expect("tempdir");
         let app = make_router(dir.path());
+        let workspace = primary_workspace_name(dir.path());
 
         let fake_id = Uuid::new_v4();
         let body = serde_json::json!({ "revision": 1 }).to_string();
         let request = Request::builder()
             .method(Method::POST)
-            .uri(format!("/api/tickets/{fake_id}/revert?workspace=default"))
+            .uri(format!("/api/tickets/{fake_id}/revert?workspace={workspace}"))
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from(body))
             .unwrap();
@@ -261,11 +271,12 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let (_store, id) = create_ticket(dir.path(), "T");
         let app = make_router_from_store(Arc::clone(&_store));
+        let workspace = primary_workspace_name(dir.path());
 
         // GET is not registered for the revert path.
         let request = Request::builder()
             .method(Method::GET)
-            .uri(format!("/api/tickets/{id}/revert?workspace=default"))
+            .uri(format!("/api/tickets/{id}/revert?workspace={workspace}"))
             .body(Body::empty())
             .unwrap();
 
@@ -277,6 +288,7 @@ mod tests {
     async fn history_route_returns_200_with_revision_entries() {
         let dir = tempfile::tempdir().expect("tempdir");
         let (store, id) = create_ticket(dir.path(), "History smoke");
+        let workspace = primary_workspace_name(dir.path());
 
         // Add a second revision so history has 2 entries.
         store
@@ -287,7 +299,7 @@ mod tests {
 
         let request = Request::builder()
             .method(Method::GET)
-            .uri(format!("/api/tickets/{id}/history?workspace=default"))
+            .uri(format!("/api/tickets/{id}/history?workspace={workspace}"))
             .body(Body::empty())
             .unwrap();
 
@@ -319,6 +331,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let store =
             Arc::new(TicketStore::open(dir.path()).expect("open store"));
+        let workspace = primary_workspace_name(dir.path());
         store
             .add_scan_root(ScanRoot {
                 path: dir.path().join("tickets"),
@@ -351,10 +364,11 @@ mod tests {
                 // `Router` implements `Clone` — each task gets its own clone.
                 let app = app.clone();
                 let id = *id;
+                let workspace = workspace.clone();
                 tokio::spawn(async move {
                     let req = Request::builder()
                         .uri(format!(
-                            "/api/graph/subgraph?workspace=default&root={id}&depth=2"
+                            "/api/graph/subgraph?workspace={workspace}&root={id}&depth=2"
                         ))
                         .body(Body::empty())
                         .unwrap();
@@ -399,6 +413,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let store =
             Arc::new(TicketStore::open(dir.path()).expect("open store"));
+        let workspace = primary_workspace_name(dir.path());
         store
             .add_scan_root(ScanRoot {
                 path: dir.path().join("tickets"),
@@ -426,9 +441,10 @@ mod tests {
         let handles: Vec<_> = (0..8)
             .map(|_| {
                 let app = app.clone();
+                let workspace = workspace.clone();
                 tokio::spawn(async move {
                     let req = Request::builder()
-                        .uri("/api/tickets?workspace=default")
+                        .uri(format!("/api/tickets?workspace={workspace}"))
                         .body(Body::empty())
                         .unwrap();
                     timeout(Duration::from_secs(5), app.oneshot(req))
@@ -475,10 +491,11 @@ mod tests {
         parent_store.scan(false).expect("scan child workspace");
 
         let app = make_router_from_store(Arc::clone(&parent_store));
+        let workspace = primary_workspace_name(dir.path());
 
         let list_request = Request::builder()
             .method(Method::GET)
-            .uri("/api/tickets?workspace=default")
+            .uri(format!("/api/tickets?workspace={workspace}"))
             .body(Body::empty())
             .unwrap();
 
@@ -554,11 +571,13 @@ mod tests {
             .expect("add mixed-workspace edge");
 
         let app = make_router_from_store(Arc::clone(&child_store));
+        let child_workspace = primary_workspace_name(&child_dir);
+        let parent_workspace = primary_workspace_name(dir.path());
 
         let graph_request = Request::builder()
             .method(Method::GET)
             .uri(format!(
-                "/api/graph/subgraph?workspace=default&root={child_id}&depth=1"
+                "/api/graph/subgraph?workspace={child_workspace}&root={child_id}&depth=1"
             ))
             .body(Body::empty())
             .unwrap();
@@ -578,13 +597,13 @@ mod tests {
             .iter()
             .find(|node| node["id"] == parent_id.to_string())
             .expect("parent node present");
-        assert_eq!(parent_node["ticket_ref"]["workspace"], "..");
+        assert_eq!(parent_node["ticket_ref"]["workspace"], parent_workspace.clone());
         assert_eq!(parent_node["ticket_ref"]["id"], parent_id.to_string());
-        assert_eq!(graph_payload["edges"][0]["to_ref"]["workspace"], "..");
+        assert_eq!(graph_payload["edges"][0]["to_ref"]["workspace"], parent_workspace.clone());
 
         let history_request = Request::builder()
             .method(Method::GET)
-            .uri(format!("/api/tickets/{parent_id}/history?workspace=.."))
+            .uri(format!("/api/tickets/{parent_id}/history?workspace={parent_workspace}"))
             .body(Body::empty())
             .unwrap();
 
@@ -596,8 +615,8 @@ mod tests {
             .unwrap();
         let history_payload: serde_json::Value =
             serde_json::from_slice(&history_bytes).unwrap();
-        assert_eq!(history_payload["active_workspace"], "..");
-        assert_eq!(history_payload["ticket_ref"]["workspace"], "..");
+        assert_eq!(history_payload["active_workspace"], parent_workspace.clone());
+        assert_eq!(history_payload["ticket_ref"]["workspace"], parent_workspace);
         assert_eq!(history_payload["ticket_ref"]["id"], parent_id.to_string());
     }
 }

@@ -34,12 +34,13 @@ use super::{
 async fn create_ticket_returns_201_with_new_ticket() {
     let dir = tempfile::tempdir().expect("tempdir");
     let state = make_state(make_store(dir.path()));
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let response = create_ticket(
         State(state),
         Extension(RequestIdExt("rid-create".to_string())),
         Query(MutationWorkspaceParam {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         Json(CreateTicketBody {
             type_id: "tracker-improvement".to_string(),
@@ -58,18 +59,19 @@ async fn create_ticket_returns_201_with_new_ticket() {
     let payload: serde_json::Value =
         serde_json::from_slice(&bytes).expect("json");
 
-    assert_eq!(payload["workspace"], "default");
-    assert_eq!(payload["active_workspace"], "default");
+    assert_eq!(payload["workspace"], workspace);
+    assert_eq!(payload["active_workspace"], workspace.clone());
     assert_eq!(payload["request_id"], "rid-create");
     assert_eq!(payload["ticket"]["fields"]["title"], "My new ticket");
     assert_eq!(payload["ticket"]["fields"]["state"], "new");
-    assert_eq!(payload["ticket"]["ticket_ref"]["workspace"], "default");
+    assert_eq!(payload["ticket"]["ticket_ref"]["workspace"], workspace);
 }
 
 #[tokio::test]
 async fn create_ticket_with_extra_fields_and_description() {
     let dir = tempfile::tempdir().expect("tempdir");
     let state = make_state(make_store(dir.path()));
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let mut fields = BTreeMap::new();
     fields.insert(
@@ -81,7 +83,7 @@ async fn create_ticket_with_extra_fields_and_description() {
         State(state),
         Extension(RequestIdExt("rid".to_string())),
         Query(MutationWorkspaceParam {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         Json(CreateTicketBody {
             type_id: "tracker-improvement".to_string(),
@@ -119,6 +121,7 @@ async fn update_ticket_patches_fields() {
         .expect("create");
 
     let state = make_state(Arc::clone(&store));
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let mut patch = BTreeMap::new();
     patch.insert(
@@ -131,7 +134,7 @@ async fn update_ticket_patches_fields() {
         Extension(RequestIdExt("rid-update".to_string())),
         Path(id),
         Query(MutationWorkspaceParam {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         HeaderMap::new(),
         Json(UpdateTicketBody {
@@ -170,13 +173,14 @@ async fn update_ticket_transitions_state() {
         .expect("create");
 
     let state = make_state(Arc::clone(&store));
+    let workspace = state.registry.primary_workspace_name().to_string();
 
     let response = update_ticket(
         State(state),
         Extension(RequestIdExt("rid".to_string())),
         Path(id),
         Query(MutationWorkspaceParam {
-            workspace: "default".to_string(),
+            workspace: workspace.clone(),
         }),
         HeaderMap::new(),
         Json(UpdateTicketBody {

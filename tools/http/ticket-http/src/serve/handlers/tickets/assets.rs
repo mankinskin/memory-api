@@ -21,7 +21,11 @@ use viewer_api::error::{
 
 use crate::serve::{
     AppState,
-    error::storage_err,
+    error::{
+        storage_err,
+        task_join_err,
+    },
+    registry::ResolvedIndexedTicket,
 };
 
 use super::types::{
@@ -30,7 +34,7 @@ use super::types::{
     TicketFileEntry,
     TicketFilesResponse,
     TicketIdParam,
-    ticket_ref_for_id,
+    TicketRef,
 };
 
 /// `GET /api/tickets/{id}/files?workspace=<name>`
@@ -45,18 +49,29 @@ pub async fn list_ticket_files(
     Query(params): Query<TicketIdParam>,
 ) -> Response {
     let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
+        Some(store) => store,
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
         },
     };
+    let state = state.clone();
+    let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || {
-        let ticket_dir = match resolve_ticket_dir(&store, id, &rid.0) {
-            Ok(path) => path,
+        let resolved = match resolve_ticket_with_preferred_source(
+            &store,
+            &state,
+            &params.workspace,
+            id,
+            &task_request_id,
+        ) {
+            Ok(ticket) => ticket,
             Err(response) => return response,
         };
+        let ticket_dir = resolved.path;
+        let ticket_ref = resolved.ticket_ref;
 
         let mut files = Vec::new();
         if ticket_dir.join("description.md").is_file() {
@@ -72,24 +87,17 @@ pub async fn list_ticket_files(
         }
 
         Json(TicketFilesResponse {
-            request_id: rid.0.clone(),
+            request_id: task_request_id.clone(),
             active_workspace: params.workspace.clone(),
             workspace: params.workspace.clone(),
             id: id.to_string(),
-            ticket_ref: match ticket_ref_for_id(
-                &store,
-                &params.workspace,
-                &id,
-            ) {
-                Ok(ticket_ref) => ticket_ref,
-                Err(e) => return storage_err(e, &rid.0),
-            },
+            ticket_ref,
             files,
         })
         .into_response()
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "ticket files request"))
 }
 
 /// `GET /api/tickets/{id}/asset?workspace=<name>&path=<relative-path>`
@@ -104,18 +112,29 @@ pub async fn get_ticket_asset(
     Query(params): Query<TicketAssetParam>,
 ) -> Response {
     let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
+        Some(store) => store,
         None => {
             return ApiError::not_found("workspace", &rid.0)
                 .into_response_with_status(StatusCode::NOT_FOUND);
         },
     };
+    let state = state.clone();
+    let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || {
-        let ticket_dir = match resolve_ticket_dir(&store, id, &rid.0) {
-            Ok(path) => path,
+        let resolved = match resolve_ticket_with_preferred_source(
+            &store,
+            &state,
+            &params.workspace,
+            id,
+            &task_request_id,
+        ) {
+            Ok(ticket) => ticket,
             Err(response) => return response,
         };
+        let ticket_dir = resolved.path;
+        let ticket_ref = resolved.ticket_ref;
         let asset_path = match resolve_asset_path(&ticket_dir, &params.path) {
             Ok(path) => path,
             Err(response) => return response,
@@ -126,47 +145,91 @@ pub async fn get_ticket_asset(
         };
 
         Json(TicketAssetResponse {
-            request_id: rid.0.clone(),
+            request_id: task_request_id.clone(),
             active_workspace: params.workspace.clone(),
             workspace: params.workspace.clone(),
             id: id.to_string(),
-            ticket_ref: match ticket_ref_for_id(
-                &store,
-                &params.workspace,
-                &id,
-            ) {
-                Ok(ticket_ref) => ticket_ref,
-                Err(e) => return storage_err(e, &rid.0),
-            },
+            ticket_ref,
             path: params.path.clone(),
             content,
         })
         .into_response()
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "ticket asset request"))
 }
 
-fn resolve_ticket_dir(
-    store: &ticket_api::storage::store::TicketStore,
+fn resolve_ticket(
+    state: &AppState,
+    active_workspace: &str,
     id: Uuid,
     request_id: &str,
-) -> Result<std::path::PathBuf, Response> {
-    let indexed = match store.get_indexed(&id) {
-        Ok(Some(ticket)) => ticket,
-        Ok(None) => {
-            return Err(ApiError::not_found("ticket", request_id)
-                .into_response_with_status(StatusCode::NOT_FOUND));
-        },
-        Err(e) => return Err(storage_err(e, request_id)),
+) -> Result<ResolvedIndexedTicket, Response> {
+    let mut resolved = state
+        .registry
+        .resolve_indexed_many(active_workspace, &[id])
+        .map_err(|error| storage_err(error, request_id))?;
+    resolved.remove(&id).ok_or_else(|| {
+        ApiError::not_found("ticket", request_id)
+            .into_response_with_status(StatusCode::NOT_FOUND)
+    })
+}
+
+struct PreferredResolvedTicket {
+    path: std::path::PathBuf,
+    ticket_ref: TicketRef,
+}
+
+fn resolve_ticket_with_preferred_source(
+    store: &ticket_api::storage::store::TicketStore,
+    state: &AppState,
+    active_workspace: &str,
+    id: Uuid,
+    request_id: &str,
+) -> Result<PreferredResolvedTicket, Response> {
+    let local_ticket = match store.get_indexed(&id) {
+        Ok(ticket) => ticket,
+        Err(error) => return Err(storage_err(error, request_id)),
+    };
+    let local_ticket_ref = match local_ticket
+        .as_ref()
+        .map(|ticket| super::types::ticket_ref_from_indexed(store, active_workspace, ticket))
+        .transpose()
+    {
+        Ok(ticket_ref) => ticket_ref,
+        Err(error) => return Err(storage_err(error, request_id)),
     };
 
-    if indexed.deleted {
-        return Err(ApiError::not_found("ticket", request_id)
-            .into_response_with_status(StatusCode::NOT_FOUND));
+    if let Some((ticket, ticket_ref)) = local_ticket
+        .as_ref()
+        .zip(local_ticket_ref.as_ref())
+        .filter(|(ticket, ticket_ref)| {
+            should_use_local_ticket(active_workspace, ticket, ticket_ref)
+        })
+    {
+        return Ok(PreferredResolvedTicket {
+            path: ticket.path.clone(),
+            ticket_ref: ticket_ref.clone(),
+        });
     }
 
-    Ok(indexed.path)
+    let resolved = resolve_ticket(state, active_workspace, id, request_id)?;
+    Ok(PreferredResolvedTicket {
+        path: resolved.ticket.path.clone(),
+        ticket_ref: TicketRef {
+            workspace: resolved.workspace,
+            id: resolved.ticket.id.to_string(),
+        },
+    })
+}
+
+fn should_use_local_ticket(
+    active_workspace: &str,
+    ticket: &ticket_api::storage::indexed::IndexedTicket,
+    ticket_ref: &TicketRef,
+) -> bool {
+    ticket_ref.workspace != active_workspace
+        && ticket.path.join("ticket.toml").is_file()
 }
 
 fn resolve_asset_path(

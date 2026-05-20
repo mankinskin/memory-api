@@ -36,11 +36,27 @@ impl TicketStore {
         &self,
         root: ScanRoot,
     ) -> Result<(), StorageError> {
-        self.index.add_scan_root(&root)
+        self.index.add_scan_root(&ScanRoot {
+            path: self.resolve_scan_root_path(&root.path),
+            label: root.label,
+        })
     }
 
     pub fn list_scan_roots(&self) -> Result<Vec<ScanRoot>, StorageError> {
-        self.index.list_scan_roots()
+        let mut seen = HashSet::new();
+        let mut roots = Vec::new();
+
+        for root in self.index.list_scan_roots()? {
+            let path = self.resolve_scan_root_path(&root.path);
+            if seen.insert(path.clone()) {
+                roots.push(ScanRoot {
+                    path,
+                    label: root.label,
+                });
+            }
+        }
+
+        Ok(roots)
     }
 
     pub fn scan(
@@ -51,19 +67,20 @@ impl TicketStore {
             self.search.clear_all()?;
         }
 
-        let roots = self.index.list_scan_roots()?;
+        let mut roots = self.list_scan_roots()?;
         let default_root = ScanRoot {
-            path: self.index_root.join("tickets"),
+            path: self.resolve_scan_root_path(&self.index_root.join("tickets")),
             label: "default".to_string(),
         };
-        let all_roots: Vec<&ScanRoot> =
-            std::iter::once(&default_root).chain(roots.iter()).collect();
+        if !roots.iter().any(|root| root.path == default_root.path) {
+            roots.insert(0, default_root);
+        }
 
         let mut integrated = 0usize;
         let mut diagnostics = Vec::new();
         let mut disk_ids = HashSet::new();
 
-        for root in all_roots {
+        for root in &roots {
             if !root.path.exists() {
                 continue;
             }

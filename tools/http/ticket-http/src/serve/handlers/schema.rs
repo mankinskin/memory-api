@@ -251,12 +251,13 @@ mod tests {
     async fn list_schemas_returns_tracker_improvement() {
         let dir = tempfile::tempdir().expect("tempdir");
         let state = make_state(dir.path());
+        let workspace = state.registry.primary_workspace_name().to_string();
 
         let response = list_schemas(
             State(state),
             Extension(RequestIdExt("rid-schema".to_string())),
             Query(SchemaQuery {
-                workspace: "default".to_string(),
+                workspace: workspace.clone(),
             }),
         )
         .await;
@@ -269,7 +270,7 @@ mod tests {
         let payload: serde_json::Value =
             serde_json::from_slice(&bytes).expect("json");
 
-        assert_eq!(payload["workspace"], "default");
+        assert_eq!(payload["workspace"], workspace);
         assert_eq!(payload["request_id"], "rid-schema");
 
         let types = payload["types"].as_array().expect("types array");
@@ -315,13 +316,14 @@ mod tests {
     async fn get_schema_returns_single_type() {
         let dir = tempfile::tempdir().expect("tempdir");
         let state = make_state(dir.path());
+        let workspace = state.registry.primary_workspace_name().to_string();
 
         let response = get_schema(
             State(state),
             Extension(RequestIdExt("rid-single".to_string())),
             Path("tracker-improvement".to_string()),
             Query(SchemaQuery {
-                workspace: "default".to_string(),
+                workspace: workspace.clone(),
             }),
         )
         .await;
@@ -347,13 +349,14 @@ mod tests {
     async fn get_schema_unknown_type_returns_404() {
         let dir = tempfile::tempdir().expect("tempdir");
         let state = make_state(dir.path());
+        let workspace = state.registry.primary_workspace_name().to_string();
 
         let response = get_schema(
             State(state),
             Extension(RequestIdExt("rid-miss".to_string())),
             Path("no-such-type".to_string()),
             Query(SchemaQuery {
-                workspace: "default".to_string(),
+                workspace: workspace.clone(),
             }),
         )
         .await;

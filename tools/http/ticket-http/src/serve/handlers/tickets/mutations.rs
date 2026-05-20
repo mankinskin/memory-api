@@ -30,7 +30,10 @@ use viewer_api::{
 
 use crate::serve::{
     AppState,
-    error::storage_err,
+    error::{
+        storage_err,
+        task_join_err,
+    },
 };
 
 use super::types::{
@@ -67,9 +70,11 @@ pub async fn create_ticket(
     let type_id = body.type_id;
     let title = body.title;
     let description = body.description;
+    let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || {
-        let request_id = rid.0.clone();
+        let request_id = task_request_id.clone();
         let workspace = params.workspace.clone();
         let id = match store.create(
             None,
@@ -112,7 +117,7 @@ pub async fn create_ticket(
             .into_response()
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "ticket create request"))
 }
 
 /// `PATCH /api/tickets/{id}?workspace=<name>`
@@ -139,9 +144,11 @@ pub async fn update_ticket(
     let to_state = body.state;
     let description = body.description;
     let author = author_from_headers(&headers);
+    let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || {
-        let request_id = rid.0.clone();
+        let request_id = task_request_id.clone();
         let workspace = params.workspace.clone();
         let manifest = match store.update(
             &id,
@@ -174,7 +181,7 @@ pub async fn update_ticket(
         .into_response()
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "ticket update request"))
 }
 
 /// `POST /api/tickets/{id}/close?workspace=<name>`
@@ -199,16 +206,19 @@ pub async fn close_ticket(
 
     let target = body.target_state.as_deref().unwrap_or("done").to_string();
     let author = author_from_headers(&headers);
+    let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || {
+        let request_id = task_request_id.clone();
         let (manifest, _path) =
             match store.close(&id, &target, author.as_deref()) {
                 Ok(result) => result,
-                Err(e) => return storage_err(e, &rid.0),
+                Err(e) => return storage_err(e, &request_id),
             };
 
         Json(MutationResponse {
-            request_id: rid.0.clone(),
+            request_id: request_id.clone(),
             active_workspace: params.workspace.clone(),
             workspace: params.workspace.clone(),
             ticket: TicketDetail {
@@ -219,7 +229,7 @@ pub async fn close_ticket(
                     &id,
                 ) {
                     Ok(ticket_ref) => ticket_ref,
-                    Err(e) => return storage_err(e, &rid.0),
+                    Err(e) => return storage_err(e, &request_id),
                 },
                 created_at: indexed_created_at(&store, &id),
                 fields: manifest.extra,
@@ -228,7 +238,7 @@ pub async fn close_ticket(
         .into_response()
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "ticket close request"))
 }
 
 /// `POST /api/tickets/{id}/cancel?workspace=<name>`
@@ -256,8 +266,11 @@ pub async fn cancel_ticket(
     if let Some(reason) = body.reason {
         patch.insert("cancel_reason".to_string(), Value::String(reason));
     }
+    let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || {
+        let request_id = task_request_id.clone();
         let manifest = match store.update(
             &id,
             patch,
@@ -267,11 +280,11 @@ pub async fn cancel_ticket(
             author.as_deref(),
         ) {
             Ok(manifest) => manifest,
-            Err(e) => return storage_err(e, &rid.0),
+            Err(e) => return storage_err(e, &request_id),
         };
 
         Json(MutationResponse {
-            request_id: rid.0.clone(),
+            request_id: request_id.clone(),
             active_workspace: params.workspace.clone(),
             workspace: params.workspace.clone(),
             ticket: TicketDetail {
@@ -282,7 +295,7 @@ pub async fn cancel_ticket(
                     &id,
                 ) {
                     Ok(ticket_ref) => ticket_ref,
-                    Err(e) => return storage_err(e, &rid.0),
+                    Err(e) => return storage_err(e, &request_id),
                 },
                 created_at: indexed_created_at(&store, &id),
                 fields: manifest.extra,
@@ -291,7 +304,7 @@ pub async fn cancel_ticket(
         .into_response()
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "ticket cancel request"))
 }
 
 /// `POST /api/tickets/{id}/revert?workspace=<name>`
@@ -317,11 +330,14 @@ pub async fn revert_ticket(
 
     let revision = body.revision;
     let author = author_from_headers(&headers);
+    let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || {
+        let request_id = task_request_id.clone();
         let revisions = match store.get_history(&id) {
             Ok(revisions) => revisions,
-            Err(e) => return storage_err(e, &rid.0),
+            Err(e) => return storage_err(e, &request_id),
         };
 
         let target_rev = match revisions
@@ -336,7 +352,7 @@ pub async fn revert_ticket(
                         "revision {} does not exist for this ticket",
                         revision
                     ),
-                    &rid.0,
+                    &request_id,
                 )
                 .into_response_with_status(StatusCode::BAD_REQUEST);
             },
@@ -344,12 +360,12 @@ pub async fn revert_ticket(
 
         match store.apply_revert(&id, target_rev.fields, author.as_deref()) {
             Ok(_new_rev) =>
-                current_ticket_response(&store, &rid.0, &params.workspace, &id),
-            Err(e) => storage_err(e, &rid.0),
+                current_ticket_response(&store, &request_id, &params.workspace, &id),
+            Err(e) => storage_err(e, &request_id),
         }
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "ticket revert request"))
 }
 
 /// `POST /api/tickets/{id}/undo?workspace=<name>`
@@ -372,18 +388,21 @@ pub async fn undo_ticket(
     };
 
     let author = author_from_headers(&headers);
+    let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || {
+        let request_id = task_request_id.clone();
         let revisions = match store.get_history(&id) {
             Ok(revisions) => revisions,
-            Err(e) => return storage_err(e, &rid.0),
+            Err(e) => return storage_err(e, &request_id),
         };
 
         if revisions.len() < 2 {
             return ApiError::bad_request(
                 "no_previous_revision",
                 "ticket has no previous revision to undo",
-                &rid.0,
+                &request_id,
             )
             .into_response_with_status(StatusCode::UNPROCESSABLE_ENTITY);
         }
@@ -392,12 +411,12 @@ pub async fn undo_ticket(
 
         match store.apply_revert(&id, prev_fields, author.as_deref()) {
             Ok(_new_rev) =>
-                current_ticket_response(&store, &rid.0, &params.workspace, &id),
-            Err(e) => storage_err(e, &rid.0),
+                current_ticket_response(&store, &request_id, &params.workspace, &id),
+            Err(e) => storage_err(e, &request_id),
         }
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "ticket undo request"))
 }
 
 /// `DELETE /api/tickets/{id}?workspace=<name>`
@@ -416,20 +435,23 @@ pub async fn delete_ticket(
                 .into_response_with_status(StatusCode::NOT_FOUND);
         },
     };
+    let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || match store.delete(&id) {
         Ok(()) => {
+            let request_id = task_request_id.clone();
             let ticket_ref = match ticket_ref_for_id(
                 &store,
                 &params.workspace,
                 &id,
             ) {
                 Ok(ticket_ref) => ticket_ref,
-                Err(e) => return storage_err(e, &rid.0),
+                Err(e) => return storage_err(e, &request_id),
             };
 
             Json(DeleteResponse {
-                request_id: rid.0.clone(),
+                request_id: request_id.clone(),
                 active_workspace: params.workspace.clone(),
                 workspace: params.workspace.clone(),
                 id: id.to_string(),
@@ -437,10 +459,10 @@ pub async fn delete_ticket(
             })
             .into_response()
         },
-        Err(e) => storage_err(e, &rid.0),
+        Err(e) => storage_err(e, &task_request_id),
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "ticket delete request"))
 }
 
 fn author_from_headers(headers: &HeaderMap) -> Option<String> {

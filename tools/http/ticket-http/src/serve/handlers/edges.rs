@@ -20,7 +20,10 @@ use uuid::Uuid;
 
 use crate::serve::{
     AppState,
-    error::storage_err,
+    error::{
+        storage_err,
+        task_join_err,
+    },
     handlers::tickets::{
         TicketRef,
         ticket_ref_from_indexed,
@@ -67,6 +70,7 @@ pub async fn list_edges(
     };
     let state = state.clone();
     let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
     let active_workspace = params.workspace.clone();
     let kind = params.kind.clone();
 
@@ -95,7 +99,7 @@ pub async fn list_edges(
                 .resolve_indexed_many(&active_workspace, &edge_ids)
             {
                 Ok(resolved) => resolved,
-                Err(error) => return storage_err(error, &request_id),
+                Err(error) => return storage_err(error, &task_request_id),
             };
             let items = match filtered
                 .into_iter()
@@ -104,7 +108,7 @@ pub async fn list_edges(
                         &resolved,
                         &active_workspace,
                         edge,
-                        &request_id,
+                        &task_request_id,
                     )
                 })
                 .collect::<Result<Vec<_>, _>>()
@@ -114,17 +118,17 @@ pub async fn list_edges(
             };
 
             Json(EdgesResponse {
-                request_id: request_id.clone(),
+                request_id: task_request_id.clone(),
                 active_workspace: active_workspace.clone(),
                 workspace: active_workspace.clone(),
                 items,
             })
             .into_response()
         },
-        Err(e) => storage_err(e, &request_id),
+        Err(e) => storage_err(e, &task_request_id),
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "edge request"))
 }
 
 // ── Edge mutation types ───────────────────────────────────────────────────────
@@ -175,6 +179,7 @@ pub async fn add_edge(
     };
     let state = state.clone();
     let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
     let active_workspace = params.workspace.clone();
 
     let edge = EdgeRecord {
@@ -194,7 +199,7 @@ pub async fn add_edge(
                 .resolve_indexed_many(&active_workspace, &[from_id, to_id])
             {
                 Ok(resolved) => resolved,
-                Err(error) => return storage_err(error, &request_id),
+                Err(error) => return storage_err(error, &task_request_id),
             };
             let edge = match edge_item(
                 &resolved,
@@ -202,7 +207,7 @@ pub async fn add_edge(
                 from_id,
                 to_id,
                 edge_kind,
-                &request_id,
+                &task_request_id,
             ) {
                 Ok(edge) => edge,
                 Err(response) => return response,
@@ -211,7 +216,7 @@ pub async fn add_edge(
             (
                 StatusCode::CREATED,
                 Json(EdgeMutationResponse {
-                    request_id: request_id.clone(),
+                    request_id: task_request_id.clone(),
                     active_workspace: active_workspace.clone(),
                     workspace: active_workspace.clone(),
                     edge,
@@ -219,10 +224,10 @@ pub async fn add_edge(
             )
                 .into_response()
         },
-        Err(e) => storage_err(e, &request_id),
+        Err(e) => storage_err(e, &task_request_id),
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "edge request"))
 }
 
 /// `DELETE /api/edges?workspace=<name>`
@@ -246,6 +251,7 @@ pub async fn remove_edge(
     };
     let state = state.clone();
     let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
     let active_workspace = params.workspace.clone();
 
     let edge = EdgeRecord {
@@ -265,7 +271,7 @@ pub async fn remove_edge(
                 .resolve_indexed_many(&active_workspace, &[from_id, to_id])
             {
                 Ok(resolved) => resolved,
-                Err(error) => return storage_err(error, &request_id),
+                Err(error) => return storage_err(error, &task_request_id),
             };
             let edge = match edge_item(
                 &resolved,
@@ -273,24 +279,24 @@ pub async fn remove_edge(
                 from_id,
                 to_id,
                 edge_kind,
-                &request_id,
+                &task_request_id,
             ) {
                 Ok(edge) => edge,
                 Err(response) => return response,
             };
 
             Json(EdgeMutationResponse {
-                request_id: request_id.clone(),
+                request_id: task_request_id.clone(),
                 active_workspace: active_workspace.clone(),
                 workspace: active_workspace.clone(),
                 edge,
             })
             .into_response()
         },
-        Err(e) => storage_err(e, &request_id),
+        Err(e) => storage_err(e, &task_request_id),
     })
     .await
-    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    .unwrap_or_else(|_| task_join_err(&request_id, "edge request"))
 }
 
 fn edge_item_from_record(

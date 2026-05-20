@@ -21,8 +21,7 @@ impl TicketStore {
         limit: Option<usize>,
     ) -> Result<Vec<IndexedTicket>, StorageError> {
         let filtered = self
-            .index
-            .list_tickets(false)?
+            .normalize_indexed_tickets(self.index.list_tickets(false)?)
             .into_iter()
             .filter(|ticket| matches_filters(ticket, state_filter, type_filter))
             .take(limit.unwrap_or(usize::MAX))
@@ -40,8 +39,7 @@ impl TicketStore {
     ) -> Result<Vec<IndexedTicket>, StorageError> {
         let needs_manifest_check = !field_filters.is_empty();
         let filtered = self
-            .index
-            .list_tickets(include_deleted)?
+            .normalize_indexed_tickets(self.index.list_tickets(include_deleted)?)
             .into_iter()
             .filter(|ticket| matches_filters(ticket, state_filter, type_filter))
             .filter(|ticket| {

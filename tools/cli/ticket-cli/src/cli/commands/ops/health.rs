@@ -43,7 +43,7 @@ pub(super) fn run(
     let field_filters = parse_field_filters(&args)?;
     let tickets = scoped_tickets(&args, store, &all_edges)?;
     let tickets = apply_field_filters(tickets, &field_filters);
-    let context = build_health_context(&tickets, &all_edges);
+    let context = build_health_context(store, &tickets, &all_edges)?;
     let (summary, findings) =
         collect_findings(store, &tickets, &all_edges, &context);
     let tickets_checked = tickets
@@ -232,53 +232,66 @@ fn matches_filters(
 }
 
 fn build_health_context(
+    store: &TicketStore,
     tickets: &[IndexedTicket],
     all_edges: &[EdgeRecord],
-) -> HealthContext {
+) -> Result<HealthContext, CliRunError> {
     let ticket_ids: HashSet<Uuid> =
         tickets.iter().map(|ticket| ticket.id).collect();
     let done_ids = done_ticket_ids(tickets);
     let unresolved_deps =
-        unresolved_dependency_map(all_edges, &ticket_ids, &done_ids);
+        unresolved_dependency_map(store, all_edges, &ticket_ids)?;
 
-    HealthContext {
+    Ok(HealthContext {
         done_ids,
         unresolved_deps,
-    }
+    })
 }
 
 fn done_ticket_ids(tickets: &[IndexedTicket]) -> HashSet<Uuid> {
-    let done_states: HashSet<&str> =
-        ["done", "cancelled"].into_iter().collect();
     tickets
         .iter()
-        .filter(|ticket| {
-            ticket
-                .state
-                .as_deref()
-                .map(|state| done_states.contains(state))
-                .unwrap_or(false)
-        })
+        .filter(|ticket| is_done_state(ticket.state.as_deref()))
         .map(|ticket| ticket.id)
         .collect()
 }
 
+fn is_done_state(state: Option<&str>) -> bool {
+    matches!(state, Some("done" | "cancelled"))
+}
+
 fn unresolved_dependency_map(
+    store: &TicketStore,
     all_edges: &[EdgeRecord],
     ticket_ids: &HashSet<Uuid>,
-    done_ids: &HashSet<Uuid>,
-) -> HashMap<Uuid, Vec<Uuid>> {
+ ) -> Result<HashMap<Uuid, Vec<Uuid>>, ticket_api::error::StorageError> {
+    let dependency_ids: Vec<Uuid> = all_edges
+        .iter()
+        .filter(|edge| {
+            edge.kind == "depends_on" && ticket_ids.contains(&edge.from)
+        })
+        .map(|edge| edge.to)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    let dependency_tickets = store.get_indexed_many(&dependency_ids)?;
+
     let mut unresolved = HashMap::new();
     for edge in all_edges {
         if edge.kind == "depends_on"
             && ticket_ids.contains(&edge.from)
-            && !done_ids.contains(&edge.to)
         {
-            unresolved
-                .entry(edge.from)
-                .or_insert_with(Vec::new)
-                .push(edge.to);
+            let is_resolved = dependency_tickets
+                .get(&edge.to)
+                .map(|ticket| is_done_state(ticket.state.as_deref()))
+                .unwrap_or(false);
+            if !is_resolved {
+                unresolved
+                    .entry(edge.from)
+                    .or_insert_with(Vec::new)
+                    .push(edge.to);
+            }
         }
     }
-    unresolved
+    Ok(unresolved)
 }
