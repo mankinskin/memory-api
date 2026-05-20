@@ -29,6 +29,7 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - `ticket next` and `ticket-mcp` `next_tickets` must not embed a second board snapshot; `board show` remains the single board surface, while `next` surfaces only candidate data plus board-aware exclusions or warnings when relevant.
 - `ticket next`, `ticket board show` recommendation JSON, and `ticket-mcp` `next_tickets` items must surface the derived numeric `dependees` field.
 - The CLI `ticket board show` human `Next Up` section must render each recommendation as a compact labeled card that keeps all surfaced recommendation keys while prioritizing rank, short ticket id, and title.
+- Default non-JSON `ticket next` output must render its candidate `items` using the same compact labeled card format as `ticket board show` `Next Up`, while preserving next-specific metadata like `count`, `warnings`, and `excluded_by_board`.
 - Tool descriptions and user-facing contract text must describe the actual ordering keys.
 
 ### Compatibility
@@ -47,6 +48,7 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - `ticket next`, `ticket board show`, and `ticket-mcp` `next_tickets` surface the numeric `dependees` field for each recommended item.
 - `ticket board show` recommendation JSON preserves `created_at`, and the CLI `Next Up` cards print all recommendation keys while formatting `created_at` as a compact human timestamp that includes the year.
 - Default non-JSON `ticket board show` output does not append the generic structured `[recommended_next]` dump after the board-specific human renderer.
+- Default non-JSON `ticket next` output does not fall back to the generic `[items]` object dump; it uses the same compact recommendation cards as `ticket board show`.
 - `ticket next` and `ticket-mcp` `next_tickets` do not return a top-level `board` snapshot field.
 - When state, priority, `dependees`, and creation timestamp are equal, the ordering falls back to title order.
 
@@ -58,6 +60,7 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - Updated interface contract text: `tools/mcp/ticket-mcp/src/server.rs`
 - Updated CLI contract text: `tools/cli/ticket-cli/src/cli.rs`
 - Updated CLI human-output serializer: `tools/cli/ticket-cli/src/cli/human_output.rs`
+- Updated CLI next/board recommendation bridge: `tools/cli/ticket-cli/src/cli/commands/board.rs`
 - Updated CLI board renderer: `tools/cli/ticket-cli/src/cli/commands/board/render.rs`
 
 ## Validation
@@ -67,4 +70,6 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - `cargo test -p ticket-cli next_and_board_prefer_more_dependees_before_newer_tickets -- --nocapture`
 - `cargo test -p ticket-cli board_show_lists_ten_recommendations_when_available -- --nocapture`
 - `cargo test -p ticket-cli board_show_text_output_stops_after_dashboard -- --nocapture`
+- `cargo test -p ticket-cli next_text_output_uses_pretty_card_format -- --nocapture`
+- `cargo run --quiet --manifest-path tools/cli/ticket-cli/Cargo.toml -- next --limit 3`
 - `spec refs ec22fe34 validate --json --workspace-root .`

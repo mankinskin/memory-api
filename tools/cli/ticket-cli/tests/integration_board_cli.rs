@@ -352,6 +352,7 @@ fn board_show_lists_ten_recommendations_when_available() {
 #[test]
 fn board_show_text_output_stops_after_dashboard() {
     let s = Sandbox::new();
+    assert_eq!(s.ticket_json(&["init"])["status"], "ok");
     let next_ticket = create_ticket(&s, "Top ticket for board suggestions");
 
     let out = Command::new(TICKET)
@@ -378,6 +379,38 @@ fn board_show_text_output_stops_after_dashboard() {
     assert!(stdout.contains(&format!("ticket_id: {next_ticket}")));
     assert!(!stdout.contains("board_show ok"));
     assert!(!stdout.contains("[recommended_next]"));
+}
+
+#[test]
+fn next_text_output_uses_pretty_card_format() {
+    let s = Sandbox::new();
+    assert_eq!(s.ticket_json(&["init"])["status"], "ok");
+    let next_ticket = create_ticket(&s, "Top ticket for next suggestions");
+
+    let out = Command::new(TICKET)
+        .arg("--index-root")
+        .arg(&s.index_root)
+        .args(["next"])
+        .output()
+        .expect("failed to run ticket next");
+
+    assert!(
+        out.status.success(),
+        "next should succeed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+
+    let stdout =
+        String::from_utf8(out.stdout).expect("next stdout should be valid UTF-8");
+    let short_ticket = &next_ticket[..8];
+
+    assert!(stdout.contains("next ok"));
+    assert!(stdout.contains("count: 1"));
+    assert!(stdout.contains("Next Up:"));
+    assert!(stdout.contains(&format!("#1  {short_ticket}  Top ticket for next suggestions")));
+    assert!(stdout.contains(&format!("ticket_id: {next_ticket}")));
+    assert!(!stdout.contains("[items]"));
 }
 
 #[test]

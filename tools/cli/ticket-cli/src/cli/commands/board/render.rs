@@ -44,7 +44,7 @@ pub(super) struct BoardDisplayEntry {
     pub completed_at: Option<DateTime<Utc>>,
 }
 
-pub(super) struct BoardRecommendation {
+pub(crate) struct BoardRecommendation {
     pub rank: usize,
     pub ticket_id: String,
     pub title: String,
@@ -214,7 +214,7 @@ fn write_current_work(
     }
 }
 
-fn write_next_up(
+pub(crate) fn write_next_up(
     out: &mut String,
     recommended_next: &[BoardRecommendation],
 ) {

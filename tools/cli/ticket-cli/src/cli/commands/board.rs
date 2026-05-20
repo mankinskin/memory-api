@@ -31,11 +31,15 @@ use super::resolve_uuid_prefix;
 
 mod render;
 
+pub(crate) use self::render::{
+    BoardRecommendation,
+    write_next_up,
+};
+
 use self::render::{
     BoardDisplay,
     BoardDisplayEntry,
     BoardHistoryDisplay,
-    BoardRecommendation,
     board_display_entry_to_json,
     board_recommendation_to_json,
     config_to_json,
@@ -306,7 +310,9 @@ fn build_display_entry(
     }
 }
 
-fn parse_board_recommendation(value: &Value) -> Option<BoardRecommendation> {
+pub(crate) fn parse_board_recommendation(
+    value: &Value,
+) -> Option<BoardRecommendation> {
     Some(BoardRecommendation {
         rank: value.get("rank")?.as_u64()? as usize,
         ticket_id: value.get("id")?.as_str()?.to_string(),

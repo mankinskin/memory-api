@@ -2,6 +2,11 @@ use std::fmt::Write;
 
 use serde_json::Value;
 
+use crate::cli::commands::{
+    parse_board_recommendation,
+    write_next_up,
+};
+
 /// Render a command payload as human-readable key-value text.
 ///
 /// Layout:
@@ -23,6 +28,10 @@ pub(crate) fn render_human_readable(payload: &Value) -> String {
         if let Some(report) = obj.get("human").and_then(Value::as_str) {
             return report.to_string();
         }
+    }
+
+    if obj.get("command").and_then(Value::as_str) == Some("next") {
+        return render_next_report(obj);
     }
 
     // Special case: subgraph/topgraph command renders as ASCII tree
@@ -79,6 +88,54 @@ pub(crate) fn render_human_readable(payload: &Value) -> String {
     }
 
     // Trim trailing whitespace but keep one final newline
+    let trimmed = out.trim_end();
+    let mut result = trimmed.to_string();
+    result.push('\n');
+    result
+}
+
+fn render_next_report(obj: &serde_json::Map<String, Value>) -> String {
+    let mut out = String::new();
+
+    let command = obj.get("command").and_then(Value::as_str).unwrap_or("?");
+    let status = obj.get("status").and_then(Value::as_str).unwrap_or("?");
+    let _ = writeln!(out, "{command} {status}");
+
+    let mut scalars = Vec::new();
+    let mut sections = Vec::new();
+
+    for (key, val) in obj {
+        if key == "command" || key == "status" || key == "items" {
+            continue;
+        }
+        if is_section(val) {
+            sections.push((key.as_str(), val));
+        } else {
+            scalars.push((key.as_str(), val));
+        }
+    }
+
+    for (key, val) in &scalars {
+        let _ = writeln!(out, "{key}: {}", format_scalar(val));
+    }
+
+    for (key, val) in &sections {
+        write_section(&mut out, key, val, 0);
+    }
+
+    let recommendations = obj
+        .get("items")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(parse_board_recommendation)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    write_next_up(&mut out, &recommendations);
+
     let trimmed = out.trim_end();
     let mut result = trimmed.to_string();
     result.push('\n');
