@@ -79,12 +79,32 @@ pub struct RuleStore {
 }
 
 impl RuleStore {
+    /// Open an existing rule store rooted at `index_root`.
+    ///
+    /// Returns [`StorageError::WorkspaceNotFound`] if the workspace has not been
+    /// initialized. Run `rule init` first.
     pub fn open(index_root: &Path) -> Result<Self, RuleError> {
         let index_root = workspace::resolve_store_root_from(index_root, ".rule");
+        if !index_root.join("entities.db").is_file() {
+            return Err(StorageError::WorkspaceNotFound { path: index_root }.into());
+        }
+        Self::open_internal(&index_root)
+    }
+
+    /// Initialize a new rule store rooted at `index_root`.
+    ///
+    /// Creates the workspace directory and all required index files. Idempotent:
+    /// if the workspace already exists it is opened without error.
+    pub fn init(index_root: &Path) -> Result<Self, RuleError> {
+        let index_root = workspace::resolve_store_root_from(index_root, ".rule");
+        Self::open_internal(&index_root)
+    }
+
+    fn open_internal(index_root: &Path) -> Result<Self, RuleError> {
         let fs = EntityFs::new(RULE_MANIFEST_FILE, RULE_LOCK_FILE);
         let registry = rule_schema_registry();
-        let inner = EntityStore::open_with(&index_root, fs, registry)?;
-        ensure_gitignore_entries(&index_root, &["entities/"])?;
+        let inner = EntityStore::open_with(index_root, fs, registry)?;
+        ensure_gitignore_entries(index_root, &["entities/"])?;
         let mut store = Self {
             inner,
             slug_index: HashMap::new(),

@@ -12,7 +12,7 @@ use super::*;
 
 fn setup() -> (TempDir, SpecStore) {
     let tmp = TempDir::new().unwrap();
-    let store = SpecStore::open(tmp.path()).unwrap();
+    let store = SpecStore::init(tmp.path()).unwrap();
     let root = tmp.path().join("specs");
     fs::create_dir_all(&root).unwrap();
     store
@@ -37,7 +37,7 @@ fn setup_local_store() -> (TempDir, PathBuf, PathBuf, SpecStore) {
     let repo = tmp.path().join("repo");
     let store_root = repo.join(".spec");
     fs::create_dir_all(&store_root).unwrap();
-    let store = SpecStore::open(&repo).unwrap();
+    let store = SpecStore::init(&repo).unwrap();
     (tmp, repo, store_root, store)
 }
 
@@ -75,7 +75,7 @@ fn create_get_update_delete_spec() {
 fn open_creates_gitignore_for_local_spec_artifacts() {
     let tmp = TempDir::new().unwrap();
 
-    SpecStore::open(tmp.path()).unwrap();
+    SpecStore::init(tmp.path()).unwrap();
 
     let gitignore =
         fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
@@ -88,7 +88,7 @@ fn open_creates_gitignore_for_local_spec_artifacts() {
 #[test]
 fn open_registers_default_specs_scan_root() {
     let tmp = TempDir::new().unwrap();
-    let store = SpecStore::open(tmp.path()).unwrap();
+    let store = SpecStore::init(tmp.path()).unwrap();
 
     let roots = store.entity_store().list_scan_roots().unwrap();
 
@@ -150,7 +150,7 @@ fn scan_updates_indexed_path_after_spec_folder_moves_between_roots() {
     fs::create_dir_all(&original_root).unwrap();
     fs::create_dir_all(&repaired_root).unwrap();
 
-    let mut store = SpecStore::open(&index_root).unwrap();
+    let mut store = SpecStore::init(&index_root).unwrap();
     store
         .entity_store()
         .add_scan_root(ScanRoot {

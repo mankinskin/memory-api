@@ -9,7 +9,7 @@ use super::TicketStore;
 fn open_creates_gitignore_for_local_ticket_artifacts() {
     let dir = tempdir().unwrap();
 
-    TicketStore::open(dir.path()).unwrap();
+    TicketStore::init(dir.path()).unwrap();
 
     let gitignore =
         fs::read_to_string(dir.path().join(".gitignore")).unwrap();
@@ -22,7 +22,7 @@ fn open_creates_gitignore_for_local_ticket_artifacts() {
 #[test]
 fn open_registers_default_tickets_scan_root() {
     let dir = tempdir().unwrap();
-    let store = TicketStore::open(dir.path()).unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
 
     let roots = store.list_scan_roots().unwrap();
 
@@ -38,7 +38,7 @@ fn open_uses_existing_hidden_ticket_store_from_repo_root() {
     let store_root = repo.join(".ticket");
     fs::create_dir_all(&store_root).unwrap();
 
-    let store = TicketStore::open(&repo).unwrap();
+    let store = TicketStore::init(&repo).unwrap();
 
     assert_eq!(store.index_root, store_root);
 }
@@ -49,7 +49,7 @@ fn create_with_repo_root_target_places_ticket_under_hidden_store() {
     let repo = dir.path().join("repo");
     let store_root = repo.join(".ticket");
     fs::create_dir_all(&store_root).unwrap();
-    let store = TicketStore::open(&store_root).unwrap();
+    let store = TicketStore::init(&store_root).unwrap();
 
     let ticket_id = store
         .create(
@@ -76,7 +76,7 @@ fn create_rejects_non_workspace_target_root() {
     let invalid_root = outside.path().join("stray-root");
     fs::create_dir_all(&store_root).unwrap();
     fs::create_dir_all(&invalid_root).unwrap();
-    let store = TicketStore::open(&store_root).unwrap();
+    let store = TicketStore::init(&store_root).unwrap();
 
     let error = store
         .create(

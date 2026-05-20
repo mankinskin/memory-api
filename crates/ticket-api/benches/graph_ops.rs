@@ -75,7 +75,7 @@ unsafe impl Sync for Fixture {}
 /// `acyclic_enforced = false`, so setup avoids O(N²) cycle checks.
 fn build_fixture() -> Fixture {
     let dir = tempfile::tempdir().expect("tempdir for bench fixture");
-    let store = TicketStore::open(dir.path()).expect("open store");
+    let store = TicketStore::init(dir.path()).expect("open store");
     store
         .add_scan_root(ScanRoot {
             path: dir.path().join("tickets"),

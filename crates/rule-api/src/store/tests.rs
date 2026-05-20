@@ -8,7 +8,7 @@ use super::*;
 #[test]
 fn create_and_get_rule_by_slug() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let manifest = RuleManifest::new(
         "shared/agents/discovery-protocol",
         "Discovery Protocol",
@@ -29,7 +29,7 @@ fn create_and_get_rule_by_slug() {
 fn open_creates_gitignore_for_local_rule_artifacts() {
     let dir = tempdir().unwrap();
 
-    RuleStore::open(dir.path()).unwrap();
+    RuleStore::init(dir.path()).unwrap();
 
     let gitignore =
         fs::read_to_string(dir.path().join(".gitignore")).unwrap();
@@ -43,7 +43,7 @@ fn open_creates_gitignore_for_local_rule_artifacts() {
 #[test]
 fn open_rebuilds_slug_index_for_fresh_processes() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let manifest = RuleManifest::new(
         "shared/agents/reopen-test",
         "Reopen Test",
@@ -54,7 +54,7 @@ fn open_rebuilds_slug_index_for_fresh_processes() {
     store.create(&manifest, None).unwrap();
     drop(store);
 
-    let reopened = RuleStore::open(dir.path()).unwrap();
+    let reopened = RuleStore::init(dir.path()).unwrap();
     let fetched = reopened.get("shared/agents/reopen-test").unwrap();
 
     assert_eq!(fetched.slug(), Some("shared/agents/reopen-test"));
@@ -63,7 +63,7 @@ fn open_rebuilds_slug_index_for_fresh_processes() {
 #[test]
 fn open_prunes_stale_index_rows_for_deleted_rule_folders() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let manifest = RuleManifest::new(
         "shared/agents/stale-folder",
         "Stale Folder",
@@ -77,7 +77,7 @@ fn open_prunes_stale_index_rows_for_deleted_rule_folders() {
     fs::remove_dir_all(&indexed.path).unwrap();
     drop(store);
 
-    let reopened = RuleStore::open(dir.path()).unwrap();
+    let reopened = RuleStore::init(dir.path()).unwrap();
     assert!(reopened.entity_store().get_indexed(&id).unwrap().is_none());
     assert!(matches!(
         reopened.get("shared/agents/stale-folder"),
@@ -88,7 +88,7 @@ fn open_prunes_stale_index_rows_for_deleted_rule_folders() {
 #[test]
 fn list_filters_and_sorts_rules_by_metadata() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
 
     let mut first = RuleManifest::new(
         "shared/agents/discovery-protocol",
@@ -148,7 +148,7 @@ fn list_filters_and_sorts_rules_by_metadata() {
 #[test]
 fn search_can_filter_rule_results_after_full_text_match() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
 
     let mut shared = RuleManifest::new(
         "shared/github/readme/overview",
@@ -194,7 +194,7 @@ fn search_can_filter_rule_results_after_full_text_match() {
 #[test]
 fn update_changes_slug_state_and_body() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let manifest = RuleManifest::new(
         "shared/agents/update-test",
         "Update Test",
@@ -238,7 +238,7 @@ fn update_changes_slug_state_and_body() {
 #[test]
 fn delete_rule_entry_removes_it_from_lookups() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let manifest = RuleManifest::new(
         "shared/agents/delete-test",
         "Delete Test",
@@ -277,7 +277,7 @@ fn delete_rule_entry_removes_it_from_lookups() {
 #[test]
 fn generated_target_records_round_trip_and_delete() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let config_path = dir.path().join("rule-targets.yaml");
     let output_path = dir.path().join(".github/README.md");
 
@@ -305,7 +305,7 @@ fn generated_target_records_round_trip_and_delete() {
 #[test]
 fn delete_can_remove_generated_target_records() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let config_path = dir.path().join("rule-targets.yaml");
     let output_path = dir.path().join(".github/README.md");
 
@@ -325,7 +325,7 @@ fn delete_can_remove_generated_target_records() {
 #[test]
 fn generated_target_upsert_updates_existing_output_path() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let config_path = dir.path().join("rule-targets.yaml");
     let first_output = dir.path().join("memory-viewers/.github/README.md");
     let second_output = dir.path().join(".github/README.md");
@@ -352,7 +352,7 @@ fn create_defaults_to_local_rules_root_even_with_extra_scan_roots() {
     let child_rules_root = dir.path().join("nested").join(".rule").join("rules");
     fs::create_dir_all(&child_rules_root).unwrap();
 
-    let mut store = RuleStore::open(&index_root).unwrap();
+    let mut store = RuleStore::init(&index_root).unwrap();
     store
         .entity_store()
         .add_scan_root(ScanRoot {

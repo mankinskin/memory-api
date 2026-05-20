@@ -430,7 +430,7 @@ mod workspace_resolution_tests {
     #[test]
     fn descendant_workspaces_use_workspace_root_name() {
         let root = tempfile::tempdir().expect("tempdir");
-        let parent_store = Arc::new(TicketStore::open(root.path()).expect("open parent store"));
+        let parent_store = Arc::new(TicketStore::init(root.path()).expect("open parent store"));
         parent_store
             .add_scan_root(ScanRoot {
                 path: root.path().join("tickets"),
@@ -442,7 +442,7 @@ mod workspace_resolution_tests {
         std::fs::create_dir_all(child_index_root.join("tickets"))
             .expect("mkdir child store");
         let child_store = Arc::new(
-            TicketStore::open(&child_index_root).expect("open child store"),
+            TicketStore::init(&child_index_root).expect("open child store"),
         );
         child_store
             .add_scan_root(ScanRoot {
@@ -473,7 +473,7 @@ mod workspace_resolution_tests {
     #[test]
     fn resolve_indexed_many_prefers_deepest_existing_workspace() {
         let root = tempfile::tempdir().expect("tempdir");
-        let parent_store = Arc::new(TicketStore::open(root.path()).expect("open parent store"));
+        let parent_store = Arc::new(TicketStore::init(root.path()).expect("open parent store"));
         parent_store
             .add_scan_root(ScanRoot {
                 path: root.path().join("tickets"),
@@ -485,7 +485,7 @@ mod workspace_resolution_tests {
         std::fs::create_dir_all(child_index_root.join("tickets"))
             .expect("mkdir child store");
         let child_store = Arc::new(
-            TicketStore::open(&child_index_root).expect("open child store"),
+            TicketStore::init(&child_index_root).expect("open child store"),
         );
         child_store
             .add_scan_root(ScanRoot {

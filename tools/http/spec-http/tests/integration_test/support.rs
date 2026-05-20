@@ -8,7 +8,7 @@ use spec_http::{
 };
 
 pub(super) fn make_app(dir: &std::path::Path) -> axum::Router {
-    let mut store = SpecStore::open(dir).expect("open spec store");
+    let mut store = SpecStore::init(dir).expect("open spec store");
     let specs_dir = dir.join("specs");
     std::fs::create_dir_all(&specs_dir).unwrap();
     store
@@ -28,7 +28,7 @@ pub(super) fn seed_spec(
     slug: &str,
     title: &str,
 ) -> String {
-    let mut store = SpecStore::open(dir).expect("open store");
+    let mut store = SpecStore::init(dir).expect("open store");
     let specs_dir = dir.join("specs");
     store
         .entity_store()

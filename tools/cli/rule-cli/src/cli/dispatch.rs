@@ -65,6 +65,16 @@ pub(super) fn dispatch(
     command: RuleCommandCli,
     index_root: &Path,
 ) -> Result<Value, CliRunError> {
+    if matches!(command, RuleCommandCli::Init) {
+        let store = RuleStore::init(index_root)?;
+        return Ok(json!({
+            "command": "init",
+            "status": "ok",
+            "workspace": store.entity_store().index_root.display().to_string(),
+            "message": "workspace initialized",
+        }));
+    }
+
     let mut store = RuleStore::open(index_root)?;
     if let Some(workspace_root) = resolve_workspace_root(&command, index_root) {
         for root in discover_workspace_scan_roots(&workspace_root) {
@@ -81,6 +91,7 @@ pub(super) fn dispatch(
             import_file_command(&mut store, args),
         RuleCommandCli::Update(args) => update_command(&mut store, args),
         RuleCommandCli::Feedback(args) => feedback_command(&mut store, args),
+        RuleCommandCli::Init => unreachable!("Init handled before store open"),
         other => dispatch_secondary(other, &mut store),
     }
 }
@@ -106,7 +117,8 @@ fn dispatch_secondary(
         | RuleCommandCli::Delete(_)
         | RuleCommandCli::ImportFile(_)
         | RuleCommandCli::Update(_)
-        | RuleCommandCli::Feedback(_) =>
+        | RuleCommandCli::Feedback(_)
+        | RuleCommandCli::Init =>
             unreachable!("handled in primary dispatch"),
     }
 }

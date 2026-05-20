@@ -6,7 +6,7 @@ use spec_mcp::server::SpecServer;
 
 pub(super) fn make_sandbox() -> (TempDir, SpecServer) {
     let tmp = TempDir::new().expect("tempdir");
-    let store = SpecStore::open(tmp.path()).expect("open store");
+    let store = SpecStore::init(tmp.path()).expect("open store");
     store
         .entity_store()
         .add_scan_root(memory_api::model::filesystem::ScanRoot {

@@ -37,7 +37,7 @@ fn make_crate(
 }
 
 fn open_store(tmp: &TempDir) -> SpecStore {
-    SpecStore::open(tmp.path()).unwrap()
+    SpecStore::init(tmp.path()).unwrap()
 }
 
 fn bootstrap_args(

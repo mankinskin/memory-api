@@ -73,6 +73,11 @@ pub struct TicketCli {
 
 #[derive(Debug, Subcommand)]
 pub enum TicketCommandCli {
+    /// Initialize a new ticket workspace in the current directory (or at --index-root).
+    ///
+    /// Creates the `.ticket/` store directory and all required index files.
+    /// Idempotent: succeeds without error if the workspace already exists.
+    Init,
     /// Create a new ticket.
     Create(CreateArgs),
     /// Get a ticket by UUID.

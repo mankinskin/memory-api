@@ -125,6 +125,15 @@ pub fn storage_err(
             rid,
         )
         .into_response_with_status(StatusCode::INTERNAL_SERVER_ERROR),
+        StorageError::WorkspaceNotFound { path } => ApiError::new(
+            "workspace.not_initialized",
+            format!(
+                "no ticket workspace found at {}; run 'ticket init' to create one",
+                path.display()
+            ),
+            rid,
+        )
+        .into_response_with_status(StatusCode::SERVICE_UNAVAILABLE),
     }
 }
 

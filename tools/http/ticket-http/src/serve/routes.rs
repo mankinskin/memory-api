@@ -138,7 +138,7 @@ mod tests {
     }
 
     fn make_router(dir: &std::path::Path) -> axum::Router {
-        let store = Arc::new(TicketStore::open(dir).expect("open store"));
+        let store = Arc::new(TicketStore::init(dir).expect("open store"));
         store
             .add_scan_root(ScanRoot {
                 path: dir.join("tickets"),
@@ -166,7 +166,7 @@ mod tests {
         dir: &std::path::Path,
         title: &str,
     ) -> (Arc<TicketStore>, Uuid) {
-        let store = Arc::new(TicketStore::open(dir).expect("open store"));
+        let store = Arc::new(TicketStore::init(dir).expect("open store"));
         store
             .add_scan_root(ScanRoot {
                 path: dir.join("tickets"),
@@ -330,7 +330,7 @@ mod tests {
 
         let dir = tempfile::tempdir().expect("tempdir");
         let store =
-            Arc::new(TicketStore::open(dir.path()).expect("open store"));
+            Arc::new(TicketStore::init(dir.path()).expect("open store"));
         let workspace = primary_workspace_name(dir.path());
         store
             .add_scan_root(ScanRoot {
@@ -391,7 +391,7 @@ mod tests {
     }
 
     fn open_workspace_store(dir: &std::path::Path) -> Arc<TicketStore> {
-        let store = Arc::new(TicketStore::open(dir).expect("open store"));
+        let store = Arc::new(TicketStore::init(dir).expect("open store"));
         store
             .add_scan_root(ScanRoot {
                 path: dir.join("tickets"),
@@ -412,7 +412,7 @@ mod tests {
         };
         let dir = tempfile::tempdir().expect("tempdir");
         let store =
-            Arc::new(TicketStore::open(dir.path()).expect("open store"));
+            Arc::new(TicketStore::init(dir.path()).expect("open store"));
         let workspace = primary_workspace_name(dir.path());
         store
             .add_scan_root(ScanRoot {

@@ -362,7 +362,7 @@ fn resolve_render_target_output_uses_config_parent_for_relative_paths() {
 #[test]
 fn collect_target_rules_traverses_nodes_in_outline_order() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
 
     let mut opening = RuleManifest::new(
         "shared/agents/opening",
@@ -461,7 +461,7 @@ fn collect_target_rules_traverses_nodes_in_outline_order() {
 #[test]
 fn collect_target_rules_rejects_duplicate_matches_across_nodes() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
 
     let mut opening = RuleManifest::new(
         "shared/agents/opening",
@@ -517,7 +517,7 @@ fn collect_target_rules_rejects_duplicate_matches_across_nodes() {
 #[test]
 fn explain_target_reports_node_matches_with_effective_filters() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
 
     let mut opening = RuleManifest::new(
         "shared/agents/opening",

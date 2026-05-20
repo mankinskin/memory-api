@@ -14,7 +14,7 @@ use crate::{
 #[test]
 fn record_feedback_appends_event_log_and_updates_summary() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let rule = RuleManifest::new(
         "shared/agents/feedback",
         "Feedback",

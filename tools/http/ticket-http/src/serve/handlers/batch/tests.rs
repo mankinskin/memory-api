@@ -27,7 +27,7 @@ use crate::serve::{
 use super::*;
 
 fn make_router(dir: &std::path::Path) -> axum::Router {
-    let store = Arc::new(TicketStore::open(dir).expect("open store"));
+    let store = Arc::new(TicketStore::init(dir).expect("open store"));
     store
         .add_scan_root(ScanRoot {
             path: dir.join("tickets"),
@@ -131,7 +131,7 @@ async fn batch_link_and_unlink() {
     let dir = tempfile::tempdir().unwrap();
     let workspace = primary_workspace_name(dir.path());
 
-    let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
+    let store = Arc::new(TicketStore::init(dir.path()).expect("open store"));
     store
         .add_scan_root(ScanRoot {
             path: dir.path().join("tickets"),

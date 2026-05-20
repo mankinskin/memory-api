@@ -36,7 +36,7 @@ use super::{
 fn make_state_with_store(
     dir: &std::path::Path
 ) -> (AppState, Arc<TicketStore>) {
-    let store = Arc::new(TicketStore::open(dir).expect("open store"));
+    let store = Arc::new(TicketStore::init(dir).expect("open store"));
     store
         .add_scan_root(ScanRoot {
             path: dir.join("tickets"),

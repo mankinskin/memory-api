@@ -487,7 +487,7 @@ async fn get_ticket_and_history_include_ticket_refs() {
 async fn nested_child_workspace_ticket_uses_child_ref_and_reads_from_default() {
     let root = tempfile::tempdir().expect("tempdir");
     let parent_store = Arc::new(
-        ticket_api::storage::store::TicketStore::open(root.path())
+        ticket_api::storage::store::TicketStore::init(root.path())
             .expect("open parent store"),
     );
     parent_store
@@ -501,7 +501,7 @@ async fn nested_child_workspace_ticket_uses_child_ref_and_reads_from_default() {
     std::fs::create_dir_all(child_index_root.join("tickets"))
         .expect("mkdir child store");
     let child_store = Arc::new(
-        ticket_api::storage::store::TicketStore::open(&child_index_root)
+        ticket_api::storage::store::TicketStore::init(&child_index_root)
             .expect("open child store"),
     );
     child_store

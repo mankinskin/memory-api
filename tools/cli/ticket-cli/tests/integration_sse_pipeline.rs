@@ -30,7 +30,7 @@ fn open_store_with_broker(
     workspace: &str,
     broker: Arc<StreamBroker>,
 ) -> Arc<TicketStore> {
-    let store = Arc::new(TicketStore::open(dir.path()).expect("open store"));
+    let store = Arc::new(TicketStore::init(dir.path()).expect("open store"));
     let emitter = HookEmitter::new(workspace, Arc::clone(&broker));
     store.set_hook(emitter);
     store

@@ -49,6 +49,10 @@ pub enum StorageError {
     NotFound(Uuid),
     #[error("entity lease conflict: entity {ticket} held by {holder}")]
     LeaseConflict { ticket: Uuid, holder: String },
+    #[error(
+        "workspace not initialized at {path}: run the 'init' command to create a new workspace"
+    )]
+    WorkspaceNotFound { path: std::path::PathBuf },
     #[error("dependency cycle detected between entities")]
     DependencyCycle,
     #[error("search index error: {0}")]

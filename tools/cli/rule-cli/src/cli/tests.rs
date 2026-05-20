@@ -75,7 +75,7 @@ fn parse_sync_targets_command() {
 #[test]
 fn delete_command_removes_rule_by_slug() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let rule = sample_rule(
         "shared/agents/delete-me",
         "Delete Me",
@@ -94,7 +94,7 @@ fn delete_command_removes_rule_by_slug() {
     )
     .unwrap();
 
-    let reopened = RuleStore::open(dir.path()).unwrap();
+    let reopened = RuleStore::init(dir.path()).unwrap();
     assert!(matches!(
         reopened.get("shared/agents/delete-me"),
         Err(rule_api::error::RuleError::NotFound(_))
@@ -104,7 +104,7 @@ fn delete_command_removes_rule_by_slug() {
 #[test]
 fn generate_file_writes_deterministic_markdown_with_provenance() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let first = sample_rule(
         "shared/agents/validation",
         "Validation",
@@ -150,7 +150,7 @@ fn generate_file_writes_deterministic_markdown_with_provenance() {
 #[test]
 fn generate_file_omits_provenance_for_frontmatter_prompt_output() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let mut prompt = RuleManifest::new(
         "context-engine/prompts/spec",
         "Spec Prompt",
@@ -195,7 +195,7 @@ fn import_file_creates_rules_from_markdown_blocks() {
     )
     .unwrap();
 
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let items = importing::import_file(
         &mut store,
         &ImportFileArgs {
@@ -246,7 +246,7 @@ fn import_file_creates_rules_from_markdown_blocks() {
 #[test]
 fn generate_target_uses_config_output_path() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let mut first = sample_rule(
         "shared/agents/opening",
         "Opening",
@@ -302,7 +302,7 @@ fn generate_target_uses_config_output_path() {
 #[test]
 fn generate_target_preserves_existing_crlf_output() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let mut rule = sample_rule(
         "shared/agents/opening",
         "Opening",
@@ -367,7 +367,7 @@ fn generate_target_preserves_existing_crlf_output() {
 #[test]
 fn generate_target_supports_folder_tree_config_output() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let mut rule = sample_rule(
         "shared/agents/opening",
         "Opening",
@@ -429,7 +429,7 @@ fn generate_target_supports_folder_tree_config_output() {
 #[test]
 fn generate_target_supports_dot_prefixed_prompt_tree_output() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let mut prompt = RuleManifest::new(
         "context-engine/prompts/spec",
         "Spec Prompt",
@@ -500,6 +500,7 @@ fn add_root_command_creates_missing_directory() {
     let index_root = dir.path().join(".rule");
     let root = index_root.join("rules");
 
+    dispatch::dispatch(RuleCommandCli::Init, &index_root).unwrap();
     dispatch::dispatch(
         RuleCommandCli::AddRoot(AddRootArgs {
             path: root.clone(),
@@ -515,7 +516,7 @@ fn add_root_command_creates_missing_directory() {
 #[test]
 fn feedback_command_self_heals_after_missing_rule_folder() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
     let stale = sample_rule(
         "shared/agents/stale-rule",
         "Stale Rule",
@@ -557,7 +558,7 @@ fn feedback_command_self_heals_after_missing_rule_folder() {
 
     assert_eq!(result["status"], "ok");
 
-    let reopened = RuleStore::open(dir.path()).unwrap();
+    let reopened = RuleStore::init(dir.path()).unwrap();
     let healthy_rule = reopened.get("shared/agents/healthy-rule").unwrap();
     assert_eq!(healthy_rule.feedback_helpful_count(), Some(1));
     assert!(reopened.entity_store().get_indexed(&stale_id).unwrap().is_none());
@@ -572,7 +573,7 @@ fn generate_target_collects_rules_from_nested_workspaces() {
     let child_index_root = child_workspace.join(".rule");
     fs::create_dir_all(&child_workspace).unwrap();
 
-    let mut parent_store = RuleStore::open(&parent_index_root).unwrap();
+    let mut parent_store = RuleStore::init(&parent_index_root).unwrap();
     let mut parent_rule = sample_rule(
         "shared/agents/opening",
         "Opening",
@@ -583,7 +584,7 @@ fn generate_target_collects_rules_from_nested_workspaces() {
     parent_rule.set_path_scopes(["AGENTS.md"]);
     parent_store.create(&parent_rule, None).unwrap();
 
-    let mut child_store = RuleStore::open(&child_index_root).unwrap();
+    let mut child_store = RuleStore::init(&child_index_root).unwrap();
     let mut child_rule = RuleManifest::new(
         "memory-api/agents/overview",
         "Overview",
@@ -637,7 +638,7 @@ fn generate_target_collects_rules_from_nested_workspaces() {
 #[test]
 fn sync_targets_prunes_removed_outputs_from_previous_sync() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::open(dir.path()).unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
 
     store
         .create(

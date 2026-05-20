@@ -44,6 +44,11 @@ pub struct SpecCli {
 
 #[derive(Debug, Subcommand)]
 pub enum SpecCommandCli {
+    /// Initialize a new spec workspace in the current directory (or at --index-root).
+    ///
+    /// Creates the `.spec/` store directory and all required index files.
+    /// Idempotent: succeeds without error if the workspace already exists.
+    Init,
     /// Create a new spec.
     Create(CreateArgs),
     /// Get a spec by ID or slug.

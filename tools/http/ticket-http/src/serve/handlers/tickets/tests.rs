@@ -19,7 +19,7 @@ mod listing;
 mod mutations;
 
 fn make_store(dir: &std::path::Path) -> Arc<TicketStore> {
-    let store = Arc::new(TicketStore::open(dir).expect("open store"));
+    let store = Arc::new(TicketStore::init(dir).expect("open store"));
     store
         .add_scan_root(ScanRoot {
             path: dir.join("tickets"),

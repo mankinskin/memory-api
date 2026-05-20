@@ -189,16 +189,45 @@ impl TicketStore {
             .collect()
     }
 
-    /// Open (or create) a ticket store rooted at `index_root` using built-in schemas.
+    /// Open an existing ticket store rooted at `index_root` using built-in schemas.
+    ///
+    /// Returns [`StorageError::WorkspaceNotFound`] if the workspace has not been
+    /// initialized yet. Run `ticket init` to create a new workspace first.
     pub fn open(index_root: &Path) -> Result<Self, StorageError> {
         Self::open_with(index_root, SchemaRegistry::with_builtins())
     }
 
-    /// Open (or create) a ticket store with a custom schema registry.
+    /// Open an existing ticket store with a custom schema registry.
     ///
-    /// Use this to inject test-specific or project-specific ticket type schemas
-    /// loaded from TOML files via [`SchemaRegistry::load_dir`].
+    /// Returns [`StorageError::WorkspaceNotFound`] if the workspace has not been
+    /// initialized yet. Use [`TicketStore::init_with`] to create a new workspace.
     pub fn open_with(
+        index_root: &Path,
+        schema_registry: SchemaRegistry,
+    ) -> Result<Self, StorageError> {
+        let index_root = workspace::resolve_store_root_from(
+            index_root,
+            workspace::TICKET_INDEX_DIR,
+        );
+        if !index_root.join("tickets.db").is_file() {
+            return Err(StorageError::WorkspaceNotFound { path: index_root });
+        }
+        Self::open_internal(index_root, schema_registry)
+    }
+
+    /// Initialize a new ticket store rooted at `index_root` using built-in schemas.
+    ///
+    /// Creates the workspace directory and all required index files. Idempotent:
+    /// if the workspace already exists it is opened without error.
+    pub fn init(index_root: &Path) -> Result<Self, StorageError> {
+        Self::init_with(index_root, SchemaRegistry::with_builtins())
+    }
+
+    /// Initialize a new ticket store with a custom schema registry.
+    ///
+    /// Creates the workspace directory and all required index files. Idempotent:
+    /// if the workspace already exists it is opened without error.
+    pub fn init_with(
         index_root: &Path,
         schema_registry: SchemaRegistry,
     ) -> Result<Self, StorageError> {
@@ -211,6 +240,13 @@ impl TicketStore {
             "tickets.db",
             &["search_index/"],
         )?;
+        Self::open_internal(index_root, schema_registry)
+    }
+
+    fn open_internal(
+        index_root: std::path::PathBuf,
+        schema_registry: SchemaRegistry,
+    ) -> Result<Self, StorageError> {
         let index_root = Self::normalize_existing_path(&index_root);
         let db_path = index_root.join("tickets.db");
         let search_dir = index_root.join("search_index");
@@ -536,7 +572,7 @@ mod tests {
         let store_root = repo.join("viewer").join(".ticket");
         std::fs::create_dir_all(&store_root).unwrap();
 
-        let store = TicketStore::open(&store_root).unwrap();
+        let store = TicketStore::init(&store_root).unwrap();
         let ticket_id = store
             .create(
                 None,

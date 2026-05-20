@@ -94,7 +94,7 @@ mod tests {
     fn add_root_creates_missing_directory() {
         let dir = tempdir().unwrap();
         let index_root = dir.path().join(".spec");
-        let store = SpecStore::open(&index_root).unwrap();
+        let store = SpecStore::init(&index_root).unwrap();
         let root = index_root.join("specs");
 
         cmd_add_root(

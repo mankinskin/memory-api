@@ -34,6 +34,8 @@ pub(super) fn dispatch(
     match command {
         TicketCommandCli::ExportCommandSchema =>
             export_command_schema_payload(),
+        TicketCommandCli::Init =>
+            cmd_init(index_root_override, schema_dir_override),
         other => dispatch_store_backed(
             other,
             index_root_override,
@@ -41,6 +43,24 @@ pub(super) fn dispatch(
             dry_run,
         ),
     }
+}
+
+fn cmd_init(
+    index_root_override: Option<&Path>,
+    schema_dir_override: Option<&Path>,
+) -> Result<Value, CliRunError> {
+    let index_root = resolve_index_root(index_root_override);
+    let mut registry = SchemaRegistry::with_builtins();
+    if let Some(schema_dir) = schema_dir_override {
+        registry.load_dir(schema_dir)?;
+    }
+    let store = TicketStore::init_with(&index_root, registry)?;
+    Ok(json!({
+        "command": "init",
+        "status": "ok",
+        "workspace": store.index_root.display().to_string(),
+        "message": "workspace initialized",
+    }))
 }
 
 fn dry_run_command_payload(command: &TicketCommandCli) -> Option<Value> {
@@ -51,6 +71,8 @@ fn dry_run_command_payload(command: &TicketCommandCli) -> Option<Value> {
 
 fn dry_run_payload_core(command: &TicketCommandCli) -> Option<Value> {
     match command {
+        TicketCommandCli::Init =>
+            Some(dry_run_payload("init", "initialize ticket workspace")),
         TicketCommandCli::Create(_) =>
             Some(dry_run_payload("create", "create ticket")),
         TicketCommandCli::Update(_) =>
@@ -220,7 +242,8 @@ fn dispatch_store_command(
         | TicketCommandCli::Fmt(_)
         | TicketCommandCli::Board(_) =>
             dispatch_store_command_ops(command, store),
-        TicketCommandCli::ExportCommandSchema => {
+        TicketCommandCli::ExportCommandSchema
+        | TicketCommandCli::Init => {
             unreachable!("handled before store dispatch")
         },
     }

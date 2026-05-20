@@ -25,7 +25,7 @@ async fn board_show_parity_store_and_mcp() {
     let ticket_id_str = seed_ticket(tmp.path(), "parity test ticket");
     let ticket_uuid: uuid::Uuid = ticket_id_str.parse().expect("valid uuid");
 
-    let store = TicketStore::open(tmp.path()).expect("open store");
+    let store = TicketStore::init(tmp.path()).expect("open store");
     let entry = store
         .board_check_in(
             &ticket_uuid,
@@ -86,7 +86,7 @@ async fn next_tickets_excludes_board_active_and_surfaces_wip_warning() {
     let t_free = seed_ticket(tmp.path(), "free candidate ticket");
 
     {
-        let store = TicketStore::open(tmp.path()).expect("open store");
+        let store = TicketStore::init(tmp.path()).expect("open store");
         for id_str in [&t_active, &t_free] {
             let uid: uuid::Uuid = id_str.parse().expect("uuid");
             store
@@ -174,7 +174,7 @@ async fn next_tickets_prefers_newer_candidates_before_older_ones() {
     let older;
     let newer;
     {
-        let store = TicketStore::open(tmp.path()).expect("open store");
+        let store = TicketStore::init(tmp.path()).expect("open store");
         let fields = BTreeMap::from([(String::from("priority"), json!("high"))]);
 
         older = store
@@ -230,7 +230,7 @@ async fn next_tickets_prefers_more_dependees_before_newer_candidates() {
     let older_more_dependees;
     let newer_fewer_dependees;
     {
-        let store = TicketStore::open(tmp.path()).expect("open store");
+        let store = TicketStore::init(tmp.path()).expect("open store");
         let fields = BTreeMap::from([(String::from("priority"), json!("high"))]);
 
         older_more_dependees = store

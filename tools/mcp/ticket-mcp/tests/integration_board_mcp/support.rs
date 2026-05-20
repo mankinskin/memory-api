@@ -17,7 +17,7 @@ pub(super) fn seed_ticket(
     store_root: &Path,
     title: &str,
 ) -> String {
-    let store = TicketStore::open(store_root).expect("open store");
+    let store = TicketStore::init(store_root).expect("open store");
     let ticket_id = store
         .create(
             None,

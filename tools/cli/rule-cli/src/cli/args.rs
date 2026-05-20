@@ -26,6 +26,11 @@ pub struct RuleCli {
 
 #[derive(Debug, Subcommand)]
 pub enum RuleCommandCli {
+    /// Initialize a new rule workspace in the current directory (or at --index-root).
+    ///
+    /// Creates the `.rule/` store directory and all required index files.
+    /// Idempotent: succeeds without error if the workspace already exists.
+    Init,
     Create(CreateArgs),
     Get(IdArgs),
     Delete(IdArgs),

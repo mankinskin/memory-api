@@ -3,7 +3,10 @@ use std::path::{
     PathBuf,
 };
 
-use serde_json::Value;
+use serde_json::{
+    Value,
+    json,
+};
 
 use spec_api::SpecStore;
 
@@ -19,6 +22,17 @@ pub(super) fn dispatch(
     _as_json: bool,
 ) -> Result<Value, CliRunError> {
     let index_root = resolve_index_root(index_root_override);
+
+    if matches!(command, SpecCommandCli::Init) {
+        let store = SpecStore::init(&index_root)?;
+        return Ok(json!({
+            "command": "init",
+            "status": "ok",
+            "workspace": store.entity_store().index_root.display().to_string(),
+            "message": "workspace initialized",
+        }));
+    }
+
     let mut store = SpecStore::open(&index_root)?;
 
     // Auto-scan to pick up any new spec folders
@@ -54,6 +68,7 @@ fn dispatch_mutating(
         SpecCommandCli::Scan(args) => commands::cmd_scan(args, store),
         SpecCommandCli::Section(args) => commands::cmd_section(args, store),
         SpecCommandCli::Bootstrap(args) => commands::cmd_bootstrap(args, store),
+        SpecCommandCli::Init => unreachable!("Init handled before store open"),
         _ => unreachable!(
             "command_mutates keeps non-mutating commands out of this path"
         ),
@@ -72,6 +87,7 @@ fn dispatch_read_only(
         SpecCommandCli::Tree(args) => commands::cmd_tree(args, store),
         SpecCommandCli::Refs(args) => commands::cmd_refs(args, store),
         SpecCommandCli::Health(args) => commands::cmd_health(args, store),
+        SpecCommandCli::Init => unreachable!("Init handled before store open"),
         _ => unreachable!(
             "command_mutates keeps mutating commands out of this path"
         ),

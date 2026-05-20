@@ -59,12 +59,36 @@ pub struct SpecStore {
 }
 
 impl SpecStore {
+    /// Open an existing spec store rooted at `index_root`.
+    ///
+    /// Returns [`memory_api::error::StorageError::WorkspaceNotFound`] if the
+    /// workspace has not been initialized. Run `spec init` first.
     pub fn open(index_root: &Path) -> Result<Self, SpecError> {
         let index_root =
             workspace::resolve_store_root_from(index_root, SPEC_INDEX_DIR);
+        if !index_root.join("entities.db").is_file() {
+            return Err(memory_api::error::StorageError::WorkspaceNotFound {
+                path: index_root,
+            }
+            .into());
+        }
+        Self::open_internal(&index_root)
+    }
+
+    /// Initialize a new spec store rooted at `index_root`.
+    ///
+    /// Creates the workspace directory and all required index files. Idempotent:
+    /// if the workspace already exists it is opened without error.
+    pub fn init(index_root: &Path) -> Result<Self, SpecError> {
+        let index_root =
+            workspace::resolve_store_root_from(index_root, SPEC_INDEX_DIR);
+        Self::open_internal(&index_root)
+    }
+
+    fn open_internal(index_root: &Path) -> Result<Self, SpecError> {
         let fs = EntityFs::new(SPEC_MANIFEST_FILE, SPEC_LOCK_FILE);
         let registry = crate::default_schema::spec_schema_registry();
-        let inner = EntityStore::open_with(&index_root, fs, registry)?;
+        let inner = EntityStore::open_with(index_root, fs, registry)?;
         inner.add_scan_root(ScanRoot {
             path: index_root.join("specs"),
             label: "specs".to_string(),
