@@ -155,8 +155,10 @@ pub fn task_join_err(
 #[cfg(test)]
 mod tests {
     use super::storage_err;
-    use axum::body::to_bytes;
-    use axum::http::StatusCode;
+    use axum::{
+        body::to_bytes,
+        http::StatusCode,
+    };
     use ticket_api::error::StorageError;
 
     #[tokio::test]
@@ -176,10 +178,12 @@ mod tests {
         let payload: serde_json::Value =
             serde_json::from_slice(&body).expect("json body");
         assert_eq!(payload["code"], "storage.path_not_found");
-        assert!(payload["message"]
-            .as_str()
-            .expect("message")
-            .contains("missing from disk"));
+        assert!(
+            payload["message"]
+                .as_str()
+                .expect("message")
+                .contains("missing from disk")
+        );
     }
 
     #[tokio::test]

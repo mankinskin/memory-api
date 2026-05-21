@@ -7,8 +7,8 @@ use memory_api::model::filesystem::ScanRoot;
 use rule_api::{
     FeedbackNoteKind,
     FeedbackRating,
-    RuleFilter,
     RuleFeedbackInput,
+    RuleFilter,
     RuleManifest,
     RuleStore,
     discover_workspace_scan_roots,
@@ -118,8 +118,7 @@ fn dispatch_secondary(
         | RuleCommandCli::ImportFile(_)
         | RuleCommandCli::Update(_)
         | RuleCommandCli::Feedback(_)
-        | RuleCommandCli::Init =>
-            unreachable!("handled in primary dispatch"),
+        | RuleCommandCli::Init => unreachable!("handled in primary dispatch"),
     }
 }
 
@@ -219,9 +218,10 @@ fn feedback_command(
     store: &mut RuleStore,
     args: FeedbackArgs,
 ) -> Result<Value, CliRunError> {
-    let rating = args.rating.parse::<FeedbackRating>().map_err(
-        CliRunError::BadRequest,
-    )?;
+    let rating = args
+        .rating
+        .parse::<FeedbackRating>()
+        .map_err(CliRunError::BadRequest)?;
     let note_kind = args
         .note_kind
         .as_deref()
@@ -401,8 +401,7 @@ fn add_root_command(
     let path =
         fs::canonicalize(&args.path).unwrap_or_else(|_| args.path.clone());
     let label = args.label.unwrap_or_else(|| {
-        path
-            .file_name()
+        path.file_name()
             .and_then(std::ffi::OsStr::to_str)
             .unwrap_or("rules")
             .to_string()

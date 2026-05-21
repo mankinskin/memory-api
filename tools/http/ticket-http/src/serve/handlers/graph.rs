@@ -15,8 +15,10 @@ use uuid::Uuid;
 
 use viewer_api::error::RequestIdExt;
 
-use crate::serve::AppState;
-use crate::serve::handlers::tickets::TicketRef;
+use crate::serve::{
+    AppState,
+    handlers::tickets::TicketRef,
+};
 
 mod quality;
 mod traversal;

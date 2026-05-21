@@ -315,7 +315,10 @@ fn board_show_recommends_next_work_when_board_is_empty() {
     assert_eq!(recommended[0]["title"], "Top ticket for board suggestions");
 
     let actions = show["actions"].as_array().unwrap();
-    assert!(!actions.is_empty(), "board should include actionable guidance");
+    assert!(
+        !actions.is_empty(),
+        "board should include actionable guidance"
+    );
 
     let human = show["human"].as_str().unwrap();
     assert!(human.contains("Current Work:"));
@@ -338,7 +341,11 @@ fn board_show_lists_ten_recommendations_when_available() {
     assert_eq!(show["status"], "ok");
 
     let recommended = show["recommended_next"].as_array().unwrap();
-    assert_eq!(recommended.len(), 10, "board show should surface 10 next-up entries when available");
+    assert_eq!(
+        recommended.len(),
+        10,
+        "board show should surface 10 next-up entries when available"
+    );
     assert_eq!(recommended[0]["title"], "Candidate 12");
     assert_eq!(recommended[9]["title"], "Candidate 03");
 
@@ -375,7 +382,9 @@ fn board_show_text_output_stops_after_dashboard() {
 
     assert!(stdout.contains("Board: [0/5 active]"));
     assert!(stdout.contains("Next Up:"));
-    assert!(stdout.contains(&format!("#1  {short_ticket}  Top ticket for board suggestions")));
+    assert!(stdout.contains(&format!(
+        "#1  {short_ticket}  Top ticket for board suggestions"
+    )));
     assert!(stdout.contains(&format!("ticket_id: {next_ticket}")));
     assert!(!stdout.contains("board_show ok"));
     assert!(!stdout.contains("[recommended_next]"));
@@ -401,14 +410,16 @@ fn next_text_output_uses_pretty_card_format() {
         String::from_utf8_lossy(&out.stderr),
     );
 
-    let stdout =
-        String::from_utf8(out.stdout).expect("next stdout should be valid UTF-8");
+    let stdout = String::from_utf8(out.stdout)
+        .expect("next stdout should be valid UTF-8");
     let short_ticket = &next_ticket[..8];
 
     assert!(stdout.contains("next ok"));
     assert!(stdout.contains("count: 1"));
     assert!(stdout.contains("Next Up:"));
-    assert!(stdout.contains(&format!("#1  {short_ticket}  Top ticket for next suggestions")));
+    assert!(stdout.contains(&format!(
+        "#1  {short_ticket}  Top ticket for next suggestions"
+    )));
     assert!(stdout.contains(&format!("ticket_id: {next_ticket}")));
     assert!(!stdout.contains("[items]"));
 }
@@ -420,7 +431,8 @@ fn next_and_board_prefer_newer_tickets_before_older_ones() {
     let newer = create_ticket(&s, "Zulu newer candidate");
 
     for ticket_id in [&older, &newer] {
-        let ready = s.ticket_json(&["update", ticket_id, "--to-state", "ready"]);
+        let ready =
+            s.ticket_json(&["update", ticket_id, "--to-state", "ready"]);
         assert_eq!(ready["status"], "ok");
 
         let priority =
@@ -430,7 +442,10 @@ fn next_and_board_prefer_newer_tickets_before_older_ones() {
 
     let next = s.ticket_json(&["next"]);
     assert_eq!(next["status"], "ok");
-    assert!(next.get("board").is_none(), "ticket next should not embed a duplicate board summary");
+    assert!(
+        next.get("board").is_none(),
+        "ticket next should not embed a duplicate board summary"
+    );
     let next_items = next["items"].as_array().unwrap();
     assert!(next_items.len() >= 2);
     assert_eq!(next_items[0]["id"], newer.as_str());
@@ -453,7 +468,8 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
     let dependent_two = create_ticket(&s, "Dependent two");
 
     for ticket_id in [&older_more_dependees, &newer_fewer_dependees] {
-        let ready = s.ticket_json(&["update", ticket_id, "--to-state", "ready"]);
+        let ready =
+            s.ticket_json(&["update", ticket_id, "--to-state", "ready"]);
         assert_eq!(ready["status"], "ok");
 
         let priority =
@@ -497,8 +513,13 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
     assert_eq!(recommended[1]["dependees"], 0);
 
     let human = show["human"].as_str().unwrap();
-    assert!(human.contains(&format!("#1  {}  Alpha older blocker", &older_more_dependees[..8])));
-    assert!(human.contains("state: ready  priority: high  dependees: 2  dependency_count: 0"));
+    assert!(human.contains(&format!(
+        "#1  {}  Alpha older blocker",
+        &older_more_dependees[..8]
+    )));
+    assert!(human.contains(
+        "state: ready  priority: high  dependees: 2  dependency_count: 0"
+    ));
     assert!(human.contains(&format!("created_at: {pretty_created_at}")));
     assert!(human.contains(&format!("ticket_id: {older_more_dependees}")));
     assert!(!human.contains("DEPENDEES"));
@@ -578,10 +599,7 @@ fn board_show_excludes_history_and_board_history_lists_recent_completions() {
     let history_entries = history["entries"].as_array().unwrap();
     assert_eq!(history_entries.len(), 1);
     assert_eq!(history_entries[0]["ticket_id"], completed_ticket.as_str());
-    assert_eq!(
-        history_entries[0]["title"],
-        "Recently completed board work"
-    );
+    assert_eq!(history_entries[0]["title"], "Recently completed board work");
 
     let history_human = history["human"].as_str().unwrap();
     assert!(history_human.contains("Completed Work:"));

@@ -39,7 +39,6 @@ use uuid::Uuid;
 use memory_api::{
     error::StorageError,
     model::entity::EntityManifest,
-    workspace,
     storage::{
         ensure_gitignore_entries,
         entity_fs::EntityFs,
@@ -49,6 +48,7 @@ use memory_api::{
         },
         indexed::IndexedEntity,
     },
+    workspace,
 };
 
 use crate::{
@@ -84,9 +84,12 @@ impl RuleStore {
     /// Returns [`StorageError::WorkspaceNotFound`] if the workspace has not been
     /// initialized. Run `rule init` first.
     pub fn open(index_root: &Path) -> Result<Self, RuleError> {
-        let index_root = workspace::resolve_store_root_from(index_root, ".rule");
+        let index_root =
+            workspace::resolve_store_root_from(index_root, ".rule");
         if !index_root.join("entities.db").is_file() {
-            return Err(StorageError::WorkspaceNotFound { path: index_root }.into());
+            return Err(
+                StorageError::WorkspaceNotFound { path: index_root }.into()
+            );
         }
         Self::open_internal(&index_root)
     }
@@ -96,7 +99,8 @@ impl RuleStore {
     /// Creates the workspace directory and all required index files. Idempotent:
     /// if the workspace already exists it is opened without error.
     pub fn init(index_root: &Path) -> Result<Self, RuleError> {
-        let index_root = workspace::resolve_store_root_from(index_root, ".rule");
+        let index_root =
+            workspace::resolve_store_root_from(index_root, ".rule");
         Self::open_internal(&index_root)
     }
 
@@ -443,11 +447,8 @@ impl RuleStore {
         append_feedback_event(&self.inner.fs, &indexed.path, &event)?;
         let events = read_feedback_events(&self.inner.fs, &indexed.path)?;
         let summary = FeedbackSummary::from_events(&events);
-        let rule = self.update(
-            id_or_slug,
-            feedback_summary_patch(&summary),
-            None,
-        )?;
+        let rule =
+            self.update(id_or_slug, feedback_summary_patch(&summary), None)?;
 
         Ok((rule, event))
     }
@@ -589,8 +590,7 @@ fn entity_to_rule(entity: &EntityManifest) -> RuleManifest {
 }
 
 fn is_missing_index_entry(indexed: &IndexedEntity) -> bool {
-    !indexed.path.is_dir()
-        || !indexed.path.join(RULE_MANIFEST_FILE).is_file()
+    !indexed.path.is_dir() || !indexed.path.join(RULE_MANIFEST_FILE).is_file()
 }
 
 fn feedback_events_path(
@@ -657,7 +657,7 @@ fn read_feedback_events(
 }
 
 fn feedback_summary_patch(
-    summary: &FeedbackSummary,
+    summary: &FeedbackSummary
 ) -> BTreeMap<String, Value> {
     let mut patch = BTreeMap::from([
         (

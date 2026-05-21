@@ -61,7 +61,8 @@ mod tests {
     #[test]
     fn concurrent_get_returns_shared_store_instance() {
         let dir = tempfile::tempdir().expect("create tempdir");
-        let registry = Arc::new(WorkspaceRegistry::single(dir.path().to_path_buf()));
+        let registry =
+            Arc::new(WorkspaceRegistry::single(dir.path().to_path_buf()));
         let primary_workspace = registry.primary_workspace_name().to_string();
 
         let workers = 8usize;
@@ -74,7 +75,9 @@ mod tests {
             let barrier = Arc::clone(&barrier);
             handles.push(thread::spawn(move || {
                 barrier.wait();
-                registry.get(&primary_workspace).expect("workspace should open")
+                registry
+                    .get(&primary_workspace)
+                    .expect("workspace should open")
             }));
         }
 
@@ -97,8 +100,7 @@ mod tests {
 impl WorkspaceRegistry {
     /// Build with a single pre-loaded workspace named from its workspace folder.
     pub fn single(path: PathBuf) -> Self {
-        let primary_workspace =
-            primary_workspace_name_for_index_root(&path);
+        let primary_workspace = primary_workspace_name_for_index_root(&path);
         let mut paths = HashMap::new();
         paths.insert(primary_workspace.clone(), path);
         Self {
@@ -116,8 +118,7 @@ impl WorkspaceRegistry {
     /// second open attempt on the same SQLite file (only one writer at a time).
     pub fn single_opened(store: Arc<TicketStore>) -> Self {
         let path = store.index_root.clone();
-        let primary_workspace =
-            primary_workspace_name_for_index_root(&path);
+        let primary_workspace = primary_workspace_name_for_index_root(&path);
         let mut paths = HashMap::new();
         paths.insert(primary_workspace.clone(), path);
         extend_related_paths(&mut paths, &store);
@@ -162,8 +163,10 @@ impl WorkspaceRegistry {
             let Some(store) = self.get(&workspace) else {
                 continue;
             };
-            let canonical_workspace =
-                canonical_workspace_name_for_index_root(&store.index_root, &workspace);
+            let canonical_workspace = canonical_workspace_name_for_index_root(
+                &store.index_root,
+                &workspace,
+            );
             let found = store.get_indexed_many(ids)?;
             for (id, ticket) in found {
                 if ticket.deleted {
@@ -312,7 +315,7 @@ fn extend_related_paths(
 }
 
 fn discover_descendant_workspace_paths(
-    store: &TicketStore,
+    store: &TicketStore
 ) -> Vec<(String, PathBuf)> {
     let Ok(scan_roots) = store.list_scan_roots() else {
         return Vec::new();
@@ -326,7 +329,10 @@ fn discover_descendant_workspace_paths(
                 return None;
             }
             Some((
-                canonical_workspace_name_for_index_root(&index_root, &root.label),
+                canonical_workspace_name_for_index_root(
+                    &index_root,
+                    &root.label,
+                ),
                 index_root,
             ))
         })
@@ -334,7 +340,7 @@ fn discover_descendant_workspace_paths(
 }
 
 fn discover_ancestor_workspace_paths(
-    store: &TicketStore,
+    store: &TicketStore
 ) -> Vec<(String, PathBuf)> {
     let active_workspace_root = workspace_root_for_store(store);
 
@@ -363,9 +369,7 @@ fn workspace_root_for_store(store: &TicketStore) -> &std::path::Path {
     workspace_root_for_index_root(&store.index_root)
 }
 
-pub(crate) fn workspace_root_for_index_root(
-    index_root: &Path,
-) -> &Path {
+pub(crate) fn workspace_root_for_index_root(index_root: &Path) -> &Path {
     match index_root.file_name().and_then(|name| name.to_str()) {
         Some(".ticket") => index_root.parent().unwrap_or(index_root),
         _ => index_root,
@@ -388,9 +392,7 @@ fn primary_workspace_name_for_index_root(index_root: &Path) -> String {
     canonical_workspace_name_for_index_root(index_root, "workspace")
 }
 
-pub(crate) fn store_root_for_scan_root(
-    scan_root: &Path,
-) -> Option<PathBuf> {
+pub(crate) fn store_root_for_scan_root(scan_root: &Path) -> Option<PathBuf> {
     let parent = scan_root.parent()?;
     detect_store_root(parent)
 }
@@ -430,7 +432,9 @@ mod workspace_resolution_tests {
     #[test]
     fn descendant_workspaces_use_workspace_root_name() {
         let root = tempfile::tempdir().expect("tempdir");
-        let parent_store = Arc::new(TicketStore::init(root.path()).expect("open parent store"));
+        let parent_store = Arc::new(
+            TicketStore::init(root.path()).expect("open parent store"),
+        );
         parent_store
             .add_scan_root(ScanRoot {
                 path: root.path().join("tickets"),
@@ -458,7 +462,8 @@ mod workspace_resolution_tests {
             })
             .expect("add child scan root to parent");
 
-        let registry = WorkspaceRegistry::single_opened(Arc::clone(&parent_store));
+        let registry =
+            WorkspaceRegistry::single_opened(Arc::clone(&parent_store));
         let workspace_names = registry.workspace_names();
         assert!(workspace_names.contains(&"child".to_string()));
         let root_workspace = super::workspace_root_for_index_root(root.path())
@@ -473,7 +478,9 @@ mod workspace_resolution_tests {
     #[test]
     fn resolve_indexed_many_prefers_deepest_existing_workspace() {
         let root = tempfile::tempdir().expect("tempdir");
-        let parent_store = Arc::new(TicketStore::init(root.path()).expect("open parent store"));
+        let parent_store = Arc::new(
+            TicketStore::init(root.path()).expect("open parent store"),
+        );
         parent_store
             .add_scan_root(ScanRoot {
                 path: root.path().join("tickets"),
@@ -514,9 +521,13 @@ mod workspace_resolution_tests {
             .expect("add child scan root to parent");
         parent_store.scan(true).expect("scan parent store");
 
-        let registry = WorkspaceRegistry::single_opened(Arc::clone(&parent_store));
+        let registry =
+            WorkspaceRegistry::single_opened(Arc::clone(&parent_store));
         let resolved = registry
-            .resolve_indexed_many(registry.primary_workspace_name(), &[ticket_id])
+            .resolve_indexed_many(
+                registry.primary_workspace_name(),
+                &[ticket_id],
+            )
             .expect("resolve ticket");
         let resolved = resolved.get(&ticket_id).expect("resolved ticket");
 

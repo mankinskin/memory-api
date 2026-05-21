@@ -60,12 +60,10 @@ impl RuleFilter {
         rule: &RuleManifest,
     ) -> bool {
         self.has_low_feedback.is_none_or(|expected| {
-            let has_low_feedback = rule.feedback_mixed_count().unwrap_or_default()
-                > 0
-                || rule
-                    .feedback_not_helpful_count()
-                    .unwrap_or_default()
-                    > 0;
+            let has_low_feedback =
+                rule.feedback_mixed_count().unwrap_or_default() > 0
+                    || rule.feedback_not_helpful_count().unwrap_or_default()
+                        > 0;
             has_low_feedback == expected
         })
     }
@@ -87,15 +85,19 @@ mod tests {
         );
         rule.set_feedback_summary(0, 1, 0, 0, 0, Some("2026-05-12T00:00:00Z"));
 
-        assert!(RuleFilter {
-            has_low_feedback: Some(true),
-            ..RuleFilter::default()
-        }
-        .matches(&rule));
-        assert!(!RuleFilter {
-            has_low_feedback: Some(false),
-            ..RuleFilter::default()
-        }
-        .matches(&rule));
+        assert!(
+            RuleFilter {
+                has_low_feedback: Some(true),
+                ..RuleFilter::default()
+            }
+            .matches(&rule)
+        );
+        assert!(
+            !RuleFilter {
+                has_low_feedback: Some(false),
+                ..RuleFilter::default()
+            }
+            .matches(&rule)
+        );
     }
 }

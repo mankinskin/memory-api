@@ -1,7 +1,7 @@
 use std::{
     path::{
-    Path,
-    PathBuf,
+        Path,
+        PathBuf,
     },
     thread,
     time::Duration,
@@ -125,7 +125,7 @@ impl TantivySearchIndex {
                 {
                     thread::sleep(Duration::from_millis(delay_ms));
                     delay_ms = (delay_ms * 2).min(500);
-                }
+                },
                 Err(error) => return Err(error),
             }
         }
@@ -382,18 +382,15 @@ fn full_text_query(
     );
     query_parser.set_conjunction_by_default();
     let exact_query = query_parser.parse_query(text).ok();
-    let substring_query = substring_query_for_fields(
-        text,
-        &[fields.title, fields.body],
-    );
+    let substring_query =
+        substring_query_for_fields(text, &[fields.title, fields.body]);
 
     match (exact_query, substring_query) {
-        (Some(exact_query), Some(substring_query)) => Box::new(
-            BooleanQuery::new(vec![
+        (Some(exact_query), Some(substring_query)) =>
+            Box::new(BooleanQuery::new(vec![
                 (Occur::Should, exact_query),
                 (Occur::Should, substring_query),
-            ]),
-        ),
+            ])),
         (Some(exact_query), None) => exact_query,
         (None, Some(substring_query)) => substring_query,
         (None, None) => Box::new(AllQuery),
@@ -417,21 +414,18 @@ fn substring_query_for_fields(
 
     let pattern = format!(".*{}.*", regex::escape(&needle));
 
-    let clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> =
-        fields
-            .iter()
-            .copied()
-            .filter_map(|field| {
-                RegexQuery::from_pattern(&pattern, field)
-                    .ok()
-                    .map(|query| {
-                        (
-                            Occur::Should,
-                            Box::new(query) as Box<dyn tantivy::query::Query>,
-                        )
-                    })
+    let clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = fields
+        .iter()
+        .copied()
+        .filter_map(|field| {
+            RegexQuery::from_pattern(&pattern, field).ok().map(|query| {
+                (
+                    Occur::Should,
+                    Box::new(query) as Box<dyn tantivy::query::Query>,
+                )
             })
-            .collect();
+        })
+        .collect();
 
     if clauses.is_empty() {
         None
@@ -471,9 +465,8 @@ fn field_expr_to_query(
     };
 
     match value {
-        ValueExpr::Text(text) if key == "title" => {
-            title_field_query(text, fields)
-        },
+        ValueExpr::Text(text) if key == "title" =>
+            title_field_query(text, fields),
         ValueExpr::Text(text) => term_query(field, text),
         ValueExpr::Range { .. } => Box::new(AllQuery),
     }

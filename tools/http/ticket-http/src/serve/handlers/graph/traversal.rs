@@ -139,11 +139,11 @@ async fn run_graph_request(
     request: GraphRequest,
 ) -> Response {
     let task_request_id = request_id.clone();
-    tokio::task::spawn_blocking(move || bfs_graph(state, &task_request_id, request))
-        .await
-        .unwrap_or_else(|_| {
-            task_join_err(&request_id, "graph traversal request")
-        })
+    tokio::task::spawn_blocking(move || {
+        bfs_graph(state, &task_request_id, request)
+    })
+    .await
+    .unwrap_or_else(|_| task_join_err(&request_id, "graph traversal request"))
 }
 
 fn bfs_graph(
@@ -152,10 +152,11 @@ fn bfs_graph(
     request: GraphRequest,
 ) -> Response {
     let total_timer = Instant::now();
-    let store = match resolve_workspace_store(&state, &request.workspace, request_id) {
-        Ok(store) => store,
-        Err(response) => return response,
-    };
+    let store =
+        match resolve_workspace_store(&state, &request.workspace, request_id) {
+            Ok(store) => store,
+            Err(response) => return response,
+        };
 
     let phase_timer = Instant::now();
     let all_edges = match store.list_all_edges() {
@@ -175,12 +176,22 @@ fn bfs_graph(
     );
     let phase2_end_ms = phase_timer.elapsed().as_millis();
 
-    let resolved = match resolve_graph_tickets(&state, &request.workspace, &traversal, request_id) {
+    let resolved = match resolve_graph_tickets(
+        &state,
+        &request.workspace,
+        &traversal,
+        request_id,
+    ) {
         Ok(resolved) => resolved,
         Err(response) => return response,
     };
 
-    let nodes = match build_nodes(&resolved, &traversal.visited, &request.workspace, request_id) {
+    let nodes = match build_nodes(
+        &resolved,
+        &traversal.visited,
+        &request.workspace,
+        request_id,
+    ) {
         Ok(nodes) => nodes,
         Err(response) => return response,
     };

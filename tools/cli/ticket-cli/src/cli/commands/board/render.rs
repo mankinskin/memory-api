@@ -103,7 +103,7 @@ pub(super) fn board_display_entry_to_json(entry: &BoardDisplayEntry) -> Value {
 }
 
 pub(super) fn board_recommendation_to_json(
-    recommendation: &BoardRecommendation,
+    recommendation: &BoardRecommendation
 ) -> Value {
     json!({
         "rank": recommendation.rank,
@@ -253,11 +253,7 @@ pub(crate) fn write_next_up(
             "  created_at: {}",
             format_pretty_created_at(&recommendation.created_at),
         );
-        let _ = writeln!(
-            out,
-            "  ticket_id: {}",
-            recommendation.ticket_id,
-        );
+        let _ = writeln!(out, "  ticket_id: {}", recommendation.ticket_id,);
     }
 }
 
@@ -280,7 +276,11 @@ fn write_history_summary(
             out,
             "Window: last {} second{}",
             snap.config.completed_audit_window_secs,
-            if snap.config.completed_audit_window_secs == 1 { "" } else { "s" }
+            if snap.config.completed_audit_window_secs == 1 {
+                ""
+            } else {
+                "s"
+            }
         );
     }
 
@@ -289,7 +289,11 @@ fn write_history_summary(
             out,
             "Older hidden: {} completion{} outside the history window",
             snap.hidden_completed_count,
-            if snap.hidden_completed_count == 1 { "" } else { "s" }
+            if snap.hidden_completed_count == 1 {
+                ""
+            } else {
+                "s"
+            }
         );
     }
 }
@@ -302,7 +306,10 @@ fn write_history_entries(
     let _ = writeln!(out, "Completed Work:");
 
     if entries.is_empty() {
-        let _ = writeln!(out, "  (no completed board history in the current window)");
+        let _ = writeln!(
+            out,
+            "  (no completed board history in the current window)"
+        );
         return;
     }
 
@@ -388,12 +395,7 @@ pub(super) fn entry_status(
 }
 
 fn short_ticket_id(ticket_id: &Uuid) -> String {
-    ticket_id
-        .simple()
-        .to_string()
-        .chars()
-        .take(8)
-        .collect()
+    ticket_id.simple().to_string().chars().take(8).collect()
 }
 
 fn short_ticket_value(ticket_id: &str) -> String {

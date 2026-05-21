@@ -242,8 +242,7 @@ fn dispatch_store_command(
         | TicketCommandCli::Fmt(_)
         | TicketCommandCli::Board(_) =>
             dispatch_store_command_ops(command, store),
-        TicketCommandCli::ExportCommandSchema
-        | TicketCommandCli::Init => {
+        TicketCommandCli::ExportCommandSchema | TicketCommandCli::Init => {
             unreachable!("handled before store dispatch")
         },
     }

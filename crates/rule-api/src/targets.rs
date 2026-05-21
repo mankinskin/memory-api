@@ -265,7 +265,10 @@ impl RenderTargetFolder {
 }
 
 impl RenderTargetFile {
-    fn into_render_target(self, parent: &Path) -> RenderTarget {
+    fn into_render_target(
+        self,
+        parent: &Path,
+    ) -> RenderTarget {
         RenderTarget {
             name: self.target.name,
             repo_scope: self.target.repo_scope,
@@ -289,7 +292,10 @@ fn push_tree_files(
     }
 }
 
-fn tree_output_path(parent: &Path, name: &str) -> String {
+fn tree_output_path(
+    parent: &Path,
+    name: &str,
+) -> String {
     let mut path = parent.to_path_buf();
     path.push(name);
     path.to_string_lossy().replace('\\', "/")
@@ -472,24 +478,22 @@ pub fn load_render_target_config(
             path: path.to_path_buf(),
             source,
         })?;
-    let config =
-        match path.extension().and_then(|extension| extension.to_str()) {
-            Some("yaml" | "yml") =>
-                serde_yaml::from_str::<RawRenderTargetConfig>(&content)
-                    .map_err(|source| {
-                    TargetConfigError::ParseYaml {
-                        path: path.to_path_buf(),
-                        source,
-                    }
-                })?
-                .into_render_target_config(),
-            _ => toml::from_str::<RawRenderTargetConfig>(&content)
-                .map_err(|source| TargetConfigError::ParseToml {
+    let config = match path.extension().and_then(|extension| extension.to_str())
+    {
+        Some("yaml" | "yml") =>
+            serde_yaml::from_str::<RawRenderTargetConfig>(&content)
+                .map_err(|source| TargetConfigError::ParseYaml {
                     path: path.to_path_buf(),
                     source,
                 })?
                 .into_render_target_config(),
-        };
+        _ => toml::from_str::<RawRenderTargetConfig>(&content)
+            .map_err(|source| TargetConfigError::ParseToml {
+                path: path.to_path_buf(),
+                source,
+            })?
+            .into_render_target_config(),
+    };
 
     let mut names = HashSet::new();
     for target in &config.targets {

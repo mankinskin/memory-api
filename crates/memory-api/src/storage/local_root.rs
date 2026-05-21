@@ -85,8 +85,7 @@ mod tests {
         ensure_sqlite_index_root(&root, "entities.db", &["search_index/"])
             .unwrap();
 
-        let gitignore =
-            fs::read_to_string(root.join(".gitignore")).unwrap();
+        let gitignore = fs::read_to_string(root.join(".gitignore")).unwrap();
         assert!(
             gitignore.contains(GITIGNORE_HEADER),
             "missing header: {gitignore}"
@@ -108,8 +107,7 @@ mod tests {
         ensure_gitignore_entries(&root, &["entities.db", "search_index/"])
             .unwrap();
 
-        let gitignore =
-            fs::read_to_string(root.join(".gitignore")).unwrap();
+        let gitignore = fs::read_to_string(root.join(".gitignore")).unwrap();
         assert!(gitignore.contains("# custom"));
         assert!(gitignore.contains("entities.db"));
         assert_eq!(

@@ -359,8 +359,12 @@ pub async fn revert_ticket(
         };
 
         match store.apply_revert(&id, target_rev.fields, author.as_deref()) {
-            Ok(_new_rev) =>
-                current_ticket_response(&store, &request_id, &params.workspace, &id),
+            Ok(_new_rev) => current_ticket_response(
+                &store,
+                &request_id,
+                &params.workspace,
+                &id,
+            ),
             Err(e) => storage_err(e, &request_id),
         }
     })
@@ -410,8 +414,12 @@ pub async fn undo_ticket(
         let prev_fields = revisions[revisions.len() - 2].fields.clone();
 
         match store.apply_revert(&id, prev_fields, author.as_deref()) {
-            Ok(_new_rev) =>
-                current_ticket_response(&store, &request_id, &params.workspace, &id),
+            Ok(_new_rev) => current_ticket_response(
+                &store,
+                &request_id,
+                &params.workspace,
+                &id,
+            ),
             Err(e) => storage_err(e, &request_id),
         }
     })
@@ -441,14 +449,11 @@ pub async fn delete_ticket(
     tokio::task::spawn_blocking(move || match store.delete(&id) {
         Ok(()) => {
             let request_id = task_request_id.clone();
-            let ticket_ref = match ticket_ref_for_id(
-                &store,
-                &params.workspace,
-                &id,
-            ) {
-                Ok(ticket_ref) => ticket_ref,
-                Err(e) => return storage_err(e, &request_id),
-            };
+            let ticket_ref =
+                match ticket_ref_for_id(&store, &params.workspace, &id) {
+                    Ok(ticket_ref) => ticket_ref,
+                    Err(e) => return storage_err(e, &request_id),
+                };
 
             Json(DeleteResponse {
                 request_id: request_id.clone(),

@@ -46,9 +46,8 @@ impl TicketServer {
                 direction.as_deref(),
                 &all_edges,
             )?;
-            let context =
-                build_health_context(store, tickets, all_edges)
-                    .map_err(TicketServer::store_err)?;
+            let context = build_health_context(store, tickets, all_edges)
+                .map_err(TicketServer::store_err)?;
             let report = findings::collect_findings(store, &context)?;
             let tickets_checked = context
                 .tickets

@@ -1,6 +1,8 @@
 use std::{
-    collections::HashMap,
-    collections::BTreeMap,
+    collections::{
+        BTreeMap,
+        HashMap,
+    },
     time::SystemTime,
 };
 
@@ -42,8 +44,8 @@ use super::types::{
     TicketDetail,
     TicketDetailResponse,
     TicketHistoryResponse,
-    TicketRef,
     TicketIdParam,
+    TicketRef,
     TicketSummary,
     TicketsResponse,
     WorkspaceParam,
@@ -91,7 +93,10 @@ pub async fn list_tickets(
                         })
                         .take(requested_limit)
                         .collect::<Vec<_>>();
-                    let ids = results.iter().map(|result| result.id).collect::<Vec<_>>();
+                    let ids = results
+                        .iter()
+                        .map(|result| result.id)
+                        .collect::<Vec<_>>();
                     let resolved = match resolve_tickets(
                         &state,
                         &params.workspace,
@@ -137,25 +142,27 @@ pub async fn list_tickets(
 
                         let (created_at, updated_at, ticket_ref, type_id) =
                             if prefer_local {
-                                let ticket = local_ticket.as_ref().expect("local ticket");
+                                let ticket = local_ticket
+                                    .as_ref()
+                                    .expect("local ticket");
                                 (
                                     ticket.created_at,
                                     ticket.updated_at,
                                     local_ticket_ref.expect("local ticket ref"),
-                                    result
-                                        .ticket_type
-                                        .clone()
-                                        .unwrap_or_else(|| ticket.type_id.clone()),
+                                    result.ticket_type.clone().unwrap_or_else(
+                                        || ticket.type_id.clone(),
+                                    ),
                                 )
-                            } else if let Some(ticket) = resolved.get(&result.id) {
+                            } else if let Some(ticket) =
+                                resolved.get(&result.id)
+                            {
                                 (
                                     ticket.ticket.created_at,
                                     ticket.ticket.updated_at,
                                     ticket_ref_from_resolved(ticket),
-                                    result
-                                        .ticket_type
-                                        .clone()
-                                        .unwrap_or_else(|| ticket.ticket.type_id.clone()),
+                                    result.ticket_type.clone().unwrap_or_else(
+                                        || ticket.ticket.type_id.clone(),
+                                    ),
                                 )
                             } else if let Some(ticket) = local_ticket {
                                 (
@@ -171,7 +178,8 @@ pub async fn list_tickets(
                                         .unwrap_or(ticket.type_id),
                                 )
                             } else {
-                                let (created_at, updated_at) = epoch_timestamps();
+                                let (created_at, updated_at) =
+                                    epoch_timestamps();
                                 (
                                     created_at,
                                     updated_at,
@@ -179,7 +187,10 @@ pub async fn list_tickets(
                                         workspace: params.workspace.clone(),
                                         id: result.id.to_string(),
                                     },
-                                    result.ticket_type.clone().unwrap_or_default(),
+                                    result
+                                        .ticket_type
+                                        .clone()
+                                        .unwrap_or_default(),
                                 )
                             };
 
@@ -201,7 +212,10 @@ pub async fn list_tickets(
         } else {
             match store.list(state_filter, None, Some(requested_limit)) {
                 Ok(items) => {
-                    let ids = items.iter().map(|ticket| ticket.id).collect::<Vec<_>>();
+                    let ids = items
+                        .iter()
+                        .map(|ticket| ticket.id)
+                        .collect::<Vec<_>>();
                     let resolved = match resolve_tickets(
                         &state,
                         &params.workspace,
@@ -379,7 +393,9 @@ pub async fn get_ticket_description(
         .into_response()
     })
     .await
-    .unwrap_or_else(|_| task_join_err(&request_id, "ticket description request"))
+    .unwrap_or_else(|_| {
+        task_join_err(&request_id, "ticket description request")
+    })
 }
 
 /// `GET /api/tickets/{id}/history?workspace=<name>`
@@ -463,16 +479,15 @@ fn resolve_ticket(
     id: Uuid,
     request_id: &str,
 ) -> Result<ResolvedIndexedTicket, Response> {
-    let mut resolved = resolve_tickets(state, active_workspace, &[id], request_id)?;
+    let mut resolved =
+        resolve_tickets(state, active_workspace, &[id], request_id)?;
     resolved.remove(&id).ok_or_else(|| {
         ApiError::not_found("ticket", request_id)
             .into_response_with_status(StatusCode::NOT_FOUND)
     })
 }
 
-fn ticket_ref_from_resolved(
-    ticket: &ResolvedIndexedTicket,
-) -> TicketRef {
+fn ticket_ref_from_resolved(ticket: &ResolvedIndexedTicket) -> TicketRef {
     TicketRef {
         workspace: ticket.workspace.clone(),
         id: ticket.ticket.id.to_string(),

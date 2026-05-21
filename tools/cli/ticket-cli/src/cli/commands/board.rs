@@ -223,7 +223,9 @@ fn build_board_display(
 
     let current_work: Vec<BoardDisplayEntry> = current_work
         .into_iter()
-        .map(|entry| build_display_entry(entry, &snap.config, &ticket_summaries))
+        .map(|entry| {
+            build_display_entry(entry, &snap.config, &ticket_summaries)
+        })
         .collect();
 
     let next_payload = super::cmd_next(
@@ -261,14 +263,16 @@ fn build_board_history_display(
     let entries = snap
         .entries
         .iter()
-        .map(|entry| build_display_entry(entry, &snap.config, &ticket_summaries))
+        .map(|entry| {
+            build_display_entry(entry, &snap.config, &ticket_summaries)
+        })
         .collect();
 
     Ok(BoardHistoryDisplay { entries })
 }
 
 fn load_ticket_summaries(
-    store: &TicketStore,
+    store: &TicketStore
 ) -> Result<HashMap<Uuid, TicketSummary>, CliRunError> {
     Ok(store
         .list(None, None, None)?
@@ -311,7 +315,7 @@ fn build_display_entry(
 }
 
 pub(crate) fn parse_board_recommendation(
-    value: &Value,
+    value: &Value
 ) -> Option<BoardRecommendation> {
     Some(BoardRecommendation {
         rank: value.get("rank")?.as_u64()? as usize,
@@ -335,10 +339,8 @@ pub(crate) fn parse_board_recommendation(
             .get("dependency_count")
             .and_then(Value::as_u64)
             .unwrap_or(0) as usize,
-        dependees: value
-            .get("dependees")
-            .and_then(Value::as_u64)
-            .unwrap_or(0) as usize,
+        dependees: value.get("dependees").and_then(Value::as_u64).unwrap_or(0)
+            as usize,
         created_at: value
             .get("created_at")
             .and_then(Value::as_str)
@@ -407,7 +409,9 @@ fn build_actions(
 fn is_current_work_status(status: &BoardEntryStatus) -> bool {
     matches!(
         status,
-        BoardEntryStatus::Active | BoardEntryStatus::Stale | BoardEntryStatus::Conflict
+        BoardEntryStatus::Active
+            | BoardEntryStatus::Stale
+            | BoardEntryStatus::Conflict
     )
 }
 
@@ -440,8 +444,11 @@ fn short_ticket_value(ticket_id: &str) -> String {
 }
 
 fn history_completed_at(entry: &BoardEntry) -> Option<chrono::DateTime<Utc>> {
-    (entry.status == BoardEntryStatus::Completed)
-        .then(|| entry.completed_at.unwrap_or(entry.last_heartbeat.max(entry.checked_in_at)))
+    (entry.status == BoardEntryStatus::Completed).then(|| {
+        entry
+            .completed_at
+            .unwrap_or(entry.last_heartbeat.max(entry.checked_in_at))
+    })
 }
 
 // ── check-in ──────────────────────────────────────────────────────────────────
@@ -532,9 +539,7 @@ fn cmd_board_heartbeat(
         ))
     })?;
 
-    let entry = store
-        .board_heartbeat(&entry_id)
-        .map_err(board_err_to_cli)?;
+    let entry = store.board_heartbeat(&entry_id).map_err(board_err_to_cli)?;
 
     Ok(json!({
         "command": "board_heartbeat",

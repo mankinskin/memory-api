@@ -18,9 +18,7 @@ pub fn workspace_root_for_index_root(index_root: &Path) -> Option<PathBuf> {
     }
 }
 
-pub fn discover_workspace_scan_roots(
-    workspace_root: &Path
-) -> Vec<ScanRoot> {
+pub fn discover_workspace_scan_roots(workspace_root: &Path) -> Vec<ScanRoot> {
     let workspace_root = stable_path(workspace_root);
     let mut scan_roots = Vec::new();
     let mut seen = BTreeSet::new();
@@ -65,12 +63,7 @@ fn discover_descendant_workspace_roots(
             continue;
         }
 
-        push_workspace_rules_root(
-            workspace_root,
-            &path,
-            seen,
-            scan_roots,
-        );
+        push_workspace_rules_root(workspace_root, &path, seen, scan_roots);
         discover_descendant_workspace_roots(
             workspace_root,
             &path,

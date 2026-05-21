@@ -19,10 +19,10 @@ impl LineEnding {
 }
 
 pub fn render_markdown_file(rules: &[RuleManifest]) -> String {
-    let include_provenance_comments =
-        !rules.first().and_then(RuleManifest::body).is_some_and(
-            starts_with_yaml_frontmatter,
-        );
+    let include_provenance_comments = !rules
+        .first()
+        .and_then(RuleManifest::body)
+        .is_some_and(starts_with_yaml_frontmatter);
     let mut rendered = String::new();
 
     if include_provenance_comments {
@@ -73,7 +73,8 @@ fn apply_existing_line_endings(
     existing: &str,
 ) -> String {
     let endings = collect_line_endings(existing);
-    if endings.is_empty() || endings.iter().all(|ending| *ending == LineEnding::Lf)
+    if endings.is_empty()
+        || endings.iter().all(|ending| *ending == LineEnding::Lf)
     {
         return rendered.to_string();
     }
@@ -180,7 +181,8 @@ mod tests {
     }
 
     #[test]
-    fn render_markdown_file_omits_provenance_when_body_starts_with_frontmatter() {
+    fn render_markdown_file_omits_provenance_when_body_starts_with_frontmatter()
+    {
         let prompt = RuleManifest::new(
             "context-engine/prompts/spec",
             "Spec Prompt",
@@ -219,10 +221,8 @@ mod tests {
 
     #[test]
     fn prepare_generated_output_normalizes_new_files_to_lf() {
-        let prepared = prepare_generated_output(
-            "first\r\nsecond\r\nthird\n",
-            None,
-        );
+        let prepared =
+            prepare_generated_output("first\r\nsecond\r\nthird\n", None);
 
         assert_eq!(prepared, "first\nsecond\nthird\n");
     }

@@ -34,9 +34,7 @@ pub struct DocWorkspace {
 }
 
 impl DocWorkspace {
-    pub fn discover_from(
-        root: impl AsRef<Path>,
-    ) -> Result<Self, DocError> {
+    pub fn discover_from(root: impl AsRef<Path>) -> Result<Self, DocError> {
         let metadata = MetadataCommand::new()
             .current_dir(root.as_ref())
             .no_deps()
@@ -45,22 +43,18 @@ impl DocWorkspace {
         Self::from_cargo_metadata(metadata)
     }
 
-    pub fn from_cargo_metadata(
-        metadata: Metadata,
-    ) -> Result<Self, DocError> {
+    pub fn from_cargo_metadata(metadata: Metadata) -> Result<Self, DocError> {
         metadata.try_into()
     }
 
-    pub fn from_cargo_metadata_json(
-        json: &str,
-    ) -> Result<Self, DocError> {
+    pub fn from_cargo_metadata_json(json: &str) -> Result<Self, DocError> {
         let metadata: Metadata = serde_json::from_str(json)
             .map_err(|err| DocError::CargoMetadata(err.to_string()))?;
         Self::from_cargo_metadata(metadata)
     }
 
     pub fn from_cargo_metadata_file(
-        path: impl AsRef<Path>,
+        path: impl AsRef<Path>
     ) -> Result<Self, DocError> {
         let path = path.as_ref();
         let json = fs::read_to_string(path).map_err(|source| DocError::Io {
@@ -82,7 +76,8 @@ impl TryFrom<Metadata> for DocWorkspace {
     type Error = DocError;
 
     fn try_from(metadata: Metadata) -> Result<Self, Self::Error> {
-        let workspace_root = metadata.workspace_root.clone().into_std_path_buf();
+        let workspace_root =
+            metadata.workspace_root.clone().into_std_path_buf();
         let target_directory =
             metadata.target_directory.clone().into_std_path_buf();
         let workspace_manifest_path = workspace_root.join("Cargo.toml");
@@ -141,7 +136,9 @@ impl TryFrom<&Package> for DocPackage {
         let package_root = manifest_path
             .parent()
             .map(Path::to_path_buf)
-            .ok_or_else(|| DocError::InvalidManifestPath(manifest_path.clone()))?;
+            .ok_or_else(|| {
+                DocError::InvalidManifestPath(manifest_path.clone())
+            })?;
 
         let mut targets = package
             .targets
@@ -233,7 +230,10 @@ mod tests {
         let workspace = DocWorkspace::from_cargo_metadata(metadata).unwrap();
 
         assert_eq!(workspace.workspace_root, dir.path().to_path_buf());
-        assert_eq!(workspace.workspace_manifest_path, dir.path().join("Cargo.toml"));
+        assert_eq!(
+            workspace.workspace_manifest_path,
+            dir.path().join("Cargo.toml")
+        );
         assert_eq!(workspace.packages.len(), 2);
         assert_eq!(workspace.packages[0].name, "alpha-crate");
         assert_eq!(workspace.packages[1].name, "beta-tool");
@@ -279,14 +279,14 @@ mod tests {
         fs::create_dir_all(metadata_path.parent().unwrap()).unwrap();
         fs::write(&metadata_path, json).unwrap();
 
-        let workspace = DocWorkspace::from_cargo_metadata_file(&metadata_path).unwrap();
+        let workspace =
+            DocWorkspace::from_cargo_metadata_file(&metadata_path).unwrap();
 
-        assert_eq!(workspace.package("alpha-crate").unwrap().targets[0].edition, "2024");
-        assert!(workspace
-            .package("beta-tool")
-            .unwrap()
-            .targets[0]
-            .doc_capable);
+        assert_eq!(
+            workspace.package("alpha-crate").unwrap().targets[0].edition,
+            "2024"
+        );
+        assert!(workspace.package("beta-tool").unwrap().targets[0].doc_capable);
     }
 
     #[test]
@@ -333,10 +333,7 @@ edition = "2024"
 description = "beta"
 "#,
         );
-        write_file(
-            &dir.path().join("beta/src/main.rs"),
-            "fn main() {}\n",
-        );
+        write_file(&dir.path().join("beta/src/main.rs"), "fn main() {}\n");
 
         dir
     }

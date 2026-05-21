@@ -222,9 +222,7 @@ pub fn ticket_ref_for_id(
     active_workspace: &str,
     id: &Uuid,
 ) -> Result<TicketRef, StorageError> {
-    let indexed = store
-        .get_indexed(id)?
-        .ok_or(StorageError::NotFound(*id))?;
+    let indexed = store.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
     ticket_ref_from_indexed(store, active_workspace, &indexed)
 }
 

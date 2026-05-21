@@ -326,8 +326,18 @@ fn edge_item(
     Ok(EdgeItem {
         from: from_id.to_string(),
         to: to_id.to_string(),
-        from_ref: resolve_edge_ref(resolved, active_workspace, from_id, request_id)?,
-        to_ref: resolve_edge_ref(resolved, active_workspace, to_id, request_id)?,
+        from_ref: resolve_edge_ref(
+            resolved,
+            active_workspace,
+            from_id,
+            request_id,
+        )?,
+        to_ref: resolve_edge_ref(
+            resolved,
+            active_workspace,
+            to_id,
+            request_id,
+        )?,
         kind,
     })
 }

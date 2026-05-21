@@ -19,7 +19,9 @@ pub enum DocHttpError {
     #[error("package not found: {0}")]
     PackageNotFound(String),
 
-    #[error("artifact not found for package '{package}', target '{target}', kind '{kind}'")]
+    #[error(
+        "artifact not found for package '{package}', target '{target}', kind '{kind}'"
+    )]
     ArtifactNotFound {
         package: String,
         target: String,
@@ -59,7 +61,8 @@ impl DocHttpError {
 
     fn status(&self) -> StatusCode {
         match self {
-            Self::PackageNotFound(_) | Self::ArtifactNotFound { .. } => StatusCode::NOT_FOUND,
+            Self::PackageNotFound(_) | Self::ArtifactNotFound { .. } =>
+                StatusCode::NOT_FOUND,
             Self::Doc(_) | Self::Io { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

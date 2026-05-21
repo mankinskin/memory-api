@@ -63,8 +63,14 @@ async fn workspace_endpoint_reports_packages() {
 #[tokio::test]
 async fn artifacts_endpoint_reports_existing_and_missing_outputs() {
     let dir = temp_workspace();
-    write_file(&dir.path().join("target/doc/alpha_crate/index.html"), "<html>alpha</html>");
-    write_file(&dir.path().join("target/doc/alpha_crate.json"), "{\"crate\":\"alpha\"}");
+    write_file(
+        &dir.path().join("target/doc/alpha_crate/index.html"),
+        "<html>alpha</html>",
+    );
+    write_file(
+        &dir.path().join("target/doc/alpha_crate.json"),
+        "{\"crate\":\"alpha\"}",
+    );
 
     let app = make_app(dir.path());
 
@@ -83,22 +89,37 @@ async fn artifacts_endpoint_reports_existing_and_missing_outputs() {
     let body = to_bytes(resp.into_body(), 32 * 1024).await.unwrap();
     let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(payload["artifact_count"], 2);
-    assert!(payload["artifacts"].as_array().unwrap().iter().any(|artifact| {
-        artifact["package_name"] == "alpha-crate"
-            && artifact["html_exists"] == true
-            && artifact["rustdoc_json_exists"] == true
-    }));
-    assert!(payload["artifacts"].as_array().unwrap().iter().any(|artifact| {
-        artifact["package_name"] == "beta-tool"
-            && artifact["html_exists"] == false
-            && artifact["rustdoc_json_exists"] == false
-    }));
+    assert!(
+        payload["artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|artifact| {
+                artifact["package_name"] == "alpha-crate"
+                    && artifact["html_exists"] == true
+                    && artifact["rustdoc_json_exists"] == true
+            })
+    );
+    assert!(
+        payload["artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|artifact| {
+                artifact["package_name"] == "beta-tool"
+                    && artifact["html_exists"] == false
+                    && artifact["rustdoc_json_exists"] == false
+            })
+    );
 }
 
 #[tokio::test]
 async fn html_artifact_endpoint_serves_existing_file() {
     let dir = temp_workspace();
-    write_file(&dir.path().join("target/doc/alpha_crate/index.html"), "<html>alpha</html>");
+    write_file(
+        &dir.path().join("target/doc/alpha_crate/index.html"),
+        "<html>alpha</html>",
+    );
 
     let app = make_app(dir.path());
 
@@ -176,10 +197,7 @@ version = "0.2.0"
 edition = "2024"
 "#,
     );
-    write_file(
-        &dir.path().join("beta/src/main.rs"),
-        "fn main() {}\n",
-    );
+    write_file(&dir.path().join("beta/src/main.rs"), "fn main() {}\n");
 
     dir
 }

@@ -65,7 +65,13 @@ impl DocPackage {
         self.targets
             .iter()
             .filter(|target| target.doc_capable)
-            .map(|target| target.cargo_doc_artifact(&self.name, &self.package_root, doc_root))
+            .map(|target| {
+                target.cargo_doc_artifact(
+                    &self.name,
+                    &self.package_root,
+                    doc_root,
+                )
+            })
             .collect()
     }
 }
@@ -113,53 +119,78 @@ mod tests {
     fn discovers_existing_cargo_doc_html_and_json_outputs() {
         let dir = temp_workspace();
         write_file(
-            &dir
-                .path()
-                .join("target/doc/alpha_crate/index.html"),
+            &dir.path().join("target/doc/alpha_crate/index.html"),
             "<html>alpha</html>",
         );
-        write_file(
-            &dir.path().join("target/doc/alpha_crate.json"),
-            "{}",
-        );
+        write_file(&dir.path().join("target/doc/alpha_crate.json"), "{}");
         write_file(
             &dir.path().join("target/doc/beta_tool/index.html"),
             "<html>beta</html>",
         );
 
-        let workspace = DocWorkspace::from_cargo_metadata(cargo_metadata_for(dir.path())).unwrap();
+        let workspace =
+            DocWorkspace::from_cargo_metadata(cargo_metadata_for(dir.path()))
+                .unwrap();
         let artifacts = workspace.cargo_doc_artifacts();
 
         assert_eq!(artifacts.len(), 2);
 
-        let alpha = artifacts.iter().find(|artifact| artifact.package_name == "alpha-crate").unwrap();
+        let alpha = artifacts
+            .iter()
+            .find(|artifact| artifact.package_name == "alpha-crate")
+            .unwrap();
         assert_eq!(alpha.target_name, "alpha_crate");
         assert!(alpha.html_exists);
         assert!(alpha.rustdoc_json_exists);
         assert!(alpha.any_output_exists());
-        assert_eq!(alpha.html_index_path, dir.path().join("target/doc/alpha_crate/index.html"));
-        assert_eq!(alpha.rustdoc_json_path, dir.path().join("target/doc/alpha_crate.json"));
+        assert_eq!(
+            alpha.html_index_path,
+            dir.path().join("target/doc/alpha_crate/index.html")
+        );
+        assert_eq!(
+            alpha.rustdoc_json_path,
+            dir.path().join("target/doc/alpha_crate.json")
+        );
 
-        let beta = artifacts.iter().find(|artifact| artifact.package_name == "beta-tool").unwrap();
+        let beta = artifacts
+            .iter()
+            .find(|artifact| artifact.package_name == "beta-tool")
+            .unwrap();
         assert_eq!(beta.target_name, "beta-tool");
         assert!(beta.html_exists);
         assert!(!beta.rustdoc_json_exists);
         assert!(beta.any_output_exists());
-        assert_eq!(beta.html_index_path, dir.path().join("target/doc/beta_tool/index.html"));
-        assert_eq!(beta.rustdoc_json_path, dir.path().join("target/doc/beta_tool.json"));
+        assert_eq!(
+            beta.html_index_path,
+            dir.path().join("target/doc/beta_tool/index.html")
+        );
+        assert_eq!(
+            beta.rustdoc_json_path,
+            dir.path().join("target/doc/beta_tool.json")
+        );
     }
 
     #[test]
     fn reports_expected_paths_when_outputs_are_missing() {
         let dir = temp_workspace();
-        let workspace = DocWorkspace::from_cargo_metadata(cargo_metadata_for(dir.path())).unwrap();
+        let workspace =
+            DocWorkspace::from_cargo_metadata(cargo_metadata_for(dir.path()))
+                .unwrap();
 
         let artifacts = workspace.cargo_doc_artifacts();
 
         assert_eq!(artifacts.len(), 2);
         assert!(artifacts.iter().all(|artifact| !artifact.html_exists));
-        assert!(artifacts.iter().all(|artifact| !artifact.rustdoc_json_exists));
-        assert!(artifacts.iter().all(|artifact| !artifact.any_output_exists()));
+        assert!(
+            artifacts
+                .iter()
+                .all(|artifact| !artifact.rustdoc_json_exists)
+        );
+        assert!(
+            artifacts
+                .iter()
+                .all(|artifact| !artifact.any_output_exists())
+        );
         assert_eq!(workspace.cargo_doc_root(), dir.path().join("target/doc"));
     }
 
@@ -195,10 +226,7 @@ version = "0.2.0"
 edition = "2024"
 "#,
         );
-        write_file(
-            &dir.path().join("beta/src/main.rs"),
-            "fn main() {}\n",
-        );
+        write_file(&dir.path().join("beta/src/main.rs"), "fn main() {}\n");
 
         dir
     }

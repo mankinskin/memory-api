@@ -14,9 +14,7 @@ pub const TICKET_INDEX_DIR: &str = ".ticket";
 pub fn working_dir() -> Option<PathBuf> {
     resolve_working_dir(
         std::env::current_dir().ok().as_deref(),
-        std::env::var_os("PWD")
-            .as_deref()
-            .map(Path::new),
+        std::env::var_os("PWD").as_deref().map(Path::new),
     )
 }
 
@@ -61,11 +59,7 @@ pub fn resolve_store_root_from(
     dir_name: &str,
 ) -> PathBuf {
     let normalized = normalize_working_dir_path(start);
-    if normalized
-        .file_name()
-        .and_then(|name| name.to_str())
-        == Some(dir_name)
-    {
+    if normalized.file_name().and_then(|name| name.to_str()) == Some(dir_name) {
         return normalized;
     }
 
@@ -104,9 +98,7 @@ pub fn resolve_workspace() -> (PathBuf, WorkspaceSource) {
         })
 }
 
-pub fn resolve_workspace_from(
-    start: &Path,
-) -> (PathBuf, WorkspaceSource) {
+pub fn resolve_workspace_from(start: &Path) -> (PathBuf, WorkspaceSource) {
     if let Some(path) = find_local_root_from(start, TICKET_INDEX_DIR) {
         return (path.clone(), WorkspaceSource::Discovered(path));
     }

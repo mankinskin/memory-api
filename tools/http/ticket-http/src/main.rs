@@ -3,9 +3,7 @@
 //! Usage:
 //!   ticket-http --port 4000 [--host 127.0.0.1] [--index-root <path>]
 
-use ticket_api::{
-    storage::store::TicketStore,
-};
+use ticket_api::storage::store::TicketStore;
 use ticket_http::serve::{
     ServeConfig,
     WorkspaceRegistry,

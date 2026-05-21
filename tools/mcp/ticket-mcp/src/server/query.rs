@@ -1,6 +1,4 @@
-use ticket_api::{
-    storage::ticket_fs::TicketFs,
-};
+use ticket_api::storage::ticket_fs::TicketFs;
 
 use super::{
     types::*,
@@ -51,7 +49,7 @@ impl TicketServer {
             self.with_store(&workspace, |store| {
                 listed_ticket_summaries(store, &input)
             })
-                .await?
+            .await?
         };
 
         Self::json_result(&serde_json::json!({

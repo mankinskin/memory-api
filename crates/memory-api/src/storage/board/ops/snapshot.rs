@@ -9,10 +9,10 @@ use crate::storage::index::RedbIndexStore;
 
 use super::{
     super::{
-        BoardHistorySnapshot,
         BoardEntry,
         BoardEntryStatus,
         BoardError,
+        BoardHistorySnapshot,
         BoardSnapshot,
     },
     load_all_entries,
@@ -119,7 +119,9 @@ impl RedbIndexStore {
                 None
             } else {
                 Some(
-                    now - Duration::seconds(config.completed_audit_window_secs as i64),
+                    now - Duration::seconds(
+                        config.completed_audit_window_secs as i64,
+                    ),
                 )
             };
 
@@ -164,5 +166,7 @@ impl RedbIndexStore {
 }
 
 fn effective_completed_at(entry: &BoardEntry) -> chrono::DateTime<Utc> {
-    entry.completed_at.unwrap_or(entry.last_heartbeat.max(entry.checked_in_at))
+    entry
+        .completed_at
+        .unwrap_or(entry.last_heartbeat.max(entry.checked_in_at))
 }

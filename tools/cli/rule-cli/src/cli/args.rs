@@ -284,11 +284,8 @@ mod tests {
 
     #[test]
     fn parse_delete_command() {
-        let cli = RuleCli::parse_from([
-            "rule",
-            "delete",
-            "shared/agents/delete-me",
-        ]);
+        let cli =
+            RuleCli::parse_from(["rule", "delete", "shared/agents/delete-me"]);
 
         match cli.command {
             RuleCommandCli::Delete(args) => {

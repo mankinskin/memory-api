@@ -8,8 +8,10 @@ use std::{
 };
 
 use chrono::Utc;
-use memory_api::model::filesystem::ScanRoot;
-use memory_api::storage::ensure_sqlite_index_root;
+use memory_api::{
+    model::filesystem::ScanRoot,
+    storage::ensure_sqlite_index_root,
+};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -319,8 +321,9 @@ impl TicketStore {
             schema.validate_manifest(&manifest)?;
         }
 
-        let ticket_path =
-            Self::normalize_existing_path(&TicketFs::create(&manifest, &root, body)?);
+        let ticket_path = Self::normalize_existing_path(&TicketFs::create(
+            &manifest, &root, body,
+        )?);
 
         let indexed = IndexedTicket {
             id,
@@ -384,10 +387,7 @@ impl TicketStore {
         let requested = if target_root.is_dir() {
             target_root.to_path_buf()
         } else {
-            target_root
-                .parent()
-                .unwrap_or(target_root)
-                .to_path_buf()
+            target_root.parent().unwrap_or(target_root).to_path_buf()
         };
         let requested = self.resolve_scan_root_path(&requested);
 
@@ -403,9 +403,7 @@ impl TicketStore {
             target_root,
             workspace::TICKET_INDEX_DIR,
         );
-        if store_root
-            .file_name()
-            .and_then(|name| name.to_str())
+        if store_root.file_name().and_then(|name| name.to_str())
             == Some(workspace::TICKET_INDEX_DIR)
         {
             return Ok(self.resolve_scan_root_path(&store_root.join("tickets")));
@@ -586,7 +584,8 @@ mod tests {
             .unwrap();
 
         let absolute_scan_root = store.index_root.join("tickets");
-        let absolute_ticket_path = absolute_scan_root.join(ticket_id.to_string());
+        let absolute_ticket_path =
+            absolute_scan_root.join(ticket_id.to_string());
         let relative_scan_root = PathBuf::from("viewer/.ticket/tickets");
 
         store

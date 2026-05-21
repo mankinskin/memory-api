@@ -64,8 +64,8 @@ pub(crate) fn cmd_add_root(
     store: &SpecStore,
 ) -> Result<Value, CliRunError> {
     std::fs::create_dir_all(&args.path).map_err(StorageError::Io)?;
-    let path = std::fs::canonicalize(&args.path)
-        .unwrap_or_else(|_| args.path.clone());
+    let path =
+        std::fs::canonicalize(&args.path).unwrap_or_else(|_| args.path.clone());
     let label = args.label.unwrap_or_else(|| {
         path.file_name()
             .and_then(|n| n.to_str())

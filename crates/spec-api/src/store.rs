@@ -13,7 +13,6 @@ use uuid::Uuid;
 
 use memory_api::{
     error::StorageError,
-    workspace,
     model::filesystem::ScanRoot,
     storage::{
         entity_fs::EntityFs,
@@ -23,6 +22,7 @@ use memory_api::{
         },
         indexed::IndexedEntity,
     },
+    workspace,
 };
 
 use crate::{
@@ -246,10 +246,7 @@ impl SpecStore {
         let requested = if target_root.is_dir() {
             target_root.to_path_buf()
         } else {
-            target_root
-                .parent()
-                .unwrap_or(target_root)
-                .to_path_buf()
+            target_root.parent().unwrap_or(target_root).to_path_buf()
         };
 
         if let Some(root) = roots
@@ -262,9 +259,7 @@ impl SpecStore {
 
         let store_root =
             workspace::resolve_store_root_from(target_root, SPEC_INDEX_DIR);
-        if store_root
-            .file_name()
-            .and_then(|name| name.to_str())
+        if store_root.file_name().and_then(|name| name.to_str())
             == Some(SPEC_INDEX_DIR)
         {
             return Ok(store_root.join("specs"));

@@ -22,7 +22,10 @@ pub fn build_router(state: DocAppState) -> Router {
         .route("/healthz", get(handlers::healthz))
         .route("/api/docs/workspace", get(handlers::get_workspace))
         .route("/api/docs/artifacts", get(handlers::list_artifacts))
-        .route("/api/docs/artifacts/{package}", get(handlers::get_package_artifacts))
+        .route(
+            "/api/docs/artifacts/{package}",
+            get(handlers::get_package_artifacts),
+        )
         .route(
             "/api/docs/artifacts/{package}/{target}/html",
             get(handlers::get_html_artifact),

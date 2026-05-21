@@ -203,10 +203,8 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .expect("time went backwards")
                 .as_nanos();
-            let path = std::env::temp_dir().join(format!(
-                "{prefix}-{}-{unique}",
-                std::process::id()
-            ));
+            let path = std::env::temp_dir()
+                .join(format!("{prefix}-{}-{unique}", std::process::id()));
             fs::create_dir_all(&path).expect("create temp dir");
             Self { path }
         }

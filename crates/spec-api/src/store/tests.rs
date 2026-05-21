@@ -77,8 +77,7 @@ fn open_creates_gitignore_for_local_spec_artifacts() {
 
     SpecStore::init(tmp.path()).unwrap();
 
-    let gitignore =
-        fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+    let gitignore = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
     assert!(gitignore.contains("entities.db"));
     assert!(gitignore.contains("entities.db-shm"));
     assert!(gitignore.contains("entities.db-wal"));
@@ -167,9 +166,7 @@ fn scan_updates_indexed_path_after_spec_folder_moves_between_roots() {
         .unwrap();
 
     let spec = make_spec("root/moved", "Moved");
-    let id = store
-        .create(&spec, "body", Some(&original_root))
-        .unwrap();
+    let id = store.create(&spec, "body", Some(&original_root)).unwrap();
 
     let original_folder = original_root.join(id.to_string());
     let repaired_folder = repaired_root.join(id.to_string());

@@ -34,12 +34,16 @@ fn install_contract_dir() -> PathBuf {
         }
     }
 
-    panic!("could not find install contract spec for slug {INSTALL_CONTRACT_SLUG}");
+    panic!(
+        "could not find install contract spec for slug {INSTALL_CONTRACT_SLUG}"
+    );
 }
 
 fn section(name: &str) -> String {
     fs::read_to_string(
-        install_contract_dir().join("sections").join(format!("{name}.md")),
+        install_contract_dir()
+            .join("sections")
+            .join(format!("{name}.md")),
     )
     .unwrap_or_else(|_| panic!("missing section {name}"))
 }
@@ -79,7 +83,9 @@ fn install_contract_sections_record_cli_and_viewer_matrix() {
     assert!(viewer.contains("viewer-ctl install log-viewer --kind server"));
     assert!(viewer.contains("viewer-ctl install log-viewer --kind frontend"));
     assert!(viewer.contains("viewer-ctl install ticket-viewer --kind server"));
-    assert!(viewer.contains("viewer-ctl install ticket-viewer --kind frontend"));
+    assert!(
+        viewer.contains("viewer-ctl install ticket-viewer --kind frontend")
+    );
     assert!(viewer.contains("viewer-ctl install spec-viewer --kind server"));
     assert!(viewer.contains("viewer-ctl install spec-viewer --kind frontend"));
     assert!(viewer.contains("No first-class uninstall command exists"));

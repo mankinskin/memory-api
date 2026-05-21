@@ -136,10 +136,8 @@ impl RuleFeedbackInput {
             (Some(_), None) => Some(FeedbackNoteKind::Note),
             (None, None) => None,
             (None, Some(_)) => {
-                return Err(
-                    "feedback note kind requires feedback note text"
-                        .to_string(),
-                );
+                return Err("feedback note kind requires feedback note text"
+                    .to_string());
             },
         };
 

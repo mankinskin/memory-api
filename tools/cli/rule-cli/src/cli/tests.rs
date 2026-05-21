@@ -476,7 +476,10 @@ fn generate_target_supports_dot_prefixed_prompt_tree_output() {
     .unwrap();
 
     let rendered = fs::read_to_string(
-        dir.path().join(".github").join("prompts").join("spec.prompt.md"),
+        dir.path()
+            .join(".github")
+            .join("prompts")
+            .join("spec.prompt.md"),
     )
     .unwrap();
     assert!(rendered.starts_with("---\nname: spec\n"));
@@ -561,7 +564,13 @@ fn feedback_command_self_heals_after_missing_rule_folder() {
     let reopened = RuleStore::init(dir.path()).unwrap();
     let healthy_rule = reopened.get("shared/agents/healthy-rule").unwrap();
     assert_eq!(healthy_rule.feedback_helpful_count(), Some(1));
-    assert!(reopened.entity_store().get_indexed(&stale_id).unwrap().is_none());
+    assert!(
+        reopened
+            .entity_store()
+            .get_indexed(&stale_id)
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]

@@ -352,9 +352,8 @@ fn ensure_index_gitignore(index_dir: &Path) -> Result<(), AuditError> {
     let gitignore_path = index_dir.join(".gitignore");
     let existing = match fs::read_to_string(&gitignore_path) {
         Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            String::new()
-        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound =>
+            String::new(),
         Err(error) => return Err(error.into()),
     };
 

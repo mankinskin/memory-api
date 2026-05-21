@@ -93,9 +93,7 @@ impl TicketServer {
             Path::new(workspace),
             ticket_api::workspace::TICKET_INDEX_DIR,
         );
-        if resolved
-            .file_name()
-            .and_then(|name| name.to_str())
+        if resolved.file_name().and_then(|name| name.to_str())
             == Some(ticket_api::workspace::TICKET_INDEX_DIR)
             || Self::is_ticket_store_root(&resolved)
         {

@@ -193,7 +193,13 @@ fn resolve_ticket_with_preferred_source(
     };
     let local_ticket_ref = match local_ticket
         .as_ref()
-        .map(|ticket| super::types::ticket_ref_from_indexed(store, active_workspace, ticket))
+        .map(|ticket| {
+            super::types::ticket_ref_from_indexed(
+                store,
+                active_workspace,
+                ticket,
+            )
+        })
         .transpose()
     {
         Ok(ticket_ref) => ticket_ref,

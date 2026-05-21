@@ -257,7 +257,9 @@ mod tests {
         let body = serde_json::json!({ "revision": 1 }).to_string();
         let request = Request::builder()
             .method(Method::POST)
-            .uri(format!("/api/tickets/{fake_id}/revert?workspace={workspace}"))
+            .uri(format!(
+                "/api/tickets/{fake_id}/revert?workspace={workspace}"
+            ))
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from(body))
             .unwrap();
@@ -507,8 +509,14 @@ mod tests {
             .unwrap();
         let list_payload: serde_json::Value =
             serde_json::from_slice(&list_bytes).unwrap();
-        assert_eq!(list_payload["items"][0]["ticket_ref"]["workspace"], "child");
-        assert_eq!(list_payload["items"][0]["ticket_ref"]["id"], child_id.to_string());
+        assert_eq!(
+            list_payload["items"][0]["ticket_ref"]["workspace"],
+            "child"
+        );
+        assert_eq!(
+            list_payload["items"][0]["ticket_ref"]["id"],
+            child_id.to_string()
+        );
 
         let detail_request = Request::builder()
             .method(Method::GET)
@@ -525,8 +533,14 @@ mod tests {
         let detail_payload: serde_json::Value =
             serde_json::from_slice(&detail_bytes).unwrap();
         assert_eq!(detail_payload["active_workspace"], "child");
-        assert_eq!(detail_payload["ticket"]["ticket_ref"]["workspace"], "child");
-        assert_eq!(detail_payload["ticket"]["ticket_ref"]["id"], child_id.to_string());
+        assert_eq!(
+            detail_payload["ticket"]["ticket_ref"]["workspace"],
+            "child"
+        );
+        assert_eq!(
+            detail_payload["ticket"]["ticket_ref"]["id"],
+            child_id.to_string()
+        );
     }
 
     #[tokio::test]
@@ -597,13 +611,21 @@ mod tests {
             .iter()
             .find(|node| node["id"] == parent_id.to_string())
             .expect("parent node present");
-        assert_eq!(parent_node["ticket_ref"]["workspace"], parent_workspace.clone());
+        assert_eq!(
+            parent_node["ticket_ref"]["workspace"],
+            parent_workspace.clone()
+        );
         assert_eq!(parent_node["ticket_ref"]["id"], parent_id.to_string());
-        assert_eq!(graph_payload["edges"][0]["to_ref"]["workspace"], parent_workspace.clone());
+        assert_eq!(
+            graph_payload["edges"][0]["to_ref"]["workspace"],
+            parent_workspace.clone()
+        );
 
         let history_request = Request::builder()
             .method(Method::GET)
-            .uri(format!("/api/tickets/{parent_id}/history?workspace={parent_workspace}"))
+            .uri(format!(
+                "/api/tickets/{parent_id}/history?workspace={parent_workspace}"
+            ))
             .body(Body::empty())
             .unwrap();
 
@@ -615,8 +637,14 @@ mod tests {
             .unwrap();
         let history_payload: serde_json::Value =
             serde_json::from_slice(&history_bytes).unwrap();
-        assert_eq!(history_payload["active_workspace"], parent_workspace.clone());
-        assert_eq!(history_payload["ticket_ref"]["workspace"], parent_workspace);
+        assert_eq!(
+            history_payload["active_workspace"],
+            parent_workspace.clone()
+        );
+        assert_eq!(
+            history_payload["ticket_ref"]["workspace"],
+            parent_workspace
+        );
         assert_eq!(history_payload["ticket_ref"]["id"], parent_id.to_string());
     }
 }

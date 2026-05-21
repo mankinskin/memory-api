@@ -270,7 +270,8 @@ mod tests {
         let state = make_state_with_auth(dir.path(), "secret-token");
         let workspace = state.registry.primary_workspace_name().to_string();
         let app = crate::serve::routes::build_router(state);
-        let status = post_create(app, &workspace, Some("Bearer wrong-token")).await;
+        let status =
+            post_create(app, &workspace, Some("Bearer wrong-token")).await;
         assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED);
     }
 
@@ -280,7 +281,8 @@ mod tests {
         let state = make_state_with_auth(dir.path(), "secret-token");
         let workspace = state.registry.primary_workspace_name().to_string();
         let app = crate::serve::routes::build_router(state);
-        let status = post_create(app, &workspace, Some("Bearer secret-token")).await;
+        let status =
+            post_create(app, &workspace, Some("Bearer secret-token")).await;
         // 201 Created or 422 (validation) is acceptable — not 401
         assert_ne!(status, axum::http::StatusCode::UNAUTHORIZED);
     }

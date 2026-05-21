@@ -31,8 +31,7 @@ fn open_creates_gitignore_for_local_rule_artifacts() {
 
     RuleStore::init(dir.path()).unwrap();
 
-    let gitignore =
-        fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+    let gitignore = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
     assert!(gitignore.contains("entities.db"));
     assert!(gitignore.contains("entities.db-shm"));
     assert!(gitignore.contains("entities.db-wal"));
@@ -319,7 +318,12 @@ fn delete_can_remove_generated_target_records() {
 
     store.delete(&record.slug).unwrap();
 
-    assert!(store.list_generated_targets(&config_path).unwrap().is_empty());
+    assert!(
+        store
+            .list_generated_targets(&config_path)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -349,7 +353,8 @@ fn generated_target_upsert_updates_existing_output_path() {
 fn create_defaults_to_local_rules_root_even_with_extra_scan_roots() {
     let dir = tempdir().unwrap();
     let index_root = dir.path().join(".rule");
-    let child_rules_root = dir.path().join("nested").join(".rule").join("rules");
+    let child_rules_root =
+        dir.path().join("nested").join(".rule").join("rules");
     fs::create_dir_all(&child_rules_root).unwrap();
 
     let mut store = RuleStore::init(&index_root).unwrap();

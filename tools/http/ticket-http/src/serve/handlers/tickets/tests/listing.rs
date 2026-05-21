@@ -18,11 +18,11 @@ use super::{
     super::{
         TicketAssetParam,
         TicketIdParam,
-        get_ticket_description,
-        get_ticket_asset,
-        get_ticket,
-        get_ticket_history,
         WorkspaceParam,
+        get_ticket,
+        get_ticket_asset,
+        get_ticket_description,
+        get_ticket_history,
         list_ticket_files,
         list_tickets,
     },
@@ -460,7 +460,10 @@ async fn get_ticket_and_history_include_ticket_refs() {
         serde_json::from_slice(&detail_bytes).expect("detail json");
 
     assert_eq!(detail_payload["active_workspace"], workspace.clone());
-    assert_eq!(detail_payload["ticket"]["ticket_ref"]["workspace"], workspace.clone());
+    assert_eq!(
+        detail_payload["ticket"]["ticket_ref"]["workspace"],
+        workspace.clone()
+    );
     assert_eq!(detail_payload["ticket"]["ticket_ref"]["id"], id.to_string());
 
     let history = get_ticket_history(
@@ -526,9 +529,13 @@ async fn nested_child_workspace_ticket_uses_child_ref_and_reads_from_default() {
         .get_indexed(&id)
         .expect("get child indexed ticket")
         .expect("child indexed ticket");
-    std::fs::create_dir_all(ticket_dir.path.join("assets")).expect("mkdir assets");
-    std::fs::write(ticket_dir.path.join("assets").join("plan.md"), "nested child asset")
-        .expect("write child asset");
+    std::fs::create_dir_all(ticket_dir.path.join("assets"))
+        .expect("mkdir assets");
+    std::fs::write(
+        ticket_dir.path.join("assets").join("plan.md"),
+        "nested child asset",
+    )
+    .expect("write child asset");
 
     parent_store
         .add_scan_root(ticket_api::model::filesystem::ScanRoot {
@@ -593,10 +600,13 @@ async fn nested_child_workspace_ticket_uses_child_ref_and_reads_from_default() {
     let description_bytes = to_bytes(description.into_body(), 1024 * 1024)
         .await
         .expect("description body");
-    let description_payload: serde_json::Value = serde_json::from_slice(&description_bytes)
-        .expect("description json");
+    let description_payload: serde_json::Value =
+        serde_json::from_slice(&description_bytes).expect("description json");
     assert_eq!(description_payload["ticket_ref"]["workspace"], "child");
-    assert_eq!(description_payload["description"], "nested child description");
+    assert_eq!(
+        description_payload["description"],
+        "nested child description"
+    );
 
     let history = get_ticket_history(
         State(state.clone()),
@@ -751,10 +761,12 @@ async fn list_rejects_synthetic_or_unknown_public_workspace_identifiers() {
             serde_json::from_slice(&bytes).expect("json body");
 
         assert_eq!(payload["code"], "not_found");
-        assert!(payload["message"]
-            .as_str()
-            .expect("message")
-            .contains("workspace"));
+        assert!(
+            payload["message"]
+                .as_str()
+                .expect("message")
+                .contains("workspace")
+        );
         assert!(payload.get("request_id").is_some());
     }
 }

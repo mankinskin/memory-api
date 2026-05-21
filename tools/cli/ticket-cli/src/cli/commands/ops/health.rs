@@ -264,7 +264,7 @@ fn unresolved_dependency_map(
     store: &TicketStore,
     all_edges: &[EdgeRecord],
     ticket_ids: &HashSet<Uuid>,
- ) -> Result<HashMap<Uuid, Vec<Uuid>>, ticket_api::error::StorageError> {
+) -> Result<HashMap<Uuid, Vec<Uuid>>, ticket_api::error::StorageError> {
     let dependency_ids: Vec<Uuid> = all_edges
         .iter()
         .filter(|edge| {
@@ -278,9 +278,7 @@ fn unresolved_dependency_map(
 
     let mut unresolved = HashMap::new();
     for edge in all_edges {
-        if edge.kind == "depends_on"
-            && ticket_ids.contains(&edge.from)
-        {
+        if edge.kind == "depends_on" && ticket_ids.contains(&edge.from) {
             let is_resolved = dependency_tickets
                 .get(&edge.to)
                 .map(|ticket| is_done_state(ticket.state.as_deref()))
