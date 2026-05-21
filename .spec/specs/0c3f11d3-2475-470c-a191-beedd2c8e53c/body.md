@@ -15,6 +15,7 @@ The current quality trials cover:
 - unit test success
 - line coverage
 - Rust static complexity metrics
+- ticket dependency topology when a local `.ticket` store exists
 
 Output is designed for both agents and humans:
 

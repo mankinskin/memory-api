@@ -176,6 +176,9 @@ fn integrate_entry(
 
     let indexed = match index.get_ticket(&entry.id)? {
         Some(mut existing) => {
+            existing.path = entry.path.clone();
+            existing.type_id = type_id.clone();
+            existing.created_at = entry.manifest.created_at;
             existing.updated_at = now;
             existing.title = title.clone();
             existing.state = state.clone();

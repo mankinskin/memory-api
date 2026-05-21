@@ -20,3 +20,4 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 sha2 = "0.10"
 syn = { version = "2", features = ["full", "visit"] }
 thiserror = "2"
+ticket-api = { path = "../ticket-api" }

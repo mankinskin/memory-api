@@ -1,0 +1,7 @@
+id = "a6318461-3a06-4d6d-aabb-7e06c33f4e1b"
+created_at = "2026-05-20T20:46:10.394133100+00:00"
+title = "audit-api ticket dependency topology validation"
+state = "draft"
+component = "audit-api"
+slug = "audit-api/ticket-dependency-topology-validation"
+type = "specification"

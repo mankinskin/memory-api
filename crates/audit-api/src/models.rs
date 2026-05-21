@@ -149,6 +149,7 @@ pub struct AuditMetrics {
     pub test_results: TestSummary,
     pub coverage: CoverageSummary,
     pub static_metrics: StaticMetricsSummary,
+    pub ticket_graph: CountMetric,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

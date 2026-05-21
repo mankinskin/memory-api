@@ -222,6 +222,10 @@ fn render_human(report: &AuditReport) -> String {
             .map(|value| format!("{value:.1}"))
             .unwrap_or_else(|| "n/a".to_string())
     ));
+    lines.push(format!(
+        "Ticket graph: {}",
+        render_count_metric(&report.metrics.ticket_graph)
+    ));
 
     if report.findings.is_empty() {
         lines.push("Findings: none".to_string());

@@ -22,6 +22,7 @@ use crate::{
         cargo_quality,
         file_length,
         static_metrics,
+        ticket_graph,
     },
 };
 
@@ -60,12 +61,14 @@ pub fn audit(
         &file_config.exclude_paths,
         config.coverage_warn_below,
     )?;
+    let ticket_graph_result = ticket_graph::evaluate(&repo_root);
 
     let mut findings = file_length_result.findings;
     findings.extend(static_metrics_result.findings);
     findings.extend(compiler_warnings_result.findings);
     findings.extend(test_results.findings);
     findings.extend(coverage_result.findings);
+    findings.extend(ticket_graph_result.findings);
 
     let total_lines = indexed_files.iter().map(|file| file.line_count).sum();
     let metrics = AuditMetrics {
@@ -76,6 +79,7 @@ pub fn audit(
         test_results: test_results.metric,
         coverage: coverage_result.metric,
         static_metrics: static_metrics_result.metric,
+        ticket_graph: ticket_graph_result.metric,
     };
 
     let finished_at = Utc::now();
