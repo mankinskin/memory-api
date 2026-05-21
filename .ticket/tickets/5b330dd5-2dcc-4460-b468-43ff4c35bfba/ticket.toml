@@ -1,7 +1,7 @@
 id = "5b330dd5-2dcc-4460-b468-43ff4c35bfba"
 created_at = "2026-05-18T09:20:05.093901600+00:00"
 title = "ticket-vscode: Open clicked tickets in viewer and expose Copy ID in context menu"
-state = "in-review"
+state = "done"
 component = "ticket-vscode"
 priority = "medium"
 risk_level = "low"

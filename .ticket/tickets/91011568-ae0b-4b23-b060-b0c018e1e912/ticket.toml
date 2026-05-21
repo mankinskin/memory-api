@@ -1,7 +1,7 @@
 id = "91011568-ae0b-4b23-b060-b0c018e1e912"
 created_at = "2026-05-20T21:51:55.937094500+00:00"
 title = "[ticket-cli][ticket-mcp] Expose authoritative ticket folder paths in query output"
-state = "in-review"
+state = "in-implementation"
 acceptance_criteria = "ticket get returns the authoritative ticket folder path from indexed metadata; ticket-mcp get_ticket returns the same authoritative path for the same ticket; JSON responses use the on-disk owning ticket folder path rather than a synthesized path; focused CLI/MCP regression coverage locks the contract"
 component = "ticket-cli"
 priority = "high"
