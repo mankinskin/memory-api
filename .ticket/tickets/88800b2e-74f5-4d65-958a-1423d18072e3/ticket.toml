@@ -1,7 +1,7 @@
 id = "88800b2e-74f5-4d65-958a-1423d18072e3"
 created_at = "2026-05-07T11:42:06.937323600+00:00"
 title = "Attach ratings and feedback to rule entries"
-state = "in-review"
+state = "done"
 component = "rule-api"
 priority = "high"
 type = "tracker-improvement"

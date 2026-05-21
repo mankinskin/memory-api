@@ -1,7 +1,7 @@
 id = "a762448e-464c-43da-95b8-e49eb07814ed"
 created_at = "2026-05-20T20:45:35.168842700+00:00"
 title = "[audit-api] Require every ticket to participate in dependency graph"
-state = "in-review"
+state = "done"
 component = "audit-api"
 priority = "high"
 risk_level = "medium"

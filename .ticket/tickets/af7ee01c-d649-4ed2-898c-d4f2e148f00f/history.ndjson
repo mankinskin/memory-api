@@ -2,3 +2,4 @@
 {"rev":2,"ts":"2026-05-08T09:31:50.967011700+00:00","fields":{"component":"rule-api","priority":"high","state":"ready","title":"Add explain and preview tooling for rule target composition","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}
 {"rev":3,"ts":"2026-05-08T09:31:51.102556100+00:00","fields":{"component":"rule-api","priority":"high","state":"in-implementation","title":"Add explain and preview tooling for rule target composition","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}
 {"rev":4,"ts":"2026-05-08T09:37:02.615525700+00:00","fields":{"component":"rule-api","priority":"high","state":"in-review","title":"Add explain and preview tooling for rule target composition","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}
+{"rev":5,"ts":"2026-05-21T15:46:08.025293300+00:00","fields":{"component":"rule-api","priority":"high","state":"done","title":"Add explain and preview tooling for rule target composition","type":"tracker-improvement"}}

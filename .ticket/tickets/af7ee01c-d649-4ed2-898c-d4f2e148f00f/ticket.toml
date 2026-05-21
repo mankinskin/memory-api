@@ -1,7 +1,7 @@
 id = "af7ee01c-d649-4ed2-898c-d4f2e148f00f"
 created_at = "2026-05-07T20:41:36.897415+00:00"
 title = "Add explain and preview tooling for rule target composition"
-state = "in-review"
+state = "done"
 component = "rule-api"
 priority = "high"
 type = "tracker-improvement"

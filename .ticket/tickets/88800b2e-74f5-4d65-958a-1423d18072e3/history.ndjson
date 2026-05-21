@@ -5,3 +5,4 @@
 {"rev":5,"ts":"2026-05-12T13:05:50.675530500+00:00","fields":{"component":"rule-api","priority":"high","state":"ready","title":"Attach ratings and feedback to rule entries","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}
 {"rev":6,"ts":"2026-05-12T13:05:50.820539500+00:00","fields":{"component":"rule-api","priority":"high","state":"in-implementation","title":"Attach ratings and feedback to rule entries","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}
 {"rev":7,"ts":"2026-05-12T13:05:50.968704600+00:00","fields":{"component":"rule-api","priority":"high","state":"in-review","title":"Attach ratings and feedback to rule entries","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}
+{"rev":8,"ts":"2026-05-21T15:46:06.570224200+00:00","fields":{"component":"rule-api","priority":"high","state":"done","title":"Attach ratings and feedback to rule entries","type":"tracker-improvement"}}
