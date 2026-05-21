@@ -4,6 +4,7 @@ title = "[spec][P1a] spec-api crate scaffold + SpecManifest model"
 state = "done"
 acceptance_criteria = "spec-api crate compiles, SpecManifest with typed accessors, serde round-trip tests"
 component = "spec-api"
+depends_on = ["e0b3e9a8-bd43-472a-8222-f8c5e3321dbd"]
 phase = "1"
 priority = "high"
 type = "tracker-improvement"

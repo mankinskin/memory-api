@@ -3,5 +3,6 @@ created_at = "2026-05-07T11:42:05.949696900+00:00"
 title = "Add rule-api tools to edit and generate agent markdown"
 state = "done"
 component = "rule-api"
+depends_on = ["dee7de7a-4af0-468e-b779-309192e2e4db"]
 priority = "high"
 type = "tracker-improvement"

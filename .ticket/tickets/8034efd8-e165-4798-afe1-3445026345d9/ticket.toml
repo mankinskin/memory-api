@@ -4,6 +4,7 @@ title = "API: Batch mutation endpoint for transactional multi-command execution"
 state = "done"
 acceptance_criteria = "POST /api/batch endpoint accepting array of mutation commands; transactional execution with rollback on failure; reuses existing ticket-api batch infrastructure; returns per-command status"
 component = "ticket-http"
+depends_on = ["69abd1c7-15a9-4d56-8156-0f09ff90783f"]
 priority = "high"
 risk_level = "medium"
 type = "tracker-improvement"

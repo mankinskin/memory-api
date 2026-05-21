@@ -4,6 +4,7 @@ title = "Phase 1: Add schema fields (doc_category, tags, workflow_stage, priorit
 state = "done"
 acceptance_criteria = "7 new fields added to tracker-improvement.toml and validated"
 component = "ticket-api"
+depends_on = ["6bb1e3fd-646d-424c-a216-826cf5f06867"]
 doc_category = "plan"
 risk_level = "low"
 type = "tracker-improvement"

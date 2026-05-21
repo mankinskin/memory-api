@@ -35,7 +35,7 @@ The current implementation stores edge mutations in the SQLite `edges` table but
 
 # Validation Status
 
-- `cargo check -p memory-api` — passed
-- `cargo check -p ticket-api --tests` — passed
-- `cargo test -p ticket-api scan_force_` — blocked in the current MSVC environment by `LNK1181: cannot open input file 'dbghelp.lib'`
-- The runtime regression coverage is implemented in `crates/ticket-api/src/storage/tests.rs`, but the local machine cannot currently link test binaries because only `x86_64-pc-windows-msvc` is installed and the required Windows debug library is unavailable.
+- `cargo test -p ticket-api scan_force_ -- --nocapture` — passed
+- `cargo run -p ticket-cli -- --index-root memory-viewers/memory-api/.ticket scan --force --json` — passed
+- The forced-scan regression coverage now includes legacy DB-only edge backfill and stale-edge pruning for missing ticket folders in `crates/ticket-api/src/storage/tests.rs`.
+- The current `memory-viewers/memory-api/.ticket` store had no non-diagnostic live edges to materialize, so the real CLI validation confirmed the workflow without producing checked-in manifest edge diffs.

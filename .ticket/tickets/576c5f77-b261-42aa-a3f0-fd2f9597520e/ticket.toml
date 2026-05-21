@@ -3,6 +3,7 @@ created_at = "2026-04-14T11:24:23.474707100+00:00"
 title = "ticket-vscode: Navigate to ticket URL in Simple Browser on click"
 state = "done"
 component = "ticket-vscode"
+linked = ["207b70d9-de61-4de4-af80-69732ff5b892", "dbca2bab-77bb-4f58-8460-3714f3d07004"]
 priority = "medium"
 risk_level = "low"
 type = "tracker-improvement"

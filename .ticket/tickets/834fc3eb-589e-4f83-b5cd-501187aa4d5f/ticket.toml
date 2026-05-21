@@ -4,5 +4,6 @@ title = "Impl: fix exec --batch — true rollback semantics on first failure"
 state = "done"
 acceptance_criteria = "batch exec reverts all already-applied writes when any command fails; integration test verifies no partial state on mid-batch error"
 component = "storage"
+depends_on = ["4f2d2a5e-5df1-4bd8-9b65-0d4de0a0a5c1"]
 risk_level = "medium"
 type = "tracker-improvement"

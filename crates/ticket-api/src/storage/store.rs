@@ -84,7 +84,8 @@ pub trait StoreHook: Send + Sync + 'static {
 ///
 /// Ticket manifests persist graph edges in file-backed fields such as
 /// `depends_on` and `linked`, while SQLite caches the queryable edge table.
-/// A forced scan rebuilds that cached edge table from the tracked manifests.
+/// A forced scan backfills those file-backed edge fields for legacy stores and
+/// then rebuilds the cached edge table from the tracked manifests.
 pub struct TicketStore {
     index: RedbIndexStore,
     search: TantivySearchIndex,

@@ -4,6 +4,7 @@ title = "[ticket-viewer] Migrate list/detail/search flows to workspace-aware tic
 state = "in-implementation"
 acceptance_criteria = "ticket-viewer no longer exposes /workspace/default for the main route; explorer/search/dependency picker/detail/graph flows use workspace-aware ticket refs; mixed-workspace results visibly show origin workspace; routing/localStorage/cache/selection/SSE state still resolve correctly; detail/history/files/asset/update/undo/revert follow the owning workspace; browser coverage includes mixed-workspace list/detail flows with a follow-up asset or history action"
 component = "ticket-viewer"
+depends_on = ["a2f5460c-1e7e-481b-a250-e9def213ba55"]
 priority = "high"
 risk_level = "high"
 tags = "ticket-viewer,workspaces,frontend-api,filters,design"

@@ -4,6 +4,7 @@ title = "Phase 2: Copy plan descriptions into open plan tickets"
 state = "done"
 acceptance_criteria = "All ~18 open plan tickets have description.md populated from agent files"
 component = "ticket-api"
+depends_on = ["6bb1e3fd-646d-424c-a216-826cf5f06867", "b88b1fc0-eabe-444e-8511-e3467a699849"]
 doc_category = "plan"
 risk_level = "low"
 type = "tracker-improvement"

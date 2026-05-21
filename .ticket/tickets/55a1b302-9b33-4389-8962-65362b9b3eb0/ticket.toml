@@ -3,6 +3,7 @@ created_at = "2026-04-18T15:00:04.297442400+00:00"
 title = "[spec][P1] spec-api code references — symbol-level links to implementation files with line ranges"
 state = "done"
 component = "spec-api"
+depends_on = ["ad531f63-124b-4edd-b2b3-1f8a35173649"]
 phase = "1"
 priority = "high"
 type = "tracker-improvement"

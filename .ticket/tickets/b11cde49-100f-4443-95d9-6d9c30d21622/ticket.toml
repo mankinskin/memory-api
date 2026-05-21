@@ -4,6 +4,7 @@ title = "Plan: ticket batch-update — bulk field updates with filter"
 state = "done"
 acceptance_criteria = "ticket batch-update sets fields on multiple matching tickets atomically; count reported"
 component = "ticket-cli"
+depends_on = ["a48475e3-42fc-44f6-88b2-0f4a86930a31"]
 doc_category = "plan"
 priority = "medium"
 risk_level = "medium"

@@ -5,6 +5,7 @@ state = "done"
 acceptance_criteria = ".ticket/.gitignore excludes derived binaries; ticket scan --reindex rebuilds indexes from text files on fresh checkout; onboarding step documented in skill file"
 bootstrap_blocker = "false"
 component = "storage"
+depends_on = ["4f2d2a5e-5df1-4bd8-9b65-0d4de0a0a5c1"]
 doc_category = "research"
 risk_level = "medium"
 rollout_stage = "hybrid"

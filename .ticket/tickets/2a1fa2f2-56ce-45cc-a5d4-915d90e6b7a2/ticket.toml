@@ -5,6 +5,7 @@ state = "cancelled"
 acceptance_criteria = "claim/unclaim/heartbeat paths implemented; stale lease cleanup verified by integration test"
 bootstrap_blocker = "true"
 component = "lease"
+depends_on = ["4f2d2a5e-5df1-4bd8-9b65-0d4de0a0a5c1"]
 doc_category = "research"
 risk_level = "high"
 rollout_stage = "mirror"

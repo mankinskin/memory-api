@@ -11,6 +11,7 @@ use crate::{
     model::filesystem::{
         ParseDiagnostic,
         ScanRoot,
+        TICKET_MANIFEST_FILE,
     },
     storage::{
         index::RedbIndexStore,
@@ -66,6 +67,7 @@ impl TicketStore {
         reindex: bool,
     ) -> Result<ScanReport, StorageError> {
         if reindex {
+            self.backfill_file_backed_edges_from_index()?;
             self.search.clear_all()?;
             self.index.clear_edges()?;
         }
@@ -112,6 +114,35 @@ impl TicketStore {
             pruned,
             diagnostics,
         })
+    }
+
+    fn backfill_file_backed_edges_from_index(
+        &self,
+    ) -> Result<(), StorageError> {
+        for edge in self.index.list_all_edges()? {
+            if !is_file_backed_edge_kind(&edge.kind) {
+                continue;
+            }
+
+            let Some(source) = self.get_indexed(&edge.from)? else {
+                continue;
+            };
+            if source.deleted {
+                continue;
+            }
+            if !source.path.join(TICKET_MANIFEST_FILE).is_file() {
+                continue;
+            }
+
+            TicketFs::update_edge_field(
+                &source.path,
+                &edge.kind,
+                edge.to,
+                true,
+            )?;
+        }
+
+        Ok(())
     }
 
     pub fn integrate_orphan(
@@ -248,4 +279,8 @@ fn manifest_edges(
     }
 
     edges
+}
+
+fn is_file_backed_edge_kind(kind: &str) -> bool {
+    FILE_BACKED_EDGE_KINDS.contains(&kind)
 }

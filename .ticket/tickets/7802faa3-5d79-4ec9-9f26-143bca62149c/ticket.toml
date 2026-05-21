@@ -3,6 +3,7 @@ created_at = "2026-04-18T15:00:06.833018100+00:00"
 title = "[spec][P6] Hierarchical DAG — parent-child spec relationships, no duplication"
 state = "ready"
 component = "spec-api"
+depends_on = ["ab47648c-d1f8-4ad5-a652-08ef97f76ccd"]
 phase = "6"
 priority = "medium"
 type = "tracker-improvement"

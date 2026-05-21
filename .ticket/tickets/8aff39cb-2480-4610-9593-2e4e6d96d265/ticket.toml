@@ -2,5 +2,6 @@ id = "8aff39cb-2480-4610-9593-2e4e6d96d265"
 created_at = "2026-04-09T19:45:37.093300+00:00"
 title = "[Board][Design] Draftboard data model, API contract, and CLI/MCP surface"
 state = "done"
+depends_on = ["84ceb9ce-ce68-4473-ac11-9724a20283ce", "c3143e3c-2d16-447a-9062-14305a31b786"]
 priority = "high"
 type = "tracker-improvement"

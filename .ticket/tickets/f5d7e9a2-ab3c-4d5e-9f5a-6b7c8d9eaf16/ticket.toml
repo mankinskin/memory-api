@@ -5,6 +5,7 @@ state = "ready"
 acceptance_criteria = "validation passed -> release-candidate -> merge path records assignment chain, merge commit, and release target/version metadata"
 bootstrap_blocker = "false"
 component = "history"
+depends_on = ["77f1eb5c-dc38-4221-89e9-2bdf2b8d3ca4", "d3b5c7e9-8f1a-4b2c-9d3e-4f5a6b7c8d94"]
 doc_category = "research"
 release_target = "phase-1.5"
 risk_level = "medium"

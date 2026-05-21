@@ -5,6 +5,7 @@ state = "done"
 acceptance_criteria = "history/diff/revert commands produce expected revisions and preserve forward-only semantics"
 bootstrap_blocker = "false"
 component = "history"
+depends_on = ["4f2d2a5e-5df1-4bd8-9b65-0d4de0a0a5c1"]
 risk_level = "medium"
 rollout_stage = "mirror"
 type = "tracker-improvement"

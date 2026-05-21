@@ -3,6 +3,7 @@ created_at = "2026-04-18T15:00:04.602567900+00:00"
 title = "[spec][P2] spec-mcp — MCP tool surface for spec-api"
 state = "done"
 component = "spec-mcp"
+depends_on = ["ab47648c-d1f8-4ad5-a652-08ef97f76ccd"]
 phase = "2"
 priority = "high"
 type = "tracker-improvement"

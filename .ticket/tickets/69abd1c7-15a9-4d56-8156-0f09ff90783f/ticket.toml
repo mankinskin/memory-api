@@ -4,6 +4,7 @@ title = "API: Ticket mutation endpoints — create, update, close, cancel, delet
 state = "done"
 acceptance_criteria = "POST /api/tickets (create with type, title, fields, description); PATCH /api/tickets/{id} (update fields, state transition); POST /api/tickets/{id}/close; POST /api/tickets/{id}/cancel; DELETE /api/tickets/{id} (soft delete); all with workspace param; proper error envelopes; SSE events emitted"
 component = "ticket-http"
+depends_on = ["261e7567-e234-43d5-881b-c481e34131f8"]
 priority = "critical"
 risk_level = "medium"
 type = "tracker-improvement"

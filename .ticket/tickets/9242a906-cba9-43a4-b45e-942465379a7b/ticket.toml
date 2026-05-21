@@ -3,6 +3,7 @@ created_at = "2026-04-18T15:00:07.280664400+00:00"
 title = "[spec][P8] Bootstrap: write spec files for ticket-api interfaces"
 state = "ready"
 component = "spec-api"
+depends_on = ["090b6db9-f88e-418b-888e-94641d347432"]
 phase = "8"
 priority = "high"
 type = "tracker-improvement"

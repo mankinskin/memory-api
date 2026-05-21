@@ -4,5 +4,6 @@ title = "[ticket-system] Next command: sort by workflow progress"
 state = "done"
 acceptance_criteria = "1. Default next output sorts by furthest-progressed state first (closest to done = highest rank), then by priority, then by creation date. 2. State ordering uses the schema's states list index. 3. next includes tickets in ANY non-terminal state (not just ready) by default. 4. --where state=<X> filter restricts to a specific state. 5. Backward-compatible: existing --filter and --limit flags work unchanged."
 component = "ticket-cli"
+depends_on = ["a62f28bd-8600-473f-a831-de4736ffc219"]
 priority = "medium"
 type = "tracker-improvement"

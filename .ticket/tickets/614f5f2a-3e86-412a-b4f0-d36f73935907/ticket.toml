@@ -4,6 +4,7 @@ title = "[spec][P1c] spec-api multi-file folder structure"
 state = "done"
 acceptance_criteria = "spec folder layout with spec.toml, body.md, sections/, assets/, .spec-lock, history.ndjson"
 component = "spec-api"
+depends_on = ["ad531f63-124b-4edd-b2b3-1f8a35173649", "d5722e8e-4932-4ccc-9cee-480ada710202"]
 phase = "1"
 priority = "high"
 type = "tracker-improvement"

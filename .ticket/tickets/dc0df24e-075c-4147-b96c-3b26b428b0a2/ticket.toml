@@ -4,6 +4,7 @@ title = "[spec][P1] spec-api crate — umbrella ticket (manifest, slugs, folders
 state = "done"
 acceptance_criteria = "All child tickets completed: crate scaffold, SpecManifest, slugs, folders, schema, code refs, SpecStore"
 component = "spec-api"
+depends_on = ["614f5f2a-3e86-412a-b4f0-d36f73935907", "90c88ead-86cc-4aba-ac36-85e7355bdcce", "ad531f63-124b-4edd-b2b3-1f8a35173649", "e0b3e9a8-bd43-472a-8222-f8c5e3321dbd"]
 phase = "1"
 priority = "high"
 type = "tracker-improvement"

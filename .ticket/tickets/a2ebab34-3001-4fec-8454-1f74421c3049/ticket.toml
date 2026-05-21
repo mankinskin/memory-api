@@ -4,6 +4,7 @@ title = "Phase 3: Attach interview files as ticket assets"
 state = "done"
 acceptance_criteria = "6 interview files attached as assets to their parent plan tickets"
 component = "ticket-api"
+depends_on = ["6bb1e3fd-646d-424c-a216-826cf5f06867", "b88b1fc0-eabe-444e-8511-e3467a699849"]
 doc_category = "plan"
 risk_level = "low"
 type = "tracker-improvement"

@@ -4,6 +4,7 @@ title = "Phase 5: Enrich bug tickets with bug_validity and reproduction tracking
 state = "done"
 acceptance_criteria = "All bug tickets have doc_category=bug-report, bug_validity set, and reproduction evidence recorded via ticket repro"
 component = "ticket-api"
+depends_on = ["6bb1e3fd-646d-424c-a216-826cf5f06867", "b88b1fc0-eabe-444e-8511-e3467a699849"]
 doc_category = "plan"
 risk_level = "low"
 type = "tracker-improvement"

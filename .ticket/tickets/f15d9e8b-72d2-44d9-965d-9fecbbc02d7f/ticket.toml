@@ -3,5 +3,6 @@ created_at = "2026-05-07T11:41:55.056471100+00:00"
 title = "Build rule-api for generated agent instruction docs"
 state = "in-implementation"
 component = "rule-api"
+depends_on = ["29bf9628-1dc5-4bb4-ae00-b7410dd52db5", "454405a2-a37e-4be6-b7a7-b96008afa974", "48b1cefb-dcc5-4cd4-ac41-568e57c97aca", "88800b2e-74f5-4d65-958a-1423d18072e3", "c809ae33-a4fa-4e5f-b920-5d269466a11c", "dee7de7a-4af0-468e-b779-309192e2e4db"]
 priority = "high"
 type = "tracker-improvement"

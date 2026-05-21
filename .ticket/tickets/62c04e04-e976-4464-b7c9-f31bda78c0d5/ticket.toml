@@ -4,5 +4,6 @@ title = "Impl: expose integrate_orphan(path) as public API + wire to reconciler"
 state = "done"
 acceptance_criteria = "Public `TicketStore::integrate_orphan(path)` integrates a single discovered ticket by path; called from watcher reconcile loop; scan also calls it per entry"
 component = "storage"
+depends_on = ["4f2d2a5e-5df1-4bd8-9b65-0d4de0a0a5c1"]
 risk_level = "low"
 type = "tracker-improvement"

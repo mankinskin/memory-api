@@ -3,5 +3,6 @@ created_at = "2026-05-07T20:41:36.213195900+00:00"
 title = "Improve rule target construction for hierarchical document outlines"
 state = "done"
 component = "rule-api"
+depends_on = ["18eb59ee-05f6-4a03-b522-438b67556141", "84ee1a9b-e0e8-4990-a9c7-af0e7b336d0e", "af7ee01c-d649-4ed2-898c-d4f2e148f00f"]
 priority = "high"
 type = "tracker-improvement"

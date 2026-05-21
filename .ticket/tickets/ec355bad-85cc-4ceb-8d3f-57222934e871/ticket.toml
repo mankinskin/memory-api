@@ -4,5 +4,6 @@ title = "Impl: fix scan --reindex — clear stale Tantivy entries before rebuild
 state = "done"
 acceptance_criteria = "Full reindex deletes all existing Tantivy docs before re-inserting; `ticket search` after delete+reindex returns no stale hits"
 component = "storage"
+depends_on = ["4f2d2a5e-5df1-4bd8-9b65-0d4de0a0a5c1"]
 risk_level = "medium"
 type = "tracker-improvement"

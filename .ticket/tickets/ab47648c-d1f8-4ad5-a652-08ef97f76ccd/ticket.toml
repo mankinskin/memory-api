@@ -3,6 +3,7 @@ created_at = "2026-04-18T15:00:04.150416300+00:00"
 title = "[spec][P1] spec-api storage — SpecStore on memory-api EntityStore with parent-child hierarchy"
 state = "done"
 component = "spec-api"
+depends_on = ["4b6dc9d5-4932-4573-8635-d477804538ac", "614f5f2a-3e86-412a-b4f0-d36f73935907", "90c88ead-86cc-4aba-ac36-85e7355bdcce", "ad531f63-124b-4edd-b2b3-1f8a35173649", "d5722e8e-4932-4ccc-9cee-480ada710202"]
 phase = "1"
 priority = "high"
 type = "tracker-improvement"

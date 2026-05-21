@@ -3,5 +3,6 @@ created_at = "2026-05-07T11:42:06.937323600+00:00"
 title = "Attach ratings and feedback to rule entries"
 state = "done"
 component = "rule-api"
+depends_on = ["48b1cefb-dcc5-4cd4-ac41-568e57c97aca", "dee7de7a-4af0-468e-b779-309192e2e4db"]
 priority = "high"
 type = "tracker-improvement"

@@ -396,6 +396,54 @@ fn scan_force_prunes_existing_row_for_deleted_ticket_manifest() {
 }
 
 #[test]
+fn scan_force_skips_stale_db_edges_for_missing_ticket_folders() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let source_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Missing source ticket"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let target_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Remaining target ticket"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let legacy_index = RedbIndexStore::open(&store.index_root.join("tickets.db"))
+        .unwrap();
+    legacy_index
+        .insert_edge(&EdgeRecord {
+            from: source_id,
+            to: target_id,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap();
+
+    let source_path = store.get_indexed(&source_id).unwrap().unwrap().path;
+    fs::remove_dir_all(&source_path).unwrap();
+
+    store.scan(true).unwrap();
+
+    assert!(store.get_indexed(&source_id).unwrap().is_none());
+    assert!(store.edges_from(&source_id).unwrap().is_empty());
+    assert!(store.get_indexed(&target_id).unwrap().is_some());
+}
+
+#[test]
 fn scan_force_rebuilds_dependency_edges_from_ticket_manifests() {
     let dir = tempdir().unwrap();
     let index_root;
@@ -456,6 +504,65 @@ fn scan_force_rebuilds_dependency_edges_from_ticket_manifests() {
     rebuilt.scan(true).unwrap();
 
     let edges = rebuilt.edges_from(&source_id).unwrap();
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].to, target_id);
+    assert_eq!(edges[0].kind, "depends_on");
+}
+
+#[test]
+fn scan_force_backfills_legacy_db_only_edges_into_ticket_manifests() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let source_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Legacy source ticket"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let target_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Legacy target ticket"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let legacy_index = RedbIndexStore::open(&store.index_root.join("tickets.db"))
+        .unwrap();
+    legacy_index
+        .insert_edge(&EdgeRecord {
+            from: source_id,
+            to: target_id,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap();
+
+    let manifest = store.get(&source_id).unwrap();
+    assert!(manifest.extra.get("depends_on").is_none());
+
+    store.scan(true).unwrap();
+    store.scan(true).unwrap();
+
+    let manifest = store.get(&source_id).unwrap();
+    let targets = manifest
+        .extra
+        .get("depends_on")
+        .and_then(|value| value.as_array())
+        .unwrap();
+    assert_eq!(targets.len(), 1);
+    assert_eq!(targets[0].as_str(), Some(target_id.to_string().as_str()));
+
+    let edges = store.edges_from(&source_id).unwrap();
     assert_eq!(edges.len(), 1);
     assert_eq!(edges[0].to, target_id);
     assert_eq!(edges[0].kind, "depends_on");
