@@ -30,8 +30,8 @@ use uuid::Uuid;
 pub struct WorkspaceRegistry {
     /// Canonical name of the primary workspace served by this registry.
     primary_workspace: String,
-    /// name → filesystem path to the `.ticket/` index root.
-    paths: HashMap<String, PathBuf>,
+    /// public workspace id → filesystem path and display label.
+    workspaces: HashMap<String, WorkspaceEntry>,
     /// Lazy-opened stores, keyed by name.
     stores: Mutex<HashMap<String, Arc<TicketStore>>>,
     /// Workspaces currently being opened by another thread.
@@ -45,6 +45,26 @@ pub struct ResolvedIndexedTicket {
     pub workspace: String,
     pub store: Arc<TicketStore>,
     pub ticket: IndexedTicket,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkspaceNameInfo {
+    pub name: String,
+    pub label: String,
+}
+
+#[derive(Clone)]
+struct WorkspaceEntry {
+    path: PathBuf,
+    label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceResolveError {
+    AmbiguousLegacyLabel {
+        requested: String,
+        matches: Vec<String>,
+    },
 }
 
 #[cfg(test)]
@@ -101,11 +121,17 @@ impl WorkspaceRegistry {
     /// Build with a single pre-loaded workspace named from its workspace folder.
     pub fn single(path: PathBuf) -> Self {
         let primary_workspace = primary_workspace_name_for_index_root(&path);
-        let mut paths = HashMap::new();
-        paths.insert(primary_workspace.clone(), path);
+        let mut workspaces = HashMap::new();
+        workspaces.insert(
+            primary_workspace.clone(),
+            WorkspaceEntry {
+                path: path.clone(),
+                label: workspace_label_for_index_root(&path, "workspace"),
+            },
+        );
         Self {
             primary_workspace,
-            paths,
+            workspaces,
             stores: Mutex::new(HashMap::new()),
             opening: Mutex::new(HashSet::new()),
             opening_cv: Condvar::new(),
@@ -119,14 +145,20 @@ impl WorkspaceRegistry {
     pub fn single_opened(store: Arc<TicketStore>) -> Self {
         let path = store.index_root.clone();
         let primary_workspace = primary_workspace_name_for_index_root(&path);
-        let mut paths = HashMap::new();
-        paths.insert(primary_workspace.clone(), path);
-        extend_related_paths(&mut paths, &store);
+        let mut workspaces = HashMap::new();
+        workspaces.insert(
+            primary_workspace.clone(),
+            WorkspaceEntry {
+                path: path.clone(),
+                label: workspace_label_for_index_root(&path, "workspace"),
+            },
+        );
+        extend_related_paths(&mut workspaces, &store);
         let mut stores = HashMap::new();
         stores.insert(primary_workspace.clone(), store);
         Self {
             primary_workspace,
-            paths,
+            workspaces,
             stores: Mutex::new(stores),
             opening: Mutex::new(HashSet::new()),
             opening_cv: Condvar::new(),
@@ -139,9 +171,49 @@ impl WorkspaceRegistry {
 
     /// List workspace names.
     pub fn workspace_names(&self) -> Vec<String> {
-        let mut names: Vec<_> = self.paths.keys().cloned().collect();
+        let mut names: Vec<_> = self.workspaces.keys().cloned().collect();
         names.sort();
         names
+    }
+
+    pub fn workspace_infos(&self) -> Vec<WorkspaceNameInfo> {
+        let mut infos: Vec<_> = self
+            .workspaces
+            .iter()
+            .map(|(name, entry)| WorkspaceNameInfo {
+                name: name.clone(),
+                label: entry.label.clone(),
+            })
+            .collect();
+        infos.sort_by(|left, right| left.name.cmp(&right.name));
+        infos
+    }
+
+    pub fn resolve_workspace_name(
+        &self,
+        workspace: &str,
+    ) -> Result<Option<String>, WorkspaceResolveError> {
+        if self.workspaces.contains_key(workspace) {
+            return Ok(Some(workspace.to_string()));
+        }
+
+        let mut matches = self
+            .workspaces
+            .iter()
+            .filter_map(|(name, entry)| {
+                (entry.label == workspace).then(|| name.clone())
+            })
+            .collect::<Vec<_>>();
+        matches.sort();
+
+        match matches.len() {
+            0 => Ok(None),
+            1 => Ok(matches.into_iter().next()),
+            _ => Err(WorkspaceResolveError::AmbiguousLegacyLabel {
+                requested: workspace.to_string(),
+                matches,
+            }),
+        }
     }
 
     pub fn resolve_indexed_many(
@@ -201,7 +273,7 @@ impl WorkspaceRegistry {
         &self,
         name: &str,
     ) -> bool {
-        self.paths.contains_key(name)
+        self.workspaces.contains_key(name)
     }
 
     /// Get or lazily open the `TicketStore` for `workspace`.
@@ -211,7 +283,7 @@ impl WorkspaceRegistry {
         &self,
         workspace: &str,
     ) -> Option<Arc<TicketStore>> {
-        let path = self.paths.get(workspace)?.clone();
+        let path = self.workspaces.get(workspace)?.path.clone();
 
         {
             let stores = self.stores.lock().unwrap();
@@ -303,20 +375,20 @@ impl ResolvedIndexedTicket {
 }
 
 fn extend_related_paths(
-    paths: &mut HashMap<String, PathBuf>,
+    workspaces: &mut HashMap<String, WorkspaceEntry>,
     store: &TicketStore,
 ) {
-    for (name, path) in discover_descendant_workspace_paths(store) {
-        paths.entry(name).or_insert(path);
+    for (name, entry) in discover_descendant_workspace_paths(store) {
+        workspaces.entry(name).or_insert(entry);
     }
-    for (name, path) in discover_ancestor_workspace_paths(store) {
-        paths.entry(name).or_insert(path);
+    for (name, entry) in discover_ancestor_workspace_paths(store) {
+        workspaces.entry(name).or_insert(entry);
     }
 }
 
 fn discover_descendant_workspace_paths(
     store: &TicketStore
-) -> Vec<(String, PathBuf)> {
+) -> Vec<(String, WorkspaceEntry)> {
     let Ok(scan_roots) = store.list_scan_roots() else {
         return Vec::new();
     };
@@ -328,12 +400,16 @@ fn discover_descendant_workspace_paths(
             if index_root == store.index_root {
                 return None;
             }
+            let label = workspace_label_for_index_root(&index_root, &root.label);
             Some((
                 canonical_workspace_name_for_index_root(
                     &index_root,
                     &root.label,
                 ),
-                index_root,
+                WorkspaceEntry {
+                    path: index_root,
+                    label,
+                },
             ))
         })
         .collect()
@@ -341,7 +417,7 @@ fn discover_descendant_workspace_paths(
 
 fn discover_ancestor_workspace_paths(
     store: &TicketStore
-) -> Vec<(String, PathBuf)> {
+) -> Vec<(String, WorkspaceEntry)> {
     let active_workspace_root = workspace_root_for_store(store);
 
     let mut current = active_workspace_root.parent();
@@ -350,12 +426,17 @@ fn discover_ancestor_workspace_paths(
 
     while let Some(dir) = current {
         if let Some(candidate) = detect_store_root(dir) {
+            let fallback = ancestor_label(depth);
+            let label = workspace_label_for_index_root(&candidate, &fallback);
             ancestors.push((
                 canonical_workspace_name_for_index_root(
                     &candidate,
-                    &ancestor_label(depth),
+                    &fallback,
                 ),
-                candidate,
+                WorkspaceEntry {
+                    path: candidate,
+                    label,
+                },
             ));
         }
         current = dir.parent();
@@ -377,6 +458,17 @@ pub(crate) fn workspace_root_for_index_root(index_root: &Path) -> &Path {
 }
 
 pub(crate) fn canonical_workspace_name_for_index_root(
+    index_root: &Path,
+    fallback: &str,
+) -> String {
+    let label = workspace_label_for_index_root(index_root, fallback);
+    format!(
+        "{label}--{}",
+        short_workspace_hash(workspace_root_for_index_root(index_root))
+    )
+}
+
+pub(crate) fn workspace_label_for_index_root(
     index_root: &Path,
     fallback: &str,
 ) -> String {
@@ -417,9 +509,22 @@ fn ancestor_label(depth: usize) -> String {
         .join("/")
 }
 
+fn short_workspace_hash(path: &Path) -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    for byte in normalized.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{:08x}", (hash & 0xffff_ffff) as u32)
+}
+
 #[cfg(test)]
 mod workspace_resolution_tests {
-    use super::WorkspaceRegistry;
+    use super::{
+        WorkspaceRegistry,
+        WorkspaceResolveError,
+    };
     use std::{
         collections::BTreeMap,
         sync::Arc,
@@ -464,15 +569,86 @@ mod workspace_resolution_tests {
 
         let registry =
             WorkspaceRegistry::single_opened(Arc::clone(&parent_store));
-        let workspace_names = registry.workspace_names();
-        assert!(workspace_names.contains(&"child".to_string()));
+        let workspace_infos = registry.workspace_infos();
         let root_workspace = super::workspace_root_for_index_root(root.path())
             .file_name()
             .and_then(|name| name.to_str())
             .expect("root workspace name")
             .to_string();
-        assert!(workspace_names.contains(&root_workspace));
-        assert!(!workspace_names.contains(&"tickets".to_string()));
+        assert!(workspace_infos.iter().any(|info| info.label == "child"));
+        assert!(
+            workspace_infos
+                .iter()
+                .any(|info| info.label == root_workspace)
+        );
+        assert!(!workspace_infos.iter().any(|info| info.label == "tickets"));
+
+        let child_id = registry
+            .resolve_workspace_name("child")
+            .expect("resolve child workspace")
+            .expect("child workspace id");
+        assert!(registry.workspace_names().contains(&child_id));
+    }
+
+    #[test]
+    fn duplicate_basename_workspaces_receive_distinct_public_ids() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let parent_store = Arc::new(
+            TicketStore::init(root.path()).expect("open parent store"),
+        );
+        parent_store
+            .add_scan_root(ScanRoot {
+                path: root.path().join("tickets"),
+                label: "default".to_string(),
+            })
+            .expect("add parent scan root");
+
+        let left_index_root = root.path().join("alpha").join("shared").join(".ticket");
+        let right_index_root = root.path().join("beta").join("shared").join(".ticket");
+        std::fs::create_dir_all(left_index_root.join("tickets"))
+            .expect("mkdir left store");
+        std::fs::create_dir_all(right_index_root.join("tickets"))
+            .expect("mkdir right store");
+        TicketStore::init(&left_index_root).expect("open left store");
+        TicketStore::init(&right_index_root).expect("open right store");
+
+        parent_store
+            .add_scan_root(ScanRoot {
+                path: left_index_root.join("tickets"),
+                label: "tickets".to_string(),
+            })
+            .expect("add left scan root");
+        parent_store
+            .add_scan_root(ScanRoot {
+                path: right_index_root.join("tickets"),
+                label: "tickets".to_string(),
+            })
+            .expect("add right scan root");
+
+        let registry = WorkspaceRegistry::single_opened(parent_store);
+        let shared_workspaces = registry
+            .workspace_infos()
+            .into_iter()
+            .filter(|info| info.label == "shared")
+            .collect::<Vec<_>>();
+
+        assert_eq!(shared_workspaces.len(), 2);
+        assert_ne!(shared_workspaces[0].name, shared_workspaces[1].name);
+        assert!(shared_workspaces.iter().all(|info| info.name.starts_with("shared--")));
+
+        let ambiguous = registry
+            .resolve_workspace_name("shared")
+            .expect_err("duplicate basename should be ambiguous");
+        assert_eq!(
+            ambiguous,
+            WorkspaceResolveError::AmbiguousLegacyLabel {
+                requested: "shared".to_string(),
+                matches: shared_workspaces
+                    .iter()
+                    .map(|info| info.name.clone())
+                    .collect(),
+            }
+        );
     }
 
     #[test]

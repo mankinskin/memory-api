@@ -19,6 +19,7 @@ use axum::{
         Response,
     },
 };
+use serde_json::json;
 use uuid::Uuid;
 
 use viewer_api::error::{
@@ -56,12 +57,13 @@ pub async fn list_tickets(
     Extension(rid): Extension<RequestIdExt>,
     Query(params): Query<WorkspaceParam>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
+    let (workspace, store) = match resolve_workspace_request(
+        &state,
+        &params.workspace,
+        &rid.0,
+    ) {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
     };
     let state = state.clone();
     let request_id = rid.0.clone();
@@ -85,7 +87,7 @@ pub async fn list_tickets(
                         .collect::<Vec<_>>();
                     let resolved = match resolve_tickets(
                         &state,
-                        &params.workspace,
+                        &workspace,
                         &ids,
                         &request_id,
                     ) {
@@ -104,7 +106,7 @@ pub async fn list_tickets(
                             .map(|indexed| {
                                 ticket_ref_from_indexed(
                                     &store,
-                                    &params.workspace,
+                                    &workspace,
                                     indexed,
                                 )
                             })
@@ -116,7 +118,7 @@ pub async fn list_tickets(
                         let resolved_ticket = resolved.get(&result.id);
                         let summary = if should_prefer_local_ticket(
                             &store,
-                            &params.workspace,
+                            &workspace,
                             local_ticket.as_ref(),
                             local_ticket_ref.as_ref(),
                             resolved_ticket,
@@ -133,7 +135,7 @@ pub async fn list_tickets(
                         let Some(summary) = summary else {
                             tracing::debug!(
                                 ticket_id = %result.id,
-                                active_workspace = %params.workspace,
+                                active_workspace = %workspace,
                                 has_local = local_ticket.is_some(),
                                 local_deleted = local_ticket
                                     .as_ref()
@@ -166,7 +168,7 @@ pub async fn list_tickets(
                         .collect::<Vec<_>>();
                     let resolved = match resolve_tickets(
                         &state,
-                        &params.workspace,
+                        &workspace,
                         &ids,
                         &request_id,
                     ) {
@@ -178,7 +180,7 @@ pub async fn list_tickets(
                         let resolved_ticket = resolved.get(&ticket.id);
                         let local_ticket_ref = match ticket_ref_from_indexed(
                             &store,
-                            &params.workspace,
+                            &workspace,
                             &ticket,
                         ) {
                             Ok(ticket_ref) => ticket_ref,
@@ -186,7 +188,7 @@ pub async fn list_tickets(
                         };
                         let summary = if should_prefer_local_ticket(
                             &store,
-                            &params.workspace,
+                            &workspace,
                             Some(&ticket),
                             Some(&local_ticket_ref),
                             resolved_ticket,
@@ -207,8 +209,8 @@ pub async fn list_tickets(
 
         Json(TicketsResponse {
             request_id: request_id.clone(),
-            active_workspace: params.workspace.clone(),
-            workspace: params.workspace.clone(),
+            active_workspace: workspace.clone(),
+            workspace: workspace.clone(),
             items: tickets,
             next_cursor: None,
         })
@@ -224,12 +226,13 @@ pub async fn get_ticket(
     Path(id): Path<Uuid>,
     Query(params): Query<TicketIdParam>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(store) => store,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
+    let (workspace, store) = match resolve_workspace_request(
+        &state,
+        &params.workspace,
+        &rid.0,
+    ) {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
     };
     let state = state.clone();
     let request_id = rid.0.clone();
@@ -240,7 +243,7 @@ pub async fn get_ticket(
         let resolved = match resolve_ticket_with_preferred_source(
             &store,
             &state,
-            &params.workspace,
+            &workspace,
             id,
             &request_id,
         ) {
@@ -253,8 +256,8 @@ pub async fn get_ticket(
 
                 Json(TicketDetailResponse {
                     request_id: request_id.clone(),
-                    active_workspace: params.workspace.clone(),
-                    workspace: params.workspace.clone(),
+                    active_workspace: workspace.clone(),
+                    workspace: workspace.clone(),
                     ticket: TicketDetail {
                         id: manifest.id.to_string(),
                         ticket_ref,
@@ -283,12 +286,13 @@ pub async fn get_ticket_description(
     Path(id): Path<Uuid>,
     Query(params): Query<TicketIdParam>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(store) => store,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
+    let (workspace, store) = match resolve_workspace_request(
+        &state,
+        &params.workspace,
+        &rid.0,
+    ) {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
     };
     let state = state.clone();
     let request_id = rid.0.clone();
@@ -299,7 +303,7 @@ pub async fn get_ticket_description(
         let resolved = match resolve_ticket_with_preferred_source(
             &store,
             &state,
-            &params.workspace,
+            &workspace,
             id,
             &request_id,
         ) {
@@ -309,8 +313,8 @@ pub async fn get_ticket_description(
 
         Json(TicketDescriptionResponse {
             request_id: request_id.clone(),
-            active_workspace: params.workspace.clone(),
-            workspace: params.workspace.clone(),
+            active_workspace: workspace.clone(),
+            workspace: workspace.clone(),
             id: id.to_string(),
             ticket_ref: resolved.ticket_ref,
             description: TicketFs::read_description(&resolved.path),
@@ -332,12 +336,13 @@ pub async fn get_ticket_history(
     Path(id): Path<Uuid>,
     Query(params): Query<TicketIdParam>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(store) => store,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
+    let (workspace, store) = match resolve_workspace_request(
+        &state,
+        &params.workspace,
+        &rid.0,
+    ) {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
     };
     let state = state.clone();
     let request_id = rid.0.clone();
@@ -348,7 +353,7 @@ pub async fn get_ticket_history(
         let resolved = match resolve_ticket_with_preferred_source(
             &store,
             &state,
-            &params.workspace,
+            &workspace,
             id,
             &request_id,
         ) {
@@ -370,8 +375,8 @@ pub async fn get_ticket_history(
                     .collect::<Vec<_>>();
                 Json(TicketHistoryResponse {
                     request_id: request_id.clone(),
-                    active_workspace: params.workspace.clone(),
-                    workspace: params.workspace.clone(),
+                    active_workspace: workspace.clone(),
+                    workspace: workspace.clone(),
                     id: id.to_string(),
                     ticket_ref,
                     count: entries.len() as u64,
@@ -410,6 +415,41 @@ fn resolve_ticket(
         ApiError::not_found("ticket", request_id)
             .into_response_with_status(StatusCode::NOT_FOUND)
     })
+}
+
+fn resolve_workspace_request(
+    state: &AppState,
+    requested_workspace: &str,
+    request_id: &str,
+) -> Result<
+    (
+        String,
+        std::sync::Arc<ticket_api::storage::store::TicketStore>,
+    ),
+    Response,
+> {
+    match state.resolve_workspace_runtime(requested_workspace) {
+        Ok(Some((workspace, store))) => Ok((workspace, store)),
+        Ok(None) => Err(
+            ApiError::not_found("workspace", request_id)
+                .into_response_with_status(StatusCode::NOT_FOUND),
+        ),
+        Err(crate::serve::registry::WorkspaceResolveError::AmbiguousLegacyLabel {
+            requested,
+            matches,
+        }) => Err(
+            ApiError::bad_request(
+                "workspace.ambiguous_label",
+                format!("workspace label '{requested}' matches multiple workspaces"),
+                request_id,
+            )
+            .with_details(json!({
+                "requested": requested,
+                "matches": matches,
+            }))
+            .into_response_with_status(StatusCode::BAD_REQUEST),
+        ),
+    }
 }
 
 fn ticket_ref_from_resolved(ticket: &ResolvedIndexedTicket) -> TicketRef {

@@ -97,20 +97,40 @@ impl AppState {
         &self,
         workspace: &str,
     ) -> Option<Arc<TicketStore>> {
-        let store = self.registry.get(workspace)?;
+        self.resolve_workspace_runtime(workspace)
+            .ok()
+            .flatten()
+            .map(|(_, store)| store)
+    }
+
+    pub fn resolve_workspace_runtime(
+        &self,
+        workspace: &str,
+    ) -> Result<
+        Option<(String, Arc<TicketStore>)>,
+        registry::WorkspaceResolveError,
+    > {
+        let workspace = match self.registry.resolve_workspace_name(workspace)? {
+            Some(workspace) => workspace,
+            None => return Ok(None),
+        };
+        let store = self
+            .registry
+            .get(&workspace)
+            .expect("resolved workspace should exist");
 
         let mut ready = self.runtime_ready.lock().unwrap();
         if !ready.insert(workspace.to_string()) {
-            return Some(store);
+            return Ok(Some((workspace, store)));
         }
 
-        self.broker.ensure_channel(workspace);
+        self.broker.ensure_channel(&workspace);
         let emitter =
             HookEmitter::new(workspace.to_string(), Arc::clone(&self.broker));
         store.set_hook(emitter.clone());
         stream::reconcile::spawn_reconcile(Arc::clone(&store), emitter);
 
-        Some(store)
+        Ok(Some((workspace, store)))
     }
 }
 

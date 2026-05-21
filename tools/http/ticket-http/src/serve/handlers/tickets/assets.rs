@@ -12,6 +12,7 @@ use axum::{
         Response,
     },
 };
+use serde_json::json;
 use uuid::Uuid;
 
 use viewer_api::error::{
@@ -48,12 +49,13 @@ pub async fn list_ticket_files(
     Path(id): Path<Uuid>,
     Query(params): Query<TicketIdParam>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(store) => store,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
+    let (workspace, store) = match resolve_workspace_request(
+        &state,
+        &params.workspace,
+        &rid.0,
+    ) {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
     };
     let state = state.clone();
     let request_id = rid.0.clone();
@@ -63,7 +65,7 @@ pub async fn list_ticket_files(
         let resolved = match resolve_ticket_with_preferred_source(
             &store,
             &state,
-            &params.workspace,
+            &workspace,
             id,
             &task_request_id,
         ) {
@@ -88,8 +90,8 @@ pub async fn list_ticket_files(
 
         Json(TicketFilesResponse {
             request_id: task_request_id.clone(),
-            active_workspace: params.workspace.clone(),
-            workspace: params.workspace.clone(),
+            active_workspace: workspace.clone(),
+            workspace: workspace.clone(),
             id: id.to_string(),
             ticket_ref,
             files,
@@ -111,12 +113,13 @@ pub async fn get_ticket_asset(
     Path(id): Path<Uuid>,
     Query(params): Query<TicketAssetParam>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(store) => store,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
+    let (workspace, store) = match resolve_workspace_request(
+        &state,
+        &params.workspace,
+        &rid.0,
+    ) {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
     };
     let state = state.clone();
     let request_id = rid.0.clone();
@@ -126,7 +129,7 @@ pub async fn get_ticket_asset(
         let resolved = match resolve_ticket_with_preferred_source(
             &store,
             &state,
-            &params.workspace,
+            &workspace,
             id,
             &task_request_id,
         ) {
@@ -146,8 +149,8 @@ pub async fn get_ticket_asset(
 
         Json(TicketAssetResponse {
             request_id: task_request_id.clone(),
-            active_workspace: params.workspace.clone(),
-            workspace: params.workspace.clone(),
+            active_workspace: workspace.clone(),
+            workspace: workspace.clone(),
             id: id.to_string(),
             ticket_ref,
             path: params.path.clone(),
@@ -173,6 +176,41 @@ fn resolve_ticket(
         ApiError::not_found("ticket", request_id)
             .into_response_with_status(StatusCode::NOT_FOUND)
     })
+}
+
+fn resolve_workspace_request(
+    state: &AppState,
+    requested_workspace: &str,
+    request_id: &str,
+) -> Result<
+    (
+        String,
+        std::sync::Arc<ticket_api::storage::store::TicketStore>,
+    ),
+    Response,
+> {
+    match state.resolve_workspace_runtime(requested_workspace) {
+        Ok(Some((workspace, store))) => Ok((workspace, store)),
+        Ok(None) => Err(
+            ApiError::not_found("workspace", request_id)
+                .into_response_with_status(StatusCode::NOT_FOUND),
+        ),
+        Err(crate::serve::registry::WorkspaceResolveError::AmbiguousLegacyLabel {
+            requested,
+            matches,
+        }) => Err(
+            ApiError::bad_request(
+                "workspace.ambiguous_label",
+                format!("workspace label '{requested}' matches multiple workspaces"),
+                request_id,
+            )
+            .with_details(json!({
+                "requested": requested,
+                "matches": matches,
+            }))
+            .into_response_with_status(StatusCode::BAD_REQUEST),
+        ),
+    }
 }
 
 struct PreferredResolvedTicket {

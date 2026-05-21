@@ -13,6 +13,7 @@ use viewer_api::error::RequestIdExt;
 #[derive(Serialize)]
 pub struct WorkspaceInfo {
     pub name: String,
+    pub label: String,
 }
 
 #[derive(Serialize)]
@@ -45,9 +46,14 @@ pub async fn list_workspaces(
         state.registry.primary_workspace_name(),
         &workspace_names,
     );
-    let workspaces = workspace_names
+    let workspaces = state
+        .registry
+        .workspace_infos()
         .into_iter()
-        .map(|name| WorkspaceInfo { name })
+        .map(|workspace| WorkspaceInfo {
+            name: workspace.name,
+            label: workspace.label,
+        })
         .collect();
 
     Json(WorkspacesResponse {
@@ -111,6 +117,8 @@ mod tests {
             ))),
             Arc::new(StreamBroker::new()),
         );
+        let expected_active_workspace =
+            state.registry.primary_workspace_name().to_string();
 
         let response = list_workspaces(
             State(state),
@@ -123,17 +131,76 @@ mod tests {
             .iter()
             .map(|workspace| workspace.name.as_str())
             .collect::<Vec<_>>();
+        let workspace_labels = payload
+            .workspaces
+            .iter()
+            .map(|workspace| workspace.label.as_str())
+            .collect::<Vec<_>>();
         let parent_name = root
             .path()
             .file_name()
             .and_then(|name| name.to_str())
             .expect("parent workspace name");
 
-        assert_eq!(payload.active_workspace, "child");
-        assert!(workspace_names.contains(&"child"));
-        assert!(workspace_names.contains(&parent_name));
-        assert!(!workspace_names.contains(&"default"));
-        assert!(!workspace_names.contains(&".."));
-        assert!(!workspace_names.contains(&"../.."));
+        assert_eq!(payload.active_workspace, expected_active_workspace);
+        assert!(workspace_labels.contains(&"child"));
+        assert!(workspace_labels.contains(&parent_name));
+        assert!(!workspace_labels.contains(&"default"));
+        assert!(!workspace_labels.contains(&".."));
+        assert!(!workspace_labels.contains(&"../.."));
+        assert!(workspace_names.iter().all(|name| name.contains("--")));
+    }
+
+    #[tokio::test]
+    async fn list_workspaces_returns_distinct_ids_for_duplicate_basenames() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let parent_store = Arc::new(TicketStore::init(root.path()).expect("open parent store"));
+        parent_store
+            .add_scan_root(ticket_api::model::filesystem::ScanRoot {
+                path: root.path().join("tickets"),
+                label: "default".to_string(),
+            })
+            .expect("add parent scan root");
+
+        let left_dir = root.path().join("alpha").join("shared").join(".ticket");
+        let right_dir = root.path().join("beta").join("shared").join(".ticket");
+        std::fs::create_dir_all(left_dir.join("tickets")).expect("create left dir");
+        std::fs::create_dir_all(right_dir.join("tickets")).expect("create right dir");
+        TicketStore::init(&left_dir).expect("open left store");
+        TicketStore::init(&right_dir).expect("open right store");
+
+        parent_store
+            .add_scan_root(ticket_api::model::filesystem::ScanRoot {
+                path: left_dir.join("tickets"),
+                label: "tickets".to_string(),
+            })
+            .expect("add left scan root");
+        parent_store
+            .add_scan_root(ticket_api::model::filesystem::ScanRoot {
+                path: right_dir.join("tickets"),
+                label: "tickets".to_string(),
+            })
+            .expect("add right scan root");
+
+        let state = AppState::new(
+            Arc::new(WorkspaceRegistry::single_opened(parent_store)),
+            Arc::new(StreamBroker::new()),
+        );
+
+        let response = list_workspaces(
+            State(state),
+            Extension(RequestIdExt("rid-duplicate-workspaces".to_string())),
+        )
+        .await;
+        let payload = response.0;
+        let shared = payload
+            .workspaces
+            .iter()
+            .filter(|workspace| workspace.label == "shared")
+            .collect::<Vec<_>>();
+
+        assert_eq!(shared.len(), 2);
+        assert_ne!(shared[0].name, shared[1].name);
+        assert!(shared.iter().all(|workspace| workspace.name.starts_with("shared--")));
     }
 }
