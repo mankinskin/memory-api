@@ -3,7 +3,12 @@ use chrono::{
     Utc,
 };
 use memory_api::model::edge::EdgeRecord;
+use serde_json::Value;
 use std::{
+    collections::{
+        BTreeMap,
+        BTreeSet,
+    },
     fs,
     path::{
         Path,
@@ -29,6 +34,301 @@ use crate::model::{
 
 fn canonical_existing_path(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap()
+}
+
+fn known_id_set(ids: &[Uuid]) -> BTreeSet<Uuid> {
+    ids.iter().copied().collect()
+}
+
+fn assert_visibility_surfaces_agree(
+    store: &TicketStore,
+    query: &str,
+    known_ids: &[Uuid],
+    expected_ids: &[Uuid],
+) {
+    let known_ids = known_id_set(known_ids);
+    let expected_ids = known_id_set(expected_ids);
+    let search_ids: BTreeSet<Uuid> = store
+        .search_tickets(query, known_ids.len().saturating_mul(4).max(8))
+        .unwrap()
+        .into_iter()
+        .map(|ticket| ticket.id)
+        .filter(|id| known_ids.contains(id))
+        .collect();
+    let list_ids: BTreeSet<Uuid> = store
+        .list(None, None, None)
+        .unwrap()
+        .into_iter()
+        .map(|ticket| ticket.id)
+        .filter(|id| known_ids.contains(id))
+        .collect();
+    let indexed_ids: BTreeSet<Uuid> = store
+        .get_indexed_many(&known_ids.iter().copied().collect::<Vec<_>>())
+        .unwrap()
+        .keys()
+        .copied()
+        .collect();
+
+    assert_eq!(search_ids, expected_ids, "search visibility drifted");
+    assert_eq!(list_ids, expected_ids, "list visibility drifted");
+    assert_eq!(indexed_ids, expected_ids, "indexed visibility drifted");
+
+    for id in &known_ids {
+        if expected_ids.contains(id) {
+            let indexed = store.get_indexed(id).unwrap().unwrap();
+            assert!(
+                !indexed.deleted,
+                "visible ticket {id} should not remain tombstoned"
+            );
+            assert!(store.get(id).is_ok(), "visible ticket {id} should be readable");
+        } else {
+            assert!(
+                store.get_indexed(id).unwrap().is_none(),
+                "hidden ticket {id} should not remain indexed"
+            );
+            assert!(store.get(id).is_err(), "hidden ticket {id} should not be readable");
+        }
+    }
+}
+
+fn assert_ticket_title_and_state(
+    store: &TicketStore,
+    query: &str,
+    id: Uuid,
+    expected_title: &str,
+    expected_state: &str,
+) {
+    let search_result = store
+        .search_tickets(query, 20)
+        .unwrap()
+        .into_iter()
+        .find(|ticket| ticket.id == id)
+        .unwrap();
+    assert_eq!(search_result.title.as_deref(), Some(expected_title));
+    assert_eq!(search_result.state.as_deref(), Some(expected_state));
+
+    let indexed = store.get_indexed(&id).unwrap().unwrap();
+    assert_eq!(indexed.title.as_deref(), Some(expected_title));
+    assert_eq!(indexed.state.as_deref(), Some(expected_state));
+
+    let manifest = store.get(&id).unwrap();
+    assert_eq!(
+        manifest.extra.get("title").and_then(|value| value.as_str()),
+        Some(expected_title)
+    );
+    assert_eq!(
+        manifest.extra.get("state").and_then(|value| value.as_str()),
+        Some(expected_state)
+    );
+}
+
+fn run_scan_reconciliation_visibility_agreement(reindex: bool) {
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let child_repo_a = repo.join("memory-viewers").join("memory-api");
+    let child_repo_b = repo.join("memory-viewers").join("viewer-api");
+    fs::create_dir_all(&child_repo_a).unwrap();
+    fs::create_dir_all(&child_repo_b).unwrap();
+
+    let root_store = TicketStore::init(&repo).unwrap();
+    let child_store_a = TicketStore::init(&child_repo_a).unwrap();
+    let child_store_b = TicketStore::init(&child_repo_b).unwrap();
+    root_store
+        .add_scan_root(ScanRoot {
+            path: child_store_a.index_root.join("tickets"),
+            label: "memory-api".to_string(),
+        })
+        .unwrap();
+    root_store
+        .add_scan_root(ScanRoot {
+            path: child_store_b.index_root.join("tickets"),
+            label: "viewer-api".to_string(),
+        })
+        .unwrap();
+
+    let stable_id = child_store_a
+        .create(
+            None,
+            "tracker-improvement",
+            Some("VisibilityFixture stable"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let delete_id = child_store_a
+        .create(
+            None,
+            "tracker-improvement",
+            Some("VisibilityFixture delete"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let move_id = child_store_b
+        .create(
+            None,
+            "tracker-improvement",
+            Some("VisibilityFixture move"),
+            Some("in-review"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    root_store.scan(reindex).unwrap();
+
+    let add_id = child_store_b
+        .create(
+            None,
+            "tracker-improvement",
+            Some("VisibilityFixture add"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let known_ids = vec![stable_id, delete_id, move_id, add_id];
+
+    assert_visibility_surfaces_agree(
+        &root_store,
+        "VisibilityFixture",
+        &known_ids,
+        &[stable_id, delete_id, move_id],
+    );
+
+    root_store.scan(reindex).unwrap();
+    assert_visibility_surfaces_agree(
+        &root_store,
+        "VisibilityFixture",
+        &known_ids,
+        &[stable_id, delete_id, move_id, add_id],
+    );
+
+    let mut stable_patch = BTreeMap::new();
+    stable_patch.insert(
+        "title".to_string(),
+        Value::String("VisibilityFixture stable updated".to_string()),
+    );
+    child_store_a
+        .update(
+            &stable_id,
+            stable_patch,
+            Some("ready"),
+            Some("in-implementation"),
+            None,
+            None,
+        )
+        .unwrap();
+
+    root_store.scan(reindex).unwrap();
+    assert_visibility_surfaces_agree(
+        &root_store,
+        "VisibilityFixture",
+        &known_ids,
+        &[stable_id, delete_id, move_id, add_id],
+    );
+    assert_ticket_title_and_state(
+        &root_store,
+        "VisibilityFixture",
+        stable_id,
+        "VisibilityFixture stable updated",
+        "in-implementation",
+    );
+
+    let mut move_patch = BTreeMap::new();
+    move_patch.insert(
+        "title".to_string(),
+        Value::String("VisibilityFixture move repaired".to_string()),
+    );
+    child_store_b
+        .update(
+            &move_id,
+            move_patch,
+            Some("in-review"),
+            Some("in-implementation"),
+            None,
+            None,
+        )
+        .unwrap();
+    let expected_move = child_store_b.get_indexed(&move_id).unwrap().unwrap();
+
+    let poisoned_index =
+        RedbIndexStore::open(&root_store.index_root.join("tickets.db"))
+            .unwrap();
+    let mut poisoned = root_store.get_indexed(&move_id).unwrap().unwrap();
+    poisoned.path = root_store
+        .index_root
+        .join("tickets")
+        .join(move_id.to_string());
+    poisoned.type_id = "wrong-type".to_string();
+    poisoned.title = Some("Wrong title".to_string());
+    poisoned.state = Some("new".to_string());
+    poisoned.created_at = expected_move.created_at - Duration::days(1);
+    poisoned.deleted = false;
+    poisoned_index.insert_ticket(&poisoned).unwrap();
+
+    root_store.scan(reindex).unwrap();
+    assert_visibility_surfaces_agree(
+        &root_store,
+        "VisibilityFixture",
+        &known_ids,
+        &[stable_id, delete_id, move_id, add_id],
+    );
+    let repaired_move = root_store.get_indexed(&move_id).unwrap().unwrap();
+    assert_eq!(repaired_move.path, expected_move.path);
+    assert_eq!(repaired_move.title, expected_move.title);
+    assert_eq!(repaired_move.state, expected_move.state);
+    assert_ticket_title_and_state(
+        &root_store,
+        "VisibilityFixture",
+        move_id,
+        "VisibilityFixture move repaired",
+        "in-implementation",
+    );
+
+    let delete_path = child_store_a.get_indexed(&delete_id).unwrap().unwrap().path;
+    TicketFs::mark_deleted(&delete_path).unwrap();
+
+    root_store.scan(reindex).unwrap();
+    assert_visibility_surfaces_agree(
+        &root_store,
+        "VisibilityFixture",
+        &known_ids,
+        &[stable_id, move_id, add_id],
+    );
+
+    fs::remove_dir_all(&child_repo_b).unwrap();
+
+    root_store.scan(reindex).unwrap();
+    assert_visibility_surfaces_agree(
+        &root_store,
+        "VisibilityFixture",
+        &known_ids,
+        &[stable_id],
+    );
+    assert_ticket_title_and_state(
+        &root_store,
+        "VisibilityFixture",
+        stable_id,
+        "VisibilityFixture stable updated",
+        "in-implementation",
+    );
+}
+
+#[test]
+fn scan_reconciliation_visibility_agreement_without_reindex() {
+    run_scan_reconciliation_visibility_agreement(false);
+}
+
+#[test]
+fn scan_reconciliation_visibility_agreement_with_reindex() {
+    run_scan_reconciliation_visibility_agreement(true);
 }
 
 #[test]
@@ -284,7 +584,7 @@ fn scan_repairs_corrupted_nested_workspace_ticket_path() {
 }
 
 #[test]
-fn scan_without_reindex_repairs_corrupted_nested_workspace_ticket_metadata() {
+fn scan_without_reindex_repairs_moved_nested_ticket_path_and_search_doc() {
     let dir = tempdir().unwrap();
     let repo = dir.path().join("repo");
     let child_repo = repo.join("memory-viewers").join("viewer-api");
@@ -339,6 +639,15 @@ fn scan_without_reindex_repairs_corrupted_nested_workspace_ticket_metadata() {
     assert_eq!(indexed.created_at, expected.created_at);
     assert!(!indexed.deleted);
     assert!(root_store.get(&ticket_id).is_ok());
+    assert!(root_store
+        .search_tickets("Nested workspace ticket", 10)
+        .unwrap()
+        .iter()
+        .any(|result| {
+            result.id == ticket_id
+                && result.title.as_deref() == Some("Nested workspace ticket")
+                && result.state.as_deref() == Some("in-implementation")
+        }));
 }
 
 #[test]
@@ -393,6 +702,134 @@ fn scan_force_prunes_existing_row_for_deleted_ticket_manifest() {
     store.scan(true).unwrap();
 
     assert!(store.get_indexed(&ticket_id).unwrap().is_none());
+}
+
+#[test]
+fn scan_without_reindex_prunes_deleted_nested_ticket_from_search_and_index() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let child_repo = repo.join("memory-viewers").join("memory-api");
+    fs::create_dir_all(&child_repo).unwrap();
+
+    let root_store = TicketStore::init(&repo).unwrap();
+    let child_store = TicketStore::init(&child_repo).unwrap();
+    root_store
+        .add_scan_root(ScanRoot {
+            path: child_store.index_root.join("tickets"),
+            label: "memory-api".to_string(),
+        })
+        .unwrap();
+
+    let ticket_id = child_store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Deleted nested visibility ticket"),
+            Some("in-review"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    root_store.scan(true).unwrap();
+    assert!(root_store
+        .search_tickets("Deleted nested visibility", 10)
+        .unwrap()
+        .iter()
+        .any(|result| result.id == ticket_id));
+
+    let ticket_path = child_store.get_indexed(&ticket_id).unwrap().unwrap().path;
+    let manifest_path = ticket_path.join("ticket.toml");
+    TicketFs::mark_deleted(&ticket_path).unwrap();
+
+    let report = root_store.scan(false).unwrap();
+
+    assert_eq!(report.pruned, 1);
+    assert!(report.diagnostics.iter().any(|diag| {
+        diag.path == manifest_path
+            && diag.reason.contains("marked deleted on disk")
+    }));
+    assert!(root_store.get_indexed(&ticket_id).unwrap().is_none());
+    assert!(root_store.get(&ticket_id).is_err());
+    assert!(!root_store
+        .search_tickets("Deleted nested visibility", 10)
+        .unwrap()
+        .iter()
+        .any(|result| result.id == ticket_id));
+    assert!(!root_store
+        .list(None, None, None)
+        .unwrap()
+        .iter()
+        .any(|ticket| ticket.id == ticket_id));
+}
+
+#[test]
+fn scan_without_reindex_prunes_removed_scan_root_visibility() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let child_repo = repo.join("memory-viewers").join("viewer-api");
+    fs::create_dir_all(&child_repo).unwrap();
+
+    let root_store = TicketStore::init(&repo).unwrap();
+    let ticket_id = {
+        let child_store = TicketStore::init(&child_repo).unwrap();
+        root_store
+            .add_scan_root(ScanRoot {
+                path: child_store.index_root.join("tickets"),
+                label: "viewer-api".to_string(),
+            })
+            .unwrap();
+
+        let ticket_id = child_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Removed scan root ticket"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        root_store.scan(true).unwrap();
+        ticket_id
+    };
+
+    let manifest_path = root_store
+        .get_indexed(&ticket_id)
+        .unwrap()
+        .unwrap()
+        .path
+        .join("ticket.toml");
+    assert!(root_store
+        .search_tickets("Removed scan root", 10)
+        .unwrap()
+        .iter()
+        .any(|result| result.id == ticket_id));
+
+    fs::remove_dir_all(&child_repo).unwrap();
+
+    let report = root_store.scan(false).unwrap();
+
+    assert_eq!(report.pruned, 1);
+    assert!(report.diagnostics.iter().any(|diag| {
+        diag.path == manifest_path
+            && diag.reason.contains("missing on disk")
+    }));
+    assert!(root_store.get_indexed(&ticket_id).unwrap().is_none());
+    assert!(root_store.get(&ticket_id).is_err());
+    assert!(!root_store
+        .search_tickets("Removed scan root", 10)
+        .unwrap()
+        .iter()
+        .any(|result| result.id == ticket_id));
+    assert!(!root_store
+        .list(None, None, None)
+        .unwrap()
+        .iter()
+        .any(|ticket| ticket.id == ticket_id));
 }
 
 #[test]

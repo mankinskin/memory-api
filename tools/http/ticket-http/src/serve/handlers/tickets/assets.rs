@@ -206,20 +206,23 @@ fn resolve_ticket_with_preferred_source(
         Err(error) => return Err(storage_err(error, request_id)),
     };
 
-    if let Some((ticket, ticket_ref)) = local_ticket
-        .as_ref()
-        .zip(local_ticket_ref.as_ref())
-        .filter(|(ticket, ticket_ref)| {
-            should_use_local_ticket(active_workspace, ticket, ticket_ref)
-        })
-    {
+    let resolved = resolve_ticket(state, active_workspace, id, request_id)?;
+
+    if should_prefer_local_ticket(
+        store,
+        active_workspace,
+        local_ticket.as_ref(),
+        local_ticket_ref.as_ref(),
+        &resolved,
+    ) {
+        let ticket = local_ticket.as_ref().expect("local ticket");
+        let ticket_ref = local_ticket_ref.expect("local ticket ref");
         return Ok(PreferredResolvedTicket {
             path: ticket.path.clone(),
-            ticket_ref: ticket_ref.clone(),
+            ticket_ref,
         });
     }
 
-    let resolved = resolve_ticket(state, active_workspace, id, request_id)?;
     Ok(PreferredResolvedTicket {
         path: resolved.ticket.path.clone(),
         ticket_ref: TicketRef {
@@ -229,12 +232,29 @@ fn resolve_ticket_with_preferred_source(
     })
 }
 
+fn should_prefer_local_ticket(
+    store: &ticket_api::storage::store::TicketStore,
+    active_workspace: &str,
+    local_ticket: Option<&ticket_api::storage::indexed::IndexedTicket>,
+    local_ticket_ref: Option<&TicketRef>,
+    resolved_ticket: &ResolvedIndexedTicket,
+) -> bool {
+    let (Some(ticket), Some(ticket_ref)) = (local_ticket, local_ticket_ref)
+    else {
+        return false;
+    };
+
+    should_use_local_ticket(active_workspace, ticket, ticket_ref)
+        && resolved_ticket.store.index_root == store.index_root
+}
+
 fn should_use_local_ticket(
     active_workspace: &str,
     ticket: &ticket_api::storage::indexed::IndexedTicket,
     ticket_ref: &TicketRef,
 ) -> bool {
-    ticket_ref.workspace != active_workspace
+    !ticket.deleted
+        && ticket_ref.workspace != active_workspace
         && ticket.path.join("ticket.toml").is_file()
 }
 

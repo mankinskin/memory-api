@@ -3,7 +3,6 @@ use std::{
         BTreeMap,
         HashMap,
     },
-    time::SystemTime,
 };
 
 use axum::{
@@ -73,26 +72,13 @@ pub async fn list_tickets(
         let requested_limit = params.limit.unwrap_or(100).min(1000);
         let state_filter = params.state.as_deref();
         let tickets: Vec<TicketSummary> = if let Some(query) = &params.query {
-            let search_limit = if state_filter.is_some() {
-                match store.count_tickets() {
-                    Ok(count) => count.max(requested_limit),
-                    Err(e) => return storage_err(e, &request_id),
-                }
-            } else {
-                requested_limit
+            let search_limit = match store.count_tickets() {
+                Ok(count) => count.max(requested_limit),
+                Err(e) => return storage_err(e, &request_id),
             };
 
             match store.search_tickets(query, search_limit) {
                 Ok(results) => {
-                    let results = results
-                        .into_iter()
-                        .filter(|result| {
-                            state_filter.map_or(true, |state| {
-                                result.state.as_deref() == Some(state)
-                            })
-                        })
-                        .take(requested_limit)
-                        .collect::<Vec<_>>();
                     let ids = results
                         .iter()
                         .map(|result| result.id)
@@ -127,83 +113,45 @@ pub async fn list_tickets(
                             Ok(ticket_ref) => ticket_ref,
                             Err(e) => return storage_err(e, &request_id),
                         };
+                        let resolved_ticket = resolved.get(&result.id);
+                        let summary = if should_prefer_local_ticket(
+                            &store,
+                            &params.workspace,
+                            local_ticket.as_ref(),
+                            local_ticket_ref.as_ref(),
+                            resolved_ticket,
+                        ) {
+                            let ticket =
+                                local_ticket.as_ref().expect("local ticket");
+                            let ticket_ref = local_ticket_ref
+                                .expect("local ticket ref");
+                            Some(ticket_summary_from_indexed(ticket_ref, ticket))
+                        } else {
+                            resolved_ticket.map(ticket_summary_from_resolved)
+                        };
 
-                        let prefer_local = local_ticket
-                            .as_ref()
-                            .zip(local_ticket_ref.as_ref())
-                            .map(|(ticket, ticket_ref)| {
-                                should_use_local_ticket(
-                                    &params.workspace,
-                                    ticket,
-                                    ticket_ref,
-                                )
-                            })
-                            .unwrap_or(false);
-
-                        let (created_at, updated_at, ticket_ref, type_id) =
-                            if prefer_local {
-                                let ticket = local_ticket
+                        let Some(summary) = summary else {
+                            tracing::debug!(
+                                ticket_id = %result.id,
+                                active_workspace = %params.workspace,
+                                has_local = local_ticket.is_some(),
+                                local_deleted = local_ticket
                                     .as_ref()
-                                    .expect("local ticket");
-                                (
-                                    ticket.created_at,
-                                    ticket.updated_at,
-                                    local_ticket_ref.expect("local ticket ref"),
-                                    result.ticket_type.clone().unwrap_or_else(
-                                        || ticket.type_id.clone(),
-                                    ),
-                                )
-                            } else if let Some(ticket) =
-                                resolved.get(&result.id)
-                            {
-                                (
-                                    ticket.ticket.created_at,
-                                    ticket.ticket.updated_at,
-                                    ticket_ref_from_resolved(ticket),
-                                    result.ticket_type.clone().unwrap_or_else(
-                                        || ticket.ticket.type_id.clone(),
-                                    ),
-                                )
-                            } else if let Some(ticket) = local_ticket {
-                                (
-                                    ticket.created_at,
-                                    ticket.updated_at,
-                                    local_ticket_ref.unwrap_or(TicketRef {
-                                        workspace: params.workspace.clone(),
-                                        id: result.id.to_string(),
-                                    }),
-                                    result
-                                        .ticket_type
-                                        .clone()
-                                        .unwrap_or(ticket.type_id),
-                                )
-                            } else {
-                                let (created_at, updated_at) =
-                                    epoch_timestamps();
-                                (
-                                    created_at,
-                                    updated_at,
-                                    TicketRef {
-                                        workspace: params.workspace.clone(),
-                                        id: result.id.to_string(),
-                                    },
-                                    result
-                                        .ticket_type
-                                        .clone()
-                                        .unwrap_or_default(),
-                                )
-                            };
-
-                        items.push(TicketSummary {
-                            id: result.id.to_string(),
-                            ticket_ref,
-                            type_id,
-                            title: result.title,
-                            state: result.state,
-                            created_at,
-                            updated_at,
-                            fields: BTreeMap::new(),
-                        });
+                                    .map(|ticket| ticket.deleted)
+                                    .unwrap_or(false),
+                                has_resolved = resolved_ticket.is_some(),
+                                "dropping unresolved search hit"
+                            );
+                            continue;
+                        };
+                        if state_filter.map_or(true, |state| {
+                            summary.state.as_deref() == Some(state)
+                        }) {
+                            items.push(summary);
+                        }
+                        if items.len() >= requested_limit {
+                            break;
+                        }
                     }
                     items
                 },
@@ -236,43 +184,20 @@ pub async fn list_tickets(
                             Ok(ticket_ref) => ticket_ref,
                             Err(e) => return storage_err(e, &request_id),
                         };
-                        let prefer_local = should_use_local_ticket(
+                        let summary = if should_prefer_local_ticket(
+                            &store,
                             &params.workspace,
-                            &ticket,
-                            &local_ticket_ref,
-                        );
-                        let ticket_ref = if prefer_local {
-                            local_ticket_ref
+                            Some(&ticket),
+                            Some(&local_ticket_ref),
+                            resolved_ticket,
+                        ) {
+                            ticket_summary_from_indexed(local_ticket_ref, &ticket)
+                        } else if let Some(resolved_ticket) = resolved_ticket {
+                            ticket_summary_from_resolved(resolved_ticket)
                         } else {
-                            resolved_ticket
-                                .map(ticket_ref_from_resolved)
-                                .unwrap_or(local_ticket_ref)
+                            continue;
                         };
-                        let ticket_meta = if prefer_local {
-                            None
-                        } else {
-                            resolved_ticket.map(|ticket| &ticket.ticket)
-                        };
-                        summaries.push(TicketSummary {
-                            id: ticket.id.to_string(),
-                            ticket_ref,
-                            type_id: ticket_meta
-                                .map(|ticket| ticket.type_id.clone())
-                                .unwrap_or(ticket.type_id),
-                            title: ticket_meta
-                                .and_then(|ticket| ticket.title.clone())
-                                .or(ticket.title),
-                            state: ticket_meta
-                                .and_then(|ticket| ticket.state.clone())
-                                .or(ticket.state),
-                            created_at: ticket_meta
-                                .map(|ticket| ticket.created_at)
-                                .unwrap_or(ticket.created_at),
-                            updated_at: ticket_meta
-                                .map(|ticket| ticket.updated_at)
-                                .unwrap_or(ticket.updated_at),
-                            fields: BTreeMap::new(),
-                        });
+                        summaries.push(summary);
                     }
                     summaries
                 },
@@ -494,6 +419,35 @@ fn ticket_ref_from_resolved(ticket: &ResolvedIndexedTicket) -> TicketRef {
     }
 }
 
+fn ticket_summary_from_indexed(
+    ticket_ref: TicketRef,
+    ticket: &ticket_api::storage::indexed::IndexedTicket,
+) -> TicketSummary {
+    TicketSummary {
+        id: ticket.id.to_string(),
+        ticket_ref,
+        type_id: ticket.type_id.clone(),
+        title: ticket.title.clone(),
+        state: ticket.state.clone(),
+        created_at: ticket.created_at,
+        updated_at: ticket.updated_at,
+        fields: BTreeMap::new(),
+    }
+}
+
+fn ticket_summary_from_resolved(ticket: &ResolvedIndexedTicket) -> TicketSummary {
+    TicketSummary {
+        id: ticket.ticket.id.to_string(),
+        ticket_ref: ticket_ref_from_resolved(ticket),
+        type_id: ticket.ticket.type_id.clone(),
+        title: ticket.ticket.title.clone(),
+        state: ticket.ticket.state.clone(),
+        created_at: ticket.ticket.created_at,
+        updated_at: ticket.ticket.updated_at,
+        fields: BTreeMap::new(),
+    }
+}
+
 struct PreferredResolvedTicket {
     path: std::path::PathBuf,
     ticket_ref: TicketRef,
@@ -519,20 +473,23 @@ fn resolve_ticket_with_preferred_source(
         Err(error) => return Err(storage_err(error, request_id)),
     };
 
-    if let Some((ticket, ticket_ref)) = local_ticket
-        .as_ref()
-        .zip(local_ticket_ref.as_ref())
-        .filter(|(ticket, ticket_ref)| {
-            should_use_local_ticket(active_workspace, ticket, ticket_ref)
-        })
-    {
+    let resolved = resolve_ticket(state, active_workspace, id, request_id)?;
+
+    if should_prefer_local_ticket(
+        store,
+        active_workspace,
+        local_ticket.as_ref(),
+        local_ticket_ref.as_ref(),
+        Some(&resolved),
+    ) {
+        let ticket = local_ticket.as_ref().expect("local ticket");
+        let ticket_ref = local_ticket_ref.expect("local ticket ref");
         return Ok(PreferredResolvedTicket {
             path: ticket.path.clone(),
-            ticket_ref: ticket_ref.clone(),
+            ticket_ref,
         });
     }
 
-    let resolved = resolve_ticket(state, active_workspace, id, request_id)?;
     let ticket_ref = ticket_ref_from_resolved(&resolved);
     Ok(PreferredResolvedTicket {
         path: resolved.ticket.path,
@@ -540,17 +497,29 @@ fn resolve_ticket_with_preferred_source(
     })
 }
 
+fn should_prefer_local_ticket(
+    store: &ticket_api::storage::store::TicketStore,
+    active_workspace: &str,
+    local_ticket: Option<&ticket_api::storage::indexed::IndexedTicket>,
+    local_ticket_ref: Option<&TicketRef>,
+    resolved_ticket: Option<&ResolvedIndexedTicket>,
+) -> bool {
+    let (Some(ticket), Some(ticket_ref), Some(resolved_ticket)) =
+        (local_ticket, local_ticket_ref, resolved_ticket)
+    else {
+        return false;
+    };
+
+    should_use_local_ticket(active_workspace, ticket, ticket_ref)
+        && resolved_ticket.store.index_root == store.index_root
+}
+
 fn should_use_local_ticket(
     active_workspace: &str,
     ticket: &ticket_api::storage::indexed::IndexedTicket,
     ticket_ref: &TicketRef,
 ) -> bool {
-    ticket_ref.workspace != active_workspace
+    !ticket.deleted
+        && ticket_ref.workspace != active_workspace
         && ticket.path.join("ticket.toml").is_file()
-}
-
-fn epoch_timestamps()
--> (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) {
-    let epoch = chrono::DateTime::<chrono::Utc>::from(SystemTime::UNIX_EPOCH);
-    (epoch, epoch)
 }

@@ -12,6 +12,8 @@ use std::{
     collections::BTreeMap,
     sync::Arc,
 };
+use ticket_api::storage::search::TantivySearchIndex;
+use uuid::Uuid;
 use viewer_api::error::RequestIdExt;
 
 use super::{
@@ -86,6 +88,49 @@ async fn search_list_uses_persisted_updated_at() {
     assert_eq!(payload["active_workspace"], workspace.clone());
     assert_eq!(payload["items"][0]["ticket_ref"]["workspace"], workspace);
     assert_eq!(payload["items"][0]["ticket_ref"]["id"], id.to_string());
+}
+
+#[tokio::test]
+async fn search_list_drops_unresolved_tantivy_only_hits() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = make_store(dir.path());
+    let ghost_id = Uuid::new_v4();
+    TantivySearchIndex::open_or_create(&store.index_root.join("search_index"))
+        .expect("open search index")
+        .upsert(
+            &ghost_id,
+            Some("ghost-only unresolved search hit"),
+            Some("ghost-only unresolved search hit body"),
+            Some("ready"),
+            Some("tracker-improvement"),
+        )
+        .expect("upsert ghost search doc");
+
+    let state = make_state(Arc::clone(&store));
+    let workspace = state.registry.primary_workspace_name().to_string();
+
+    let response = list_tickets(
+        State(state),
+        Extension(RequestIdExt("rid-ghost-search".to_string())),
+        Query(WorkspaceParam {
+            workspace,
+            state: None,
+            query: Some("ghost-only unresolved".to_string()),
+            limit: Some(10),
+            cursor: None,
+        }),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("read body");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json body");
+    let items = payload["items"].as_array().expect("items array");
+
+    assert!(items.is_empty(), "unresolved search-only hits must be dropped");
 }
 
 #[tokio::test]
@@ -426,6 +471,115 @@ async fn list_tickets_uses_scan_root_label_for_ticket_ref_workspace() {
 }
 
 #[tokio::test]
+async fn search_list_prefers_authoritative_mixed_workspace_hit() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let parent_store = Arc::new(
+        ticket_api::storage::store::TicketStore::init(root.path())
+            .expect("open parent store"),
+    );
+    parent_store
+        .add_scan_root(ticket_api::model::filesystem::ScanRoot {
+            path: root.path().join("tickets"),
+            label: "default".to_string(),
+        })
+        .expect("add parent scan root");
+
+    let child_index_root = root.path().join("child").join(".ticket");
+    std::fs::create_dir_all(child_index_root.join("tickets"))
+        .expect("mkdir child store");
+    let child_store = Arc::new(
+        ticket_api::storage::store::TicketStore::init(&child_index_root)
+            .expect("open child store"),
+    );
+    child_store
+        .add_scan_root(ticket_api::model::filesystem::ScanRoot {
+            path: child_index_root.join("tickets"),
+            label: "tickets".to_string(),
+        })
+        .expect("add child scan root");
+
+    let id = child_store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("mixed-workspace child authoritative ticket"),
+            Some("ready"),
+            BTreeMap::new(),
+            None,
+            Some("mixed-workspace authoritative description"),
+        )
+        .expect("create child ticket");
+
+    parent_store
+        .add_scan_root(ticket_api::model::filesystem::ScanRoot {
+            path: child_index_root.join("tickets"),
+            label: "tickets".to_string(),
+        })
+        .expect("add child scan root to parent");
+    parent_store.scan(true).expect("scan parent store");
+
+    let poisoned_index = ticket_api::storage::index::RedbIndexStore::open(
+        &parent_store.index_root.join("tickets.db"),
+    )
+    .expect("open parent index");
+    let mut poisoned = parent_store
+        .get_indexed(&id)
+        .expect("get parent indexed ticket")
+        .expect("parent indexed ticket");
+    poisoned.path = parent_store.index_root.join("tickets").join(id.to_string());
+    poisoned.title = Some("mixed-workspace stale parent placeholder".to_string());
+    poisoned.state = Some("new".to_string());
+    poisoned_index
+        .insert_ticket(&poisoned)
+        .expect("poison parent indexed row");
+    TantivySearchIndex::open_or_create(&parent_store.index_root.join("search_index"))
+        .expect("open parent search index")
+        .upsert(
+            &id,
+            Some("mixed-workspace stale parent placeholder"),
+            Some("mixed-workspace stale parent body"),
+            Some("new"),
+            Some("tracker-improvement"),
+        )
+        .expect("upsert stale parent search doc");
+
+    let state = make_state(Arc::clone(&parent_store));
+    let workspace = state.registry.primary_workspace_name().to_string();
+    let response = list_tickets(
+        State(state),
+        Extension(RequestIdExt("rid-authoritative-hit".to_string())),
+        Query(WorkspaceParam {
+            workspace,
+            state: None,
+            query: Some("mixed-workspace".to_string()),
+            limit: Some(10),
+            cursor: None,
+        }),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("read body");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json body");
+    let items = payload["items"].as_array().expect("items array");
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["ticket_ref"]["workspace"], "child");
+    assert_eq!(items[0]["ticket_ref"]["id"], id.to_string());
+    assert_eq!(
+        items[0]["title"],
+        serde_json::Value::String(
+            "mixed-workspace child authoritative ticket".to_string()
+        )
+    );
+    assert_eq!(items[0]["state"], "ready");
+    assert_ne!(items[0]["created_at"], "1970-01-01T00:00:00Z");
+}
+
+#[tokio::test]
 async fn get_ticket_and_history_include_ticket_refs() {
     let dir = tempfile::tempdir().expect("tempdir");
     let store = make_store(dir.path());
@@ -487,7 +641,7 @@ async fn get_ticket_and_history_include_ticket_refs() {
 }
 
 #[tokio::test]
-async fn nested_child_workspace_ticket_uses_child_ref_and_reads_from_default() {
+async fn mixed_workspace_search_followups_remain_reversible() {
     let root = tempfile::tempdir().expect("tempdir");
     let parent_store = Arc::new(
         ticket_api::storage::store::TicketStore::init(root.path())
@@ -518,11 +672,11 @@ async fn nested_child_workspace_ticket_uses_child_ref_and_reads_from_default() {
         .create(
             None,
             "tracker-improvement",
-            Some("nested child-owned ticket"),
+            Some("mixed-workspace child authoritative ticket"),
             Some("ready"),
             BTreeMap::new(),
             None,
-            Some("nested child description"),
+            Some("mixed-workspace child description"),
         )
         .expect("create child ticket");
     let ticket_dir = child_store
@@ -545,6 +699,31 @@ async fn nested_child_workspace_ticket_uses_child_ref_and_reads_from_default() {
         .expect("add child scan root to parent");
     parent_store.scan(true).expect("scan parent store");
 
+    let poisoned_index = ticket_api::storage::index::RedbIndexStore::open(
+        &parent_store.index_root.join("tickets.db"),
+    )
+    .expect("open parent index");
+    let mut poisoned = parent_store
+        .get_indexed(&id)
+        .expect("get parent indexed ticket")
+        .expect("parent indexed ticket");
+    poisoned.path = parent_store.index_root.join("tickets").join(id.to_string());
+    poisoned.title = Some("mixed-workspace stale parent placeholder".to_string());
+    poisoned.state = Some("new".to_string());
+    poisoned_index
+        .insert_ticket(&poisoned)
+        .expect("poison parent indexed row");
+    TantivySearchIndex::open_or_create(&parent_store.index_root.join("search_index"))
+        .expect("open parent search index")
+        .upsert(
+            &id,
+            Some("mixed-workspace stale parent placeholder"),
+            Some("mixed-workspace stale parent body"),
+            Some("new"),
+            Some("tracker-improvement"),
+        )
+        .expect("upsert stale parent search doc");
+
     let state = make_state(Arc::clone(&parent_store));
     let workspace = state.registry.primary_workspace_name().to_string();
 
@@ -554,7 +733,7 @@ async fn nested_child_workspace_ticket_uses_child_ref_and_reads_from_default() {
         Query(WorkspaceParam {
             workspace: workspace.clone(),
             state: None,
-            query: Some("nested child-owned".to_string()),
+            query: Some("mixed-workspace".to_string()),
             limit: Some(10),
             cursor: None,
         }),
@@ -566,6 +745,12 @@ async fn nested_child_workspace_ticket_uses_child_ref_and_reads_from_default() {
         .expect("list body");
     let list_payload: serde_json::Value =
         serde_json::from_slice(&list_bytes).expect("list json");
+    assert_eq!(
+        list_payload["items"][0]["title"],
+        serde_json::Value::String(
+            "mixed-workspace child authoritative ticket".to_string()
+        )
+    );
     assert_eq!(list_payload["items"][0]["ticket_ref"]["workspace"], "child");
     assert_eq!(list_payload["items"][0]["ticket_ref"]["id"], id.to_string());
 
@@ -605,7 +790,7 @@ async fn nested_child_workspace_ticket_uses_child_ref_and_reads_from_default() {
     assert_eq!(description_payload["ticket_ref"]["workspace"], "child");
     assert_eq!(
         description_payload["description"],
-        "nested child description"
+        "mixed-workspace child description"
     );
 
     let history = get_ticket_history(
@@ -661,6 +846,132 @@ async fn nested_child_workspace_ticket_uses_child_ref_and_reads_from_default() {
         serde_json::from_slice(&asset_bytes).expect("asset json");
     assert_eq!(asset_payload["ticket_ref"]["workspace"], "child");
     assert_eq!(asset_payload["content"], "nested child asset");
+}
+
+#[tokio::test]
+async fn search_list_excludes_deleted_hits_and_followups() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = make_store(dir.path());
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("deleted-hit regression ticket"),
+            Some("ready"),
+            BTreeMap::new(),
+            None,
+            Some("deleted-hit regression description"),
+        )
+        .expect("create ticket");
+    let ticket_dir = store
+        .get_indexed(&id)
+        .expect("get indexed ticket")
+        .expect("indexed ticket");
+    std::fs::create_dir_all(ticket_dir.path.join("assets"))
+        .expect("mkdir assets");
+    std::fs::write(
+        ticket_dir.path.join("assets").join("plan.md"),
+        "deleted hit asset",
+    )
+    .expect("write asset");
+
+    store.delete(&id).expect("delete ticket");
+    TantivySearchIndex::open_or_create(&store.index_root.join("search_index"))
+        .expect("open search index")
+        .upsert(
+            &id,
+            Some("deleted-hit regression ticket"),
+            Some("deleted-hit regression description"),
+            Some("ready"),
+            Some("tracker-improvement"),
+        )
+        .expect("upsert deleted residual search doc");
+
+    let state = make_state(Arc::clone(&store));
+    let workspace = state.registry.primary_workspace_name().to_string();
+
+    let list = list_tickets(
+        State(state.clone()),
+        Extension(RequestIdExt("rid-deleted-list".to_string())),
+        Query(WorkspaceParam {
+            workspace: workspace.clone(),
+            state: None,
+            query: Some("deleted-hit regression".to_string()),
+            limit: Some(10),
+            cursor: None,
+        }),
+    )
+    .await;
+    assert_eq!(list.status(), StatusCode::OK);
+    let list_bytes = to_bytes(list.into_body(), 1024 * 1024)
+        .await
+        .expect("list body");
+    let list_payload: serde_json::Value =
+        serde_json::from_slice(&list_bytes).expect("list json");
+    assert!(
+        list_payload["items"]
+            .as_array()
+            .expect("items array")
+            .is_empty(),
+        "deleted residual search hits must be dropped"
+    );
+
+    let detail = get_ticket(
+        State(state.clone()),
+        Extension(RequestIdExt("rid-deleted-detail".to_string())),
+        Path(id),
+        Query(TicketIdParam {
+            workspace: workspace.clone(),
+        }),
+    )
+    .await;
+    assert_eq!(detail.status(), StatusCode::NOT_FOUND);
+
+    let description = get_ticket_description(
+        State(state.clone()),
+        Extension(RequestIdExt("rid-deleted-description".to_string())),
+        Path(id),
+        Query(TicketIdParam {
+            workspace: workspace.clone(),
+        }),
+    )
+    .await;
+    assert_eq!(description.status(), StatusCode::NOT_FOUND);
+
+    let history = get_ticket_history(
+        State(state.clone()),
+        Extension(RequestIdExt("rid-deleted-history".to_string())),
+        Path(id),
+        Query(TicketIdParam {
+            workspace: workspace.clone(),
+        }),
+    )
+    .await;
+    assert_eq!(history.status(), StatusCode::NOT_FOUND);
+
+    let files = list_ticket_files(
+        State(state.clone()),
+        Extension(RequestIdExt("rid-deleted-files".to_string())),
+        Path(id),
+        Query(TicketIdParam {
+            workspace: workspace.clone(),
+        }),
+    )
+    .await;
+    assert_eq!(files.status(), StatusCode::NOT_FOUND);
+
+    let asset = get_ticket_asset(
+        State(state),
+        Extension(RequestIdExt("rid-deleted-asset".to_string())),
+        Path(id),
+        Query(TicketAssetParam {
+            workspace,
+            path: "assets/plan.md".to_string(),
+        }),
+    )
+    .await;
+    assert_eq!(asset.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

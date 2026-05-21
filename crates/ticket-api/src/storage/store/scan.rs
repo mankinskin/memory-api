@@ -100,12 +100,15 @@ impl TicketStore {
         }
 
         let mut pruned = 0usize;
-        if reindex {
-            for ticket in self.index.list_tickets(true)? {
-                if !disk_ids.contains(&ticket.id) {
-                    self.index.remove_ticket(&ticket.id)?;
-                    pruned += 1;
-                }
+        for ticket in self.index.list_tickets(true)? {
+            if !disk_ids.contains(&ticket.id) {
+                diagnostics.push(stale_reconciliation_diagnostic(
+                    &ticket,
+                    &roots,
+                ));
+                self.index.remove_ticket(&ticket.id)?;
+                self.search.remove(&ticket.id)?;
+                pruned += 1;
             }
         }
 
@@ -178,6 +181,41 @@ impl TicketStore {
         };
         integrate_entry(&self.index, &self.search, entry, true)?;
         Ok(true)
+    }
+}
+
+fn stale_reconciliation_diagnostic(
+    ticket: &IndexedTicket,
+    roots: &[ScanRoot],
+) -> ParseDiagnostic {
+    let manifest_path = ticket.path.join(TICKET_MANIFEST_FILE);
+    let reason = if roots.iter().all(|root| !ticket.path.starts_with(&root.path))
+    {
+        "ticket path left configured scan roots; pruned stale index/search entry"
+            .to_string()
+    } else if TicketFs::read(&ticket.path)
+        .ok()
+        .and_then(|manifest| {
+            manifest
+                .extra
+                .get("deleted")
+                .and_then(|value| value.as_bool())
+        })
+        == Some(true)
+    {
+        "ticket marked deleted on disk; pruned stale index/search entry"
+            .to_string()
+    } else if !ticket.path.exists() {
+        "ticket folder missing on disk; pruned stale index/search entry"
+            .to_string()
+    } else {
+        "ticket missing from scan results; pruned stale index/search entry"
+            .to_string()
+    };
+
+    ParseDiagnostic {
+        path: manifest_path,
+        reason,
     }
 }
 
