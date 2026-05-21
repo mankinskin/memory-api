@@ -25,6 +25,8 @@ use crate::{
 
 use super::TicketStore;
 
+const FILE_BACKED_EDGE_KINDS: &[&str] = &["depends_on", "linked"];
+
 pub struct ScanReport {
     pub integrated: usize,
     pub pruned: usize,
@@ -65,6 +67,7 @@ impl TicketStore {
     ) -> Result<ScanReport, StorageError> {
         if reindex {
             self.search.clear_all()?;
+            self.index.clear_edges()?;
         }
 
         let mut roots = self.list_scan_roots()?;
@@ -197,6 +200,9 @@ fn integrate_entry(
         },
     };
     index.insert_ticket(&indexed)?;
+    for edge in manifest_edges(&entry) {
+        index.insert_edge(&edge)?;
+    }
 
     if reindex {
         let body = TicketFs::read_description(&entry.path);
@@ -210,4 +216,38 @@ fn integrate_entry(
     }
 
     Ok(())
+}
+
+fn manifest_edges(
+    entry: &TicketScanEntry
+) -> Vec<crate::model::edge::EdgeRecord> {
+    let mut edges = Vec::new();
+
+    for &kind in FILE_BACKED_EDGE_KINDS {
+        let Some(items) = entry
+            .manifest
+            .extra
+            .get(kind)
+            .and_then(|value| value.as_array())
+        else {
+            continue;
+        };
+
+        for item in items {
+            let Some(target) = item.as_str() else {
+                continue;
+            };
+            let Ok(to) = Uuid::parse_str(target) else {
+                continue;
+            };
+            edges.push(crate::model::edge::EdgeRecord {
+                from: entry.id,
+                to,
+                kind: kind.to_string(),
+                created_at: entry.manifest.created_at,
+            });
+        }
+    }
+
+    edges
 }

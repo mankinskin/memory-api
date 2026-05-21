@@ -2,20 +2,34 @@ use chrono::{
     Duration,
     Utc,
 };
-use std::fs;
-use std::path::Path;
+use memory_api::model::edge::EdgeRecord;
+use std::{
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
-use memory_api::model::filesystem::ScanRoot;
-use memory_api::storage::index::RedbIndexStore;
+use memory_api::{
+    model::filesystem::ScanRoot,
+    storage::index::RedbIndexStore,
+};
 use tempfile::tempdir;
 use uuid::Uuid;
 
+use super::{
+    TicketStore,
+    ticket_fs::TicketFs,
+};
 use crate::model::{
     manifest_format::format_manifest_toml,
     ticket::TicketManifest,
 };
-use super::ticket_fs::TicketFs;
-use super::TicketStore;
+
+fn canonical_existing_path(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap()
+}
 
 #[test]
 fn open_creates_gitignore_for_local_ticket_artifacts() {
@@ -23,8 +37,7 @@ fn open_creates_gitignore_for_local_ticket_artifacts() {
 
     TicketStore::init(dir.path()).unwrap();
 
-    let gitignore =
-        fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+    let gitignore = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
     assert!(gitignore.contains("tickets.db"));
     assert!(gitignore.contains("tickets.db-shm"));
     assert!(gitignore.contains("tickets.db-wal"));
@@ -39,8 +52,7 @@ fn open_registers_default_tickets_scan_root() {
     let roots = store.list_scan_roots().unwrap();
 
     assert!(roots.iter().any(|root| {
-        root.path == store.index_root.join("tickets")
-            && root.label == "tickets"
+        root.path == store.index_root.join("tickets") && root.label == "tickets"
     }));
 }
 
@@ -53,7 +65,10 @@ fn open_uses_existing_hidden_ticket_store_from_repo_root() {
 
     let store = TicketStore::init(&repo).unwrap();
 
-    assert_eq!(store.index_root, store_root);
+    assert_eq!(
+        canonical_existing_path(&store.index_root),
+        canonical_existing_path(&store_root)
+    );
 }
 
 #[test]
@@ -76,9 +91,10 @@ fn create_with_repo_root_target_places_ticket_under_hidden_store() {
         )
         .unwrap();
     let indexed = store.get_indexed(&ticket_id).unwrap().unwrap();
+    let indexed_path = canonical_existing_path(&indexed.path);
+    let expected_root = canonical_existing_path(&store_root.join("tickets"));
 
-    assert!(indexed.path.starts_with(store_root.join("tickets")));
-    assert!(!indexed.path.starts_with(Path::new(&repo)) || indexed.path.starts_with(store_root.join("tickets")));
+    assert!(indexed_path.starts_with(&expected_root));
 }
 
 #[test]
@@ -187,9 +203,13 @@ fn scan_repairs_corrupted_nested_workspace_ticket_path() {
     let child_ticket_path = child_indexed.path.clone();
 
     let poisoned_index =
-        RedbIndexStore::open(&root_store.index_root.join("tickets.db")).unwrap();
+        RedbIndexStore::open(&root_store.index_root.join("tickets.db"))
+            .unwrap();
     let mut poisoned = root_store.get_indexed(&ticket_id).unwrap().unwrap();
-    poisoned.path = root_store.index_root.join("tickets").join(ticket_id.to_string());
+    poisoned.path = root_store
+        .index_root
+        .join("tickets")
+        .join(ticket_id.to_string());
     poisoned.type_id = "wrong-type".to_string();
     poisoned.title = Some("Wrong title".to_string());
     poisoned.state = Some("in-review".to_string());
@@ -213,10 +233,7 @@ fn scan_repairs_corrupted_nested_workspace_ticket_path() {
     let indexed = root_store.get_indexed(&ticket_id).unwrap().unwrap();
     assert_eq!(indexed.path, child_ticket_path);
     assert_eq!(indexed.type_id, child_indexed.type_id);
-    assert_eq!(
-        indexed.title.as_deref(),
-        Some("Nested workspace ticket")
-    );
+    assert_eq!(indexed.title.as_deref(), Some("Nested workspace ticket"));
     assert_eq!(indexed.state.as_deref(), Some("in-implementation"));
     assert_eq!(indexed.created_at, child_indexed.created_at);
     assert!(!indexed.deleted);
@@ -260,9 +277,13 @@ fn scan_without_reindex_repairs_corrupted_nested_workspace_ticket_metadata() {
     let expected = child_store.get_indexed(&ticket_id).unwrap().unwrap();
 
     let poisoned_index =
-        RedbIndexStore::open(&root_store.index_root.join("tickets.db")).unwrap();
+        RedbIndexStore::open(&root_store.index_root.join("tickets.db"))
+            .unwrap();
     let mut poisoned = root_store.get_indexed(&ticket_id).unwrap().unwrap();
-    poisoned.path = root_store.index_root.join("tickets").join(ticket_id.to_string());
+    poisoned.path = root_store
+        .index_root
+        .join("tickets")
+        .join(ticket_id.to_string());
     poisoned.type_id = "wrong-type".to_string();
     poisoned.title = Some("Wrong title".to_string());
     poisoned.state = Some("in-review".to_string());
@@ -288,7 +309,8 @@ fn scan_indexes_manual_ticket_with_missing_optional_fields() {
     let store = TicketStore::init(dir.path()).unwrap();
     let ticket_id = Uuid::new_v4();
     let manifest = TicketManifest::new(ticket_id, Utc::now());
-    let ticket_path = store.index_root.join("tickets").join(ticket_id.to_string());
+    let ticket_path =
+        store.index_root.join("tickets").join(ticket_id.to_string());
 
     fs::create_dir_all(&ticket_path).unwrap();
     fs::write(
@@ -333,4 +355,127 @@ fn scan_force_prunes_existing_row_for_deleted_ticket_manifest() {
     store.scan(true).unwrap();
 
     assert!(store.get_indexed(&ticket_id).unwrap().is_none());
+}
+
+#[test]
+fn scan_force_rebuilds_dependency_edges_from_ticket_manifests() {
+    let dir = tempdir().unwrap();
+    let index_root;
+    let source_id;
+    let target_id;
+
+    {
+        let store = TicketStore::init(dir.path()).unwrap();
+        index_root = store.index_root.clone();
+        source_id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Source ticket"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+        target_id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Target ticket"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        store
+            .add_edge(EdgeRecord {
+                from: source_id,
+                to: target_id,
+                kind: "depends_on".to_string(),
+                created_at: Utc::now(),
+            })
+            .unwrap();
+
+        let manifest = store.get(&source_id).unwrap();
+        let targets = manifest
+            .extra
+            .get("depends_on")
+            .and_then(|value| value.as_array())
+            .unwrap();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].as_str(), Some(target_id.to_string().as_str()));
+    }
+
+    fs::remove_file(index_root.join("tickets.db")).unwrap();
+    let _ = fs::remove_file(index_root.join("tickets.db-shm"));
+    let _ = fs::remove_file(index_root.join("tickets.db-wal"));
+    let _ = fs::remove_dir_all(index_root.join("search_index"));
+
+    let rebuilt = TicketStore::init(&index_root).unwrap();
+    rebuilt.scan(true).unwrap();
+
+    let edges = rebuilt.edges_from(&source_id).unwrap();
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].to, target_id);
+    assert_eq!(edges[0].kind, "depends_on");
+}
+
+#[test]
+fn scan_force_does_not_restore_removed_dependency_edges() {
+    let dir = tempdir().unwrap();
+    let index_root;
+    let source_id;
+    let target_id;
+
+    {
+        let store = TicketStore::init(dir.path()).unwrap();
+        index_root = store.index_root.clone();
+        source_id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Source ticket"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+        target_id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Target ticket"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let edge = EdgeRecord {
+            from: source_id,
+            to: target_id,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        };
+        store.add_edge(edge.clone()).unwrap();
+        store.remove_edge(edge).unwrap();
+
+        let manifest = store.get(&source_id).unwrap();
+        assert!(manifest.extra.get("depends_on").is_none());
+    }
+
+    fs::remove_file(index_root.join("tickets.db")).unwrap();
+    let _ = fs::remove_file(index_root.join("tickets.db-shm"));
+    let _ = fs::remove_file(index_root.join("tickets.db-wal"));
+    let _ = fs::remove_dir_all(index_root.join("search_index"));
+
+    let rebuilt = TicketStore::init(&index_root).unwrap();
+    rebuilt.scan(true).unwrap();
+
+    assert!(rebuilt.edges_from(&source_id).unwrap().is_empty());
 }

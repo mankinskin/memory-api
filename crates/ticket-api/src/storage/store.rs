@@ -81,6 +81,10 @@ pub trait StoreHook: Send + Sync + 'static {
 
 /// The central ticket store: filesystem source-of-truth + SQLite metadata index +
 /// Tantivy full-text search index.
+///
+/// Ticket manifests persist graph edges in file-backed fields such as
+/// `depends_on` and `linked`, while SQLite caches the queryable edge table.
+/// A forced scan rebuilds that cached edge table from the tracked manifests.
 pub struct TicketStore {
     index: RedbIndexStore,
     search: TantivySearchIndex,

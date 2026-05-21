@@ -277,6 +277,13 @@ impl RedbIndexStore {
         })
     }
 
+    pub fn clear_edges(&self) -> Result<(), StorageError> {
+        self.with_write(|conn| {
+            conn.execute(&format!("DELETE FROM {TABLE_EDGES}"), [])?;
+            Ok(())
+        })
+    }
+
     /// Returns all edges originating from `from`.
     pub fn edges_from(
         &self,

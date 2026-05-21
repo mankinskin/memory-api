@@ -1,5 +1,8 @@
 use std::{
-    collections::BTreeMap,
+    collections::{
+        BTreeMap,
+        BTreeSet,
+    },
     fs::{
         self,
         File,
@@ -338,6 +341,47 @@ impl TicketFs {
         let desc = ticket_path.join("description.md");
         fs::read_to_string(&desc).ok()
     }
+
+    pub fn update_edge_field(
+        ticket_path: &Path,
+        edge_kind: &str,
+        target: Uuid,
+        present: bool,
+    ) -> Result<(TicketManifest, bool), StorageError> {
+        let lock_path = ticket_path.join(TICKET_LOCK_FILE);
+        let lock_file = acquire_lock(&lock_path)?;
+
+        let result = (|| -> Result<(TicketManifest, bool), StorageError> {
+            let mut manifest = Self::read(ticket_path)?;
+            let mut targets =
+                parse_edge_targets(manifest.extra.get(edge_kind), edge_kind)?;
+
+            let changed = if present {
+                targets.insert(target.to_string())
+            } else {
+                targets.remove(&target.to_string())
+            };
+
+            if changed {
+                if targets.is_empty() {
+                    manifest.extra.remove(edge_kind);
+                } else {
+                    manifest.extra.insert(
+                        edge_kind.to_string(),
+                        Value::Array(
+                            targets.into_iter().map(Value::String).collect(),
+                        ),
+                    );
+                }
+                write_manifest(ticket_path, &manifest)?;
+            }
+
+            Ok((manifest, changed))
+        })();
+
+        release_lock(&lock_file, &lock_path);
+        result
+    }
 }
 
 pub struct TicketScanEntry {
@@ -419,6 +463,35 @@ fn write_manifest(
     let path = dir.join(TICKET_MANIFEST_FILE);
     fs::write(&path, toml_str)?;
     Ok(())
+}
+
+fn parse_edge_targets(
+    value: Option<&Value>,
+    edge_kind: &str,
+) -> Result<BTreeSet<String>, StorageError> {
+    let Some(value) = value else {
+        return Ok(BTreeSet::new());
+    };
+
+    let Some(items) = value.as_array() else {
+        return Err(StorageError::Other(format!(
+            "edge field '{}' must be an array of strings",
+            edge_kind
+        )));
+    };
+
+    let mut targets = BTreeSet::new();
+    for item in items {
+        let Some(target) = item.as_str() else {
+            return Err(StorageError::Other(format!(
+                "edge field '{}' must contain only string ticket IDs",
+                edge_kind
+            )));
+        };
+        targets.insert(target.to_string());
+    }
+
+    Ok(targets)
 }
 
 fn acquire_lock(lock_path: &Path) -> Result<File, StorageError> {

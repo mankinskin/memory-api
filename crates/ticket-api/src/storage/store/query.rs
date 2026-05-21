@@ -7,8 +7,10 @@ use crate::{
     storage::{
         indexed::IndexedTicket,
         search::SearchResult,
+        ticket_fs::TicketFs,
     },
 };
+use chrono::Utc;
 use uuid::Uuid;
 
 use super::TicketStore;
@@ -39,7 +41,9 @@ impl TicketStore {
     ) -> Result<Vec<IndexedTicket>, StorageError> {
         let needs_manifest_check = !field_filters.is_empty();
         let filtered = self
-            .normalize_indexed_tickets(self.index.list_tickets(include_deleted)?)
+            .normalize_indexed_tickets(
+                self.index.list_tickets(include_deleted)?,
+            )
             .into_iter()
             .filter(|ticket| matches_filters(ticket, state_filter, type_filter))
             .filter(|ticket| {
@@ -98,7 +102,30 @@ impl TicketStore {
             return Err(StorageError::DependencyCycle);
         }
 
+        let mut source = self
+            .get_indexed(&edge.from)?
+            .ok_or(StorageError::NotFound(edge.from))?;
+        if source.deleted {
+            return Err(StorageError::NotFound(edge.from));
+        }
+
+        let (manifest, changed) = TicketFs::update_edge_field(
+            &source.path,
+            &edge.kind,
+            edge.to,
+            true,
+        )?;
+
         self.index.insert_edge(&edge)?;
+        if changed {
+            source.updated_at = Utc::now();
+            self.index.insert_ticket(&source)?;
+            let _ = TicketFs::append_history(
+                &source.path,
+                manifest.extra.clone(),
+                None,
+            );
+        }
         if let Some(hook) = self.hook() {
             hook.edge_upsert(edge.from, edge.to, edge.kind.clone());
         }
@@ -109,7 +136,30 @@ impl TicketStore {
         &self,
         edge: EdgeRecord,
     ) -> Result<(), StorageError> {
+        let mut source = self
+            .get_indexed(&edge.from)?
+            .ok_or(StorageError::NotFound(edge.from))?;
+        if source.deleted {
+            return Err(StorageError::NotFound(edge.from));
+        }
+
+        let (manifest, changed) = TicketFs::update_edge_field(
+            &source.path,
+            &edge.kind,
+            edge.to,
+            false,
+        )?;
+
         self.index.delete_edge(&edge)?;
+        if changed {
+            source.updated_at = Utc::now();
+            self.index.insert_ticket(&source)?;
+            let _ = TicketFs::append_history(
+                &source.path,
+                manifest.extra.clone(),
+                None,
+            );
+        }
         if let Some(hook) = self.hook() {
             hook.edge_delete(edge.from, edge.to, edge.kind.clone());
         }
