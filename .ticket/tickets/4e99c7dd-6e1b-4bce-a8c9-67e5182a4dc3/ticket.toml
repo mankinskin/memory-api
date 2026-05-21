@@ -1,7 +1,7 @@
 id = "4e99c7dd-6e1b-4bce-a8c9-67e5182a4dc3"
 created_at = "2026-05-17T12:21:00+00:00"
 title = "[doc-http] Support cargo doc generated HTML and JSON outputs"
-state = "in-review"
+state = "done"
 acceptance_criteria = "doc-http can register and describe cargo doc HTML and rustdoc JSON outputs for workspace packages and targets"
 component = "doc-http"
 priority = "high"

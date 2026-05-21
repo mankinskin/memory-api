@@ -1,7 +1,7 @@
 id = "c809ae33-a4fa-4e5f-b920-5d269466a11c"
 created_at = "2026-05-07T20:41:36.213195900+00:00"
 title = "Improve rule target construction for hierarchical document outlines"
-state = "in-review"
+state = "done"
 component = "rule-api"
 priority = "high"
 type = "tracker-improvement"
