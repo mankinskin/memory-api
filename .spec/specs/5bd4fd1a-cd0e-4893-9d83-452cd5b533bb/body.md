@@ -28,6 +28,34 @@ Canonical contract for the ticket list API consumed by the Dioxus ticket-viewer 
 - Combined requests return only tickets that satisfy both conditions.
 - Empty result sets are valid and must not be treated as errors.
 
+## Workspace-aware contract
+
+- Callers must supply the concrete workspace name published by `GET /api/workspaces`; internal aliases such as `default`, `..`, and `../..` are not part of the public `/api/tickets` contract.
+- `active_workspace` and `workspace` in the response must echo the concrete selected workspace name.
+- Every returned item must carry a reversible `ticket_ref` that preserves the owning workspace and ticket id for follow-up detail, history, files, and asset requests.
+- Parent-opened aggregate queries may return child-owned tickets, but the list response must not rewrite those tickets as locally owned.
+- When workspace selection fails, the endpoint must return a typed error envelope with concrete `code`, `message`, and `request_id` fields instead of a generic internal error body.
+
+## Workspace fixture matrix for `/api/tickets`
+
+This endpoint reuses the workspace-topology classes defined in `ticket-api/workspaces/ancestor-dependency-visibility` and `memory-api/workspace`, but only the rows that materially affect list responses belong in this spec's acceptance surface.
+
+| Fixture class | Why `/api/tickets` must cover it | Required `/api/tickets` outcome |
+| --- | --- | --- |
+| Local baseline | Preserves single-workspace query semantics while workspace naming rules tighten | Local tickets remain local and response workspaces use concrete folder names |
+| Parent-opened aggregate workspace | Parent-selected list views can surface child-owned rows from indexed scan roots | `ticket_ref.workspace` preserves child ownership and follow-up requests remain reversible |
+| Child-opened ancestor resolution | Child callers must still understand ancestor-owned dependency endpoints that appear in related views | Child-selected list and follow-up flows never rewrite ancestor-owned tickets as child-local |
+| Legacy or repaired indexed rows | List responses are index-backed and therefore sensitive to stale persisted path/state metadata | Repaired rows stop surfacing stale ownership, stale state, or unreadable follow-up paths |
+| Invalid public workspace identifier | `/api/tickets` is the first public entry point most clients hit | Unknown names and synthetic aliases fail with typed request errors rather than generic 500s |
+
+### Observable validation matrix
+
+| Observable | Local baseline | Parent aggregate | Child or ancestor follow-up | Repaired rows | Invalid workspace input |
+| --- | --- | --- | --- | --- | --- |
+| `items[].ticket_ref` ownership | Local workspace only | Child-owned rows stay child-scoped | Follow-up requests preserve non-local ownership | Repaired rows stop reporting stale owners | Not applicable |
+| `active_workspace` / `workspace` naming | Concrete folder name only | Concrete parent name only | Concrete child or ancestor name only | Repair never reintroduces aliases | Alias requests are rejected |
+| Query and filter behavior | Existing text/state semantics unchanged | Aggregated rows still respect query/state filters | Follow-up detail/history/files/assets remain reversible | Stale rows no longer bypass filters with wrong metadata | Error envelope includes `code`, `message`, and `request_id` |
+
 ## Validation expectations
 
 - Regression coverage exists for:
@@ -38,6 +66,10 @@ Canonical contract for the ticket list API consumed by the Dioxus ticket-viewer 
   - multiple states only
   - combined query plus single state
   - combined query plus multiple states
+- Regression coverage also exists for:
+  - concrete workspace-name responses for local and nested aggregate fixtures
+  - child-owned `ticket_ref` preservation in parent-selected aggregate list results
+  - typed error envelopes for invalid public workspace identifiers, including synthetic aliases
 - The ticket-viewer explorer reflects the API result set directly; no client-side workaround is required to restore correctness when query and state filters are combined.
 
 ## Related specs
@@ -52,7 +84,12 @@ Canonical contract for the ticket list API consumed by the Dioxus ticket-viewer 
 ## Traceability
 
 - Ticket: `.ticket/tickets/fcced2f3-c32c-4533-9743-56543f428222`
+- Related workspace contract tickets:
+  - `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/700b9763-17f8-436e-ace0-45b88bedd1d7`
+  - `429f6f1d-6429-4601-bfac-b572fdb4dbff`
+  - `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/91011568-ae0b-4b23-b060-b0c018e1e912`
 - API validation/code: `memory-viewers/memory-api/tools/http/ticket-http/src/serve/handlers/tickets/tests/listing.rs`
 - Contract validation passed:
   - `cargo test -p ticket-http search_list_ -- --nocapture`
-  - `cargo build -p ticket-viewer --release && viewer-ctl stop ticket-viewer && viewer-ctl install ticket-viewer && viewer-ctl start ticket-viewer && curl http://127.0.0.1:3002/api/tickets?workspace=default&limit=20&query=cracker`
+  - `curl http://127.0.0.1:3002/api/workspaces`
+  - `curl http://127.0.0.1:3002/api/tickets?workspace=<concrete-workspace-name>&limit=20&query=cracker`

@@ -23,6 +23,7 @@ pub struct TicketSummary {
 #[derive(Serialize)]
 pub struct TicketDetail {
     pub id: String,
+    pub path: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub fields: BTreeMap<String, Value>,
 }

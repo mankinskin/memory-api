@@ -27,10 +27,10 @@ impl TicketServer {
         let to_state = input.to_state;
         let description = input.description;
         let author = input.author;
-        let manifest = self
+        let (manifest, path) = self
             .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
-                store
+                let manifest = store
                     .update(
                         &id,
                         patch,
@@ -39,14 +39,16 @@ impl TicketServer {
                         description.as_deref(),
                         author.as_deref(),
                     )
-                    .map_err(Self::store_err)
+                    .map_err(Self::store_err)?;
+                let path = indexed_ticket_path(store, &id)?;
+                Ok((manifest, path))
             })
             .await?;
 
         Self::json_result(&serde_json::json!({
             "workspace": workspace,
             "status": "ok",
-            "ticket": detail_from_manifest(manifest),
+            "ticket": detail_from_manifest(manifest, path),
         }))
     }
 
@@ -110,7 +112,7 @@ impl TicketServer {
         let title = input.title;
         let state = input.state;
         let description = input.description;
-        let (ticket_id, manifest) = self
+        let (ticket_id, manifest, path) = self
             .with_store_ext(&workspace.clone(), move |store| {
                 let id = store
                     .create(
@@ -124,7 +126,8 @@ impl TicketServer {
                     )
                     .map_err(Self::store_err)?;
                 let manifest = store.get(&id).map_err(Self::store_err)?;
-                Ok((id, manifest))
+                let path = indexed_ticket_path(store, &id)?;
+                Ok((id, manifest, path))
             })
             .await?;
 
@@ -132,7 +135,7 @@ impl TicketServer {
             "workspace": workspace,
             "status": "ok",
             "id": ticket_id.to_string(),
-            "ticket": detail_from_manifest(manifest),
+            "ticket": detail_from_manifest(manifest, path),
         }))
     }
 
@@ -235,7 +238,7 @@ impl TicketServer {
 
         let workspace = input.workspace;
         let id_str = input.id;
-        let (previous_rev, new_rev, updated) = self
+        let (previous_rev, new_rev, updated, path) = self
             .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
                 let revisions =
@@ -252,7 +255,8 @@ impl TicketServer {
                     .apply_revert(&id, previous.fields.clone(), None)
                     .map_err(Self::store_err)?;
                 let updated = store.get(&id).map_err(Self::store_err)?;
-                Ok((previous.rev, new_rev, updated))
+                let path = indexed_ticket_path(store, &id)?;
+                Ok((previous.rev, new_rev, updated, path))
             })
             .await?;
 
@@ -262,7 +266,7 @@ impl TicketServer {
             "undo": true,
             "reverted_to": previous_rev,
             "new_rev": new_rev,
-            "ticket": detail_from_manifest(updated),
+            "ticket": detail_from_manifest(updated, path),
         }))
     }
 }
@@ -288,9 +292,23 @@ fn parse_field_patch(
     Ok(patch)
 }
 
-fn detail_from_manifest(manifest: TicketManifest) -> TicketDetail {
+fn indexed_ticket_path(
+    store: &ticket_api::storage::store::TicketStore,
+    id: &uuid::Uuid,
+) -> Result<Option<String>, McpError> {
+    Ok(store
+        .get_indexed(id)
+        .map_err(TicketServer::store_err)?
+        .map(|ticket| ticket.path.display().to_string()))
+}
+
+fn detail_from_manifest(
+    manifest: TicketManifest,
+    path: Option<String>,
+) -> TicketDetail {
     TicketDetail {
         id: manifest.id.to_string(),
+        path,
         created_at: manifest.created_at,
         fields: manifest.extra,
     }

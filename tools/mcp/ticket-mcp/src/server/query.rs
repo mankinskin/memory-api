@@ -69,11 +69,16 @@ impl TicketServer {
 
         self.with_store_ext(&workspace.clone(), move |store| {
             let id = Self::resolve_uuid_with(store, &id_str)?;
+            let path = store
+                .get_indexed(&id)
+                .map_err(Self::store_err)?
+                .map(|ticket| ticket.path.display().to_string());
             let manifest = store.get(&id).map_err(Self::store_err)?;
             Self::json_result(&serde_json::json!({
                 "workspace": workspace,
                 "ticket": TicketDetail {
                     id: manifest.id.to_string(),
+                    path,
                     created_at: manifest.created_at,
                     fields: manifest.extra,
                 },
@@ -178,6 +183,67 @@ fn listed_ticket_summaries(
             updated_at: ticket.updated_at,
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use serde_json::Value;
+    use ticket_api::storage::store::TicketStore;
+
+    use super::*;
+
+    fn extract_text(result: &CallToolResult) -> String {
+        result
+            .content
+            .iter()
+            .find_map(|content| {
+                if let rmcp::model::RawContent::Text(text) = &content.raw {
+                    Some(text.text.clone())
+                } else {
+                    None
+                }
+            })
+            .expect("text content")
+    }
+
+    #[tokio::test]
+    async fn get_ticket_tool_returns_authoritative_ticket_folder_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let server = TicketServer::new(dir.path().to_path_buf());
+        let store = TicketStore::init(dir.path()).expect("open store");
+        let id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("path output regression"),
+                Some("new"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create ticket");
+        let indexed = store
+            .get_indexed(&id)
+            .expect("indexed get")
+            .expect("indexed ticket");
+
+        let result = server
+            .get_ticket_tool(TicketRefInput {
+                workspace: "default".to_string(),
+                id: id.to_string(),
+            })
+            .await
+            .expect("get_ticket_tool ok");
+        let text = extract_text(&result);
+        let json: Value = serde_json::from_str(&text).expect("valid json");
+
+        assert_eq!(
+            json["ticket"]["path"].as_str(),
+            Some(indexed.path.display().to_string().as_str())
+        );
+    }
 }
 
 fn indexed_updated_at(

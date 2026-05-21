@@ -92,11 +92,15 @@ pub(crate) fn cmd_get(
 ) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let manifest = store.get(&id)?;
+    let path = store
+        .get_indexed(&id)?
+        .map(|ticket| ticket.path.display().to_string());
     Ok(json!({
         "command": "get",
         "status": "ok",
         "ticket": {
             "id": manifest.id,
+            "path": path,
             "created_at": manifest.created_at,
             "fields": manifest.extra,
         }
@@ -377,4 +381,42 @@ pub(crate) fn cmd_describe(
         "id": id.to_string(),
         "description": description,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::cmd_get;
+    use crate::cli::IdArgs;
+    use ticket_api::storage::store::TicketStore;
+
+    #[test]
+    fn cmd_get_includes_authoritative_ticket_folder_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = TicketStore::init(dir.path()).expect("open store");
+        let id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("path output regression"),
+                Some("new"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create ticket");
+        let indexed = store
+            .get_indexed(&id)
+            .expect("indexed get")
+            .expect("indexed ticket");
+
+        let payload = cmd_get(IdArgs { id: id.to_string() }, &store)
+            .expect("cmd_get succeeds");
+
+        assert_eq!(
+            payload["ticket"]["path"].as_str(),
+            Some(indexed.path.display().to_string().as_str())
+        );
+    }
 }
