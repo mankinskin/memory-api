@@ -34,6 +34,7 @@ Canonical contract for the ticket list API consumed by the Dioxus ticket-viewer 
 - `active_workspace` and `workspace` in the response must echo the concrete selected workspace name.
 - Every returned item must carry a reversible `ticket_ref` that preserves the owning workspace and ticket id for follow-up detail, history, files, and asset requests.
 - Parent-opened aggregate queries may return child-owned tickets, but the list response must not rewrite those tickets as locally owned.
+- A normal aggregate scan must keep free-text query results aligned with the same child-owned rows surfaced by index-backed list responses; callers must not need a forced reindex before query terms can rediscover those tickets.
 - When workspace selection fails, the endpoint must return a typed error envelope with concrete `code`, `message`, and `request_id` fields instead of a generic internal error body.
 
 ## Workspace fixture matrix for `/api/tickets`
@@ -69,8 +70,9 @@ This endpoint reuses the workspace-topology classes defined in `ticket-api/works
 - Regression coverage also exists for:
   - concrete workspace-name responses for local and nested aggregate fixtures
   - child-owned `ticket_ref` preservation in parent-selected aggregate list results
+  - normal aggregate scans keeping child-workspace tickets searchable by free-text query without `--reindex`
   - typed error envelopes for invalid public workspace identifiers, including synthetic aliases
-- The ticket-viewer explorer reflects the API result set directly; no client-side workaround is required to restore correctness when query and state filters are combined.
+- The `/api/tickets` response remains the source of truth for combined query and state semantics; explorer-side request ordering guards may prevent stale responses from overwriting newer results, but they must not reinterpret the backend result set.
 
 ## Related specs
 
@@ -88,8 +90,13 @@ This endpoint reuses the workspace-topology classes defined in `ticket-api/works
   - `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/700b9763-17f8-436e-ace0-45b88bedd1d7`
   - `429f6f1d-6429-4601-bfac-b572fdb4dbff`
   - `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/91011568-ae0b-4b23-b060-b0c018e1e912`
+  - `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/.ticket/tickets/02723a9b-23ff-47b1-8306-0480be087ddd`
 - API validation/code: `memory-viewers/memory-api/tools/http/ticket-http/src/serve/handlers/tickets/tests/listing.rs`
+- Storage validation/code: `memory-viewers/memory-api/crates/ticket-api/src/storage/tests.rs`
 - Contract validation passed:
   - `cargo test -p ticket-http search_list_ -- --nocapture`
+  - `cargo test -p ticket-api scan_keeps_nested_workspace_tickets_searchable_without_reindex -- --nocapture`
+  - `cargo run -p ticket-cli -- --json scan`
+  - `cargo run -p ticket-cli -- --json search Persist`
   - `curl http://127.0.0.1:3002/api/workspaces`
   - `curl http://127.0.0.1:3002/api/tickets?workspace=<concrete-workspace-name>&limit=20&query=cracker`

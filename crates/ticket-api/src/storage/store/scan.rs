@@ -154,7 +154,7 @@ fn integrate_entry(
     index: &RedbIndexStore,
     search: &TantivySearchIndex,
     entry: TicketScanEntry,
-    reindex: bool,
+    _reindex: bool,
 ) -> Result<(), StorageError> {
     let type_id = entry
         .manifest
@@ -204,16 +204,14 @@ fn integrate_entry(
         index.insert_edge(&edge)?;
     }
 
-    if reindex {
-        let body = TicketFs::read_description(&entry.path);
-        search.upsert(
-            &entry.id,
-            title.as_deref(),
-            body.as_deref(),
-            state.as_deref(),
-            Some(&type_id),
-        )?;
-    }
+    let body = TicketFs::read_description(&entry.path);
+    search.upsert(
+        &entry.id,
+        title.as_deref(),
+        body.as_deref(),
+        state.as_deref(),
+        Some(&type_id),
+    )?;
 
     Ok(())
 }

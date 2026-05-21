@@ -171,6 +171,44 @@ fn scan_refreshes_nested_workspace_ticket_state_changes() {
 }
 
 #[test]
+fn scan_keeps_nested_workspace_tickets_searchable_without_reindex() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let child_repo = repo.join("memory-viewers").join("memory-api");
+    fs::create_dir_all(&child_repo).unwrap();
+
+    let root_store = TicketStore::init(&repo).unwrap();
+    let child_store = TicketStore::init(&child_repo).unwrap();
+    root_store
+        .add_scan_root(ScanRoot {
+            path: child_store.index_root.join("tickets"),
+            label: "memory-api".to_string(),
+        })
+        .unwrap();
+
+    let ticket_id = child_store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Persist dependency edges in tracked ticket files"),
+            Some("in-review"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    root_store.scan(false).unwrap();
+
+    let results = root_store.search_tickets("Persist", 10).unwrap();
+
+    assert!(
+        results.iter().any(|result| result.id == ticket_id),
+        "normal scans should refresh Tantivy entries for nested workspace tickets"
+    );
+}
+
+#[test]
 fn scan_repairs_corrupted_nested_workspace_ticket_path() {
     let dir = tempdir().unwrap();
     let repo = dir.path().join("repo");
