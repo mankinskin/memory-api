@@ -33,7 +33,10 @@ Today, nested workspace work mostly focuses on parent workspaces aggregating des
 
 ### Concrete workspace names
 
-- Every public workspace identifier emitted by ticket HTTP endpoints must use the owning workspace folder name.
+- Every public workspace identifier emitted by ticket HTTP endpoints must use the owning workspace folder name or a collision-safe derivative of that name that remains reversible to one owning workspace.
+- `GET /api/workspaces` must publish the authoritative machine-readable identifier as `name` and the human-facing workspace label as `label`.
+- When `name` and `label` differ, transport and follow-up requests must continue to use `name`; `label` is display-only and must not be treated as a reversible identifier.
+- Viewer routes and request construction must key off `name` while rendering `label` in user-facing workspace chrome.
 - Synthetic aliases such as `default`, `..`, and `../..` are not valid public workspace names for list, detail, history, graph, edge, or workspaces responses.
 - The primary workspace exposed by a single opened store must use that store's workspace folder name as `active_workspace`, and follow-up requests must reuse that exact name.
 
@@ -76,7 +79,7 @@ The fixture classes above are only useful if every relevant surface is checked a
 | `list` / index-backed summaries | Preserve local-only behavior | Include child-owned rows with explicit ownership | Preserve ancestor endpoint ownership when surfaced from child context | Repaired rows stop reporting stale state or wrong ownership | Deterministic defaults or pruning; no ghost rows | Not applicable |
 | Detail follow-ups (`get`, history, files, assets) | Resolve local ticket folders | Resolve child-owned folders from parent-selected results | Resolve ancestor-owned folders from child-selected results | Normalize repaired paths before reading manifests or descriptions | Missing optional fields remain readable; deleted tickets no longer resolve as active | Return typed request errors instead of opaque 500s |
 | Dependency / graph traversal | Local edges stay unchanged | Mixed parent/child edges preserve endpoint ownership | Child views keep ancestor endpoints instead of dropping them | Traversal reflects repaired ticket identity after scan | Deleted endpoints do not leak back into the graph | Invalid workspace names are rejected before traversal |
-| Workspace naming in responses | Concrete folder names only | Concrete parent and child names only | Concrete child and ancestor names only | Repair never reintroduces synthetic aliases | Defaults and pruning do not affect naming rules | Synthetic aliases are treated as invalid public input |
+| Workspace naming in responses | Canonical `name` and display `label` stay stable for the same workspace | Parent and child responses preserve reversible `name` values and readable labels | Child and ancestor responses keep explicit `name` ownership while exposing human-readable labels | Repair never reintroduces synthetic aliases or stale labels | Defaults and pruning do not affect naming rules | Synthetic aliases are treated as invalid public input |
 | Scan / reconciliation behavior | No-op behavior remains stable | Aggregate scan keeps parent-child ownership intact | Child workspace scan keeps ancestor relationships resolvable | Both normal and forced scan repair stale persisted rows | Minimal manifests default consistently; deleted manifests are suppressed | Not applicable |
 | Error envelope behavior | Classified failures remain actionable | Aggregate resolution misses stay typed | Ancestor lookup misses stay typed | Wrong-path failures are repaired or reported concretely, never hidden behind generic internal errors | Deleted or incomplete manifests fail predictably when appropriate | Must return concrete `code` and `message` fields |
 
@@ -94,6 +97,7 @@ The fixture classes above are only useful if every relevant surface is checked a
 - Dependency and graph consumers can render parent-owned endpoints from a child workspace without inferring ownership from the active route alone.
 - Query-oriented ticket tooling can report the authoritative ticket folder path for a returned mixed-workspace ticket without reconstructing it client-side.
 - Root and nested workspace endpoints expose folder-name workspace identifiers only; no public response emits `default` or relative-path aliases.
+- `/api/workspaces` distinguishes the canonical reversible workspace identifier from the user-facing display label, and viewer routes render the label without losing the canonical id.
 - Resolution failures return actionable error envelopes that identify the concrete storage or workspace failure mode instead of a generic `internal_error` message.
 - The spec defines a reusable workspace-topology fixture matrix that covers local baseline, parent-opened aggregation, child-opened ancestor resolution, relative-path recovery, corrupted absolute-path repair, minimal manifests, deleted manifests, and invalid public workspace identifiers.
 - The verification matrix explicitly maps list/detail/history/files/assets/dependency/graph/naming/error-envelope assertions to those fixture classes.
