@@ -132,16 +132,6 @@ pub(super) fn run_unblocked_by(
 
     let mut candidates =
         candidate_tickets(&tickets, &blockers, Some(&dependent_ids));
-    let priority_map = read_priorities(&candidates);
-    let dependee_count = dependee_counts(&all_edges);
-    sort_candidates(
-        &mut candidates,
-        &state_index,
-        &priority_map,
-        &dependee_count,
-    );
-
-    let dependency_count = dependency_counts(&all_edges);
     let mut still_blocked = eligible_tickets_in_scope(&tickets, Some(&dependent_ids))
         .into_iter()
         .filter(|ticket| {
@@ -150,12 +140,28 @@ pub(super) fn run_unblocked_by(
                 .is_some_and(|remaining| !remaining.is_empty())
         })
         .collect::<Vec<_>>();
+
+    let combined = candidates
+        .iter()
+        .chain(still_blocked.iter())
+        .copied()
+        .collect::<Vec<_>>();
+    let priority_map = read_priorities(&combined);
+    let dependee_count = dependee_counts(&all_edges);
+    sort_candidates(
+        &mut candidates,
+        &state_index,
+        &priority_map,
+        &dependee_count,
+    );
     sort_candidates(
         &mut still_blocked,
         &state_index,
         &priority_map,
         &dependee_count,
     );
+
+    let dependency_count = dependency_counts(&all_edges);
 
     Ok(json!({
         "command": "unblocked_by",

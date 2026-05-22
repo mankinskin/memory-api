@@ -531,6 +531,14 @@ fn unblocked_by_returns_only_actionable_reverse_dependents() {
     let still_blocked = create_ticket(&s, "Still blocked dependent");
     let transitive = create_ticket(&s, "Transitive dependent");
 
+    let priority = s.ticket_json(&[
+        "update",
+        &still_blocked,
+        "--field",
+        "priority=critical",
+    ]);
+    assert_eq!(priority["status"], "ok");
+
     for (from, to) in [
         (&actionable, &root),
         (&still_blocked, &root),
@@ -567,6 +575,7 @@ fn unblocked_by_returns_only_actionable_reverse_dependents() {
     assert!(still_blocked_items.iter().any(|item| {
         item["id"] == still_blocked.as_str()
             && item["remaining_blocker_count"] == 1
+            && item["priority"] == "critical"
     }));
     assert!(still_blocked_items.iter().any(|item| {
         item["id"] == transitive.as_str()
