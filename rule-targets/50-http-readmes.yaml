@@ -1,0 +1,27 @@
+folders:
+- name: tools
+  folders:
+  - name: http
+    folders:
+    - name: ticket-http
+      files:
+      - name: README.md
+        target:
+          name: ticket-http-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/http/ticket-http/README.md
+          nodes:
+          - name: onboarding
+            section: tools/http/ticket-http/readme
+    - name: spec-http
+      files:
+      - name: README.md
+        target:
+          name: spec-http-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/http/spec-http/README.md
+          nodes:
+          - name: onboarding
+            section: tools/http/spec-http/readme

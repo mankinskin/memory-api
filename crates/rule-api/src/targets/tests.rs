@@ -285,6 +285,10 @@ fn load_render_target_config_imports_child_targets_with_source_config_paths() {
         Some(child_path.as_path())
     );
     assert_eq!(
+        imported.source_output_root.as_deref(),
+        Some(child_dir.as_path())
+    );
+    assert_eq!(
         resolve_render_target_output(&root_path, imported),
         child_dir.join("AGENTS.md")
     );
@@ -296,8 +300,106 @@ fn load_render_target_config_imports_child_targets_with_source_config_paths() {
         Some(root_path.as_path())
     );
     assert_eq!(
+        local.source_output_root.as_deref(),
+        Some(repo_root.as_path())
+    );
+    assert_eq!(
         resolve_render_target_output(&root_path, local),
         repo_root.join("AGENTS.md")
+    );
+}
+
+#[test]
+fn load_render_target_config_imports_directory_fragments_in_sorted_order() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo_root = tmp.path().join("repo");
+    let child_dir = repo_root.join("memory-viewers");
+    let child_targets_dir = child_dir.join("rule-targets");
+    fs::create_dir_all(&child_targets_dir).unwrap();
+
+    fs::write(
+        child_targets_dir.join("20-agents.yaml"),
+        concat!(
+            "targets:\n",
+            "  - name: memory-viewers-agents\n",
+            "    repo_scope: memory-viewers\n",
+            "    file_kind: AGENTS\n",
+            "    output_path: AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+    fs::write(
+        child_targets_dir.join("10-readme.yaml"),
+        concat!(
+            "targets:\n",
+            "  - name: memory-viewers-readme\n",
+            "    repo_scope: memory-viewers\n",
+            "    file_kind: README\n",
+            "    output_path: README.md\n",
+        ),
+    )
+    .unwrap();
+    fs::write(child_targets_dir.join("notes.txt"), "ignore me\n").unwrap();
+
+    let root_path = repo_root.join("rule-targets.yaml");
+    fs::write(
+        &root_path,
+        concat!(
+            "imports:\n",
+            "  - memory-viewers/rule-targets\n",
+            "targets:\n",
+            "  - name: context-engine-agents\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    output_path: AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+
+    let config = load_render_target_config(&root_path).unwrap();
+    let names = config
+        .targets
+        .iter()
+        .map(|target| target.name.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        names,
+        vec![
+            "memory-viewers-readme",
+            "memory-viewers-agents",
+            "context-engine-agents",
+        ]
+    );
+
+    let readme = render_target_by_name(&config, "memory-viewers-readme")
+        .unwrap();
+    assert_eq!(
+        readme.source_config_path.as_deref(),
+        Some(child_targets_dir.join("10-readme.yaml").as_path())
+    );
+    assert_eq!(
+        readme.source_output_root.as_deref(),
+        Some(child_dir.as_path())
+    );
+    assert_eq!(
+        resolve_render_target_output(&root_path, readme),
+        child_dir.join("README.md")
+    );
+
+    let agents = render_target_by_name(&config, "memory-viewers-agents")
+        .unwrap();
+    assert_eq!(
+        agents.source_config_path.as_deref(),
+        Some(child_targets_dir.join("20-agents.yaml").as_path())
+    );
+    assert_eq!(
+        agents.source_output_root.as_deref(),
+        Some(child_dir.as_path())
+    );
+    assert_eq!(
+        resolve_render_target_output(&root_path, agents),
+        child_dir.join("AGENTS.md")
     );
 }
 
@@ -487,11 +589,34 @@ fn resolve_render_target_output_uses_config_parent_for_relative_paths() {
         nodes: Vec::new(),
         output_path: ".github/generated/AGENTS.md".to_string(),
         source_config_path: None,
+        source_output_root: None,
     };
 
     assert_eq!(
         resolve_render_target_output(&config_path, &target),
         PathBuf::from("repo/.github/generated/AGENTS.md")
+    );
+}
+
+#[test]
+fn resolve_render_target_output_uses_rule_targets_directory_parent() {
+    let repo_root = PathBuf::from("repo");
+    let target = RenderTarget {
+        name: "context-engine-agents".to_string(),
+        repo_scope: "context-engine".to_string(),
+        file_kind: "AGENTS".to_string(),
+        path_scope: Some("AGENTS.md".to_string()),
+        section: None,
+        state: None,
+        nodes: Vec::new(),
+        output_path: "AGENTS.md".to_string(),
+        source_config_path: Some(repo_root.join("rule-targets/20-agents.yaml")),
+        source_output_root: Some(repo_root.clone()),
+    };
+
+    assert_eq!(
+        resolve_render_target_output(PathBuf::from("repo/rule-targets.yaml").as_path(), &target),
+        repo_root.join("AGENTS.md")
     );
 }
 
@@ -577,6 +702,7 @@ fn collect_target_rules_traverses_nodes_in_outline_order() {
         ],
         output_path: "AGENTS.md".to_string(),
         source_config_path: None,
+        source_output_root: None,
     };
 
     let rules = collect_target_rules(&store, &target).unwrap();
@@ -642,6 +768,7 @@ fn collect_target_rules_rejects_duplicate_matches_across_nodes() {
         ],
         output_path: "AGENTS.md".to_string(),
         source_config_path: None,
+        source_output_root: None,
     };
 
     let err = collect_target_rules(&store, &target).unwrap_err();
@@ -697,6 +824,7 @@ fn explain_target_reports_node_matches_with_effective_filters() {
         }],
         output_path: "AGENTS.md".to_string(),
         source_config_path: None,
+        source_output_root: None,
     };
 
     let explained = explain_target(&store, &target).unwrap();

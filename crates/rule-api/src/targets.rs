@@ -152,6 +152,8 @@ pub struct RenderTarget {
     pub output_path: String,
     #[serde(skip, default)]
     pub source_config_path: Option<PathBuf>,
+    #[serde(skip, default)]
+    pub source_output_root: Option<PathBuf>,
 }
 
 impl RenderTargetFilter {
@@ -223,6 +225,7 @@ impl RenderTarget {
         config_path: &Path,
     ) -> Self {
         self.source_config_path = Some(config_path.to_path_buf());
+        self.source_output_root = Some(resolve_config_output_root(config_path));
         self
     }
 
@@ -307,6 +310,7 @@ impl RenderTargetFile {
             nodes: self.target.nodes,
             output_path: tree_output_path(parent, &self.name),
             source_config_path: Some(config_path.to_path_buf()),
+            source_output_root: Some(resolve_config_output_root(config_path)),
         }
     }
 }
@@ -355,6 +359,36 @@ fn parse_render_target_config(
     }
 }
 
+fn is_supported_render_target_config(
+    path: &Path,
+) -> bool {
+    matches!(
+        path.extension().and_then(|extension| extension.to_str()),
+        Some("yaml" | "yml" | "toml")
+    )
+}
+
+fn resolve_config_output_root(
+    config_path: &Path,
+) -> PathBuf {
+    let config_dir = config_path.parent().unwrap_or_else(|| Path::new("."));
+
+    for ancestor in config_dir.ancestors() {
+        if ancestor
+            .file_name()
+            .and_then(|name| name.to_str())
+            == Some("rule-targets")
+        {
+            return ancestor
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .to_path_buf();
+        }
+    }
+
+    config_dir.to_path_buf()
+}
+
 fn resolve_import_path(
     config_path: &Path,
     import: &Path,
@@ -367,6 +401,53 @@ fn resolve_import_path(
             .unwrap_or_else(|| Path::new("."))
             .join(import)
     }
+}
+
+fn load_import_targets(
+    import_path: &Path,
+    loading: &mut Vec<PathBuf>,
+) -> Result<Vec<RenderTarget>, TargetConfigError> {
+    let metadata = fs::metadata(import_path).map_err(|source| {
+        TargetConfigError::Io {
+            path: import_path.to_path_buf(),
+            source,
+        }
+    })?;
+
+    if !metadata.is_dir() {
+        return load_render_target_config_inner(import_path, loading);
+    }
+
+    let mut fragment_paths = Vec::new();
+    for entry in fs::read_dir(import_path).map_err(|source| {
+        TargetConfigError::Io {
+            path: import_path.to_path_buf(),
+            source,
+        }
+    })? {
+        let entry = entry.map_err(|source| TargetConfigError::Io {
+            path: import_path.to_path_buf(),
+            source,
+        })?;
+        let fragment_path = entry.path();
+        if fragment_path.is_file()
+            && is_supported_render_target_config(&fragment_path)
+        {
+            fragment_paths.push(fragment_path);
+        }
+    }
+
+    fragment_paths.sort();
+
+    let mut targets = Vec::new();
+    for fragment_path in fragment_paths {
+        targets.extend(load_render_target_config_inner(
+            &fragment_path,
+            loading,
+        )?);
+    }
+
+    Ok(targets)
 }
 
 fn load_render_target_config_inner(
@@ -391,10 +472,7 @@ fn load_render_target_config_inner(
 
         for import in raw.imports.clone() {
             let import_path = resolve_import_path(path, &import);
-            targets.extend(load_render_target_config_inner(
-                &import_path,
-                loading,
-            )?);
+            targets.extend(load_import_targets(&import_path, loading)?);
         }
 
         targets.extend(raw.into_render_targets(path));
@@ -613,9 +691,14 @@ pub fn resolve_render_target_output(
         output
     } else {
         target
-            .config_path(config_path)
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
+            .source_output_root
+            .as_deref()
+            .unwrap_or_else(|| {
+                target
+                    .config_path(config_path)
+                    .parent()
+                    .unwrap_or_else(|| Path::new("."))
+            })
             .join(output)
     }
 }

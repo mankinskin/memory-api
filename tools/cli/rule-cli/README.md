@@ -31,7 +31,7 @@ cargo run -p rule-cli --bin rule -- --help
 
 `rule` discovers the nearest `.rule` workspace by walking up from the current directory. Use `--index-root` when you want to point at a different store, or `--workspace-root` when you want to target a nested workspace repo root from an ancestor checkout.
 
-Target configs can include `imports:` entries that point at child workspace `rule-targets.yaml` files. Imported targets keep their own config-relative output paths, so a parent `sync-targets` run can reuse child target definitions without copying them into the parent config.
+Target configs can include `imports:` entries that point at either specific config files or `rule-targets/` directories of themed fragments. Imported targets keep their own config-relative output roots, so a parent `sync-targets` run can reuse child target definitions without copying them into the parent config, and top-level `rule-targets.yaml` files can stay as thin import shims over those themed directories.
 
 Feedback is rule-entry scoped. If you are reacting to a specific spec entry or generated instruction section, first resolve the canonical rule entry that produced the text, then carry the spec ID, path, and section in the feedback note.
 

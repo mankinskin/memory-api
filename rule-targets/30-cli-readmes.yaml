@@ -1,0 +1,49 @@
+folders:
+- name: tools
+  folders:
+  - name: cli
+    folders:
+    - name: rule-cli
+      files:
+      - name: README.md
+        target:
+          name: rule-cli-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/cli/rule-cli/README.md
+          nodes:
+          - name: onboarding
+            section: tools/cli/rule-cli/readme
+    - name: spec-cli
+      files:
+      - name: README.md
+        target:
+          name: spec-cli-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/cli/spec-cli/README.md
+          nodes:
+          - name: onboarding
+            section: tools/cli/spec-cli/readme
+    - name: ticket-cli
+      files:
+      - name: README.md
+        target:
+          name: ticket-cli-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/cli/ticket-cli/README.md
+          nodes:
+          - name: onboarding
+            section: tools/cli/ticket-cli/readme
+    - name: audit-cli
+      files:
+      - name: README.md
+        target:
+          name: audit-cli-readme
+          repo_scope: memory-api
+          file_kind: README
+          path_scope: tools/cli/audit-cli/README.md
+          nodes:
+          - name: onboarding
+            section: tools/cli/audit-cli/readme
