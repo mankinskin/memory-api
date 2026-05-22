@@ -12,7 +12,6 @@ use axum::{
         Response,
     },
 };
-use serde_json::json;
 use uuid::Uuid;
 
 use viewer_api::error::{
@@ -189,28 +188,7 @@ fn resolve_workspace_request(
     ),
     Response,
 > {
-    match state.resolve_workspace_runtime(requested_workspace) {
-        Ok(Some((workspace, store))) => Ok((workspace, store)),
-        Ok(None) => Err(
-            ApiError::not_found("workspace", request_id)
-                .into_response_with_status(StatusCode::NOT_FOUND),
-        ),
-        Err(crate::serve::registry::WorkspaceResolveError::AmbiguousLegacyLabel {
-            requested,
-            matches,
-        }) => Err(
-            ApiError::bad_request(
-                "workspace.ambiguous_label",
-                format!("workspace label '{requested}' matches multiple workspaces"),
-                request_id,
-            )
-            .with_details(json!({
-                "requested": requested,
-                "matches": matches,
-            }))
-            .into_response_with_status(StatusCode::BAD_REQUEST),
-        ),
-    }
+    state.resolve_public_workspace_request(requested_workspace, request_id)
 }
 
 struct PreferredResolvedTicket {

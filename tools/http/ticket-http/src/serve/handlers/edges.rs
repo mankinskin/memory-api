@@ -61,17 +61,15 @@ pub async fn list_edges(
     Extension(rid): Extension<RequestIdExt>,
     Query(params): Query<EdgesQuery>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return viewer_api::error::ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
+    let (active_workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
-    let active_workspace = params.workspace.clone();
     let kind = params.kind.clone();
 
     tokio::task::spawn_blocking(move || match store.list_all_edges() {
@@ -170,17 +168,15 @@ pub async fn add_edge(
     Query(params): Query<EdgeMutationQuery>,
     Json(body): Json<EdgeBody>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return viewer_api::error::ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
+    let (active_workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
-    let active_workspace = params.workspace.clone();
 
     let edge = EdgeRecord {
         from: body.from_id,
@@ -242,17 +238,15 @@ pub async fn remove_edge(
     Query(params): Query<EdgeMutationQuery>,
     Json(body): Json<EdgeBody>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return viewer_api::error::ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
+    let (active_workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
-    let active_workspace = params.workspace.clone();
 
     let edge = EdgeRecord {
         from: body.from_id,

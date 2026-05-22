@@ -366,15 +366,11 @@ pub async fn batch_tickets(
     Extension(rid): Extension<RequestIdExt>,
     Json(body): Json<BatchBody>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&body.workspace) {
-        Some(s) => s,
-        None => {
-            return viewer_api::error::ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
-
-    let workspace = body.workspace;
+    let (workspace, store) =
+        match state.resolve_public_workspace_request(&body.workspace, &rid.0) {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let commands = body.commands;
     let total = commands.len();
     let request_id = rid.0.clone();

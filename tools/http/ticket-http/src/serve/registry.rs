@@ -61,6 +61,10 @@ struct WorkspaceEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceResolveError {
+    DisplayLabelRejected {
+        requested: String,
+        canonical: String,
+    },
     AmbiguousLegacyLabel {
         requested: String,
         matches: Vec<String>,
@@ -208,7 +212,10 @@ impl WorkspaceRegistry {
 
         match matches.len() {
             0 => Ok(None),
-            1 => Ok(matches.into_iter().next()),
+            1 => Err(WorkspaceResolveError::DisplayLabelRejected {
+                requested: workspace.to_string(),
+                canonical: matches.into_iter().next().unwrap(),
+            }),
             _ => Err(WorkspaceResolveError::AmbiguousLegacyLabel {
                 requested: workspace.to_string(),
                 matches,
@@ -584,10 +591,22 @@ mod workspace_resolution_tests {
         assert!(!workspace_infos.iter().any(|info| info.label == "tickets"));
 
         let child_id = registry
+            .workspace_infos()
+            .into_iter()
+            .find(|info| info.label == "child")
+            .expect("child workspace info")
+            .name;
+
+        let rejected = registry
             .resolve_workspace_name("child")
-            .expect("resolve child workspace")
-            .expect("child workspace id");
-        assert!(registry.workspace_names().contains(&child_id));
+            .expect_err("display labels should not resolve as public ids");
+        assert_eq!(
+            rejected,
+            WorkspaceResolveError::DisplayLabelRejected {
+                requested: "child".to_string(),
+                canonical: child_id,
+            }
+        );
     }
 
     #[test]

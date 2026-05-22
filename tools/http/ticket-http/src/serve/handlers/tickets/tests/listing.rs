@@ -973,7 +973,7 @@ async fn legacy_workspace_label_collision_returns_typed_bad_request() {
 }
 
 #[tokio::test]
-async fn unique_legacy_workspace_label_maps_to_canonical_workspace_id() {
+async fn unique_display_workspace_label_returns_typed_bad_request() {
     let root = tempfile::tempdir().expect("tempdir");
     let parent_store = Arc::new(
         ticket_api::storage::store::TicketStore::init(root.path())
@@ -1000,7 +1000,7 @@ async fn unique_legacy_workspace_label_maps_to_canonical_workspace_id() {
         })
         .expect("add child scan root");
 
-    let id = child_store
+    let _id = child_store
         .create(
             None,
             "tracker-improvement",
@@ -1042,17 +1042,20 @@ async fn unique_legacy_workspace_label_maps_to_canonical_workspace_id() {
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("read body");
     let payload: serde_json::Value =
         serde_json::from_slice(&bytes).expect("json body");
 
-    assert_eq!(payload["active_workspace"], canonical_workspace.as_str());
-    assert_eq!(payload["workspace"], canonical_workspace.as_str());
-    assert_eq!(payload["items"][0]["ticket_ref"]["workspace"], canonical_workspace.as_str());
-    assert_eq!(payload["items"][0]["ticket_ref"]["id"], id.to_string());
+    assert_eq!(payload["code"], "workspace.display_label_not_allowed");
+    assert_eq!(payload["details"]["requested"], "child");
+    assert_eq!(payload["details"]["canonical"], canonical_workspace.as_str());
+    assert!(payload["message"]
+        .as_str()
+        .expect("message")
+        .contains(canonical_workspace.as_str()));
 }
 
 #[tokio::test]

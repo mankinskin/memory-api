@@ -92,10 +92,9 @@ fn resolve_workspace_store(
     workspace: &str,
     request_id: &str,
 ) -> Result<Arc<TicketStore>, Response> {
-    state.ensure_workspace_runtime(workspace).ok_or_else(|| {
-        viewer_api::error::ApiError::not_found("workspace", request_id)
-            .into_response_with_status(StatusCode::NOT_FOUND)
-    })
+    state
+        .resolve_public_workspace_request(workspace, request_id)
+        .map(|(_, store)| store)
 }
 
 fn tickets_in_scope(

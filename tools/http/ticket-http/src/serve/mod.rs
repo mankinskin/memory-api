@@ -20,9 +20,15 @@ use std::{
     },
 };
 
+use axum::{
+    http::StatusCode,
+    response::Response,
+};
+use serde_json::json;
 use tokio::net::TcpListener;
 
 use viewer_api::auth::TokenSet;
+use viewer_api::error::ApiError;
 
 pub use auth_state::AuthState;
 pub use registry::WorkspaceRegistry;
@@ -131,6 +137,54 @@ impl AppState {
         stream::reconcile::spawn_reconcile(Arc::clone(&store), emitter);
 
         Ok(Some((workspace, store)))
+    }
+
+    pub fn resolve_public_workspace_request(
+        &self,
+        requested_workspace: &str,
+        request_id: &str,
+    ) -> Result<(String, Arc<TicketStore>), Response> {
+        match self.resolve_workspace_runtime(requested_workspace) {
+            Ok(Some((workspace, store))) => Ok((workspace, store)),
+            Ok(None) => Err(
+                ApiError::not_found("workspace", request_id)
+                    .into_response_with_status(StatusCode::NOT_FOUND),
+            ),
+            Err(registry::WorkspaceResolveError::DisplayLabelRejected {
+                requested,
+                canonical,
+            }) => Err(
+                ApiError::bad_request(
+                    "workspace.display_label_not_allowed",
+                    format!(
+                        "workspace label '{requested}' is display-only; use canonical workspace id '{canonical}'"
+                    ),
+                    request_id,
+                )
+                .with_details(json!({
+                    "requested": requested,
+                    "canonical": canonical,
+                }))
+                .into_response_with_status(StatusCode::BAD_REQUEST),
+            ),
+            Err(registry::WorkspaceResolveError::AmbiguousLegacyLabel {
+                requested,
+                matches,
+            }) => Err(
+                ApiError::bad_request(
+                    "workspace.ambiguous_label",
+                    format!(
+                        "workspace label '{requested}' matches multiple workspaces"
+                    ),
+                    request_id,
+                )
+                .with_details(json!({
+                    "requested": requested,
+                    "matches": matches,
+                }))
+                .into_response_with_status(StatusCode::BAD_REQUEST),
+            ),
+        }
     }
 }
 

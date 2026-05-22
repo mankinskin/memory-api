@@ -147,13 +147,12 @@ pub async fn list_schemas(
     Extension(rid): Extension<RequestIdExt>,
     Query(params): Query<SchemaQuery>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return viewer_api::error::ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
+    let (workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
 
     let registry = store.schema_registry();
     let types: Vec<TypeSchema> = registry
@@ -164,7 +163,7 @@ pub async fn list_schemas(
 
     Json(SchemaListResponse {
         request_id: rid.0,
-        workspace: params.workspace,
+        workspace,
         types,
     })
     .into_response()
@@ -180,19 +179,18 @@ pub async fn get_schema(
     Path(type_id): Path<String>,
     Query(params): Query<SchemaQuery>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return viewer_api::error::ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
+    let (workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
 
     let registry = store.schema_registry();
     match registry.get(&type_id) {
         Some(schema) => Json(SchemaDetailResponse {
             request_id: rid.0,
-            workspace: params.workspace,
+            workspace,
             schema: schema_to_wire(schema),
         })
         .into_response(),

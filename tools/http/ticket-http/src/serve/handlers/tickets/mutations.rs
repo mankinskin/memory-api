@@ -58,13 +58,12 @@ pub async fn create_ticket(
     Query(params): Query<MutationWorkspaceParam>,
     Json(body): Json<CreateTicketBody>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
+    let (workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
 
     let extra = body.fields.unwrap_or_default();
     let type_id = body.type_id;
@@ -75,7 +74,7 @@ pub async fn create_ticket(
 
     tokio::task::spawn_blocking(move || {
         let request_id = task_request_id.clone();
-        let workspace = params.workspace.clone();
+        let workspace = workspace.clone();
         let id = match store.create(
             None,
             &type_id,
@@ -131,13 +130,12 @@ pub async fn update_ticket(
     headers: HeaderMap,
     Json(body): Json<UpdateTicketBody>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
+    let (workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
 
     let patch = body.fields.unwrap_or_default();
     let from_state = body.from_state;
@@ -149,7 +147,7 @@ pub async fn update_ticket(
 
     tokio::task::spawn_blocking(move || {
         let request_id = task_request_id.clone();
-        let workspace = params.workspace.clone();
+        let workspace = workspace.clone();
         let manifest = match store.update(
             &id,
             patch,
@@ -196,13 +194,12 @@ pub async fn close_ticket(
     headers: HeaderMap,
     Json(body): Json<CloseTicketBody>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
+    let (workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
 
     let target = body.target_state.as_deref().unwrap_or("done").to_string();
     let author = author_from_headers(&headers);
@@ -219,15 +216,11 @@ pub async fn close_ticket(
 
         Json(MutationResponse {
             request_id: request_id.clone(),
-            active_workspace: params.workspace.clone(),
-            workspace: params.workspace.clone(),
+            active_workspace: workspace.clone(),
+            workspace: workspace.clone(),
             ticket: TicketDetail {
                 id: manifest.id.to_string(),
-                ticket_ref: match ticket_ref_for_id(
-                    &store,
-                    &params.workspace,
-                    &id,
-                ) {
+                ticket_ref: match ticket_ref_for_id(&store, &workspace, &id) {
                     Ok(ticket_ref) => ticket_ref,
                     Err(e) => return storage_err(e, &request_id),
                 },
@@ -253,13 +246,12 @@ pub async fn cancel_ticket(
     headers: HeaderMap,
     Json(body): Json<CancelTicketBody>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
+    let (workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
 
     let author = author_from_headers(&headers);
     let mut patch = BTreeMap::new();
@@ -285,15 +277,11 @@ pub async fn cancel_ticket(
 
         Json(MutationResponse {
             request_id: request_id.clone(),
-            active_workspace: params.workspace.clone(),
-            workspace: params.workspace.clone(),
+            active_workspace: workspace.clone(),
+            workspace: workspace.clone(),
             ticket: TicketDetail {
                 id: manifest.id.to_string(),
-                ticket_ref: match ticket_ref_for_id(
-                    &store,
-                    &params.workspace,
-                    &id,
-                ) {
+                ticket_ref: match ticket_ref_for_id(&store, &workspace, &id) {
                     Ok(ticket_ref) => ticket_ref,
                     Err(e) => return storage_err(e, &request_id),
                 },
@@ -320,13 +308,12 @@ pub async fn revert_ticket(
     headers: HeaderMap,
     Json(body): Json<RevertTicketBody>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
+    let (workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
 
     let revision = body.revision;
     let author = author_from_headers(&headers);
@@ -362,7 +349,7 @@ pub async fn revert_ticket(
             Ok(_new_rev) => current_ticket_response(
                 &store,
                 &request_id,
-                &params.workspace,
+                &workspace,
                 &id,
             ),
             Err(e) => storage_err(e, &request_id),
@@ -383,13 +370,12 @@ pub async fn undo_ticket(
     Query(params): Query<MutationWorkspaceParam>,
     headers: HeaderMap,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
+    let (workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
 
     let author = author_from_headers(&headers);
     let request_id = rid.0.clone();
@@ -417,7 +403,7 @@ pub async fn undo_ticket(
             Ok(_new_rev) => current_ticket_response(
                 &store,
                 &request_id,
-                &params.workspace,
+                &workspace,
                 &id,
             ),
             Err(e) => storage_err(e, &request_id),
@@ -436,29 +422,27 @@ pub async fn delete_ticket(
     Path(id): Path<Uuid>,
     Query(params): Query<MutationWorkspaceParam>,
 ) -> Response {
-    let store = match state.ensure_workspace_runtime(&params.workspace) {
-        Some(s) => s,
-        None => {
-            return ApiError::not_found("workspace", &rid.0)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        },
-    };
+    let (workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || match store.delete(&id) {
         Ok(()) => {
             let request_id = task_request_id.clone();
-            let ticket_ref =
-                match ticket_ref_for_id(&store, &params.workspace, &id) {
-                    Ok(ticket_ref) => ticket_ref,
-                    Err(e) => return storage_err(e, &request_id),
-                };
+            let ticket_ref = match ticket_ref_for_id(&store, &workspace, &id) {
+                Ok(ticket_ref) => ticket_ref,
+                Err(e) => return storage_err(e, &request_id),
+            };
 
             Json(DeleteResponse {
                 request_id: request_id.clone(),
-                active_workspace: params.workspace.clone(),
-                workspace: params.workspace.clone(),
+                active_workspace: workspace.clone(),
+                workspace: workspace.clone(),
                 id: id.to_string(),
                 ticket_ref,
             })
