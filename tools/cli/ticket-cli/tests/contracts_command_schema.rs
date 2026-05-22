@@ -10,9 +10,10 @@ fn command_schema_export_is_stable() {
 
     assert_eq!(schema.version, COMMAND_SCHEMA_VERSION);
     assert_eq!(schema.command_namespace, "ticket");
-    assert_eq!(schema.commands.len(), 39);
+    assert_eq!(schema.commands.len(), 40);
     assert_eq!(schema.commands[0], "create");
     assert!(schema.commands.contains(&"batch".to_string()));
+    assert!(schema.commands.contains(&"unblocked_by".to_string()));
     assert!(schema.commands.contains(&"task_create".to_string()));
     assert!(schema.commands.contains(&"task_get".to_string()));
     assert!(

@@ -140,6 +140,8 @@ pub enum TicketCommandCli {
     ReadyOverview(ReadyOverviewArgs),
     /// List unblocked, dependency-satisfied tickets ordered by workflow progress, priority, and dependees for worker agents.
     Next(NextArgs),
+    /// Show which reverse dependents would become actionable if a ticket were satisfied.
+    UnblockedBy(UnblockedByArgs),
     /// Start the HTTP server exposing the ticket API (REST + SSE).
     Serve(ServeCliArgs),
     /// Fast-forward a ticket to a target state (default: done).

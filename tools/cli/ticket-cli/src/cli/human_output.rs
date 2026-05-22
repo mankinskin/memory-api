@@ -1,6 +1,7 @@
 use std::fmt::Write;
 
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::cli::commands::{
     parse_board_recommendation,
@@ -32,6 +33,10 @@ pub(crate) fn render_human_readable(payload: &Value) -> String {
 
     if obj.get("command").and_then(Value::as_str) == Some("next") {
         return render_next_report(obj);
+    }
+
+    if obj.get("command").and_then(Value::as_str) == Some("unblocked_by") {
+        return render_unblocked_by_report(obj);
     }
 
     // Special case: subgraph/topgraph command renders as ASCII tree
@@ -140,6 +145,159 @@ fn render_next_report(obj: &serde_json::Map<String, Value>) -> String {
     let mut result = trimmed.to_string();
     result.push('\n');
     result
+}
+
+fn render_unblocked_by_report(
+    obj: &serde_json::Map<String, Value>
+) -> String {
+    let mut out = String::new();
+
+    let command = obj.get("command").and_then(Value::as_str).unwrap_or("?");
+    let status = obj.get("status").and_then(Value::as_str).unwrap_or("?");
+    let _ = writeln!(out, "{command} {status}");
+
+    let mut scalars = Vec::new();
+    let mut sections = Vec::new();
+
+    for (key, val) in obj {
+        if key == "command"
+            || key == "status"
+            || key == "items"
+            || key == "still_blocked_items"
+        {
+            continue;
+        }
+        if is_section(val) {
+            sections.push((key.as_str(), val));
+        } else {
+            scalars.push((key.as_str(), val));
+        }
+    }
+
+    for (key, val) in &scalars {
+        let _ = writeln!(out, "{key}: {}", format_scalar(val));
+    }
+
+    for (key, val) in &sections {
+        write_section(&mut out, key, val, 0);
+    }
+
+    let recommendations = obj
+        .get("items")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(parse_board_recommendation)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    write_next_up(&mut out, &recommendations);
+
+    let still_blocked = obj
+        .get("still_blocked_items")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    write_still_blocked(&mut out, &still_blocked);
+
+    let trimmed = out.trim_end();
+    let mut result = trimmed.to_string();
+    result.push('\n');
+    result
+}
+
+fn write_still_blocked(
+    out: &mut String,
+    items: &[Value],
+) {
+    let _ = writeln!(out);
+    let _ = writeln!(out, "Still Blocked:");
+
+    if items.is_empty() {
+        let _ = writeln!(out, "  (no impacted tickets remain blocked once this prerequisite is satisfied)");
+        return;
+    }
+
+    for (index, item) in items.iter().enumerate() {
+        if index > 0 {
+            let _ = writeln!(out);
+        } else {
+            let _ = writeln!(out);
+        }
+
+        let rank = item.get("rank").and_then(Value::as_u64).unwrap_or(0);
+        let ticket_id = item.get("id").and_then(Value::as_str).unwrap_or("-");
+        let title = item
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or("(untitled ticket)");
+        let state = item.get("state").and_then(Value::as_str).unwrap_or("-");
+        let priority = item
+            .get("priority")
+            .and_then(Value::as_str)
+            .unwrap_or("none");
+        let dependees = item
+            .get("dependees")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let dependency_count = item
+            .get("dependency_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let remaining_blocker_count = item
+            .get("remaining_blocker_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let remaining_blockers = item
+            .get("remaining_blockers")
+            .and_then(Value::as_array)
+            .map(|blockers| {
+                blockers
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(short_ticket_value)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .filter(|joined| !joined.is_empty())
+            .unwrap_or_else(|| "-".to_string());
+        let created_at = item
+            .get("created_at")
+            .and_then(Value::as_str)
+            .unwrap_or("-");
+
+        let _ = writeln!(
+            out,
+            "  #{}  {}  {}",
+            rank,
+            short_ticket_value(ticket_id),
+            title,
+        );
+        let _ = writeln!(
+            out,
+            "  state: {}  priority: {}  dependees: {}  dependency_count: {}",
+            state,
+            priority,
+            dependees,
+            dependency_count,
+        );
+        let _ = writeln!(
+            out,
+            "  remaining_blockers: {}  blocker_ids: {}",
+            remaining_blocker_count,
+            remaining_blockers,
+        );
+        let _ = writeln!(out, "  created_at: {}", created_at);
+        let _ = writeln!(out, "  ticket_id: {}", ticket_id);
+    }
+}
+
+fn short_ticket_value(raw: &str) -> String {
+    raw.parse::<Uuid>()
+        .map(|id| id.simple().to_string()[..8].to_string())
+        .unwrap_or_else(|_| raw.chars().take(8).collect())
 }
 
 // ── predicates ─────────────────────────────────────────────────────────────────

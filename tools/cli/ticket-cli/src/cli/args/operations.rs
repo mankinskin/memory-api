@@ -28,6 +28,9 @@ pub struct ReadyOverviewArgs {
 
 #[derive(Debug, Args)]
 pub struct NextArgs {
+    /// Optional ticket UUID or 8+ character hex prefix.
+    /// When set, scope results to actionable remaining blockers for reachable reverse dependents.
+    pub root: Option<String>,
     /// Maximum number of tickets to return.
     #[arg(long, default_value = "20")]
     pub limit: usize,
@@ -37,6 +40,12 @@ pub struct NextArgs {
     /// Skip board-awareness: include tickets already tracked on the board in results.
     #[arg(long, default_value_t = false)]
     pub no_board: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct UnblockedByArgs {
+    /// Ticket UUID or 8+ character hex prefix to treat as satisfied.
+    pub id: String,
 }
 
 #[derive(Debug, Args)]

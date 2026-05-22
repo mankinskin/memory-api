@@ -1,0 +1,21 @@
+id = "0386c4d0-15c4-4561-a33f-63b881c852c5"
+created_at = "2026-05-21T22:59:12.341663800+00:00"
+title = "CLI reverse-dependency unlock and blocker follow-up discovery"
+state = "draft"
+code_refs = [
+	{ description = "CLI subcommand surface for `ticket next [<id>]`.", file = "tools/cli/ticket-cli/src/cli.rs", kind = "enum", line_end = 144, line_start = 142, symbol = "TicketCommandCli::Next" },
+	{ description = "CLI subcommand surface for `ticket unblocked-by <id>`.", file = "tools/cli/ticket-cli/src/cli.rs", kind = "enum", line_end = 145, line_start = 143, symbol = "TicketCommandCli::UnblockedBy" },
+	{ description = "Core next implementation supports both the global actionable queue and the optional reverse-dependency blocker scope.", file = "tools/cli/ticket-cli/src/cli/commands/ops/next.rs", kind = "function", line_end = 118, line_start = 40, symbol = "run" },
+	{ description = "Core unlock-discovery implementation: treat the supplied root as satisfied, walk reverse `depends_on` edges, and classify actionable versus still-blocked dependents.", file = "tools/cli/ticket-cli/src/cli/commands/ops/next.rs", kind = "function", line_end = 179, line_start = 120, symbol = "run_unblocked_by" },
+	{ description = "Human-readable rendering reuses the compact recommendation card format for next and unblocked_by payloads.", file = "tools/cli/ticket-cli/src/cli/human_output.rs", kind = "function", line_end = 40, line_start = 20, symbol = "render_human_readable" },
+	{ description = "Regression proving root-scoped next returns actionable remaining blockers rather than blocked dependents or unrelated work.", file = "tools/cli/ticket-cli/tests/integration_board_cli.rs", kind = "function", line_end = 468, line_start = 428, symbol = "next_with_root_returns_actionable_remaining_blockers" },
+	{ description = "Regression proving root-scoped next text output includes the root scope details and pretty card output.", file = "tools/cli/ticket-cli/tests/integration_board_cli.rs", kind = "function", line_end = 522, line_start = 474, symbol = "next_with_root_text_output_shows_root_scope" },
+	{ description = "Regression proving only actionable reverse dependents are returned while still-blocked dependents remain visible separately.", file = "tools/cli/ticket-cli/tests/integration_board_cli.rs", kind = "function", line_end = 576, line_start = 525, symbol = "unblocked_by_returns_only_actionable_reverse_dependents" },
+	{ description = "Regression proving unblocked_by default text output uses the compact recommendation card format instead of a raw object dump.", file = "tools/cli/ticket-cli/tests/integration_board_cli.rs", kind = "function", line_end = 628, line_start = 578, symbol = "unblocked_by_text_output_uses_pretty_card_format" },
+	{ description = "Exported command schema continues to expose the reverse-dependency workflow command names for automation clients.", file = "crates/ticket-api/src/contracts/command_schema.rs", kind = "function", line_end = 81, line_start = 59, symbol = "TicketCommand::names" },
+]
+component = "ticket-cli"
+parent = "ae5ef697-0ee5-4f74-9dca-2cb268290dae"
+scope = "public"
+slug = "ticket-api/workflow/unblocked-by-discovery"
+type = "specification"

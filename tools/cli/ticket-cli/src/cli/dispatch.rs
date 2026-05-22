@@ -230,7 +230,8 @@ fn dispatch_store_command(
         | TicketCommandCli::Watch(_)
         | TicketCommandCli::Status(_)
         | TicketCommandCli::ReadyOverview(_)
-        | TicketCommandCli::Next(_) =>
+        | TicketCommandCli::Next(_)
+        | TicketCommandCli::UnblockedBy(_) =>
             dispatch_store_command_graph(command, &store),
         TicketCommandCli::Serve(_)
         | TicketCommandCli::Close(_)
@@ -308,6 +309,8 @@ fn dispatch_store_command_graph(
         TicketCommandCli::ReadyOverview(args) =>
             commands::cmd_ready_overview(args, store),
         TicketCommandCli::Next(args) => commands::cmd_next(args, store),
+        TicketCommandCli::UnblockedBy(args) =>
+            commands::cmd_unblocked_by(args, store),
         _ => unreachable!("handled in graph store dispatch"),
     }
 }

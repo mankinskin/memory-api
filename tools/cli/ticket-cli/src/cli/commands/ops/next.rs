@@ -1,6 +1,7 @@
 use std::collections::{
     HashMap,
     HashSet,
+    VecDeque,
 };
 
 use serde_json::{
@@ -22,24 +23,48 @@ use uuid::Uuid;
 use crate::cli::{
     CliRunError,
     NextArgs,
+    UnblockedByArgs,
 };
+use crate::cli::commands::resolve_uuid_prefix;
 
 const DONE_STATES: &[&str] = &["done", "cancelled"];
 const PAUSED_STATES: &[&str] = &["on-hold"];
+
+struct NextScope {
+    root: Value,
+    reachable_dependents: usize,
+    blocked_dependents: usize,
+    remaining_blockers: HashSet<Uuid>,
+}
 
 pub(super) fn run(
     args: NextArgs,
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
     let board_snap = store.board_show(None).ok();
-    let tickets =
-        filtered_tickets(store.list(None, None, None)?, args.filter.as_deref());
-    let done_ids = done_ticket_ids(&tickets);
+    let all_tickets = store.list(None, None, None)?;
     let all_edges = store.list_all_edges()?;
+    let mut done_ids = done_ticket_ids(&all_tickets);
+    let root_id = args
+        .root
+        .as_deref()
+        .map(|root| resolve_uuid_prefix(root, store))
+        .transpose()?;
+    if let Some(root_id) = root_id {
+        done_ids.insert(root_id);
+    }
     let blockers = unresolved_blockers(&all_edges, &done_ids);
+    let next_scope = root_id.map(|root_id| {
+        build_next_scope(root_id, &all_tickets, &all_edges, &blockers)
+    });
+    let tickets = filtered_tickets(all_tickets, args.filter.as_deref());
     let state_index = build_state_index(store);
 
-    let mut candidates = candidate_tickets(&tickets, &blockers);
+    let mut candidates = candidate_tickets(
+        &tickets,
+        &blockers,
+        next_scope.as_ref().map(|scope| &scope.remaining_blockers),
+    );
     let priority_map = read_priorities(&candidates);
     let dependee_count = dependee_counts(&all_edges);
     sort_candidates(
@@ -56,7 +81,7 @@ pub(super) fn run(
     let limited_candidates = limit_candidates(candidates, args.limit);
     let dependency_count = dependency_counts(&all_edges);
 
-    Ok(json!({
+    let mut payload = json!({
         "command": "next",
         "status": "ok",
         "count": limited_candidates.len(),
@@ -68,7 +93,132 @@ pub(super) fn run(
         ),
         "excluded_by_board": excluded_by_board,
         "warnings": warnings(board_snap.as_ref()),
+    });
+
+    if let Some(scope) = next_scope {
+        let obj = payload
+            .as_object_mut()
+            .expect("next payload should be a JSON object");
+        obj.insert("root".to_string(), scope.root);
+        obj.insert(
+            "reachable_dependents".to_string(),
+            json!(scope.reachable_dependents),
+        );
+        obj.insert(
+            "blocked_dependents".to_string(),
+            json!(scope.blocked_dependents),
+        );
+        obj.insert(
+            "remaining_blocker_count".to_string(),
+            json!(scope.remaining_blockers.len()),
+        );
+    }
+
+    Ok(payload)
+}
+
+pub(super) fn run_unblocked_by(
+    args: UnblockedByArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    let root_id = resolve_uuid_prefix(&args.id, store)?;
+    let tickets = store.list(None, None, None)?;
+    let all_edges = store.list_all_edges()?;
+    let mut satisfied_ids = done_ticket_ids(&tickets);
+    satisfied_ids.insert(root_id);
+    let blockers = unresolved_blockers(&all_edges, &satisfied_ids);
+    let state_index = build_state_index(store);
+    let dependent_ids = reverse_dependents(root_id, &all_edges);
+
+    let mut candidates =
+        candidate_tickets(&tickets, &blockers, Some(&dependent_ids));
+    let priority_map = read_priorities(&candidates);
+    let dependee_count = dependee_counts(&all_edges);
+    sort_candidates(
+        &mut candidates,
+        &state_index,
+        &priority_map,
+        &dependee_count,
+    );
+
+    let dependency_count = dependency_counts(&all_edges);
+    let mut still_blocked = eligible_tickets_in_scope(&tickets, Some(&dependent_ids))
+        .into_iter()
+        .filter(|ticket| {
+            blockers
+                .get(&ticket.id)
+                .is_some_and(|remaining| !remaining.is_empty())
+        })
+        .collect::<Vec<_>>();
+    sort_candidates(
+        &mut still_blocked,
+        &state_index,
+        &priority_map,
+        &dependee_count,
+    );
+
+    Ok(json!({
+        "command": "unblocked_by",
+        "status": "ok",
+        "root": root_summary(root_id, &tickets),
+        "reachable_dependents": dependent_ids.len(),
+        "blocked_dependents": still_blocked.len(),
+        "count": candidates.len(),
+        "items": build_unblocked_items(
+            &candidates,
+            &priority_map,
+            &dependency_count,
+            &dependee_count,
+            &blockers,
+        ),
+        "still_blocked_items": build_unblocked_items(
+            &still_blocked,
+            &priority_map,
+            &dependency_count,
+            &dependee_count,
+            &blockers,
+        ),
     }))
+}
+
+fn root_summary(
+    root_id: Uuid,
+    tickets: &[IndexedTicket],
+) -> Value {
+    let root_ticket = tickets.iter().find(|ticket| ticket.id == root_id);
+
+    json!({
+        "id": root_id,
+        "title": root_ticket.and_then(|ticket| ticket.title.clone()),
+        "state": root_ticket.and_then(|ticket| ticket.state.clone()),
+    })
+}
+
+fn build_next_scope(
+    root_id: Uuid,
+    tickets: &[IndexedTicket],
+    all_edges: &[EdgeRecord],
+    blockers: &HashMap<Uuid, Vec<Uuid>>,
+) -> NextScope {
+    let dependent_ids = reverse_dependents(root_id, all_edges);
+    let blocked_dependents = dependent_ids
+        .iter()
+        .filter(|ticket_id| {
+            blockers
+                .get(ticket_id)
+                .is_some_and(|remaining| !remaining.is_empty())
+        })
+        .count();
+
+    NextScope {
+        root: root_summary(root_id, tickets),
+        reachable_dependents: dependent_ids.len(),
+        blocked_dependents,
+        remaining_blockers: remaining_blockers_for_dependents(
+            &dependent_ids,
+            blockers,
+        ),
+    }
 }
 
 fn filtered_tickets(
@@ -131,24 +281,80 @@ fn build_state_index(store: &TicketStore) -> HashMap<String, usize> {
 fn candidate_tickets<'a>(
     tickets: &'a [IndexedTicket],
     blockers: &HashMap<Uuid, Vec<Uuid>>,
+    scope: Option<&HashSet<Uuid>>,
 ) -> Vec<&'a IndexedTicket> {
-    tickets
-        .iter()
-        .filter(|ticket| {
-            ticket
-                .state
-                .as_deref()
-                .map(|state| {
-                    !DONE_STATES.contains(&state)
-                        && !PAUSED_STATES.contains(&state)
-                })
-                .unwrap_or(true)
-        })
+    eligible_tickets_in_scope(tickets, scope)
+        .into_iter()
         .filter(|ticket| {
             blockers
                 .get(&ticket.id)
                 .map_or(true, |deps| deps.is_empty())
         })
+        .collect()
+}
+
+fn eligible_tickets_in_scope<'a>(
+    tickets: &'a [IndexedTicket],
+    scope: Option<&HashSet<Uuid>>,
+) -> Vec<&'a IndexedTicket> {
+    tickets
+        .iter()
+        .filter(|ticket| {
+            scope.map_or(true, |ids| ids.contains(&ticket.id))
+        })
+        .filter(|ticket| is_candidate_state(ticket))
+        .collect()
+}
+
+fn is_candidate_state(ticket: &IndexedTicket) -> bool {
+    ticket
+        .state
+        .as_deref()
+        .map(|state| {
+            !DONE_STATES.contains(&state) && !PAUSED_STATES.contains(&state)
+        })
+        .unwrap_or(true)
+}
+
+fn reverse_dependents(
+    root_id: Uuid,
+    all_edges: &[EdgeRecord],
+) -> HashSet<Uuid> {
+    let mut reverse_map: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+    for edge in all_edges {
+        if edge.kind == "depends_on" {
+            reverse_map.entry(edge.to).or_default().push(edge.from);
+        }
+    }
+
+    let mut visited = HashSet::new();
+    let mut dependents = HashSet::new();
+    let mut queue = VecDeque::from([root_id]);
+
+    while let Some(current) = queue.pop_front() {
+        if !visited.insert(current) {
+            continue;
+        }
+
+        for dependent in reverse_map.get(&current).into_iter().flatten() {
+            if dependents.insert(*dependent) {
+                queue.push_back(*dependent);
+            }
+        }
+    }
+
+    dependents.remove(&root_id);
+    dependents
+}
+
+fn remaining_blockers_for_dependents(
+    dependent_ids: &HashSet<Uuid>,
+    blockers: &HashMap<Uuid, Vec<Uuid>>,
+) -> HashSet<Uuid> {
+    dependent_ids
+        .iter()
+        .flat_map(|ticket_id| blockers.get(ticket_id).into_iter().flatten())
+        .copied()
         .collect()
 }
 
@@ -345,6 +551,42 @@ fn build_items(
         .collect()
 }
 
+fn build_unblocked_items(
+    candidates: &[&IndexedTicket],
+    priority_map: &HashMap<Uuid, String>,
+    dependency_count: &HashMap<Uuid, usize>,
+    dependee_count: &HashMap<Uuid, usize>,
+    blockers: &HashMap<Uuid, Vec<Uuid>>,
+) -> Vec<Value> {
+    candidates
+        .iter()
+        .enumerate()
+        .map(|(rank, ticket)| {
+            let priority = priority_map
+                .get(&ticket.id)
+                .cloned()
+                .unwrap_or_else(|| "none".to_string());
+            let remaining_blockers = blockers
+                .get(&ticket.id)
+                .cloned()
+                .unwrap_or_default();
+            json!({
+                "rank": rank + 1,
+                "id": ticket.id,
+                "title": ticket.title,
+                "state": ticket.state,
+                "type": ticket.type_id,
+                "priority": priority,
+                "dependency_count": dependency_count.get(&ticket.id).copied().unwrap_or(0),
+                "remaining_blocker_count": remaining_blockers.len(),
+                "remaining_blockers": remaining_blockers,
+                "dependees": dependee_count.get(&ticket.id).copied().unwrap_or(0),
+                "created_at": ticket.created_at.to_rfc3339(),
+            })
+        })
+        .collect()
+}
+
 fn warnings(board_snap: Option<&BoardSnapshot>) -> Vec<String> {
     let Some(snapshot) = board_snap else {
         return Vec::new();
@@ -489,5 +731,40 @@ mod tests {
 
         assert_eq!(candidates[0].id, alpha.id);
         assert_eq!(candidates[1].id, beta.id);
+    }
+
+    #[test]
+    fn reverse_dependents_collects_transitive_dependents() {
+        let root = Uuid::new_v4();
+        let direct = Uuid::new_v4();
+        let transitive = Uuid::new_v4();
+        let unrelated = Uuid::new_v4();
+        let now = Utc.with_ymd_and_hms(2026, 5, 22, 10, 0, 0).unwrap();
+        let edges = vec![
+            EdgeRecord {
+                from: direct,
+                to: root,
+                kind: "depends_on".to_string(),
+                created_at: now,
+            },
+            EdgeRecord {
+                from: transitive,
+                to: direct,
+                kind: "depends_on".to_string(),
+                created_at: now,
+            },
+            EdgeRecord {
+                from: unrelated,
+                to: Uuid::new_v4(),
+                kind: "depends_on".to_string(),
+                created_at: now,
+            },
+        ];
+
+        let dependents = reverse_dependents(root, &edges);
+
+        assert!(dependents.contains(&direct));
+        assert!(dependents.contains(&transitive));
+        assert!(!dependents.contains(&unrelated));
     }
 }

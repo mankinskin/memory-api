@@ -26,6 +26,7 @@ use crate::cli::{
     ScanArgs,
     ServeCliArgs,
     StatusArgs,
+    UnblockedByArgs,
     WatchArgs,
 };
 
@@ -239,6 +240,13 @@ pub(crate) fn cmd_next(
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
     next::run(args, store)
+}
+
+pub(crate) fn cmd_unblocked_by(
+    args: UnblockedByArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    next::run_unblocked_by(args, store)
 }
 
 pub(crate) fn cmd_health(

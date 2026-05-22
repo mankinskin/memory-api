@@ -425,6 +425,223 @@ fn next_text_output_uses_pretty_card_format() {
 }
 
 #[test]
+fn next_with_root_returns_actionable_remaining_blockers() {
+    let s = Sandbox::new();
+    assert_eq!(s.ticket_json(&["init"])["status"], "ok");
+    let root = create_ticket(&s, "Shared prerequisite");
+    let blocked_dependent = create_ticket(&s, "Reachable blocked dependent");
+    let actionable_blocker = create_ticket(&s, "Actionable blocker");
+    let blocked_blocker = create_ticket(&s, "Blocked blocker");
+    let nested_prerequisite = create_ticket(&s, "Nested prerequisite");
+    let unrelated = create_ticket(&s, "Unrelated actionable work");
+
+    for (from, to) in [
+        (&blocked_dependent, &root),
+        (&blocked_dependent, &actionable_blocker),
+        (&blocked_dependent, &blocked_blocker),
+        (&blocked_blocker, &nested_prerequisite),
+    ] {
+        let linked = s.ticket_json(&[
+            "link",
+            "--from",
+            from,
+            "--to",
+            to,
+            "--kind",
+            "depends_on",
+        ]);
+        assert_eq!(linked["status"], "ok");
+    }
+
+    let next = s.ticket_json(&["next", &root]);
+    assert_eq!(next["status"], "ok");
+    assert_eq!(next["root"]["id"], root.as_str());
+    assert_eq!(next["reachable_dependents"], 1);
+    assert_eq!(next["blocked_dependents"], 1);
+    assert_eq!(next["remaining_blocker_count"], 2);
+    assert_eq!(next["count"], 1);
+
+    let items = next["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["id"], actionable_blocker.as_str());
+    assert_ne!(items[0]["id"], blocked_dependent.as_str());
+    assert_ne!(items[0]["id"], blocked_blocker.as_str());
+    assert_ne!(items[0]["id"], nested_prerequisite.as_str());
+    assert_ne!(items[0]["id"], unrelated.as_str());
+}
+
+#[test]
+fn next_with_root_text_output_shows_root_scope() {
+    let s = Sandbox::new();
+    assert_eq!(s.ticket_json(&["init"])["status"], "ok");
+    let root = create_ticket(&s, "Completed prerequisite");
+    let blocker = create_ticket(&s, "Scoped blocker");
+    let dependent = create_ticket(&s, "Blocked dependent");
+
+    for to in [&root, &blocker] {
+        let linked = s.ticket_json(&[
+            "link",
+            "--from",
+            &dependent,
+            "--to",
+            to,
+            "--kind",
+            "depends_on",
+        ]);
+        assert_eq!(linked["status"], "ok");
+    }
+
+    let out = Command::new(TICKET)
+        .arg("--index-root")
+        .arg(&s.index_root)
+        .args(["next", &root])
+        .output()
+        .expect("failed to run ticket next with root scope");
+
+    assert!(
+        out.status.success(),
+        "next with root should succeed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+
+    let stdout =
+        String::from_utf8(out.stdout).expect("next stdout should be UTF-8");
+    let short_ticket = &blocker[..8];
+
+    assert!(stdout.contains("next ok"));
+    assert!(stdout.contains("[root]"));
+    assert!(stdout.contains(&format!("id: {root}")));
+    assert!(stdout.contains("reachable_dependents: 1"));
+    assert!(stdout.contains("blocked_dependents: 1"));
+    assert!(stdout.contains("remaining_blocker_count: 1"));
+    assert!(stdout.contains("Next Up:"));
+    assert!(stdout.contains(&format!("#1  {short_ticket}  Scoped blocker")));
+    assert!(stdout.contains(&format!("ticket_id: {blocker}")));
+    assert!(!stdout.contains("[items]"));
+}
+
+#[test]
+fn unblocked_by_returns_only_actionable_reverse_dependents() {
+    let s = Sandbox::new();
+    assert_eq!(s.ticket_json(&["init"])["status"], "ok");
+    let root = create_ticket(&s, "Shared prerequisite");
+    let actionable = create_ticket(&s, "Direct dependent");
+    let extra_blocker = create_ticket(&s, "Other blocker");
+    let still_blocked = create_ticket(&s, "Still blocked dependent");
+    let transitive = create_ticket(&s, "Transitive dependent");
+
+    for (from, to) in [
+        (&actionable, &root),
+        (&still_blocked, &root),
+        (&still_blocked, &extra_blocker),
+        (&transitive, &actionable),
+    ] {
+        let linked = s.ticket_json(&[
+            "link",
+            "--from",
+            from,
+            "--to",
+            to,
+            "--kind",
+            "depends_on",
+        ]);
+        assert_eq!(linked["status"], "ok");
+    }
+
+    let unblocked = s.ticket_json(&["unblocked-by", &root]);
+    assert_eq!(unblocked["status"], "ok");
+    assert_eq!(unblocked["root"]["id"], root.as_str());
+    assert_eq!(unblocked["reachable_dependents"], 3);
+    assert_eq!(unblocked["blocked_dependents"], 2);
+    assert_eq!(unblocked["count"], 1);
+
+    let items = unblocked["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["id"], actionable.as_str());
+    assert_eq!(items[0]["remaining_blocker_count"], 0);
+
+    let still_blocked_items =
+        unblocked["still_blocked_items"].as_array().unwrap();
+    assert_eq!(still_blocked_items.len(), 2);
+    assert!(still_blocked_items.iter().any(|item| {
+        item["id"] == still_blocked.as_str()
+            && item["remaining_blocker_count"] == 1
+    }));
+    assert!(still_blocked_items.iter().any(|item| {
+        item["id"] == transitive.as_str()
+            && item["remaining_blocker_count"] == 1
+    }));
+}
+
+#[test]
+fn unblocked_by_text_output_uses_pretty_card_format() {
+    let s = Sandbox::new();
+    assert_eq!(s.ticket_json(&["init"])["status"], "ok");
+    let root = create_ticket(&s, "Completed prerequisite");
+    let actionable = create_ticket(&s, "Unlocked dependent");
+    let extra_blocker = create_ticket(&s, "Still-open blocker");
+    let blocked = create_ticket(&s, "Still blocked dependent");
+
+    let linked = s.ticket_json(&[
+        "link",
+        "--from",
+        &actionable,
+        "--to",
+        &root,
+        "--kind",
+        "depends_on",
+    ]);
+    assert_eq!(linked["status"], "ok");
+
+    for to in [&root, &extra_blocker] {
+        let linked = s.ticket_json(&[
+            "link",
+            "--from",
+            &blocked,
+            "--to",
+            to,
+            "--kind",
+            "depends_on",
+        ]);
+        assert_eq!(linked["status"], "ok");
+    }
+
+    let out = Command::new(TICKET)
+        .arg("--index-root")
+        .arg(&s.index_root)
+        .args(["unblocked-by", &root])
+        .output()
+        .expect("failed to run ticket unblocked-by");
+
+    assert!(
+        out.status.success(),
+        "unblocked-by should succeed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+
+    let stdout = String::from_utf8(out.stdout)
+        .expect("unblocked-by stdout should be valid UTF-8");
+    let short_ticket = &actionable[..8];
+
+    assert!(stdout.contains("unblocked_by ok"));
+    assert!(stdout.contains("count: 1"));
+    assert!(stdout.contains("[root]"));
+    assert!(stdout.contains(&format!("id: {root}")));
+    assert!(stdout.contains("Next Up:"));
+    assert!(stdout.contains(&format!(
+        "#1  {short_ticket}  Unlocked dependent"
+    )));
+    assert!(stdout.contains(&format!("ticket_id: {actionable}")));
+    assert!(stdout.contains("Still Blocked:"));
+    assert!(stdout.contains(&blocked[..8]));
+    assert!(stdout.contains("remaining_blockers: 1"));
+    assert!(!stdout.contains("[still_blocked_items]"));
+    assert!(!stdout.contains("[items]"));
+}
+
+#[test]
 fn next_and_board_prefer_newer_tickets_before_older_ones() {
     let s = Sandbox::new();
     let older = create_ticket(&s, "Alpha older candidate");

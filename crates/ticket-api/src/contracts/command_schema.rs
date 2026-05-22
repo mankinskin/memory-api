@@ -30,6 +30,7 @@ pub enum TicketCommand {
     Revert,
     FinalizeMerge,
     ReadyOverview,
+    UnblockedBy,
     Batch,
     // ── agent-protocol task_ names ────────────────────────────────────────────
     TaskCreate,
@@ -76,6 +77,7 @@ impl TicketCommand {
             "revert",
             "finalize_merge",
             "ready_overview",
+            "unblocked_by",
             "batch",
             // task_ names (agent protocol canonical forms)
             "task_create",
