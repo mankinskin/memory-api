@@ -54,8 +54,20 @@ fn resolve_index_root_from(
 pub(super) fn resolve_workspace_root(
     command: &RuleCommandCli,
     index_root: &Path,
+    workspace_root_override: Option<&Path>,
 ) -> Option<PathBuf> {
-    command_config_path(command)
+    workspace_root_override
+        .map(|path| {
+            let store_root = memory_api::workspace::resolve_store_root_from(
+                path,
+                ".rule",
+            );
+            memory_api::workspace::resolve_workspace_root_from_store_root(
+                &store_root,
+                ".rule",
+            )
+        })
+        .or_else(|| command_config_path(command))
         .or_else(|| rule_api::workspace_root_for_index_root(index_root))
         .or_else(|| {
             let cwd = memory_api::workspace::working_dir()?;

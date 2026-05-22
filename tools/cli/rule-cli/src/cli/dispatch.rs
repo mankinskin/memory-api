@@ -66,6 +66,14 @@ pub(super) fn dispatch(
     command: RuleCommandCli,
     index_root: &Path,
 ) -> Result<Value, CliRunError> {
+    dispatch_with_workspace_root(command, index_root, None)
+}
+
+pub(super) fn dispatch_with_workspace_root(
+    command: RuleCommandCli,
+    index_root: &Path,
+    workspace_root_override: Option<&Path>,
+) -> Result<Value, CliRunError> {
     if matches!(command, RuleCommandCli::Init) {
         let store = RuleStore::init(index_root)?;
         return Ok(json!({
@@ -78,7 +86,13 @@ pub(super) fn dispatch(
 
     let mut store = RuleStore::open(index_root)?;
     if command_uses_descendant_scan_roots(&command) {
-        if let Some(workspace_root) = resolve_workspace_root(&command, index_root) {
+        if let Some(workspace_root) =
+            resolve_workspace_root(
+                &command,
+                index_root,
+                workspace_root_override,
+            )
+        {
             let mut known_scan_roots = store
                 .entity_store()
                 .list_scan_roots()?

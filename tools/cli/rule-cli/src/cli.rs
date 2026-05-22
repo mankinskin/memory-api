@@ -38,7 +38,11 @@ pub fn run(cli: RuleCli) -> Result<CliOutput, CliRunError> {
         cli.index_root.as_deref(),
         cli.workspace_root.as_deref(),
     );
-    let payload = dispatch::dispatch(cli.command, &index_root)?;
+    let payload = dispatch::dispatch_with_workspace_root(
+        cli.command,
+        &index_root,
+        cli.workspace_root.as_deref(),
+    )?;
     if cli.json {
         Ok(CliOutput::Json(payload))
     } else {

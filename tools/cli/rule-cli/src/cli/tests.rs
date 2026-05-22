@@ -141,6 +141,53 @@ fn parse_global_workspace_root() {
 }
 
 #[test]
+fn generate_target_respects_explicit_workspace_root_over_config_path() {
+    let (_dir, parent_index_root, child_index_root, _child_id) =
+        create_nested_rule_fixture();
+    let repo_root = parent_index_root.parent().unwrap().to_path_buf();
+    let child_workspace = child_index_root.parent().unwrap().to_path_buf();
+    let config_path = repo_root.join("rule-targets.yaml");
+
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: root-only\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    output_path: generated/AGENTS.md\n",
+            "    nodes:\n",
+            "      - name: opening\n",
+            "        section: opening\n",
+        ),
+    )
+    .unwrap();
+
+    let result = run(RuleCli {
+        json: true,
+        index_root: None,
+        workspace_root: Some(child_workspace),
+        command: RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_path,
+            target: "root-only".to_string(),
+            dry_run: true,
+            check: false,
+        }),
+    })
+    .unwrap();
+
+    match result {
+        CliOutput::Json(payload) => {
+            assert_eq!(payload["count"], 0);
+            assert_eq!(payload["target"], "root-only");
+        },
+        CliOutput::Text(text) => {
+            panic!("expected json output, got text: {text}");
+        },
+    }
+}
+
+#[test]
 fn delete_command_removes_rule_by_slug() {
     let dir = tempdir().unwrap();
     let mut store = RuleStore::init(dir.path()).unwrap();

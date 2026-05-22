@@ -74,6 +74,7 @@ fn command_uses_descendant_scan_roots(command: &SpecCommandCli) -> bool {
             | SpecCommandCli::Tree(_)
             | SpecCommandCli::Refs(_)
             | SpecCommandCli::Health(_)
+            | SpecCommandCli::Scan(_)
     )
 }
 
@@ -350,6 +351,36 @@ mod tests {
         assert_eq!(payload["command"], "search");
         assert_eq!(payload["count"], 1);
         assert_eq!(payload["items"][0]["id"], spec_id);
+    }
+
+    #[test]
+    fn dispatch_scan_registers_child_spec_from_explicit_workspace_root() {
+        let (_dir, repo, _child, spec_id) = create_nested_spec_fixture();
+
+        let payload = dispatch(
+            SpecCommandCli::Scan(crate::cli::ScanArgs { force: false }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(payload["command"], "scan");
+
+        let root_store = SpecStore::open(&repo.join(".spec")).unwrap();
+        let search_payload = dispatch_read_only(
+            SpecCommandCli::Search(crate::cli::SearchArgs {
+                query: "Nested spec".to_string(),
+                limit: 10,
+            }),
+            &root_store,
+            &repo,
+        )
+        .unwrap();
+
+        assert_eq!(search_payload["command"], "search");
+        assert_eq!(search_payload["count"], 1);
+        assert_eq!(search_payload["items"][0]["id"], spec_id);
     }
 
     #[test]

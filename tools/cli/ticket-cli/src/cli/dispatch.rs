@@ -232,6 +232,7 @@ fn command_uses_descendant_scan_roots(command: &TicketCommandCli) -> bool {
         TicketCommandCli::Get(_)
             | TicketCommandCli::Describe(_)
             | TicketCommandCli::List(_)
+            | TicketCommandCli::Scan(_)
             | TicketCommandCli::Leases
             | TicketCommandCli::Search(_)
             | TicketCommandCli::Query(_)
@@ -453,6 +454,7 @@ mod tests {
     use crate::cli::{
         IdArgs,
         ListArgs,
+        ScanArgs,
         TextArgs,
     };
     use tempfile::tempdir;
@@ -605,6 +607,40 @@ mod tests {
         assert_eq!(payload["command"], "list");
         assert_eq!(payload["count"], 1);
         assert_eq!(payload["items"][0]["id"], ticket_id);
+    }
+
+    #[test]
+    fn dispatch_scan_registers_child_ticket_from_explicit_workspace_root() {
+        let (_dir, repo, _child, ticket_id) = create_nested_ticket_fixture();
+
+        let payload = dispatch(
+            TicketCommandCli::Scan(ScanArgs {
+                reindex: false,
+                force: false,
+            }),
+            None,
+            Some(&repo),
+            None,
+            true,
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(payload["command"], "scan");
+
+        let root_store = TicketStore::open(&repo.join(".ticket")).unwrap();
+        let search_payload = dispatch_store_command(
+            TicketCommandCli::Search(TextArgs {
+                expression: "Nested workspace ticket".to_string(),
+                limit: 10,
+            }),
+            root_store,
+        )
+        .unwrap();
+
+        assert_eq!(search_payload["command"], "search");
+        assert_eq!(search_payload["count"], 1);
+        assert_eq!(search_payload["results"][0]["id"], ticket_id);
     }
 
     #[test]
