@@ -237,6 +237,141 @@ fn load_render_target_config_rejects_duplicate_names_across_tree_targets() {
 }
 
 #[test]
+fn load_render_target_config_imports_child_targets_with_source_config_paths() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo_root = tmp.path().join("repo");
+    let child_dir = repo_root.join("memory-viewers");
+    fs::create_dir_all(&child_dir).unwrap();
+
+    let child_path = child_dir.join("rule-targets.yaml");
+    fs::write(
+        &child_path,
+        concat!(
+            "files:\n",
+            "  - name: AGENTS.md\n",
+            "    target:\n",
+            "      name: memory-viewers-agents\n",
+            "      repo_scope: memory-viewers\n",
+            "      file_kind: AGENTS\n",
+            "      path_scope: AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+
+    let root_path = repo_root.join("rule-targets.yaml");
+    fs::write(
+        &root_path,
+        concat!(
+            "imports:\n",
+            "  - memory-viewers/rule-targets.yaml\n",
+            "files:\n",
+            "  - name: AGENTS.md\n",
+            "    target:\n",
+            "      name: context-engine-agents\n",
+            "      repo_scope: context-engine\n",
+            "      file_kind: AGENTS\n",
+            "      path_scope: AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+
+    let config = load_render_target_config(&root_path).unwrap();
+    assert_eq!(config.targets.len(), 2);
+
+    let imported = render_target_by_name(&config, "memory-viewers-agents")
+        .unwrap();
+    assert_eq!(
+        imported.source_config_path.as_deref(),
+        Some(child_path.as_path())
+    );
+    assert_eq!(
+        resolve_render_target_output(&root_path, imported),
+        child_dir.join("AGENTS.md")
+    );
+
+    let local = render_target_by_name(&config, "context-engine-agents")
+        .unwrap();
+    assert_eq!(
+        local.source_config_path.as_deref(),
+        Some(root_path.as_path())
+    );
+    assert_eq!(
+        resolve_render_target_output(&root_path, local),
+        repo_root.join("AGENTS.md")
+    );
+}
+
+#[test]
+fn load_render_target_config_rejects_duplicate_names_across_imports() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo_root = tmp.path().join("repo");
+    let child_dir = repo_root.join("memory-viewers");
+    fs::create_dir_all(&child_dir).unwrap();
+
+    fs::write(
+        child_dir.join("rule-targets.yaml"),
+        concat!(
+            "targets:\n",
+            "  - name: dup\n",
+            "    repo_scope: memory-viewers\n",
+            "    file_kind: AGENTS\n",
+            "    output_path: AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+
+    let root_path = repo_root.join("rule-targets.yaml");
+    fs::write(
+        &root_path,
+        concat!(
+            "imports:\n",
+            "  - memory-viewers/rule-targets.yaml\n",
+            "targets:\n",
+            "  - name: dup\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    output_path: AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+
+    let err = load_render_target_config(&root_path).unwrap_err();
+    assert!(
+        matches!(err, TargetConfigError::DuplicateName(name) if name == "dup")
+    );
+}
+
+#[test]
+fn load_render_target_config_rejects_import_cycles() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo_root = tmp.path().join("repo");
+    let child_dir = repo_root.join("memory-viewers");
+    fs::create_dir_all(&child_dir).unwrap();
+
+    let root_path = repo_root.join("rule-targets.yaml");
+    let child_path = child_dir.join("rule-targets.yaml");
+    fs::write(
+        &root_path,
+        concat!(
+            "imports:\n",
+            "  - memory-viewers/rule-targets.yaml\n",
+        ),
+    )
+    .unwrap();
+    fs::write(
+        &child_path,
+        concat!(
+            "imports:\n",
+            "  - ../rule-targets.yaml\n",
+        ),
+    )
+    .unwrap();
+
+    let err = load_render_target_config(&root_path).unwrap_err();
+    assert!(matches!(err, TargetConfigError::ImportCycle { .. }));
+}
+
+#[test]
 fn load_render_target_config_supports_legacy_toml() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("rule-targets.toml");
@@ -351,6 +486,7 @@ fn resolve_render_target_output_uses_config_parent_for_relative_paths() {
         state: None,
         nodes: Vec::new(),
         output_path: ".github/generated/AGENTS.md".to_string(),
+        source_config_path: None,
     };
 
     assert_eq!(
@@ -440,6 +576,7 @@ fn collect_target_rules_traverses_nodes_in_outline_order() {
             },
         ],
         output_path: "AGENTS.md".to_string(),
+        source_config_path: None,
     };
 
     let rules = collect_target_rules(&store, &target).unwrap();
@@ -504,6 +641,7 @@ fn collect_target_rules_rejects_duplicate_matches_across_nodes() {
             },
         ],
         output_path: "AGENTS.md".to_string(),
+        source_config_path: None,
     };
 
     let err = collect_target_rules(&store, &target).unwrap_err();
@@ -558,6 +696,7 @@ fn explain_target_reports_node_matches_with_effective_filters() {
             }],
         }],
         output_path: "AGENTS.md".to_string(),
+        source_config_path: None,
     };
 
     let explained = explain_target(&store, &target).unwrap();

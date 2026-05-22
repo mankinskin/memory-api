@@ -21,7 +21,6 @@ Global options:
 - `--json`: emit machine-readable JSON output.
 - `--request-id <id>`: include a request id in JSON envelopes.
 - `--index-root <path>`: override the `.ticket` index root.
-- `--workspace-root <path>`: target a nested workspace repo root and normalize it to the owning `.ticket` store.
 - `--schema-dir <path>`: load additional ticket schema files.
 
 ## Usage
@@ -33,7 +32,7 @@ cargo build -p ticket-cli --bin ticket
 cargo run -p ticket-cli --bin ticket -- --help
 ```
 
-`ticket` discovers the nearest `.ticket` workspace by walking up from the current directory. Use `--index-root` when you need to point at another ticket store, or `--workspace-root` when you want to target a nested workspace repo root from an ancestor checkout.
+`ticket` discovers the nearest `.ticket` workspace by walking up from the current directory. Use `--index-root` when you need to point at another ticket store.
 
 ## Examples
 
@@ -46,9 +45,6 @@ ticket update --id <ticket-id> --to-state in-progress
 
 # Inspect dependency context before starting work
 ticket subgraph <ticket-id>
-
-# Target a nested workspace from the repo root
-ticket --workspace-root memory-viewers/memory-api get <ticket-id>
 
 # Serve the HTTP API locally
 ticket serve --host 127.0.0.1 --port 4000

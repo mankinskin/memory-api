@@ -18,12 +18,6 @@ Global options:
 
 - `--json`: return machine-readable output.
 - `--index-root <path>`: override the `.spec` index root.
-- `--workspace-root <path>`: target a nested workspace repo root and normalize it to the owning `.spec` store.
-
-Command-local path overrides:
-
-- `spec refs ... validate --code-workspace-root <path>`: override where code-reference file paths are resolved.
-- `spec bootstrap ... --source-workspace-root <path>`: override the workspace used when computing relative code-reference paths.
 
 ## Usage
 
@@ -34,7 +28,7 @@ cargo build -p spec-cli --bin spec
 cargo run -p spec-cli --bin spec -- --help
 ```
 
-`spec` finds the nearest `.spec` workspace by walking up from the current directory. Use `--index-root` when you want to point at a different store, or `--workspace-root` when you want to target a nested workspace repo root from an ancestor checkout.
+`spec` finds the nearest `.spec` workspace by walking up from the current directory. Use `--index-root` when you want to point at a different store.
 
 ## Examples
 
@@ -47,12 +41,6 @@ spec search "ticket board"
 
 # Validate code references on one spec
 spec refs <spec-id> validate
-
-# Validate a nested workspace spec from an ancestor repo
-spec --workspace-root memory-viewers/memory-api refs <spec-id> validate
-
-# Override code-reference resolution independently from store selection
-spec --workspace-root memory-viewers/memory-api refs <spec-id> validate --code-workspace-root .
 
 # Show the current section tree
 spec tree <spec-id>

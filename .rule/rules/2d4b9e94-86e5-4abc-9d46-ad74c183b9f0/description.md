@@ -1,0 +1,4 @@
+- If public behavior or docs changed, update the docs and run doc validation workflows.
+- When dedicated test, doc, or cross-store-link tooling is missing or partial, use the strongest available command or manual check and call out the limitation explicitly in the status summary and spec traceability.
+- Follow `.github/hooks/` reminders when they fire.
+- Scratch notes belong in temporary files only; do not commit ephemeral notes.

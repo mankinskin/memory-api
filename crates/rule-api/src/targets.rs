@@ -37,6 +37,8 @@ pub struct RenderTargetConfig {
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 struct RawRenderTargetConfig {
     #[serde(default)]
+    imports: Vec<PathBuf>,
+    #[serde(default)]
     targets: Vec<RenderTarget>,
     #[serde(default)]
     folders: Vec<RenderTargetFolder>,
@@ -148,6 +150,8 @@ pub struct RenderTarget {
     #[serde(default)]
     pub nodes: Vec<RenderTargetNode>,
     pub output_path: String,
+    #[serde(skip, default)]
+    pub source_config_path: Option<PathBuf>,
 }
 
 impl RenderTargetFilter {
@@ -207,6 +211,21 @@ impl RenderTargetNode {
 }
 
 impl RenderTarget {
+    pub fn config_path<'a>(
+        &'a self,
+        fallback: &'a Path,
+    ) -> &'a Path {
+        self.source_config_path.as_deref().unwrap_or(fallback)
+    }
+
+    fn with_source_config_path(
+        mut self,
+        config_path: &Path,
+    ) -> Self {
+        self.source_config_path = Some(config_path.to_path_buf());
+        self
+    }
+
     pub fn flat_filter(&self) -> RenderTargetFilter {
         RenderTargetFilter {
             repo_scope: Some(self.repo_scope.clone()),
@@ -236,16 +255,23 @@ impl RenderTarget {
 }
 
 impl RawRenderTargetConfig {
-    fn into_render_target_config(self) -> RenderTargetConfig {
-        let mut targets = self.targets;
+    fn into_render_targets(
+        self,
+        config_path: &Path,
+    ) -> Vec<RenderTarget> {
+        let mut targets = self
+            .targets
+            .into_iter()
+            .map(|target| target.with_source_config_path(config_path))
+            .collect::<Vec<_>>();
         let root = PathBuf::new();
 
-        push_tree_files(&root, self.files, &mut targets);
+        push_tree_files(&root, self.files, config_path, &mut targets);
         for folder in self.folders {
-            folder.collect_targets(&root, &mut targets);
+            folder.collect_targets(&root, config_path, &mut targets);
         }
 
-        RenderTargetConfig { targets }
+        targets
     }
 }
 
@@ -253,13 +279,14 @@ impl RenderTargetFolder {
     fn collect_targets(
         self,
         parent: &Path,
+        config_path: &Path,
         targets: &mut Vec<RenderTarget>,
     ) {
         let prefix = parent.join(self.name);
 
-        push_tree_files(&prefix, self.files, targets);
+        push_tree_files(&prefix, self.files, config_path, targets);
         for folder in self.folders {
-            folder.collect_targets(&prefix, targets);
+            folder.collect_targets(&prefix, config_path, targets);
         }
     }
 }
@@ -268,6 +295,7 @@ impl RenderTargetFile {
     fn into_render_target(
         self,
         parent: &Path,
+        config_path: &Path,
     ) -> RenderTarget {
         RenderTarget {
             name: self.target.name,
@@ -278,6 +306,7 @@ impl RenderTargetFile {
             state: self.target.state,
             nodes: self.target.nodes,
             output_path: tree_output_path(parent, &self.name),
+            source_config_path: Some(config_path.to_path_buf()),
         }
     }
 }
@@ -285,10 +314,11 @@ impl RenderTargetFile {
 fn push_tree_files(
     parent: &Path,
     files: Vec<RenderTargetFile>,
+    config_path: &Path,
     targets: &mut Vec<RenderTarget>,
 ) {
     for file in files {
-        targets.push(file.into_render_target(parent));
+        targets.push(file.into_render_target(parent, config_path));
     }
 }
 
@@ -299,6 +329,79 @@ fn tree_output_path(
     let mut path = parent.to_path_buf();
     path.push(name);
     path.to_string_lossy().replace('\\', "/")
+}
+
+fn parse_render_target_config(
+    path: &Path,
+) -> Result<RawRenderTargetConfig, TargetConfigError> {
+    let content =
+        fs::read_to_string(path).map_err(|source| TargetConfigError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("yaml" | "yml") =>
+            serde_yaml::from_str::<RawRenderTargetConfig>(&content)
+                .map_err(|source| TargetConfigError::ParseYaml {
+                    path: path.to_path_buf(),
+                    source,
+                }),
+        _ => toml::from_str::<RawRenderTargetConfig>(&content)
+            .map_err(|source| TargetConfigError::ParseToml {
+                path: path.to_path_buf(),
+                source,
+            }),
+    }
+}
+
+fn resolve_import_path(
+    config_path: &Path,
+    import: &Path,
+) -> PathBuf {
+    if import.is_absolute() {
+        import.to_path_buf()
+    } else {
+        config_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(import)
+    }
+}
+
+fn load_render_target_config_inner(
+    path: &Path,
+    loading: &mut Vec<PathBuf>,
+) -> Result<Vec<RenderTarget>, TargetConfigError> {
+    let canonical =
+        fs::canonicalize(path).map_err(|source| TargetConfigError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    if loading.contains(&canonical) {
+        return Err(TargetConfigError::ImportCycle {
+            path: path.to_path_buf(),
+        });
+    }
+
+    loading.push(canonical);
+    let result = (|| {
+        let raw = parse_render_target_config(path)?;
+        let mut targets = Vec::new();
+
+        for import in raw.imports.clone() {
+            let import_path = resolve_import_path(path, &import);
+            targets.extend(load_render_target_config_inner(
+                &import_path,
+                loading,
+            )?);
+        }
+
+        targets.extend(raw.into_render_targets(path));
+        Ok(targets)
+    })();
+    loading.pop();
+    result
 }
 
 pub fn collect_target_rules(
@@ -468,31 +571,16 @@ pub enum TargetConfigError {
     NotFound(String),
     #[error("duplicate render target name: {0}")]
     DuplicateName(String),
+    #[error("render target config import cycle detected at {path}")]
+    ImportCycle { path: PathBuf },
 }
 
 pub fn load_render_target_config(
     path: &Path
 ) -> Result<RenderTargetConfig, TargetConfigError> {
-    let content =
-        fs::read_to_string(path).map_err(|source| TargetConfigError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?;
-    let config = match path.extension().and_then(|extension| extension.to_str())
-    {
-        Some("yaml" | "yml") =>
-            serde_yaml::from_str::<RawRenderTargetConfig>(&content)
-                .map_err(|source| TargetConfigError::ParseYaml {
-                    path: path.to_path_buf(),
-                    source,
-                })?
-                .into_render_target_config(),
-        _ => toml::from_str::<RawRenderTargetConfig>(&content)
-            .map_err(|source| TargetConfigError::ParseToml {
-                path: path.to_path_buf(),
-                source,
-            })?
-            .into_render_target_config(),
+    let mut loading = Vec::new();
+    let config = RenderTargetConfig {
+        targets: load_render_target_config_inner(path, &mut loading)?,
     };
 
     let mut names = HashSet::new();
@@ -524,7 +612,8 @@ pub fn resolve_render_target_output(
     if output.is_absolute() {
         output
     } else {
-        config_path
+        target
+            .config_path(config_path)
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .join(output)
