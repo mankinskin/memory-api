@@ -21,6 +21,14 @@ Store discovery:
 - Set `TICKET_INDEX_ROOT` to point at a specific ticket store.
 - Otherwise the server resolves the nearest `.ticket` workspace from the current checkout.
 
+## Workflow notes
+
+`next_tickets` uses the same convergence-first ranking as `ticket next`. A prerequisite in an earlier workflow state can be promoted ahead of otherwise similar candidates when more advanced dependents are still waiting on it.
+
+Returned `next_tickets` items include the same explainability fields used by the CLI, including `dependees`, `transitive_reverse_dependents`, `affected_reverse_dependent_reach`, `max_affected_dependent_state`, and `dependency_state_gap`.
+
+`health_check` emits `dependency_convergence` findings with dependent and prerequisite ids, both states, and the reach or state-gap evidence needed for triage.
+
 ## Usage
 
 Run the server on stdio:
@@ -45,6 +53,7 @@ Example VS Code MCP configuration:
 
 ## Examples
 
-- Call `next_tickets` to ask for the next unblocked work item.
+- Call `next_tickets` to ask for the next unblocked work item and inspect why an earlier-state prerequisite was promoted.
+- Call `health_check` before review or automation to detect dependency-state inversions.
 - Call `subgraph` before implementation when a client needs the dependency context around one ticket.
 - Call `board_show` and `board_check_in` to coordinate active work without leaving the MCP client.

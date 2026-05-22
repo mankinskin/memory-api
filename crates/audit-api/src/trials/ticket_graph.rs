@@ -7,6 +7,7 @@ use serde_json::json;
 use ticket_api::{
     error::StorageError,
     storage::TicketStore,
+    workflow::WorkflowModel,
 };
 
 use crate::{
@@ -62,6 +63,12 @@ pub fn evaluate(repo_root: &Path) -> TicketGraphResult {
             return failed_result(err);
         },
     };
+    let workflow = match WorkflowModel::build(&store, tickets.clone(), edges.clone()) {
+        Ok(workflow) => workflow,
+        Err(err) => {
+            return failed_result(err);
+        },
+    };
 
     let mut dependency_counts = HashMap::new();
     let mut dependee_counts = HashMap::new();
@@ -73,7 +80,7 @@ pub fn evaluate(repo_root: &Path) -> TicketGraphResult {
     let mut tickets = tickets;
     tickets.sort_by(|left, right| left.path.cmp(&right.path));
 
-    let findings: Vec<AuditFinding> = tickets
+    let orphan_findings: Vec<AuditFinding> = tickets
         .into_iter()
         .filter_map(|ticket| {
             let dependency_count = dependency_counts.get(&ticket.id).copied().unwrap_or(0);
@@ -117,18 +124,103 @@ pub fn evaluate(repo_root: &Path) -> TicketGraphResult {
             })
         })
         .collect();
+    let mut convergence_findings = Vec::new();
+    let mut sorted_ticket_ids = workflow
+        .actionable_candidate_ids(None)
+        .into_iter()
+        .chain(workflow.eligible_candidate_ids(None))
+        .collect::<Vec<_>>();
+    sorted_ticket_ids.sort();
+    sorted_ticket_ids.dedup();
 
-    let orphan_count = findings.len();
+    for ticket_id in sorted_ticket_ids {
+        let Some(ticket) = workflow.ticket(&ticket_id) else {
+            continue;
+        };
+        let Some(issues) = workflow.dependency_state_inversions(&ticket_id) else {
+            continue;
+        };
+        let dependent_path = relative_ticket_path(repo_root, &ticket.path);
+        let dependent_title = ticket
+            .title
+            .clone()
+            .unwrap_or_else(|| ticket.id.to_string());
+
+        for issue in issues {
+            let prerequisite_path = workflow
+                .ticket(&issue.prerequisite_id)
+                .map(|prerequisite| {
+                    relative_ticket_path(repo_root, &prerequisite.path)
+                });
+            convergence_findings.push(AuditFinding {
+                id: format!(
+                    "ticket_graph:convergence:{}:{}",
+                    issue.dependent_id, issue.prerequisite_id
+                ),
+                category: "ticket_graph".to_string(),
+                severity: convergence_severity(issue.dependent_state.as_deref()),
+                summary: format!(
+                    "{} depends on {} while the prerequisite is in an earlier workflow state.",
+                    dependent_title,
+                    issue
+                        .prerequisite_title
+                        .clone()
+                        .unwrap_or_else(|| issue.prerequisite_id.to_string())
+                ),
+                path: Some(dependent_path.clone()),
+                line: None,
+                metric_name: "dependency_convergence_count".to_string(),
+                metric_value: json!(1),
+                threshold: Some(json!(0)),
+                instructions: vec![
+                    format!(
+                        "Advance {} before continuing work on {} when the dependency is still real.",
+                        prerequisite_path
+                            .clone()
+                            .unwrap_or_else(|| issue.prerequisite_id.to_string()),
+                        dependent_path
+                    ),
+                    "If the dependent moved ahead intentionally, document the exception or correct the ticket states so the dependency order is explicit.".to_string(),
+                ],
+                evidence: json!({
+                    "dependent_id": issue.dependent_id,
+                    "dependent_path": dependent_path,
+                    "dependent_title": issue.dependent_title,
+                    "dependent_state": issue.dependent_state,
+                    "prerequisite_id": issue.prerequisite_id,
+                    "prerequisite_path": prerequisite_path,
+                    "prerequisite_title": issue.prerequisite_title,
+                    "prerequisite_state": issue.prerequisite_state,
+                    "dependency_state_gap": issue.dependency_state_gap,
+                    "affected_reverse_dependent_reach": issue.affected_reverse_dependent_reach,
+                    "transitive_reverse_dependents": issue.transitive_reverse_dependents,
+                }),
+            });
+        }
+    }
+
+    let orphan_count = orphan_findings.len();
+    let convergence_count = convergence_findings.len();
+    let findings = orphan_findings
+        .into_iter()
+        .chain(convergence_findings)
+        .collect();
     TicketGraphResult {
         metric: CountMetric {
             status: TrialStatus::Collected,
             count: Some(orphan_count),
             details: Some(if orphan_count == 0 {
-                "all tickets participate in at least one depends_on relationship"
-                    .to_string()
+                if convergence_count == 0 {
+                    "all tickets participate in at least one depends_on relationship"
+                        .to_string()
+                } else {
+                    format!(
+                        "all tickets participate in at least one depends_on relationship; {convergence_count} dependency convergence finding(s) detected"
+                    )
+                }
             } else {
                 format!(
-                    "{orphan_count} ticket(s) have neither outgoing dependencies nor incoming dependees"
+                    "{orphan_count} ticket(s) have neither outgoing dependencies nor incoming dependees; {convergence_count} dependency convergence finding(s) detected"
                 )
             }),
         },
@@ -150,6 +242,13 @@ fn failed_result(err: StorageError) -> TicketGraphResult {
 }
 
 fn orphan_severity(state: Option<&str>) -> Severity {
+    match state {
+        Some("in-implementation") | Some("in-review") => Severity::High,
+        _ => Severity::Medium,
+    }
+}
+
+fn convergence_severity(state: Option<&str>) -> Severity {
     match state {
         Some("in-implementation") | Some("in-review") => Severity::High,
         _ => Severity::Medium,
@@ -289,5 +388,62 @@ mod tests {
         assert!(matches!(result.metric.status, TrialStatus::Unavailable));
         assert_eq!(result.metric.count, None);
         assert!(result.findings.is_empty());
+    }
+
+    #[test]
+    fn reports_dependency_convergence_findings() {
+        let repo = TestDir::new("audit-ticket-graph-convergence");
+        let store = TicketStore::init(repo.path()).expect("init ticket store");
+        let prerequisite = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("lagging prerequisite"),
+                Some("ready"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create prerequisite");
+        let dependent = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("advanced dependent"),
+                Some("in-review"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create dependent");
+
+        store
+            .add_edge(EdgeRecord {
+                from: dependent,
+                to: prerequisite,
+                kind: "depends_on".to_string(),
+                created_at: Utc::now(),
+            })
+            .expect("add edge");
+
+        let result = evaluate(repo.path());
+
+        assert!(matches!(result.metric.status, TrialStatus::Collected));
+        assert_eq!(result.metric.count, Some(0));
+        let convergence = result
+            .findings
+            .iter()
+            .find(|finding| finding.metric_name == "dependency_convergence_count")
+            .expect("convergence finding");
+        assert!(matches!(convergence.severity, Severity::High));
+        assert_eq!(
+            convergence.evidence["dependent_id"],
+            serde_json::json!(dependent)
+        );
+        assert_eq!(
+            convergence.evidence["prerequisite_id"],
+            serde_json::json!(prerequisite)
+        );
+        assert_eq!(convergence.evidence["dependency_state_gap"], serde_json::json!(2));
     }
 }

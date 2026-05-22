@@ -4,6 +4,7 @@ pub mod execution;
 pub mod model;
 pub mod storage;
 pub mod watcher;
+pub mod workflow;
 pub mod workspace;
 
 // Re-export board types at the crate root for convenient access.

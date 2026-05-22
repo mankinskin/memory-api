@@ -753,6 +753,74 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
 }
 
 #[test]
+fn next_and_board_promote_convergence_before_unrelated_ready_work() {
+    let s = Sandbox::new();
+    assert_eq!(s.ticket_json(&["init"])["status"], "ok");
+
+    let lagging_prerequisite = create_ticket(&s, "Lagging prerequisite");
+    let unrelated_ready = create_ticket(&s, "Unrelated ready work");
+    let advanced_dependent = create_ticket(&s, "Advanced dependent");
+
+    let unrelated_ready_state = s.ticket_json(&[
+        "update",
+        &unrelated_ready,
+        "--to-state",
+        "ready",
+    ]);
+    assert_eq!(unrelated_ready_state["status"], "ok");
+
+    for state in ["ready", "in-implementation", "in-review"] {
+        let dependent_state = s.ticket_json(&[
+            "update",
+            &advanced_dependent,
+            "--to-state",
+            state,
+        ]);
+        assert_eq!(dependent_state["status"], "ok");
+    }
+
+    for ticket_id in [&lagging_prerequisite, &unrelated_ready] {
+        let priority =
+            s.ticket_json(&["update", ticket_id, "--field", "priority=high"]);
+        assert_eq!(priority["status"], "ok");
+    }
+
+    let linked = s.ticket_json(&[
+        "link",
+        "--from",
+        &advanced_dependent,
+        "--to",
+        &lagging_prerequisite,
+        "--kind",
+        "depends_on",
+    ]);
+    assert_eq!(linked["status"], "ok");
+
+    let next = s.ticket_json(&["next"]);
+    assert_eq!(next["status"], "ok");
+    let next_items = next["items"].as_array().unwrap();
+    assert!(next_items.len() >= 2, "expected two next items: {next_items:?}");
+    assert_eq!(next_items[0]["id"], lagging_prerequisite.as_str());
+    assert_eq!(
+        next_items[0]["max_affected_dependent_state"],
+        "in-review"
+    );
+    assert_eq!(next_items[0]["affected_reverse_dependent_reach"], 1);
+    assert_eq!(next_items[0]["dependency_state_gap"], 3);
+    assert_eq!(next_items[1]["id"], unrelated_ready.as_str());
+
+    let show = s.ticket_json(&["board", "show"]);
+    assert_eq!(show["status"], "ok");
+    let recommended = show["recommended_next"].as_array().unwrap();
+    assert!(
+        recommended.len() >= 2,
+        "expected two board recommendations: {recommended:?}"
+    );
+    assert_eq!(recommended[0]["ticket_id"], lagging_prerequisite.as_str());
+    assert_eq!(recommended[1]["ticket_id"], unrelated_ready.as_str());
+}
+
+#[test]
 fn board_show_excludes_history_and_board_history_lists_recent_completions() {
     let s = Sandbox::new();
     let active_ticket = create_ticket(&s, "Active board work");

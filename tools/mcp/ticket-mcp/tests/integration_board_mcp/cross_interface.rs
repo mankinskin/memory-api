@@ -323,3 +323,90 @@ async fn next_tickets_prefers_more_dependees_before_newer_candidates() {
 
     let _ = tmp;
 }
+
+#[tokio::test]
+async fn next_tickets_promote_convergence_before_unrelated_ready_candidates() {
+    let (tmp, server) = make_sandbox();
+
+    let lagging_prerequisite;
+    let unrelated_ready;
+    let advanced_dependent;
+    {
+        let store = TicketStore::init(tmp.path()).expect("open store");
+        let fields =
+            BTreeMap::from([(String::from("priority"), json!("high"))]);
+
+        lagging_prerequisite = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Lagging prerequisite"),
+                Some("new"),
+                fields.clone(),
+                None,
+                None,
+            )
+            .expect("create prerequisite");
+
+        unrelated_ready = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Unrelated ready work"),
+                Some("ready"),
+                fields,
+                None,
+                None,
+            )
+            .expect("create unrelated ready ticket");
+
+        advanced_dependent = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Advanced dependent"),
+                Some("in-review"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create advanced dependent");
+
+        store
+            .add_edge(EdgeRecord {
+                from: advanced_dependent,
+                to: lagging_prerequisite,
+                kind: String::from("depends_on"),
+                created_at: chrono::Utc::now(),
+            })
+            .expect("add depends_on edge");
+    }
+
+    let result = server
+        .next_tickets(Parameters(NextTicketsInput {
+            workspace: ws(),
+            limit: None,
+            filter: None,
+        }))
+        .await
+        .expect("next_tickets ok");
+    let text = extract_text(&result);
+    let json: Value = serde_json::from_str(&text).expect("valid json");
+    let items = json["items"].as_array().expect("items array");
+
+    assert!(items.len() >= 2, "expected at least two candidates: {items:?}");
+    assert_eq!(
+        items[0]["id"].as_str(),
+        Some(lagging_prerequisite.to_string().as_str())
+    );
+    assert_eq!(items[0]["max_affected_dependent_state"], "in-review");
+    assert_eq!(items[0]["affected_reverse_dependent_reach"], 1);
+    assert_eq!(items[0]["dependency_state_gap"], 3);
+    assert_eq!(
+        items[1]["id"].as_str(),
+        Some(unrelated_ready.to_string().as_str())
+    );
+
+    let _ = advanced_dependent;
+    let _ = tmp;
+}

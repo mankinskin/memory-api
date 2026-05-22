@@ -1,8 +1,4 @@
-use std::collections::{
-    HashMap,
-    HashSet,
-    VecDeque,
-};
+use std::collections::HashSet;
 
 use serde_json::{
     Value,
@@ -11,12 +7,8 @@ use serde_json::{
 use ticket_api::{
     BoardEntryStatus,
     BoardSnapshot,
-    model::edge::EdgeRecord,
-    storage::{
-        indexed::IndexedTicket,
-        store::TicketStore,
-        ticket_fs::TicketFs,
-    },
+    storage::store::TicketStore,
+    workflow::WorkflowModel,
 };
 use uuid::Uuid;
 
@@ -26,9 +18,6 @@ use crate::cli::{
     UnblockedByArgs,
 };
 use crate::cli::commands::resolve_uuid_prefix;
-
-const DONE_STATES: &[&str] = &["done", "cancelled"];
-const PAUSED_STATES: &[&str] = &["on-hold"];
 
 struct NextScope {
     root: Value,
@@ -43,54 +32,42 @@ pub(super) fn run(
 ) -> Result<Value, CliRunError> {
     let board_snap = store.board_show(None).ok();
     let all_tickets = store.list(None, None, None)?;
-    let all_edges = store.list_all_edges()?;
-    let mut done_ids = done_ticket_ids(&all_tickets);
+    let filtered_scope = filtered_ticket_scope(&all_tickets, args.filter.as_deref());
+    let model = WorkflowModel::build(store, all_tickets, store.list_all_edges()?)?;
     let root_id = args
         .root
         .as_deref()
         .map(|root| resolve_uuid_prefix(root, store))
         .transpose()?;
-    if let Some(root_id) = root_id {
-        done_ids.insert(root_id);
-    }
-    let blockers = unresolved_blockers(&all_edges, &done_ids);
-    let next_scope = root_id.map(|root_id| {
-        build_next_scope(root_id, &all_tickets, &all_edges, &blockers)
+    let satisfied_ids = root_id.into_iter().collect::<HashSet<_>>();
+    let next_scope = root_id.map(|resolved_root_id| {
+        build_next_scope(resolved_root_id, &model, &satisfied_ids)
     });
-    let tickets = filtered_tickets(all_tickets, args.filter.as_deref());
-    let state_index = build_state_index(store);
-
-    let mut candidates = candidate_tickets(
-        &tickets,
-        &blockers,
+    let candidate_scope = intersect_scopes(
+        filtered_scope,
         next_scope.as_ref().map(|scope| &scope.remaining_blockers),
     );
-    let priority_map = read_priorities(&candidates);
-    let dependee_count = dependee_counts(&all_edges);
-    sort_candidates(
-        &mut candidates,
-        &state_index,
-        &priority_map,
-        &dependee_count,
-    );
+    let mut candidates = if satisfied_ids.is_empty() {
+        model.actionable_candidate_ids(candidate_scope.as_ref())
+    } else {
+        model.actionable_candidate_ids_with_satisfied(
+            candidate_scope.as_ref(),
+            &satisfied_ids,
+        )
+    };
+    model.sort_candidate_ids(&mut candidates);
 
     let excluded_by_board =
         excluded_by_board(board_snap.as_ref(), &candidates, args.no_board);
     let candidates =
         filter_board_candidates(candidates, board_snap.as_ref(), args.no_board);
     let limited_candidates = limit_candidates(candidates, args.limit);
-    let dependency_count = dependency_counts(&all_edges);
 
     let mut payload = json!({
         "command": "next",
         "status": "ok",
         "count": limited_candidates.len(),
-        "items": build_items(
-            &limited_candidates,
-            &priority_map,
-            &dependency_count,
-            &dependee_count,
-        ),
+        "items": build_items(&limited_candidates, &model),
         "excluded_by_board": excluded_by_board,
         "warnings": warnings(board_snap.as_ref()),
     });
@@ -122,76 +99,51 @@ pub(super) fn run_unblocked_by(
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
     let root_id = resolve_uuid_prefix(&args.id, store)?;
-    let tickets = store.list(None, None, None)?;
-    let all_edges = store.list_all_edges()?;
-    let mut satisfied_ids = done_ticket_ids(&tickets);
-    satisfied_ids.insert(root_id);
-    let blockers = unresolved_blockers(&all_edges, &satisfied_ids);
-    let state_index = build_state_index(store);
-    let dependent_ids = reverse_dependents(root_id, &all_edges);
+    let model = WorkflowModel::build(
+        store,
+        store.list(None, None, None)?,
+        store.list_all_edges()?,
+    )?;
+    let dependent_ids = model.reverse_dependents(root_id);
+    let satisfied_ids = HashSet::from([root_id]);
 
-    let mut candidates =
-        candidate_tickets(&tickets, &blockers, Some(&dependent_ids));
-    let mut still_blocked = eligible_tickets_in_scope(&tickets, Some(&dependent_ids))
+    let mut candidates = model.actionable_candidate_ids_with_satisfied(
+        Some(&dependent_ids),
+        &satisfied_ids,
+    );
+    let mut still_blocked = model
+        .eligible_candidate_ids(Some(&dependent_ids))
         .into_iter()
-        .filter(|ticket| {
-            blockers
-                .get(&ticket.id)
-                .is_some_and(|remaining| !remaining.is_empty())
+        .filter(|ticket_id| {
+            !model
+                .unresolved_dependencies_excluding(ticket_id, &satisfied_ids)
+                .is_empty()
         })
         .collect::<Vec<_>>();
-
-    let combined = candidates
-        .iter()
-        .chain(still_blocked.iter())
-        .copied()
-        .collect::<Vec<_>>();
-    let priority_map = read_priorities(&combined);
-    let dependee_count = dependee_counts(&all_edges);
-    sort_candidates(
-        &mut candidates,
-        &state_index,
-        &priority_map,
-        &dependee_count,
-    );
-    sort_candidates(
-        &mut still_blocked,
-        &state_index,
-        &priority_map,
-        &dependee_count,
-    );
-
-    let dependency_count = dependency_counts(&all_edges);
+    model.sort_candidate_ids(&mut candidates);
+    model.sort_candidate_ids(&mut still_blocked);
 
     Ok(json!({
         "command": "unblocked_by",
         "status": "ok",
-        "root": root_summary(root_id, &tickets),
+        "root": root_summary(root_id, &model),
         "reachable_dependents": dependent_ids.len(),
         "blocked_dependents": still_blocked.len(),
         "count": candidates.len(),
-        "items": build_unblocked_items(
-            &candidates,
-            &priority_map,
-            &dependency_count,
-            &dependee_count,
-            &blockers,
-        ),
+        "items": build_unblocked_items(&candidates, &model, &satisfied_ids),
         "still_blocked_items": build_unblocked_items(
             &still_blocked,
-            &priority_map,
-            &dependency_count,
-            &dependee_count,
-            &blockers,
+            &model,
+            &satisfied_ids,
         ),
     }))
 }
 
 fn root_summary(
     root_id: Uuid,
-    tickets: &[IndexedTicket],
+    model: &WorkflowModel,
 ) -> Value {
-    let root_ticket = tickets.iter().find(|ticket| ticket.id == root_id);
+    let root_ticket = model.ticket(&root_id);
 
     json!({
         "id": root_id,
@@ -202,249 +154,72 @@ fn root_summary(
 
 fn build_next_scope(
     root_id: Uuid,
-    tickets: &[IndexedTicket],
-    all_edges: &[EdgeRecord],
-    blockers: &HashMap<Uuid, Vec<Uuid>>,
+    model: &WorkflowModel,
+    satisfied_ids: &HashSet<Uuid>,
 ) -> NextScope {
-    let dependent_ids = reverse_dependents(root_id, all_edges);
+    let dependent_ids = model.reverse_dependents(root_id);
     let blocked_dependents = dependent_ids
         .iter()
         .filter(|ticket_id| {
-            blockers
-                .get(ticket_id)
-                .is_some_and(|remaining| !remaining.is_empty())
+            !model
+                .unresolved_dependencies_excluding(ticket_id, satisfied_ids)
+                .is_empty()
         })
         .count();
 
     NextScope {
-        root: root_summary(root_id, tickets),
+        root: root_summary(root_id, model),
         reachable_dependents: dependent_ids.len(),
         blocked_dependents,
-        remaining_blockers: remaining_blockers_for_dependents(
+        remaining_blockers: model.remaining_blockers_for_dependents_with_satisfied(
             &dependent_ids,
-            blockers,
+            satisfied_ids,
         ),
     }
 }
 
-fn filtered_tickets(
-    tickets: Vec<IndexedTicket>,
+fn filtered_ticket_scope(
+    tickets: &[ticket_api::storage::indexed::IndexedTicket],
     filter: Option<&str>,
-) -> Vec<IndexedTicket> {
-    match filter {
-        Some(prefix) => tickets
-            .into_iter()
+) -> Option<HashSet<Uuid>> {
+    filter.map(|prefix| {
+        tickets
+            .iter()
             .filter(|ticket| {
                 ticket.title.as_deref().unwrap_or("").starts_with(prefix)
             })
-            .collect(),
-        None => tickets,
-    }
+            .map(|ticket| ticket.id)
+            .collect()
+    })
 }
 
-fn done_ticket_ids(tickets: &[IndexedTicket]) -> HashSet<Uuid> {
-    tickets
-        .iter()
-        .filter(|ticket| {
-            ticket
-                .state
-                .as_deref()
-                .map(|state| DONE_STATES.contains(&state))
-                .unwrap_or(false)
-        })
-        .map(|ticket| ticket.id)
-        .collect()
-}
-
-fn unresolved_blockers(
-    all_edges: &[EdgeRecord],
-    done_ids: &HashSet<Uuid>,
-) -> HashMap<Uuid, Vec<Uuid>> {
-    let mut blockers = HashMap::new();
-    for edge in all_edges {
-        if edge.kind == "depends_on" && !done_ids.contains(&edge.to) {
-            blockers
-                .entry(edge.from)
-                .or_insert_with(Vec::new)
-                .push(edge.to);
-        }
-    }
-    blockers
-}
-
-fn build_state_index(store: &TicketStore) -> HashMap<String, usize> {
-    let mut state_index = HashMap::new();
-    for type_id in store.schema_registry().type_ids() {
-        if let Some(schema) = store.schema_registry().get(type_id) {
-            for (index, state) in schema.states.iter().enumerate() {
-                state_index.entry(state.clone()).or_insert(index);
-            }
-        }
-    }
-    state_index
-}
-
-fn candidate_tickets<'a>(
-    tickets: &'a [IndexedTicket],
-    blockers: &HashMap<Uuid, Vec<Uuid>>,
-    scope: Option<&HashSet<Uuid>>,
-) -> Vec<&'a IndexedTicket> {
-    eligible_tickets_in_scope(tickets, scope)
-        .into_iter()
-        .filter(|ticket| {
-            blockers
-                .get(&ticket.id)
-                .map_or(true, |deps| deps.is_empty())
-        })
-        .collect()
-}
-
-fn eligible_tickets_in_scope<'a>(
-    tickets: &'a [IndexedTicket],
-    scope: Option<&HashSet<Uuid>>,
-) -> Vec<&'a IndexedTicket> {
-    tickets
-        .iter()
-        .filter(|ticket| {
-            scope.map_or(true, |ids| ids.contains(&ticket.id))
-        })
-        .filter(|ticket| is_candidate_state(ticket))
-        .collect()
-}
-
-fn is_candidate_state(ticket: &IndexedTicket) -> bool {
-    ticket
-        .state
-        .as_deref()
-        .map(|state| {
-            !DONE_STATES.contains(&state) && !PAUSED_STATES.contains(&state)
-        })
-        .unwrap_or(true)
-}
-
-fn reverse_dependents(
-    root_id: Uuid,
-    all_edges: &[EdgeRecord],
-) -> HashSet<Uuid> {
-    let mut reverse_map: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
-    for edge in all_edges {
-        if edge.kind == "depends_on" {
-            reverse_map.entry(edge.to).or_default().push(edge.from);
-        }
-    }
-
-    let mut visited = HashSet::new();
-    let mut dependents = HashSet::new();
-    let mut queue = VecDeque::from([root_id]);
-
-    while let Some(current) = queue.pop_front() {
-        if !visited.insert(current) {
-            continue;
-        }
-
-        for dependent in reverse_map.get(&current).into_iter().flatten() {
-            if dependents.insert(*dependent) {
-                queue.push_back(*dependent);
-            }
-        }
-    }
-
-    dependents.remove(&root_id);
-    dependents
-}
-
-fn remaining_blockers_for_dependents(
-    dependent_ids: &HashSet<Uuid>,
-    blockers: &HashMap<Uuid, Vec<Uuid>>,
-) -> HashSet<Uuid> {
-    dependent_ids
-        .iter()
-        .flat_map(|ticket_id| blockers.get(ticket_id).into_iter().flatten())
-        .copied()
-        .collect()
-}
-
-fn read_priorities(candidates: &[&IndexedTicket]) -> HashMap<Uuid, String> {
-    let mut priority_map = HashMap::new();
-    for ticket in candidates {
-        if let Ok(manifest) = TicketFs::read(&ticket.path) {
-            if let Some(priority) = manifest
-                .extra
-                .get("priority")
-                .and_then(|value| value.as_str())
-            {
-                priority_map.insert(ticket.id, priority.to_string());
-            }
-        }
-    }
-    priority_map
-}
-
-fn sort_candidates(
-    candidates: &mut Vec<&IndexedTicket>,
-    state_index: &HashMap<String, usize>,
-    priority_map: &HashMap<Uuid, String>,
-    dependee_count: &HashMap<Uuid, usize>,
-) {
-    candidates.sort_by(|left, right| {
-        let left_state = left.state.as_deref().unwrap_or("");
-        let right_state = right.state.as_deref().unwrap_or("");
-        let left_index = state_index.get(left_state).copied().unwrap_or(0);
-        let right_index = state_index.get(right_state).copied().unwrap_or(0);
-
-        right_index
-            .cmp(&left_index)
-            .then_with(|| {
-                let left_priority = priority_map
-                    .get(&left.id)
-                    .map(|value| value.as_str())
-                    .unwrap_or("");
-                let right_priority = priority_map
-                    .get(&right.id)
-                    .map(|value| value.as_str())
-                    .unwrap_or("");
-                priority_weight(left_priority)
-                    .cmp(&priority_weight(right_priority))
-            })
-            .then_with(|| {
-                dependee_count
-                    .get(&right.id)
-                    .copied()
-                    .unwrap_or(0)
-                    .cmp(&dependee_count.get(&left.id).copied().unwrap_or(0))
-            })
-            .then_with(|| right.created_at.cmp(&left.created_at))
-            .then_with(|| ticket_title(left).cmp(ticket_title(right)))
-            .then_with(|| left.id.cmp(&right.id))
-    });
-}
-
-fn ticket_title(ticket: &IndexedTicket) -> &str {
-    ticket.title.as_deref().unwrap_or("")
-}
-
-fn priority_weight(priority: &str) -> u8 {
-    match priority {
-        "critical" => 0,
-        "high" => 1,
-        "medium" => 2,
-        "low" => 3,
-        "backlog" => 5,
-        _ => 4,
+fn intersect_scopes(
+    primary: Option<HashSet<Uuid>>,
+    secondary: Option<&HashSet<Uuid>>,
+) -> Option<HashSet<Uuid>> {
+    match (primary, secondary) {
+        (Some(primary), Some(secondary)) => Some(
+            primary
+                .into_iter()
+                .filter(|ticket_id| secondary.contains(ticket_id))
+                .collect(),
+        ),
+        (Some(primary), None) => Some(primary),
+        (None, Some(secondary)) => Some(secondary.iter().copied().collect()),
+        (None, None) => None,
     }
 }
 
 fn excluded_by_board(
     board_snap: Option<&BoardSnapshot>,
-    candidates: &[&IndexedTicket],
+    candidates: &[Uuid],
     no_board: bool,
 ) -> Vec<Value> {
     if no_board {
         return Vec::new();
     }
 
-    let candidate_ids: HashSet<Uuid> =
-        candidates.iter().map(|ticket| ticket.id).collect();
+    let candidate_ids: HashSet<Uuid> = candidates.iter().copied().collect();
     board_snap
         .map(|snapshot| {
             snapshot
@@ -468,10 +243,10 @@ fn excluded_by_board(
 }
 
 fn filter_board_candidates<'a>(
-    candidates: Vec<&'a IndexedTicket>,
+    candidates: Vec<Uuid>,
     board_snap: Option<&BoardSnapshot>,
     no_board: bool,
-) -> Vec<&'a IndexedTicket> {
+) -> Vec<Uuid> {
     if no_board {
         return candidates;
     }
@@ -479,7 +254,7 @@ fn filter_board_candidates<'a>(
     let board_ticket_ids = board_ticket_ids(board_snap);
     candidates
         .into_iter()
-        .filter(|ticket| !board_ticket_ids.contains(&ticket.id))
+        .filter(|ticket_id| !board_ticket_ids.contains(ticket_id))
         .collect()
 }
 
@@ -501,94 +276,74 @@ fn tracked_by_board(status: BoardEntryStatus) -> bool {
 }
 
 fn limit_candidates<'a>(
-    mut candidates: Vec<&'a IndexedTicket>,
+    mut candidates: Vec<Uuid>,
     limit: usize,
-) -> Vec<&'a IndexedTicket> {
+) -> Vec<Uuid> {
     candidates.truncate(limit);
     candidates
 }
 
-fn dependency_counts(all_edges: &[EdgeRecord]) -> HashMap<Uuid, usize> {
-    let mut counts = HashMap::new();
-    for edge in all_edges {
-        if edge.kind == "depends_on" {
-            *counts.entry(edge.from).or_insert(0) += 1;
-        }
-    }
-    counts
-}
-
-fn dependee_counts(all_edges: &[EdgeRecord]) -> HashMap<Uuid, usize> {
-    let mut counts = HashMap::new();
-    for edge in all_edges {
-        if edge.kind == "depends_on" {
-            *counts.entry(edge.to).or_insert(0) += 1;
-        }
-    }
-    counts
-}
-
 fn build_items(
-    candidates: &[&IndexedTicket],
-    priority_map: &HashMap<Uuid, String>,
-    dependency_count: &HashMap<Uuid, usize>,
-    dependee_count: &HashMap<Uuid, usize>,
+    candidates: &[Uuid],
+    model: &WorkflowModel,
 ) -> Vec<Value> {
     candidates
         .iter()
         .enumerate()
-        .map(|(rank, ticket)| {
-            let priority = priority_map
-                .get(&ticket.id)
-                .cloned()
-                .unwrap_or_else(|| "none".to_string());
+        .filter_map(|(rank, ticket_id)| {
+            let ticket = model.ticket(ticket_id)?;
+            let metrics = model.metrics(ticket_id).cloned().unwrap_or_default();
             json!({
                 "rank": rank + 1,
                 "id": ticket.id,
                 "title": ticket.title,
                 "state": ticket.state,
                 "type": ticket.type_id,
-                "priority": priority,
-                "dependency_count": dependency_count.get(&ticket.id).copied().unwrap_or(0),
-                "dependees": dependee_count.get(&ticket.id).copied().unwrap_or(0),
+                "priority": model.priority_or_none(ticket_id),
+                "dependency_count": model.dependency_count(ticket_id),
+                "dependees": model.dependee_count(ticket_id),
+                "transitive_reverse_dependents": metrics.transitive_reverse_dependents,
+                "affected_reverse_dependent_reach": metrics.affected_reverse_dependent_reach,
+                "max_affected_dependent_state": metrics.max_affected_dependent_state,
+                "dependency_state_gap": metrics.dependency_state_gap,
                 "created_at": ticket.created_at.to_rfc3339(),
             })
+            .into()
         })
         .collect()
 }
 
 fn build_unblocked_items(
-    candidates: &[&IndexedTicket],
-    priority_map: &HashMap<Uuid, String>,
-    dependency_count: &HashMap<Uuid, usize>,
-    dependee_count: &HashMap<Uuid, usize>,
-    blockers: &HashMap<Uuid, Vec<Uuid>>,
+    candidates: &[Uuid],
+    model: &WorkflowModel,
+    satisfied_ids: &HashSet<Uuid>,
 ) -> Vec<Value> {
     candidates
         .iter()
         .enumerate()
-        .map(|(rank, ticket)| {
-            let priority = priority_map
-                .get(&ticket.id)
-                .cloned()
-                .unwrap_or_else(|| "none".to_string());
-            let remaining_blockers = blockers
-                .get(&ticket.id)
-                .cloned()
-                .unwrap_or_default();
+        .filter_map(|(rank, ticket_id)| {
+            let ticket = model.ticket(ticket_id)?;
+            let metrics = model.metrics(ticket_id).cloned().unwrap_or_default();
+            let remaining_blockers =
+                model.unresolved_dependencies_excluding(ticket_id, satisfied_ids);
             json!({
                 "rank": rank + 1,
                 "id": ticket.id,
                 "title": ticket.title,
                 "state": ticket.state,
                 "type": ticket.type_id,
-                "priority": priority,
-                "dependency_count": dependency_count.get(&ticket.id).copied().unwrap_or(0),
+                "priority": model.priority_or_none(ticket_id),
+                "dependency_count": model.dependency_count(ticket_id),
                 "remaining_blocker_count": remaining_blockers.len(),
                 "remaining_blockers": remaining_blockers,
-                "dependees": dependee_count.get(&ticket.id).copied().unwrap_or(0),
+                "dependees": model.dependee_count(ticket_id),
+                "transitive_reverse_dependents": metrics.transitive_reverse_dependents,
+                "affected_reverse_dependent_reach": metrics.affected_reverse_dependent_reach,
+                "max_affected_dependent_state": metrics.max_affected_dependent_state,
+                "dependency_state_gap": metrics.dependency_state_gap,
                 "created_at": ticket.created_at.to_rfc3339(),
             })
+            .into()
         })
         .collect()
 }
@@ -627,150 +382,5 @@ fn board_status(status: BoardEntryStatus) -> &'static str {
         BoardEntryStatus::Stale => "stale",
         BoardEntryStatus::Conflict => "conflict",
         BoardEntryStatus::Completed => "completed",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-
-    use chrono::{
-        TimeZone,
-        Utc,
-    };
-
-    use super::*;
-
-    fn ticket(
-        title: &str,
-        created_at: chrono::DateTime<Utc>,
-    ) -> IndexedTicket {
-        IndexedTicket {
-            id: Uuid::new_v4(),
-            path: PathBuf::from(title),
-            type_id: "tracker-improvement".to_string(),
-            title: Some(title.to_string()),
-            state: Some("ready".to_string()),
-            created_at,
-            updated_at: created_at,
-            deleted: false,
-        }
-    }
-
-    #[test]
-    fn sort_candidates_prefers_newer_tickets_before_older_ones() {
-        let older = ticket(
-            "Older ticket",
-            Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
-        );
-        let newer = ticket(
-            "Newer ticket",
-            Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap(),
-        );
-        let mut candidates = vec![&older, &newer];
-        let state_index = HashMap::from([(String::from("ready"), 1usize)]);
-        let priority_map = HashMap::from([
-            (older.id, String::from("high")),
-            (newer.id, String::from("high")),
-        ]);
-        let dependee_count = HashMap::new();
-
-        sort_candidates(
-            &mut candidates,
-            &state_index,
-            &priority_map,
-            &dependee_count,
-        );
-
-        assert_eq!(candidates[0].id, newer.id);
-        assert_eq!(candidates[1].id, older.id);
-    }
-
-    #[test]
-    fn sort_candidates_prefers_more_dependees_before_newer_tickets() {
-        let older = ticket(
-            "Older ticket",
-            Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
-        );
-        let newer = ticket(
-            "Newer ticket",
-            Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap(),
-        );
-        let mut candidates = vec![&newer, &older];
-        let state_index = HashMap::from([(String::from("ready"), 1usize)]);
-        let priority_map = HashMap::from([
-            (older.id, String::from("high")),
-            (newer.id, String::from("high")),
-        ]);
-        let dependee_count = HashMap::from([(older.id, 2usize)]);
-
-        sort_candidates(
-            &mut candidates,
-            &state_index,
-            &priority_map,
-            &dependee_count,
-        );
-
-        assert_eq!(candidates[0].id, older.id);
-        assert_eq!(candidates[1].id, newer.id);
-    }
-
-    #[test]
-    fn sort_candidates_uses_title_as_last_tiebreaker() {
-        let created_at = Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap();
-        let beta = ticket("Beta ticket", created_at);
-        let alpha = ticket("Alpha ticket", created_at);
-        let mut candidates = vec![&beta, &alpha];
-        let state_index = HashMap::from([(String::from("ready"), 1usize)]);
-        let priority_map = HashMap::from([
-            (alpha.id, String::from("high")),
-            (beta.id, String::from("high")),
-        ]);
-        let dependee_count = HashMap::new();
-
-        sort_candidates(
-            &mut candidates,
-            &state_index,
-            &priority_map,
-            &dependee_count,
-        );
-
-        assert_eq!(candidates[0].id, alpha.id);
-        assert_eq!(candidates[1].id, beta.id);
-    }
-
-    #[test]
-    fn reverse_dependents_collects_transitive_dependents() {
-        let root = Uuid::new_v4();
-        let direct = Uuid::new_v4();
-        let transitive = Uuid::new_v4();
-        let unrelated = Uuid::new_v4();
-        let now = Utc.with_ymd_and_hms(2026, 5, 22, 10, 0, 0).unwrap();
-        let edges = vec![
-            EdgeRecord {
-                from: direct,
-                to: root,
-                kind: "depends_on".to_string(),
-                created_at: now,
-            },
-            EdgeRecord {
-                from: transitive,
-                to: direct,
-                kind: "depends_on".to_string(),
-                created_at: now,
-            },
-            EdgeRecord {
-                from: unrelated,
-                to: Uuid::new_v4(),
-                kind: "depends_on".to_string(),
-                created_at: now,
-            },
-        ];
-
-        let dependents = reverse_dependents(root, &edges);
-
-        assert!(dependents.contains(&direct));
-        assert!(dependents.contains(&transitive));
-        assert!(!dependents.contains(&unrelated));
     }
 }

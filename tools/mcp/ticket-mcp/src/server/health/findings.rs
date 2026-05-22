@@ -113,30 +113,61 @@ fn append_dependency_state_finding(
     context: &HealthContext,
     ticket: &IndexedTicket,
 ) {
-    let Some(unresolved) = context.unresolved_deps.get(&ticket.id) else {
-        return;
-    };
-
     let state = ticket.state.as_deref().unwrap_or("");
     if state == "new" {
         return;
     }
 
-    record_finding(
-        report,
-        "unblocked_with_deps",
-        serde_json::json!({
-            "ticket_id": ticket.id,
-            "short_id": short_id(ticket.id),
-            "title": ticket.title.as_deref().unwrap_or("?"),
-            "check": "unblocked_with_deps",
-            "severity": "info",
-            "message": format!(
-                "Ticket is '{state}' but has {} unresolved dependency/ies — may need state review.",
-                unresolved.len()
-            ),
-        }),
-    );
+    if let Some(unresolved) = context.workflow.unresolved_dependencies(&ticket.id) {
+        record_finding(
+            report,
+            "unblocked_with_deps",
+            serde_json::json!({
+                "ticket_id": ticket.id,
+                "short_id": short_id(ticket.id),
+                "title": ticket.title.as_deref().unwrap_or("?"),
+                "check": "unblocked_with_deps",
+                "severity": "info",
+                "message": format!(
+                    "Ticket is '{state}' but has {} unresolved dependency/ies — may need state review.",
+                    unresolved.len()
+                ),
+            }),
+        );
+    }
+
+    for inversion in context
+        .workflow
+        .dependency_state_inversions(&ticket.id)
+        .into_iter()
+        .flatten()
+    {
+        record_finding(
+            report,
+            "dependency_convergence",
+            serde_json::json!({
+                "ticket_id": ticket.id,
+                "short_id": short_id(ticket.id),
+                "title": ticket.title.as_deref().unwrap_or("?"),
+                "check": "dependency_convergence",
+                "severity": "warning",
+                "message": format!(
+                    "Ticket depends on {} in earlier state '{}' while this ticket is '{}'.",
+                    short_id(inversion.prerequisite_id),
+                    inversion.prerequisite_state.as_deref().unwrap_or("?"),
+                    inversion.dependent_state.as_deref().unwrap_or(state),
+                ),
+                "prerequisite_id": inversion.prerequisite_id,
+                "prerequisite_title": inversion.prerequisite_title,
+                "prerequisite_state": inversion.prerequisite_state,
+                "dependent_id": inversion.dependent_id,
+                "dependent_state": inversion.dependent_state,
+                "dependency_state_gap": inversion.dependency_state_gap,
+                "affected_reverse_dependent_reach": inversion.affected_reverse_dependent_reach,
+                "transitive_reverse_dependents": inversion.transitive_reverse_dependents,
+            }),
+        );
+    }
 }
 
 fn append_dangling_edge_findings(

@@ -1,5 +1,4 @@
 use std::collections::{
-    HashMap,
     HashSet,
     VecDeque,
 };
@@ -7,6 +6,7 @@ use std::collections::{
 use ticket_api::{
     model::edge::EdgeRecord,
     storage::indexed::IndexedTicket,
+    workflow::WorkflowModel,
 };
 
 use super::*;
@@ -17,7 +17,7 @@ pub(super) struct HealthContext {
     pub(super) tickets: Vec<IndexedTicket>,
     pub(super) all_edges: Vec<EdgeRecord>,
     pub(super) done_ids: HashSet<Uuid>,
-    pub(super) unresolved_deps: HashMap<Uuid, Vec<Uuid>>,
+    pub(super) workflow: WorkflowModel,
 }
 
 impl TicketServer {
@@ -213,16 +213,14 @@ fn build_health_context(
     all_edges: Vec<EdgeRecord>,
 ) -> Result<HealthContext, ticket_api::error::StorageError> {
     let done_ids = done_ticket_ids(&tickets);
-    let ticket_ids: HashSet<Uuid> =
-        tickets.iter().map(|ticket| ticket.id).collect();
-    let unresolved_deps =
-        unresolved_dependency_map(store, &all_edges, &ticket_ids)?;
+    let workflow =
+        WorkflowModel::build(store, store.list(None, None, None)?, all_edges.clone())?;
 
     Ok(HealthContext {
         tickets,
         all_edges,
         done_ids,
-        unresolved_deps,
+        workflow,
     })
 }
 
@@ -236,39 +234,4 @@ fn done_ticket_ids(tickets: &[IndexedTicket]) -> HashSet<Uuid> {
 
 fn is_done_state(state: Option<&str>) -> bool {
     matches!(state, Some("done" | "cancelled"))
-}
-
-fn unresolved_dependency_map(
-    store: &TicketStore,
-    all_edges: &[EdgeRecord],
-    ticket_ids: &HashSet<Uuid>,
-) -> Result<HashMap<Uuid, Vec<Uuid>>, ticket_api::error::StorageError> {
-    let dependency_ids: Vec<Uuid> = all_edges
-        .iter()
-        .filter(|edge| {
-            edge.kind == "depends_on" && ticket_ids.contains(&edge.from)
-        })
-        .map(|edge| edge.to)
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
-    let dependency_tickets = store.get_indexed_many(&dependency_ids)?;
-
-    let mut unresolved: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
-
-    for edge in all_edges {
-        if edge.kind != "depends_on" || !ticket_ids.contains(&edge.from) {
-            continue;
-        }
-
-        let is_resolved = dependency_tickets
-            .get(&edge.to)
-            .map(|ticket| is_done_state(ticket.state.as_deref()))
-            .unwrap_or(false);
-        if !is_resolved {
-            unresolved.entry(edge.from).or_default().push(edge.to);
-        }
-    }
-
-    Ok(unresolved)
 }
