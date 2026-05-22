@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     fs,
     path::Path,
 };
@@ -76,11 +77,24 @@ pub(super) fn dispatch(
     }
 
     let mut store = RuleStore::open(index_root)?;
-    if let Some(workspace_root) = resolve_workspace_root(&command, index_root) {
-        for root in discover_workspace_scan_roots(&workspace_root) {
-            store.entity_store().add_scan_root(root)?;
+    if command_uses_descendant_scan_roots(&command) {
+        if let Some(workspace_root) = resolve_workspace_root(&command, index_root) {
+            let mut known_scan_roots = store
+                .entity_store()
+                .list_scan_roots()?
+                .into_iter()
+                .map(|root| root.path)
+                .collect::<BTreeSet<_>>();
+            let mut reindex = false;
+
+            for root in discover_workspace_scan_roots(&workspace_root) {
+                if known_scan_roots.insert(root.path.clone()) {
+                    reindex = true;
+                }
+                store.entity_store().add_scan_root(root)?;
+            }
+            store.scan(reindex)?;
         }
-        store.scan(false)?;
     }
 
     match command {
@@ -94,6 +108,20 @@ pub(super) fn dispatch(
         RuleCommandCli::Init => unreachable!("Init handled before store open"),
         other => dispatch_secondary(other, &mut store),
     }
+}
+
+fn command_uses_descendant_scan_roots(command: &RuleCommandCli) -> bool {
+    matches!(
+        command,
+        RuleCommandCli::Get(_)
+            | RuleCommandCli::GenerateFile(_)
+            | RuleCommandCli::GenerateTarget(_)
+            | RuleCommandCli::ExplainTarget(_)
+            | RuleCommandCli::SyncTargets(_)
+            | RuleCommandCli::List(_)
+            | RuleCommandCli::Search(_)
+            | RuleCommandCli::Scan(_)
+    )
 }
 
 fn dispatch_secondary(

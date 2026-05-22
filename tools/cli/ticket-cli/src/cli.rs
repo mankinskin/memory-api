@@ -58,6 +58,11 @@ pub struct TicketCli {
     #[arg(long, global = true)]
     pub index_root: Option<PathBuf>,
 
+    /// Workspace/repo root to normalize to the canonical `.ticket` store.
+    /// Useful for targeting a nested workspace from an ancestor checkout.
+    #[arg(long, global = true)]
+    pub workspace_root: Option<PathBuf>,
+
     /// Directory containing additional ticket type schema TOML files.
     /// Each `<type-id>.toml` file overrides or supplements the built-in schemas.
     #[arg(long, global = true)]
@@ -195,6 +200,7 @@ pub fn run(cli: TicketCli) -> Result<CliOutput, CliRunError> {
     let payload = dispatch::dispatch(
         cli.command,
         cli.index_root.as_deref(),
+        cli.workspace_root.as_deref(),
         cli.schema_dir.as_deref(),
         cli.json,
         cli.dry_run,

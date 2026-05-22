@@ -25,6 +25,57 @@ fn sample_rule(
     manifest
 }
 
+fn empty_filter_args() -> FilterArgs {
+    FilterArgs {
+        state: None,
+        file_kind: None,
+        section: None,
+        repo_scope: None,
+        path_scope: None,
+        slug: None,
+        low_rated_only: false,
+        unresolved_only: false,
+    }
+}
+
+fn create_nested_rule_fixture() -> (tempfile::TempDir, PathBuf, PathBuf, String) {
+    let dir = tempdir().unwrap();
+    let repo_root = dir.path().join("repo");
+    let parent_index_root = repo_root.join(".rule");
+    let child_workspace = repo_root.join("memory-viewers").join("memory-api");
+    let child_index_root = child_workspace.join(".rule");
+    fs::create_dir_all(&child_workspace).unwrap();
+
+    let mut parent_store = RuleStore::init(&parent_index_root).unwrap();
+    parent_store
+        .create(
+            &sample_rule(
+                "shared/agents/opening",
+                "Opening",
+                "opening",
+                "Start with the concrete anchor.",
+                10,
+            ),
+            None,
+        )
+        .unwrap();
+
+    let mut child_store = RuleStore::init(&child_index_root).unwrap();
+    let mut child_rule = RuleManifest::new(
+        "memory-api/agents/overview",
+        "Overview",
+        "AGENTS",
+        "overview",
+        "Document memory-api specifics.",
+    );
+    child_rule.set_repo_scopes(["memory-api"]);
+    child_rule.set_path_scopes(["AGENTS.md"]);
+    child_rule.set_order_key(20);
+    let child_id = child_store.create(&child_rule, None).unwrap();
+
+    (dir, parent_index_root, child_index_root, child_id.to_string())
+}
+
 #[test]
 fn parse_search_command_with_filter_flags() {
     let cli = parse_cli_from([
@@ -73,6 +124,23 @@ fn parse_sync_targets_command() {
 }
 
 #[test]
+fn parse_global_workspace_root() {
+    let cli = parse_cli_from([
+        "rule",
+        "--workspace-root",
+        "memory-viewers/memory-api",
+        "search",
+        "discovery",
+    ])
+    .unwrap();
+
+    assert_eq!(
+        cli.workspace_root,
+        Some(PathBuf::from("memory-viewers/memory-api"))
+    );
+}
+
+#[test]
 fn delete_command_removes_rule_by_slug() {
     let dir = tempdir().unwrap();
     let mut store = RuleStore::init(dir.path()).unwrap();
@@ -99,6 +167,92 @@ fn delete_command_removes_rule_by_slug() {
         reopened.get("shared/agents/delete-me"),
         Err(rule_api::error::RuleError::NotFound(_))
     ));
+}
+
+#[test]
+fn get_command_collects_rules_from_nested_workspaces() {
+    let (_dir, parent_index_root, _child_index_root, child_id) =
+        create_nested_rule_fixture();
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::Get(IdArgs {
+            id: child_id.clone(),
+        }),
+        &parent_index_root,
+    )
+    .unwrap();
+
+    assert_eq!(payload["status"], "ok");
+    assert_eq!(payload["rule"]["id"], child_id);
+    assert_eq!(
+        payload["rule"]["fields"]["slug"],
+        "memory-api/agents/overview"
+    );
+}
+
+#[test]
+fn list_command_collects_rules_from_nested_workspaces() {
+    let (_dir, parent_index_root, _child_index_root, child_id) =
+        create_nested_rule_fixture();
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::List(ListArgs {
+            filter: empty_filter_args(),
+            limit: Some(10),
+        }),
+        &parent_index_root,
+    )
+    .unwrap();
+
+    assert_eq!(payload["status"], "ok");
+    assert_eq!(payload["count"], 2);
+    assert!(payload["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["id"] == child_id));
+}
+
+#[test]
+fn search_command_collects_rules_from_nested_workspaces() {
+    let (_dir, parent_index_root, _child_index_root, child_id) =
+        create_nested_rule_fixture();
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::Search(SearchArgs {
+            query: "overview".to_string(),
+            filter: empty_filter_args(),
+            limit: 10,
+        }),
+        &parent_index_root,
+    )
+    .unwrap();
+
+    assert_eq!(payload["status"], "ok");
+    assert_eq!(payload["count"], 1);
+    assert_eq!(payload["items"][0]["id"], child_id);
+}
+
+#[test]
+fn delete_command_from_ancestor_root_does_not_remove_child_rule() {
+    let (_dir, parent_index_root, child_index_root, child_id) =
+        create_nested_rule_fixture();
+
+    let result = dispatch::dispatch(
+        RuleCommandCli::Delete(IdArgs {
+            id: child_id.clone(),
+        }),
+        &parent_index_root,
+    );
+
+    assert!(matches!(
+        result,
+        Err(crate::cli::CliRunError::Rule(rule_api::error::RuleError::NotFound(_)))
+    ));
+
+    let child_store = RuleStore::open(&child_index_root).unwrap();
+    let child_rule = child_store.get(&child_id).unwrap();
+    assert_eq!(child_rule.slug(), Some("memory-api/agents/overview"));
 }
 
 #[test]

@@ -18,6 +18,7 @@ Global options:
 
 - `--json`: emit machine-readable output.
 - `--index-root <path>`: override the `.rule` index root.
+- `--workspace-root <path>`: target a nested workspace repo root and normalize it to the owning `.rule` store.
 
 ## Usage
 
@@ -28,7 +29,7 @@ cargo build -p rule-cli --bin rule
 cargo run -p rule-cli --bin rule -- --help
 ```
 
-`rule` discovers the nearest `.rule` workspace by walking up from the current directory. Use `--index-root` when you want to point at a different store.
+`rule` discovers the nearest `.rule` workspace by walking up from the current directory. Use `--index-root` when you want to point at a different store, or `--workspace-root` when you want to target a nested workspace repo root from an ancestor checkout.
 
 Feedback is rule-entry scoped. If you are reacting to a specific spec entry or generated instruction section, first resolve the canonical rule entry that produced the text, then carry the spec ID, path, and section in the feedback note.
 
@@ -37,6 +38,9 @@ Feedback is rule-entry scoped. If you are reacting to a specific spec entry or g
 ```bash
 # Search canonical rule entries
 rule search "ticket board"
+
+# Search the nested memory-api rule store from the root checkout
+rule --workspace-root memory-viewers/memory-api search "workspace root"
 
 # Record feedback for a rule entry tied to a spec section
 rule feedback shared/agent-rules/quality-gates/l42 \

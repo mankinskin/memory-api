@@ -9,6 +9,8 @@ use std::path::{
     PathBuf,
 };
 
+use crate::model::filesystem::ScanRoot;
+
 pub const TICKET_INDEX_DIR: &str = ".ticket";
 
 pub fn working_dir() -> Option<PathBuf> {
@@ -70,6 +72,105 @@ pub fn resolve_store_root_from(
     }
 
     find_local_root_from(dir, dir_name).unwrap_or_else(|| dir.to_path_buf())
+}
+
+pub fn resolve_requested_store_root(
+    explicit_store_root: Option<&Path>,
+    explicit_workspace_root: Option<&Path>,
+    env_store_root: Option<&Path>,
+    dir_name: &str,
+) -> PathBuf {
+    let cwd = working_dir();
+    resolve_requested_store_root_from(
+        explicit_store_root,
+        explicit_workspace_root,
+        env_store_root,
+        cwd.as_deref(),
+        dir_name,
+    )
+}
+
+pub fn resolve_requested_store_root_from(
+    explicit_store_root: Option<&Path>,
+    explicit_workspace_root: Option<&Path>,
+    env_store_root: Option<&Path>,
+    cwd: Option<&Path>,
+    dir_name: &str,
+) -> PathBuf {
+    if let Some(path) = explicit_store_root {
+        return resolve_store_root_from(path, dir_name);
+    }
+
+    if let Some(path) = explicit_workspace_root {
+        return resolve_store_root_from(path, dir_name);
+    }
+
+    if let Some(path) = env_store_root {
+        return resolve_store_root_from(path, dir_name);
+    }
+
+    if let Some(cwd) = cwd {
+        return resolve_local_root_from(cwd, dir_name);
+    }
+
+    PathBuf::from(dir_name)
+}
+
+pub fn resolve_workspace_root_from_store_root(
+    store_root: &Path,
+    dir_name: &str,
+) -> PathBuf {
+    let normalized = normalize_working_dir_path(store_root);
+    if normalized.file_name().and_then(|name| name.to_str()) == Some(dir_name) {
+        return normalized
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or(normalized);
+    }
+
+    normalized
+}
+
+pub fn find_descendant_store_roots_from(
+    start: &Path,
+    dir_name: &str,
+) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    collect_descendant_store_roots(
+        &normalize_working_dir_path(start_dir(start)),
+        dir_name,
+        &mut roots,
+    );
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
+pub fn discover_workspace_scan_roots(
+    workspace_root: &Path,
+    store_dir: &str,
+    entity_dir: &str,
+) -> Vec<ScanRoot> {
+    let workspace_root = normalize_working_dir_path(start_dir(workspace_root));
+
+    find_descendant_store_roots_from(&workspace_root, store_dir)
+        .into_iter()
+        .map(|store_root| {
+            let owning_workspace =
+                resolve_workspace_root_from_store_root(&store_root, store_dir);
+            let label = owning_workspace
+                .strip_prefix(&workspace_root)
+                .ok()
+                .filter(|path| !path.as_os_str().is_empty())
+                .map(|path| path.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|| ".".to_string());
+
+            ScanRoot {
+                path: store_root.join(entity_dir),
+                label,
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,6 +237,45 @@ fn normalize_working_dir_path(path: &Path) -> PathBuf {
     {
         path.to_path_buf()
     }
+}
+
+fn collect_descendant_store_roots(
+    dir: &Path,
+    dir_name: &str,
+    roots: &mut Vec<PathBuf>,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+
+        if name == dir_name {
+            roots.push(normalize_working_dir_path(&path));
+            continue;
+        }
+
+        if should_skip_descendant_dir(name) {
+            continue;
+        }
+
+        collect_descendant_store_roots(&path, dir_name, roots);
+    }
+}
+
+fn should_skip_descendant_dir(name: &str) -> bool {
+    matches!(name, ".git" | ".hg" | ".svn" | "target" | "node_modules" | "release" | "tmp")
 }
 
 #[cfg(windows)]
@@ -222,6 +362,152 @@ mod tests {
         let resolved = resolve_store_root_from(&scratch, ".ticket");
 
         assert_eq!(resolved, scratch);
+    }
+
+    #[test]
+    fn resolve_requested_store_root_from_normalizes_explicit_workspace_root() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("child");
+        std::fs::create_dir_all(repo.join(".spec")).unwrap();
+        std::fs::create_dir_all(child.join(".spec")).unwrap();
+
+        let resolved = resolve_requested_store_root_from(
+            None,
+            Some(&child),
+            None,
+            Some(&repo),
+            ".spec",
+        );
+
+        assert_eq!(resolved, child.join(".spec"));
+    }
+
+    #[test]
+    fn resolve_requested_store_root_from_prefers_explicit_store_root() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("child");
+        std::fs::create_dir_all(repo.join(".ticket")).unwrap();
+        std::fs::create_dir_all(child.join(".ticket")).unwrap();
+
+        let resolved = resolve_requested_store_root_from(
+            Some(&repo.join(".ticket")),
+            Some(&child),
+            Some(&child.join(".ticket")),
+            Some(&child),
+            ".ticket",
+        );
+
+        assert_eq!(resolved, repo.join(".ticket"));
+    }
+
+    #[test]
+    fn resolve_requested_store_root_from_falls_back_to_local_discovery() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let nested = repo.join("tools").join("cli");
+        std::fs::create_dir_all(repo.join(".ticket")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let resolved = resolve_requested_store_root_from(
+            None,
+            None,
+            None,
+            Some(&nested),
+            ".ticket",
+        );
+
+        assert_eq!(resolved, repo.join(".ticket"));
+    }
+
+    #[test]
+    fn resolve_workspace_root_from_store_root_uses_parent_of_hidden_store() {
+        let dir = tempdir().unwrap();
+        let store = dir.path().join("repo").join(".spec");
+        std::fs::create_dir_all(&store).unwrap();
+
+        let resolved =
+            resolve_workspace_root_from_store_root(&store, ".spec");
+
+        assert_eq!(resolved, store.parent().unwrap());
+    }
+
+    #[test]
+    fn resolve_workspace_root_from_store_root_preserves_direct_non_store_path() {
+        let dir = tempdir().unwrap();
+        let scratch = dir.path().join("scratch-store");
+        std::fs::create_dir_all(&scratch).unwrap();
+
+        let resolved =
+            resolve_workspace_root_from_store_root(&scratch, ".spec");
+
+        assert_eq!(resolved, scratch);
+    }
+
+    #[test]
+    fn find_descendant_store_roots_from_discovers_nested_hidden_stores() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("memory-api");
+        let nested = child.join("tools").join("cli");
+        std::fs::create_dir_all(repo.join(".spec")).unwrap();
+        std::fs::create_dir_all(child.join(".spec")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let roots = find_descendant_store_roots_from(&repo, ".spec");
+
+        assert_eq!(roots, vec![repo.join(".spec"), child.join(".spec")]);
+    }
+
+    #[test]
+    fn find_descendant_store_roots_from_skips_known_non_workspace_dirs() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("memory-api");
+        std::fs::create_dir_all(repo.join(".spec")).unwrap();
+        std::fs::create_dir_all(child.join(".spec")).unwrap();
+        std::fs::create_dir_all(repo.join("target").join("build").join(".spec"))
+            .unwrap();
+        std::fs::create_dir_all(
+            repo.join("node_modules").join("pkg").join(".spec"),
+        )
+        .unwrap();
+        std::fs::create_dir_all(repo.join("release").join("notes").join(".spec"))
+            .unwrap();
+        std::fs::create_dir_all(repo.join("tmp").join("scratch").join(".spec"))
+            .unwrap();
+        std::fs::create_dir_all(repo.join(".git").join("worktree").join(".spec"))
+            .unwrap();
+
+        let roots = find_descendant_store_roots_from(&repo, ".spec");
+
+        assert_eq!(roots, vec![repo.join(".spec"), child.join(".spec")]);
+    }
+
+    #[test]
+    fn discover_workspace_scan_roots_maps_store_roots_to_entity_roots() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("memory-api");
+        std::fs::create_dir_all(repo.join(".rule")).unwrap();
+        std::fs::create_dir_all(child.join(".rule")).unwrap();
+
+        let roots = discover_workspace_scan_roots(&repo, ".rule", "rules");
+
+        assert_eq!(
+            roots,
+            vec![
+                ScanRoot {
+                    path: repo.join(".rule").join("rules"),
+                    label: ".".to_string(),
+                },
+                ScanRoot {
+                    path: child.join(".rule").join("rules"),
+                    label: "memory-api".to_string(),
+                },
+            ]
+        );
     }
 
     #[test]

@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::{
     Path,
     PathBuf,
@@ -27,6 +28,7 @@ use super::{
 pub(super) fn dispatch(
     command: TicketCommandCli,
     index_root_override: Option<&Path>,
+    workspace_root_override: Option<&Path>,
     schema_dir_override: Option<&Path>,
     _as_json: bool,
     dry_run: bool,
@@ -35,10 +37,15 @@ pub(super) fn dispatch(
         TicketCommandCli::ExportCommandSchema =>
             export_command_schema_payload(),
         TicketCommandCli::Init =>
-            cmd_init(index_root_override, schema_dir_override),
+            cmd_init(
+                index_root_override,
+                workspace_root_override,
+                schema_dir_override,
+            ),
         other => dispatch_store_backed(
             other,
             index_root_override,
+            workspace_root_override,
             schema_dir_override,
             dry_run,
         ),
@@ -47,9 +54,13 @@ pub(super) fn dispatch(
 
 fn cmd_init(
     index_root_override: Option<&Path>,
+    workspace_root_override: Option<&Path>,
     schema_dir_override: Option<&Path>,
 ) -> Result<Value, CliRunError> {
-    let index_root = resolve_index_root(index_root_override);
+    let index_root = resolve_index_root(
+        index_root_override,
+        workspace_root_override,
+    );
     let mut registry = SchemaRegistry::with_builtins();
     if let Some(schema_dir) = schema_dir_override {
         registry.load_dir(schema_dir)?;
@@ -143,18 +154,33 @@ fn dry_run_payload(
     })
 }
 
-fn resolve_index_root(override_path: Option<&Path>) -> PathBuf {
-    // Layer 1: explicit --index-root flag
-    if let Some(p) = override_path {
-        return p.to_path_buf();
-    }
-    // Layer 1b: TICKET_INDEX_ROOT env var
-    if let Ok(env_val) = std::env::var("TICKET_INDEX_ROOT") {
-        return PathBuf::from(env_val);
-    }
-    // Local discovery: nearest .ticket/ walking upward, else ./ .ticket
-    let (path, _source) = ticket_api::workspace::resolve_workspace();
-    path
+fn resolve_index_root(
+    override_path: Option<&Path>,
+    workspace_root_override: Option<&Path>,
+) -> PathBuf {
+    let cwd = ticket_api::workspace::working_dir();
+    let env_root = std::env::var_os("TICKET_INDEX_ROOT").map(PathBuf::from);
+    resolve_index_root_from(
+        override_path,
+        workspace_root_override,
+        env_root.as_deref(),
+        cwd.as_deref(),
+    )
+}
+
+fn resolve_index_root_from(
+    override_path: Option<&Path>,
+    workspace_root_override: Option<&Path>,
+    env_root: Option<&Path>,
+    cwd: Option<&Path>,
+) -> PathBuf {
+    ticket_api::workspace::resolve_requested_store_root_from(
+        override_path,
+        workspace_root_override,
+        env_root,
+        cwd,
+        ticket_api::workspace::TICKET_INDEX_DIR,
+    )
 }
 
 fn export_command_schema_payload() -> Result<Value, CliRunError> {
@@ -171,6 +197,7 @@ fn export_command_schema_payload() -> Result<Value, CliRunError> {
 fn dispatch_store_backed(
     command: TicketCommandCli,
     index_root_override: Option<&Path>,
+    workspace_root_override: Option<&Path>,
     schema_dir_override: Option<&Path>,
     dry_run: bool,
 ) -> Result<Value, CliRunError> {
@@ -180,20 +207,105 @@ fn dispatch_store_backed(
         }
     }
 
-    let store = open_store(index_root_override, schema_dir_override)?;
+    let index_root = resolve_index_root(
+        index_root_override,
+        workspace_root_override,
+    );
+    let workspace_root = resolve_workspace_root(
+        &index_root,
+        workspace_root_override,
+    );
+    let store = open_store(&index_root, schema_dir_override)?;
+    if command_uses_descendant_scan_roots(&command) {
+        let reindex = register_descendant_scan_roots(&store, &workspace_root)?;
+        if reindex {
+            store.scan(true)?;
+        }
+    }
+
     dispatch_store_command(command, store)
 }
 
+fn command_uses_descendant_scan_roots(command: &TicketCommandCli) -> bool {
+    matches!(
+        command,
+        TicketCommandCli::Get(_)
+            | TicketCommandCli::Describe(_)
+            | TicketCommandCli::List(_)
+            | TicketCommandCli::Leases
+            | TicketCommandCli::Search(_)
+            | TicketCommandCli::Query(_)
+            | TicketCommandCli::History(_)
+            | TicketCommandCli::Diff(_)
+            | TicketCommandCli::Links(_)
+            | TicketCommandCli::Subgraph(_)
+            | TicketCommandCli::Topgraph(_)
+            | TicketCommandCli::Status(_)
+            | TicketCommandCli::ReadyOverview(_)
+            | TicketCommandCli::Next(_)
+            | TicketCommandCli::UnblockedBy(_)
+            | TicketCommandCli::Assets(_)
+            | TicketCommandCli::Health(_)
+            | TicketCommandCli::Audit
+    )
+}
+
+fn resolve_workspace_root(
+    index_root: &Path,
+    workspace_root_override: Option<&Path>,
+) -> PathBuf {
+    if let Some(path) = workspace_root_override {
+        let store_root =
+            ticket_api::workspace::resolve_store_root_from(
+                path,
+                ticket_api::workspace::TICKET_INDEX_DIR,
+            );
+        return ticket_api::workspace::resolve_workspace_root_from_store_root(
+            &store_root,
+            ticket_api::workspace::TICKET_INDEX_DIR,
+        );
+    }
+
+    ticket_api::workspace::resolve_workspace_root_from_store_root(
+        index_root,
+        ticket_api::workspace::TICKET_INDEX_DIR,
+    )
+}
+
 fn open_store(
-    index_root_override: Option<&Path>,
+    index_root: &Path,
     schema_dir_override: Option<&Path>,
 ) -> Result<TicketStore, CliRunError> {
-    let index_root = resolve_index_root(index_root_override);
     let mut registry = SchemaRegistry::with_builtins();
     if let Some(schema_dir) = schema_dir_override {
         registry.load_dir(schema_dir)?;
     }
-    TicketStore::open_with(&index_root, registry).map_err(CliRunError::from)
+    TicketStore::open_with(index_root, registry).map_err(CliRunError::from)
+}
+
+fn register_descendant_scan_roots(
+    store: &TicketStore,
+    workspace_root: &Path,
+) -> Result<bool, CliRunError> {
+    let mut known_scan_roots = store
+        .list_scan_roots()?
+        .into_iter()
+        .map(|root| root.path)
+        .collect::<BTreeSet<_>>();
+    let mut reindex = false;
+
+    for root in ticket_api::workspace::discover_workspace_scan_roots(
+        workspace_root,
+        ticket_api::workspace::TICKET_INDEX_DIR,
+        "tickets",
+    ) {
+        if known_scan_roots.insert(root.path.clone()) {
+            reindex = true;
+        }
+        store.add_scan_root(root)?;
+    }
+
+    Ok(reindex)
 }
 
 fn dispatch_store_command(
@@ -335,9 +447,40 @@ fn dispatch_store_command_ops(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
-    use crate::cli::IdArgs;
+    use crate::cli::{
+        IdArgs,
+        ListArgs,
+        TextArgs,
+    };
+    use tempfile::tempdir;
     use uuid::Uuid;
+
+    fn create_nested_ticket_fixture(
+    ) -> (tempfile::TempDir, PathBuf, PathBuf, String) {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("memory-api");
+        std::fs::create_dir_all(&child).unwrap();
+
+        let _root_store = TicketStore::init(&repo.join(".ticket")).unwrap();
+        let child_store = TicketStore::init(&child.join(".ticket")).unwrap();
+        let ticket_id = child_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Nested workspace ticket"),
+                None,
+                BTreeMap::<String, serde_json::Value>::new(),
+                None,
+                Some("Nested workspace ticket body"),
+            )
+            .unwrap();
+
+        (dir, repo, child, ticket_id.to_string())
+    }
 
     #[test]
     fn dry_run_payload_is_returned_for_mutating_command() {
@@ -354,5 +497,157 @@ mod tests {
     fn dry_run_payload_is_none_for_read_only_command() {
         let payload = dry_run_command_payload(&TicketCommandCli::Leases);
         assert!(payload.is_none());
+    }
+
+    #[test]
+    fn resolve_index_root_prefers_explicit_workspace_root() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("memory-api");
+        std::fs::create_dir_all(repo.join(".ticket")).unwrap();
+        std::fs::create_dir_all(child.join(".ticket")).unwrap();
+
+        let resolved = resolve_index_root_from(
+            None,
+            Some(&child),
+            None,
+            Some(&repo),
+        );
+
+        assert_eq!(resolved, child.join(".ticket"));
+    }
+
+    #[test]
+    fn resolve_index_root_prefers_explicit_index_root_over_workspace_root() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("memory-api");
+        std::fs::create_dir_all(repo.join(".ticket")).unwrap();
+        std::fs::create_dir_all(child.join(".ticket")).unwrap();
+
+        let resolved = resolve_index_root_from(
+            Some(&repo.join(".ticket")),
+            Some(&child),
+            None,
+            Some(&repo),
+        );
+
+        assert_eq!(resolved, repo.join(".ticket"));
+    }
+
+    #[test]
+    fn dispatch_get_reads_child_ticket_from_explicit_workspace_root() {
+        let (_dir, _repo, child, ticket_id) = create_nested_ticket_fixture();
+
+        let payload = dispatch(
+            TicketCommandCli::Get(IdArgs {
+                id: ticket_id.clone(),
+            }),
+            None,
+            Some(&child),
+            None,
+            true,
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(payload["command"], "get");
+        assert_eq!(payload["ticket"]["id"], ticket_id);
+        assert_eq!(
+            payload["ticket"]["fields"]["title"],
+            "Nested workspace ticket"
+        );
+    }
+
+    #[test]
+    fn dispatch_search_reads_child_ticket_from_explicit_workspace_root() {
+        let (_dir, _repo, child, ticket_id) = create_nested_ticket_fixture();
+
+        let payload = dispatch(
+            TicketCommandCli::Search(TextArgs {
+                expression: "Nested workspace ticket".to_string(),
+                limit: 10,
+            }),
+            None,
+            Some(&child),
+            None,
+            true,
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(payload["command"], "search");
+        assert_eq!(payload["count"], 1);
+        assert_eq!(payload["results"][0]["id"], ticket_id);
+    }
+
+    #[test]
+    fn dispatch_list_reads_child_ticket_from_explicit_workspace_root() {
+        let (_dir, _repo, child, ticket_id) = create_nested_ticket_fixture();
+
+        let payload = dispatch(
+            TicketCommandCli::List(ListArgs {
+                state: None,
+                ticket_type: None,
+                limit: Some(10),
+                with_repro: false,
+                include_deleted: false,
+                where_clauses: Vec::new(),
+            }),
+            None,
+            Some(&child),
+            None,
+            true,
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(payload["command"], "list");
+        assert_eq!(payload["count"], 1);
+        assert_eq!(payload["items"][0]["id"], ticket_id);
+    }
+
+    #[test]
+    fn dispatch_get_reads_child_ticket_after_scan_root_augmentation() {
+        let (_dir, repo, _child, ticket_id) = create_nested_ticket_fixture();
+        let root_store = TicketStore::open(&repo.join(".ticket")).unwrap();
+
+        let reindex = register_descendant_scan_roots(&root_store, &repo).unwrap();
+        assert!(reindex);
+        root_store.scan(true).unwrap();
+
+        let payload = dispatch_store_command(
+            TicketCommandCli::Get(IdArgs {
+                id: ticket_id.clone(),
+            }),
+            root_store,
+        )
+        .unwrap();
+
+        assert_eq!(payload["command"], "get");
+        assert_eq!(payload["ticket"]["id"], ticket_id);
+    }
+
+    #[test]
+    fn dispatch_search_reads_child_ticket_after_scan_root_augmentation() {
+        let (_dir, repo, _child, ticket_id) = create_nested_ticket_fixture();
+        let root_store = TicketStore::open(&repo.join(".ticket")).unwrap();
+
+        let reindex = register_descendant_scan_roots(&root_store, &repo).unwrap();
+        assert!(reindex);
+        root_store.scan(true).unwrap();
+
+        let payload = dispatch_store_command(
+            TicketCommandCli::Search(TextArgs {
+                expression: "Nested workspace ticket".to_string(),
+                limit: 10,
+            }),
+            root_store,
+        )
+        .unwrap();
+
+        assert_eq!(payload["command"], "search");
+        assert_eq!(payload["count"], 1);
+        assert_eq!(payload["results"][0]["id"], ticket_id);
     }
 }

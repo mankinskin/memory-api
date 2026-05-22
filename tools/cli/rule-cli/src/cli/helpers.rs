@@ -22,25 +22,33 @@ use super::{
     RuleCommandCli,
 };
 
-pub(super) fn resolve_index_root(explicit: Option<&Path>) -> PathBuf {
+pub(super) fn resolve_index_root(
+    explicit: Option<&Path>,
+    workspace_root: Option<&Path>,
+) -> PathBuf {
     let cwd = memory_api::workspace::working_dir();
-    resolve_index_root_from(explicit, cwd.as_deref())
+    let env_root = std::env::var_os("RULE_INDEX_ROOT").map(PathBuf::from);
+    resolve_index_root_from(
+        explicit,
+        workspace_root,
+        env_root.as_deref(),
+        cwd.as_deref(),
+    )
 }
 
 fn resolve_index_root_from(
     explicit: Option<&Path>,
+    workspace_root: Option<&Path>,
+    env_root: Option<&Path>,
     cwd: Option<&Path>,
 ) -> PathBuf {
-    if let Some(path) = explicit {
-        return path.to_path_buf();
-    }
-    if let Ok(path) = std::env::var("RULE_INDEX_ROOT") {
-        return PathBuf::from(path);
-    }
-    if let Some(cwd) = cwd {
-        return memory_api::workspace::resolve_local_root_from(cwd, ".rule");
-    }
-    PathBuf::from(".rule")
+    memory_api::workspace::resolve_requested_store_root_from(
+        explicit,
+        workspace_root,
+        env_root,
+        cwd,
+        ".rule",
+    )
 }
 
 pub(super) fn resolve_workspace_root(
@@ -175,7 +183,7 @@ mod tests {
         std::fs::create_dir_all(repo.join(".rule")).unwrap();
         std::fs::create_dir_all(&nested).unwrap();
 
-        let resolved = resolve_index_root_from(None, Some(&nested));
+        let resolved = resolve_index_root_from(None, None, None, Some(&nested));
 
         assert_eq!(resolved, repo.join(".rule"));
     }
@@ -186,9 +194,45 @@ mod tests {
         let nested = dir.path().join("repo");
         std::fs::create_dir_all(&nested).unwrap();
 
-        let resolved = resolve_index_root_from(None, Some(&nested));
+        let resolved = resolve_index_root_from(None, None, None, Some(&nested));
 
         assert_eq!(resolved, nested.join(".rule"));
+    }
+
+    #[test]
+    fn resolve_index_root_prefers_explicit_workspace_root() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("memory-api");
+        std::fs::create_dir_all(repo.join(".rule")).unwrap();
+        std::fs::create_dir_all(child.join(".rule")).unwrap();
+
+        let resolved = resolve_index_root_from(
+            None,
+            Some(&child),
+            None,
+            Some(&repo),
+        );
+
+        assert_eq!(resolved, child.join(".rule"));
+    }
+
+    #[test]
+    fn resolve_index_root_prefers_explicit_store_root_over_workspace_root() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("memory-api");
+        std::fs::create_dir_all(repo.join(".rule")).unwrap();
+        std::fs::create_dir_all(child.join(".rule")).unwrap();
+
+        let resolved = resolve_index_root_from(
+            Some(&repo.join(".rule")),
+            Some(&child),
+            None,
+            Some(&child),
+        );
+
+        assert_eq!(resolved, repo.join(".rule"));
     }
 }
 

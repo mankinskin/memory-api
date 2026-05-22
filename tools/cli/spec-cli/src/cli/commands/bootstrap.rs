@@ -50,7 +50,7 @@ pub fn cmd_bootstrap(
     })?;
 
     let workspace_root = args
-        .workspace_root
+        .source_workspace_root
         .map(|p| p.canonicalize().unwrap_or(p))
         .unwrap_or_else(|| {
             let cwd = std::env::current_dir().expect("cwd");

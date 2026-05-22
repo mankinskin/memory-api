@@ -38,6 +38,11 @@ pub struct SpecCli {
     #[arg(long, global = true)]
     pub index_root: Option<PathBuf>,
 
+    /// Workspace/repo root to normalize to the canonical `.spec` store.
+    /// Useful for targeting a nested workspace from an ancestor checkout.
+    #[arg(long, global = true)]
+    pub workspace_root: Option<PathBuf>,
+
     #[command(subcommand)]
     pub command: SpecCommandCli,
 }
@@ -99,7 +104,12 @@ pub enum CliOutput {
 
 pub fn run(cli: SpecCli) -> Result<CliOutput, CliRunError> {
     let payload =
-        dispatch::dispatch(cli.command, cli.index_root.as_deref(), cli.json)?;
+        dispatch::dispatch(
+            cli.command,
+            cli.index_root.as_deref(),
+            cli.workspace_root.as_deref(),
+            cli.json,
+        )?;
     if cli.json {
         Ok(CliOutput::Json(payload))
     } else {
@@ -129,4 +139,68 @@ where
     T: Into<std::ffi::OsString> + Clone,
 {
     SpecCli::try_parse_from(args)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    #[test]
+    fn parse_refs_validate_keeps_workspace_root_meanings_distinct() {
+        let cli = parse_cli_from([
+            "spec",
+            "--workspace-root",
+            "memory-viewers/memory-api",
+            "refs",
+            "0386c4d0",
+            "validate",
+            "--code-workspace-root",
+            ".",
+        ])
+        .unwrap();
+
+        assert_eq!(
+            cli.workspace_root,
+            Some(PathBuf::from("memory-viewers/memory-api"))
+        );
+
+        match cli.command {
+            SpecCommandCli::Refs(RefsArgs {
+                id,
+                subcommand:
+                    Some(RefsSubcommand::Validate {
+                        code_workspace_root,
+                    }),
+            }) => {
+                assert_eq!(id, "0386c4d0");
+                assert_eq!(code_workspace_root, Some(PathBuf::from(".")));
+            },
+            other => panic!("expected refs validate command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_bootstrap_uses_source_workspace_root_name() {
+        let cli = parse_cli_from([
+            "spec",
+            "bootstrap",
+            "crates/spec-api",
+            "--source-workspace-root",
+            "memory-viewers/memory-api",
+        ])
+        .unwrap();
+
+        match cli.command {
+            SpecCommandCli::Bootstrap(args) => {
+                assert_eq!(args.crate_path, PathBuf::from("crates/spec-api"));
+                assert_eq!(
+                    args.source_workspace_root,
+                    Some(PathBuf::from("memory-viewers/memory-api"))
+                );
+            },
+            other => panic!("expected bootstrap command, got {other:?}"),
+        }
+    }
 }

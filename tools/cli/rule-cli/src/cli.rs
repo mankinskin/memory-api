@@ -34,7 +34,10 @@ pub enum CliOutput {
 }
 
 pub fn run(cli: RuleCli) -> Result<CliOutput, CliRunError> {
-    let index_root = helpers::resolve_index_root(cli.index_root.as_deref());
+    let index_root = helpers::resolve_index_root(
+        cli.index_root.as_deref(),
+        cli.workspace_root.as_deref(),
+    );
     let payload = dispatch::dispatch(cli.command, &index_root)?;
     if cli.json {
         Ok(CliOutput::Json(payload))

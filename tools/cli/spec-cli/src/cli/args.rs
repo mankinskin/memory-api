@@ -103,7 +103,7 @@ pub struct TreeArgs {
     pub id: Option<String>,
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Clone, Args)]
 pub struct RefsArgs {
     /// Spec UUID, prefix, or slug.
     pub id: String,
@@ -111,13 +111,13 @@ pub struct RefsArgs {
     pub subcommand: Option<RefsSubcommand>,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Clone, Subcommand)]
 pub enum RefsSubcommand {
     /// Validate code references (check file existence, line ranges).
     Validate {
-        /// Workspace root for resolving file paths.
-        #[arg(long, default_value = ".")]
-        workspace_root: PathBuf,
+        /// Override the code workspace root used for resolving referenced file paths.
+        #[arg(long = "code-workspace-root")]
+        code_workspace_root: Option<PathBuf>,
     },
 }
 
@@ -171,9 +171,9 @@ pub struct BootstrapArgs {
     /// Print what would be created without writing to the store.
     #[arg(long)]
     pub dry_run: bool,
-    /// Workspace root used for computing relative file paths.
-    #[arg(long)]
-    pub workspace_root: Option<std::path::PathBuf>,
+    /// Source workspace root used for computing relative code-reference file paths.
+    #[arg(long = "source-workspace-root")]
+    pub source_workspace_root: Option<std::path::PathBuf>,
     /// Place the created specs in this scan root.
     #[arg(long = "root")]
     pub target_root: Option<std::path::PathBuf>,

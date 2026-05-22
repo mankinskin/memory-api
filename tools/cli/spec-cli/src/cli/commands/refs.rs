@@ -17,11 +17,22 @@ use crate::cli::{
 pub(crate) fn cmd_refs(
     args: RefsArgs,
     store: &SpecStore,
+    default_workspace_root: &std::path::Path,
 ) -> Result<Value, CliRunError> {
     let spec = store.get(&args.id)?;
 
     match args.subcommand {
-        Some(RefsSubcommand::Validate { workspace_root }) => {
+        Some(RefsSubcommand::Validate {
+            code_workspace_root,
+        }) => {
+            let workspace_root = code_workspace_root
+                .unwrap_or_else(|| {
+                    inferred_workspace_root_for_spec(
+                        store,
+                        spec.id,
+                        default_workspace_root,
+                    )
+                });
             let results = validate_refs(&spec.code_refs, &workspace_root);
             let items: Vec<Value> = results
                 .iter()
@@ -42,6 +53,7 @@ pub(crate) fn cmd_refs(
                 "command": "refs_validate",
                 "status": "ok",
                 "id": spec.id,
+                "workspace_root": workspace_root,
                 "valid": all_valid,
                 "count": items.len(),
                 "results": items,
@@ -70,5 +82,152 @@ pub(crate) fn cmd_refs(
                 "refs": refs,
             }))
         },
+    }
+}
+
+fn inferred_workspace_root_for_spec(
+    store: &SpecStore,
+    spec_id: uuid::Uuid,
+    default_workspace_root: &std::path::Path,
+) -> std::path::PathBuf {
+    store
+        .entity_store()
+        .get_indexed(&spec_id)
+        .ok()
+        .flatten()
+        .map(|indexed| {
+            let store_root = memory_api::workspace::resolve_store_root_from(
+                &indexed.path,
+                ".spec",
+            );
+            memory_api::workspace::resolve_workspace_root_from_store_root(
+                &store_root,
+                ".spec",
+            )
+        })
+        .unwrap_or_else(|| default_workspace_root.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use serde_json::Value;
+    use spec_api::{
+        SpecManifest,
+        code_ref::{
+            CodeRef,
+            SymbolKind,
+        },
+    };
+    use tempfile::tempdir;
+
+    use super::*;
+
+    fn create_spec_with_ref(
+        workspace_root: &std::path::Path,
+        file_root: &std::path::Path,
+    ) -> (SpecStore, String) {
+        let store_root = workspace_root.join(".spec");
+        fs::create_dir_all(&store_root).unwrap();
+        fs::create_dir_all(file_root.join("src")).unwrap();
+        fs::write(file_root.join("src/lib.rs"), "pub fn target() {}\n").unwrap();
+
+        let mut store = SpecStore::init(&store_root).unwrap();
+        let mut manifest =
+            SpecManifest::new("spec-cli/refs", "Refs", "spec-cli");
+        manifest.code_refs = vec![CodeRef {
+            file: "src/lib.rs".to_string(),
+            symbol: "target".to_string(),
+            kind: SymbolKind::Function,
+            line_start: 1,
+            line_end: 1,
+            description: Some("validate me".to_string()),
+        }];
+        let id = store.create(&manifest, "body", None).unwrap().to_string();
+
+        (store, id)
+    }
+
+    fn validate_payload(
+        payload: &Value,
+        expected_root: &std::path::Path,
+    ) {
+        assert_eq!(payload["command"], "refs_validate");
+        assert_eq!(payload["valid"], true);
+        assert_eq!(payload["count"], 1);
+        assert_eq!(
+            payload["workspace_root"],
+            Value::String(
+                expected_root
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            )
+        );
+    }
+
+    #[test]
+    fn refs_validate_uses_default_workspace_root() {
+        let dir = tempdir().unwrap();
+        let workspace_root = dir.path().join("repo");
+        let (store, id) = create_spec_with_ref(&workspace_root, &workspace_root);
+
+        let payload = cmd_refs(
+            RefsArgs {
+                id,
+                subcommand: Some(RefsSubcommand::Validate {
+                    code_workspace_root: None,
+                }),
+            },
+            &store,
+            &workspace_root,
+        )
+        .unwrap();
+
+        validate_payload(&payload, &workspace_root);
+    }
+
+    #[test]
+    fn refs_validate_prefers_explicit_code_workspace_root() {
+        let dir = tempdir().unwrap();
+        let workspace_root = dir.path().join("repo");
+        let override_root = dir.path().join("override");
+        let (store, id) = create_spec_with_ref(&workspace_root, &override_root);
+
+        let payload = cmd_refs(
+            RefsArgs {
+                id,
+                subcommand: Some(RefsSubcommand::Validate {
+                    code_workspace_root: Some(override_root.clone()),
+                }),
+            },
+            &store,
+            &workspace_root,
+        )
+        .unwrap();
+
+        validate_payload(&payload, &override_root);
+    }
+
+    #[test]
+    fn refs_validate_uses_owning_workspace_for_nested_spec() {
+        let dir = tempdir().unwrap();
+        let repo_root = dir.path().join("repo");
+        let child_root = repo_root.join("memory-api");
+        let (store, id) = create_spec_with_ref(&child_root, &child_root);
+
+        let payload = cmd_refs(
+            RefsArgs {
+                id,
+                subcommand: Some(RefsSubcommand::Validate {
+                    code_workspace_root: None,
+                }),
+            },
+            &store,
+            &repo_root,
+        )
+        .unwrap();
+
+        validate_payload(&payload, &child_root);
     }
 }
