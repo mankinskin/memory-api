@@ -23,7 +23,7 @@ Read routes:
 - `/api/tickets`, `/api/tickets/{id}`, `/api/tickets/{id}/description`, `/api/tickets/{id}/history`, `/api/tickets/{id}/files`, `/api/tickets/{id}/asset`
 - `/api/edges`
 - `/api/schema`, `/api/schema/{type_id}`
-- `/api/graph/subgraph`, `/api/graph/topgraph`, `/api/graph/health`
+- `/api/graph/subgraph`, `/api/graph/topgraph`, `/api/graph/workspace`, `/api/graph/health`
 - `/api/stream`
 
 Write routes are auth-gated and include `/api/batch`, ticket create/update/delete, close/cancel/undo/revert, and edge add/remove.

@@ -45,6 +45,7 @@ use super::{
     SubgraphResponse,
     SubgraphStats,
     TopgraphQuery,
+    WorkspaceGraphQuery,
 };
 
 type AdjEntry = (Uuid, Uuid, Uuid, String);
@@ -71,6 +72,11 @@ struct TraversalResult {
     edges: Vec<RawEdgeItem>,
     truncated: bool,
     max_depth_reached: usize,
+}
+
+struct WorkspaceGraphRequest {
+    workspace: String,
+    edge_kind: Option<String>,
 }
 
 impl GraphRequest {
@@ -107,6 +113,19 @@ impl GraphRequest {
     }
 }
 
+impl WorkspaceGraphRequest {
+    fn from_query(params: WorkspaceGraphQuery) -> Self {
+        Self {
+            workspace: params.workspace,
+            edge_kind: params.edge_kind,
+        }
+    }
+
+    fn edge_kind_filter(&self) -> &str {
+        self.edge_kind.as_deref().unwrap_or("all")
+    }
+}
+
 pub(super) async fn handle_subgraph(
     state: AppState,
     request_id: String,
@@ -130,6 +149,26 @@ pub(super) async fn handle_topgraph(
 ) -> Response {
     run_graph_request(state, request_id, GraphRequest::from_topgraph(params))
         .await
+}
+
+pub(super) async fn handle_workspace_graph(
+    state: AppState,
+    request_id: String,
+    params: WorkspaceGraphQuery,
+) -> Response {
+    tracing::debug!(
+        workspace = %params.workspace,
+        request_id = %request_id,
+        "workspace graph request received"
+    );
+
+    let task_request_id = request_id.clone();
+    let request = WorkspaceGraphRequest::from_query(params);
+    tokio::task::spawn_blocking(move || {
+        workspace_graph(state, &task_request_id, request)
+    })
+    .await
+    .unwrap_or_else(|_| task_join_err(&request_id, "workspace graph request"))
 }
 
 async fn run_graph_request(
@@ -237,6 +276,93 @@ fn bfs_graph(
     .into_response()
 }
 
+fn workspace_graph(
+    state: AppState,
+    request_id: &str,
+    request: WorkspaceGraphRequest,
+) -> Response {
+    let total_timer = Instant::now();
+    let store =
+        match resolve_workspace_store(&state, &request.workspace, request_id) {
+            Ok(store) => store,
+            Err(response) => return response,
+        };
+
+    let phase_timer = Instant::now();
+    let local_tickets = match store.list(None, None, None) {
+        Ok(tickets) => tickets,
+        Err(error) => return storage_err(error, request_id),
+    };
+    let all_edges = match store.list_all_edges() {
+        Ok(edges) => edges,
+        Err(error) => return storage_err(error, request_id),
+    };
+    let raw_edges = dedupe_edges(filter_graph_edges(
+        &all_edges,
+        request.edge_kind_filter(),
+    ));
+    let node_ids = collect_workspace_node_ids(&local_tickets, &raw_edges);
+    let phase1_edges_ms = phase_timer.elapsed().as_millis();
+
+    let (depths, max_depth_reached) =
+        compute_workspace_depths(&node_ids, &raw_edges);
+    let phase2_end_ms = phase_timer.elapsed().as_millis();
+
+    let resolved = match resolve_graph_tickets_by_ids(
+        &state,
+        &request.workspace,
+        &node_ids,
+        request_id,
+    ) {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
+
+    let nodes = match build_nodes(
+        &resolved,
+        &depths,
+        &request.workspace,
+        request_id,
+    ) {
+        Ok(nodes) => nodes,
+        Err(response) => return response,
+    };
+    let edges = match build_edges(
+        raw_edges,
+        &resolved,
+        &request.workspace,
+        request_id,
+    ) {
+        Ok(edges) => edges,
+        Err(response) => return response,
+    };
+    let phase3_end_ms = phase_timer.elapsed().as_millis();
+
+    let stats = SubgraphStats {
+        nodes_returned: nodes.len(),
+        edges_returned: edges.len(),
+        max_depth_reached,
+        phase1_edges_ms,
+        phase2_bfs_ms: phase2_end_ms - phase1_edges_ms,
+        phase3_meta_ms: phase3_end_ms - phase2_end_ms,
+        total_ms: total_timer.elapsed().as_millis(),
+    };
+
+    log_workspace_graph_timing(&request.workspace, &nodes, &edges, &stats);
+
+    Json(SubgraphResponse {
+        request_id: request_id.to_string(),
+        active_workspace: request.workspace.clone(),
+        workspace: request.workspace,
+        nodes,
+        edges,
+        truncated: false,
+        next_cursor: None,
+        stats,
+    })
+    .into_response()
+}
+
 fn resolve_workspace_store(
     state: &AppState,
     workspace: &str,
@@ -271,6 +397,23 @@ fn build_adjacency(
         ));
     }
     adjacency
+}
+
+fn filter_graph_edges(
+    all_edges: &[EdgeRecord],
+    edge_kind_filter: &str,
+) -> Vec<RawEdgeItem> {
+    all_edges
+        .iter()
+        .filter(|edge| {
+            edge_kind_filter == "all" || edge.kind == edge_kind_filter
+        })
+        .map(|edge| RawEdgeItem {
+            from: edge.from,
+            to: edge.to,
+            kind: edge.kind.clone(),
+        })
+        .collect()
 }
 
 fn traverse_graph(
@@ -354,10 +497,95 @@ fn resolve_graph_tickets(
     }
     ids.sort();
     ids.dedup();
+
+    resolve_graph_tickets_by_ids(state, active_workspace, &ids, request_id)
+}
+
+fn resolve_graph_tickets_by_ids(
+    state: &AppState,
+    active_workspace: &str,
+    ids: &[Uuid],
+    request_id: &str,
+) -> Result<HashMap<Uuid, ResolvedIndexedTicket>, Response> {
     state
         .registry
         .resolve_indexed_many(active_workspace, &ids)
         .map_err(|error| storage_err(error, request_id))
+}
+
+fn collect_workspace_node_ids(
+    local_tickets: &[IndexedTicket],
+    edges: &[RawEdgeItem],
+) -> Vec<Uuid> {
+    let mut ids: Vec<Uuid> = local_tickets.iter().map(|ticket| ticket.id).collect();
+    for edge in edges {
+        ids.push(edge.from);
+        ids.push(edge.to);
+    }
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+fn compute_workspace_depths(
+    node_ids: &[Uuid],
+    edges: &[RawEdgeItem],
+) -> (HashMap<Uuid, usize>, usize) {
+    let node_set: HashSet<Uuid> = node_ids.iter().copied().collect();
+    let mut indegree: HashMap<Uuid, usize> = node_ids
+        .iter()
+        .copied()
+        .map(|id| (id, 0))
+        .collect();
+    let mut outgoing: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+
+    for edge in edges {
+        if !node_set.contains(&edge.from) || !node_set.contains(&edge.to) {
+            continue;
+        }
+        outgoing.entry(edge.from).or_default().push(edge.to);
+        *indegree.entry(edge.to).or_default() += 1;
+        indegree.entry(edge.from).or_default();
+    }
+
+    let mut roots: Vec<Uuid> = indegree
+        .iter()
+        .filter_map(|(id, degree)| (*degree == 0).then_some(*id))
+        .collect();
+    roots.sort_unstable();
+
+    let mut queue: VecDeque<Uuid> = roots.iter().copied().collect();
+    let mut depths: HashMap<Uuid, usize> =
+        roots.into_iter().map(|id| (id, 0)).collect();
+
+    while let Some(current) = queue.pop_front() {
+        let current_depth = depths.get(&current).copied().unwrap_or(0);
+        if let Some(neighbors) = outgoing.get(&current) {
+            for neighbor in neighbors {
+                let next_depth = current_depth + 1;
+                depths
+                    .entry(*neighbor)
+                    .and_modify(|depth| *depth = (*depth).max(next_depth))
+                    .or_insert(next_depth);
+
+                if let Some(remaining) = indegree.get_mut(neighbor) {
+                    if *remaining > 0 {
+                        *remaining -= 1;
+                        if *remaining == 0 {
+                            queue.push_back(*neighbor);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for id in node_ids {
+        depths.entry(*id).or_insert(0);
+    }
+
+    let max_depth_reached = depths.values().copied().max().unwrap_or(0);
+    (depths, max_depth_reached)
 }
 
 fn build_nodes(
@@ -512,5 +740,23 @@ fn log_subgraph_timing(
         phase2_bfs_ms = stats.phase2_bfs_ms,
         phase3_meta_ms = stats.phase3_meta_ms,
         "subgraph timing"
+    );
+}
+
+fn log_workspace_graph_timing(
+    workspace: &str,
+    nodes: &[NodeItem],
+    edges: &[EdgeItem],
+    stats: &SubgraphStats,
+) {
+    tracing::info!(
+        workspace = %workspace,
+        nodes = nodes.len(),
+        edges = edges.len(),
+        elapsed_ms = stats.total_ms,
+        phase1_edges_ms = stats.phase1_edges_ms,
+        phase2_bfs_ms = stats.phase2_bfs_ms,
+        phase3_meta_ms = stats.phase3_meta_ms,
+        "workspace graph timing"
     );
 }

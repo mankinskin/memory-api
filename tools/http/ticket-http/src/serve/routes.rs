@@ -56,6 +56,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/edges", get(handlers::edges::list_edges))
         .route("/api/schema", get(handlers::schema::list_schemas))
         .route("/api/schema/{type_id}", get(handlers::schema::get_schema))
+        .route("/api/graph/workspace", get(handlers::graph::workspace_graph))
         .route("/api/graph/subgraph", get(handlers::graph::subgraph))
         .route("/api/graph/topgraph", get(handlers::graph::topgraph))
         .route("/api/graph/health", get(handlers::graph::health_check))
@@ -479,7 +480,7 @@ mod tests {
         std::fs::create_dir_all(&child_dir).expect("create child dir");
 
         let parent_store = open_workspace_store(dir.path());
-        let child_store = open_workspace_store(&child_dir);
+        let child_store = open_workspace_store(child_dir.as_path());
 
         let child_id = child_store
             .create(
@@ -594,7 +595,7 @@ mod tests {
             .expect("add mixed-workspace edge");
 
         let app = make_router_from_store(Arc::clone(&child_store));
-        let child_workspace = primary_workspace_name(&child_dir);
+        let child_workspace = primary_workspace_name(child_dir.as_path());
         let parent_workspace = primary_workspace_name(dir.path());
 
         let graph_request = Request::builder()
@@ -655,5 +656,119 @@ mod tests {
             parent_workspace
         );
         assert_eq!(history_payload["ticket_ref"]["id"], parent_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn workspace_graph_includes_isolated_local_and_cross_workspace_nodes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let child_dir = dir.path().join("child");
+        std::fs::create_dir_all(&child_dir).expect("create child dir");
+
+        let parent_store = open_workspace_store(dir.path());
+        let child_store = open_workspace_store(child_dir.as_path());
+
+        let parent_id = parent_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Parent ticket"),
+                None,
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create parent ticket");
+        let child_id = child_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Child ticket"),
+                None,
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create child ticket");
+        let isolated_id = child_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Isolated ticket"),
+                None,
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create isolated ticket");
+
+        child_store
+            .add_edge(ticket_api::model::edge::EdgeRecord {
+                from: child_id,
+                to: parent_id,
+                kind: "depends_on".into(),
+                created_at: chrono::Utc::now(),
+            })
+            .expect("add mixed-workspace edge");
+
+        let app = make_router_from_store(Arc::clone(&child_store));
+        let workspace_request = Request::builder()
+            .method(Method::GET)
+            .uri("/api/workspaces")
+            .body(Body::empty())
+            .unwrap();
+        let workspace_response = app.clone().oneshot(workspace_request).await.unwrap();
+        assert_eq!(workspace_response.status(), StatusCode::OK);
+        let workspace_bytes = to_bytes(
+            workspace_response.into_body(),
+            1024 * 1024,
+        )
+        .await
+        .unwrap();
+        let workspace_payload: serde_json::Value =
+            serde_json::from_slice(&workspace_bytes).unwrap();
+        let child_workspace = workspace_payload["active_workspace"]
+            .as_str()
+            .expect("active workspace")
+            .to_string();
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(format!(
+                "/api/graph/workspace?workspace={child_workspace}"
+            ))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        let nodes = payload["nodes"].as_array().expect("nodes array");
+        assert!(
+            nodes.iter().any(|node| node["id"] == child_id.to_string()),
+            "workspace graph should include the local graph root"
+        );
+        assert!(
+            nodes.iter().any(|node| {
+                node["id"] == isolated_id.to_string()
+                    && node["ticket_ref"]["workspace"] == child_workspace
+            }),
+            "workspace graph should include isolated local tickets"
+        );
+        assert!(
+            nodes.iter().any(|node| node["id"] == parent_id.to_string()),
+            "workspace graph should include cross-workspace edge endpoints"
+        );
+
+        let edges = payload["edges"].as_array().expect("edges array");
+        assert!(
+            edges.iter().any(|edge| {
+                edge["from"] == child_id.to_string()
+                    && edge["to"] == parent_id.to_string()
+            }),
+            "workspace graph should preserve mixed-workspace relationship metadata"
+        );
+        assert_eq!(payload["truncated"], false);
     }
 }

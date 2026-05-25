@@ -37,6 +37,12 @@ pub struct SubgraphQuery {
     pub limit_edges: usize,
 }
 
+#[derive(Deserialize)]
+pub struct WorkspaceGraphQuery {
+    pub workspace: String,
+    pub edge_kind: Option<String>,
+}
+
 fn default_depth() -> usize {
     2
 }
@@ -98,6 +104,14 @@ pub async fn subgraph(
     Query(params): Query<SubgraphQuery>,
 ) -> Response {
     traversal::handle_subgraph(state, rid.0, params).await
+}
+
+pub async fn workspace_graph(
+    State(state): State<AppState>,
+    Extension(rid): Extension<RequestIdExt>,
+    Query(params): Query<WorkspaceGraphQuery>,
+) -> Response {
+    traversal::handle_workspace_graph(state, rid.0, params).await
 }
 
 #[derive(Deserialize)]
