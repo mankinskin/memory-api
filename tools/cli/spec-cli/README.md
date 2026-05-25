@@ -12,7 +12,6 @@ Use `spec` when you need to create, browse, and validate specification documents
 - `create`, `get`, `update`, `delete`, `list`, `search`: maintain spec records and inspect them by id, slug, or text query.
 - `tree`, `section`: navigate or edit hierarchical spec structure.
 - `refs`: list and validate code references attached to a spec.
-- `sync-generated`: regenerate `body.md` and section artifacts declared in `generated.toml` from `rule-api` targets.
 - `health`, `scan`, `add-root`, `bootstrap`: keep the store healthy and seed specs from Rust API surfaces.
 
 Global options:
@@ -42,9 +41,6 @@ spec search "ticket board"
 
 # Validate code references on one spec
 spec refs <spec-id> validate
-
-# Regenerate generated spec artifacts for one spec
-spec sync-generated <spec-id>
 
 # Show the current section tree
 spec tree <spec-id>
