@@ -753,6 +753,100 @@ fn unblocked_by_text_output_shows_nested_tree_and_frontier_summary() {
 }
 
 #[test]
+fn blockers_reports_empty_leaf_cleanly_in_json_and_text() {
+    let s = Sandbox::new();
+    assert_eq!(s.ticket_json(&["init"])["status"], "ok");
+    let root = create_ticket(&s, "Isolated blocker root");
+
+    let blockers = s.ticket_json(&["blockers", &root]);
+    assert_eq!(blockers["status"], "ok");
+    assert_eq!(blockers["kind"], "blockers");
+    assert_eq!(blockers["root"]["id"], root.as_str());
+    assert_eq!(blockers["root"]["remaining_blocker_count"], 0);
+    assert_eq!(blockers["root"]["unresolved_frontier_leaf_count"], 1);
+    assert_eq!(blockers["root"]["is_frontier"], true);
+    assert!(blockers["root"]["children"].as_array().unwrap().is_empty());
+    assert_eq!(blockers["frontier_count"], 1);
+    let frontier_items = blockers["frontier_items"].as_array().unwrap();
+    assert_eq!(frontier_items.len(), 1);
+    assert_eq!(frontier_items[0]["id"], root.as_str());
+
+    let out = Command::new(TICKET)
+        .arg("--index-root")
+        .arg(&s.index_root)
+        .args(["blockers", &root])
+        .output()
+        .expect("failed to run ticket blockers for empty leaf case");
+
+    assert!(
+        out.status.success(),
+        "blockers leaf case should succeed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+
+    let stdout =
+        String::from_utf8(out.stdout).expect("blockers leaf stdout should be valid UTF-8");
+
+    assert!(stdout.contains("blockers ok"));
+    assert!(stdout.contains("frontier_count: 1"));
+    assert!(stdout.contains("Blocker Tree:"));
+    assert!(stdout.contains(&root[..8]));
+    assert!(stdout.contains("Frontier Leaves:"));
+    assert!(stdout.contains("#1"));
+    assert!(!stdout.contains("[root]"));
+    assert!(!stdout.contains("[frontier_items]"));
+}
+
+#[test]
+fn unblocked_by_reports_empty_leaf_cleanly_in_json_and_text() {
+    let s = Sandbox::new();
+    assert_eq!(s.ticket_json(&["init"])["status"], "ok");
+    let root = create_ticket(&s, "Isolated prerequisite root");
+
+    let unblocked = s.ticket_json(&["unblocked-by", &root]);
+    assert_eq!(unblocked["status"], "ok");
+    assert_eq!(unblocked["kind"], "unblocked_by");
+    assert_eq!(unblocked["root"]["id"], root.as_str());
+    assert_eq!(unblocked["reachable_dependents"], 0);
+    assert_eq!(unblocked["blocked_dependents"], 0);
+    assert_eq!(unblocked["root"]["is_frontier"], false);
+    assert!(unblocked["root"]["children"].as_array().unwrap().is_empty());
+    assert_eq!(unblocked["frontier_count"], 1);
+    let frontier_items = unblocked["frontier_items"].as_array().unwrap();
+    assert_eq!(frontier_items.len(), 1);
+    assert_eq!(frontier_items[0]["id"], root.as_str());
+
+    let out = Command::new(TICKET)
+        .arg("--index-root")
+        .arg(&s.index_root)
+        .args(["unblocked-by", &root])
+        .output()
+        .expect("failed to run ticket unblocked-by for empty leaf case");
+
+    assert!(
+        out.status.success(),
+        "unblocked-by leaf case should succeed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+
+    let stdout = String::from_utf8(out.stdout)
+        .expect("unblocked-by leaf stdout should be valid UTF-8");
+
+    assert!(stdout.contains("unblocked_by ok"));
+    assert!(stdout.contains("reachable_dependents: 0"));
+    assert!(stdout.contains("blocked_dependents: 0"));
+    assert!(stdout.contains("frontier_count: 1"));
+    assert!(stdout.contains("Unlock Tree:"));
+    assert!(stdout.contains(&root[..8]));
+    assert!(stdout.contains("Frontier Leaves:"));
+    assert!(stdout.contains("#1"));
+    assert!(!stdout.contains("[root]"));
+    assert!(!stdout.contains("[frontier_items]"));
+}
+
+#[test]
 fn next_and_board_prefer_newer_tickets_before_older_ones() {
     let s = Sandbox::new();
     let older = create_ticket(&s, "Alpha older candidate");

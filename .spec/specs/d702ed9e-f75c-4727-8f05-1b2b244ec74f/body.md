@@ -212,12 +212,36 @@ The current store already separates graph metadata from full-text search. This b
 - `ticket-api/workflow/best-next-ordering`
 - `ticket-api/workflow/dependency-convergence-ranking`
 
+## Implementation traceability
+
+- CLI tree rendering and isolated-root leaf coverage: [d39e9e08 ticket-cli blockers command and nested tree rendering](../../../../../.ticket/tickets/d39e9e08-5104-461b-83ff-bd4361e967d9/ticket.toml)
+  - Updated test coverage: [tools/cli/ticket-cli/tests/integration_board_cli.rs](../../../tools/cli/ticket-cli/tests/integration_board_cli.rs)
+  - Passed on 2026-05-25:
+    - `cargo test -p ticket-cli blockers_returns_nested_dependency_tree --test integration_board_cli`
+    - `cargo test -p ticket-cli unblocked_by_returns_nested_unlock_tree_and_frontier_summary --test integration_board_cli`
+    - `cargo test -p ticket-cli blockers_text_output_shows_nested_tree_and_frontier_summary --test integration_board_cli`
+    - `cargo test -p ticket-cli unblocked_by_text_output_shows_nested_tree_and_frontier_summary --test integration_board_cli`
+    - `cargo test -p ticket-cli blockers_reports_empty_leaf_cleanly_in_json_and_text --test integration_board_cli`
+    - `cargo test -p ticket-cli unblocked_by_reports_empty_leaf_cleanly_in_json_and_text --test integration_board_cli`
+- Viewer workflow ordering and tree rendering coverage: [a08a6153 ticket-viewer workflow ordering and blocker-tree surfaces](../../../../../.ticket/tickets/a08a6153-126e-4e4a-8333-0e651817d8ea/ticket.toml)
+  - Updated test coverage: [ticket-viewer/frontend/dioxus/e2e-release/workflow-sidebar.spec.ts](../../../../ticket-viewer/frontend/dioxus/e2e-release/workflow-sidebar.spec.ts)
+  - Initial implementation validation passed:
+    - `cargo check --manifest-path memory-viewers/ticket-viewer/Cargo.toml`
+    - `cargo build --manifest-path memory-viewers/ticket-viewer/Cargo.toml --release && viewer-ctl stop ticket-viewer && viewer-ctl install ticket-viewer`
+    - `npm run test:e2e:release:headed -- workflow-sidebar.spec.ts` in `memory-viewers/ticket-viewer/frontend/dioxus`
+  - Follow-up validation passed on 2026-05-25 after extending seeded workflow coverage for browse preservation, empty-root workflow states, server-authored hierarchy, evidence rendering, and narrow-width layout:
+    - `npm run test:e2e:release -- workflow-sidebar.spec.ts` in `memory-viewers/ticket-viewer/frontend/dioxus`
+
 ## Validation plan
 
 - `cargo test -p ticket-api workflow:: -- --nocapture`
-- `cargo test -p ticket-cli blockers --test integration_board_cli -- --nocapture`
-- `cargo test -p ticket-cli unblocked_by --test integration_board_cli -- --nocapture`
+- `cargo test -p ticket-cli blockers_returns_nested_dependency_tree --test integration_board_cli`
+- `cargo test -p ticket-cli unblocked_by_returns_nested_unlock_tree_and_frontier_summary --test integration_board_cli`
+- `cargo test -p ticket-cli blockers_text_output_shows_nested_tree_and_frontier_summary --test integration_board_cli`
+- `cargo test -p ticket-cli unblocked_by_text_output_shows_nested_tree_and_frontier_summary --test integration_board_cli`
+- `cargo test -p ticket-cli blockers_reports_empty_leaf_cleanly_in_json_and_text --test integration_board_cli`
+- `cargo test -p ticket-cli unblocked_by_reports_empty_leaf_cleanly_in_json_and_text --test integration_board_cli`
 - `cargo test -p ticket-http -- --nocapture`
 - `cargo test -p ticket-mcp next_tickets_ -- --nocapture`
-- `npm --prefix memory-viewers/ticket-viewer/frontend/dioxus run test:e2e:release -- ticket-viewer.release.spec.ts`
+- `npm --prefix memory-viewers/ticket-viewer/frontend/dioxus run test:e2e:release -- workflow-sidebar.spec.ts`
 - focused storage or benchmark coverage for incremental workflow-fact propagation
