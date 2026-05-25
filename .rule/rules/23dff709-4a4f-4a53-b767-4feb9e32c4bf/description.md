@@ -1,0 +1,4 @@
+- A spec-local descriptor, `generated.toml`, maps `body.md` and named `sections/*.md` artifacts to target names.
+- `rule-api` should remain the only layer that evaluates `rule-targets.yaml`, imports canonical prose, and composes ordered snippet outputs.
+- A `spec-cli` sync command or equivalent orchestration layer should resolve the descriptor, render each target, write the corresponding spec artifact through `spec-api`, and refresh spec-facing bookkeeping afterward.
+- The first migration slice should prove the workflow on one real spec and document how to move reusable prose into canonical rules without moving `spec.toml` ownership.

@@ -1,0 +1,1 @@
+`spec-api` only offers direct folder CRUD over `spec.toml`, `body.md`, and `sections/`. That is enough for authored specs, but not for ubiquitous snippets that should be reused across many specs.

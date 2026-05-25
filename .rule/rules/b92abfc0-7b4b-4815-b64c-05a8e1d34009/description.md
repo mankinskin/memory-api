@@ -1,0 +1,4 @@
+- This pilot spec maps `body.md` and `sections/migration-workflow.md` through `generated.toml` so both artifacts regenerate from rule targets instead of hand-edited markdown.
+- The command loads a spec's `generated.toml` descriptor through `spec-api`.
+- It resolves the owning workspace from the indexed spec path and matching registered scan root so nested workspaces use the correct local `rule-targets.yaml` and `.rule` store instead of falling back to an ancestor checkout.
+- It opens `rule-api`, evaluates each declared target, rewrites `body.md` and any declared `sections/*.md` through the generated-document helpers in `spec-api`, and then refreshes spec search/body bookkeeping through the normal `SpecStore::update` path.

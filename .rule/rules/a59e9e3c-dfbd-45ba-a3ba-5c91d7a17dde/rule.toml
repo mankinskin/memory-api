@@ -1,0 +1,22 @@
+id = "a59e9e3c-dfbd-45ba-a3ba-5c91d7a17dde"
+created_at = "2026-05-25T21:51:53.602787800+00:00"
+title = "```toml"
+state = "draft"
+body = "```toml\n[body]\nconfig = \"rule-targets.yaml\"\ntarget = \"body\""
+feedback_helpful_count = 0
+feedback_mixed_count = 0
+feedback_not_helpful_count = 0
+feedback_note_count = 0
+feedback_unresolved_count = 0
+file_kind = "spec-doc"
+order_key = 16
+path_scopes = [".spec/specs/1cf68c36-7f64-4d81-b553-1947b978fbe3/body.md"]
+repo_scopes = ["memory-api"]
+section = "summary/next-slice-rule-target-backed-spec-artifacts/descriptor-contract"
+sentence_anchors = []
+slug = "spec-api/generated-documents/summary/next-slice-rule-target-backed-spec-artifacts/descriptor-contract/l69"
+source_end_line = 72
+source_path = ".spec/specs/1cf68c36-7f64-4d81-b553-1947b978fbe3/body.md"
+source_repo = "memory-api"
+source_start_line = 69
+type = "rule-entry"

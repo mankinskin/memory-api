@@ -1,0 +1,10 @@
+id = "09641443-a8f2-479d-85cb-ea44a963595b"
+created_at = "2026-05-25T21:04:58.972217200+00:00"
+title = "Add spec-local target mapping for generated spec artifacts"
+state = "done"
+component = "spec-api"
+depends_on = ["f4b0be64-a2f5-4cb5-a476-b2b921d6ff02"]
+priority = "high"
+risk_level = "medium"
+spec_refs = "1cf68c36-7f64-4d81-b553-1947b978fbe3"
+type = "tracker-improvement"

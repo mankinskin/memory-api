@@ -8,6 +8,9 @@ pub enum SpecError {
     #[error("invalid slug: {0}")]
     InvalidSlug(String),
 
+    #[error("invalid generated artifact: {0}")]
+    InvalidGeneratedArtifact(String),
+
     #[error("duplicate slug: {0}")]
     DuplicateSlug(String),
 

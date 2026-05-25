@@ -1,7 +1,7 @@
 id = "f4b0be64-a2f5-4cb5-a476-b2b921d6ff02"
 created_at = "2026-05-25T19:55:50.739616100+00:00"
 title = "Generate spec documents from canonical snippets via shared builder"
-state = "in-review"
+state = "done"
 component = "spec-api"
 priority = "high"
 risk_level = "medium"

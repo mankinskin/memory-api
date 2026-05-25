@@ -75,6 +75,9 @@ pub enum SpecCommandCli {
     Tree(TreeArgs),
     /// List or validate code references for a spec.
     Refs(RefsArgs),
+    /// Regenerate declared spec artifacts from rule targets.
+    #[command(name = "sync-generated")]
+    SyncGenerated(SyncGeneratedArgs),
     /// Manage spec sections.
     Section(SectionArgs),
     /// Run health checks on specs.
@@ -91,6 +94,10 @@ pub enum CliRunError {
     Spec(#[from] SpecError),
     #[error("storage error: {0}")]
     Storage(#[from] memory_api::error::StorageError),
+    #[error("rule error: {0}")]
+    Rule(#[from] rule_api::error::RuleError),
+    #[error("target config error: {0}")]
+    TargetConfig(#[from] rule_api::TargetConfigError),
     #[error("{0}")]
     BadRequest(String),
 }
@@ -201,6 +208,23 @@ mod tests {
                 );
             },
             other => panic!("expected bootstrap command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_sync_generated_keeps_target_spec_id() {
+        let cli = parse_cli_from([
+            "spec",
+            "sync-generated",
+            "0386c4d0",
+        ])
+        .unwrap();
+
+        match cli.command {
+            SpecCommandCli::SyncGenerated(args) => {
+                assert_eq!(args.id, "0386c4d0");
+            },
+            other => panic!("expected sync-generated command, got {other:?}"),
         }
     }
 }

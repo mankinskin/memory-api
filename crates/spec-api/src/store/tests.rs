@@ -211,6 +211,203 @@ fn update_generated_section_preserves_existing_crlf_style() {
 }
 
 #[test]
+fn update_generated_artifacts_round_trips_body_and_sections() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_spec("root/generated-artifacts", "Generated Artifacts");
+    let id = store.create(&spec, "body v1", None).unwrap();
+
+    let mut sections = BTreeMap::new();
+    sections.insert(
+        "requirements.md".to_string(),
+        GeneratedSpecArtifactTarget {
+            config: "rule-targets.yaml".into(),
+            target: "requirements".into(),
+        },
+    );
+    sections.insert(
+        "design".to_string(),
+        GeneratedSpecArtifactTarget {
+            config: "spec/rule-targets.yaml".into(),
+            target: "design".into(),
+        },
+    );
+
+    let artifacts = GeneratedSpecArtifacts {
+        body: Some(GeneratedSpecArtifactTarget {
+            config: "rule-targets.yaml".into(),
+            target: "body".into(),
+        }),
+        sections,
+    };
+
+    store
+        .update_generated_artifacts("root/generated-artifacts", &artifacts)
+        .unwrap();
+
+    let stored = store
+        .get_generated_artifacts(&id.to_string())
+        .unwrap()
+        .unwrap();
+
+    let mut expected_sections = BTreeMap::new();
+    expected_sections.insert(
+        "design".to_string(),
+        GeneratedSpecArtifactTarget {
+            config: "spec/rule-targets.yaml".into(),
+            target: "design".into(),
+        },
+    );
+    expected_sections.insert(
+        "requirements".to_string(),
+        GeneratedSpecArtifactTarget {
+            config: "rule-targets.yaml".into(),
+            target: "requirements".into(),
+        },
+    );
+
+    assert_eq!(
+        stored,
+        GeneratedSpecArtifacts {
+            body: Some(GeneratedSpecArtifactTarget {
+                config: "rule-targets.yaml".into(),
+                target: "body".into(),
+            }),
+            sections: expected_sections,
+        }
+    );
+
+    let indexed = store.entity_store().get_indexed(&id).unwrap().unwrap();
+    let generated = fs::read_to_string(indexed.path.join("generated.toml")).unwrap();
+    assert!(generated.contains("[body]"));
+    assert!(generated.contains("[sections.design]"));
+    assert!(generated.contains("[sections.requirements]"));
+}
+
+#[test]
+fn update_generated_artifacts_rejects_duplicate_section_aliases() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_spec("root/generated-artifact-duplicates", "Generated Artifact Duplicates");
+    store.create(&spec, "body v1", None).unwrap();
+
+    let mut sections = BTreeMap::new();
+    sections.insert(
+        "requirements".to_string(),
+        GeneratedSpecArtifactTarget {
+            config: "rule-targets.yaml".into(),
+            target: "requirements".into(),
+        },
+    );
+    sections.insert(
+        "requirements.md".to_string(),
+        GeneratedSpecArtifactTarget {
+            config: "rule-targets.yaml".into(),
+            target: "requirements-copy".into(),
+        },
+    );
+
+    let error = store
+        .update_generated_artifacts(
+            "root/generated-artifact-duplicates",
+            &GeneratedSpecArtifacts {
+                body: None,
+                sections,
+            },
+        )
+        .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("duplicate generated section mapping")
+    );
+}
+
+#[test]
+fn update_generated_artifacts_rejects_invalid_targets_and_paths() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_spec("root/generated-artifact-invalid", "Generated Artifact Invalid");
+    store.create(&spec, "body v1", None).unwrap();
+
+    let blank_target = store
+        .update_generated_artifacts(
+            "root/generated-artifact-invalid",
+            &GeneratedSpecArtifacts {
+                body: Some(GeneratedSpecArtifactTarget {
+                    config: "rule-targets.yaml".into(),
+                    target: "   ".into(),
+                }),
+                sections: BTreeMap::new(),
+            },
+        )
+        .unwrap_err();
+    assert!(blank_target.to_string().contains("missing target"));
+
+    let mut sections = BTreeMap::new();
+    sections.insert(
+        "../escape".to_string(),
+        GeneratedSpecArtifactTarget {
+            config: "rule-targets.yaml".into(),
+            target: "escape".into(),
+        },
+    );
+
+    let invalid_path = store
+        .update_generated_artifacts(
+            "root/generated-artifact-invalid",
+            &GeneratedSpecArtifacts {
+                body: None,
+                sections,
+            },
+        )
+        .unwrap_err();
+    assert!(
+        invalid_path
+            .to_string()
+            .contains("must stay within sections/*.md")
+    );
+}
+
+#[test]
+fn update_generated_artifacts_deletes_empty_descriptor_file() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_spec("root/generated-artifact-clear", "Generated Artifact Clear");
+    let id = store.create(&spec, "body v1", None).unwrap();
+
+    store
+        .update_generated_artifacts(
+            "root/generated-artifact-clear",
+            &GeneratedSpecArtifacts {
+                body: Some(GeneratedSpecArtifactTarget {
+                    config: "rule-targets.yaml".into(),
+                    target: "body".into(),
+                }),
+                sections: BTreeMap::new(),
+            },
+        )
+        .unwrap();
+
+    store
+        .update_generated_artifacts(
+            "root/generated-artifact-clear",
+            &GeneratedSpecArtifacts::default(),
+        )
+        .unwrap();
+
+    let indexed = store.entity_store().get_indexed(&id).unwrap().unwrap();
+    assert!(!indexed.path.join("generated.toml").exists());
+    assert_eq!(
+        store
+            .get_generated_artifacts("root/generated-artifact-clear")
+            .unwrap(),
+        None
+    );
+}
+
+#[test]
 fn open_creates_gitignore_for_local_spec_artifacts() {
     let tmp = TempDir::new().unwrap();
 

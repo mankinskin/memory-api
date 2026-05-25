@@ -55,7 +55,7 @@ pub(super) fn dispatch(
     store.scan(reindex)?;
 
     if command_mutates(&command) {
-        dispatch_mutating(command, &mut store)
+        dispatch_mutating(command, &mut store, &default_workspace_root)
     } else {
         dispatch_read_only(
             command,
@@ -73,6 +73,7 @@ fn command_uses_descendant_scan_roots(command: &SpecCommandCli) -> bool {
             | SpecCommandCli::Search(_)
             | SpecCommandCli::Tree(_)
             | SpecCommandCli::Refs(_)
+            | SpecCommandCli::SyncGenerated(_)
             | SpecCommandCli::Health(_)
             | SpecCommandCli::Scan(_)
     )
@@ -85,6 +86,7 @@ fn command_mutates(command: &SpecCommandCli) -> bool {
             | SpecCommandCli::Update(_)
             | SpecCommandCli::Delete(_)
             | SpecCommandCli::Scan(_)
+            | SpecCommandCli::SyncGenerated(_)
             | SpecCommandCli::Section(_)
             | SpecCommandCli::Bootstrap(_)
     )
@@ -93,12 +95,15 @@ fn command_mutates(command: &SpecCommandCli) -> bool {
 fn dispatch_mutating(
     command: SpecCommandCli,
     store: &mut SpecStore,
+    default_workspace_root: &Path,
 ) -> Result<Value, CliRunError> {
     match command {
         SpecCommandCli::Create(args) => commands::cmd_create(args, store),
         SpecCommandCli::Update(args) => commands::cmd_update(args, store),
         SpecCommandCli::Delete(args) => commands::cmd_delete(args, store),
         SpecCommandCli::Scan(args) => commands::cmd_scan(args, store),
+        SpecCommandCli::SyncGenerated(args) =>
+            commands::cmd_sync_generated(args, store, default_workspace_root),
         SpecCommandCli::Section(args) => commands::cmd_section(args, store),
         SpecCommandCli::Bootstrap(args) => commands::cmd_bootstrap(args, store),
         SpecCommandCli::Init => unreachable!("Init handled before store open"),

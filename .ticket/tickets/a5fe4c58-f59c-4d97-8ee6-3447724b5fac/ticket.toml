@@ -1,0 +1,10 @@
+id = "a5fe4c58-f59c-4d97-8ee6-3447724b5fac"
+created_at = "2026-05-25T21:04:55.407723600+00:00"
+title = "Adopt rule targets for generated spec artifacts"
+state = "done"
+component = "spec-api"
+depends_on = ["09641443-a8f2-479d-85cb-ea44a963595b", "7f869c33-15ff-4959-8161-731844eef21b", "b2ef1de1-5801-47c6-97c6-e3c5cd8d7dae", "f4b0be64-a2f5-4cb5-a476-b2b921d6ff02"]
+priority = "high"
+risk_level = "medium"
+spec_refs = "1cf68c36-7f64-4d81-b553-1947b978fbe3"
+type = "tracker-improvement"

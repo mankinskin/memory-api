@@ -1,0 +1,4 @@
+- missing or blank `config` values
+- missing or blank `target` values
+- duplicate section aliases such as `requirements` and `requirements.md`
+- section names that attempt to escape `sections/*.md`

@@ -1,0 +1,10 @@
+id = "b2ef1de1-5801-47c6-97c6-e3c5cd8d7dae"
+created_at = "2026-05-25T21:05:02.462956600+00:00"
+title = "Add spec sync-generated orchestration for rule-target-backed artifacts"
+state = "done"
+component = "spec-cli"
+depends_on = ["09641443-a8f2-479d-85cb-ea44a963595b"]
+priority = "high"
+risk_level = "medium"
+spec_refs = "1cf68c36-7f64-4d81-b553-1947b978fbe3"
+type = "tracker-improvement"

@@ -53,7 +53,9 @@ pub(crate) fn cmd_refs(
                 "command": "refs_validate",
                 "status": "ok",
                 "id": spec.id,
-                "workspace_root": workspace_root,
+                "workspace_root": workspace_root
+                    .to_string_lossy()
+                    .replace('\\', "/"),
                 "valid": all_valid,
                 "count": items.len(),
                 "results": items,

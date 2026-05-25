@@ -1,0 +1,6 @@
+- hierarchical target configuration
+- ordered snippet collection from the store
+- duplicate detection across outline nodes
+- generated markdown rendering with provenance comments
+- generated-file bookkeeping and stale-output cleanup
+- newline-preserving rewrites

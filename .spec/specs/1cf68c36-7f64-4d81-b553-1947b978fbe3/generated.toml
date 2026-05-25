@@ -1,0 +1,7 @@
+[body]
+config = "rule-targets.yaml"
+target = "spec-api-generated-documents-body"
+
+[sections.migration-workflow]
+config = "rule-targets.yaml"
+target = "spec-api-generated-documents-migration-workflow"

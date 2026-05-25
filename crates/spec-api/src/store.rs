@@ -8,6 +8,10 @@ use std::{
 };
 
 use chrono::Utc;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -58,6 +62,7 @@ use self::helpers::{
 const SPEC_MANIFEST_FILE: &str = "spec.toml";
 const SPEC_LOCK_FILE: &str = ".spec-lock";
 const SPEC_INDEX_DIR: &str = ".spec";
+const GENERATED_SPEC_ARTIFACTS_FILE: &str = "generated.toml";
 
 pub const GENERATED_SPEC_FILE_COMMENT: &str =
     "<!-- spec-api:file generated=true -->";
@@ -65,6 +70,100 @@ pub const GENERATED_SPEC_FILE_COMMENT: &str =
 pub const GENERATED_BODY_FILE_COMMENT: &str = GENERATED_SPEC_FILE_COMMENT;
 
 const GENERATED_SPEC_ENTRY_PREFIX: &str = "spec-api:entry";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GeneratedSpecArtifactTarget {
+    pub config: String,
+    pub target: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GeneratedSpecArtifacts {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<GeneratedSpecArtifactTarget>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sections: BTreeMap<String, GeneratedSpecArtifactTarget>,
+}
+
+impl GeneratedSpecArtifactTarget {
+    fn validate(
+        &self,
+        location: &str,
+    ) -> Result<(), SpecError> {
+        if self.config.trim().is_empty() {
+            return Err(SpecError::InvalidGeneratedArtifact(format!(
+                "generated artifact '{}' is missing config",
+                location
+            )));
+        }
+        if self.target.trim().is_empty() {
+            return Err(SpecError::InvalidGeneratedArtifact(format!(
+                "generated artifact '{}' is missing target",
+                location
+            )));
+        }
+        Ok(())
+    }
+}
+
+impl GeneratedSpecArtifacts {
+    fn normalized(&self) -> Result<Self, SpecError> {
+        self.body
+            .as_ref()
+            .map(|target| target.validate("body"))
+            .transpose()?;
+
+        let mut sections = BTreeMap::new();
+        for (name, target) in &self.sections {
+            let normalized_name = normalize_generated_section_name(name)?;
+            target.validate(&format!("sections/{}.md", normalized_name))?;
+            if sections
+                .insert(normalized_name.clone(), target.clone())
+                .is_some()
+            {
+                return Err(SpecError::InvalidGeneratedArtifact(format!(
+                    "duplicate generated section mapping for '{}'",
+                    normalized_name
+                )));
+            }
+        }
+
+        Ok(Self {
+            body: self.body.clone(),
+            sections,
+        })
+    }
+
+    fn is_empty(&self) -> bool {
+        self.body.is_none() && self.sections.is_empty()
+    }
+}
+
+fn normalize_generated_section_name(name: &str) -> Result<String, SpecError> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(SpecError::InvalidGeneratedArtifact(
+            "generated section name cannot be empty".into(),
+        ));
+    }
+
+    let normalized = trimmed.strip_suffix(".md").unwrap_or(trimmed);
+    if normalized.is_empty() || normalized == "." || normalized == ".." {
+        return Err(SpecError::InvalidGeneratedArtifact(format!(
+            "invalid generated section name '{}'",
+            name
+        )));
+    }
+
+    if normalized.contains('/') || normalized.contains('\\') {
+        return Err(SpecError::InvalidGeneratedArtifact(format!(
+            "generated section '{}' must stay within sections/*.md",
+            name
+        )));
+    }
+
+    Ok(normalized.to_string())
+}
 
 pub fn render_generated_document(
     snippets: &[GeneratedMarkdownSnippet<'_>]
@@ -453,6 +552,55 @@ impl SpecStore {
         let prepared = prepare_generated_document(snippets, Some(&existing));
 
         write_body(&indexed.path, &prepared)?;
+        Ok(())
+    }
+
+    pub fn get_generated_artifacts(
+        &self,
+        id_or_slug: &str,
+    ) -> Result<Option<GeneratedSpecArtifacts>, SpecError> {
+        let uuid = self.resolve_id(id_or_slug)?;
+        let indexed = self
+            .inner
+            .get_indexed(&uuid)?
+            .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
+        let path = indexed.path.join(GENERATED_SPEC_ARTIFACTS_FILE);
+        if !path.exists() {
+            return Ok(None);
+        }
+
+        let content = fs::read_to_string(&path)
+            .map_err(|error| SpecError::Storage(StorageError::Io(error)))?;
+        let parsed: GeneratedSpecArtifacts = toml::from_str(&content)
+            .map_err(|error| SpecError::Serialization(error.to_string()))?;
+        Ok(Some(parsed.normalized()?))
+    }
+
+    pub fn update_generated_artifacts(
+        &self,
+        id_or_slug: &str,
+        artifacts: &GeneratedSpecArtifacts,
+    ) -> Result<(), SpecError> {
+        let uuid = self.resolve_id(id_or_slug)?;
+        let indexed = self
+            .inner
+            .get_indexed(&uuid)?
+            .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
+        let path = indexed.path.join(GENERATED_SPEC_ARTIFACTS_FILE);
+        let normalized = artifacts.normalized()?;
+
+        if normalized.is_empty() {
+            if path.exists() {
+                fs::remove_file(&path)
+                    .map_err(|error| SpecError::Storage(StorageError::Io(error)))?;
+            }
+            return Ok(());
+        }
+
+        let content = toml::to_string_pretty(&normalized)
+            .map_err(|error| SpecError::Serialization(error.to_string()))?;
+        fs::write(&path, content)
+            .map_err(|error| SpecError::Storage(StorageError::Io(error)))?;
         Ok(())
     }
 

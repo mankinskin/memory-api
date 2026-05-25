@@ -1,0 +1,3 @@
+- rendering of generated outputs from ordered snippet blocks
+- provenance-comment formatting for generated markdown files
+- generated-output preparation that preserves the existing newline convention on rewrite

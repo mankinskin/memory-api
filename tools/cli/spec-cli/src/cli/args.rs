@@ -48,6 +48,12 @@ pub struct IdArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct SyncGeneratedArgs {
+    /// Spec UUID, prefix, or slug.
+    pub id: String,
+}
+
+#[derive(Debug, Args)]
 pub struct UpdateArgs {
     /// Spec UUID, prefix, or slug.
     pub id: String,

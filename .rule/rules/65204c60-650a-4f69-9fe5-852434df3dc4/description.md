@@ -1,0 +1,1 @@
+The descriptor is intentionally artifact-oriented rather than rule-filter-oriented:
