@@ -342,6 +342,14 @@ pub(crate) fn parse_board_recommendation(
             .unwrap_or(0) as usize,
         dependees: value.get("dependees").and_then(Value::as_u64).unwrap_or(0)
             as usize,
+        became_actionable_at: value
+            .get("became_actionable_at")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        last_blocker_progress_at: value
+            .get("last_blocker_progress_at")
+            .and_then(Value::as_str)
+            .map(str::to_string),
         created_at: value
             .get("created_at")
             .and_then(Value::as_str)

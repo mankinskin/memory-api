@@ -28,10 +28,14 @@ use crate::{
         TABLE_META,
         TABLE_SCAN_ROOTS,
         TABLE_TICKETS,
+        TABLE_WORKFLOW_FACTS,
     },
 };
 
-use super::indexed::IndexedEntity;
+use super::indexed::{
+    IndexedEntity,
+    WorkflowFacts,
+};
 
 /// SQLite-backed metadata index.
 ///
@@ -237,6 +241,104 @@ impl RedbIndexStore {
         })
     }
 
+    pub fn insert_workflow_facts(
+        &self,
+        id: &Uuid,
+        facts: &WorkflowFacts,
+    ) -> Result<(), StorageError> {
+        let bytes = bincode::serialize(facts)
+            .map_err(|e| StorageError::Serialization(e.to_string()))?;
+        let key = id.to_string();
+        self.with_write(|conn| {
+            conn.execute(
+                &format!(
+                    "INSERT OR REPLACE INTO {TABLE_WORKFLOW_FACTS} (id, data) VALUES (?1, ?2)"
+                ),
+                params![key, bytes],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn get_workflow_facts(
+        &self,
+        id: &Uuid,
+    ) -> Result<Option<WorkflowFacts>, StorageError> {
+        let key = id.to_string();
+        let conn = self.read_conn()?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT data FROM {TABLE_WORKFLOW_FACTS} WHERE id = ?1"
+        ))?;
+        let mut rows = stmt.query(params![key])?;
+        if let Some(row) = rows.next()? {
+            let bytes: Vec<u8> = row.get(0)?;
+            let facts: WorkflowFacts = bincode::deserialize(&bytes)
+                .map_err(|e| StorageError::Serialization(e.to_string()))?;
+            Ok(Some(facts))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn get_workflow_facts_many(
+        &self,
+        ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, WorkflowFacts>, StorageError> {
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let conn = self.read_conn()?;
+        let placeholders: String = (1..=ids.len())
+            .map(|i| format!("?{i}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT id, data FROM {TABLE_WORKFLOW_FACTS} WHERE id IN ({placeholders})"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let id_strs: Vec<String> =
+            ids.iter().map(|id| id.to_string()).collect();
+        let params: Vec<&dyn rusqlite::types::ToSql> = id_strs
+            .iter()
+            .map(|s| s as &dyn rusqlite::types::ToSql)
+            .collect();
+        let rows = stmt.query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+        })?;
+        let mut map = HashMap::with_capacity(ids.len());
+        for row in rows {
+            let (id_str, bytes) = row?;
+            let id: Uuid = id_str
+                .parse()
+                .map_err(|e: uuid::Error| StorageError::Serialization(e.to_string()))?;
+            let facts: WorkflowFacts = bincode::deserialize(&bytes)
+                .map_err(|e| StorageError::Serialization(e.to_string()))?;
+            map.insert(id, facts);
+        }
+        Ok(map)
+    }
+
+    pub fn remove_workflow_facts(
+        &self,
+        id: &Uuid,
+    ) -> Result<(), StorageError> {
+        let key = id.to_string();
+        self.with_write(|conn| {
+            conn.execute(
+                &format!("DELETE FROM {TABLE_WORKFLOW_FACTS} WHERE id = ?1"),
+                params![key],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn clear_workflow_facts(&self) -> Result<(), StorageError> {
+        self.with_write(|conn| {
+            conn.execute(&format!("DELETE FROM {TABLE_WORKFLOW_FACTS}"), [])?;
+            Ok(())
+        })
+    }
+
     // ── edge CRUD ─────────────────────────────────────────────────────────────
 
     /// Insert an edge. Duplicate insert is idempotent.
@@ -295,6 +397,32 @@ impl RedbIndexStore {
             "SELECT from_id, to_id, kind, created_at FROM {TABLE_EDGES} WHERE from_id = ?1"
         ))?;
         let rows = stmt.query_map(params![from_str], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        let mut edges = Vec::new();
+        for row in rows {
+            let (f, t, k, ca) = row?;
+            edges.push(parse_edge_row(&f, &t, &k, &ca)?);
+        }
+        Ok(edges)
+    }
+
+    /// Returns all dependency edges pointing to `to`.
+    pub fn edges_to(
+        &self,
+        to: &Uuid,
+    ) -> Result<Vec<EdgeRecord>, StorageError> {
+        let to_str = to.to_string();
+        let conn = self.read_conn()?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT from_id, to_id, kind, created_at FROM {TABLE_EDGES} WHERE to_id = ?1"
+        ))?;
+        let rows = stmt.query_map(params![to_str], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -369,6 +497,10 @@ fn ensure_tables(conn: &Connection) -> Result<(), StorageError> {
     conn.execute_batch(&format!(
         "BEGIN;
          CREATE TABLE IF NOT EXISTS {TABLE_TICKETS} (
+             id   TEXT PRIMARY KEY NOT NULL,
+             data BLOB NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS {TABLE_WORKFLOW_FACTS} (
              id   TEXT PRIMARY KEY NOT NULL,
              data BLOB NOT NULL
          );

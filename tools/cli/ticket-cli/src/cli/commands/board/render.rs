@@ -52,6 +52,8 @@ pub(crate) struct BoardRecommendation {
     pub priority: String,
     pub dependency_count: usize,
     pub dependees: usize,
+    pub became_actionable_at: Option<String>,
+    pub last_blocker_progress_at: Option<String>,
     pub created_at: String,
 }
 
@@ -114,6 +116,8 @@ pub(super) fn board_recommendation_to_json(
         "priority": recommendation.priority,
         "dependency_count": recommendation.dependency_count,
         "dependees": recommendation.dependees,
+        "became_actionable_at": recommendation.became_actionable_at,
+        "last_blocker_progress_at": recommendation.last_blocker_progress_at,
         "created_at": recommendation.created_at,
     })
 }

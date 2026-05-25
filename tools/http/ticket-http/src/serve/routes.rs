@@ -44,6 +44,15 @@ pub fn build_router(state: AppState) -> Router {
             "/api/tickets/{id}/asset",
             get(handlers::tickets::get_ticket_asset),
         )
+        .route("/api/workflow/next", get(handlers::workflow::workflow_next))
+        .route(
+            "/api/workflow/blockers",
+            get(handlers::workflow::workflow_blockers),
+        )
+        .route(
+            "/api/workflow/unblocked-by",
+            get(handlers::workflow::workflow_unblocked_by),
+        )
         .route("/api/edges", get(handlers::edges::list_edges))
         .route("/api/schema", get(handlers::schema::list_schemas))
         .route("/api/schema/{type_id}", get(handlers::schema::get_schema))

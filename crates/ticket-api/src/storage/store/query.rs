@@ -129,6 +129,9 @@ impl TicketStore {
         if let Some(hook) = self.hook() {
             hook.edge_upsert(edge.from, edge.to, edge.kind.clone());
         }
+        if edge.kind == "depends_on" && changed {
+            self.refresh_workflow_facts_for_roots(&[edge.from], false, source.updated_at)?;
+        }
         Ok(())
     }
 
@@ -162,6 +165,9 @@ impl TicketStore {
         }
         if let Some(hook) = self.hook() {
             hook.edge_delete(edge.from, edge.to, edge.kind.clone());
+        }
+        if edge.kind == "depends_on" && changed {
+            self.refresh_workflow_facts_for_roots(&[edge.from], true, source.updated_at)?;
         }
         Ok(())
     }

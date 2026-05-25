@@ -13,13 +13,20 @@ use std::collections::{
     VecDeque,
 };
 
+use chrono::{
+    DateTime,
+    Utc,
+};
 use uuid::Uuid;
 
 use crate::{
     error::StorageError,
     model::edge::EdgeRecord,
     storage::{
-        indexed::IndexedTicket,
+        indexed::{
+            IndexedTicket,
+            WorkflowFacts,
+        },
         store::TicketStore,
         ticket_fs::TicketFs,
     },
@@ -38,6 +45,8 @@ pub struct TicketConvergenceMetrics {
     pub max_affected_dependent_state: Option<String>,
     pub max_affected_dependent_state_index: Option<usize>,
     pub dependency_state_gap: usize,
+    pub became_actionable_at: Option<DateTime<Utc>>,
+    pub last_blocker_progress_at: Option<DateTime<Utc>>,
 }
 
 /// Evidence that a prerequisite is lagging behind a more advanced dependent.
@@ -52,6 +61,26 @@ pub struct DependencyStateInversion {
     pub dependency_state_gap: usize,
     pub affected_reverse_dependent_reach: usize,
     pub transitive_reverse_dependents: usize,
+}
+
+/// Nested workflow tree node used by blocker and unlock exploration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkflowTreeNode {
+    pub ticket_id: Uuid,
+    pub title: Option<String>,
+    pub state: Option<String>,
+    pub priority: String,
+    pub children: Vec<WorkflowTreeNode>,
+    pub remaining_blocker_count: usize,
+    pub unresolved_frontier_leaf_count: usize,
+    pub frontier_leaf_ids: Vec<Uuid>,
+    pub blocker_distance: usize,
+    pub is_frontier: bool,
+    pub dependency_count: usize,
+    pub immediate_dependees: usize,
+    pub transitive_reverse_dependents: usize,
+    pub affected_reverse_dependent_reach: usize,
+    pub dependency_state_gap: usize,
 }
 
 /// Canonical dependency-convergence graph model shared across ticket surfaces.
@@ -76,11 +105,16 @@ impl WorkflowModel {
     ) -> Result<Self, StorageError> {
         let state_index = build_state_index(store);
         let priorities = read_priorities(&tickets);
+        let workflow_facts = store
+            .get_workflow_facts_many(
+                &tickets.iter().map(|ticket| ticket.id).collect::<Vec<_>>(),
+            )?;
         Ok(Self::build_from_parts(
             tickets,
             all_edges,
             state_index,
             priorities,
+            workflow_facts,
         ))
     }
 
@@ -243,6 +277,66 @@ impl WorkflowModel {
             .collect()
     }
 
+    /// Build an upstream blocker tree from unresolved `depends_on` edges.
+    pub fn blocker_tree(
+        &self,
+        root_id: Uuid,
+    ) -> Option<WorkflowTreeNode> {
+        let mut path = HashSet::new();
+        self.build_blocker_tree_node(root_id, &mut path)
+    }
+
+    /// Return the frontier leaf ids for an upstream blocker tree.
+    pub fn blocker_frontier_leaf_ids(
+        &self,
+        root_id: Uuid,
+    ) -> Vec<Uuid> {
+        self.blocker_tree(root_id)
+            .map(|tree| tree.frontier_leaf_ids)
+            .unwrap_or_default()
+    }
+
+    /// Build a downstream unlock tree while treating the supplied ids as satisfied.
+    pub fn unlock_tree_with_satisfied(
+        &self,
+        root_id: Uuid,
+        satisfied_ids: &HashSet<Uuid>,
+    ) -> Option<WorkflowTreeNode> {
+        let mut path = HashSet::new();
+        self.build_unlock_tree_node(root_id, satisfied_ids, false, &mut path)
+    }
+
+    /// Return the frontier leaf ids for a downstream unlock tree while
+    /// treating the supplied ids as satisfied.
+    pub fn unlock_frontier_leaf_ids_with_satisfied(
+        &self,
+        root_id: Uuid,
+        satisfied_ids: &HashSet<Uuid>,
+    ) -> Vec<Uuid> {
+        self.unlock_tree_with_satisfied(root_id, satisfied_ids)
+            .map(|tree| tree.frontier_leaf_ids)
+            .unwrap_or_default()
+    }
+
+    /// Build a downstream unlock tree while treating the root id as satisfied.
+    pub fn unlock_tree(
+        &self,
+        root_id: Uuid,
+    ) -> Option<WorkflowTreeNode> {
+        let satisfied_ids = HashSet::from([root_id]);
+        self.unlock_tree_with_satisfied(root_id, &satisfied_ids)
+    }
+
+    /// Return the frontier leaf ids for a downstream unlock tree while
+    /// treating the root id as satisfied.
+    pub fn unlock_frontier_leaf_ids(
+        &self,
+        root_id: Uuid,
+    ) -> Vec<Uuid> {
+        let satisfied_ids = HashSet::from([root_id]);
+        self.unlock_frontier_leaf_ids_with_satisfied(root_id, &satisfied_ids)
+    }
+
     /// Return the direct dependency-state inversions for one dependent ticket.
     pub fn dependency_state_inversions(
         &self,
@@ -260,11 +354,177 @@ impl WorkflowModel {
             .unwrap_or(0)
     }
 
+    fn build_blocker_tree_node(
+        &self,
+        ticket_id: Uuid,
+        path: &mut HashSet<Uuid>,
+    ) -> Option<WorkflowTreeNode> {
+        if !self.tickets.contains_key(&ticket_id) {
+            return None;
+        }
+        if !path.insert(ticket_id) {
+            return self.finalize_tree_node(ticket_id, 0, false, Vec::new(), 1);
+        }
+
+        let child_ids = self.unresolved_dependencies_excluding(&ticket_id, &HashSet::new());
+        let remaining_blocker_count = child_ids.len();
+        let children = child_ids
+            .into_iter()
+            .filter_map(|child_id| self.build_blocker_tree_node(child_id, path))
+            .collect::<Vec<_>>();
+
+        path.remove(&ticket_id);
+
+        self.finalize_tree_node(
+            ticket_id,
+            remaining_blocker_count,
+            remaining_blocker_count == 0,
+            children,
+            remaining_blocker_count.max(1),
+        )
+    }
+
+    fn build_unlock_tree_node(
+        &self,
+        ticket_id: Uuid,
+        satisfied_ids: &HashSet<Uuid>,
+        allow_frontier: bool,
+        path: &mut HashSet<Uuid>,
+    ) -> Option<WorkflowTreeNode> {
+        let ticket = self.tickets.get(&ticket_id)?;
+        if !path.insert(ticket_id) {
+            return self.finalize_tree_node(ticket_id, 0, false, Vec::new(), 1);
+        }
+
+        let child_ids = self
+            .reverse_map
+            .get(&ticket_id)
+            .into_iter()
+            .flatten()
+            .filter(|child_id| {
+                self.tickets
+                    .get(child_id)
+                    .map(|child| is_candidate_state(child.state.as_deref()))
+                    .unwrap_or(false)
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        let remaining_blocker_count =
+            self.unresolved_dependencies_excluding(&ticket_id, satisfied_ids).len();
+        let is_frontier = allow_frontier
+            && remaining_blocker_count == 0
+            && is_candidate_state(ticket.state.as_deref());
+        let children = child_ids
+            .into_iter()
+            .filter_map(|child_id| {
+                self.build_unlock_tree_node(child_id, satisfied_ids, true, path)
+            })
+            .collect::<Vec<_>>();
+
+        path.remove(&ticket_id);
+
+        self.finalize_tree_node(
+            ticket_id,
+            remaining_blocker_count,
+            is_frontier,
+            children,
+            remaining_blocker_count.max(1),
+        )
+    }
+
+    fn finalize_tree_node(
+        &self,
+        ticket_id: Uuid,
+        remaining_blocker_count: usize,
+        is_frontier: bool,
+        mut children: Vec<WorkflowTreeNode>,
+        fallback_distance: usize,
+    ) -> Option<WorkflowTreeNode> {
+        let ticket = self.tickets.get(&ticket_id)?;
+        self.sort_tree_nodes(&mut children);
+
+        let frontier_leaf_ids = if is_frontier {
+            vec![ticket_id]
+        } else if children.is_empty() {
+            vec![ticket_id]
+        } else {
+            children
+                .iter()
+                .flat_map(|child| child.frontier_leaf_ids.iter().copied())
+                .collect()
+        };
+        let blocker_distance = if is_frontier {
+            0
+        } else if children.is_empty() {
+            fallback_distance
+        } else {
+            children
+                .iter()
+                .map(|child| child.blocker_distance.saturating_add(1))
+                .min()
+                .unwrap_or(fallback_distance)
+        };
+        let metrics = self.metrics.get(&ticket_id).cloned().unwrap_or_default();
+
+        Some(WorkflowTreeNode {
+            ticket_id,
+            title: ticket.title.clone(),
+            state: ticket.state.clone(),
+            priority: self.priority_or_none(&ticket_id).to_string(),
+            children,
+            remaining_blocker_count,
+            unresolved_frontier_leaf_count: frontier_leaf_ids.len(),
+            frontier_leaf_ids,
+            blocker_distance,
+            is_frontier,
+            dependency_count: metrics.dependency_count,
+            immediate_dependees: metrics.immediate_dependees,
+            transitive_reverse_dependents: metrics.transitive_reverse_dependents,
+            affected_reverse_dependent_reach: metrics.affected_reverse_dependent_reach,
+            dependency_state_gap: metrics.dependency_state_gap,
+        })
+    }
+
+    fn sort_tree_nodes(
+        &self,
+        nodes: &mut [WorkflowTreeNode],
+    ) {
+        nodes.sort_by(|left, right| {
+            left.unresolved_frontier_leaf_count
+                .cmp(&right.unresolved_frontier_leaf_count)
+                .then_with(|| left.blocker_distance.cmp(&right.blocker_distance))
+                .then_with(|| {
+                    right
+                        .dependency_state_gap
+                        .cmp(&left.dependency_state_gap)
+                })
+                .then_with(|| {
+                    right
+                        .affected_reverse_dependent_reach
+                        .cmp(&left.affected_reverse_dependent_reach)
+                })
+                .then_with(|| {
+                    right
+                        .transitive_reverse_dependents
+                        .cmp(&left.transitive_reverse_dependents)
+                })
+                .then_with(|| priority_weight(&left.priority).cmp(&priority_weight(&right.priority)))
+                .then_with(|| {
+                    left.title
+                        .as_deref()
+                        .unwrap_or("")
+                        .cmp(right.title.as_deref().unwrap_or(""))
+                })
+                .then_with(|| left.ticket_id.cmp(&right.ticket_id))
+        });
+    }
+
     fn build_from_parts(
         tickets: Vec<IndexedTicket>,
         all_edges: Vec<EdgeRecord>,
         state_index: HashMap<String, usize>,
         priorities: HashMap<Uuid, String>,
+        workflow_facts: HashMap<Uuid, WorkflowFacts>,
     ) -> Self {
         let tickets: HashMap<Uuid, IndexedTicket> = tickets
             .into_iter()
@@ -280,6 +540,7 @@ impl WorkflowModel {
             &dependency_counts,
             &dependee_counts,
             &reverse_map,
+            &workflow_facts,
         );
         let inversions_by_dependent = compute_dependency_state_inversions(
             &tickets,
@@ -328,6 +589,11 @@ impl WorkflowModel {
                 right_metrics
                     .affected_reverse_dependent_reach
                     .cmp(&left_metrics.affected_reverse_dependent_reach)
+            })
+            .then_with(|| {
+                right_metrics
+                    .became_actionable_at
+                    .cmp(&left_metrics.became_actionable_at)
             })
             .then_with(|| {
                 priority_weight(self.priority_or_none(&left))
@@ -436,6 +702,7 @@ fn compute_metrics(
     dependency_counts: &HashMap<Uuid, usize>,
     dependee_counts: &HashMap<Uuid, usize>,
     reverse_map: &HashMap<Uuid, Vec<Uuid>>,
+    workflow_facts: &HashMap<Uuid, WorkflowFacts>,
 ) -> HashMap<Uuid, TicketConvergenceMetrics> {
     tickets
         .keys()
@@ -476,6 +743,7 @@ fn compute_metrics(
                     Some((state, index)) => (state, Some(index)),
                     None => (None, None),
                 };
+            let facts = workflow_facts.get(ticket_id).cloned().unwrap_or_default();
 
             (
                 *ticket_id,
@@ -489,6 +757,8 @@ fn compute_metrics(
                     dependency_state_gap: max_affected_dependent_state_index
                         .map(|index| index.saturating_sub(ticket_state_index))
                         .unwrap_or(0),
+                    became_actionable_at: facts.became_actionable_at,
+                    last_blocker_progress_at: facts.last_blocker_progress_at,
                 },
             )
         })
@@ -649,6 +919,15 @@ mod tests {
         edges: Vec<EdgeRecord>,
         priorities: HashMap<Uuid, String>,
     ) -> WorkflowModel {
+        build_model_with_facts(tickets, edges, priorities, HashMap::new())
+    }
+
+    fn build_model_with_facts(
+        tickets: Vec<IndexedTicket>,
+        edges: Vec<EdgeRecord>,
+        priorities: HashMap<Uuid, String>,
+        workflow_facts: HashMap<Uuid, WorkflowFacts>,
+    ) -> WorkflowModel {
         WorkflowModel::build_from_parts(
             tickets,
             edges,
@@ -660,6 +939,7 @@ mod tests {
                 ("done".to_string(), 4usize),
             ]),
             priorities,
+            workflow_facts,
         )
     }
 
@@ -742,6 +1022,55 @@ mod tests {
     }
 
     #[test]
+    fn sort_candidates_prefers_more_recent_actionable_time_before_creation_time() {
+        let older_created = ticket(
+            "Older created but recently actionable",
+            "ready",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
+        );
+        let newer_created = ticket(
+            "Newer created but stale actionable",
+            "ready",
+            Utc.with_ymd_and_hms(2026, 5, 18, 12, 0, 0).unwrap(),
+        );
+        let recent_actionable_at = Utc.with_ymd_and_hms(2026, 5, 19, 12, 0, 0).unwrap();
+        let stale_actionable_at = Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap();
+        let mut candidates = vec![newer_created.id, older_created.id];
+        let model = build_model_with_facts(
+            vec![older_created.clone(), newer_created.clone()],
+            Vec::new(),
+            HashMap::from([
+                (older_created.id, "high".to_string()),
+                (newer_created.id, "high".to_string()),
+            ]),
+            HashMap::from([
+                (
+                    older_created.id,
+                    WorkflowFacts {
+                        unresolved_dependency_count: 0,
+                        became_actionable_at: Some(recent_actionable_at),
+                        last_blocker_progress_at: None,
+                    },
+                ),
+                (
+                    newer_created.id,
+                    WorkflowFacts {
+                        unresolved_dependency_count: 0,
+                        became_actionable_at: Some(stale_actionable_at),
+                        last_blocker_progress_at: None,
+                    },
+                ),
+            ]),
+        );
+
+        model.sort_candidate_ids(&mut candidates);
+
+        assert_eq!(candidates, vec![older_created.id, newer_created.id]);
+        let metrics = model.metrics(&older_created.id).expect("metrics");
+        assert_eq!(metrics.became_actionable_at, Some(recent_actionable_at));
+    }
+
+    #[test]
     fn convergence_pressure_promotes_earlier_state_prerequisite() {
         let prerequisite = ticket(
             "Lagging prerequisite",
@@ -781,6 +1110,56 @@ mod tests {
         assert_eq!(metrics.affected_reverse_dependent_reach, 1);
         assert_eq!(metrics.max_affected_dependent_state.as_deref(), Some("in-review"));
         assert_eq!(metrics.dependency_state_gap, 3);
+    }
+
+    #[test]
+    fn convergence_pressure_still_beats_recently_actionable_unrelated_work() {
+        let prerequisite = ticket(
+            "Lagging prerequisite",
+            "new",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
+        );
+        let recently_actionable = ticket(
+            "Recently actionable unrelated",
+            "ready",
+            Utc.with_ymd_and_hms(2026, 5, 18, 12, 0, 0).unwrap(),
+        );
+        let dependent = ticket(
+            "Advanced dependent",
+            "in-review",
+            Utc.with_ymd_and_hms(2026, 5, 18, 13, 0, 0).unwrap(),
+        );
+        let now = Utc.with_ymd_and_hms(2026, 5, 18, 14, 0, 0).unwrap();
+        let mut candidates = vec![recently_actionable.id, prerequisite.id];
+        let model = build_model_with_facts(
+            vec![
+                prerequisite.clone(),
+                recently_actionable.clone(),
+                dependent.clone(),
+            ],
+            vec![EdgeRecord {
+                from: dependent.id,
+                to: prerequisite.id,
+                kind: "depends_on".to_string(),
+                created_at: now,
+            }],
+            HashMap::from([
+                (prerequisite.id, "high".to_string()),
+                (recently_actionable.id, "high".to_string()),
+            ]),
+            HashMap::from([(
+                recently_actionable.id,
+                WorkflowFacts {
+                    unresolved_dependency_count: 0,
+                    became_actionable_at: Some(now),
+                    last_blocker_progress_at: None,
+                },
+            )]),
+        );
+
+        model.sort_candidate_ids(&mut candidates);
+
+        assert_eq!(candidates, vec![prerequisite.id, recently_actionable.id]);
     }
 
     #[test]
@@ -859,5 +1238,169 @@ mod tests {
         assert_eq!(inversions[0].dependent_id, dependent.id);
         assert_eq!(inversions[0].dependency_state_gap, 2);
         assert_eq!(inversions[0].affected_reverse_dependent_reach, 1);
+    }
+
+    #[test]
+    fn blocker_tree_preserves_nested_children_and_orders_closest_frontier_first() {
+        let root = ticket(
+            "Root",
+            "ready",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
+        );
+        let direct_leaf = ticket(
+            "Direct frontier leaf",
+            "ready",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 5, 0).unwrap(),
+        );
+        let nested_parent = ticket(
+            "Nested parent",
+            "ready",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 10, 0).unwrap(),
+        );
+        let nested_leaf = ticket(
+            "Nested frontier leaf",
+            "ready",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 15, 0).unwrap(),
+        );
+        let now = Utc.with_ymd_and_hms(2026, 5, 16, 13, 0, 0).unwrap();
+        let model = build_model(
+            vec![
+                root.clone(),
+                direct_leaf.clone(),
+                nested_parent.clone(),
+                nested_leaf.clone(),
+            ],
+            vec![
+                EdgeRecord {
+                    from: root.id,
+                    to: nested_parent.id,
+                    kind: "depends_on".to_string(),
+                    created_at: now,
+                },
+                EdgeRecord {
+                    from: root.id,
+                    to: direct_leaf.id,
+                    kind: "depends_on".to_string(),
+                    created_at: now,
+                },
+                EdgeRecord {
+                    from: nested_parent.id,
+                    to: nested_leaf.id,
+                    kind: "depends_on".to_string(),
+                    created_at: now,
+                },
+            ],
+            HashMap::new(),
+        );
+
+        let tree = model.blocker_tree(root.id).expect("blocker tree");
+
+        assert_eq!(tree.remaining_blocker_count, 2);
+        assert_eq!(
+            tree.children
+                .iter()
+                .map(|child| child.ticket_id)
+                .collect::<Vec<_>>(),
+            vec![direct_leaf.id, nested_parent.id]
+        );
+        assert_eq!(tree.frontier_leaf_ids, vec![direct_leaf.id, nested_leaf.id]);
+        assert_eq!(tree.unresolved_frontier_leaf_count, 2);
+        assert_eq!(tree.blocker_distance, 1);
+        assert!(tree.children[0].is_frontier);
+        assert!(!tree.children[1].is_frontier);
+        assert_eq!(tree.children[1].children.len(), 1);
+        assert_eq!(tree.children[1].children[0].ticket_id, nested_leaf.id);
+        assert!(tree.children[1].children[0].is_frontier);
+    }
+
+    #[test]
+    fn unlock_tree_marks_actionable_parents_as_frontier_and_preserves_children() {
+        let root = ticket(
+            "Satisfied prerequisite",
+            "done",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
+        );
+        let actionable_parent = ticket(
+            "Actionable parent",
+            "ready",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 5, 0).unwrap(),
+        );
+        let blocked_parent = ticket(
+            "Blocked parent",
+            "ready",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 10, 0).unwrap(),
+        );
+        let external_blocker = ticket(
+            "External blocker",
+            "ready",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 15, 0).unwrap(),
+        );
+        let grandchild = ticket(
+            "Grandchild",
+            "new",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 20, 0).unwrap(),
+        );
+        let now = Utc.with_ymd_and_hms(2026, 5, 16, 13, 0, 0).unwrap();
+        let model = build_model(
+            vec![
+                root.clone(),
+                actionable_parent.clone(),
+                blocked_parent.clone(),
+                external_blocker.clone(),
+                grandchild.clone(),
+            ],
+            vec![
+                EdgeRecord {
+                    from: actionable_parent.id,
+                    to: root.id,
+                    kind: "depends_on".to_string(),
+                    created_at: now,
+                },
+                EdgeRecord {
+                    from: blocked_parent.id,
+                    to: root.id,
+                    kind: "depends_on".to_string(),
+                    created_at: now,
+                },
+                EdgeRecord {
+                    from: blocked_parent.id,
+                    to: external_blocker.id,
+                    kind: "depends_on".to_string(),
+                    created_at: now,
+                },
+                EdgeRecord {
+                    from: grandchild.id,
+                    to: actionable_parent.id,
+                    kind: "depends_on".to_string(),
+                    created_at: now,
+                },
+            ],
+            HashMap::new(),
+        );
+
+        let tree = model.unlock_tree(root.id).expect("unlock tree");
+
+        assert_eq!(
+            tree.children
+                .iter()
+                .map(|child| child.ticket_id)
+                .collect::<Vec<_>>(),
+            vec![actionable_parent.id, blocked_parent.id]
+        );
+
+        let actionable = &tree.children[0];
+        assert!(actionable.is_frontier);
+        assert_eq!(actionable.frontier_leaf_ids, vec![actionable_parent.id]);
+        assert_eq!(actionable.blocker_distance, 0);
+        assert_eq!(actionable.children.len(), 1);
+        assert_eq!(actionable.children[0].ticket_id, grandchild.id);
+
+        let blocked = &tree.children[1];
+        assert!(!blocked.is_frontier);
+        assert_eq!(blocked.remaining_blocker_count, 1);
+        assert_eq!(blocked.frontier_leaf_ids, vec![blocked_parent.id]);
+        assert_eq!(blocked.blocker_distance, 1);
+        assert_eq!(model.unlock_frontier_leaf_ids(root.id), tree.frontier_leaf_ids);
+        assert_eq!(model.blocker_frontier_leaf_ids(root.id), vec![root.id]);
     }
 }

@@ -325,6 +325,95 @@ async fn next_tickets_prefers_more_dependees_before_newer_candidates() {
 }
 
 #[tokio::test]
+async fn next_tickets_prefer_recently_actionable_candidates_and_surface_timing_metadata() {
+    let (tmp, server) = make_sandbox();
+
+    let recently_actionable;
+    let steadier_newer;
+    {
+        let store = TicketStore::init(tmp.path()).expect("open store");
+        let fields =
+            BTreeMap::from([(String::from("priority"), json!("high"))]);
+
+        recently_actionable = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Alpha recently actionable"),
+                Some("ready"),
+                fields.clone(),
+                None,
+                None,
+            )
+            .expect("create older candidate");
+
+        steadier_newer = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Zulu steady ready work"),
+                Some("ready"),
+                fields,
+                None,
+                None,
+            )
+            .expect("create newer candidate");
+
+        let transient_blocker = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Transient blocker"),
+                Some("in-review"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create transient blocker");
+
+        store
+            .add_edge(EdgeRecord {
+                from: recently_actionable,
+                to: transient_blocker,
+                kind: String::from("depends_on"),
+                created_at: chrono::Utc::now(),
+            })
+            .expect("add depends_on edge");
+
+        store
+            .close(&transient_blocker, "done", None)
+            .expect("close transient blocker");
+    }
+
+    let result = server
+        .next_tickets(Parameters(NextTicketsInput {
+            workspace: ws(),
+            limit: None,
+            filter: None,
+        }))
+        .await
+        .expect("next_tickets ok");
+    let text = extract_text(&result);
+    let json: Value = serde_json::from_str(&text).expect("valid json");
+    let items = json["items"].as_array().expect("items array");
+
+    assert!(items.len() >= 2, "expected at least two candidates: {items:?}");
+    assert_eq!(
+        items[0]["id"].as_str(),
+        Some(recently_actionable.to_string().as_str())
+    );
+    assert_eq!(
+        items[1]["id"].as_str(),
+        Some(steadier_newer.to_string().as_str())
+    );
+    assert!(items[0]["became_actionable_at"].as_str().is_some());
+    assert!(items[0]["last_blocker_progress_at"].is_null());
+    assert!(items[1]["became_actionable_at"].as_str().is_some());
+
+    let _ = tmp;
+}
+
+#[tokio::test]
 async fn next_tickets_promote_convergence_before_unrelated_ready_candidates() {
     let (tmp, server) = make_sandbox();
 

@@ -568,10 +568,16 @@ fn unblocked_by_returns_only_actionable_reverse_dependents() {
     assert_eq!(items.len(), 1);
     assert_eq!(items[0]["id"], actionable.as_str());
     assert_eq!(items[0]["remaining_blocker_count"], 0);
+    assert!(items[0].get("became_actionable_at").is_some());
+    assert!(items[0].get("last_blocker_progress_at").is_some());
 
     let still_blocked_items =
         unblocked["still_blocked_items"].as_array().unwrap();
     assert_eq!(still_blocked_items.len(), 2);
+    assert!(still_blocked_items.iter().all(|item| {
+        item.get("became_actionable_at").is_some()
+            && item.get("last_blocker_progress_at").is_some()
+    }));
     assert!(still_blocked_items.iter().any(|item| {
         item["id"] == still_blocked.as_str()
             && item["remaining_blocker_count"] == 1
@@ -750,6 +756,69 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
     assert!(human.contains(&format!("ticket_id: {older_more_dependees}")));
     assert!(!human.contains("DEPENDEES"));
     assert!(!human.contains(first_created_at));
+}
+
+#[test]
+fn next_and_board_prefer_recently_actionable_candidates_and_surface_timing_metadata() {
+    let s = Sandbox::new();
+    assert_eq!(s.ticket_json(&["init"])["status"], "ok");
+    let recently_actionable = create_ticket(&s, "Alpha recently actionable");
+    let steadier_newer = create_ticket(&s, "Zulu steady ready work");
+    let transient_blocker = create_ticket(&s, "Transient blocker");
+
+    for ticket_id in [&recently_actionable, &steadier_newer] {
+        let ready =
+            s.ticket_json(&["update", ticket_id, "--to-state", "ready"]);
+        assert_eq!(ready["status"], "ok");
+
+        let priority =
+            s.ticket_json(&["update", ticket_id, "--field", "priority=high"]);
+        assert_eq!(priority["status"], "ok");
+    }
+
+    for state in ["ready", "in-implementation", "in-review"] {
+        let updated = s.ticket_json(&[
+            "update",
+            &transient_blocker,
+            "--to-state",
+            state,
+        ]);
+        assert_eq!(updated["status"], "ok");
+    }
+
+    let linked = s.ticket_json(&[
+        "link",
+        "--from",
+        &recently_actionable,
+        "--to",
+        &transient_blocker,
+        "--kind",
+        "depends_on",
+    ]);
+    assert_eq!(linked["status"], "ok");
+
+    let closed = s.ticket_json(&["close", &transient_blocker]);
+    assert_eq!(closed["status"], "ok");
+
+    let next = s.ticket_json(&["next"]);
+    assert_eq!(next["status"], "ok");
+    let items = next["items"].as_array().unwrap();
+    assert!(items.len() >= 2, "expected at least two candidates: {items:?}");
+    assert_eq!(items[0]["id"], recently_actionable.as_str());
+    assert_eq!(items[1]["id"], steadier_newer.as_str());
+    assert!(items[0]["became_actionable_at"].as_str().is_some());
+    assert!(items[0]["last_blocker_progress_at"].is_null());
+    assert!(items[1]["became_actionable_at"].as_str().is_some());
+
+    let show = s.ticket_json(&["board", "show"]);
+    assert_eq!(show["status"], "ok");
+    let recommended = show["recommended_next"].as_array().unwrap();
+    assert!(recommended.len() >= 2);
+    assert_eq!(recommended[0]["ticket_id"], recently_actionable.as_str());
+    assert_eq!(recommended[1]["ticket_id"], steadier_newer.as_str());
+    assert!(recommended[0]["became_actionable_at"].as_str().is_some());
+    assert!(recommended[0]["last_blocker_progress_at"].is_null());
+    assert!(recommended[1]["became_actionable_at"].as_str().is_some());
 }
 
 #[test]

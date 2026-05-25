@@ -1,5 +1,8 @@
 use std::{
-    collections::BTreeMap,
+    collections::{
+        BTreeMap,
+        HashMap,
+    },
     path::{
         Path,
         PathBuf,
@@ -39,6 +42,7 @@ mod lifecycle;
 mod query;
 mod release;
 mod scan;
+mod workflow_facts;
 
 pub use self::{
     release::{
@@ -372,6 +376,8 @@ impl TicketStore {
             );
         }
 
+        self.refresh_workflow_facts_for_roots(&[id], false, now)?;
+
         Ok(id)
     }
 
@@ -462,6 +468,20 @@ impl TicketStore {
             .collect())
     }
 
+    pub fn get_workflow_facts(
+        &self,
+        id: &Uuid,
+    ) -> Result<Option<crate::storage::indexed::WorkflowFacts>, StorageError> {
+        self.index.get_workflow_facts(id)
+    }
+
+    pub fn get_workflow_facts_many(
+        &self,
+        ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, crate::storage::indexed::WorkflowFacts>, StorageError> {
+        self.index.get_workflow_facts_many(ids)
+    }
+
     /// Update a ticket: apply field patches, optional state transition, and optional description.
     pub fn update(
         &self,
@@ -507,6 +527,7 @@ impl TicketStore {
         let new_state = to_state
             .map(str::to_string)
             .or_else(|| indexed.state.clone());
+        let previous_state = indexed.state.clone();
         let updated_manifest =
             TicketFs::update(&indexed.path, &patch, to_state)?;
 
@@ -554,6 +575,13 @@ impl TicketStore {
 
         // Reconcile board: mark completed on terminal states.
         self.board_reconcile(id, false);
+
+        let state_progressed = previous_state.as_deref() != new_state.as_deref()
+            && self.state_rank_for_type(&indexed.type_id, new_state.as_deref())
+                > self.state_rank_for_type(&indexed.type_id, previous_state.as_deref());
+        if previous_state.as_deref() != new_state.as_deref() {
+            self.refresh_workflow_facts_for_roots(&[*id], state_progressed, now)?;
+        }
 
         Ok(updated_manifest)
     }

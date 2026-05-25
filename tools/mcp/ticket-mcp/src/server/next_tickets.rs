@@ -150,6 +150,12 @@ fn ranked_items(
                 "affected_reverse_dependent_reach": metrics.affected_reverse_dependent_reach,
                 "max_affected_dependent_state": metrics.max_affected_dependent_state,
                 "dependency_state_gap": metrics.dependency_state_gap,
+                "became_actionable_at": metrics
+                    .became_actionable_at
+                    .map(|timestamp| timestamp.to_rfc3339()),
+                "last_blocker_progress_at": metrics
+                    .last_blocker_progress_at
+                    .map(|timestamp| timestamp.to_rfc3339()),
                 "created_at": ticket.created_at.to_rfc3339(),
             })
             .into()

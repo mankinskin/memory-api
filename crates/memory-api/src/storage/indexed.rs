@@ -25,6 +25,14 @@ pub struct IndexedEntity {
     pub deleted: bool,
 }
 
+/// Indexed workflow facts used by ticket dependency ordering and tree views.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct WorkflowFacts {
+    pub unresolved_dependency_count: usize,
+    pub became_actionable_at: Option<DateTime<Utc>>,
+    pub last_blocker_progress_at: Option<DateTime<Utc>>,
+}
+
 /// Lease record stored in the LEASES SQLite table.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LeaseInfo {

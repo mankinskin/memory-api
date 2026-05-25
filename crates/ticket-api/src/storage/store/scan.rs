@@ -112,6 +112,8 @@ impl TicketStore {
             }
         }
 
+        self.rebuild_workflow_facts()?;
+
         Ok(ScanReport {
             integrated,
             pruned,
@@ -180,6 +182,7 @@ impl TicketStore {
             manifest,
         };
         integrate_entry(&self.index, &self.search, entry, true)?;
+        self.refresh_workflow_facts_for_roots(&[id], false, Utc::now())?;
         Ok(true)
     }
 }

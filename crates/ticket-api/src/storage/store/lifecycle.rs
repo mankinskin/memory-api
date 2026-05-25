@@ -6,6 +6,7 @@ use std::{
     },
 };
 
+use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -32,6 +33,7 @@ impl TicketStore {
         }
         TicketFs::mark_deleted(&indexed.path)?;
         self.index.soft_delete_ticket(id)?;
+        self.index.remove_workflow_facts(id)?;
         self.search.remove(id)?;
 
         if let Some(hook) = self.hook() {
@@ -54,6 +56,7 @@ impl TicketStore {
         };
         TicketFs::update(&indexed.path, &saved_extra, saved_state.as_deref())?;
 
+        let previous_state = indexed.state.clone();
         let mut refreshed = indexed;
         refreshed.state = saved_state.clone();
         if let Some(title) = saved_extra.get("title").and_then(Value::as_str) {
@@ -68,6 +71,11 @@ impl TicketStore {
             refreshed.state.as_deref(),
             Some(refreshed.type_id.as_str()),
         )?;
+        let state_progressed = self.state_rank_for_type(
+            &refreshed.type_id,
+            refreshed.state.as_deref(),
+        ) > self.state_rank_for_type(&refreshed.type_id, previous_state.as_deref());
+        self.refresh_workflow_facts_for_roots(&[*id], state_progressed, Utc::now())?;
         Ok(())
     }
 
@@ -104,6 +112,7 @@ impl TicketStore {
 
         TicketFs::update(&indexed.path, &patch, target_state.as_deref())?;
 
+        let previous_state = indexed.state.clone();
         let mut refreshed = indexed;
         refreshed.state = target_state.clone();
         if let Some(title) = patch.get("title").and_then(Value::as_str) {
@@ -118,6 +127,11 @@ impl TicketStore {
             refreshed.state.as_deref(),
             Some(refreshed.type_id.as_str()),
         )?;
+        let state_progressed = self.state_rank_for_type(
+            &refreshed.type_id,
+            refreshed.state.as_deref(),
+        ) > self.state_rank_for_type(&refreshed.type_id, previous_state.as_deref());
+        self.refresh_workflow_facts_for_roots(&[*id], state_progressed, Utc::now())?;
 
         let updated_manifest = TicketFs::read(&refreshed.path)?;
         let new_rev = TicketFs::append_history(

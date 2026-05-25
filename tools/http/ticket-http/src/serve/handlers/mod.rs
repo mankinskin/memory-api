@@ -5,4 +5,5 @@ pub mod health;
 pub mod schema;
 pub mod stream;
 pub mod tickets;
+pub mod workflow;
 pub mod workspaces;
