@@ -13,6 +13,12 @@ use uuid::Uuid;
 
 use memory_api::{
     error::StorageError,
+    generated_markdown::{
+        GeneratedMarkdownConfig,
+        GeneratedMarkdownSnippet,
+        prepare_generated_output,
+        render_markdown_file,
+    },
     model::filesystem::ScanRoot,
     storage::{
         entity_fs::EntityFs,
@@ -52,6 +58,38 @@ use self::helpers::{
 const SPEC_MANIFEST_FILE: &str = "spec.toml";
 const SPEC_LOCK_FILE: &str = ".spec-lock";
 const SPEC_INDEX_DIR: &str = ".spec";
+
+pub const GENERATED_SPEC_FILE_COMMENT: &str =
+    "<!-- spec-api:file generated=true -->";
+
+pub const GENERATED_BODY_FILE_COMMENT: &str = GENERATED_SPEC_FILE_COMMENT;
+
+const GENERATED_SPEC_ENTRY_PREFIX: &str = "spec-api:entry";
+
+pub fn render_generated_document(
+    snippets: &[GeneratedMarkdownSnippet<'_>]
+) -> String {
+    let config = GeneratedMarkdownConfig::new(
+        GENERATED_SPEC_FILE_COMMENT,
+        GENERATED_SPEC_ENTRY_PREFIX,
+    );
+
+    render_markdown_file(snippets, &config)
+}
+
+pub fn render_generated_body(
+    snippets: &[GeneratedMarkdownSnippet<'_>]
+) -> String {
+    render_generated_document(snippets)
+}
+
+fn prepare_generated_document(
+    snippets: &[GeneratedMarkdownSnippet<'_>],
+    existing: Option<&str>,
+) -> String {
+    let rendered = render_generated_document(snippets);
+    prepare_generated_output(&rendered, existing)
+}
 
 pub struct SpecStore {
     inner: EntityStore,
@@ -398,6 +436,23 @@ impl SpecStore {
             .get_indexed(&uuid)?
             .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
         write_body(&indexed.path, content)?;
+        Ok(())
+    }
+
+    pub fn update_generated_body(
+        &self,
+        id_or_slug: &str,
+        snippets: &[GeneratedMarkdownSnippet<'_>],
+    ) -> Result<(), SpecError> {
+        let uuid = self.resolve_id(id_or_slug)?;
+        let indexed = self
+            .inner
+            .get_indexed(&uuid)?
+            .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
+        let existing = read_body(&indexed.path);
+        let prepared = prepare_generated_document(snippets, Some(&existing));
+
+        write_body(&indexed.path, &prepared)?;
         Ok(())
     }
 

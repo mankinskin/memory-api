@@ -4,6 +4,7 @@ use std::{
     path::PathBuf,
 };
 
+use memory_api::generated_markdown::GeneratedMarkdownSnippet;
 use memory_api::model::filesystem::ScanRoot;
 use serde_json::Value;
 use tempfile::TempDir;
@@ -69,6 +70,144 @@ fn create_get_update_delete_spec() {
         store.get("root/overview"),
         Err(SpecError::NotFound(_))
     ));
+}
+
+#[test]
+fn update_generated_body_renders_spec_api_provenance_comments() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_spec("root/generated", "Generated");
+    store.create(&spec, "body v1", None).unwrap();
+
+    let snippets = [
+        GeneratedMarkdownSnippet::new(
+            "rule-1",
+            Some("shared/spec/problem"),
+            "## Problem\nReuse canonical snippets.\n",
+        ),
+        GeneratedMarkdownSnippet::new(
+            "rule-2",
+            Some("shared/spec/acceptance"),
+            "## Acceptance\nKeep generation deterministic.\n",
+        ),
+    ];
+
+    store
+        .update_generated_body("root/generated", &snippets)
+        .unwrap();
+
+    let full = store.get_full("root/generated").unwrap();
+    assert_eq!(full.1, render_generated_body(&snippets));
+}
+
+#[test]
+fn update_generated_body_preserves_existing_crlf_style() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_spec("root/generated-crlf", "Generated CRLF");
+    let id = store.create(&spec, "old\r\nbody\r\n", None).unwrap();
+    let snippets = [GeneratedMarkdownSnippet::new(
+        "rule-1",
+        Some("shared/spec/problem"),
+        "## Problem\nReuse canonical snippets.\n",
+    )];
+
+    store
+        .update_generated_body("root/generated-crlf", &snippets)
+        .unwrap();
+
+    let indexed = store.entity_store().get_indexed(&id).unwrap().unwrap();
+    let body = fs::read_to_string(indexed.path.join("body.md")).unwrap();
+
+    assert_eq!(
+        body,
+        "<!-- spec-api:file generated=true -->\r\n\r\n<!-- spec-api:entry id=rule-1 slug=shared/spec/problem -->\r\n## Problem\r\nReuse canonical snippets.\r\n"
+    );
+}
+
+#[test]
+fn update_generated_section_creates_and_renders_named_section() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_spec("root/generated-section", "Generated Section");
+    store.create(&spec, "body v1", None).unwrap();
+
+    let snippets = [
+        GeneratedMarkdownSnippet::new(
+            "rule-1",
+            Some("shared/spec/requirements"),
+            "## Requirements\nGenerate named sections.\n",
+        ),
+        GeneratedMarkdownSnippet::new(
+            "rule-2",
+            Some("shared/spec/notes"),
+            "## Notes\nKeep deterministic ordering.\n",
+        ),
+    ];
+
+    store
+        .update_generated_section(
+            "root/generated-section",
+            "requirements",
+            &snippets,
+        )
+        .unwrap();
+
+    let sections = store.list_sections("root/generated-section").unwrap();
+    assert_eq!(sections, vec!["requirements.md".to_string()]);
+
+    let full_path = store
+        .entity_store()
+        .get_indexed(&store.resolve_id("root/generated-section").unwrap())
+        .unwrap()
+        .unwrap()
+        .path
+        .join("sections")
+        .join("requirements.md");
+    let content = fs::read_to_string(full_path).unwrap();
+
+    assert_eq!(content, render_generated_document(&snippets));
+}
+
+#[test]
+fn update_generated_section_preserves_existing_crlf_style() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_spec("root/generated-section-crlf", "Generated Section CRLF");
+    let id = store
+        .create(&spec, "body v1", None)
+        .unwrap();
+    store
+        .add_section(
+            "root/generated-section-crlf",
+            "requirements",
+            "old\r\ncontent\r\n",
+        )
+        .unwrap();
+    let snippets = [GeneratedMarkdownSnippet::new(
+        "rule-1",
+        Some("shared/spec/requirements"),
+        "## Requirements\nPreserve CRLF.\n",
+    )];
+
+    store
+        .update_generated_section(
+            "root/generated-section-crlf",
+            "requirements",
+            &snippets,
+        )
+        .unwrap();
+
+    let indexed = store.entity_store().get_indexed(&id).unwrap().unwrap();
+    let content = fs::read_to_string(
+        indexed.path.join("sections").join("requirements.md"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        content,
+        "<!-- spec-api:file generated=true -->\r\n\r\n<!-- spec-api:entry id=rule-1 slug=shared/spec/requirements -->\r\n## Requirements\r\nPreserve CRLF.\r\n"
+    );
 }
 
 #[test]

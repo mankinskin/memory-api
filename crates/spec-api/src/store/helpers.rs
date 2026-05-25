@@ -61,7 +61,7 @@ pub(super) fn normalize_section_name(name: &str) -> String {
 
 pub(super) fn read_body(spec_path: &Path) -> String {
     let body_path = spec_path.join("body.md");
-    fs::read_to_string(&body_path).unwrap_or_default()
+    read_markdown_file(&body_path)
 }
 
 pub(super) fn write_body(
@@ -69,6 +69,39 @@ pub(super) fn write_body(
     content: &str,
 ) -> Result<(), SpecError> {
     let body_path = spec_path.join("body.md");
-    fs::write(&body_path, content)
+    write_markdown_file(&body_path, content)
+}
+
+pub(super) fn read_section(
+    spec_path: &Path,
+    name: &str,
+) -> String {
+    let file_name = normalize_section_name(name);
+    let path = spec_path.join("sections").join(file_name);
+    read_markdown_file(&path)
+}
+
+pub(super) fn write_section(
+    spec_path: &Path,
+    name: &str,
+    content: &str,
+) -> Result<(), SpecError> {
+    let file_name = normalize_section_name(name);
+    let sections_dir = spec_path.join("sections");
+    fs::create_dir_all(&sections_dir)
+        .map_err(|error| SpecError::Storage(StorageError::Io(error)))?;
+    let path = sections_dir.join(file_name);
+    write_markdown_file(&path, content)
+}
+
+fn read_markdown_file(path: &Path) -> String {
+    fs::read_to_string(path).unwrap_or_default()
+}
+
+fn write_markdown_file(
+    path: &Path,
+    content: &str,
+) -> Result<(), SpecError> {
+    fs::write(path, content)
         .map_err(|error| SpecError::Storage(StorageError::Io(error)))
 }

@@ -5,6 +5,8 @@ pub mod manifest;
 pub mod slug;
 pub mod store;
 
+pub use memory_api::generated_markdown::GeneratedMarkdownSnippet;
+
 pub use code_ref::{
     CodeRef,
     SymbolKind,
@@ -18,4 +20,10 @@ pub use slug::{
     SlugIndex,
     validate_slug,
 };
-pub use store::SpecStore;
+pub use store::{
+    GENERATED_BODY_FILE_COMMENT,
+    GENERATED_SPEC_FILE_COMMENT,
+    SpecStore,
+    render_generated_body,
+    render_generated_document,
+};

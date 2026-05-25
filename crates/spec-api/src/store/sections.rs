@@ -1,12 +1,23 @@
 use std::fs;
 
-use memory_api::error::StorageError;
+use memory_api::{
+    error::StorageError,
+    generated_markdown::{
+        GeneratedMarkdownSnippet,
+        prepare_generated_output,
+    },
+};
 
 use crate::error::SpecError;
 
 use super::{
     SpecStore,
-    helpers::normalize_section_name,
+    helpers::{
+        normalize_section_name,
+        read_section,
+        write_section,
+    },
+    render_generated_document,
 };
 
 impl SpecStore {
@@ -21,11 +32,7 @@ impl SpecStore {
             .inner
             .get_indexed(&uuid)?
             .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
-        let sections_dir = indexed.path.join("sections");
-        fs::create_dir_all(&sections_dir).map_err(StorageError::Io)?;
-        let file_name = normalize_section_name(name);
-        fs::write(sections_dir.join(&file_name), content)
-            .map_err(StorageError::Io)?;
+        write_section(&indexed.path, name, content)?;
         Ok(())
     }
 
@@ -45,7 +52,27 @@ impl SpecStore {
         if !path.exists() {
             return Err(SpecError::NotFound(format!("section: {}", name)));
         }
-        fs::write(&path, content).map_err(StorageError::Io)?;
+        write_section(&indexed.path, name, content)?;
+        Ok(())
+    }
+
+    pub fn update_generated_section(
+        &self,
+        id_or_slug: &str,
+        name: &str,
+        snippets: &[GeneratedMarkdownSnippet<'_>],
+    ) -> Result<(), SpecError> {
+        let uuid = self.resolve_id(id_or_slug)?;
+        let indexed = self
+            .inner
+            .get_indexed(&uuid)?
+            .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
+        let existing = read_section(&indexed.path, name);
+        let rendered = render_generated_document(snippets);
+        let prepared =
+            prepare_generated_output(&rendered, Some(&existing));
+
+        write_section(&indexed.path, name, &prepared)?;
         Ok(())
     }
 

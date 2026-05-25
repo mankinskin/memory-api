@@ -1,4 +1,5 @@
 pub mod error;
+pub mod generated_markdown;
 pub mod model;
 pub mod storage;
 pub mod workspace;

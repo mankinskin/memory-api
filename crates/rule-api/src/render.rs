@@ -1,151 +1,42 @@
 use crate::manifest::RuleManifest;
+use memory_api::generated_markdown::{
+    GeneratedMarkdownConfig,
+    GeneratedMarkdownSnippet,
+    prepare_generated_output as shared_prepare_generated_output,
+    render_markdown_file as shared_render_markdown_file,
+};
 
 pub const GENERATED_FILE_COMMENT: &str =
     "<!-- rule-api:file generated=true -->";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum LineEnding {
-    Lf,
-    Crlf,
-}
-
-impl LineEnding {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Lf => "\n",
-            Self::Crlf => "\r\n",
-        }
-    }
-}
+const GENERATED_ENTRY_PREFIX: &str = "rule-api:entry";
 
 pub fn render_markdown_file(rules: &[RuleManifest]) -> String {
-    let include_provenance_comments = !rules
-        .first()
-        .and_then(RuleManifest::body)
-        .is_some_and(starts_with_yaml_frontmatter);
-    let mut rendered = String::new();
+    let config =
+        GeneratedMarkdownConfig::new(GENERATED_FILE_COMMENT, GENERATED_ENTRY_PREFIX);
+    let snippets = rules
+        .iter()
+        .map(rule_to_generated_snippet)
+        .collect::<Vec<_>>();
 
-    if include_provenance_comments {
-        rendered.push_str(GENERATED_FILE_COMMENT);
-    }
-
-    for (index, rule) in rules.iter().enumerate() {
-        if include_provenance_comments {
-            rendered.push_str("\n\n");
-            rendered.push_str(&format!(
-                "<!-- rule-api:entry id={} slug={} -->\n",
-                rule.id,
-                rule.slug().unwrap_or_default()
-            ));
-        } else if index > 0 {
-            rendered.push_str("\n\n");
-        }
-
-        rendered.push_str(rule.body().unwrap_or_default().trim_end());
-    }
-
-    rendered.push('\n');
-    rendered
+    shared_render_markdown_file(&snippets, &config)
 }
 
 pub fn prepare_generated_output(
     rendered: &str,
     existing: Option<&str>,
 ) -> String {
-    let normalized = normalize_newlines_to_lf(rendered);
-    existing
-        .map(|text| apply_existing_line_endings(&normalized, text))
-        .unwrap_or(normalized)
+    shared_prepare_generated_output(rendered, existing)
 }
 
-fn starts_with_yaml_frontmatter(body: &str) -> bool {
-    body.lines()
-        .next()
-        .is_some_and(|line| line.trim_end_matches('\r') == "---")
-}
-
-fn normalize_newlines_to_lf(text: &str) -> String {
-    text.replace("\r\n", "\n").replace('\r', "\n")
-}
-
-fn apply_existing_line_endings(
-    rendered: &str,
-    existing: &str,
-) -> String {
-    let endings = collect_line_endings(existing);
-    if endings.is_empty()
-        || endings.iter().all(|ending| *ending == LineEnding::Lf)
-    {
-        return rendered.to_string();
-    }
-
-    let fallback = dominant_line_ending(&endings);
-    let mut adapted = String::with_capacity(
-        rendered.len()
-            + endings
-                .iter()
-                .filter(|ending| **ending == LineEnding::Crlf)
-                .count(),
-    );
-    let bytes = rendered.as_bytes();
-    let mut segment_start = 0usize;
-    let mut ending_index = 0usize;
-    let mut index = 0usize;
-
-    while index < bytes.len() {
-        if bytes[index] == b'\n' {
-            adapted.push_str(&rendered[segment_start..index]);
-            adapted.push_str(
-                endings
-                    .get(ending_index)
-                    .copied()
-                    .unwrap_or(fallback)
-                    .as_str(),
-            );
-            segment_start = index + 1;
-            ending_index += 1;
-        }
-        index += 1;
-    }
-
-    adapted.push_str(&rendered[segment_start..]);
-    adapted
-}
-
-fn collect_line_endings(text: &str) -> Vec<LineEnding> {
-    let bytes = text.as_bytes();
-    let mut endings = Vec::new();
-    let mut index = 0usize;
-
-    while index < bytes.len() {
-        match bytes[index] {
-            b'\r' if index + 1 < bytes.len() && bytes[index + 1] == b'\n' => {
-                endings.push(LineEnding::Crlf);
-                index += 2;
-            },
-            b'\n' => {
-                endings.push(LineEnding::Lf);
-                index += 1;
-            },
-            _ => {
-                index += 1;
-            },
-        }
-    }
-
-    endings
-}
-
-fn dominant_line_ending(endings: &[LineEnding]) -> LineEnding {
-    let crlf_count = endings
-        .iter()
-        .filter(|ending| **ending == LineEnding::Crlf)
-        .count();
-    if crlf_count > endings.len().saturating_sub(crlf_count) {
-        LineEnding::Crlf
-    } else {
-        LineEnding::Lf
-    }
+fn rule_to_generated_snippet(
+    rule: &RuleManifest
+) -> GeneratedMarkdownSnippet<'_> {
+    GeneratedMarkdownSnippet::new(
+        rule.id.to_string(),
+        rule.slug(),
+        rule.body().unwrap_or_default(),
+    )
 }
 
 #[cfg(test)]
