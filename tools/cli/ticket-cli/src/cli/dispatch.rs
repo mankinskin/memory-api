@@ -244,6 +244,7 @@ fn command_uses_descendant_scan_roots(command: &TicketCommandCli) -> bool {
             | TicketCommandCli::Status(_)
             | TicketCommandCli::ReadyOverview(_)
             | TicketCommandCli::Next(_)
+            | TicketCommandCli::Blockers(_)
             | TicketCommandCli::UnblockedBy(_)
             | TicketCommandCli::Assets(_)
             | TicketCommandCli::Health(_)
@@ -344,6 +345,7 @@ fn dispatch_store_command(
         | TicketCommandCli::Status(_)
         | TicketCommandCli::ReadyOverview(_)
         | TicketCommandCli::Next(_)
+        | TicketCommandCli::Blockers(_)
         | TicketCommandCli::UnblockedBy(_) =>
             dispatch_store_command_graph(command, &store),
         TicketCommandCli::Serve(_)
@@ -422,6 +424,7 @@ fn dispatch_store_command_graph(
         TicketCommandCli::ReadyOverview(args) =>
             commands::cmd_ready_overview(args, store),
         TicketCommandCli::Next(args) => commands::cmd_next(args, store),
+        TicketCommandCli::Blockers(args) => commands::cmd_blockers(args, store),
         TicketCommandCli::UnblockedBy(args) =>
             commands::cmd_unblocked_by(args, store),
         _ => unreachable!("handled in graph store dispatch"),

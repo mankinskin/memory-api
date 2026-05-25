@@ -49,6 +49,12 @@ pub struct UnblockedByArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct BlockersArgs {
+    /// Ticket UUID or 8+ character hex prefix to inspect for unresolved prerequisites.
+    pub id: String,
+}
+
+#[derive(Debug, Args)]
 pub struct WatchArgs {
     /// Debounce time in milliseconds before triggering reconcile after an event.
     #[arg(long, default_value = "200")]

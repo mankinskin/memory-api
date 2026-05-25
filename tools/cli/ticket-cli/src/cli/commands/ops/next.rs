@@ -8,11 +8,15 @@ use ticket_api::{
     BoardEntryStatus,
     BoardSnapshot,
     storage::store::TicketStore,
-    workflow::WorkflowModel,
+    workflow::{
+        WorkflowModel,
+        WorkflowTreeNode,
+    },
 };
 use uuid::Uuid;
 
 use crate::cli::{
+    BlockersArgs,
     CliRunError,
     NextArgs,
     UnblockedByArgs,
@@ -106,33 +110,62 @@ pub(super) fn run_unblocked_by(
     )?;
     let dependent_ids = model.reverse_dependents(root_id);
     let satisfied_ids = HashSet::from([root_id]);
-
-    let mut candidates = model.actionable_candidate_ids_with_satisfied(
-        Some(&dependent_ids),
+    let tree = model
+        .unlock_tree_with_satisfied(root_id, &satisfied_ids)
+        .ok_or_else(|| CliRunError::Storage(ticket_api::error::StorageError::NotFound(root_id)))?;
+    let frontier_ids = model.unlock_frontier_leaf_ids_with_satisfied(
+        root_id,
         &satisfied_ids,
     );
-    let mut still_blocked = model
-        .eligible_candidate_ids(Some(&dependent_ids))
-        .into_iter()
+    let blocked_dependents = dependent_ids
+        .iter()
         .filter(|ticket_id| {
             !model
                 .unresolved_dependencies_excluding(ticket_id, &satisfied_ids)
                 .is_empty()
         })
-        .collect::<Vec<_>>();
-    model.sort_candidate_ids(&mut candidates);
-    model.sort_candidate_ids(&mut still_blocked);
+        .count();
 
     Ok(json!({
         "command": "unblocked_by",
         "status": "ok",
-        "root": root_summary(root_id, &model),
+        "kind": "unblocked_by",
+        "root": build_tree_item(tree, &model, &satisfied_ids),
         "reachable_dependents": dependent_ids.len(),
-        "blocked_dependents": still_blocked.len(),
-        "count": candidates.len(),
-        "items": build_unblocked_items(&candidates, &model, &satisfied_ids),
-        "still_blocked_items": build_unblocked_items(
-            &still_blocked,
+        "blocked_dependents": blocked_dependents,
+        "frontier_count": frontier_ids.len(),
+        "frontier_items": build_candidate_items(
+            &frontier_ids,
+            &model,
+            &satisfied_ids,
+        ),
+    }))
+}
+
+pub(super) fn run_blockers(
+    args: BlockersArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    let root_id = resolve_uuid_prefix(&args.id, store)?;
+    let model = WorkflowModel::build(
+        store,
+        store.list(None, None, None)?,
+        store.list_all_edges()?,
+    )?;
+    let tree = model
+        .blocker_tree(root_id)
+        .ok_or_else(|| CliRunError::Storage(ticket_api::error::StorageError::NotFound(root_id)))?;
+    let frontier_ids = tree.frontier_leaf_ids.clone();
+    let satisfied_ids = HashSet::new();
+
+    Ok(json!({
+        "command": "blockers",
+        "status": "ok",
+        "kind": "blockers",
+        "root": build_tree_item(tree, &model, &satisfied_ids),
+        "frontier_count": frontier_ids.len(),
+        "frontier_items": build_candidate_items(
+            &frontier_ids,
             &model,
             &satisfied_ids,
         ),
@@ -319,7 +352,7 @@ fn build_items(
         .collect()
 }
 
-fn build_unblocked_items(
+fn build_candidate_items(
     candidates: &[Uuid],
     model: &WorkflowModel,
     satisfied_ids: &HashSet<Uuid>,
@@ -358,6 +391,48 @@ fn build_unblocked_items(
             .into()
         })
         .collect()
+}
+
+fn build_tree_item(
+    node: WorkflowTreeNode,
+    model: &WorkflowModel,
+    satisfied_ids: &HashSet<Uuid>,
+) -> Value {
+    let ticket = model.ticket(&node.ticket_id);
+    let metrics = model.metrics(&node.ticket_id).cloned().unwrap_or_default();
+    let created_at = ticket.map(|ticket| ticket.created_at.to_rfc3339());
+    let ticket_type = ticket.map(|ticket| ticket.type_id.clone());
+
+    json!({
+        "id": node.ticket_id,
+        "title": node.title,
+        "state": node.state,
+        "type": ticket_type,
+        "priority": node.priority,
+        "remaining_blocker_count": node.remaining_blocker_count,
+        "remaining_blockers": model.unresolved_dependencies_excluding(&node.ticket_id, satisfied_ids),
+        "unresolved_frontier_leaf_count": node.unresolved_frontier_leaf_count,
+        "frontier_leaf_ids": node.frontier_leaf_ids,
+        "blocker_distance": node.blocker_distance,
+        "is_frontier": node.is_frontier,
+        "dependency_count": node.dependency_count,
+        "dependees": node.immediate_dependees,
+        "transitive_reverse_dependents": node.transitive_reverse_dependents,
+        "affected_reverse_dependent_reach": node.affected_reverse_dependent_reach,
+        "dependency_state_gap": node.dependency_state_gap,
+        "became_actionable_at": metrics
+            .became_actionable_at
+            .map(|timestamp| timestamp.to_rfc3339()),
+        "last_blocker_progress_at": metrics
+            .last_blocker_progress_at
+            .map(|timestamp| timestamp.to_rfc3339()),
+        "created_at": created_at,
+        "children": node
+            .children
+            .into_iter()
+            .map(|child| build_tree_item(child, model, satisfied_ids))
+            .collect::<Vec<_>>(),
+    })
 }
 
 fn warnings(board_snap: Option<&BoardSnapshot>) -> Vec<String> {

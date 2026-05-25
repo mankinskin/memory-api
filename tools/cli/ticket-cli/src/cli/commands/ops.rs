@@ -17,6 +17,7 @@ use ticket_api::{
 use crate::cli::{
     AddRootArgs,
     AttachArgs,
+    BlockersArgs,
     CliRunError,
     FmtArgs,
     HealthArgs,
@@ -240,6 +241,13 @@ pub(crate) fn cmd_next(
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
     next::run(args, store)
+}
+
+pub(crate) fn cmd_blockers(
+    args: BlockersArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    next::run_blockers(args, store)
 }
 
 pub(crate) fn cmd_unblocked_by(

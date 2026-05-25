@@ -35,8 +35,12 @@ pub(crate) fn render_human_readable(payload: &Value) -> String {
         return render_next_report(obj);
     }
 
+    if obj.get("command").and_then(Value::as_str) == Some("blockers") {
+        return render_workflow_tree_report(obj, "Blocker Tree");
+    }
+
     if obj.get("command").and_then(Value::as_str) == Some("unblocked_by") {
-        return render_unblocked_by_report(obj);
+        return render_workflow_tree_report(obj, "Unlock Tree");
     }
 
     // Special case: subgraph/topgraph command renders as ASCII tree
@@ -147,8 +151,9 @@ fn render_next_report(obj: &serde_json::Map<String, Value>) -> String {
     result
 }
 
-fn render_unblocked_by_report(
-    obj: &serde_json::Map<String, Value>
+fn render_workflow_tree_report(
+    obj: &serde_json::Map<String, Value>,
+    tree_heading: &str,
 ) -> String {
     let mut out = String::new();
 
@@ -162,8 +167,8 @@ fn render_unblocked_by_report(
     for (key, val) in obj {
         if key == "command"
             || key == "status"
-            || key == "items"
-            || key == "still_blocked_items"
+            || key == "root"
+            || key == "frontier_items"
         {
             continue;
         }
@@ -182,25 +187,18 @@ fn render_unblocked_by_report(
         write_section(&mut out, key, val, 0);
     }
 
-    let recommendations = obj
-        .get("items")
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(parse_board_recommendation)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    if let Some(root) = obj.get("root") {
+        let _ = writeln!(out);
+        let _ = writeln!(out, "{tree_heading}:");
+        write_workflow_tree_node(&mut out, root, "", true, true);
+    }
 
-    write_next_up(&mut out, &recommendations);
-
-    let still_blocked = obj
-        .get("still_blocked_items")
+    let frontier_items = obj
+        .get("frontier_items")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    write_still_blocked(&mut out, &still_blocked);
+    write_frontier_items(&mut out, &frontier_items);
 
     let trimmed = out.trim_end();
     let mut result = trimmed.to_string();
@@ -208,15 +206,15 @@ fn render_unblocked_by_report(
     result
 }
 
-fn write_still_blocked(
+fn write_frontier_items(
     out: &mut String,
     items: &[Value],
 ) {
     let _ = writeln!(out);
-    let _ = writeln!(out, "Still Blocked:");
+    let _ = writeln!(out, "Frontier Leaves:");
 
     if items.is_empty() {
-        let _ = writeln!(out, "  (no impacted tickets remain blocked once this prerequisite is satisfied)");
+        let _ = writeln!(out, "  (no frontier leaves)");
         return;
     }
 
@@ -291,6 +289,96 @@ fn write_still_blocked(
         );
         let _ = writeln!(out, "  created_at: {}", created_at);
         let _ = writeln!(out, "  ticket_id: {}", ticket_id);
+    }
+}
+
+fn write_workflow_tree_node(
+    out: &mut String,
+    node: &Value,
+    prefix: &str,
+    is_last: bool,
+    is_root: bool,
+) {
+    let ticket_id = node.get("id").and_then(Value::as_str).unwrap_or("-");
+    let title = node
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("(untitled ticket)");
+    let state = node.get("state").and_then(Value::as_str).unwrap_or("-");
+    let priority = node
+        .get("priority")
+        .and_then(Value::as_str)
+        .unwrap_or("none");
+    let remaining_blocker_count = node
+        .get("remaining_blocker_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let frontier_leaf_count = node
+        .get("unresolved_frontier_leaf_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let blocker_distance = node
+        .get("blocker_distance")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let is_frontier = node
+        .get("is_frontier")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let branch = if is_root {
+        ""
+    } else if is_last {
+        "\\- "
+    } else {
+        "|- "
+    };
+    let marker = if is_frontier { "*" } else { "o" };
+    let detail_indent = if is_root {
+        "  ".to_string()
+    } else if is_last {
+        format!("{prefix}   ")
+    } else {
+        format!("{prefix}|  ")
+    };
+
+    let _ = writeln!(
+        out,
+        "{prefix}{branch}{marker} {}  {}",
+        short_ticket_value(ticket_id),
+        title,
+    );
+    let _ = writeln!(
+        out,
+        "{detail_indent}state: {}  priority: {}  remaining_blockers: {}  frontier_leaves: {}  blocker_distance: {}",
+        state,
+        priority,
+        remaining_blocker_count,
+        frontier_leaf_count,
+        blocker_distance,
+    );
+
+    let children = node
+        .get("children")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let child_prefix = if is_root {
+        "  ".to_string()
+    } else if is_last {
+        format!("{prefix}   ")
+    } else {
+        format!("{prefix}|  ")
+    };
+
+    for (index, child) in children.iter().enumerate() {
+        write_workflow_tree_node(
+            out,
+            child,
+            &child_prefix,
+            index + 1 == children.len(),
+            false,
+        );
     }
 }
 
