@@ -1,0 +1,47 @@
+name: Viewer Install Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/viewer-install-validation.yml'
+      - '.spec/**'
+      - '.rule/**'
+      - 'tools/cli/rule-cli/tests/install_contract_sync.rs'
+      - 'README.md'
+  push:
+    branches: [main, master]
+    paths:
+      - '.github/workflows/viewer-install-validation.yml'
+      - '.spec/**'
+      - '.rule/**'
+      - 'tools/cli/rule-cli/tests/install_contract_sync.rs'
+      - 'README.md'
+  workflow_dispatch:
+
+concurrency:
+  group: viewer-install-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  viewer-contract-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "value=$(<tools/install-validation/toolchain.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.value }}
+
+      - name: Validate viewer install contract sync
+        shell: bash
+        run: cargo test --manifest-path tools/cli/rule-cli/Cargo.toml --test install_contract_sync -- --nocapture
