@@ -382,8 +382,10 @@ fn full_text_query(
     );
     query_parser.set_conjunction_by_default();
     let exact_query = query_parser.parse_query(text).ok();
-    let substring_query =
-        substring_query_for_fields(text, &[fields.title, fields.body]);
+    let substring_query = substring_query_for_fields(
+        text,
+        &[fields.title, fields.body, fields.id],
+    );
 
     match (exact_query, substring_query) {
         (Some(exact_query), Some(substring_query)) =>
@@ -434,6 +436,25 @@ fn substring_query_for_fields(
     }
 }
 
+fn id_field_query(
+    text: &str,
+    fields: &SearchFields,
+) -> Box<dyn tantivy::query::Query> {
+    use tantivy::query::{
+        BooleanQuery,
+        Occur,
+    };
+
+    let exact_query = term_query(fields.id, text);
+    match substring_query_for_fields(text, &[fields.id]) {
+        Some(substring_query) => Box::new(BooleanQuery::new(vec![
+            (Occur::Should, exact_query),
+            (Occur::Should, substring_query),
+        ])),
+        None => exact_query,
+    }
+}
+
 fn title_field_query(
     text: &str,
     fields: &SearchFields,
@@ -467,6 +488,8 @@ fn field_expr_to_query(
     match value {
         ValueExpr::Text(text) if key == "title" =>
             title_field_query(text, fields),
+        ValueExpr::Text(text) if key == "id" =>
+            id_field_query(text, fields),
         ValueExpr::Text(text) => term_query(field, text),
         ValueExpr::Range { .. } => Box::new(AllQuery),
     }

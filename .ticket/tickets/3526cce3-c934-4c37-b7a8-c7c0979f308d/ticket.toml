@@ -1,0 +1,11 @@
+id = "3526cce3-c934-4c37-b7a8-c7c0979f308d"
+created_at = "2026-05-25T11:47:18.036187700+00:00"
+title = "[ticket-viewer] Keep full workspace graph visible with focused navigation"
+state = "cancelled"
+acceptance_criteria = "1. Graph mode keeps the workspace graph visible while ticket selection changes focus. 2. Focus changes pan or center the viewport instead of replacing the dataset with a new root-local graph. 3. Related edges and nearby nodes are emphasized while distant unrelated regions are de-emphasized."
+component = "ticket-viewer"
+depends_on = ["3fd32109-7122-4fdf-80f2-b741db5d3b30"]
+priority = "high"
+risk_level = "high"
+tags = "ticket-viewer,graph,focus,ux"
+type = "tracker-improvement"
