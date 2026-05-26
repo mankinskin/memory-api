@@ -1,0 +1,39 @@
+[body]
+config = "rule-targets.yaml"
+target = "memory-api-recurring-principles-body"
+
+[sections.workspace-identifiers]
+config = "rule-targets.yaml"
+target = "memory-api-recurring-principles-workspace-identifiers"
+
+[sections.typed-error-envelopes]
+config = "rule-targets.yaml"
+target = "memory-api-recurring-principles-typed-error-envelopes"
+
+[sections.json-machine-surface]
+config = "rule-targets.yaml"
+target = "memory-api-recurring-principles-json-machine-surface"
+
+[sections.api-crate-owns-model]
+config = "rule-targets.yaml"
+target = "memory-api-recurring-principles-api-crate-owns-model"
+
+[sections.shared-id-prefix-resolver]
+config = "rule-targets.yaml"
+target = "memory-api-recurring-principles-shared-id-prefix-resolver"
+
+[sections.depends-on-only-blocking-edge]
+config = "rule-targets.yaml"
+target = "memory-api-recurring-principles-depends-on-only-blocking-edge"
+
+[sections.append-only-history-materialized-index]
+config = "rule-targets.yaml"
+target = "memory-api-recurring-principles-append-only-history-materialized-index"
+
+[sections.nested-workspace-resolution]
+config = "rule-targets.yaml"
+target = "memory-api-recurring-principles-nested-workspace-resolution"
+
+[sections.required-states-one-way]
+config = "rule-targets.yaml"
+target = "memory-api-recurring-principles-required-states-one-way"

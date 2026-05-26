@@ -1,0 +1,1 @@
+The rejection produces a `code: invalid_request` error envelope with a `message` that names the rejected input. CLIs print the envelope on stderr (or to stdout under `--json`) and exit non-zero.

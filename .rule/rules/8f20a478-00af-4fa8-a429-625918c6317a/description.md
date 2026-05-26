@@ -1,0 +1,4 @@
+- `code` is one of a small enumerated set (`invalid_request`, `not_found`, `conflict`, `precondition_failed`, `internal_error`, …) shared across all `memory-api` stores.
+- `message` is a single human-readable line; it never includes secrets, file contents, or stack traces.
+- `request_id` is the propagated `--request-id` or a freshly generated UUID; both CLI/MCP/HTTP surface and the store log emit the same value.
+- `details` is optional and may carry structured context (e.g. `{ "id": "abc12345", "state": "ready" }`).
