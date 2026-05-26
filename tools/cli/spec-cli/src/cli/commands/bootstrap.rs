@@ -146,8 +146,7 @@ pub fn cmd_bootstrap(
                 "# {crate_name}\n\nBootstrapped from source analysis.\n\n\
                  See child specs for individual module documentation.\n"
             );
-            let id =
-                store.create(&manifest, &body, args.target_root.as_deref())?;
+            let id = store.create(&manifest, &body, None)?;
             created_count += 1;
             id
         },
@@ -193,7 +192,7 @@ pub fn cmd_bootstrap(
         let body =
             build_module_body(&ms.title, &ms.workspace_rel_file, &ms.items);
 
-        store.create(&manifest, &body, args.target_root.as_deref())?;
+        store.create(&manifest, &body, None)?;
         created_count += 1;
     }
 

@@ -79,7 +79,6 @@ fn import_file(
             )
         })?;
     let source_path = path.to_string_lossy().replace('\\', "/");
-    let target_root = input.target_root.as_ref().map(PathBuf::from);
 
     let mut items = Vec::new();
     for imported in imported_blocks {
@@ -116,7 +115,7 @@ fn import_file(
             "updated"
         } else {
             let _ = store
-                .create(&manifest, target_root.as_deref())
+                .create(&manifest, None)
                 .map_err(RuleServer::rule_err)?;
             "created"
         };

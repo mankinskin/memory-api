@@ -40,7 +40,6 @@ pub(crate) fn cmd_create(
 ) -> Result<Value, CliRunError> {
     let type_id = args.ticket_type.as_deref().unwrap_or("tracker-improvement");
     let extra = parse_fields_to_json(&args.fields)?;
-    let target_root = args.target_root.as_deref();
 
     let body = args
         .body_file
@@ -59,7 +58,7 @@ pub(crate) fn cmd_create(
         args.title.as_deref(),
         args.state.as_deref(),
         extra,
-        target_root,
+        None,
         body.as_deref(),
     )?;
 

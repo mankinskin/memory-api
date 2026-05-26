@@ -410,7 +410,6 @@ fn import_file_creates_rules_from_markdown_blocks() {
             default_section: None,
             path_scope: vec!["AGENTS.md".to_string()],
             source_repo: Some("context-engine".to_string()),
-            target_root: None,
             dry_run: false,
         },
     )

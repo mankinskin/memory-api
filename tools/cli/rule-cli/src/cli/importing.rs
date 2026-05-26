@@ -80,7 +80,7 @@ pub(super) fn import_file(
             let _ = store.update(&imported.slug, patch, None)?;
             "updated"
         } else {
-            let _ = store.create(&manifest, args.target_root.as_deref())?;
+            let _ = store.create(&manifest, None)?;
             "created"
         };
 

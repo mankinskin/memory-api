@@ -385,15 +385,15 @@ impl TicketStore {
         &self,
         target_root: Option<&Path>,
     ) -> Result<PathBuf, StorageError> {
-        let roots = self.list_scan_roots()?;
-
         let Some(target_root) = target_root else {
-            return Ok(roots
-                .into_iter()
-                .next()
-                .map(|root| root.path)
-                .unwrap_or_else(|| self.index_root.join("tickets")));
+            // Canonical: write into the workspace's own .ticket/tickets/
+            // directory (resolved via the index_root), ignoring any registered
+            // scan roots. Callers that want to place tickets elsewhere must
+            // pass an explicit `target_root`.
+            return Ok(self.index_root.join("tickets"));
         };
+
+        let roots = self.list_scan_roots()?;
 
         let requested = if target_root.is_dir() {
             target_root.to_path_buf()

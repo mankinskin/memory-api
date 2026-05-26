@@ -193,7 +193,7 @@ fn create_command(
         args.source_end_line,
     )?;
 
-    let id = store.create(&manifest, args.target_root.as_deref())?;
+    let id = store.create(&manifest, None)?;
     Ok(json!({
         "status": "ok",
         "id": id,

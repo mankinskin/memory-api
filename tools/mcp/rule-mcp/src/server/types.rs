@@ -47,8 +47,6 @@ pub struct ImportRuleFileInput {
     #[serde(default)]
     pub source_repo: Option<String>,
     #[serde(default)]
-    pub target_root: Option<String>,
-    #[serde(default)]
     pub dry_run: bool,
 }
 

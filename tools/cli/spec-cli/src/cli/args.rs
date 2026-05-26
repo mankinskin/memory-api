@@ -25,11 +25,6 @@ pub struct CreateArgs {
     /// Read spec body from this file.
     #[arg(long = "body-file")]
     pub body_file: Option<PathBuf>,
-    /// Place the spec in a registered scan root, workspace root, store root,
-    /// or path inside a local `.spec/` store (defaults to the first
-    /// registered root).
-    #[arg(long = "root")]
-    pub target_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -180,9 +175,6 @@ pub struct BootstrapArgs {
     /// Source workspace root used for computing relative code-reference file paths.
     #[arg(long = "source-workspace-root")]
     pub source_workspace_root: Option<std::path::PathBuf>,
-    /// Place the created specs in this scan root.
-    #[arg(long = "root")]
-    pub target_root: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Args)]

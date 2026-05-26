@@ -208,7 +208,25 @@ impl RuleStore {
         }
 
         let root = match target_root {
-            Some(path) => path.to_path_buf(),
+            Some(path) => {
+                // Resolve the requested path back to the canonical
+                // `<workspace>/.rule/rules/` directory. Without this, callers
+                // that pass a workspace root (or any directory that is not
+                // already the rules folder) would cause rule manifests to be
+                // written directly under `<path>/<uuid>/rule.toml` instead of
+                // `<path>/.rule/rules/<uuid>/rule.toml`.
+                let store_root =
+                    workspace::resolve_store_root_from(path, ".rule");
+                if store_root.file_name().and_then(|n| n.to_str())
+                    == Some(".rule")
+                {
+                    store_root.join("rules")
+                } else {
+                    // Path is not inside any recognisable `.rule` store —
+                    // fall back to the canonical location under index_root.
+                    self.inner.index_root.join("rules")
+                }
+            }
             None => self.inner.index_root.join("rules"),
         };
         fs::create_dir_all(&root).map_err(StorageError::Io)?;

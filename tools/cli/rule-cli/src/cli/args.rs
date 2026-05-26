@@ -84,8 +84,6 @@ pub struct CreateArgs {
     pub source_start_line: Option<i64>,
     #[arg(long = "source-end-line")]
     pub source_end_line: Option<i64>,
-    #[arg(long = "root")]
-    pub target_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -108,8 +106,6 @@ pub struct ImportFileArgs {
     pub path_scope: Vec<String>,
     #[arg(long = "source-repo")]
     pub source_repo: Option<String>,
-    #[arg(long = "root")]
-    pub target_root: Option<PathBuf>,
     #[arg(long, default_value_t = false)]
     pub dry_run: bool,
 }

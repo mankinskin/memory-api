@@ -42,7 +42,7 @@ pub(crate) fn cmd_create(
         .transpose()?
         .unwrap_or_default();
 
-    let id = store.create(&manifest, &body, args.target_root.as_deref())?;
+    let id = store.create(&manifest, &body, None)?;
     Ok(json!({
         "command": "create",
         "status": "ok",

@@ -49,7 +49,6 @@ fn bootstrap_args(
         component: None,
         dry_run,
         source_workspace_root: Some(crate_dir.to_path_buf()),
-        target_root: None,
     }
 }
 

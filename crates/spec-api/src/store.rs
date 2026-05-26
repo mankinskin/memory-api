@@ -370,15 +370,15 @@ impl SpecStore {
         &self,
         target_root: Option<&Path>,
     ) -> Result<PathBuf, StorageError> {
-        let roots = self.inner.list_scan_roots()?;
-
         let Some(target_root) = target_root else {
-            return Ok(roots
-                .into_iter()
-                .next()
-                .map(|root| root.path)
-                .unwrap_or_else(|| self.inner.index_root.join("specs")));
+            // Canonical: write into the workspace's own .spec/specs/ directory
+            // (resolved via the index_root), ignoring any registered scan roots.
+            // Callers that want to place specs elsewhere must pass an explicit
+            // `target_root`.
+            return Ok(self.inner.index_root.join("specs"));
         };
+
+        let roots = self.inner.list_scan_roots()?;
 
         let requested = if target_root.is_dir() {
             target_root.to_path_buf()
