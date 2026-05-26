@@ -14,13 +14,13 @@ pub enum BoardCommand {
     /// Show the current board snapshot (all agents, or filtered to one agent).
     Show {
         /// Filter entries to a specific agent; also refreshes that agent's heartbeats.
-        #[arg(long)]
+        #[arg(long, alias = "agent-id")]
         agent: Option<String>,
     },
     /// Show recently completed board history separately from active board work.
     History {
         /// Filter historical entries to a specific agent.
-        #[arg(long)]
+        #[arg(long, alias = "agent-id")]
         agent: Option<String>,
     },
     /// Check an agent in to the board as actively working a ticket.
@@ -29,16 +29,16 @@ pub enum BoardCommand {
         /// Ticket UUID or 8+ character hex prefix.
         id: String,
         /// Agent identity string.
-        #[arg(long)]
+        #[arg(long, alias = "agent-id")]
         agent: String,
         /// Short description of what the agent intends to do.
         #[arg(long)]
         intent: Option<String>,
         /// Files this agent claims ownership of.
-        #[arg(long = "file")]
+        #[arg(long = "file", alias = "files")]
         files: Vec<String>,
         /// Heartbeat TTL in seconds (default: 3600).
-        #[arg(long)]
+        #[arg(long, alias = "ttl")]
         ttl_secs: Option<u64>,
     },
     /// Check an agent out of the board (mark entry completed).
@@ -47,7 +47,7 @@ pub enum BoardCommand {
         /// Ticket UUID or 8+ character hex prefix.
         id: String,
         /// Agent identity (defaults to any active agent on this ticket).
-        #[arg(long)]
+        #[arg(long, alias = "agent-id")]
         agent: Option<String>,
         /// Optional handoff reason.
         #[arg(long)]
@@ -78,7 +78,7 @@ pub enum BoardCommand {
         /// Ticket UUID or 8+ character hex prefix.
         id: String,
         /// Agent identity string.
-        #[arg(long)]
+        #[arg(long, alias = "agent-id")]
         agent: String,
         /// Files to add to owned_files.
         #[arg(long)]
@@ -93,13 +93,13 @@ pub enum BoardCommand {
         /// Ticket UUID or 8+ character hex prefix.
         id: String,
         /// Agent identity string.
-        #[arg(long)]
+        #[arg(long, alias = "agent-id")]
         agent: String,
         /// Current file path.
-        #[arg(long)]
+        #[arg(long, alias = "old-path")]
         from: String,
         /// New file path.
-        #[arg(long)]
+        #[arg(long, alias = "new-path")]
         to: String,
     },
 }

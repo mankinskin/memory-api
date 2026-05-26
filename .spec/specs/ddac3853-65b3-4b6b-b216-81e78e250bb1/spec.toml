@@ -1,0 +1,10 @@
+id = "ddac3853-65b3-4b6b-b216-81e78e250bb1"
+created_at = "2026-05-26T09:31:49.357468700+00:00"
+title = "ticket-cli board option naming"
+state = "draft"
+code_refs = [{ description = "Board subcommand args keep the common ticket-cli flag names canonical while accepting older board-specific spellings as compatibility aliases.", file = "tools/cli/ticket-cli/src/cli/args/board.rs", kind = "enum", line_end = 104, line_start = 6, symbol = "BoardCommand" }, { description = "Focused regression covering canonical help text for board subcommands.", file = "tools/cli/ticket-cli/tests/integration_board_cli.rs", kind = "function", line_end = 1248, line_start = 1214, symbol = "board_help_uses_canonical_common_flag_names" }, { description = "Focused regression proving the longer documented board flag spellings still parse as compatibility aliases.", file = "tools/cli/ticket-cli/tests/integration_board_cli.rs", kind = "function", line_end = 1290, line_start = 1252, symbol = "board_long_form_aliases_still_parse" }]
+component = "ticket-cli"
+parent = "8074d6f7-b888-4e57-95e6-06dde96384b8"
+scope = "public"
+slug = "ticket-cli/board-option-naming"
+type = "specification"

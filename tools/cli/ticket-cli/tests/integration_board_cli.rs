@@ -1209,3 +1209,84 @@ fn update_board_check_in_without_agent_fails() {
         "should exit non-zero when --board-agent is missing"
     );
 }
+
+#[test]
+fn board_help_uses_canonical_common_flag_names() {
+    let show_help = Command::new(TICKET)
+        .args(["board", "show", "--help"])
+        .output()
+        .expect("show help should run");
+    assert!(show_help.status.success());
+    let show_stdout = String::from_utf8_lossy(&show_help.stdout);
+    assert!(show_stdout.contains("--agent <AGENT>"));
+    assert!(!show_stdout.contains("--agent-id"));
+
+    let check_in_help = Command::new(TICKET)
+        .args(["board", "check-in", "--help"])
+        .output()
+        .expect("check-in help should run");
+    assert!(check_in_help.status.success());
+    let check_in_stdout = String::from_utf8_lossy(&check_in_help.stdout);
+    assert!(check_in_stdout.contains("--agent <AGENT>"));
+    assert!(check_in_stdout.contains("--file <FILES>"));
+    assert!(check_in_stdout.contains("--ttl-secs <TTL_SECS>"));
+    assert!(!check_in_stdout.contains("--agent-id"));
+    assert!(!check_in_stdout.contains("--files"));
+    assert!(!check_in_stdout.contains("--ttl <TTL>"));
+
+    let rename_help = Command::new(TICKET)
+        .args(["board", "rename-file", "--help"])
+        .output()
+        .expect("rename-file help should run");
+    assert!(rename_help.status.success());
+    let rename_stdout = String::from_utf8_lossy(&rename_help.stdout);
+    assert!(rename_stdout.contains("--agent <AGENT>"));
+    assert!(rename_stdout.contains("--from <FROM>"));
+    assert!(rename_stdout.contains("--to <TO>"));
+    assert!(!rename_stdout.contains("--agent-id"));
+    assert!(!rename_stdout.contains("--old-path"));
+    assert!(!rename_stdout.contains("--new-path"));
+}
+
+#[test]
+fn board_long_form_aliases_still_parse() {
+    let s = Sandbox::new();
+    s.ticket_json(&["init"]);
+    let ticket_id = create_ticket(&s, "Board alias compatibility ticket");
+
+    let check_in = s.ticket_json(&[
+        "board",
+        "check-in",
+        &ticket_id,
+        "--agent-id",
+        "agent-zeta",
+        "--intent",
+        "keep docs-compatible",
+        "--files",
+        "src/legacy.rs",
+        "--ttl",
+        "3600",
+    ]);
+    assert_eq!(check_in["status"], "ok");
+    assert_eq!(check_in["agent_id"], "agent-zeta");
+
+    let show = s.ticket_json(&["board", "show", "--agent-id", "agent-zeta"]);
+    assert_eq!(show["status"], "ok");
+    assert_eq!(show["active_count"].as_u64().unwrap(), 1);
+
+    let rename = s.ticket_json(&[
+        "board",
+        "rename-file",
+        &ticket_id,
+        "--agent-id",
+        "agent-zeta",
+        "--old-path",
+        "src/legacy.rs",
+        "--new-path",
+        "src/current.rs",
+    ]);
+    assert_eq!(rename["status"], "ok");
+    let files = rename["owned_files"].as_array().unwrap();
+    assert!(files.iter().any(|f| f.as_str() == Some("src/current.rs")));
+    assert!(!files.iter().any(|f| f.as_str() == Some("src/legacy.rs")));
+}
