@@ -3,9 +3,13 @@ use std::{
     path::Path,
 };
 
+use memory_api::{
+    generated_markdown::GeneratedMarkdownSnippet,
+};
 use rule_api::{
     GENERATED_FILE_COMMENT,
     RenderTarget,
+    RuleManifest,
     RuleStore,
     collect_target_rules,
     load_render_target_config,
@@ -16,6 +20,10 @@ use rule_api::{
 use serde_json::{
     Value,
     json,
+};
+use spec_api::{
+    SpecStore,
+    render_generated_document,
 };
 
 use super::{
@@ -127,6 +135,23 @@ pub(super) fn generate_target_payload(
     output: &Path,
 ) -> Result<GenerateTargetPayload, CliRunError> {
     let rules = collect_target_rules(store, target)?;
+
+    if is_spec_doc_target(target) {
+        let snippets = rules_as_snippets(&rules);
+        let rendered = render_generated_document(&snippets);
+
+        if check {
+            ensure_spec_generated_output_matches(output, &snippets)?;
+        } else if !dry_run {
+            write_spec_generated_output(output, &snippets)?;
+        }
+
+        return Ok(GenerateTargetPayload {
+            count: rules.len(),
+            content: dry_run.then_some(rendered),
+        });
+    }
+
     let rendered = render_markdown_file(&rules);
 
     if check {
@@ -139,6 +164,80 @@ pub(super) fn generate_target_payload(
         count: rules.len(),
         content: dry_run.then_some(rendered),
     })
+}
+
+fn is_spec_doc_target(target: &RenderTarget) -> bool {
+    target.file_kind == "spec-doc"
+}
+
+fn rules_as_snippets(
+    rules: &[RuleManifest],
+) -> Vec<GeneratedMarkdownSnippet<'_>> {
+    rules
+        .iter()
+        .map(|rule| {
+            GeneratedMarkdownSnippet::new(
+                rule.id.to_string(),
+                rule.slug(),
+                rule.body().unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+
+fn open_spec_store_for_artifact(
+    artifact_path: &Path,
+) -> Result<SpecStore, CliRunError> {
+    let workspace_root = artifact_path
+        .ancestors()
+        .find(|ancestor| {
+            ancestor.file_name().and_then(|name| name.to_str())
+                == Some(".spec")
+        })
+        .and_then(Path::parent)
+        .ok_or_else(|| {
+            CliRunError::BadRequest(format!(
+                "spec-doc target output must live under .spec/specs/**: {}",
+                artifact_path.display()
+            ))
+        })?;
+
+    let mut store = SpecStore::open(&workspace_root)
+        .map_err(|error| CliRunError::BadRequest(error.to_string()))?;
+    store
+        .scan(false)
+        .map_err(|error| CliRunError::BadRequest(error.to_string()))?;
+    Ok(store)
+}
+
+fn ensure_spec_generated_output_matches(
+    artifact_path: &Path,
+    snippets: &[GeneratedMarkdownSnippet<'_>],
+) -> Result<(), CliRunError> {
+    let store = open_spec_store_for_artifact(artifact_path)?;
+
+    if store
+        .generated_artifact_matches(artifact_path, snippets)
+        .map_err(|error| CliRunError::BadRequest(error.to_string()))?
+    {
+        Ok(())
+    } else {
+        Err(CliRunError::BadRequest(format!(
+            "generated output differs from {}",
+            artifact_path.display()
+        )))
+    }
+}
+
+fn write_spec_generated_output(
+    artifact_path: &Path,
+    snippets: &[GeneratedMarkdownSnippet<'_>],
+) -> Result<(), CliRunError> {
+    let mut store = open_spec_store_for_artifact(artifact_path)?;
+    store
+        .sync_generated_artifact(artifact_path, snippets)
+        .map_err(|error| CliRunError::BadRequest(error.to_string()))?;
+    Ok(())
 }
 
 pub(super) fn sync_targets_payload(
@@ -171,20 +270,36 @@ pub(super) fn sync_targets_payload(
                 .iter()
                 .find(|record| record.target_name == target.name)
             {
-                if previous_record.output_path != stable_output_key(&output)
-                    && !current_outputs.contains(&previous_record.output_path)
-                {
-                    remove_generated_output(
-                        Path::new(&previous_record.output_path),
-                        config_root(config_path),
-                    )?;
+                if is_spec_doc_target(target) {
+                    if previous_record.output_path
+                        != stable_output_key(&output)
+                    {
+                        remove_generated_output(
+                            Path::new(&previous_record.output_path),
+                            config_root(config_path),
+                        )?;
+                    }
+                    store.delete_generated_target(&previous_record.slug)?;
+                } else {
+                    if previous_record.output_path
+                        != stable_output_key(&output)
+                        && !current_outputs
+                            .contains(&previous_record.output_path)
+                    {
+                        remove_generated_output(
+                            Path::new(&previous_record.output_path),
+                            config_root(config_path),
+                        )?;
+                    }
                 }
             }
-            store.upsert_generated_target(
-                config_path,
-                &target.name,
-                &output,
-            )?;
+            if !is_spec_doc_target(target) {
+                store.upsert_generated_target(
+                    config_path,
+                    &target.name,
+                    &output,
+                )?;
+            }
         }
 
         generated.push(json!({

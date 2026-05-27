@@ -15,6 +15,7 @@ path = "src/lib.rs"
 [dependencies]
 rule-api = { path = "../../../crates/rule-api" }
 memory-api = { path = "../../../crates/memory-api" }
+spec-api = { path = "../../../crates/spec-api" }
 
 rmcp = { version = "0.14", features = ["server", "transport-io"] }
 serde = { version = "1", features = ["derive"] }

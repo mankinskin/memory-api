@@ -54,6 +54,7 @@ mod tests;
 use self::helpers::{
     entity_to_spec,
     read_body,
+    read_section,
     read_spec_manifest,
     spec_to_entity,
     write_body,
@@ -70,6 +71,12 @@ pub const GENERATED_SPEC_FILE_COMMENT: &str =
 pub const GENERATED_BODY_FILE_COMMENT: &str = GENERATED_SPEC_FILE_COMMENT;
 
 const GENERATED_SPEC_ENTRY_PREFIX: &str = "spec-api:entry";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GeneratedSpecArtifactLocation {
+    Body { spec_id: Uuid },
+    Section { spec_id: Uuid, section: String },
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GeneratedSpecArtifactTarget {
@@ -163,6 +170,152 @@ fn normalize_generated_section_name(name: &str) -> Result<String, SpecError> {
     }
 
     Ok(normalized.to_string())
+}
+
+fn invalid_generated_artifact_path(
+    artifact_path: &Path,
+    reason: &str,
+) -> SpecError {
+    SpecError::InvalidGeneratedArtifact(format!(
+        "invalid generated artifact path '{}': {}",
+        artifact_path.display(),
+        reason
+    ))
+}
+
+fn parse_generated_artifact_location(
+    artifact_path: &Path,
+) -> Result<GeneratedSpecArtifactLocation, SpecError> {
+    let file_name = artifact_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            invalid_generated_artifact_path(
+                artifact_path,
+                "missing file name",
+            )
+        })?;
+
+    if file_name == "body.md" {
+        let spec_dir = artifact_path.parent().ok_or_else(|| {
+            invalid_generated_artifact_path(
+                artifact_path,
+                "missing spec directory",
+            )
+        })?;
+        let specs_dir = spec_dir.parent().ok_or_else(|| {
+            invalid_generated_artifact_path(
+                artifact_path,
+                "missing specs directory",
+            )
+        })?;
+        let store_dir = specs_dir.parent().ok_or_else(|| {
+            invalid_generated_artifact_path(
+                artifact_path,
+                "missing .spec store directory",
+            )
+        })?;
+
+        if specs_dir.file_name().and_then(|name| name.to_str())
+            != Some("specs")
+            || store_dir.file_name().and_then(|name| name.to_str())
+                != Some(SPEC_INDEX_DIR)
+        {
+            return Err(invalid_generated_artifact_path(
+                artifact_path,
+                "expected .spec/specs/<uuid>/body.md",
+            ));
+        }
+
+        let spec_id = Uuid::parse_str(
+            spec_dir
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| {
+                    invalid_generated_artifact_path(
+                        artifact_path,
+                        "missing spec id directory",
+                    )
+                })?,
+        )
+        .map_err(|error| {
+            invalid_generated_artifact_path(
+                artifact_path,
+                &format!("invalid spec id: {error}"),
+            )
+        })?;
+
+        return Ok(GeneratedSpecArtifactLocation::Body { spec_id });
+    }
+
+    let sections_dir = artifact_path.parent().ok_or_else(|| {
+        invalid_generated_artifact_path(
+            artifact_path,
+            "missing sections directory",
+        )
+    })?;
+    if sections_dir.file_name().and_then(|name| name.to_str())
+        != Some("sections")
+    {
+        return Err(invalid_generated_artifact_path(
+            artifact_path,
+            "expected body.md or sections/<name>.md",
+        ));
+    }
+
+    let spec_dir = sections_dir.parent().ok_or_else(|| {
+        invalid_generated_artifact_path(
+            artifact_path,
+            "missing spec directory",
+        )
+    })?;
+    let specs_dir = spec_dir.parent().ok_or_else(|| {
+        invalid_generated_artifact_path(
+            artifact_path,
+            "missing specs directory",
+        )
+    })?;
+    let store_dir = specs_dir.parent().ok_or_else(|| {
+        invalid_generated_artifact_path(
+            artifact_path,
+            "missing .spec store directory",
+        )
+    })?;
+
+    if !file_name.ends_with(".md")
+        || specs_dir.file_name().and_then(|name| name.to_str())
+            != Some("specs")
+        || store_dir.file_name().and_then(|name| name.to_str())
+            != Some(SPEC_INDEX_DIR)
+    {
+        return Err(invalid_generated_artifact_path(
+            artifact_path,
+            "expected .spec/specs/<uuid>/sections/<name>.md",
+        ));
+    }
+
+    let spec_id = Uuid::parse_str(
+        spec_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| {
+                invalid_generated_artifact_path(
+                    artifact_path,
+                    "missing spec id directory",
+                )
+            })?,
+    )
+    .map_err(|error| {
+        invalid_generated_artifact_path(
+            artifact_path,
+            &format!("invalid spec id: {error}"),
+        )
+    })?;
+    let section = normalize_generated_section_name(
+        file_name.strip_suffix(".md").unwrap_or(file_name),
+    )?;
+
+    Ok(GeneratedSpecArtifactLocation::Section { spec_id, section })
 }
 
 pub fn render_generated_document(
@@ -553,6 +706,62 @@ impl SpecStore {
 
         write_body(&indexed.path, &prepared)?;
         Ok(())
+    }
+
+    pub fn generated_artifact_matches(
+        &self,
+        artifact_path: &Path,
+        snippets: &[GeneratedMarkdownSnippet<'_>],
+    ) -> Result<bool, SpecError> {
+        let location = parse_generated_artifact_location(artifact_path)?;
+
+        match location {
+            GeneratedSpecArtifactLocation::Body { spec_id } => {
+                let indexed = self
+                    .inner
+                    .get_indexed(&spec_id)?
+                    .ok_or_else(|| SpecError::NotFound(spec_id.to_string()))?;
+                let existing = read_body(&indexed.path);
+                let expected =
+                    prepare_generated_document(snippets, Some(&existing));
+                Ok(existing == expected)
+            },
+            GeneratedSpecArtifactLocation::Section { spec_id, section } => {
+                let indexed = self
+                    .inner
+                    .get_indexed(&spec_id)?
+                    .ok_or_else(|| SpecError::NotFound(spec_id.to_string()))?;
+                let existing = read_section(&indexed.path, &section);
+                let expected =
+                    prepare_generated_document(snippets, Some(&existing));
+                Ok(existing == expected)
+            },
+        }
+    }
+
+    pub fn sync_generated_artifact(
+        &mut self,
+        artifact_path: &Path,
+        snippets: &[GeneratedMarkdownSnippet<'_>],
+    ) -> Result<GeneratedSpecArtifactLocation, SpecError> {
+        let location = parse_generated_artifact_location(artifact_path)?;
+
+        match &location {
+            GeneratedSpecArtifactLocation::Body { spec_id } => {
+                self.update_generated_body(&spec_id.to_string(), snippets)?;
+                self.update(&spec_id.to_string(), BTreeMap::new(), None)?;
+            },
+            GeneratedSpecArtifactLocation::Section { spec_id, section } => {
+                self.update_generated_section(
+                    &spec_id.to_string(),
+                    section,
+                    snippets,
+                )?;
+                self.update(&spec_id.to_string(), BTreeMap::new(), None)?;
+            },
+        }
+
+        Ok(location)
     }
 
     pub fn get_generated_artifacts(

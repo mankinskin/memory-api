@@ -8,6 +8,10 @@ use rule_api::{
     RuleManifest,
     RuleStore,
 };
+use spec_api::{
+    SpecManifest,
+    SpecStore,
+};
 use tempfile::tempdir;
 
 use super::*;
@@ -497,6 +501,74 @@ fn generate_target_uses_config_output_path() {
     assert!(rendered.contains("slug=shared/agents/opening"));
     assert!(!rendered.contains("slug=shared/agents/other"));
     assert!(rendered.starts_with("<!-- rule-api:file generated=true -->"));
+}
+
+#[test]
+fn sync_targets_writes_spec_doc_targets_into_spec_entries() {
+    let dir = tempdir().unwrap();
+    let workspace_root = dir.path().join("repo");
+    fs::create_dir_all(&workspace_root).unwrap();
+
+    let mut rule_store = RuleStore::init(&workspace_root).unwrap();
+    let mut spec_store = SpecStore::init(&workspace_root).unwrap();
+    let spec = SpecManifest::new(
+        "memory-api/recurring-principles",
+        "Recurring Principles",
+        "memory-api",
+    );
+    let spec_id = spec_store.create(&spec, "placeholder", None).unwrap();
+    let spec_path = spec_store
+        .entity_store()
+        .get_indexed(&spec_id)
+        .unwrap()
+        .unwrap()
+        .path;
+    let path_scope = format!(".spec/specs/{spec_id}/body.md");
+
+    let mut rule = RuleManifest::new(
+        "memory-api/recurring-principles/summary",
+        "Recurring summary",
+        "spec-doc",
+        "summary",
+        "## Summary\nGenerate through spec-api.\n",
+    );
+    rule.set_repo_scopes(["memory-api"]);
+    rule.set_path_scopes([path_scope.as_str()]);
+    rule_store.create(&rule, None).unwrap();
+    drop(rule_store);
+    drop(spec_store);
+
+    let config_path = workspace_root.join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        format!(
+            concat!(
+                "targets:\n",
+                "  - name: recurring-principles-body\n",
+                "    repo_scope: memory-api\n",
+                "    file_kind: spec-doc\n",
+                "    path_scope: {path_scope}\n",
+                "    output_path: {path_scope}\n",
+            ),
+            path_scope = path_scope,
+        ),
+    )
+    .unwrap();
+
+    dispatch::dispatch(
+        RuleCommandCli::SyncTargets(SyncTargetsArgs {
+            config: config_path,
+            dry_run: false,
+            check: false,
+        }),
+        &workspace_root,
+    )
+    .unwrap();
+
+    let spec_body = fs::read_to_string(spec_path.join("body.md")).unwrap();
+    assert!(spec_body.starts_with("<!-- spec-api:file generated=true -->"));
+    assert!(spec_body.contains("slug=memory-api/recurring-principles/summary"));
+    assert!(!workspace_root.join("generated").exists());
 }
 
 #[test]
