@@ -21,9 +21,10 @@ artifacts are missing.
 - `open_or_init(...)` must preserve the behavior of strict `open(...)` for
   already-initialized workspaces by opening the existing index without forcing a
   full rebuild.
-- If strict `open(...)` would fail only because the local derived index is
-  missing, `open_or_init(...)` must create the index artifacts and then run a
-  force scan so manifest-backed entities become queryable immediately.
+- If the local derived index is missing, or if a previously created local
+  index opens empty while manifest-backed entities already exist on disk,
+  store bootstrap must run a force scan so manifest-backed entities become
+  queryable immediately.
 - Store wrappers whose manifests live outside the generic `entities/` default
   scan root must register their canonical manifest directory before relying on
   `open_or_init(...)` rebuilds.

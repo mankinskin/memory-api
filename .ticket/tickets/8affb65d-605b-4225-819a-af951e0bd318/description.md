@@ -33,6 +33,9 @@ local callers can bootstrap manifest-only workspaces without copying the same
 ## Validation
 
 - Passed: `cargo test -p ticket-api open_or_init_bootstraps_manifest_only_workspace -- --nocapture`
+- Passed: `cargo test -p ticket-api open_rebuilds_existing_empty_index_from_manifests -- --nocapture`
+- Passed: `cargo test -p ticket-cli dispatch_list_repairs_existing_empty_root_index -- --nocapture`
+- Passed: `cargo test -p ticket-viewer --bin ticket-viewer startup_rebuilds_existing_empty_ticket_index -- --nocapture`
 - Passed: `cargo test -p spec-api open_or_init_bootstraps_manifest_only_local_store -- --nocapture`
 - Passed: `cargo test -p rule-api open_or_init_bootstraps_manifest_only_local_store -- --nocapture`
 - Passed: `cargo test -p ticket-viewer --bin ticket-viewer startup_bootstraps_manifest_only_ticket_store -- --nocapture`

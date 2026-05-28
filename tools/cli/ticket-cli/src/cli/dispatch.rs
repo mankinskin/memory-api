@@ -454,6 +454,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
+    use ticket_api::storage::index::RedbIndexStore;
     use crate::cli::{
         IdArgs,
         ListArgs,
@@ -610,6 +611,56 @@ mod tests {
         assert_eq!(payload["command"], "list");
         assert_eq!(payload["count"], 1);
         assert_eq!(payload["items"][0]["id"], ticket_id);
+    }
+
+    #[test]
+    fn dispatch_list_repairs_existing_empty_root_index() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let store = TicketStore::init(&repo).unwrap();
+        let ticket_id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Root workspace ticket"),
+                None,
+                BTreeMap::<String, serde_json::Value>::new(),
+                None,
+                Some("Root workspace ticket body"),
+            )
+            .unwrap();
+
+        let index_root = store.index_root.clone();
+        drop(store);
+
+        std::fs::remove_file(index_root.join("tickets.db")).unwrap();
+        let _ = std::fs::remove_file(index_root.join("tickets.db-shm"));
+        let _ = std::fs::remove_file(index_root.join("tickets.db-wal"));
+        let _ = std::fs::remove_dir_all(index_root.join("search_index"));
+        RedbIndexStore::open(&index_root.join("tickets.db")).unwrap();
+
+        let payload = dispatch(
+            TicketCommandCli::List(ListArgs {
+                state: None,
+                ticket_type: None,
+                limit: Some(10),
+                with_repro: false,
+                include_deleted: false,
+                where_clauses: Vec::new(),
+            }),
+            None,
+            Some(&repo),
+            None,
+            true,
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(payload["command"], "list");
+        assert_eq!(payload["count"], 1);
+        assert_eq!(payload["items"][0]["id"], ticket_id.to_string());
     }
 
     #[test]

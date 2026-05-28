@@ -3,6 +3,7 @@ use std::{
         BTreeMap,
         HashMap,
     },
+    fs,
     path::{
         Path,
         PathBuf,
@@ -300,7 +301,25 @@ impl TicketStore {
             path: index_root.join("tickets"),
             label: "tickets".to_string(),
         })?;
+        store.bootstrap_empty_index_from_manifests()?;
         Ok(store)
+    }
+
+    fn bootstrap_empty_index_from_manifests(
+        &self,
+    ) -> Result<(), StorageError> {
+        if self.count_tickets()? > 0 {
+            return Ok(());
+        }
+
+        for root in self.list_scan_roots()? {
+            if scan_root_has_ticket_manifests(&root.path)? {
+                self.scan(true)?;
+                break;
+            }
+        }
+
+        Ok(())
     }
 
     /// Access the schema registry to look up type schemas.
@@ -609,6 +628,21 @@ impl TicketStore {
 
         Ok(updated_manifest)
     }
+}
+
+fn scan_root_has_ticket_manifests(root: &Path) -> Result<bool, StorageError> {
+    if !root.exists() {
+        return Ok(false);
+    }
+
+    for entry in fs::read_dir(root).map_err(StorageError::Io)? {
+        let path = entry.map_err(StorageError::Io)?.path();
+        if path.is_dir() && path.join(TICKET_MANIFEST_FILE).is_file() {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 #[cfg(test)]
