@@ -1116,6 +1116,36 @@ fn scan_force_rebuilds_dependency_edges_from_ticket_manifests() {
 }
 
 #[test]
+fn open_or_init_bootstraps_manifest_only_workspace() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let ticket_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Bootstrap ticket store"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let index_root = store.index_root.clone();
+    drop(store);
+
+    fs::remove_file(index_root.join("tickets.db")).unwrap();
+    let _ = fs::remove_file(index_root.join("tickets.db-shm"));
+    let _ = fs::remove_file(index_root.join("tickets.db-wal"));
+    let _ = fs::remove_dir_all(index_root.join("search_index"));
+
+    let rebuilt = TicketStore::open_or_init(dir.path()).unwrap();
+    let manifest = rebuilt.get(&ticket_id).unwrap();
+
+    assert_eq!(manifest.id, ticket_id);
+}
+
+#[test]
 fn scan_force_backfills_legacy_db_only_edges_into_ticket_manifests() {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();

@@ -375,6 +375,20 @@ impl SpecStore {
         Self::open_internal(&index_root)
     }
 
+    /// Open an existing spec store, or initialize and force-scan it when the
+    /// local derived index artifacts do not exist yet.
+    pub fn open_or_init(index_root: &Path) -> Result<Self, SpecError> {
+        match Self::open(index_root) {
+            Ok(store) => Ok(store),
+            Err(SpecError::Storage(StorageError::WorkspaceNotFound { .. })) => {
+                let mut store = Self::init(index_root)?;
+                store.scan(true)?;
+                Ok(store)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     fn open_internal(index_root: &Path) -> Result<Self, SpecError> {
         let fs = EntityFs::new(SPEC_MANIFEST_FILE, SPEC_LOCK_FILE);
         let registry = crate::default_schema::spec_schema_registry();

@@ -85,6 +85,33 @@ fn open_prunes_stale_index_rows_for_deleted_rule_folders() {
 }
 
 #[test]
+fn open_or_init_bootstraps_manifest_only_local_store() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
+    let manifest = RuleManifest::new(
+        "shared/agents/bootstrap-open",
+        "Bootstrap Open",
+        "AGENTS",
+        "bootstrap-open",
+        "Bootstrap local rule stores from manifests.",
+    );
+
+    let id = store.create(&manifest, None).unwrap();
+    let index_root = store.entity_store().index_root.clone();
+    drop(store);
+
+    fs::remove_file(index_root.join("entities.db")).unwrap();
+    let _ = fs::remove_file(index_root.join("entities.db-shm"));
+    let _ = fs::remove_file(index_root.join("entities.db-wal"));
+    let _ = fs::remove_dir_all(index_root.join("search_index"));
+
+    let reopened = RuleStore::open_or_init(dir.path()).unwrap();
+    let fetched = reopened.get("shared/agents/bootstrap-open").unwrap();
+
+    assert_eq!(fetched.id, id);
+}
+
+#[test]
 fn list_filters_and_sorts_rules_by_metadata() {
     let dir = tempdir().unwrap();
     let mut store = RuleStore::init(dir.path()).unwrap();

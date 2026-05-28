@@ -104,10 +104,28 @@ impl RuleStore {
         Self::open_internal(&index_root)
     }
 
+    /// Open an existing rule store, or initialize and force-scan it when the
+    /// local derived index artifacts do not exist yet.
+    pub fn open_or_init(index_root: &Path) -> Result<Self, RuleError> {
+        match Self::open(index_root) {
+            Ok(store) => Ok(store),
+            Err(RuleError::Storage(StorageError::WorkspaceNotFound { .. })) => {
+                let mut store = Self::init(index_root)?;
+                store.scan(true)?;
+                Ok(store)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     fn open_internal(index_root: &Path) -> Result<Self, RuleError> {
         let fs = EntityFs::new(RULE_MANIFEST_FILE, RULE_LOCK_FILE);
         let registry = rule_schema_registry();
         let inner = EntityStore::open_with(index_root, fs, registry)?;
+        inner.add_scan_root(memory_api::model::filesystem::ScanRoot {
+            path: index_root.join("rules"),
+            label: "rules".to_string(),
+        })?;
         ensure_gitignore_entries(index_root, &["entities/"])?;
         let mut store = Self {
             inner,

@@ -477,6 +477,25 @@ fn create_rejects_non_workspace_target_root() {
 }
 
 #[test]
+fn open_or_init_bootstraps_manifest_only_local_store() {
+    let (_tmp, repo, store_root, mut store) = setup_local_store();
+
+    let spec = make_spec("root/bootstrap-open", "Bootstrap Open");
+    let id = store.create(&spec, "body", Some(&repo)).unwrap();
+    drop(store);
+
+    fs::remove_file(store_root.join("entities.db")).unwrap();
+    let _ = fs::remove_file(store_root.join("entities.db-shm"));
+    let _ = fs::remove_file(store_root.join("entities.db-wal"));
+    let _ = fs::remove_dir_all(store_root.join("search_index"));
+
+    let reopened = SpecStore::open_or_init(&repo).unwrap();
+    let fetched = reopened.get("root/bootstrap-open").unwrap();
+
+    assert_eq!(fetched.id, id);
+}
+
+#[test]
 fn scan_updates_indexed_path_after_spec_folder_moves_between_roots() {
     let tmp = TempDir::new().unwrap();
     let index_root = tmp.path().join("index");

@@ -234,6 +234,12 @@ impl TicketStore {
         Self::init_with(index_root, SchemaRegistry::with_builtins())
     }
 
+    /// Open an existing ticket store, or initialize and rebuild it when the
+    /// local derived index artifacts do not exist yet.
+    pub fn open_or_init(index_root: &Path) -> Result<Self, StorageError> {
+        Self::open_or_init_with(index_root, SchemaRegistry::with_builtins())
+    }
+
     /// Initialize a new ticket store with a custom schema registry.
     ///
     /// Creates the workspace directory and all required index files. Idempotent:
@@ -252,6 +258,24 @@ impl TicketStore {
             &["search_index/"],
         )?;
         Self::open_internal(index_root, schema_registry)
+    }
+
+    /// Open an existing ticket store with a custom schema registry, or
+    /// initialize and rebuild it when the local derived index artifacts do not
+    /// exist yet.
+    pub fn open_or_init_with(
+        index_root: &Path,
+        schema_registry: SchemaRegistry,
+    ) -> Result<Self, StorageError> {
+        match Self::open_with(index_root, schema_registry.clone()) {
+            Ok(store) => Ok(store),
+            Err(StorageError::WorkspaceNotFound { .. }) => {
+                let store = Self::init_with(index_root, schema_registry)?;
+                store.scan(true)?;
+                Ok(store)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     fn open_internal(
