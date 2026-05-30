@@ -2,7 +2,6 @@ id = "91b389d0-a9c9-458c-8aa8-d51627b629c7"
 created_at = "2026-05-25T21:51:52.481112100+00:00"
 title = "Problem"
 state = "draft"
-body = "## Problem\n\nToday the document-generation path lives almost entirely in `rule-api`:"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

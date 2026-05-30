@@ -8,6 +8,7 @@ use super::entity::EntityManifest;
 
 /// Default filenames — generic, overridable via [`EntityFolderConfig`].
 pub const ENTITY_ASSETS_DIR: &str = "assets";
+pub const ENTITY_BODY_FILE: &str = "description.md";
 pub const ENTITY_HISTORY_FILE: &str = "history.ndjson";
 pub const ENTITY_INTERVIEW_DIR: &str = "assets/interviews";
 pub const ENTITY_INTERVIEW_QUESTIONS_FILE: &str =
@@ -40,6 +41,8 @@ pub struct EntityFolderConfig {
     /// Filename for the advisory lock file
     /// (e.g. `".ticket-lock"` or `".spec-lock"`).
     pub lock_file: &'static str,
+    /// Filename for the markdown body asset stored beside the manifest.
+    pub body_file: &'static str,
     /// Subdirectory for binary assets (default: `"assets"`).
     pub assets_dir: &'static str,
     /// Filename for the append-only history log (default: `"history.ndjson"`).
@@ -54,9 +57,18 @@ impl EntityFolderConfig {
         Self {
             manifest_file,
             lock_file,
+            body_file: ENTITY_BODY_FILE,
             assets_dir: ENTITY_ASSETS_DIR,
             history_file: ENTITY_HISTORY_FILE,
         }
+    }
+
+    pub const fn with_body_file(
+        mut self,
+        body_file: &'static str,
+    ) -> Self {
+        self.body_file = body_file;
+        self
     }
 }
 

@@ -2,7 +2,6 @@ id = "8f20a478-00af-4fa8-a429-625918c6317a"
 created_at = "2026-05-26T16:20:00.770961900+00:00"
 title = "`code` is one of a small enumerated set (`invalid_request`, `not_found`, `confli"
 state = "draft"
-body = "- `code` is one of a small enumerated set (`invalid_request`, `not_found`, `conflict`, `precondition_failed`, `internal_error`, …) shared across all `memory-api` stores.\n- `message` is a single human-readable line; it never includes secrets, file contents, or stack traces.\n- `request_id` is the propagated `--request-id` or a freshly generated UUID; both CLI/MCP/HTTP surface and the store log emit the same value.\n- `details` is optional and may carry structured context (e.g. `{ \"id\": \"abc12345\", \"state\": \"ready\" }`)."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

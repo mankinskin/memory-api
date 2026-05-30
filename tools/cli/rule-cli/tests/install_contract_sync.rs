@@ -9,7 +9,7 @@ use std::{
 const INSTALL_CONTRACT_SLUG: &str =
     "memory-api/install-contracts/cli-and-viewer-installation";
 const README_RULE_PATH: &str =
-    ".rule/rules/84278ede-0aaa-4382-83db-e6ee5d80106c/description.md";
+    ".rule/rules/84278ede-0aaa-4382-83db-e6ee5d80106c/body.md";
 
 fn memory_api_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

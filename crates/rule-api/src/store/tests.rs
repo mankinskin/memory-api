@@ -26,6 +26,69 @@ fn create_and_get_rule_by_slug() {
 }
 
 #[test]
+fn create_writes_body_md_without_manifest_body_field() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
+    let manifest = RuleManifest::new(
+        "shared/agents/body-file-contract",
+        "Body File Contract",
+        "AGENTS",
+        "body-file-contract",
+        "Canonical prose belongs in body.md.",
+    );
+
+    let id = store.create(&manifest, None).unwrap();
+    let indexed = store.entity_store().get_indexed(&id).unwrap().unwrap();
+    let manifest_text = fs::read_to_string(indexed.path.join("rule.toml")).unwrap();
+
+    assert!(indexed.path.join("body.md").is_file());
+    assert!(!indexed.path.join("description.md").exists());
+    assert!(!manifest_text.contains("body = "));
+}
+
+#[test]
+fn open_or_init_reindexes_legacy_description_body_content() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
+    let manifest = RuleManifest::new(
+        "shared/agents/legacy-description-fallback",
+        "Legacy Description Fallback",
+        "AGENTS",
+        "legacy-description-fallback",
+        "Legacy description body text.",
+    );
+
+    let id = store.create(&manifest, None).unwrap();
+    let indexed = store.entity_store().get_indexed(&id).unwrap().unwrap();
+    fs::rename(
+        indexed.path.join("body.md"),
+        indexed.path.join("description.md"),
+    )
+    .unwrap();
+    let index_root = store.entity_store().index_root.clone();
+    drop(store);
+
+    fs::remove_file(index_root.join("entities.db")).unwrap();
+    let _ = fs::remove_file(index_root.join("entities.db-shm"));
+    let _ = fs::remove_file(index_root.join("entities.db-wal"));
+    let _ = fs::remove_dir_all(index_root.join("search_index"));
+
+    let reopened = RuleStore::open_or_init(dir.path()).unwrap();
+    let fetched = reopened.get("shared/agents/legacy-description-fallback").unwrap();
+    let matches = reopened
+        .search(
+            "Legacy description body text",
+            &RuleFilter::default(),
+            5,
+        )
+        .unwrap();
+
+    assert_eq!(fetched.body(), Some("Legacy description body text."));
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].id, id);
+}
+
+#[test]
 fn open_creates_gitignore_for_local_rule_artifacts() {
     let dir = tempdir().unwrap();
 

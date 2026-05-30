@@ -2,7 +2,6 @@ id = "99154b43-c58b-43aa-b349-6d9831240d42"
 created_at = "2026-05-26T16:20:07.704135400+00:00"
 title = "Health interaction"
 state = "draft"
-body = "## Health interaction\n\n- Health checks read the schema and report `actionable-with-deps`, `missing-required-field`, or `invalid-transition` findings without mutating state.\n- A schema change that tightens requirements re-runs health on existing entities; pre-existing entities that violate the new requirements are reported as findings and not silently demoted."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

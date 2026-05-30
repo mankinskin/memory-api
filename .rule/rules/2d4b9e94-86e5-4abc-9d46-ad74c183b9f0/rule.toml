@@ -2,7 +2,6 @@ id = "2d4b9e94-86e5-4abc-9d46-ad74c183b9f0"
 created_at = "2026-05-22T17:48:26.130144400+00:00"
 title = "If public behavior or docs changed, update the docs and run doc validation workf"
 state = "draft"
-body = "- If public behavior or docs changed, update the docs and run doc validation workflows.\n- When dedicated test, doc, or cross-store-link tooling is missing or partial, use the strongest available command or manual check and call out the limitation explicitly in the status summary and spec traceability.\n- Follow `.github/hooks/` reminders when they fire.\n- Scratch notes belong in temporary files only; do not commit ephemeral notes."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

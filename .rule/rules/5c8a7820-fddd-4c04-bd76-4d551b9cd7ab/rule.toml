@@ -2,7 +2,6 @@ id = "5c8a7820-fddd-4c04-bd76-4d551b9cd7ab"
 created_at = "2026-05-22T17:31:59.517088600+00:00"
 title = "Ticket Actions"
 state = "draft"
-body = "### Ticket Actions\n- Created:\n- Updated:\n- Reviewed:"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

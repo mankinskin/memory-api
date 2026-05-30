@@ -2,7 +2,6 @@ id = "091f1918-3f0b-44d0-bff0-323dd8fb03ae"
 created_at = "2026-05-26T16:20:02.849886300+00:00"
 title = "Non-duplication rule"
 state = "draft"
-body = "## Non-duplication rule\n\nAdapters must not re-implement model behaviour. If a CLI or MCP tool needs to enforce a precondition, the precondition lives in `<x>-api` and the adapter calls it. New cross-cutting features are added to `<x>-api` first, then exposed by the adapters in lockstep."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

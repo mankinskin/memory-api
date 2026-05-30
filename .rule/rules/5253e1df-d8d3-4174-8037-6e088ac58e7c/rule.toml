@@ -2,7 +2,6 @@ id = "5253e1df-d8d3-4174-8037-6e088ac58e7c"
 created_at = "2026-05-26T16:19:59.781867700+00:00"
 title = "Resolver contract"
 state = "draft"
-body = "## Resolver contract\n\n- `--workspace-root <PATH>` must point at an existing directory that contains the relevant store (or is an ancestor that can be normalised to exactly one such store).\n- The resolver normalises the path to the canonical root that owns the store. Ambiguous paths that match more than one nested workspace fail rather than picking one silently.\n- `--index-root` follows the same rules and is independent of `--workspace-root`: callers may target an alternate index without changing the workspace."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

@@ -2,7 +2,6 @@ id = "23dff709-4a4f-4a53-b767-4feb9e32c4bf"
 created_at = "2026-05-25T21:51:53.411779500+00:00"
 title = "A spec-local descriptor, `generated.toml`, maps `body.md` and named `sections/*."
 state = "draft"
-body = "- A spec-local descriptor, `generated.toml`, maps `body.md` and named `sections/*.md` artifacts to target names.\n- `rule-api` should remain the only layer that evaluates `rule-targets.yaml`, imports canonical prose, and composes ordered snippet outputs.\n- A `spec-cli` sync command or equivalent orchestration layer should resolve the descriptor, render each target, write the corresponding spec artifact through `spec-api`, and refresh spec-facing bookkeeping afterward.\n- The first migration slice should prove the workflow on one real spec and document how to move reusable prose into canonical rules without moving `spec.toml` ownership."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

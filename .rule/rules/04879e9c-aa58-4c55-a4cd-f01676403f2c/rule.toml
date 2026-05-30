@@ -2,7 +2,6 @@ id = "04879e9c-aa58-4c55-a4cd-f01676403f2c"
 created_at = "2026-05-26T16:20:01.896490100+00:00"
 title = "Adding fields is allowed."
 state = "draft"
-body = "- Adding fields is allowed.\n- Removing or renaming fields requires a version bump and is announced through the spec for the relevant `memory-api` crate.\n- `--json` output is the source of truth for tests and for downstream `viewer-ctl`-managed viewers; human output is rendered from the same envelope."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

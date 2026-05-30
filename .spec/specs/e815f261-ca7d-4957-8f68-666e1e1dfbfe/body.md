@@ -2,6 +2,8 @@
 
 `rule-api` already supports canonical rule storage in `.rule/rules/**`, repo-scoped filtering, hierarchical target outlines, and deterministic generation from a single `rule-targets.yaml`. The next step is to make rule workspaces first-class at nested repo boundaries so each submodule repository can own its local rules while parent repositories can compose child rules into parent targets.
 
+This spec is about workspace topology and composition. The rule-folder storage contract, canonical `body.md` body asset, and compatibility behavior for legacy `description.md` rule folders are defined separately in `rule-api/store`.
+
 ## Repositories In Scope
 
 - `memory-viewers/`
@@ -37,8 +39,10 @@ As the maintainer of `viewer-api/`, I need a repo-local rule workspace so viewer
 Each in-scope repository should support the same local rule workspace shape:
 
 - `.rule/rules/<uuid>/rule.toml`
-- `.rule/rules/<uuid>/description.md`
+- `.rule/rules/<uuid>/body.md`
 - optional repo-local generated target config in `rule-targets.yaml`
+
+`rule-api/store` owns the folder-internal storage rules for rule metadata, body hydration, and legacy compatibility. This spec only defines how those rule folders are distributed across nested repositories and composed into parent or child generation flows.
 
 Each generated target config may be expressed as a nested file/folder tree that mirrors runtime output paths:
 

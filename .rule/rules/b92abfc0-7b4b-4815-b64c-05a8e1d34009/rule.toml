@@ -2,7 +2,6 @@ id = "b92abfc0-7b4b-4815-b64c-05a8e1d34009"
 created_at = "2026-05-25T21:51:54.366453700+00:00"
 title = "This pilot spec maps `body.md` and `sections/migration-workflow.md` through `gen"
 state = "draft"
-body = "- This pilot spec maps `body.md` and `sections/migration-workflow.md` through `generated.toml` so both artifacts regenerate from rule targets instead of hand-edited markdown.\n- The command loads a spec's `generated.toml` descriptor through `spec-api`.\n- It resolves the owning workspace from the indexed spec path and matching registered scan root so nested workspaces use the correct local `rule-targets.yaml` and `.rule` store instead of falling back to an ancestor checkout.\n- It opens `rule-api`, evaluates each declared target, rewrites `body.md` and any declared `sections/*.md` through the generated-document helpers in `spec-api`, and then refreshes spec search/body bookkeeping through the normal `SpecStore::update` path."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

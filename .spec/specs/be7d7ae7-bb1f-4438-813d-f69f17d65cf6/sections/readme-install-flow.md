@@ -2,7 +2,13 @@
 
 ### Install the CLI tools
 
-Run these once from a checkout of `memory-viewers/memory-api` to place the binaries on your system `PATH` through Cargo's install directory.
+From the `context-engine` repo root, the shared installer can run the same four Cargo installs for you:
+
+```bash
+bash ./install-tools.sh --tool rule-cli --tool spec-cli --tool ticket-cli --tool audit-cli
+```
+
+If you are working directly from a `memory-viewers/memory-api` checkout instead of the repo root, run the underlying install commands from this workspace:
 
 ```bash
 cargo install --path tools/cli/rule-cli --bin rule

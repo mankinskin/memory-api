@@ -2,7 +2,6 @@ id = "2180fedc-fb0f-4900-9411-e8a2c9534b2d"
 created_at = "2026-05-22T17:48:25.625249300+00:00"
 title = "Operating Principles"
 state = "draft"
-body = "## Operating Principles\n\n- Gather context before coding. Do not guess.\n- Read existing tests to infer expected behavior.\n- For implementation work, create or update the relevant ticket(s) before editing code.\n- For new or changed requirements and goals, create or update the relevant spec before implementation proceeds.\n- Keep the ticket, spec, validation, and documentation trail current so review and status summaries stay accurate.\n- Prefer bash commands over PowerShell/cmd.\n- Use Unix-style paths (`/`) in commands and docs.\n- Read test logs in `target/test-logs/` for debugging instead of relying on truncated test stdout.\n- Keep scope tight: do not add extra features or broad refactors unless requested."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

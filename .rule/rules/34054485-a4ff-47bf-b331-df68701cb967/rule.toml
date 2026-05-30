@@ -2,7 +2,6 @@ id = "34054485-a4ff-47bf-b331-df68701cb967"
 created_at = "2026-05-22T17:48:26.076357800+00:00"
 title = "```rust"
 state = "draft"
-body = "```rust\nlet _tracing = init_test_tracing!(&graph);\n```"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

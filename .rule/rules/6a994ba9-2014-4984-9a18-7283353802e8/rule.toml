@@ -2,7 +2,6 @@ id = "6a994ba9-2014-4984-9a18-7283353802e8"
 created_at = "2026-05-25T21:51:54.116912700+00:00"
 title = "Descriptor validation"
 state = "draft"
-body = "### Descriptor validation\n\nThe current descriptor implementation rejects:"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

@@ -2,7 +2,6 @@ id = "97647246-e24e-48f8-970c-8e2e464f2346"
 created_at = "2026-05-25T21:51:54.308325+00:00"
 title = "Implementation status"
 state = "draft"
-body = "### Implementation status\n\nThe `spec-cli` orchestration slice is now implemented behind `spec sync-generated <spec-id>`."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

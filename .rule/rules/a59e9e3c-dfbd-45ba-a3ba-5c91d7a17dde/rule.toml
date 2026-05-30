@@ -2,7 +2,6 @@ id = "a59e9e3c-dfbd-45ba-a3ba-5c91d7a17dde"
 created_at = "2026-05-25T21:51:53.602787800+00:00"
 title = "```toml"
 state = "draft"
-body = "```toml\n[body]\nconfig = \"rule-targets.yaml\"\ntarget = \"body\""
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

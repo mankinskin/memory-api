@@ -2,7 +2,6 @@ id = "8a92308a-a962-4d26-be51-f3d076865791"
 created_at = "2026-05-26T16:19:58.643651800+00:00"
 title = "Each principle is its own section so a `rule scan` materialises one canonical en"
 state = "draft"
-body = "Each principle is its own section so a `rule scan` materialises one canonical entry per principle and downstream agent guidance can reference them individually."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

@@ -2,7 +2,6 @@ id = "011df0af-b945-434a-b681-a3949de76ec0"
 created_at = "2026-05-12T10:58:11.116619+00:00"
 title = "audit-cli"
 state = "draft"
-body = "# audit-cli\r\n\r\nCLI interface for `audit-api`.\r\n\r\n## Interface\r\n\r\nUse `audit` when you need repository quality metrics and grouped findings from the terminal.\r\n\r\n- `run`: execute a full audit and return metrics, thresholds, and actionable findings.\r\n- `summary`: regroup findings by crate, category, severity, metric, or path.\r\n\r\nGlobal options:\r\n\r\n- `--json`: emit machine-readable output instead of the human summary.\r\n\r\n## Usage\r\n\r\nBuild or run from a checkout of `memory-viewers/memory-api`:\r\n\r\n```bash\r\ncargo build -p audit-cli --bin audit\r\ncargo run -p audit-cli --bin audit -- --help\r\n```\r\n\r\nRun the command from the repository you want to audit, or pass an explicit repo path to the subcommand.\r\n\r\n## Examples\r\n\r\n```bash\r\n# Run the default audit for the current repository\r\naudit run .\r\n\r\n# Tighten thresholds for a focused cleanup pass\r\naudit run . --max-file-lines 300 --max-cyclomatic-complexity 10 --coverage-warn-below 85\r\n\r\n# Group findings by severity\r\naudit summary --by severity .\r\n```\r\n"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

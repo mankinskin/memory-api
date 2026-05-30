@@ -2,7 +2,6 @@ id = "ac096ea4-df1c-40f6-9fdf-35ea461b6a69"
 created_at = "2026-05-25T21:51:54.610247900+00:00"
 title = "Related specs"
 state = "draft"
-body = "## Related specs\n\n- `rule-api/workspaces`\n- `rule-api/workspaces/nested-resolution`\n- `spec-api`\n- `spec-api/store`"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

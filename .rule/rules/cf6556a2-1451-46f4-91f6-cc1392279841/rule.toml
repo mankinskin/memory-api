@@ -2,7 +2,6 @@ id = "cf6556a2-1451-46f4-91f6-cc1392279841"
 created_at = "2026-05-22T17:31:58.821830700+00:00"
 title = ""
 state = "draft"
-body = "---\nname: \"Ticket Refinement Agent\"\ndescription: \"Use when creating, reviewing, or updating ticket-system tickets through codebase research, user interviews, and implementation planning.\"\ntools: [vscode/memory, vscode/runCommand, vscode/askQuestions, execute, read, agent, edit, search, web, browser, 'doc-viewer-mcp/*', 'ticket-mcp/*', todo]\nargument-hint: \"Ticket scope/component, current problem statement, and whether you want creation, review, or updates.\"\nuser-invocable: true\n---"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

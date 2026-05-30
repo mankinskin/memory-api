@@ -2,7 +2,6 @@ id = "7bc8b184-2c17-4c90-a616-0a1e1d066cee"
 created_at = "2026-05-11T16:04:17.454710700+00:00"
 title = "User Stories"
 state = "draft"
-body = "## Tool Screenshots\r\n\r\nThe current repository visual below summarizes the main memory-api tool and crate surfaces.\r\n\r\n![memory-api crate surface](.github/assets/crate-surface.svg)\r\n"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

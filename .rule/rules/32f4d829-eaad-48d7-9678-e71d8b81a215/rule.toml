@@ -2,7 +2,6 @@ id = "32f4d829-eaad-48d7-9678-e71d8b81a215"
 created_at = "2026-05-26T16:20:04.654061500+00:00"
 title = "Edge index, not Tantivy"
 state = "draft"
-body = "## Edge index, not Tantivy\n\nEdge lookups (forward, reverse, transitive closure) are served by the typed edge index in the materialised SQLite store. Tantivy is reserved for full-text search over body content. Reusing Tantivy for edge traversal pollutes search ranking and forces edge queries through an inverted-index query plan that is far slower than a primary-key join."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

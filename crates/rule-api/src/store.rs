@@ -39,6 +39,7 @@ use uuid::Uuid;
 use memory_api::{
     error::StorageError,
     model::entity::EntityManifest,
+    model::filesystem::EntityFolderConfig,
     storage::{
         ensure_gitignore_entries,
         entity_fs::EntityFs,
@@ -70,6 +71,7 @@ const RULE_LOCK_FILE: &str = ".rule-lock";
 const RULE_ENTRY_TYPE_ID: &str = "rule-entry";
 const GENERATED_TARGET_TYPE_ID: &str = "generated-target";
 const GENERATED_TARGET_ROOT_DIR: &str = "entities";
+const RULE_BODY_FILE: &str = "body.md";
 const FEEDBACK_DIR: &str = "feedback";
 const FEEDBACK_EVENTS_FILE: &str = "events.ndjson";
 
@@ -119,7 +121,10 @@ impl RuleStore {
     }
 
     fn open_internal(index_root: &Path) -> Result<Self, RuleError> {
-        let fs = EntityFs::new(RULE_MANIFEST_FILE, RULE_LOCK_FILE);
+        let fs = EntityFs::with_config(
+            EntityFolderConfig::new(RULE_MANIFEST_FILE, RULE_LOCK_FILE)
+                .with_body_file(RULE_BODY_FILE),
+        );
         let registry = rule_schema_registry();
         let inner = EntityStore::open_with(index_root, fs, registry)?;
         inner.add_scan_root(memory_api::model::filesystem::ScanRoot {
@@ -145,8 +150,34 @@ impl RuleStore {
         reindex: bool,
     ) -> Result<ScanReport, RuleError> {
         let report = self.inner.scan(reindex)?;
+        if reindex {
+            self.reindex_rule_bodies()?;
+        }
         self.rebuild_slug_index()?;
         Ok(report)
+    }
+
+    fn reindex_rule_bodies(&self) -> Result<(), RuleError> {
+        for indexed in self.inner.list_indexed(false)? {
+            if indexed.type_id != RULE_ENTRY_TYPE_ID {
+                continue;
+            }
+
+            let entity = self.read_indexed_manifest(&indexed)?;
+            let title = entity.extra.get("title").and_then(Value::as_str);
+            let state = entity.extra.get("state").and_then(Value::as_str);
+            let body = self.read_rule_body(&indexed.path, Some(&entity));
+
+            self.inner.search.upsert(
+                &indexed.id,
+                title,
+                body.as_deref(),
+                state,
+                Some(RULE_ENTRY_TYPE_ID),
+            )?;
+        }
+
+        Ok(())
     }
 
     pub fn rebuild_slug_index(&mut self) -> Result<(), RuleError> {
@@ -343,7 +374,7 @@ impl RuleStore {
     pub fn update(
         &mut self,
         id_or_slug: &str,
-        patch: BTreeMap<String, Value>,
+        mut patch: BTreeMap<String, Value>,
         to_state: Option<&str>,
     ) -> Result<RuleManifest, RuleError> {
         let uuid = self.resolve_id(id_or_slug)?;
@@ -351,6 +382,9 @@ impl RuleStore {
             .inner
             .get_indexed(&uuid)?
             .ok_or_else(|| RuleError::NotFound(uuid.to_string()))?;
+        let body_update = patch
+            .remove("body")
+            .and_then(|value| value.as_str().map(str::to_string));
 
         if let Some(new_slug_value) = patch.get("slug") {
             if let Some(new_slug) = new_slug_value.as_str() {
@@ -385,6 +419,9 @@ impl RuleStore {
 
         let updated_entity =
             self.inner.fs.update(&indexed.path, &patch, to_state)?;
+        if let Some(body) = body_update.as_deref() {
+            self.inner.fs.write_description(&indexed.path, body)?;
+        }
         let title = updated_entity
             .extra
             .get("title")
@@ -408,14 +445,7 @@ impl RuleStore {
         };
         self.inner.index.insert_ticket(&refreshed)?;
 
-        let body =
-            self.inner.fs.read_description(&indexed.path).or_else(|| {
-                updated_entity
-                    .extra
-                    .get("body")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            });
+        let body = self.read_rule_body(&indexed.path, Some(&updated_entity));
         self.inner.search.upsert(
             &uuid,
             title.as_deref(),
@@ -430,7 +460,12 @@ impl RuleStore {
             None,
         );
 
-        Ok(entity_to_rule(&updated_entity))
+        let mut rule = entity_to_rule(&updated_entity);
+        if let Some(body) = body {
+            rule.set_body(&body);
+        }
+
+        Ok(rule)
     }
 
     pub fn update_body(
@@ -443,12 +478,7 @@ impl RuleStore {
             .inner
             .get_indexed(&uuid)?
             .ok_or_else(|| RuleError::NotFound(uuid.to_string()))?;
-        let patch = BTreeMap::from([(
-            "body".to_string(),
-            Value::String(body.to_string()),
-        )]);
-        let updated_entity =
-            self.inner.fs.update(&indexed.path, &patch, None)?;
+        let updated_entity = self.inner.fs.read(&indexed.path)?;
         self.inner.fs.write_description(&indexed.path, body)?;
         self.inner.search.upsert(
             &uuid,
@@ -584,10 +614,23 @@ impl RuleStore {
     ) -> Result<RuleManifest, RuleError> {
         let entity = self.read_indexed_manifest(indexed)?;
         let mut rule = entity_to_rule(&entity);
-        if let Some(body) = self.inner.fs.read_description(&indexed.path) {
+        if let Some(body) = self.read_rule_body(&indexed.path, Some(&entity)) {
             rule.set_body(&body);
         }
         Ok(rule)
+    }
+
+    fn read_rule_body(
+        &self,
+        entity_path: &Path,
+        entity: Option<&EntityManifest>,
+    ) -> Option<String> {
+        self.inner.fs.read_description(entity_path).or_else(|| {
+            entity
+                .and_then(|manifest| manifest.extra.get("body"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
     }
 }
 
@@ -610,10 +653,13 @@ fn validate_slug(slug: &str) -> Result<(), RuleError> {
 }
 
 fn rule_to_entity(rule: &RuleManifest) -> EntityManifest {
+    let mut extra = rule.extra.clone();
+    extra.remove("body");
+
     EntityManifest {
         id: rule.id,
         created_at: rule.created_at,
-        extra: rule.extra.clone(),
+        extra,
     }
 }
 

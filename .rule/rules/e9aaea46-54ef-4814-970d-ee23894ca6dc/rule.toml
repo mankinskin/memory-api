@@ -2,7 +2,6 @@ id = "e9aaea46-54ef-4814-970d-ee23894ca6dc"
 created_at = "2026-05-26T16:20:05.656539900+00:00"
 title = "Recovery and rebuild"
 state = "draft"
-body = "## Recovery and rebuild\n\n- The materialised index can be deleted at any time. `<x> scan` (or `<x> scan --force`) rebuilds it by replaying every history file.\n- History files are never rewritten in place. Migrations append compensating records rather than editing prior ones, so the audit trail stays complete.\n- Concurrent writers coordinate through a per-entity lock; the index update is atomic with the history append."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

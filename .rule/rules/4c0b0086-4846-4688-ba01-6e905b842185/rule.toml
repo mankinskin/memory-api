@@ -2,7 +2,6 @@ id = "4c0b0086-4846-4688-ba01-6e905b842185"
 created_at = "2026-05-26T16:20:02.792963200+00:00"
 title = "What lives in the adapter crates"
 state = "draft"
-body = "## What lives in the adapter crates\n\n- `<x>-cli`: clap argument parsing, JSON envelope rendering, exit-code mapping.\n- `<x>-mcp`: tool descriptors that delegate to `<x>-api`.\n- `<x>-http`: route handlers that delegate to `<x>-api` and serialise the envelope.\n- `viewer-ctl`-managed viewers: read-mostly consumers that talk to `<x>-http` and never duplicate model logic."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

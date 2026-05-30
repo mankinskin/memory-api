@@ -2,7 +2,6 @@ id = "9a6a7d88-194e-46f7-b608-9494a3f691c6"
 created_at = "2026-05-26T16:20:06.537975100+00:00"
 title = "Resolution rules"
 state = "draft"
-body = "## Resolution rules\n\n1. Find the nearest registered scan root that contains the path. If none exists, fall back to the nearest directory upward that contains a `.ticket/`, `.spec/`, or `.rule/` store.\n2. If the path is inside a nested workspace, the nested workspace wins. Ancestor stores are not consulted for entities the nested workspace owns.\n3. Ambiguous paths (matching more than one nested workspace, or matching no workspace at all) fail with `code: invalid_request` rather than picking arbitrarily."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

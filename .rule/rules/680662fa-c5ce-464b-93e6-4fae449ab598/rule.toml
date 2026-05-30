@@ -2,7 +2,6 @@ id = "680662fa-c5ce-464b-93e6-4fae449ab598"
 created_at = "2026-05-26T16:20:00.710663500+00:00"
 title = "Envelope shape"
 state = "draft"
-body = "## Envelope shape\n\n```json\n{\n  \"code\": \"<machine-readable category>\",\n  \"message\": \"<human-readable summary>\",\n  \"request_id\": \"<uuid>\",\n  \"details\": { ... }\n}\n```"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

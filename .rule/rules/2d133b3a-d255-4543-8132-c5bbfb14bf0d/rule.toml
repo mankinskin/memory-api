@@ -2,7 +2,6 @@ id = "2d133b3a-d255-4543-8132-c5bbfb14bf0d"
 created_at = "2026-05-26T16:19:59.895181300+00:00"
 title = "The rejection produces a `code: invalid_request` error envelope with a `message`"
 state = "draft"
-body = "The rejection produces a `code: invalid_request` error envelope with a `message` that names the rejected input. CLIs print the envelope on stderr (or to stdout under `--json`) and exit non-zero."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

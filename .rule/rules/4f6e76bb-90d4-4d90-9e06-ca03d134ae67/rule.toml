@@ -2,7 +2,6 @@ id = "4f6e76bb-90d4-4d90-9e06-ca03d134ae67"
 created_at = "2026-05-22T17:48:26.303574300+00:00"
 title = "Escalation Rules"
 state = "draft"
-body = "## Escalation Rules\n\n- If blocked by ambiguity after focused research (10-15 minutes), ask the user.\n- If evidence conflicts or architecture tradeoffs are required, ask before committing to a direction.\n- If unexpected workspace changes appear that you did not make, stop and ask how to proceed."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

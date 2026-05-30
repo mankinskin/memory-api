@@ -2,7 +2,6 @@ id = "8ec75a50-bace-4f90-bae8-e6d16c8bc461"
 created_at = "2026-05-26T16:19:58.568431800+00:00"
 title = "memory-api recurring principles"
 state = "draft"
-body = "# memory-api recurring principles\n\nThis spec captures the cross-cutting design principles that recur across `memory-api` specs (`rule-api`, `spec-api`, `ticket-api`, `doc-api`, `audit-api`, `mem-api`). They are the canonical authority for how store, CLI, MCP, and HTTP layers in `memory-viewers/memory-api` are expected to behave."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

@@ -2,7 +2,6 @@ id = "ba8e789e-d830-474e-bcb5-2387a665c7b4"
 created_at = "2026-05-22T17:31:58.932870200+00:00"
 title = "Your job is to create high-quality tickets, review existing tickets, and update "
 state = "draft"
-body = "Your job is to create high-quality tickets, review existing tickets, and update tickets so they are implementation-ready."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

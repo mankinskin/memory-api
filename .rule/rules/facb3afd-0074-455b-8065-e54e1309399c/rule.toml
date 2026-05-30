@@ -2,7 +2,6 @@ id = "facb3afd-0074-455b-8065-e54e1309399c"
 created_at = "2026-05-22T17:48:25.970213100+00:00"
 title = "Task Routing"
 state = "draft"
-body = "## Task Routing\n\n- Any requested implementation or behavior change: create or update the tracking ticket(s) first, then create or update the relevant spec before editing files.\n- Simple fix (1-2 files): after the ticket/spec setup when requirements or behavior change, gather context, implement, validate, update docs, verify spec links, and move the ticket to `in-review`.\n- Bug fix: after the ticket/spec setup, follow `.github/prompts/debug-test.prompt.md` when available.\n- Feature or refactor (>5 files, >100 LOC, or unclear scope): use `.github/prompts/tickets.prompt.md` to establish the ticket set, then `.github/prompts/spec.prompt.md` to update the spec before implementation.\n- Unfamiliar module or unclear behavior: follow `.github/prompts/research.prompt.md` when available before locking the spec or implementation plan.\n- Swarm execution: use `.github/prompts/swarm-worker.prompt.md`."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

@@ -73,6 +73,18 @@ fn create_get_update_delete_spec() {
 }
 
 #[test]
+fn create_writes_body_md_without_description_md() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_spec("root/body-file-contract", "Body File Contract");
+    let id = store.create(&spec, "body v1", None).unwrap();
+    let indexed = store.entity_store().get_indexed(&id).unwrap().unwrap();
+
+    assert!(indexed.path.join("body.md").is_file());
+    assert!(!indexed.path.join("description.md").exists());
+}
+
+#[test]
 fn update_generated_body_renders_spec_api_provenance_comments() {
     let (_tmp, mut store) = setup();
 

@@ -2,7 +2,6 @@ id = "06c286d6-83f7-46ad-b1a5-a4d7336b8d6f"
 created_at = "2026-05-26T16:20:06.479831200+00:00"
 title = "Nested workspace resolution"
 state = "draft"
-body = "# Nested workspace resolution\n\nA repository may contain multiple `memory-api` workspaces (for example the context-engine root, `memory-viewers/memory-api`, and `memory-viewers/viewer-api`, each with their own `.ticket/`, `.spec/`, `.rule/`). The workspace resolver normalises any caller-supplied path to a single owning root and never falls back silently to an ancestor checkout."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

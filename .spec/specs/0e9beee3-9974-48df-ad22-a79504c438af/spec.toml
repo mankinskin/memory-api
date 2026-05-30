@@ -1,0 +1,19 @@
+id = "0e9beee3-9974-48df-ad22-a79504c438af"
+created_at = "2026-05-30T11:15:17.128590400+00:00"
+title = "store"
+state = "draft"
+code_refs = [
+	{ description = "The shared folder config currently parameterizes manifest and lock filenames but not the markdown body filename, which is the seam this spec extends.", file = "crates/memory-api/src/model/filesystem.rs", kind = "struct", line_end = 58, line_start = 36, symbol = "EntityFolderConfig" },
+	{ description = "Entity creation currently writes description.md for every domain; rule-api needs this path to become domain-specific.", file = "crates/memory-api/src/storage/entity_fs.rs", kind = "function", line_end = 129, line_start = 100, symbol = "create" },
+	{ description = "The generic write helper still rewrites description.md directly, which is part of the compatibility surface for rule migration.", file = "crates/memory-api/src/storage/entity_fs.rs", kind = "function", line_end = 350, line_start = 340, symbol = "write_description" },
+	{ description = "The generic read helper still hydrates description.md directly today.", file = "crates/memory-api/src/storage/entity_fs.rs", kind = "function", line_end = 359, line_start = 354, symbol = "read_description" },
+	{ description = "RuleManifest currently duplicates the rule body in metadata through new/body/set_body helpers.", file = "crates/rule-api/src/manifest.rs", kind = "struct", line_end = 206, line_start = 39, symbol = "RuleManifest" },
+	{ description = "RuleStore::create currently passes manifest body text into the shared entity filesystem when creating rule folders.", file = "crates/rule-api/src/store.rs", kind = "function", line_end = 280, line_start = 212, symbol = "create" },
+	{ description = "RuleStore::update_body currently updates both manifest body metadata and the description asset, which is the duplication this spec removes.", file = "crates/rule-api/src/store.rs", kind = "function", line_end = 462, line_start = 436, symbol = "update_body" },
+	{ description = "Rule hydration already prefers the separate body asset when one exists, making this the natural compatibility seam for body.md migration.", file = "crates/rule-api/src/store.rs", kind = "function", line_end = 588, line_start = 581, symbol = "hydrate_rule" },
+	{ description = "The README install contract regression test still reads a rule description.md path today and should move with the storage backfill.", file = "tools/cli/rule-cli/tests/install_contract_sync.rs", kind = "function", line_end = 58, line_start = 52, symbol = "readme_install_flow_section_matches_readme_rule_entry" },
+]
+component = "rule-api"
+scope = "public"
+slug = "rule-api/store"
+type = "specification"

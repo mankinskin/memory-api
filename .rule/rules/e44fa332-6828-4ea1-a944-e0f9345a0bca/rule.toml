@@ -2,7 +2,6 @@ id = "e44fa332-6828-4ea1-a944-e0f9345a0bca"
 created_at = "2026-05-26T16:20:03.601299+00:00"
 title = "Inputs accepted"
 state = "draft"
-body = "## Inputs accepted\n\n- A full canonical UUID (lower-case, hyphenated): always matches exactly one entity if it exists.\n- A prefix of the UUID (4 characters or more): must resolve to exactly one entity in the store, otherwise the resolver fails with `code: not_found` (no matches) or `code: conflict` (multiple matches).\n- A hierarchical slug (specs and rules only): matches the entity whose `slug` field equals the input."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

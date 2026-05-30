@@ -2,7 +2,6 @@ id = "30e77f04-1d48-4e27-82dd-864b9a92d9c4"
 created_at = "2026-05-26T16:19:59.722080800+00:00"
 title = "Concrete workspace identifiers"
 state = "draft"
-body = "# Concrete workspace identifiers\n\n`memory-api` stores (`ticket-api`, `spec-api`, `rule-api`, `doc-api`, `audit-api`) accept only concrete workspace paths. Synthetic aliases such as `default`, `..`, `~`, empty strings, or arbitrary handles are rejected with a typed error."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

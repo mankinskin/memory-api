@@ -2,7 +2,6 @@ id = "89026c44-0e5c-41ce-bcb5-2bc8baf539c6"
 created_at = "2026-05-22T17:31:59.092868900+00:00"
 title = "Constraints"
 state = "draft"
-body = "## Constraints\n\n- Do not implement code changes unless explicitly asked.\n- Do not invent unsupported ticket states, fields, or edge kinds.\n- Keep lifecycle transitions valid according to the ticket state machine.\n- Prefer MCP ticket tools first; use CLI fallback only if MCP is unavailable.\n- Keep updates auditable: every ticket change must be justified by research or user input."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

@@ -23,7 +23,10 @@ use memory_api::{
         prepare_generated_output,
         render_markdown_file,
     },
-    model::filesystem::ScanRoot,
+    model::filesystem::{
+        EntityFolderConfig,
+        ScanRoot,
+    },
     storage::{
         entity_fs::EntityFs,
         entity_store::{
@@ -390,7 +393,10 @@ impl SpecStore {
     }
 
     fn open_internal(index_root: &Path) -> Result<Self, SpecError> {
-        let fs = EntityFs::new(SPEC_MANIFEST_FILE, SPEC_LOCK_FILE);
+        let fs = EntityFs::with_config(
+            EntityFolderConfig::new(SPEC_MANIFEST_FILE, SPEC_LOCK_FILE)
+                .with_body_file("body.md"),
+        );
         let registry = crate::default_schema::spec_schema_registry();
         let inner = EntityStore::open_with(index_root, fs, registry)?;
         inner.add_scan_root(ScanRoot {
@@ -487,12 +493,6 @@ impl SpecStore {
 
         let entity = spec_to_entity(manifest);
         let folder = self.inner.fs.create(&entity, &root, Some(body))?;
-
-        let desc_path = folder.join("description.md");
-        let body_path = folder.join("body.md");
-        if desc_path.exists() {
-            fs::rename(&desc_path, &body_path).map_err(StorageError::Io)?;
-        }
 
         let type_id = manifest
             .extra

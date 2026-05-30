@@ -2,7 +2,6 @@ id = "f2d4d117-cee4-4749-b542-43ea435c50f2"
 created_at = "2026-05-26T16:19:58.906111600+00:00"
 title = "Related specs"
 state = "draft"
-body = "## Related specs\n\n- `spec-api/generated-documents` (`1cf68c36-7f64-4d81-b553-1947b978fbe3` in memory-viewers/memory-api)\n- `context-engine/recurring-principles` (`954d9807-f357-41e5-9fd4-b1da39e0933d` at the context-engine root)"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

@@ -2,7 +2,6 @@ id = "c7803a26-fb05-46c2-a8a9-4681e645a988"
 created_at = "2026-05-25T21:51:54.181258900+00:00"
 title = "missing or blank `config` values"
 state = "draft"
-body = "- missing or blank `config` values\n- missing or blank `target` values\n- duplicate section aliases such as `requirements` and `requirements.md`\n- section names that attempt to escape `sections/*.md`"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

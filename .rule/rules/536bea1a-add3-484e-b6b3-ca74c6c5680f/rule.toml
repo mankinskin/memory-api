@@ -2,7 +2,6 @@ id = "536bea1a-add3-484e-b6b3-ca74c6c5680f"
 created_at = "2026-05-22T17:31:59.566983300+00:00"
 title = "Interview Findings"
 state = "draft"
-body = "### Interview Findings\n- Confirmed requirements:\n- Open questions:"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

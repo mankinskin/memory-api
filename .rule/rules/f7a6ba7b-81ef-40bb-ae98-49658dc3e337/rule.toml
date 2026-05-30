@@ -2,7 +2,6 @@ id = "f7a6ba7b-81ef-40bb-ae98-49658dc3e337"
 created_at = "2026-05-22T17:48:26.356863900+00:00"
 title = "Fallback Mode (When MCP Is Unavailable)"
 state = "draft"
-body = "## Fallback Mode (When MCP Is Unavailable)\n\n- Docs fallback: search/read local docs directly.\n- Ticket fallback: use `ticket` CLI.\n- Logs fallback: inspect files under `target/test-logs/` directly.\n- Context fallback: use `tools/context-cli/` commands."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

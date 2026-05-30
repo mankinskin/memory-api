@@ -2,7 +2,6 @@ id = "053d49f3-f93a-428c-b1be-504e45d2e2e2"
 created_at = "2026-05-26T16:20:02.737402700+00:00"
 title = "What lives in `<x>-api`"
 state = "draft"
-body = "## What lives in `<x>-api`\n\n- Entity types, field definitions, and the `required_states` schema.\n- Store traits and their default implementations (filesystem, SQLite index, Tantivy search).\n- Append-only history writers and the materialised-index rebuild path.\n- Validation, edge semantics (including `depends_on`), and health checks.\n- The single id/prefix resolver shared across all surfaces."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

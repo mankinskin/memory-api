@@ -2,7 +2,6 @@ id = "7c113526-c4e7-42d4-8c61-b3c0905cbb9c"
 created_at = "2026-05-25T21:51:52.533009200+00:00"
 title = "hierarchical target configuration"
 state = "draft"
-body = "- hierarchical target configuration\n- ordered snippet collection from the store\n- duplicate detection across outline nodes\n- generated markdown rendering with provenance comments\n- generated-file bookkeeping and stale-output cleanup\n- newline-preserving rewrites"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

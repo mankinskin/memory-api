@@ -2,7 +2,6 @@ id = "4b104cd8-ea68-4ef4-bc38-c2e35d3cb4f5"
 created_at = "2026-05-26T16:20:04.720841200+00:00"
 title = "Health behaviour"
 state = "draft"
-body = "## Health behaviour\n\n- `ticket health <id>` reports actionable-with-deps when a ticket has unresolved `depends_on` targets and is in `ready` or later.\n- Replacing an unresolved `depends_on` edge with a `linked` edge clears the health finding without changing the ticket state.\n- `spec refs <id> validate` cross-checks `depends_on` and `spec_refs` edges and reports missing or wrongly-typed references."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

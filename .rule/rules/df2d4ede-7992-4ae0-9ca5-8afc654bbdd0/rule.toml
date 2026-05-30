@@ -2,7 +2,6 @@ id = "df2d4ede-7992-4ae0-9ca5-8afc654bbdd0"
 created_at = "2026-05-12T10:57:59.902725100+00:00"
 title = "spec-cli"
 state = "draft"
-body = "# spec-cli\r\n\r\nCLI interface for `spec-api`.\r\n\r\n## Interface\r\n\r\nUse `spec` when you need to create, browse, and validate specification documents from a local checkout.\r\n\r\n- `create`, `get`, `update`, `delete`, `list`, `search`: maintain spec records and inspect them by id, slug, or text query.\r\n- `tree`, `section`: navigate or edit hierarchical spec structure.\r\n- `refs`: list and validate code references attached to a spec.\r\n- `health`, `scan`, `add-root`, `bootstrap`: keep the store healthy and seed specs from Rust API surfaces.\r\n\r\nGlobal options:\r\n\r\n- `--json`: return machine-readable output.\r\n- `--index-root <path>`: override the `.spec` index root.\r\n\r\n## Usage\r\n\r\nBuild or run from a checkout of `memory-viewers/memory-api`:\r\n\r\n```bash\r\ncargo build -p spec-cli --bin spec\r\ncargo run -p spec-cli --bin spec -- --help\r\n```\r\n\r\n`spec` finds the nearest `.spec` workspace by walking up from the current directory. Use `--index-root` when you want to point at a different store.\r\n\r\n## Examples\r\n\r\n```bash\r\n# List the current specs\r\nspec list\r\n\r\n# Search by title, slug, or body text\r\nspec search \"ticket board\"\r\n\r\n# Validate code references on one spec\r\nspec refs <spec-id> validate\r\n\r\n# Show the current section tree\r\nspec tree <spec-id>\r\n```\r\n"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

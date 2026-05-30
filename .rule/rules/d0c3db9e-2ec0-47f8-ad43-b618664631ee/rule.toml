@@ -2,7 +2,6 @@ id = "d0c3db9e-2ec0-47f8-ad43-b618664631ee"
 created_at = "2026-05-26T16:20:04.522010600+00:00"
 title = "`depends_on` is the only blocking edge"
 state = "draft"
-body = "# `depends_on` is the only blocking edge\n\nIn `ticket-api` and `spec-api`, a ticket or spec is considered actionable only if every `depends_on` target is in a resolved state. No other edge type blocks state transitions. Non-blocking relationships use the typed edge index, not Tantivy full-text search."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

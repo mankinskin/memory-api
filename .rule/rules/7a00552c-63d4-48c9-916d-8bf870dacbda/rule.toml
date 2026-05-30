@@ -2,7 +2,6 @@ id = "7a00552c-63d4-48c9-916d-8bf870dacbda"
 created_at = "2026-05-26T16:20:03.727871100+00:00"
 title = "Why this matters"
 state = "draft"
-body = "## Why this matters\n\nWithout a shared resolver, every CLI/MCP/HTTP surface drifts in subtle ways (different minimum prefix lengths, different handling of slugs, different error codes). Pinning the resolver to `<x>-api` keeps the public contract identical across all transports."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

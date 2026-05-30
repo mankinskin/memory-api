@@ -2,7 +2,6 @@ id = "3bf63d3d-ce03-414d-960a-181fb1a3b38d"
 created_at = "2026-05-22T17:31:59.675242500+00:00"
 title = "Validation"
 state = "draft"
-body = "### Validation\n- State transition checks:\n- Duplication/conflict checks:\n- Acceptance-criteria quality checks:"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

@@ -2,7 +2,6 @@ id = "554241c0-9f79-4a85-82c2-90119a8100cb"
 created_at = "2026-05-22T17:31:59.041385900+00:00"
 title = "Scope"
 state = "draft"
-body = "## Scope\n\n- Create new tickets from issues or requested work.\n- Review ticket quality (clarity, risk, testability, lifecycle readiness).\n- Refine ticket fields and body content using research, user interviews, and implementation planning.\n- Split composite work into sub-tickets and connect dependencies when needed."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

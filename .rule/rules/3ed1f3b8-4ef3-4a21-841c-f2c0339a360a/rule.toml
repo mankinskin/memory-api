@@ -2,7 +2,6 @@ id = "3ed1f3b8-4ef3-4a21-841c-f2c0339a360a"
 created_at = "2026-05-26T16:20:01.719021800+00:00"
 title = "Stable envelope"
 state = "draft"
-body = "## Stable envelope\n\nJSON output is always a single envelope object. The top-level keys are `payload` (on success) or `code`/`message`/`request_id` (on failure), plus an optional `request_id` echoed back at the top level. Commands never emit a bare `[ ... ]` array or a stream of newline-delimited objects."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

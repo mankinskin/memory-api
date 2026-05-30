@@ -120,7 +120,7 @@ impl EntityFs {
         fs::create_dir_all(&temp_dir)?;
         self.write_manifest(&temp_dir, manifest)?;
         if let Some(text) = body {
-            fs::write(temp_dir.join("description.md"), text)?;
+            fs::write(temp_dir.join(self.config.body_file), text)?;
         }
 
         fs::rename(&temp_dir, &final_dir).map_err(|e| {
@@ -336,7 +336,7 @@ impl EntityFs {
         result
     }
 
-    /// Write or overwrite the `description.md` file for an entity.
+    /// Write or overwrite the configured body markdown file for an entity.
     pub fn write_description(
         &self,
         entity_path: &Path,
@@ -344,19 +344,26 @@ impl EntityFs {
     ) -> Result<(), StorageError> {
         let lock_path = entity_path.join(self.config.lock_file);
         let lock_file = acquire_lock(&lock_path)?;
-        let result = fs::write(entity_path.join("description.md"), text)
+        let result = fs::write(entity_path.join(self.config.body_file), text)
             .map_err(StorageError::Io);
         release_lock(&lock_file, &lock_path);
         result
     }
 
-    /// Read text content of `description.md`. Returns `None` if not present.
+    /// Read text content of the configured body markdown file.
+    ///
+    /// When a domain has migrated away from `description.md`, this also falls
+    /// back to the legacy filename so older folders remain readable.
     pub fn read_description(
         &self,
         entity_path: &Path,
     ) -> Option<String> {
-        let desc = entity_path.join("description.md");
-        fs::read_to_string(&desc).ok()
+        let configured = entity_path.join(self.config.body_file);
+        fs::read_to_string(&configured).ok().or_else(|| {
+            (self.config.body_file != "description.md")
+                .then(|| entity_path.join("description.md"))
+                .and_then(|legacy| fs::read_to_string(&legacy).ok())
+        })
     }
 
     // ── internal ──────────────────────────────────────────────────────────────

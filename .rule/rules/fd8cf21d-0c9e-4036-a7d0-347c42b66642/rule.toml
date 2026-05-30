@@ -2,7 +2,6 @@ id = "fd8cf21d-0c9e-4036-a7d0-347c42b66642"
 created_at = "2026-05-26T16:19:58.731843+00:00"
 title = "Sections"
 state = "draft"
-body = "## Sections\n\n- `workspace-identifiers` — `--workspace-root` accepts only concrete checkout paths; `default`, `..`, and synthetic aliases are rejected.\n- `typed-error-envelopes` — All CLI/MCP/HTTP errors are JSON envelopes with `code`, `message`, and `request_id`.\n- `json-machine-surface` — `--json` emits a stable envelope; never dump raw `[items]` lists into stdout for machine consumers.\n- `api-crate-owns-model` — Each `<x>-api` crate owns the canonical model; CLI/MCP/HTTP tools are thin adapters.\n- `shared-id-prefix-resolver` — Ticket/spec/rule lookups share one id/prefix resolver instead of re-implementing per surface.\n- `depends-on-only-blocking-edge` — `depends_on` is the only blocking edge; other relations are non-blocking and use the edge index rather than Tantivy.\n- `append-only-history-materialized-index` — Stores write append-only history files and rebuild a materialized SQLite/Tantivy index from them.\n- `nested-workspace-resolution` — The workspace resolver normalises any path to a single owning root; parents declare child stores via `imports:`.\n- `required-states-one-way` — Tickets and specs use a `required_states` schema-gated, one-way state machine."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

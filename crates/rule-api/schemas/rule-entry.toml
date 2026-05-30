@@ -57,7 +57,7 @@ required = true
 
 [fields.body]
 field_type = "string"
-required = true
+required = false
 
 [fields.order_key]
 field_type = "integer"

@@ -2,7 +2,6 @@ id = "152dcba7-8bca-4231-b7e5-1970de77b539"
 created_at = "2026-05-25T21:51:54.484246+00:00"
 title = "Related tickets"
 state = "draft"
-body = "## Related tickets\n\n- [f4b0be64 Generate spec documents from canonical snippets via shared builder](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/f4b0be64-a2f5-4cb5-a476-b2b921d6ff02/ticket.toml)\n- [a5fe4c58 Adopt rule targets for generated spec artifacts](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/a5fe4c58-f59c-4d97-8ee6-3447724b5fac/ticket.toml)\n- [09641443 Add spec-local target mapping for generated spec artifacts](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/09641443-a8f2-479d-85cb-ea44a963595b/ticket.toml)\n- [b2ef1de1 Add spec sync-generated orchestration for rule-target-backed artifacts](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/b2ef1de1-5801-47c6-97c6-e3c5cd8d7dae/ticket.toml)\n- [7f869c33 Pilot migration for rule-target-backed spec artifacts](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/7f869c33-15ff-4959-8161-731844eef21b/ticket.toml)"
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

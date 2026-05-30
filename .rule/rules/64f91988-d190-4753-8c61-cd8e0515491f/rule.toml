@@ -2,7 +2,6 @@ id = "64f91988-d190-4753-8c61-cd8e0515491f"
 created_at = "2026-05-26T16:20:00.906580800+00:00"
 title = "Where envelopes appear"
 state = "draft"
-body = "## Where envelopes appear\n\n- CLIs with `--json` emit the envelope as their entire stdout payload on success or failure.\n- MCP tools return the envelope inside their result content blocks.\n- HTTP responses serialise the envelope as the JSON body with an HTTP status that mirrors `code`.\n- Human-readable CLI output (without `--json`) still uses `code` to choose the message and exit code, even when it prints prose."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

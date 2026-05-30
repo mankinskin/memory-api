@@ -82,7 +82,13 @@ flowchart LR
 
 ### Install the CLI tools
 
-Run these once from a checkout of `memory-viewers/memory-api` to place the binaries on your system `PATH` through Cargo's install directory.
+From the `context-engine` repo root, the shared installer can run the same four Cargo installs for you:
+
+```bash
+bash ./install-tools.sh --tool rule-cli --tool spec-cli --tool ticket-cli --tool audit-cli
+```
+
+If you are working directly from a `memory-viewers/memory-api` checkout instead of the repo root, run the underlying install commands from this workspace:
 
 ```bash
 cargo install --path tools/cli/rule-cli --bin rule
@@ -101,7 +107,7 @@ From the repository root, just run the tools. They discover an existing `.rule`,
 rule list
 spec list
 ticket board show
-audit run .
+audit run --repo .
 ```
 
 When you add the first rule, spec, or ticket, the canonical `rules/`, `specs/`, and `tickets/` folders are created automatically inside those local tool roots.
@@ -112,7 +118,7 @@ When you add the first rule, spec, or ticket, the canonical `rules/`, `specs/`, 
 rule sync-targets --config rule-targets.yaml
 spec refs <spec-id> validate
 ticket board show
-audit run .
+audit run --repo .
 ```
 
 - Regenerate repo docs from canonical rule content managed by `rule-api`.

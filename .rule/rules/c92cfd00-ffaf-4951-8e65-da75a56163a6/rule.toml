@@ -2,7 +2,6 @@ id = "c92cfd00-ffaf-4951-8e65-da75a56163a6"
 created_at = "2026-05-25T21:51:53.066625+00:00"
 title = "The current implementation covers both `body.md` generation and named `sections/"
 state = "draft"
-body = "The current implementation covers both `body.md` generation and named `sections/*.md` generation through shared snippet rendering and newline-preserving rewrites."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0

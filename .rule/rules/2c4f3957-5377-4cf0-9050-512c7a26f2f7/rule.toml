@@ -2,7 +2,6 @@ id = "2c4f3957-5377-4cf0-9050-512c7a26f2f7"
 created_at = "2026-05-25T21:51:53.257985100+00:00"
 title = "Next slice: rule-target-backed spec artifacts"
 state = "draft"
-body = "## Next slice: rule-target-backed spec artifacts\n\nThe next planned slice should let a spec consume `rule-api` target outputs without teaching `spec-api` to evaluate raw rule filters itself."
 feedback_helpful_count = 0
 feedback_mixed_count = 0
 feedback_not_helpful_count = 0
