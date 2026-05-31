@@ -391,6 +391,26 @@ fn board_show_text_output_stops_after_dashboard() {
 }
 
 #[test]
+fn board_show_immediate_actions_include_state_and_escaped_title() {
+    let s = Sandbox::new();
+    assert_eq!(s.ticket_json(&["init"])["status"], "ok");
+    let title = "Fix \"isometric\" layout defaults";
+    let next_ticket = create_ticket(&s, title);
+    let short_ticket = &next_ticket[..8];
+    let expected_action = format!(
+        "Board is clear. Start new {short_ticket} \"Fix \\\"isometric\\\" layout defaults\" next."
+    );
+
+    let show = s.ticket_json(&["board", "show"]);
+    assert_eq!(show["status"], "ok");
+    assert_eq!(show["actions"][0], expected_action.as_str());
+
+    let human = show["human"].as_str().unwrap();
+    assert!(human.contains("Immediate Actions:"));
+    assert!(human.contains(&expected_action));
+}
+
+#[test]
 fn next_text_output_uses_pretty_card_format() {
     let s = Sandbox::new();
     assert_eq!(s.ticket_json(&["init"])["status"], "ok");

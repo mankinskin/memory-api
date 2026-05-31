@@ -391,16 +391,14 @@ fn build_actions(
             snap.config.max_wip
         ));
     } else if let Some(next) = recommended_next.first() {
-        let short_ticket = short_ticket_value(&next.ticket_id);
+        let action_target = format_action_target(next);
         if current_work.is_empty() {
             actions.push(format!(
-                "Board is clear. Start {short_ticket} {} next.",
-                next.title
+                "Board is clear. Start {action_target} next.",
             ));
         } else {
             actions.push(format!(
-                "When you free capacity, start {short_ticket} {} next.",
-                next.title
+                "When you free capacity, start {action_target} next.",
             ));
         }
     } else if current_work.is_empty() {
@@ -449,6 +447,19 @@ fn non_empty_or_default(
 
 fn plural_suffix(count: u32) -> &'static str {
     if count == 1 { "y" } else { "ies" }
+}
+
+fn format_action_target(next: &BoardRecommendation) -> String {
+    let state = next.state.as_deref().unwrap_or("unknown");
+    let short_ticket = short_ticket_value(&next.ticket_id);
+    let title = quote_action_title(&next.title);
+
+    format!("{state} {short_ticket} {title}")
+}
+
+fn quote_action_title(title: &str) -> String {
+    let escaped = title.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
 }
 
 fn short_ticket_value(ticket_id: &str) -> String {
