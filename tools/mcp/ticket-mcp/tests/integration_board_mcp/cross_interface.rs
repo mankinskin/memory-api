@@ -314,12 +314,12 @@ async fn next_tickets_prefers_more_dependees_before_newer_candidates() {
         items[0]["id"].as_str(),
         Some(older_more_dependees.to_string().as_str())
     );
-    assert_eq!(items[0]["dependees"], 2);
+    assert_eq!(items[0]["dependee_count"], 2);
     assert_eq!(
         items[1]["id"].as_str(),
         Some(newer_fewer_dependees.to_string().as_str())
     );
-    assert_eq!(items[1]["dependees"], 0);
+    assert_eq!(items[1]["dependee_count"], 0);
 
     let _ = tmp;
 }

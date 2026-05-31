@@ -282,7 +282,7 @@ impl TicketServer {
 
     #[tool(
         name = "next_tickets",
-        description = "List unblocked tickets in any non-terminal state whose dependencies are all satisfied, ordered by workflow progress (closest to done first), then priority, then dependees (higher first), then newer creation time, with title as the last tiebreaker. Active or stale board entries are surfaced through exclusions and warnings; use board_show for the full board snapshot."
+        description = "List unblocked tickets in any non-terminal state whose dependencies are all satisfied, ordered by workflow progress (closest to done first), then priority, then dependee count (higher first), then newer creation time, with title as the last tiebreaker. Active or stale board entries are surfaced through exclusions and warnings; use board_show for the full board snapshot."
     )]
     pub async fn next_tickets(
         &self,

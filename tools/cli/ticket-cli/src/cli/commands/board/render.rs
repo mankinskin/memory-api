@@ -51,7 +51,7 @@ pub(crate) struct BoardRecommendation {
     pub state: Option<String>,
     pub priority: String,
     pub dependency_count: usize,
-    pub dependees: usize,
+    pub dependee_count: usize,
     pub became_actionable_at: Option<String>,
     pub last_blocker_progress_at: Option<String>,
     pub created_at: String,
@@ -115,7 +115,7 @@ pub(super) fn board_recommendation_to_json(
         "state": recommendation.state,
         "priority": recommendation.priority,
         "dependency_count": recommendation.dependency_count,
-        "dependees": recommendation.dependees,
+        "dependee_count": recommendation.dependee_count,
         "became_actionable_at": recommendation.became_actionable_at,
         "last_blocker_progress_at": recommendation.last_blocker_progress_at,
         "created_at": recommendation.created_at,
@@ -246,10 +246,10 @@ pub(crate) fn write_next_up(
         );
         let _ = writeln!(
             out,
-            "  state: {}  priority: {}  dependees: {}  dependency_count: {}",
+            "  state: {}  priority: {}  dependee_count: {}  dependency_count: {}",
             recommendation.state.as_deref().unwrap_or("-"),
             recommendation.priority,
-            recommendation.dependees,
+            recommendation.dependee_count,
             recommendation.dependency_count,
         );
         let _ = writeln!(

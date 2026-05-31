@@ -917,22 +917,22 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
     let next_items = next["items"].as_array().unwrap();
     assert!(next_items.len() >= 2);
     assert_eq!(next_items[0]["id"], older_more_dependees.as_str());
-    assert_eq!(next_items[0]["dependees"], 2);
+    assert_eq!(next_items[0]["dependee_count"], 2);
     assert_eq!(next_items[1]["id"], newer_fewer_dependees.as_str());
-    assert_eq!(next_items[1]["dependees"], 0);
+    assert_eq!(next_items[1]["dependee_count"], 0);
 
     let show = s.ticket_json(&["board", "show"]);
     assert_eq!(show["status"], "ok");
     let recommended = show["recommended_next"].as_array().unwrap();
     assert!(recommended.len() >= 2);
     assert_eq!(recommended[0]["ticket_id"], older_more_dependees.as_str());
-    assert_eq!(recommended[0]["dependees"], 2);
+    assert_eq!(recommended[0]["dependee_count"], 2);
     let first_created_at = recommended[0]["created_at"]
         .as_str()
         .expect("board show should preserve created_at");
     let pretty_created_at = format_expected_board_created_at(first_created_at);
     assert_eq!(recommended[1]["ticket_id"], newer_fewer_dependees.as_str());
-    assert_eq!(recommended[1]["dependees"], 0);
+    assert_eq!(recommended[1]["dependee_count"], 0);
 
     let human = show["human"].as_str().unwrap();
     assert!(human.contains(&format!(
@@ -940,7 +940,7 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
         &older_more_dependees[..8]
     )));
     assert!(human.contains(
-        "state: ready  priority: high  dependees: 2  dependency_count: 0"
+        "state: ready  priority: high  dependee_count: 2  dependency_count: 0"
     ));
     assert!(human.contains(&format!("created_at: {pretty_created_at}")));
     assert!(human.contains(&format!("ticket_id: {older_more_dependees}")));

@@ -143,7 +143,7 @@ pub enum TicketCommandCli {
     /// Return a JSON overview of ready tickets.
     #[command(name = "ready-overview")]
     ReadyOverview(ReadyOverviewArgs),
-    /// List unblocked, dependency-satisfied tickets ordered by workflow progress, priority, and dependees for worker agents.
+    /// List unblocked, dependency-satisfied tickets ordered by workflow progress, priority, and dependee count for worker agents.
     Next(NextArgs),
     /// Show the unresolved upstream blocker tree for a ticket, emphasizing frontier leaves.
     Blockers(BlockersArgs),

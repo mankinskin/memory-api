@@ -25,7 +25,7 @@ Store discovery:
 
 `next_tickets` uses the same convergence-first ranking as `ticket next`. A prerequisite in an earlier workflow state can be promoted ahead of otherwise similar candidates when more advanced dependents are still waiting on it.
 
-Returned `next_tickets` items include the same explainability fields used by the CLI, including `dependees`, `transitive_reverse_dependents`, `affected_reverse_dependent_reach`, `max_affected_dependent_state`, and `dependency_state_gap`.
+Returned `next_tickets` items include the same explainability fields used by the CLI, including `dependee_count`, `transitive_reverse_dependents`, `affected_reverse_dependent_reach`, `max_affected_dependent_state`, and `dependency_state_gap`.
 
 `health_check` emits `dependency_convergence` findings with dependent and prerequisite ids, both states, and the reach or state-gap evidence needed for triage.
 

@@ -146,7 +146,7 @@ impl TicketServer {
                     "optional": ["root", "all", "ids", "depth", "direction"],
                 },
                 "next_tickets": {
-                    "description": "List unblocked ready tickets ordered by workflow progress, priority, and dependees for worker agents",
+                    "description": "List unblocked ready tickets ordered by workflow progress, priority, and dependee count for worker agents",
                     "required": ["workspace"],
                     "optional": ["limit", "filter"],
                 },

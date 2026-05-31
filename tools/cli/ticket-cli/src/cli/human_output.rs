@@ -236,8 +236,9 @@ fn write_frontier_items(
             .get("priority")
             .and_then(Value::as_str)
             .unwrap_or("none");
-        let dependees = item
-            .get("dependees")
+        let dependee_count = item
+            .get("dependee_count")
+            .or_else(|| item.get("dependees"))
             .and_then(Value::as_u64)
             .unwrap_or(0);
         let dependency_count = item
@@ -275,10 +276,10 @@ fn write_frontier_items(
         );
         let _ = writeln!(
             out,
-            "  state: {}  priority: {}  dependees: {}  dependency_count: {}",
+            "  state: {}  priority: {}  dependee_count: {}  dependency_count: {}",
             state,
             priority,
-            dependees,
+            dependee_count,
             dependency_count,
         );
         let _ = writeln!(

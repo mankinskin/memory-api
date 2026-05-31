@@ -340,8 +340,11 @@ pub(crate) fn parse_board_recommendation(
             .get("dependency_count")
             .and_then(Value::as_u64)
             .unwrap_or(0) as usize,
-        dependees: value.get("dependees").and_then(Value::as_u64).unwrap_or(0)
-            as usize,
+        dependee_count: value
+            .get("dependee_count")
+            .or_else(|| value.get("dependees"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize,
         became_actionable_at: value
             .get("became_actionable_at")
             .and_then(Value::as_str)

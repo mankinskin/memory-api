@@ -16,8 +16,8 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 
 - Candidate tickets are ordered first by workflow progress using the schema state index, with tickets closest to terminal states ranked first.
 - Ties on workflow progress are ordered by priority.
-- Ties on workflow progress and priority are ordered by `dependees`, a derived count of incoming `depends_on` edges whose target is the candidate ticket. Higher `dependees` counts rank first.
-- Ties on workflow progress, priority, and `dependees` are ordered chronologically by `created_at`, with newer tickets first.
+- Ties on workflow progress and priority are ordered by `dependee_count`, a derived count of incoming `depends_on` edges whose target is the candidate ticket. Higher `dependee_count` values rank first.
+- Ties on workflow progress, priority, and `dependee_count` are ordered chronologically by `created_at`, with newer tickets first.
 - The last user-visible tiebreaker is alphabetical by title.
 - Implementations may add one final deterministic fallback after title comparison to avoid unstable ordering for identical titles.
 
@@ -27,7 +27,7 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - `ticket board show` recommendations must reuse the same candidate ordering as `ticket next` rather than drifting into a separate ranking scheme.
 - `ticket board show` must expose at least 10 `Next Up` recommendations when at least 10 candidates exist.
 - `ticket next` and `ticket-mcp` `next_tickets` must not embed a second board snapshot; `board show` remains the single board surface, while `next` surfaces only candidate data plus board-aware exclusions or warnings when relevant.
-- `ticket next`, `ticket board show` recommendation JSON, and `ticket-mcp` `next_tickets` items must surface the derived numeric `dependees` field.
+- `ticket next`, `ticket board show` recommendation JSON, and `ticket-mcp` `next_tickets` items must surface the derived numeric `dependee_count` field.
 - The CLI `ticket board show` human `Next Up` section must render each recommendation as a compact labeled card that keeps all surfaced recommendation keys while prioritizing rank, short ticket id, and title.
 - Default non-JSON `ticket next` output must render its candidate `items` using the same compact labeled card format as `ticket board show` `Next Up`, while preserving next-specific metadata like `count`, `warnings`, and `excluded_by_board`.
 - Tool descriptions and user-facing contract text must describe the actual ordering keys.
@@ -37,20 +37,20 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - Existing board-aware exclusion behavior stays unchanged.
 - Board-aware warnings and `excluded_by_board` metadata may remain on `next` surfaces, but full board load/state belongs to `board show`.
 - Human-readable `ticket board show` output must stop after the board-specific dashboard instead of appending a second raw structured dump; `--json` remains the full machine-readable payload surface.
-- Existing state and priority ranking stay ahead of `dependees`, chronology, and title ordering.
+- Existing state and priority ranking stay ahead of `dependee_count`, chronology, and title ordering.
 
 ## Acceptance criteria
 
-- `ticket next` returns higher-`dependees` tickets ahead of lower-`dependees` tickets when state and priority are equal, even when the lower-`dependees` ticket is newer.
-- `ticket board show` recommends higher-`dependees` tickets ahead of lower-`dependees` tickets when state and priority are equal, even when the lower-`dependees` ticket is newer.
+- `ticket next` returns higher-`dependee_count` tickets ahead of lower-`dependee_count` tickets when state and priority are equal, even when the lower-`dependee_count` ticket is newer.
+- `ticket board show` recommends higher-`dependee_count` tickets ahead of lower-`dependee_count` tickets when state and priority are equal, even when the lower-`dependee_count` ticket is newer.
 - `ticket board show` returns 10 `recommended_next` entries when at least 10 candidates are available.
-- `ticket-mcp` `next_tickets` returns higher-`dependees` tickets ahead of lower-`dependees` tickets when state and priority are equal, even when the lower-`dependees` ticket is newer.
-- `ticket next`, `ticket board show`, and `ticket-mcp` `next_tickets` surface the numeric `dependees` field for each recommended item.
+- `ticket-mcp` `next_tickets` returns higher-`dependee_count` tickets ahead of lower-`dependee_count` tickets when state and priority are equal, even when the lower-`dependee_count` ticket is newer.
+- `ticket next`, `ticket board show`, and `ticket-mcp` `next_tickets` surface the numeric `dependee_count` field for each recommended item.
 - `ticket board show` recommendation JSON preserves `created_at`, and the CLI `Next Up` cards print all recommendation keys while formatting `created_at` as a compact human timestamp that includes the year.
 - Default non-JSON `ticket board show` output does not append the generic structured `[recommended_next]` dump after the board-specific human renderer.
 - Default non-JSON `ticket next` output does not fall back to the generic `[items]` object dump; it uses the same compact recommendation cards as `ticket board show`.
 - `ticket next` and `ticket-mcp` `next_tickets` do not return a top-level `board` snapshot field.
-- When state, priority, `dependees`, and creation timestamp are equal, the ordering falls back to title order.
+- When state, priority, `dependee_count`, and creation timestamp are equal, the ordering falls back to title order.
 
 ## Traceability
 

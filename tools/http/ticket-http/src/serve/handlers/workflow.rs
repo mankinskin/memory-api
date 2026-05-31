@@ -91,7 +91,7 @@ pub struct WorkflowCandidateItem {
     pub priority: String,
     pub dependency_count: usize,
     pub remaining_blocker_count: usize,
-    pub dependees: usize,
+    pub dependee_count: usize,
     pub transitive_reverse_dependents: usize,
     pub affected_reverse_dependent_reach: usize,
     pub max_affected_dependent_state: Option<String>,
@@ -504,7 +504,7 @@ fn build_candidate_items(
             remaining_blocker_count: model
                 .unresolved_dependencies_excluding(ticket_id, satisfied_ids)
                 .len(),
-            dependees: model.dependee_count(ticket_id),
+            dependee_count: model.dependee_count(ticket_id),
             transitive_reverse_dependents: metrics.transitive_reverse_dependents,
             affected_reverse_dependent_reach: metrics.affected_reverse_dependent_reach,
             max_affected_dependent_state: metrics.max_affected_dependent_state,
