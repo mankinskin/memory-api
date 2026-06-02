@@ -212,6 +212,22 @@ impl WorkflowModel {
         candidates.sort_by(|left, right| self.compare_candidate_ids(*left, *right));
     }
 
+    /// Return the set of ticket IDs whose title starts with `filter`, or `None`
+    /// when no filter is supplied.  Adapters should call this instead of
+    /// re-implementing title-prefix filtering locally.
+    pub fn filter_scope(
+        tickets: &[IndexedTicket],
+        filter: Option<&str>,
+    ) -> Option<HashSet<Uuid>> {
+        filter.map(|prefix| {
+            tickets
+                .iter()
+                .filter(|t| t.title.as_deref().unwrap_or("").starts_with(prefix))
+                .map(|t| t.id)
+                .collect()
+        })
+    }
+
     /// Collect all transitive reverse dependents that directly or indirectly
     /// rely on the supplied ticket.
     pub fn reverse_dependents(

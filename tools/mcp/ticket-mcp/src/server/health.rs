@@ -4,21 +4,13 @@ use std::collections::{
 };
 
 use ticket_api::{
+    health::collect_findings,
     model::edge::EdgeRecord,
     storage::indexed::IndexedTicket,
     workflow::WorkflowModel,
 };
 
 use super::*;
-
-mod findings;
-
-pub(super) struct HealthContext {
-    pub(super) tickets: Vec<IndexedTicket>,
-    pub(super) all_edges: Vec<EdgeRecord>,
-    pub(super) done_ids: HashSet<Uuid>,
-    pub(super) workflow: WorkflowModel,
-}
 
 impl TicketServer {
     pub(crate) async fn run_health_checks(
@@ -46,13 +38,21 @@ impl TicketServer {
                 direction.as_deref(),
                 &all_edges,
             )?;
-            let context = build_health_context(store, tickets, all_edges)
-                .map_err(TicketServer::store_err)?;
-            let report = findings::collect_findings(store, &context)?;
-            let tickets_checked = context
-                .tickets
+            let workflow = WorkflowModel::build(
+                store,
+                store.list(None, None, None).map_err(Self::store_err)?,
+                all_edges.clone(),
+            )
+            .map_err(Self::store_err)?;
+            let report = collect_findings(store, &tickets, &all_edges, &workflow);
+            let tickets_checked = tickets
                 .iter()
-                .filter(|ticket| !context.done_ids.contains(&ticket.id))
+                .filter(|ticket| {
+                    !matches!(
+                        ticket.state.as_deref(),
+                        Some("done") | Some("cancelled")
+                    )
+                })
                 .count();
 
             Self::json_result(&serde_json::json!({
@@ -207,31 +207,4 @@ fn direction_matches(
     }
 }
 
-fn build_health_context(
-    store: &TicketStore,
-    tickets: Vec<IndexedTicket>,
-    all_edges: Vec<EdgeRecord>,
-) -> Result<HealthContext, ticket_api::error::StorageError> {
-    let done_ids = done_ticket_ids(&tickets);
-    let workflow =
-        WorkflowModel::build(store, store.list(None, None, None)?, all_edges.clone())?;
 
-    Ok(HealthContext {
-        tickets,
-        all_edges,
-        done_ids,
-        workflow,
-    })
-}
-
-fn done_ticket_ids(tickets: &[IndexedTicket]) -> HashSet<Uuid> {
-    tickets
-        .iter()
-        .filter(|ticket| is_done_state(ticket.state.as_deref()))
-        .map(|ticket| ticket.id)
-        .collect()
-}
-
-fn is_done_state(state: Option<&str>) -> bool {
-    matches!(state, Some("done" | "cancelled"))
-}

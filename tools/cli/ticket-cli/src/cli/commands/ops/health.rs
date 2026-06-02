@@ -11,6 +11,7 @@ use serde_json::{
     json,
 };
 use ticket_api::{
+    health::collect_findings,
     model::edge::EdgeRecord,
     storage::{
         indexed::IndexedTicket,
@@ -26,15 +27,6 @@ use crate::cli::{
     helpers::parse_fields,
 };
 
-mod findings;
-
-use findings::collect_findings;
-
-pub(super) struct HealthContext {
-    pub(super) done_ids: HashSet<Uuid>,
-    pub(super) workflow: WorkflowModel,
-}
-
 pub(super) fn run(
     args: HealthArgs,
     store: &TicketStore,
@@ -43,21 +35,29 @@ pub(super) fn run(
     let field_filters = parse_field_filters(&args)?;
     let tickets = scoped_tickets(&args, store, &all_edges)?;
     let tickets = apply_field_filters(tickets, &field_filters);
-    let context = build_health_context(store, &tickets, &all_edges)?;
-    let (summary, findings) =
-        collect_findings(store, &tickets, &all_edges, &context);
+    let workflow = WorkflowModel::build(
+        store,
+        store.list(None, None, None)?,
+        all_edges.to_vec(),
+    )?;
+    let report = collect_findings(store, &tickets, &all_edges, &workflow);
     let tickets_checked = tickets
         .iter()
-        .filter(|ticket| !context.done_ids.contains(&ticket.id))
+        .filter(|ticket| {
+            !matches!(
+                ticket.state.as_deref(),
+                Some("done") | Some("cancelled")
+            )
+        })
         .count();
 
     Ok(json!({
         "command": "health",
         "status": "ok",
         "tickets_checked": tickets_checked,
-        "finding_count": findings.len(),
-        "summary": summary,
-        "findings": findings,
+        "finding_count": report.findings.len(),
+        "summary": report.summary,
+        "findings": report.findings,
     }))
 }
 
@@ -231,29 +231,4 @@ fn matches_filters(
     })
 }
 
-fn build_health_context(
-    store: &TicketStore,
-    tickets: &[IndexedTicket],
-    all_edges: &[EdgeRecord],
-) -> Result<HealthContext, CliRunError> {
-    let done_ids = done_ticket_ids(tickets);
-    let workflow = WorkflowModel::build(
-        store,
-        store.list(None, None, None)?,
-        all_edges.to_vec(),
-    )?;
 
-    Ok(HealthContext { done_ids, workflow })
-}
-
-fn done_ticket_ids(tickets: &[IndexedTicket]) -> HashSet<Uuid> {
-    tickets
-        .iter()
-        .filter(|ticket| is_done_state(ticket.state.as_deref()))
-        .map(|ticket| ticket.id)
-        .collect()
-}
-
-fn is_done_state(state: Option<&str>) -> bool {
-    matches!(state, Some("done" | "cancelled"))
-}

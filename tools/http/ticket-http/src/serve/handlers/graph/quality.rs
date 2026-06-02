@@ -15,6 +15,7 @@ use axum::{
     },
 };
 use ticket_api::{
+    health::collect_findings,
     model::edge::EdgeRecord,
     storage::{
         indexed::IndexedTicket,
@@ -33,15 +34,6 @@ use super::{
     HealthCheckQuery,
     HealthCheckResponse,
 };
-
-mod findings;
-
-use findings::collect_findings;
-
-struct HealthContext {
-    done_ids: HashSet<Uuid>,
-    workflow: WorkflowModel,
-}
 
 pub(super) async fn handle_health_check(
     state: AppState,
@@ -65,23 +57,36 @@ pub(super) async fn handle_health_check(
             Err(response) => return response,
         };
 
-    let context = match build_health_context(&store, &tickets, &all_edges) {
-        Ok(context) => context,
+    let workflow = match WorkflowModel::build(
+        &store,
+        store.list(None, None, None).map_err(|e| storage_err(e, &request_id)).ok().unwrap_or_default(),
+        all_edges.clone(),
+    ) {
+        Ok(w) => w,
         Err(error) => return storage_err(error, &request_id),
     };
-    let (summary, findings) =
-        collect_findings(&store, &tickets, &all_edges, &context);
+    let report = collect_findings(&store, &tickets, &all_edges, &workflow);
     let tickets_checked = tickets
         .iter()
-        .filter(|ticket| !context.done_ids.contains(&ticket.id))
+        .filter(|ticket| {
+            !matches!(
+                ticket.state.as_deref(),
+                Some("done") | Some("cancelled")
+            )
+        })
         .count();
+    let findings: Vec<serde_json::Value> = report
+        .findings
+        .into_iter()
+        .map(|f| serde_json::to_value(f).unwrap_or_default())
+        .collect();
 
     Json(HealthCheckResponse {
         request_id,
         workspace: params.workspace,
         tickets_checked,
         finding_count: findings.len(),
-        summary,
+        summary: report.summary,
         findings,
     })
     .into_response()
@@ -227,29 +232,4 @@ fn load_live_tickets(
         .collect()
 }
 
-fn build_health_context(
-    store: &TicketStore,
-    tickets: &[IndexedTicket],
-    all_edges: &[EdgeRecord],
-) -> Result<HealthContext, ticket_api::error::StorageError> {
-    let done_ids = done_ticket_ids(tickets);
-    let workflow = WorkflowModel::build(
-        store,
-        store.list(None, None, None)?,
-        all_edges.to_vec(),
-    )?;
 
-    Ok(HealthContext { done_ids, workflow })
-}
-
-fn done_ticket_ids(tickets: &[IndexedTicket]) -> HashSet<Uuid> {
-    tickets
-        .iter()
-        .filter(|ticket| is_done_state(ticket.state.as_deref()))
-        .map(|ticket| ticket.id)
-        .collect()
-}
-
-fn is_done_state(state: Option<&str>) -> bool {
-    matches!(state, Some("done" | "cancelled"))
-}

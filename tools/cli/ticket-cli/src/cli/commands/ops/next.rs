@@ -36,7 +36,7 @@ pub(super) fn run(
 ) -> Result<Value, CliRunError> {
     let board_snap = store.board_show(None).ok();
     let all_tickets = store.list(None, None, None)?;
-    let filtered_scope = filtered_ticket_scope(&all_tickets, args.filter.as_deref());
+    let filtered_scope = WorkflowModel::filter_scope(&all_tickets, args.filter.as_deref());
     let model = WorkflowModel::build(store, all_tickets, store.list_all_edges()?)?;
     let root_id = args
         .root
@@ -67,9 +67,15 @@ pub(super) fn run(
         filter_board_candidates(candidates, board_snap.as_ref(), args.no_board);
     let limited_candidates = limit_candidates(candidates, args.limit);
 
+    let active_index_root = store.index_root.display().to_string();
     let mut payload = json!({
         "command": "next",
         "status": "ok",
+        "scope": {
+            "active_index_root": active_index_root,
+            "filter": &args.filter,
+            "root": root_id.map(|id| id.to_string()),
+        },
         "count": limited_candidates.len(),
         "items": build_items(&limited_candidates, &model),
         "excluded_by_board": excluded_by_board,
@@ -209,21 +215,6 @@ fn build_next_scope(
             satisfied_ids,
         ),
     }
-}
-
-fn filtered_ticket_scope(
-    tickets: &[ticket_api::storage::indexed::IndexedTicket],
-    filter: Option<&str>,
-) -> Option<HashSet<Uuid>> {
-    filter.map(|prefix| {
-        tickets
-            .iter()
-            .filter(|ticket| {
-                ticket.title.as_deref().unwrap_or("").starts_with(prefix)
-            })
-            .map(|ticket| ticket.id)
-            .collect()
-    })
 }
 
 fn intersect_scopes(

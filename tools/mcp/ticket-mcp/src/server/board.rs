@@ -18,7 +18,13 @@ impl TicketServer {
         let workspace = input.workspace;
         let agent_id = input.agent_id;
 
+        let active_index_root = self
+            .resolve_workspace_root(&workspace)
+            .map(|path| path.display().to_string())
+            .unwrap_or_default();
+
         self.with_store_ext(&workspace.clone(), move |store| {
+            let workspace = workspace.as_str();
             let agent_ref = agent_id.as_deref();
             let snapshot =
                 store.board_show(agent_ref).map_err(Self::board_err)?;
@@ -27,6 +33,10 @@ impl TicketServer {
 
             Self::json_result(&serde_json::json!({
                 "workspace": workspace,
+                "scope": {
+                    "workspace": workspace,
+                    "active_index_root": &active_index_root,
+                },
                 "snapshot": final_snapshot,
                 "heartbeat": heartbeat_value(&heartbeat_entries),
             }))

@@ -21,10 +21,7 @@ use serde::{
     Serialize,
 };
 use ticket_api::{
-    storage::{
-        indexed::IndexedTicket,
-        store::TicketStore,
-    },
+    storage::store::TicketStore,
     workflow::{
         WorkflowModel,
         WorkflowTreeNode,
@@ -126,10 +123,21 @@ pub struct WorkflowTreeItem {
 }
 
 #[derive(Serialize)]
+pub struct ScopeMetadata {
+    pub workspace: String,
+    pub active_index_root: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
+}
+
+#[derive(Serialize)]
 pub struct WorkflowNextResponse {
     pub request_id: String,
     pub active_workspace: String,
     pub workspace: String,
+    pub scope: ScopeMetadata,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub root: Option<WorkflowRootSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -185,6 +193,9 @@ pub async fn workflow_next(
 
     tokio::task::spawn_blocking(move || {
         let request_id = task_request_id.clone();
+        let scope_root = params.root.map(|id| id.to_string());
+        let scope_filter = params.filter.clone();
+        let active_index_root = store.index_root.display().to_string();
         let tickets = match store.list(None, None, None) {
             Ok(tickets) => tickets,
             Err(error) => return storage_err(error, &request_id),
@@ -205,7 +216,7 @@ pub async fn workflow_next(
             }
         }
 
-        let filtered_scope = filtered_ticket_scope(&tickets, params.filter.as_deref());
+        let filtered_scope = WorkflowModel::filter_scope(&tickets, params.filter.as_deref());
         let satisfied_ids = params.root.into_iter().collect::<HashSet<_>>();
         let next_scope = match params.root {
             Some(root_id) => match build_next_scope(
@@ -251,6 +262,12 @@ pub async fn workflow_next(
             request_id: request_id.clone(),
             active_workspace: workspace.clone(),
             workspace: workspace.clone(),
+            scope: ScopeMetadata {
+                workspace: workspace.clone(),
+                active_index_root,
+                filter: scope_filter,
+                root: scope_root,
+            },
             root: next_scope.as_ref().map(|scope| scope.root.clone()),
             reachable_dependents: next_scope
                 .as_ref()
@@ -402,19 +419,6 @@ fn resolve_workspace_request(
     request_id: &str,
 ) -> Result<(String, Arc<TicketStore>), Response> {
     state.resolve_public_workspace_request(requested_workspace, request_id)
-}
-
-fn filtered_ticket_scope(
-    tickets: &[IndexedTicket],
-    filter: Option<&str>,
-) -> Option<HashSet<Uuid>> {
-    filter.map(|prefix| {
-        tickets
-            .iter()
-            .filter(|ticket| ticket.title.as_deref().unwrap_or("").starts_with(prefix))
-            .map(|ticket| ticket.id)
-            .collect()
-    })
 }
 
 fn intersect_scopes(
@@ -700,6 +704,13 @@ mod tests {
         assert_eq!(items[1]["id"], steadier_newer.to_string());
         assert!(items[0]["became_actionable_at"].as_str().is_some());
         assert!(items[1]["became_actionable_at"].as_str().is_some());
+        assert_eq!(next["scope"]["workspace"], workspace.as_str());
+        assert!(
+            next["scope"]["active_index_root"].as_str().is_some(),
+            "scope.active_index_root should be present",
+        );
+        assert!(next["scope"]["filter"].is_null());
+        assert!(next["scope"]["root"].is_null());
 
         let root = store
             .create(
@@ -755,6 +766,12 @@ mod tests {
         assert_eq!(scoped["blocked_dependents"], 1);
         assert_eq!(scoped["remaining_blocker_count"], 1);
         assert_eq!(scoped["items"][0]["id"], scoped_blocker.to_string());
+        assert_eq!(scoped["scope"]["workspace"], workspace.as_str());
+        assert!(
+            scoped["scope"]["active_index_root"].as_str().is_some(),
+            "scope.active_index_root should be present in scoped response",
+        );
+        assert_eq!(scoped["scope"]["root"], root.to_string());
     }
 
     #[tokio::test]

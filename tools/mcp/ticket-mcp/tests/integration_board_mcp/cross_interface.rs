@@ -122,6 +122,7 @@ async fn next_tickets_excludes_board_active_and_surfaces_wip_warning() {
             workspace: ws(),
             limit: None,
             filter: None,
+            root: None,
         }))
         .await
         .expect("next_tickets ok");
@@ -218,6 +219,7 @@ async fn next_tickets_prefers_newer_candidates_before_older_ones() {
             workspace: ws(),
             limit: None,
             filter: None,
+            root: None,
         }))
         .await
         .expect("next_tickets ok");
@@ -299,6 +301,7 @@ async fn next_tickets_prefers_more_dependees_before_newer_candidates() {
             workspace: ws(),
             limit: None,
             filter: None,
+            root: None,
         }))
         .await
         .expect("next_tickets ok");
@@ -390,6 +393,7 @@ async fn next_tickets_prefer_recently_actionable_candidates_and_surface_timing_m
             workspace: ws(),
             limit: None,
             filter: None,
+            root: None,
         }))
         .await
         .expect("next_tickets ok");
@@ -476,6 +480,7 @@ async fn next_tickets_promote_convergence_before_unrelated_ready_candidates() {
             workspace: ws(),
             limit: None,
             filter: None,
+            root: None,
         }))
         .await
         .expect("next_tickets ok");

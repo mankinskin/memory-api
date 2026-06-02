@@ -6,6 +6,7 @@ use ticket_api::{
     storage::board::BoardSnapshot,
     workflow::WorkflowModel,
 };
+use uuid::Uuid;
 
 use super::{
     types::*,
@@ -20,33 +21,80 @@ impl TicketServer {
         let limit = input.limit.unwrap_or(20).min(100);
         let filter = input.filter;
         let workspace = input.workspace;
+        let root = input.root;
 
-        let (items, excluded_by_board, warnings) = self
-            .with_store(&workspace, |store| {
+        // Resolve the active index root for scope metadata before entering
+        // the store closure so it is always present in the response.
+        let active_index_root = self
+            .resolve_workspace_root(&workspace)
+            .map(|path| path.display().to_string())
+            .unwrap_or_default();
+
+        let (items, excluded_by_board, warnings, resolved_root_id) = self
+            .with_store_ext(&workspace, |store| {
                 let board_snap = store.board_show(None).ok();
-                let tickets = store.list(None, None, None)?;
+                let tickets =
+                    store.list(None, None, None).map_err(Self::store_err)?;
                 let filtered_scope =
-                    filtered_ticket_scope(&tickets, filter.as_deref());
-                let model =
-                    WorkflowModel::build(store, tickets, store.list_all_edges()?)?;
-                let mut candidates =
-                    model.actionable_candidate_ids(filtered_scope.as_ref());
+                    WorkflowModel::filter_scope(&tickets, filter.as_deref());
+                let model = WorkflowModel::build(
+                    store,
+                    tickets,
+                    store.list_all_edges().map_err(Self::store_err)?,
+                )
+                .map_err(Self::store_err)?;
+
+                let root_id = root
+                    .as_deref()
+                    .map(|r| Self::resolve_uuid_with(store, r))
+                    .transpose()?;
+
+                let root_remaining_blockers = root_id.map(|rid| {
+                    let satisfied = HashSet::from([rid]);
+                    let dependents = model.reverse_dependents(rid);
+                    model.remaining_blockers_for_dependents_with_satisfied(
+                        &dependents,
+                        &satisfied,
+                    )
+                });
+
+                let candidate_scope = intersect_option_scopes(
+                    filtered_scope,
+                    root_remaining_blockers,
+                );
+
+                let satisfied_ids: HashSet<Uuid> =
+                    root_id.into_iter().collect();
+                let mut candidates = if satisfied_ids.is_empty() {
+                    model.actionable_candidate_ids(candidate_scope.as_ref())
+                } else {
+                    model.actionable_candidate_ids_with_satisfied(
+                        candidate_scope.as_ref(),
+                        &satisfied_ids,
+                    )
+                };
                 model.sort_candidate_ids(&mut candidates);
-                let excluded_by_board =
-                    excluded_by_board(board_snap.as_ref(), &candidates);
+                let excl = excluded_by_board(board_snap.as_ref(), &candidates);
                 filter_board_candidates(&mut candidates, board_snap.as_ref());
                 candidates.truncate(limit);
 
                 Ok((
                     ranked_items(&candidates, &model),
-                    excluded_by_board,
+                    excl,
                     warnings(board_snap.as_ref()),
+                    root_id.map(|id| id.to_string()),
                 ))
             })
             .await?;
 
         Self::json_result(&serde_json::json!({
             "workspace": workspace,
+            "scope": {
+                "workspace": workspace,
+                "active_index_root": active_index_root,
+                "filter": filter,
+                "root": resolved_root_id,
+            },
             "count": items.len(),
             "items": items,
             "excluded_by_board": excluded_by_board,
@@ -55,18 +103,18 @@ impl TicketServer {
     }
 }
 
-fn filtered_ticket_scope(
-    all: &[ticket_api::storage::indexed::IndexedTicket],
-    filter: Option<&str>,
+fn intersect_option_scopes(
+    a: Option<HashSet<Uuid>>,
+    b: Option<HashSet<Uuid>>,
 ) -> Option<HashSet<Uuid>> {
-    filter.map(|prefix| {
-        all.iter()
-            .filter(|ticket| {
-                ticket.title.as_deref().unwrap_or("").starts_with(prefix)
-            })
-            .map(|ticket| ticket.id)
-            .collect()
-    })
+    match (a, b) {
+        (Some(set_a), Some(set_b)) => {
+            Some(set_a.intersection(&set_b).copied().collect())
+        }
+        (Some(set_a), None) => Some(set_a),
+        (None, Some(set_b)) => Some(set_b),
+        (None, None) => None,
+    }
 }
 
 fn excluded_by_board(

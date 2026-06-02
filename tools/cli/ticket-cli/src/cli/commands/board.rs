@@ -153,10 +153,14 @@ fn cmd_board_show(
     let actions = display.actions.clone();
     let human = render_board_human(&snap, &display);
     let file_ownership: Value = json!(snap.file_ownership);
+    let active_index_root = store.index_root.display().to_string();
 
     Ok(json!({
         "command": "board_show",
         "status": "ok",
+        "scope": {
+            "active_index_root": active_index_root,
+        },
         "captured_at": snap.captured_at,
         "active_count": snap.active_count,
         "stale_count": snap.stale_count,
