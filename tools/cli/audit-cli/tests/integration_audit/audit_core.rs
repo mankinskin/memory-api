@@ -52,7 +52,11 @@ fn audit_collects_findings_and_prunes_stale_index_entries() {
                 report
                     .findings
                     .iter()
-                    .any(|finding| finding.id == "coverage_tool_missing")
+                    .any(|finding| {
+                        finding.id == "coverage_tool_missing"
+                            || finding.id
+                                == "coverage_nested_invocation_skipped"
+                    })
             );
         },
         TrialStatus::Failed => {

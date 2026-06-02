@@ -1,6 +1,16 @@
 use std::{
-    path::Path,
+    env,
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
+    process,
     process::Command,
+    time::{
+        SystemTime,
+        UNIX_EPOCH,
+    },
 };
 
 use serde_json::{
@@ -22,7 +32,6 @@ use super::{
     CoverageTrialResult,
     append_package_args,
     cargo_scope,
-    run_command,
     trim_output,
 };
 
@@ -63,6 +72,10 @@ pub(super) fn collect_coverage(
         });
     }
 
+    if env::var_os("CARGO_LLVM_COV").is_some() {
+        return Ok(nested_coverage_tool_result());
+    }
+
     let version_probe = Command::new("cargo")
         .arg("llvm-cov")
         .arg("--version")
@@ -76,9 +89,22 @@ pub(super) fn collect_coverage(
         return Ok(missing_coverage_tool_result());
     }
 
-    let mut args = vec!["llvm-cov".to_string(), "--json-summary".to_string()];
+    let mut args = vec![
+        "llvm-cov".to_string(),
+        "--json".to_string(),
+        "--summary-only".to_string(),
+        "--ignore-run-fail".to_string(),
+        "--no-clean".to_string(),
+    ];
+    let target_dir = coverage_target_dir(repo_root);
     append_package_args(&mut args, &cargo_scope.package_names);
-    let output = run_command(repo_root, "cargo", args)?;
+    let output = Command::new("cargo")
+        .args(&args)
+        .current_dir(repo_root)
+        .env("CARGO_LLVM_COV_TARGET_DIR", &target_dir)
+        .output();
+    let _ = fs::remove_dir_all(&target_dir);
+    let output = output?;
 
     if !output.status.success() {
         return Ok(CoverageTrialResult {
@@ -201,6 +227,17 @@ pub(super) fn collect_coverage(
     })
 }
 
+fn coverage_target_dir(repo_root: &Path) -> PathBuf {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    repo_root
+        .join("target")
+        .join("audit-llvm-cov")
+        .join(format!("{}-{}", process::id(), timestamp))
+}
+
 fn missing_coverage_tool_result() -> CoverageTrialResult {
     CoverageTrialResult {
         metric: CoverageSummary {
@@ -226,6 +263,41 @@ fn missing_coverage_tool_result() -> CoverageTrialResult {
             ],
             evidence: json!({
                 "command": "cargo llvm-cov --version",
+            }),
+        }],
+    }
+}
+
+fn nested_coverage_tool_result() -> CoverageTrialResult {
+    CoverageTrialResult {
+        metric: CoverageSummary {
+            status: TrialStatus::Unavailable,
+            line_percent: None,
+            covered_lines: None,
+            total_lines: None,
+            details: Some(
+                "Skipping nested cargo llvm-cov invocation because audit is already running under cargo llvm-cov."
+                    .to_string(),
+            ),
+        },
+        findings: vec![AuditFinding {
+            id: "coverage_nested_invocation_skipped".to_string(),
+            category: "coverage".to_string(),
+            severity: Severity::Medium,
+            summary:
+                "Coverage metrics are unavailable during nested cargo llvm-cov runs."
+                    .to_string(),
+            path: None,
+            line: None,
+            metric_name: "coverage_status".to_string(),
+            metric_value: json!("unavailable"),
+            threshold: None,
+            instructions: vec![
+                "Run audit outside cargo llvm-cov when you need repository coverage metrics.".to_string(),
+                "Keep nested audit invocations coverage-free so audit-cli integration tests can run under cargo llvm-cov.".to_string(),
+            ],
+            evidence: json!({
+                "env_var": "CARGO_LLVM_COV",
             }),
         }],
     }
