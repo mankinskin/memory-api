@@ -210,11 +210,23 @@ fn register_descendant_scan_roots(
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{
+        collections::BTreeMap,
+        fs,
+    };
 
+    use serde::Deserialize;
     use tempfile::tempdir;
 
     use super::*;
+
+    #[derive(Debug, Deserialize)]
+    struct ContractParityFixture {
+        fields: BTreeMap<String, Value>,
+        fulfillment_update: BTreeMap<String, Value>,
+        search_query: String,
+        expected_health_issue: String,
+    }
 
     fn create_nested_spec_fixture(
     ) -> (tempfile::TempDir, PathBuf, PathBuf, String) {
@@ -263,6 +275,13 @@ mod tests {
         std::fs::create_dir_all(repo.join(".spec")).unwrap();
         SpecStore::init(&repo.join(".spec")).unwrap();
         (dir, repo)
+    }
+
+    fn load_contract_parity_fixture() -> ContractParityFixture {
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../test-fixtures/spec-contract-parity.json");
+        serde_json::from_str(&fs::read_to_string(fixture_path).unwrap())
+            .unwrap()
     }
 
     #[test]
@@ -477,6 +496,7 @@ mod tests {
                 parent: None,
                 scope: Some("public".to_string()),
                 body_file: Some(body_path.clone()),
+                fields_file: None,
             }),
             None,
             Some(&repo),
@@ -508,6 +528,7 @@ mod tests {
                 fields: vec!["title=Legacy current format spec updated".to_string()],
                 to_state: None,
                 body_file: Some(updated_body_path),
+                fields_file: None,
             }),
             None,
             Some(&repo),
@@ -591,6 +612,7 @@ mod tests {
                 parent: None,
                 scope: Some("public".to_string()),
                 body_file: Some(body_path.clone()),
+                fields_file: None,
             }),
             None,
             Some(&repo),
@@ -623,6 +645,7 @@ mod tests {
                 fields: vec!["title=Expectation-oriented spec updated".to_string()],
                 to_state: None,
                 body_file: Some(updated_body_path),
+                fields_file: None,
             }),
             None,
             Some(&repo),
@@ -676,5 +699,120 @@ mod tests {
         .unwrap();
 
         assert_eq!(health["issues_count"], 0);
+    }
+
+    #[test]
+    fn dispatch_structured_contract_fields_round_trip_across_cli_surfaces() {
+        let (_dir, repo) = create_cli_spec_fixture();
+        let fixture = load_contract_parity_fixture();
+        let create_fields_path = repo.join("contract-fields.json");
+        let update_fields_path = repo.join("contract-update.json");
+
+        fs::write(
+            &create_fields_path,
+            serde_json::to_string_pretty(&fixture.fields).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            &update_fields_path,
+            serde_json::to_string_pretty(&fixture.fulfillment_update).unwrap(),
+        )
+        .unwrap();
+
+        let created = dispatch(
+            SpecCommandCli::Create(crate::cli::CreateArgs {
+                title: "Structured contract parity spec".to_string(),
+                slug: "contract/structured-parity".to_string(),
+                component: "context-engine".to_string(),
+                parent: None,
+                scope: Some("public".to_string()),
+                body_file: None,
+                fields_file: Some(create_fields_path),
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        let spec_id = created["id"].as_str().unwrap().to_string();
+
+        let health_before = dispatch(
+            SpecCommandCli::Health(crate::cli::HealthArgs {
+                id: Some(spec_id.clone()),
+                all: false,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(health_before["issues_count"], 1);
+        assert_eq!(
+            health_before["issues"][0]["issue"],
+            fixture.expected_health_issue
+        );
+
+        dispatch(
+            SpecCommandCli::Update(crate::cli::UpdateArgs {
+                id: spec_id.clone(),
+                fields: Vec::new(),
+                to_state: None,
+                body_file: None,
+                fields_file: Some(update_fields_path),
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        let fetched = dispatch(
+            SpecCommandCli::Get(crate::cli::GetArgs {
+                id: spec_id.clone(),
+                full: false,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(
+            fetched["spec"]["fields"]["contract_mode"],
+            "expectation-oriented"
+        );
+        assert_eq!(
+            fetched["spec"]["fields"]["fulfillment_summaries"][0]["status"],
+            "satisfied"
+        );
+
+        let searched = dispatch(
+            SpecCommandCli::Search(crate::cli::SearchArgs {
+                query: fixture.search_query,
+                limit: 10,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(searched["count"], 1);
+        assert_eq!(searched["items"][0]["id"], spec_id);
+
+        let health_after = dispatch(
+            SpecCommandCli::Health(crate::cli::HealthArgs {
+                id: Some(spec_id),
+                all: false,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(health_after["issues_count"], 0);
     }
 }

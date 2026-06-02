@@ -25,6 +25,9 @@ pub struct CreateArgs {
     /// Read spec body from this file.
     #[arg(long = "body-file")]
     pub body_file: Option<PathBuf>,
+    /// Read additional structured fields from a JSON object file.
+    #[arg(long = "fields-file")]
+    pub fields_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -61,6 +64,9 @@ pub struct UpdateArgs {
     /// Update body from file.
     #[arg(long = "body-file")]
     pub body_file: Option<PathBuf>,
+    /// Read additional structured field patches from a JSON object file.
+    #[arg(long = "fields-file")]
+    pub fields_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]

@@ -93,6 +93,8 @@ pub struct CreateSpecRequest {
     pub parent: Option<String>,
     pub scope: Option<String>,
     pub body: Option<String>,
+    #[serde(default)]
+    pub fields: BTreeMap<String, Value>,
 }
 
 #[derive(Serialize)]
@@ -285,6 +287,10 @@ pub async fn create_spec(
     let _ = store.scan(false);
 
     let mut manifest = SpecManifest::new(&req.slug, &req.title, &req.component);
+    manifest.extra.extend(req.fields.clone());
+    manifest.set_slug(&req.slug);
+    manifest.set_title(&req.title);
+    manifest.set_component(&req.component);
     if let Some(parent) = &req.parent {
         match store.resolve_id(parent) {
             Ok(pid) => manifest.set_parent(&pid.to_string()),
@@ -356,8 +362,64 @@ pub async fn delete_spec(
 
 #[cfg(test)]
 mod tests {
-    use super::matches_query;
-    use spec_api::SpecManifest;
+    use std::{
+        collections::BTreeMap,
+        fs,
+        path::PathBuf,
+    };
+
+    use axum::{
+        body::{
+            Body,
+            to_bytes,
+        },
+        http::{
+            Request,
+            StatusCode,
+        },
+    };
+    use serde::Deserialize;
+    use serde_json::json;
+    use spec_api::{
+        SpecManifest,
+        SpecStore,
+    };
+    use tempfile::tempdir;
+    use tower::ServiceExt;
+
+    use super::*;
+    use crate::{
+        build_router,
+        state::SpecAppState,
+    };
+
+    #[derive(Debug, Deserialize)]
+    struct ContractParityFixture {
+        fields: BTreeMap<String, Value>,
+        fulfillment_update: BTreeMap<String, Value>,
+        search_query: String,
+        expected_health_issue: String,
+    }
+
+    fn load_contract_parity_fixture() -> ContractParityFixture {
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../test-fixtures/spec-contract-parity.json");
+        serde_json::from_str(&fs::read_to_string(fixture_path).unwrap())
+            .unwrap()
+    }
+
+    async fn response_json(response: axum::response::Response) -> Value {
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    fn create_test_app() -> (tempfile::TempDir, axum::Router) {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        fs::create_dir_all(repo.join(".spec")).unwrap();
+        let store = SpecStore::init(&repo.join(".spec")).unwrap();
+        (dir, build_router(SpecAppState::new(store)))
+    }
 
     #[test]
     fn matches_query_checks_title_slug_component_and_state() {
@@ -381,5 +443,132 @@ mod tests {
 
         assert!(matches_query(&spec, ""));
         assert!(matches_query(&spec, "   "));
+    }
+
+    #[tokio::test]
+    async fn http_routes_round_trip_structured_contract_fields() {
+        let (_dir, app) = create_test_app();
+        let fixture = load_contract_parity_fixture();
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/specs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "title": "Structured contract parity spec",
+                            "slug": "contract/structured-parity",
+                            "component": "context-engine",
+                            "scope": "public",
+                            "fields": fixture.fields.clone(),
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        let created = response_json(create_response).await;
+        let spec_id = created["id"].as_str().unwrap().to_string();
+
+        let health_before = response_json(
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/api/specs/health?id={spec_id}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+
+        assert_eq!(health_before["issues_count"], 1);
+        assert_eq!(
+            health_before["issues"][0]["issue"],
+            fixture.expected_health_issue
+        );
+
+        let update_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/api/specs/{spec_id}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "fields": fixture.fulfillment_update.clone(),
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(update_response.status(), StatusCode::OK);
+
+        let fetched = response_json(
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/api/specs/{spec_id}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+
+        assert_eq!(
+            fetched["spec"]["fields"]["contract_mode"],
+            "expectation-oriented"
+        );
+        assert_eq!(
+            fetched["spec"]["fields"]["fulfillment_summaries"][0]["status"],
+            "satisfied"
+        );
+
+        let searched = response_json(
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!(
+                            "/api/specs/search?q={}",
+                            fixture.search_query.replace(' ', "%20")
+                        ))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+
+        assert_eq!(searched["count"], 1);
+        assert_eq!(searched["items"][0]["id"], spec_id);
+
+        let health_after = response_json(
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/api/specs/health?id={spec_id}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+
+        assert_eq!(health_after["issues_count"], 0);
     }
 }

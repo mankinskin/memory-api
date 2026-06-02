@@ -19,12 +19,31 @@ use crate::cli::{
     UpdateArgs,
 };
 
+fn read_fields_file(
+    path: &std::path::Path,
+) -> Result<BTreeMap<String, Value>, CliRunError> {
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        CliRunError::BadRequest(format!("cannot read fields-file: {e}"))
+    })?;
+    serde_json::from_str(&content).map_err(|e| {
+        CliRunError::BadRequest(format!(
+            "cannot parse fields-file as JSON object: {e}"
+        ))
+    })
+}
+
 pub(crate) fn cmd_create(
     args: CreateArgs,
     store: &mut SpecStore,
 ) -> Result<Value, CliRunError> {
     let mut manifest =
         SpecManifest::new(&args.slug, &args.title, &args.component);
+    if let Some(fields_file) = &args.fields_file {
+        manifest.extra.extend(read_fields_file(fields_file)?);
+    }
+    manifest.set_slug(&args.slug);
+    manifest.set_title(&args.title);
+    manifest.set_component(&args.component);
     if let Some(parent) = &args.parent {
         let parent_id = store.resolve_id(parent)?;
         manifest.set_parent(&parent_id.to_string());
@@ -92,7 +111,11 @@ pub(crate) fn cmd_update(
     args: UpdateArgs,
     store: &mut SpecStore,
 ) -> Result<Value, CliRunError> {
-    let mut patch = BTreeMap::new();
+    let mut patch = if let Some(fields_file) = &args.fields_file {
+        read_fields_file(fields_file)?
+    } else {
+        BTreeMap::new()
+    };
     for f in &args.fields {
         let (k, v) = f.split_once('=').ok_or_else(|| {
             CliRunError::BadRequest(format!("invalid field patch: {f}"))

@@ -1,8 +1,11 @@
+use std::collections::BTreeMap;
+
 use rmcp::schemars::{
     self,
     JsonSchema,
 };
 use serde::Deserialize;
+use serde_json::Value;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SpecRefInput {
@@ -27,6 +30,9 @@ pub struct CreateSpecInput {
     /// Body content (markdown).
     #[serde(default)]
     pub body: Option<String>,
+    /// Additional structured fields to write into the manifest.
+    #[serde(default)]
+    pub fields: BTreeMap<String, Value>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -51,6 +57,9 @@ pub struct UpdateSpecInput {
     /// Optional body content to replace.
     #[serde(default)]
     pub body: Option<String>,
+    /// Additional structured field patches.
+    #[serde(default)]
+    pub field_map: BTreeMap<String, Value>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

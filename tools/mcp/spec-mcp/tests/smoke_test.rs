@@ -4,6 +4,8 @@
 //! sections → tree → health → refs_validate → delete) via `SpecServer`
 //! methods directly, without going through the JSON-RPC transport.
 
+use std::collections::BTreeMap;
+
 use rmcp::handler::server::wrapper::Parameters;
 use spec_mcp::server::*;
 
@@ -31,6 +33,7 @@ async fn spec_crud_lifecycle() {
             parent: None,
             scope: Some("public".to_string()),
             body: Some("# Test\n\nThis is a test spec.".to_string()),
+            fields: BTreeMap::new(),
         }))
         .await
         .expect("spec_create");
@@ -71,6 +74,7 @@ async fn spec_crud_lifecycle() {
             fields: vec!["title=Updated Title".to_string()],
             to_state: Some("reviewed".to_string()),
             body: None,
+            field_map: BTreeMap::new(),
         }))
         .await
         .expect("spec_update");
@@ -84,6 +88,7 @@ async fn spec_crud_lifecycle() {
             fields: vec![],
             to_state: None,
             body: Some("# Updated body".to_string()),
+            field_map: BTreeMap::new(),
         }))
         .await
         .expect("spec_update body");
@@ -138,6 +143,7 @@ async fn spec_section_lifecycle() {
             parent: None,
             scope: None,
             body: None,
+            fields: BTreeMap::new(),
         }))
         .await
         .expect("create");
@@ -225,6 +231,7 @@ async fn spec_tree_and_health() {
             parent: None,
             scope: None,
             body: None,
+            fields: BTreeMap::new(),
         }))
         .await
         .expect("create parent");
@@ -239,6 +246,7 @@ async fn spec_tree_and_health() {
             parent: Some(parent_id.clone()),
             scope: None,
             body: None,
+            fields: BTreeMap::new(),
         }))
         .await
         .expect("create child");
@@ -329,6 +337,7 @@ async fn spec_refs_validate_empty() {
             parent: None,
             scope: None,
             body: None,
+            fields: BTreeMap::new(),
         }))
         .await
         .expect("create");
@@ -361,6 +370,7 @@ async fn spec_search_tool() {
             parent: None,
             scope: None,
             body: Some("This spec covers the alpha module.".to_string()),
+            fields: BTreeMap::new(),
         }))
         .await
         .expect("create");

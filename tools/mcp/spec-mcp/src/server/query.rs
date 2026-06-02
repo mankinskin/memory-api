@@ -1,7 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 use rmcp::{
     ErrorData as McpError,
@@ -38,6 +35,10 @@ impl SpecServer {
         self.with_store(|store| {
             let mut manifest =
                 SpecManifest::new(&input.slug, &input.title, &input.component);
+            manifest.extra.extend(input.fields.clone());
+            manifest.set_slug(&input.slug);
+            manifest.set_title(&input.title);
+            manifest.set_component(&input.component);
             if let Some(parent) = &input.parent {
                 let parent_id =
                     store.resolve_id(parent).map_err(Self::spec_err)?;
@@ -104,7 +105,7 @@ impl SpecServer {
         input: UpdateSpecInput,
     ) -> Result<CallToolResult, McpError> {
         self.with_store(|store| {
-            let mut patch = BTreeMap::new();
+            let mut patch = input.field_map.clone();
             for raw in &input.fields {
                 let (key, value) = raw.split_once('=').ok_or_else(|| {
                     McpError::invalid_params(
@@ -344,5 +345,140 @@ impl SpecServer {
             }))
         })
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        collections::BTreeMap,
+        fs,
+        path::PathBuf,
+    };
+
+    use serde::Deserialize;
+    use spec_api::SpecStore;
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[derive(Debug, Deserialize)]
+    struct ContractParityFixture {
+        fields: BTreeMap<String, Value>,
+        fulfillment_update: BTreeMap<String, Value>,
+        search_query: String,
+        expected_health_issue: String,
+    }
+
+    fn load_contract_parity_fixture() -> ContractParityFixture {
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../test-fixtures/spec-contract-parity.json");
+        serde_json::from_str(&fs::read_to_string(fixture_path).unwrap())
+            .unwrap()
+    }
+
+    fn parse_tool_payload(result: CallToolResult) -> Value {
+        let encoded = serde_json::to_value(result).unwrap();
+        let text = encoded["content"][0]["text"].as_str().unwrap();
+        serde_json::from_str(text).unwrap()
+    }
+
+    #[tokio::test]
+    async fn mcp_tools_round_trip_structured_contract_fields() {
+        let dir = tempdir().unwrap();
+        let index_root = dir.path().join(".spec");
+        SpecStore::init(&index_root).unwrap();
+        let server = SpecServer::new(index_root);
+        let fixture = load_contract_parity_fixture();
+
+        let created = parse_tool_payload(
+            server
+                .spec_create_tool(CreateSpecInput {
+                    title: "Structured contract parity spec".to_string(),
+                    slug: "contract/structured-parity".to_string(),
+                    component: "context-engine".to_string(),
+                    parent: None,
+                    scope: Some("public".to_string()),
+                    body: None,
+                    fields: fixture.fields.clone(),
+                })
+                .await
+                .unwrap(),
+        );
+
+        let spec_id = created["id"].as_str().unwrap().to_string();
+
+        let health_before = parse_tool_payload(
+            server
+                .spec_health_tool(HealthInput {
+                    id: Some(spec_id.clone()),
+                    all: false,
+                })
+                .await
+                .unwrap(),
+        );
+
+        assert_eq!(health_before["issues_count"], 1);
+        assert_eq!(
+            health_before["issues"][0]["issue"],
+            fixture.expected_health_issue
+        );
+
+        parse_tool_payload(
+            server
+                .spec_update_tool(UpdateSpecInput {
+                    id: spec_id.clone(),
+                    fields: Vec::new(),
+                    to_state: None,
+                    body: None,
+                    field_map: fixture.fulfillment_update.clone(),
+                })
+                .await
+                .unwrap(),
+        );
+
+        let fetched = parse_tool_payload(
+            server
+                .spec_get_tool(GetSpecInput {
+                    id: spec_id.clone(),
+                    full: false,
+                })
+                .await
+                .unwrap(),
+        );
+
+        assert_eq!(
+            fetched["spec"]["fields"]["contract_mode"],
+            "expectation-oriented"
+        );
+        assert_eq!(
+            fetched["spec"]["fields"]["fulfillment_summaries"][0]["status"],
+            "satisfied"
+        );
+
+        let searched = parse_tool_payload(
+            server
+                .spec_search_tool(SearchSpecsInput {
+                    query: fixture.search_query,
+                    limit: 10,
+                })
+                .await
+                .unwrap(),
+        );
+
+        assert_eq!(searched["count"], 1);
+        assert_eq!(searched["items"][0]["id"], spec_id);
+
+        let health_after = parse_tool_payload(
+            server
+                .spec_health_tool(HealthInput {
+                    id: Some(spec_id),
+                    all: false,
+                })
+                .await
+                .unwrap(),
+        );
+
+        assert_eq!(health_after["issues_count"], 0);
     }
 }

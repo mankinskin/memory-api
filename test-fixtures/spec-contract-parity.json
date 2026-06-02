@@ -1,0 +1,44 @@
+{
+  "fields": {
+    "contract_mode": "expectation-oriented",
+    "expected_properties": [
+      {
+        "id": "prop-visible",
+        "statement": "Visible store behavior is explicit."
+      }
+    ],
+    "acceptance_criteria": [
+      {
+        "id": "criterion-visible",
+        "statement": "The property is visible through the store.",
+        "expected_property_ids": [
+          "prop-visible"
+        ],
+        "required_evidence_ids": [
+          "evidence-doc"
+        ]
+      }
+    ],
+    "evidence_requirements": [
+      {
+        "id": "evidence-doc",
+        "kind": "documentation",
+        "description": "Generated guidance check exists.",
+        "optional": false
+      }
+    ]
+  },
+  "fulfillment_update": {
+    "fulfillment_summaries": [
+      {
+        "id": "summary-doc",
+        "subject_kind": "evidence-requirement",
+        "subject_id": "evidence-doc",
+        "status": "satisfied",
+        "detail": "Guidance check passed."
+      }
+    ]
+  },
+  "search_query": "Visible store behavior is explicit.",
+  "expected_health_issue": "missing fulfillment summary for evidence requirement 'evidence-doc'"
+}
