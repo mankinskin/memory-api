@@ -141,6 +141,51 @@ pub struct StaticMetricsSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecFulfillmentSummary {
+    pub status: TrialStatus,
+    pub structured_specs: usize,
+    pub satisfied_specs: usize,
+    pub blocked_specs: usize,
+    pub missed_specs: usize,
+    pub details: Option<String>,
+}
+
+impl SpecFulfillmentSummary {
+    pub fn unavailable(details: impl Into<String>) -> Self {
+        Self {
+            status: TrialStatus::Unavailable,
+            structured_specs: 0,
+            satisfied_specs: 0,
+            blocked_specs: 0,
+            missed_specs: 0,
+            details: Some(details.into()),
+        }
+    }
+
+    pub fn not_applicable(details: impl Into<String>) -> Self {
+        Self {
+            status: TrialStatus::NotApplicable,
+            structured_specs: 0,
+            satisfied_specs: 0,
+            blocked_specs: 0,
+            missed_specs: 0,
+            details: Some(details.into()),
+        }
+    }
+
+    pub fn failed(details: impl Into<String>) -> Self {
+        Self {
+            status: TrialStatus::Failed,
+            structured_specs: 0,
+            satisfied_specs: 0,
+            blocked_specs: 0,
+            missed_specs: 0,
+            details: Some(details.into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditMetrics {
     pub source_files: usize,
     pub total_lines: usize,
@@ -149,6 +194,7 @@ pub struct AuditMetrics {
     pub test_results: TestSummary,
     pub coverage: CoverageSummary,
     pub static_metrics: StaticMetricsSummary,
+    pub spec_fulfillment: SpecFulfillmentSummary,
     pub ticket_graph: CountMetric,
 }
 

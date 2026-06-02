@@ -21,3 +21,8 @@ sha2 = "0.10"
 syn = { version = "2", features = ["full", "visit"] }
 thiserror = "2"
 ticket-api = { path = "../ticket-api" }
+spec-api = { path = "../spec-api" }
+memory-api = { path = "../memory-api" }
+
+[dev-dependencies]
+tempfile = "3"

@@ -223,6 +223,10 @@ fn render_human(report: &AuditReport) -> String {
             .unwrap_or_else(|| "n/a".to_string())
     ));
     lines.push(format!(
+        "Spec fulfillment: {}",
+        render_spec_fulfillment_metric(&report.metrics.spec_fulfillment)
+    ));
+    lines.push(format!(
         "Ticket graph: {}",
         render_count_metric(&report.metrics.ticket_graph)
     ));
@@ -314,6 +318,26 @@ fn render_coverage_metric(
             .line_percent
             .map(|value| format!("{value:.1}%"))
             .unwrap_or_else(|| "n/a".to_string()),
+        TrialStatus::Unavailable
+        | TrialStatus::NotApplicable
+        | TrialStatus::Failed => metric
+            .details
+            .clone()
+            .unwrap_or_else(|| "unavailable".to_string()),
+    }
+}
+
+fn render_spec_fulfillment_metric(
+    metric: &audit_api::models::SpecFulfillmentSummary
+) -> String {
+    match metric.status {
+        TrialStatus::Collected => format!(
+            "{} structured specs ({} satisfied, {} blocked, {} missed)",
+            metric.structured_specs,
+            metric.satisfied_specs,
+            metric.blocked_specs,
+            metric.missed_specs
+        ),
         TrialStatus::Unavailable
         | TrialStatus::NotApplicable
         | TrialStatus::Failed => metric
