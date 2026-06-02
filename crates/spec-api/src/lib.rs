@@ -15,7 +15,18 @@ pub use default_schema::{
     spec_schema_registry,
     specification_schema,
 };
-pub use manifest::SpecManifest;
+pub use manifest::{
+    AcceptanceCriterion,
+    EvidenceRequirement,
+    ExpectedProperty,
+    FulfillmentStatus,
+    FulfillmentSubjectKind,
+    FulfillmentSummary,
+    SpecContractMode,
+    SpecHealthFinding,
+    SpecHealthReport,
+    SpecManifest,
+};
 pub use slug::{
     SlugIndex,
     validate_slug,

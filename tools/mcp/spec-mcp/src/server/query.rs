@@ -291,44 +291,21 @@ impl SpecServer {
         input: HealthInput,
     ) -> Result<CallToolResult, McpError> {
         self.with_store(|store| {
-            let specs = if input.all {
-                let all = store
-                    .entity_store()
-                    .list_indexed(false)
-                    .map_err(Self::storage_err)?;
-                all.iter()
-                    .filter_map(|entry| store.get(&entry.id.to_string()).ok())
-                    .collect::<Vec<_>>()
+            let report = if input.all {
+                store.health_all().map_err(Self::spec_err)?
             } else if let Some(id) = &input.id {
-                vec![store.get(id).map_err(Self::spec_err)?]
+                store.health(id).map_err(Self::spec_err)?
             } else {
                 return Err(McpError::invalid_params(
                     "provide spec ID or set all=true",
                     None,
                 ));
             };
-
-            let mut issues = Vec::new();
-            for spec in &specs {
-                if spec.slug().is_none() {
-                    issues
-                        .push(json!({"id": spec.id, "issue": "missing slug"}));
-                }
-                if spec.title().is_none() {
-                    issues
-                        .push(json!({"id": spec.id, "issue": "missing title"}));
-                }
-                if spec.component().is_none() {
-                    issues.push(
-                        json!({"id": spec.id, "issue": "missing component"}),
-                    );
-                }
-            }
             Self::json_result(&json!({
                 "status": "ok",
-                "specs_checked": specs.len(),
-                "issues_count": issues.len(),
-                "issues": issues,
+                "specs_checked": report.specs_checked,
+                "issues_count": report.issues_count(),
+                "issues": report.issues,
             }))
         })
         .await

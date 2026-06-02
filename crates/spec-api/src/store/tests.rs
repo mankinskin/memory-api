@@ -9,6 +9,16 @@ use memory_api::model::filesystem::ScanRoot;
 use serde_json::Value;
 use tempfile::TempDir;
 
+use crate::{
+    AcceptanceCriterion,
+    EvidenceRequirement,
+    ExpectedProperty,
+    FulfillmentStatus,
+    FulfillmentSubjectKind,
+    FulfillmentSummary,
+    SpecContractMode,
+};
+
 use super::*;
 
 fn setup() -> (TempDir, SpecStore) {
@@ -40,6 +50,31 @@ fn setup_local_store() -> (TempDir, PathBuf, PathBuf, SpecStore) {
     fs::create_dir_all(&store_root).unwrap();
     let store = SpecStore::init(&repo).unwrap();
     (tmp, repo, store_root, store)
+}
+
+fn make_expectation_oriented_spec(
+    slug: &str,
+    title: &str,
+) -> SpecManifest {
+    let mut spec = make_spec(slug, title);
+    spec.set_contract_mode(Some(SpecContractMode::ExpectationOriented));
+    spec.set_expected_properties(vec![ExpectedProperty {
+        id: "prop-visible".to_string(),
+        statement: "Visible store behavior is explicit.".to_string(),
+    }]);
+    spec.set_acceptance_criteria(vec![AcceptanceCriterion {
+        id: "criterion-visible".to_string(),
+        statement: "The property is visible through the store.".to_string(),
+        expected_property_ids: vec!["prop-visible".to_string()],
+        required_evidence_ids: vec!["evidence-doc".to_string()],
+    }]);
+    spec.set_evidence_requirements(vec![EvidenceRequirement {
+        id: "evidence-doc".to_string(),
+        kind: "documentation".to_string(),
+        description: "Generated guidance check exists.".to_string(),
+        optional: false,
+    }]);
+    spec
 }
 
 #[test]
@@ -82,6 +117,96 @@ fn create_writes_body_md_without_description_md() {
 
     assert!(indexed.path.join("body.md").is_file());
     assert!(!indexed.path.join("description.md").exists());
+}
+
+#[test]
+fn create_and_get_round_trip_structured_contract_fields() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_expectation_oriented_spec(
+        "root/structured-contract",
+        "Structured Contract",
+    );
+    let id = store.create(&spec, "body v1", None).unwrap();
+
+    let fetched = store.get(&id.to_string()).unwrap();
+    assert_eq!(
+        fetched.contract_mode(),
+        Some(SpecContractMode::ExpectationOriented)
+    );
+    assert_eq!(fetched.expected_properties().len(), 1);
+    assert_eq!(fetched.acceptance_criteria().len(), 1);
+    assert_eq!(fetched.evidence_requirements().len(), 1);
+
+    let mut patch = BTreeMap::new();
+    patch.insert(
+        "fulfillment_summaries".into(),
+        serde_json::to_value(vec![FulfillmentSummary {
+            id: "summary-doc".to_string(),
+            subject_kind: FulfillmentSubjectKind::EvidenceRequirement,
+            subject_id: "evidence-doc".to_string(),
+            status: FulfillmentStatus::Satisfied,
+            detail: Some("Guidance check passed.".to_string()),
+        }])
+        .unwrap(),
+    );
+
+    let updated = store.update(&id.to_string(), patch, None).unwrap();
+    assert_eq!(updated.fulfillment_summaries().len(), 1);
+}
+
+#[test]
+fn health_reports_missing_and_satisfied_contract_requirements() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_expectation_oriented_spec(
+        "root/contract-health",
+        "Contract Health",
+    );
+    let id = store.create(&spec, "body v1", None).unwrap();
+
+    let report = store.health(&id.to_string()).unwrap();
+    assert_eq!(report.specs_checked, 1);
+    assert!(report.issues.iter().any(|issue| {
+        issue.issue
+            == "missing fulfillment summary for evidence requirement 'evidence-doc'"
+    }));
+
+    let mut patch = BTreeMap::new();
+    patch.insert(
+        "fulfillment_summaries".into(),
+        serde_json::to_value(vec![FulfillmentSummary {
+            id: "summary-doc".to_string(),
+            subject_kind: FulfillmentSubjectKind::EvidenceRequirement,
+            subject_id: "evidence-doc".to_string(),
+            status: FulfillmentStatus::Satisfied,
+            detail: Some("Guidance check passed.".to_string()),
+        }])
+        .unwrap(),
+    );
+    store.update(&id.to_string(), patch, None).unwrap();
+
+    let report = store.health(&id.to_string()).unwrap();
+    assert_eq!(report.issues_count(), 0);
+}
+
+#[test]
+fn search_indexes_structured_contract_text() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_expectation_oriented_spec(
+        "root/contract-search",
+        "Contract Search",
+    );
+    store.create(&spec, "", None).unwrap();
+
+    let results = store
+        .entity_store()
+        .search("Visible store behavior is explicit", 10)
+        .unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].title.as_deref(), Some("Contract Search"));
 }
 
 #[test]

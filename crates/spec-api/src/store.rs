@@ -41,6 +41,8 @@ use memory_api::{
 use crate::{
     error::SpecError,
     manifest::{
+        SpecHealthFinding,
+        SpecHealthReport,
         SpecId,
         SpecManifest,
     },
@@ -67,6 +69,22 @@ const SPEC_MANIFEST_FILE: &str = "spec.toml";
 const SPEC_LOCK_FILE: &str = ".spec-lock";
 const SPEC_INDEX_DIR: &str = ".spec";
 const GENERATED_SPEC_ARTIFACTS_FILE: &str = "generated.toml";
+
+fn build_search_content(
+    spec: &SpecManifest,
+    body: &str,
+) -> Option<String> {
+    let body = body.trim();
+    let contract = spec.contract_search_text();
+    let contract = contract.trim();
+
+    match (body.is_empty(), contract.is_empty()) {
+        (true, true) => None,
+        (false, true) => Some(body.to_string()),
+        (true, false) => Some(contract.to_string()),
+        (false, false) => Some(format!("{body}\n\n{contract}")),
+    }
+}
 
 pub const GENERATED_SPEC_FILE_COMMENT: &str =
     "<!-- spec-api:file generated=true -->";
@@ -515,10 +533,11 @@ impl SpecStore {
             deleted: false,
         };
         self.inner.index.insert_ticket(&indexed)?;
+        let search_content = build_search_content(manifest, body);
         self.inner.search.upsert(
             &manifest.id,
             title.as_deref(),
-            Some(body),
+            search_content.as_deref(),
             state.as_deref(),
             Some(&type_id),
         )?;
@@ -607,6 +626,43 @@ impl SpecStore {
         Ok((spec, body))
     }
 
+    pub fn health(
+        &self,
+        id_or_slug: &str,
+    ) -> Result<SpecHealthReport, SpecError> {
+        let spec = self.get(id_or_slug)?;
+        Ok(Self::build_health_report([spec]))
+    }
+
+    pub fn health_all(&self) -> Result<SpecHealthReport, SpecError> {
+        let all = self.inner.list_indexed(false).map_err(SpecError::Storage)?;
+        let specs = all
+            .iter()
+            .filter_map(|indexed| self.get(&indexed.id.to_string()).ok())
+            .collect::<Vec<_>>();
+        Ok(Self::build_health_report(specs))
+    }
+
+    fn build_health_report(
+        specs: impl IntoIterator<Item = SpecManifest>,
+    ) -> SpecHealthReport {
+        let specs = specs.into_iter().collect::<Vec<_>>();
+        let issues = specs
+            .iter()
+            .flat_map(|spec| {
+                spec.health_issues().into_iter().map(|issue| SpecHealthFinding {
+                    id: spec.id,
+                    issue,
+                })
+            })
+            .collect();
+
+        SpecHealthReport {
+            specs_checked: specs.len(),
+            issues,
+        }
+    }
+
     pub fn update(
         &mut self,
         id_or_slug: &str,
@@ -660,6 +716,7 @@ impl SpecStore {
             .get("state")
             .and_then(|value| value.as_str())
             .map(String::from);
+        let spec = entity_to_spec(&updated_entity);
 
         let refreshed = IndexedEntity {
             id: uuid,
@@ -674,10 +731,11 @@ impl SpecStore {
         self.inner.index.insert_ticket(&refreshed)?;
 
         let body = read_body(&indexed.path);
+        let search_content = build_search_content(&spec, &body);
         self.inner.search.upsert(
             &uuid,
             title.as_deref(),
-            Some(&body),
+            search_content.as_deref(),
             state.as_deref(),
             Some(&type_id),
         )?;
@@ -688,7 +746,7 @@ impl SpecStore {
             None,
         );
 
-        Ok(entity_to_spec(&updated_entity))
+        Ok(spec)
     }
 
     pub fn update_body(

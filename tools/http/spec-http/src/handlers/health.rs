@@ -49,17 +49,14 @@ pub async fn health_check(
     let mut store = state.store.lock().await;
     let _ = store.scan(false);
 
-    let specs = if params.all {
-        match store.entity_store().list_indexed(false) {
-            Ok(all) => all
-                .iter()
-                .filter_map(|e| store.get(&e.id.to_string()).ok())
-                .collect::<Vec<_>>(),
-            Err(e) => return storage_err(e, &rid.0),
+    let report = if params.all {
+        match store.health_all() {
+            Ok(report) => report,
+            Err(e) => return spec_err(e, &rid.0),
         }
     } else if let Some(id) = &params.id {
-        match store.get(id) {
-            Ok(s) => vec![s],
+        match store.health(id) {
+            Ok(report) => report,
             Err(e) => return spec_err(e, &rid.0),
         }
     } else {
@@ -71,26 +68,11 @@ pub async fn health_check(
         .into_response_with_status(StatusCode::BAD_REQUEST);
     };
 
-    let mut issues = Vec::new();
-    for spec in &specs {
-        if spec.slug().is_none() {
-            issues.push(serde_json::json!({"id": spec.id.to_string(), "issue": "missing slug"}));
-        }
-        if spec.title().is_none() {
-            issues.push(serde_json::json!({"id": spec.id.to_string(), "issue": "missing title"}));
-        }
-        if spec.component().is_none() {
-            issues.push(
-                serde_json::json!({"id": spec.id.to_string(), "issue": "missing component"}),
-            );
-        }
-    }
-
     Json(serde_json::json!({
         "request_id": rid.0,
-        "specs_checked": specs.len(),
-        "issues_count": issues.len(),
-        "issues": issues,
+        "specs_checked": report.specs_checked,
+        "issues_count": report.issues_count(),
+        "issues": report.issues,
     }))
     .into_response()
 }

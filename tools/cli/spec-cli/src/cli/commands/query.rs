@@ -114,37 +114,21 @@ pub(crate) fn cmd_health(
     args: HealthArgs,
     store: &SpecStore,
 ) -> Result<Value, CliRunError> {
-    let specs = if args.all {
-        let all = store.entity_store().list_indexed(false)?;
-        all.iter()
-            .filter_map(|e| store.get(&e.id.to_string()).ok())
-            .collect::<Vec<_>>()
+    let report = if args.all {
+        store.health_all()?
     } else if let Some(id) = &args.id {
-        vec![store.get(id)?]
+        store.health(id)?
     } else {
         return Err(CliRunError::BadRequest(
             "provide spec ID or --all".to_string(),
         ));
     };
 
-    let mut issues = Vec::new();
-    for spec in &specs {
-        if spec.slug().is_none() {
-            issues.push(json!({"id": spec.id, "issue": "missing slug"}));
-        }
-        if spec.title().is_none() {
-            issues.push(json!({"id": spec.id, "issue": "missing title"}));
-        }
-        if spec.component().is_none() {
-            issues.push(json!({"id": spec.id, "issue": "missing component"}));
-        }
-    }
-
     Ok(json!({
         "command": "health",
         "status": "ok",
-        "specs_checked": specs.len(),
-        "issues_count": issues.len(),
-        "issues": issues,
+        "specs_checked": report.specs_checked,
+        "issues_count": report.issues_count(),
+        "issues": report.issues,
     }))
 }
