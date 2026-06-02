@@ -2,6 +2,21 @@
 
 memory-api is the repository that exposes the core crates and operator surfaces behind rules, specs, tickets, and audits.
 
+Direct child READMEs:
+
+- [tools/cli/rule-cli/README.md](tools/cli/rule-cli/README.md)
+- [tools/cli/spec-cli/README.md](tools/cli/spec-cli/README.md)
+- [tools/cli/ticket-cli/README.md](tools/cli/ticket-cli/README.md)
+- [tools/cli/audit-cli/README.md](tools/cli/audit-cli/README.md)
+- [tools/http/spec-http/README.md](tools/http/spec-http/README.md)
+- [tools/http/ticket-http/README.md](tools/http/ticket-http/README.md)
+- [tools/mcp/rule-mcp/README.md](tools/mcp/rule-mcp/README.md)
+- [tools/mcp/spec-mcp/README.md](tools/mcp/spec-mcp/README.md)
+- [tools/mcp/ticket-mcp/README.md](tools/mcp/ticket-mcp/README.md)
+- [tools/mcp/audit-mcp/README.md](tools/mcp/audit-mcp/README.md)
+
+Installable and executable surfaces in this repository include the `rule`, `spec`, `ticket`, and `audit` CLIs, the `rule-mcp`, `spec-mcp`, `ticket-mcp`, and `audit-mcp` MCP servers, and the `spec-http` and `ticket-http` HTTP binaries.
+
 ## Tool Surface
 
 | Crate or surface | What it is used for | Typical entry points |

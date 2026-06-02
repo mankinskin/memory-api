@@ -38,7 +38,7 @@ cargo run -p ticket-cli --bin ticket -- --help
 
 `ticket next` uses convergence-first ranking. When an earlier-state prerequisite is blocking a more advanced dependent, it can rank ahead of otherwise similar candidates so the queue naturally moves back toward prerequisite-first execution.
 
-`ticket next --json` surfaces the explainability fields behind that promotion, including `dependee_count`, `transitive_reverse_dependents`, `affected_reverse_dependent_reach`, `max_affected_dependent_state`, and `dependency_state_gap`.
+`ticket next --json` surfaces the explainability fields behind that promotion, including `dependees`, `transitive_reverse_dependents`, `affected_reverse_dependent_reach`, `max_affected_dependent_state`, and `dependency_state_gap`.
 
 `ticket health --json` reports `dependency_convergence` findings when a dependent is ahead of a blocking prerequisite, with both ticket ids and the relevant state-gap evidence.
 

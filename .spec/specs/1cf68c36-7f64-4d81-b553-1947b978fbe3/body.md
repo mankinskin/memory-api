@@ -135,14 +135,12 @@ The `spec-cli` orchestration slice is now implemented behind `spec sync-generate
 - The command loads a spec's `generated.toml` descriptor through `spec-api`.
 - It resolves the owning workspace from the indexed spec path and matching registered scan root so nested workspaces use the correct local `rule-targets.yaml` and `.rule` store instead of falling back to an ancestor checkout.
 - It opens `rule-api`, evaluates each declared target, rewrites `body.md` and any declared `sections/*.md` through the generated-document helpers in `spec-api`, and then refreshes spec search/body bookkeeping through the normal `SpecStore::update` path.
-- `rule-cli sync-targets` and `rule-mcp` target generation now treat `file_kind: spec-doc` targets as spec-owned artifacts: they open the owning `spec-api` store, write the corresponding `.spec/specs/**/{body,sections/*.md}` file through `spec-api`, and stop using `generated/spec-docs/**` mirror files as the canonical output surface.
 
 <!-- spec-api:entry id=bfcc40c9-422f-4048-b26b-21d8c22129b0 slug=spec-api/generated-documents/summary/next-slice-rule-target-backed-spec-artifacts/validation-status/l114 -->
 ### Validation status
 
 - Passing: `cargo test -p spec-cli sync_generated -- --nocapture`
 - Passing pilot flow: `rule explain-target --config rule-targets.yaml --target spec-api-generated-documents-body --json`, `spec sync-generated 1cf68c36-7f64-4d81-b553-1947b978fbe3 --workspace-root . --json`, `spec get 1cf68c36-7f64-4d81-b553-1947b978fbe3 --full --json`, `spec search "migration-workflow" --limit 5 --json`, and `spec refs 1cf68c36-7f64-4d81-b553-1947b978fbe3 validate --workspace-root . --json`.
-- Passing follow-up slice: `cargo test -p rule-cli sync_targets_writes_spec_doc_targets_into_spec_entries -- --nocapture`, `cargo build -p rule-mcp`, and `./target/debug/rule.exe --workspace-root . sync-targets --config rule-targets.yaml --json` now report `.spec/specs/**` outputs for `spec-doc` targets instead of `generated/spec-docs/**` mirror files.
 - Passing broader suite: `cargo test -p spec-cli`.
 
 <!-- spec-api:entry id=152dcba7-8bca-4231-b7e5-1970de77b539 slug=spec-api/generated-documents/summary/related-tickets/l119 -->
@@ -153,7 +151,6 @@ The `spec-cli` orchestration slice is now implemented behind `spec sync-generate
 - [09641443 Add spec-local target mapping for generated spec artifacts](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/09641443-a8f2-479d-85cb-ea44a963595b/ticket.toml)
 - [b2ef1de1 Add spec sync-generated orchestration for rule-target-backed artifacts](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/b2ef1de1-5801-47c6-97c6-e3c5cd8d7dae/ticket.toml)
 - [7f869c33 Pilot migration for rule-target-backed spec artifacts](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/7f869c33-15ff-4959-8161-731844eef21b/ticket.toml)
-- [87a35ccb Route spec-doc targets through spec-owned generation](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/87a35ccb-d91c-4ce8-93b3-e150bb5afe1d/ticket.toml)
 
 <!-- spec-api:entry id=ac096ea4-df1c-40f6-9fdf-35ea461b6a69 slug=spec-api/generated-documents/summary/related-specs/l127 -->
 ## Related specs
