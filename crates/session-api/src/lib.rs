@@ -17,6 +17,8 @@ pub use model::{
     SessionTurn,
 };
 pub use store::{
+    PersistedSessionManifest,
+    PersistedSessionTranscript,
     SessionStoreConfig,
     SessionStorePaths,
     SessionStorePlan,

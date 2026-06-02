@@ -196,6 +196,6 @@ mod tests {
             .into_record()
             .unwrap_err();
 
-        assert_eq!(error, SessionError::MissingSessionId);
+        assert!(matches!(error, SessionError::MissingSessionId));
     }
 }

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error)]
 pub enum SessionError {
     #[error("session capture is missing a session id")]
     MissingSessionId,
@@ -21,4 +21,18 @@ pub enum SessionError {
 
     #[error("store path has no parent directory: {0}")]
     InvalidStorePath(PathBuf),
+
+    #[error("failed to serialize session data for {path}: {source}")]
+    Serialize {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+
+    #[error("filesystem operation failed for {path}: {source}")]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 }

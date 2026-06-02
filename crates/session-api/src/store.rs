@@ -1,4 +1,10 @@
-use std::path::PathBuf;
+use std::{
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
 use serde::{
     Deserialize,
@@ -8,8 +14,53 @@ use serde::{
 use crate::{
     SessionCaptureRequest,
     SessionError,
+    SessionLinks,
+    SessionMetadata,
     SessionRecord,
+    SessionTurn,
 };
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersistedSessionManifest {
+    pub session_id: String,
+    pub source: String,
+    pub started_at: chrono::DateTime<chrono::Utc>,
+    pub captured_at: chrono::DateTime<chrono::Utc>,
+    pub metadata: SessionMetadata,
+    #[serde(default)]
+    pub links: SessionLinks,
+}
+
+impl From<&SessionRecord> for PersistedSessionManifest {
+    fn from(record: &SessionRecord) -> Self {
+        Self {
+            session_id: record.session_id.clone(),
+            source: record.source.clone(),
+            started_at: record.started_at,
+            captured_at: record.captured_at,
+            metadata: record.metadata.clone(),
+            links: record.links.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersistedSessionTranscript {
+    pub session_id: String,
+    pub captured_at: chrono::DateTime<chrono::Utc>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub turns: Vec<SessionTurn>,
+}
+
+impl From<&SessionRecord> for PersistedSessionTranscript {
+    fn from(record: &SessionRecord) -> Self {
+        Self {
+            session_id: record.session_id.clone(),
+            captured_at: record.captured_at,
+            turns: record.turns.clone(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionStoreConfig {
@@ -65,6 +116,15 @@ impl SessionStoreConfig {
         let paths = self.paths_for(&record)?;
         Ok(SessionStorePlan { record, paths })
     }
+
+    pub fn persist_capture(
+        &self,
+        request: SessionCaptureRequest,
+    ) -> Result<SessionStorePlan, SessionError> {
+        let plan = self.plan_capture(request)?;
+        plan.persist()?;
+        Ok(plan)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,6 +138,42 @@ pub struct SessionStorePaths {
 pub struct SessionStorePlan {
     pub record: SessionRecord,
     pub paths: SessionStorePaths,
+}
+
+impl SessionStorePlan {
+    pub fn manifest(&self) -> PersistedSessionManifest {
+        PersistedSessionManifest::from(&self.record)
+    }
+
+    pub fn transcript(&self) -> PersistedSessionTranscript {
+        PersistedSessionTranscript::from(&self.record)
+    }
+
+    pub fn persist(&self) -> Result<SessionStorePaths, SessionError> {
+        fs::create_dir_all(&self.paths.session_dir).map_err(|source| SessionError::Io {
+            path: self.paths.session_dir.clone(),
+            source,
+        })?;
+
+        write_json(&self.paths.manifest_path, &self.manifest())?;
+        write_json(&self.paths.transcript_path, &self.transcript())?;
+
+        Ok(self.paths.clone())
+    }
+}
+
+fn write_json<T: Serialize>(
+    path: &Path,
+    value: &T,
+) -> Result<(), SessionError> {
+    let encoded = serde_json::to_vec_pretty(value).map_err(|source| SessionError::Serialize {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    fs::write(path, encoded).map_err(|source| SessionError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 fn validate_segment(
@@ -99,10 +195,13 @@ fn validate_segment(
 mod tests {
     use chrono::TimeZone;
     use pretty_assertions::assert_eq;
+    use tempfile::TempDir;
 
     use crate::{
         CopilotHookMessage,
         CopilotHookPayload,
+        PersistedSessionManifest,
+        PersistedSessionTranscript,
         SessionCaptureRequest,
         SessionError,
         SessionRole,
@@ -161,6 +260,48 @@ mod tests {
 
         let error = config.plan_capture(request).unwrap_err();
 
-        assert_eq!(error, SessionError::InvalidSessionId("session/abc".to_string()));
+        assert!(matches!(
+            error,
+            SessionError::InvalidSessionId(ref value) if value == "session/abc"
+        ));
+    }
+
+    #[test]
+    fn persist_capture_writes_manifest_and_transcript_files() {
+        let tempdir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+        let plan = config.persist_capture(sample_request()).unwrap();
+        let manifest_text = std::fs::read_to_string(&plan.paths.manifest_path).unwrap();
+        let transcript_text = std::fs::read_to_string(&plan.paths.transcript_path).unwrap();
+
+        let manifest: PersistedSessionManifest = serde_json::from_str(&manifest_text).unwrap();
+        let transcript: PersistedSessionTranscript =
+            serde_json::from_str(&transcript_text).unwrap();
+
+        assert_eq!(manifest.session_id, "session-abc");
+        assert_eq!(manifest.metadata.workspace_slug, "context-engine");
+        assert_eq!(transcript.session_id, "session-abc");
+        assert_eq!(transcript.turns.len(), 1);
+        assert_eq!(transcript.turns[0].content, "Persist this chat");
+    }
+
+    #[test]
+    fn persist_capture_overwrites_existing_files_with_latest_record() {
+        let tempdir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+        let mut initial = sample_request();
+        initial.payload.messages[0].content = "first".to_string();
+        config.persist_capture(initial).unwrap();
+
+        let mut updated = sample_request();
+        updated.payload.messages[0].content = "second".to_string();
+        let plan = config.persist_capture(updated).unwrap();
+        let transcript_text = std::fs::read_to_string(&plan.paths.transcript_path).unwrap();
+        let transcript: PersistedSessionTranscript =
+            serde_json::from_str(&transcript_text).unwrap();
+
+        assert_eq!(transcript.turns[0].content, "second");
     }
 }
