@@ -210,6 +210,8 @@ fn register_descendant_scan_roots(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use tempfile::tempdir;
 
     use super::*;
@@ -253,6 +255,14 @@ mod tests {
             .unwrap();
 
         (dir, repo, child, spec_id.to_string())
+    }
+
+    fn create_cli_spec_fixture() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(repo.join(".spec")).unwrap();
+        SpecStore::init(&repo.join(".spec")).unwrap();
+        (dir, repo)
     }
 
     #[test]
@@ -438,5 +448,233 @@ mod tests {
         assert_eq!(payload["command"], "search");
         assert_eq!(payload["count"], 1);
         assert_eq!(payload["items"][0]["id"], spec_id);
+    }
+
+    #[test]
+    fn dispatch_authoring_contract_supports_legacy_current_format_specs() {
+        let (_dir, repo) = create_cli_spec_fixture();
+        let body_path = repo.join("legacy-body.md");
+        fs::write(
+            &body_path,
+            concat!(
+                "# Summary\n\n",
+                "Document the legacy current-format authoring path.\n\n",
+                "## Motivation\n\n",
+                "Keep existing authored specs valid during the first migration slice.\n\n",
+                "## Current State\n\n",
+                "Legacy current-format authored specs still exist in the store.\n\n",
+                "## Acceptance Criteria\n\n",
+                "- Legacy authored specs remain readable and searchable.\n",
+            ),
+        )
+        .unwrap();
+
+        let created = dispatch(
+            SpecCommandCli::Create(crate::cli::CreateArgs {
+                title: "Legacy current format spec".to_string(),
+                slug: "contract/legacy-current-format".to_string(),
+                component: "context-engine".to_string(),
+                parent: None,
+                scope: Some("public".to_string()),
+                body_file: Some(body_path.clone()),
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        let spec_id = created["id"].as_str().unwrap().to_string();
+
+        let updated_body_path = repo.join("legacy-body-updated.md");
+        fs::write(
+            &updated_body_path,
+            concat!(
+                "# Summary\n\n",
+                "Document the legacy current-format authoring path.\n\n",
+                "## Motivation\n\n",
+                "Keep existing authored specs valid during the first migration slice.\n\n",
+                "## Current State\n\n",
+                "Legacy current-format authored specs still exist in the store.\n\n",
+                "## Acceptance Criteria\n\n",
+                "- Legacy authored specs remain readable and searchable after updates.\n",
+            ),
+        )
+        .unwrap();
+
+        dispatch(
+            SpecCommandCli::Update(crate::cli::UpdateArgs {
+                id: spec_id.clone(),
+                fields: vec!["title=Legacy current format spec updated".to_string()],
+                to_state: None,
+                body_file: Some(updated_body_path),
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        let fetched = dispatch(
+            SpecCommandCli::Get(crate::cli::GetArgs {
+                id: spec_id.clone(),
+                full: true,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(
+            fetched["spec"]["fields"]["title"],
+            "Legacy current format spec updated"
+        );
+        assert!(fetched["body"]
+            .as_str()
+            .unwrap()
+            .contains("Legacy current-format authored specs still exist in the store."));
+
+        let searched = dispatch(
+            SpecCommandCli::Search(crate::cli::SearchArgs {
+                query: "legacy current-format authored specs still exist".to_string(),
+                limit: 10,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(searched["count"], 1);
+        assert_eq!(searched["items"][0]["id"], spec_id);
+
+        let health = dispatch(
+            SpecCommandCli::Health(crate::cli::HealthArgs {
+                id: Some(spec_id),
+                all: false,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(health["issues_count"], 0);
+    }
+
+    #[test]
+    fn dispatch_authoring_contract_supports_expectation_oriented_specs() {
+        let (_dir, repo) = create_cli_spec_fixture();
+        let body_path = repo.join("expectation-body.md");
+        fs::write(
+            &body_path,
+            concat!(
+                "# Summary\n\n",
+                "Describe an expectation-oriented authored spec.\n\n",
+                "## Intended Properties\n\n",
+                "- Specs document intended system properties.\n",
+                "- Tickets carry rollout sequencing and current-state notes.\n\n",
+                "## Acceptance Criteria\n\n",
+                "- The expected property is observable through the store.\n\n",
+                "## Evidence\n\n",
+                "- Store-owned evidence can satisfy or block implementation.\n",
+            ),
+        )
+        .unwrap();
+
+        let created = dispatch(
+            SpecCommandCli::Create(crate::cli::CreateArgs {
+                title: "Expectation-oriented spec".to_string(),
+                slug: "contract/expectation-oriented".to_string(),
+                component: "context-engine".to_string(),
+                parent: None,
+                scope: Some("public".to_string()),
+                body_file: Some(body_path.clone()),
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        let spec_id = created["id"].as_str().unwrap().to_string();
+
+        let updated_body_path = repo.join("expectation-body-updated.md");
+        fs::write(
+            &updated_body_path,
+            concat!(
+                "# Summary\n\n",
+                "Describe an expectation-oriented authored spec.\n\n",
+                "## Intended Properties\n\n",
+                "- Specs document intended system properties.\n",
+                "- Tickets carry rollout sequencing and current-state notes.\n\n",
+                "## Acceptance Criteria\n\n",
+                "- The expected property remains observable after updates.\n\n",
+                "## Evidence\n\n",
+                "- Store-owned evidence can satisfy or block implementation.\n",
+            ),
+        )
+        .unwrap();
+
+        dispatch(
+            SpecCommandCli::Update(crate::cli::UpdateArgs {
+                id: spec_id.clone(),
+                fields: vec!["title=Expectation-oriented spec updated".to_string()],
+                to_state: None,
+                body_file: Some(updated_body_path),
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        let fetched = dispatch(
+            SpecCommandCli::Get(crate::cli::GetArgs {
+                id: spec_id.clone(),
+                full: true,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(
+            fetched["spec"]["fields"]["title"],
+            "Expectation-oriented spec updated"
+        );
+        assert!(fetched["body"]
+            .as_str()
+            .unwrap()
+            .contains("Store-owned evidence can satisfy or block implementation."));
+
+        let searched = dispatch(
+            SpecCommandCli::Search(crate::cli::SearchArgs {
+                query: "store-owned evidence can satisfy or block implementation".to_string(),
+                limit: 10,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(searched["count"], 1);
+        assert_eq!(searched["items"][0]["id"], spec_id);
+
+        let health = dispatch(
+            SpecCommandCli::Health(crate::cli::HealthArgs {
+                id: Some(spec_id),
+                all: false,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(health["issues_count"], 0);
     }
 }

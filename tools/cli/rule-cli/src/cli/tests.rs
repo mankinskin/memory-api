@@ -770,6 +770,38 @@ fn generate_target_supports_dot_prefixed_prompt_tree_output() {
 }
 
 #[test]
+fn repo_spec_prompt_target_matches_expectation_oriented_contract() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(5)
+        .expect("context-engine repo root")
+        .to_path_buf();
+
+    let prompt_path = repo_root.join(".github/prompts/spec.prompt.md");
+    let rendered = fs::read_to_string(&prompt_path).unwrap();
+
+    assert!(rendered.contains("intended system properties"));
+    assert!(rendered.contains("explicit acceptance criteria"));
+    assert!(rendered.contains(
+        "Keep problem statements, current-state analysis, rollout sequencing, blockers, and implementation notes in related tickets"
+    ));
+    assert!(!rendered.contains(
+        "captures motivation, intended behavior or scope"
+    ));
+
+    dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: repo_root.join("rule-targets.yaml"),
+            target: "context-engine-prompt-spec".to_string(),
+            dry_run: false,
+            check: true,
+        }),
+        &repo_root,
+    )
+    .unwrap();
+}
+
+#[test]
 fn add_root_command_creates_missing_directory() {
     let dir = tempdir().unwrap();
     let index_root = dir.path().join(".rule");
