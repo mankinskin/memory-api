@@ -11,6 +11,14 @@ use crate::{
     store::RuleStore,
 };
 
+fn target_node_names(target: &RenderTarget) -> Vec<String> {
+    target
+        .ordered_nodes()
+        .into_iter()
+        .map(|node| node.name)
+        .collect()
+}
+
 #[test]
 fn load_render_target_config_parses_targets_and_rejects_duplicates() {
     let tmp = tempfile::tempdir().unwrap();
@@ -573,6 +581,132 @@ fn load_render_target_config_parses_hierarchical_outline_nodes_in_order() {
             .section
             .as_deref(),
         Some("opening/validation")
+    );
+}
+
+#[test]
+fn readme_schema_inherits_shared_outline_for_multiple_targets() {
+    let tmp = tempdir().unwrap();
+    let path = tmp.path().join("rule-targets.yaml");
+    fs::write(
+        &path,
+        concat!(
+            "schemas:\n",
+            "  - name: repository-readme-v1\n",
+            "    nodes:\n",
+            "      - name: summary\n",
+            "        title: Summary\n",
+            "      - name: installable-content\n",
+            "        title: Installable Content\n",
+            "      - name: command-docs\n",
+            "        title: Command Docs\n",
+            "targets:\n",
+            "  - name: memory-api-readme\n",
+            "    repo_scope: memory-api\n",
+            "    file_kind: README\n",
+            "    output_path: README.md\n",
+            "    schema: repository-readme-v1\n",
+            "  - name: viewer-api-readme\n",
+            "    repo_scope: viewer-api\n",
+            "    file_kind: README\n",
+            "    output_path: README.md\n",
+            "    schema: repository-readme-v1\n",
+        ),
+    )
+    .unwrap();
+
+    let config = load_render_target_config(&path).unwrap();
+    let memory_api = render_target_by_name(&config, "memory-api-readme").unwrap();
+    let viewer_api = render_target_by_name(&config, "viewer-api-readme").unwrap();
+    let expected = vec![
+        "summary".to_string(),
+        "installable-content".to_string(),
+        "command-docs".to_string(),
+    ];
+
+    assert_eq!(target_node_names(memory_api), expected);
+    assert_eq!(target_node_names(viewer_api), expected);
+}
+
+#[test]
+fn readme_schema_appends_explicit_nodes_without_redeclaring_outline() {
+    let tmp = tempdir().unwrap();
+    let path = tmp.path().join("rule-targets.yaml");
+    fs::write(
+        &path,
+        concat!(
+            "schemas:\n",
+            "  - name: repository-readme-v1\n",
+            "    nodes:\n",
+            "      - name: summary\n",
+            "        title: Summary\n",
+            "      - name: installable-content\n",
+            "        title: Installable Content\n",
+            "      - name: child-readmes\n",
+            "        title: Child READMEs\n",
+            "      - name: command-docs\n",
+            "        title: Command Docs\n",
+            "targets:\n",
+            "  - name: memory-viewers-readme\n",
+            "    repo_scope: memory-viewers\n",
+            "    file_kind: README\n",
+            "    output_path: README.md\n",
+            "    schema: repository-readme-v1\n",
+            "    node_mode: append\n",
+            "    nodes:\n",
+            "      - name: screenshots\n",
+            "        title: Screenshots\n",
+            "        section: screenshots\n",
+        ),
+    )
+    .unwrap();
+
+    let config = load_render_target_config(&path).unwrap();
+    let target = render_target_by_name(&config, "memory-viewers-readme").unwrap();
+
+    assert_eq!(
+        target_node_names(target),
+        vec![
+            "summary".to_string(),
+            "installable-content".to_string(),
+            "child-readmes".to_string(),
+            "command-docs".to_string(),
+            "screenshots".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn readme_schema_rejects_child_targets_missing_required_parent_block() {
+    let tmp = tempdir().unwrap();
+    let path = tmp.path().join("rule-targets.yaml");
+    fs::write(
+        &path,
+        concat!(
+            "schemas:\n",
+            "  - name: repository-readme-v1\n",
+            "    required_blocks:\n",
+            "      child:\n",
+            "        - parent-readme\n",
+            "        - command-docs\n",
+            "targets:\n",
+            "  - name: rule-cli-readme\n",
+            "    repo_scope: memory-api\n",
+            "    file_kind: README\n",
+            "    output_path: tools/cli/rule-cli/README.md\n",
+            "    schema: repository-readme-v1\n",
+            "    target_kind: child\n",
+            "    nodes:\n",
+            "      - name: summary\n",
+            "        title: Summary\n",
+            "      - name: command-docs\n",
+            "        title: Command Docs\n",
+        ),
+    )
+    .unwrap();
+
+    load_render_target_config(&path).expect_err(
+        "child README targets should fail when the shared schema requires a parent-readme block",
     );
 }
 
