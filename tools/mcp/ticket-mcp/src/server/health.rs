@@ -13,7 +13,7 @@ use ticket_api::{
 use super::*;
 
 impl TicketServer {
-    pub(crate) async fn run_health_checks(
+    pub async fn run_health_checks(
         &self,
         workspace: &str,
         root: Option<&str>,

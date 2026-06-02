@@ -2,9 +2,10 @@ use std::collections::HashSet;
 
 use serde_json::Value;
 use ticket_api::{
-    BoardEntryStatus,
-    storage::board::BoardSnapshot,
-    workflow::WorkflowModel,
+    workflow::{
+        WorkflowModel,
+        apply_board_filter,
+    },
 };
 use uuid::Uuid;
 
@@ -74,14 +75,15 @@ impl TicketServer {
                     )
                 };
                 model.sort_candidate_ids(&mut candidates);
-                let excl = excluded_by_board(board_snap.as_ref(), &candidates);
-                filter_board_candidates(&mut candidates, board_snap.as_ref());
+                let board_filtered =
+                    apply_board_filter(candidates, board_snap.as_ref(), false);
+                let mut candidates = board_filtered.candidates;
                 candidates.truncate(limit);
 
                 Ok((
                     ranked_items(&candidates, &model),
-                    excl,
-                    warnings(board_snap.as_ref()),
+                    board_filtered.excluded_by_board,
+                    board_filtered.warnings,
                     root_id.map(|id| id.to_string()),
                 ))
             })
@@ -114,65 +116,6 @@ fn intersect_option_scopes(
         (Some(set_a), None) => Some(set_a),
         (None, Some(set_b)) => Some(set_b),
         (None, None) => None,
-    }
-}
-
-fn excluded_by_board(
-    board_snap: Option<&BoardSnapshot>,
-    candidates: &[Uuid],
-) -> Vec<Value> {
-    let Some(snapshot) = board_snap else {
-        return Vec::new();
-    };
-
-    let candidate_ids: HashSet<Uuid> = candidates.iter().copied().collect();
-
-    snapshot
-        .entries
-        .iter()
-        .filter(|entry| {
-            tracked_by_board(&entry.status)
-                && candidate_ids.contains(&entry.ticket_id)
-        })
-        .map(|entry| {
-            serde_json::json!({
-                "ticket_id": entry.ticket_id.to_string(),
-                "agent_id": entry.agent_id.clone(),
-                "status": board_status(&entry.status),
-                "intent": entry.intent.clone(),
-            })
-        })
-        .collect()
-}
-
-fn filter_board_candidates(
-    candidates: &mut Vec<Uuid>,
-    board_snap: Option<&BoardSnapshot>,
-) {
-    let Some(snapshot) = board_snap else {
-        return;
-    };
-
-    let blocked_ids: HashSet<Uuid> = snapshot
-        .entries
-        .iter()
-        .filter(|entry| tracked_by_board(&entry.status))
-        .map(|entry| entry.ticket_id)
-        .collect();
-
-    candidates.retain(|ticket_id| !blocked_ids.contains(ticket_id));
-}
-
-fn tracked_by_board(status: &BoardEntryStatus) -> bool {
-    matches!(status, BoardEntryStatus::Active | BoardEntryStatus::Stale)
-}
-
-fn board_status(status: &BoardEntryStatus) -> &'static str {
-    match status {
-        BoardEntryStatus::Active => "active",
-        BoardEntryStatus::Stale => "stale",
-        BoardEntryStatus::Conflict => "conflict",
-        BoardEntryStatus::Completed => "completed",
     }
 }
 
@@ -211,33 +154,3 @@ fn ranked_items(
         .collect()
 }
 
-fn warnings(board_snap: Option<&BoardSnapshot>) -> Vec<String> {
-    let Some(snapshot) = board_snap else {
-        return Vec::new();
-    };
-
-    let mut warnings = Vec::new();
-    let max_wip = snapshot.config.max_wip;
-
-    if snapshot.active_count >= max_wip {
-        warnings.push(format!(
-            "WIP limit reached: {}/{} active entries \u{2014} pause new work and reduce the board.",
-            snapshot.active_count, max_wip
-        ));
-    } else if max_wip > 0 && snapshot.active_count + 1 >= max_wip {
-        warnings.push(format!(
-            "Approaching WIP limit: {}/{} active entries.",
-            snapshot.active_count, max_wip
-        ));
-    }
-
-    if snapshot.stale_count > 0 {
-        warnings.push(format!(
-            "{} stale board entr{} \u{2014} heartbeat has expired; run board heartbeat or clean.",
-            snapshot.stale_count,
-            if snapshot.stale_count == 1 { "y" } else { "ies" }
-        ));
-    }
-
-    warnings
-}

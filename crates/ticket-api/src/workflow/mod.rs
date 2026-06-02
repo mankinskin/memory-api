@@ -17,9 +17,12 @@ use chrono::{
     DateTime,
     Utc,
 };
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
+    BoardEntryStatus,
+    BoardSnapshot,
     error::StorageError,
     model::edge::EdgeRecord,
     storage::{
@@ -81,6 +84,23 @@ pub struct WorkflowTreeNode {
     pub transitive_reverse_dependents: usize,
     pub affected_reverse_dependent_reach: usize,
     pub dependency_state_gap: usize,
+}
+
+/// Board-owned ticket surfaced separately from visible workflow candidates.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BoardExcludedCandidate {
+    pub ticket_id: Uuid,
+    pub agent_id: String,
+    pub status: String,
+    pub intent: String,
+}
+
+/// Board-aware candidate view used by `next` surfaces.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BoardAwareCandidates {
+    pub candidates: Vec<Uuid>,
+    pub excluded_by_board: Vec<BoardExcludedCandidate>,
+    pub warnings: Vec<String>,
 }
 
 /// Canonical dependency-convergence graph model shared across ticket surfaces.
@@ -635,6 +655,109 @@ impl WorkflowModel {
     }
 }
 
+/// Apply board-awareness on top of already-ranked actionable workflow candidates.
+///
+/// The returned `candidates` preserve the input order, removing tickets covered
+/// by active or stale board entries unless `skip_board` is `true`.
+/// Excluded tickets are surfaced separately so callers can still explain why a
+/// candidate disappeared from `items`.
+pub fn apply_board_filter(
+    candidates: Vec<Uuid>,
+    board_snap: Option<&BoardSnapshot>,
+    skip_board: bool,
+) -> BoardAwareCandidates {
+    let warnings = board_warnings(board_snap);
+
+    if skip_board {
+        return BoardAwareCandidates {
+            candidates,
+            excluded_by_board: Vec::new(),
+            warnings,
+        };
+    }
+
+    let Some(snapshot) = board_snap else {
+        return BoardAwareCandidates {
+            candidates,
+            excluded_by_board: Vec::new(),
+            warnings,
+        };
+    };
+
+    let candidate_ids: HashSet<Uuid> = candidates.iter().copied().collect();
+    let excluded_by_board = snapshot
+        .entries
+        .iter()
+        .filter(|entry| tracked_by_board(&entry.status) && candidate_ids.contains(&entry.ticket_id))
+        .map(|entry| BoardExcludedCandidate {
+            ticket_id: entry.ticket_id,
+            agent_id: entry.agent_id.clone(),
+            status: board_status(&entry.status).to_string(),
+            intent: entry.intent.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let blocked_ids: HashSet<Uuid> = snapshot
+        .entries
+        .iter()
+        .filter(|entry| tracked_by_board(&entry.status))
+        .map(|entry| entry.ticket_id)
+        .collect();
+
+    BoardAwareCandidates {
+        candidates: candidates
+            .into_iter()
+            .filter(|ticket_id| !blocked_ids.contains(ticket_id))
+            .collect(),
+        excluded_by_board,
+        warnings,
+    }
+}
+
+fn board_warnings(board_snap: Option<&BoardSnapshot>) -> Vec<String> {
+    let Some(snapshot) = board_snap else {
+        return Vec::new();
+    };
+
+    let mut warnings = Vec::new();
+    let max_wip = snapshot.config.max_wip;
+
+    if snapshot.active_count >= max_wip {
+        warnings.push(format!(
+            "WIP limit reached: {}/{} active entries — pause new work and reduce the board.",
+            snapshot.active_count, max_wip
+        ));
+    } else if max_wip > 0 && snapshot.active_count + 1 >= max_wip {
+        warnings.push(format!(
+            "Approaching WIP limit: {}/{} active entries.",
+            snapshot.active_count, max_wip
+        ));
+    }
+
+    if snapshot.stale_count > 0 {
+        warnings.push(format!(
+            "{} stale board entr{} — heartbeat has expired; run board heartbeat or clean.",
+            snapshot.stale_count,
+            if snapshot.stale_count == 1 { "y" } else { "ies" }
+        ));
+    }
+
+    warnings
+}
+
+fn tracked_by_board(status: &BoardEntryStatus) -> bool {
+    matches!(status, BoardEntryStatus::Active | BoardEntryStatus::Stale)
+}
+
+fn board_status(status: &BoardEntryStatus) -> &'static str {
+    match status {
+        BoardEntryStatus::Active => "active",
+        BoardEntryStatus::Stale => "stale",
+        BoardEntryStatus::Conflict => "conflict",
+        BoardEntryStatus::Completed => "completed",
+    }
+}
+
 fn build_state_index(store: &TicketStore) -> HashMap<String, usize> {
     let mut state_index = HashMap::new();
     for type_id in store.schema_registry().type_ids() {
@@ -904,6 +1027,7 @@ fn priority_weight(priority: &str) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
 
     use chrono::{
@@ -912,6 +1036,12 @@ mod tests {
     };
 
     use super::*;
+    use crate::{
+        BoardConfig,
+        BoardEntry,
+        BoardEntryStatus,
+        BoardSnapshot,
+    };
 
     fn ticket(
         title: &str,
@@ -1327,6 +1457,110 @@ mod tests {
         assert_eq!(tree.children[1].children.len(), 1);
         assert_eq!(tree.children[1].children[0].ticket_id, nested_leaf.id);
         assert!(tree.children[1].children[0].is_frontier);
+    }
+
+    #[test]
+    fn apply_board_filter_excludes_tracked_candidates_and_surfaces_warnings() {
+        let active_candidate = Uuid::new_v4();
+        let free_candidate = Uuid::new_v4();
+        let now = Utc.with_ymd_and_hms(2026, 6, 2, 10, 0, 0).unwrap();
+        let snapshot = BoardSnapshot {
+            captured_at: now,
+            entries: vec![BoardEntry {
+                entry_id: Uuid::new_v4(),
+                ticket_id: active_candidate,
+                agent_id: "parity-agent".to_string(),
+                previous_attempt: None,
+                checked_in_at: now,
+                last_heartbeat: now,
+                ttl_secs: 3600,
+                intent: "in flight".to_string(),
+                owned_files: Vec::new(),
+                status: BoardEntryStatus::Active,
+                handoff_reason: None,
+                completed_at: None,
+            }],
+            caller_entries: Vec::new(),
+            config: BoardConfig {
+                max_wip: 1,
+                stale_after_secs: 3600,
+                completed_audit_window_secs: 3600,
+            },
+            active_count: 1,
+            stale_count: 0,
+            conflict_count: 0,
+            wip_limit_reached: true,
+            file_ownership: BTreeMap::new(),
+            warnings: Vec::new(),
+        };
+
+        let result = apply_board_filter(
+            vec![active_candidate, free_candidate],
+            Some(&snapshot),
+            false,
+        );
+
+        assert_eq!(result.candidates, vec![free_candidate]);
+        assert_eq!(result.excluded_by_board.len(), 1);
+        assert_eq!(result.excluded_by_board[0].ticket_id, active_candidate);
+        assert_eq!(result.excluded_by_board[0].agent_id, "parity-agent");
+        assert_eq!(result.excluded_by_board[0].status, "active");
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("WIP limit reached")),
+            "expected WIP warning, got {:?}",
+            result.warnings
+        );
+    }
+
+    #[test]
+    fn apply_board_filter_respects_skip_board_but_keeps_warnings() {
+        let tracked_candidate = Uuid::new_v4();
+        let now = Utc.with_ymd_and_hms(2026, 6, 2, 10, 0, 0).unwrap();
+        let snapshot = BoardSnapshot {
+            captured_at: now,
+            entries: vec![BoardEntry {
+                entry_id: Uuid::new_v4(),
+                ticket_id: tracked_candidate,
+                agent_id: "parity-agent".to_string(),
+                previous_attempt: None,
+                checked_in_at: now,
+                last_heartbeat: now,
+                ttl_secs: 3600,
+                intent: "in flight".to_string(),
+                owned_files: Vec::new(),
+                status: BoardEntryStatus::Stale,
+                handoff_reason: None,
+                completed_at: None,
+            }],
+            caller_entries: Vec::new(),
+            config: BoardConfig {
+                max_wip: 5,
+                stale_after_secs: 3600,
+                completed_audit_window_secs: 3600,
+            },
+            active_count: 0,
+            stale_count: 1,
+            conflict_count: 0,
+            wip_limit_reached: false,
+            file_ownership: BTreeMap::new(),
+            warnings: Vec::new(),
+        };
+
+        let result = apply_board_filter(vec![tracked_candidate], Some(&snapshot), true);
+
+        assert_eq!(result.candidates, vec![tracked_candidate]);
+        assert!(result.excluded_by_board.is_empty());
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("stale board entry")),
+            "expected stale warning, got {:?}",
+            result.warnings
+        );
     }
 
     #[test]

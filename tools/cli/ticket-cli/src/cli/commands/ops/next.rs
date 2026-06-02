@@ -5,12 +5,11 @@ use serde_json::{
     json,
 };
 use ticket_api::{
-    BoardEntryStatus,
-    BoardSnapshot,
     storage::store::TicketStore,
     workflow::{
         WorkflowModel,
         WorkflowTreeNode,
+        apply_board_filter,
     },
 };
 use uuid::Uuid;
@@ -60,12 +59,10 @@ pub(super) fn run(
         )
     };
     model.sort_candidate_ids(&mut candidates);
-
-    let excluded_by_board =
-        excluded_by_board(board_snap.as_ref(), &candidates, args.no_board);
-    let candidates =
-        filter_board_candidates(candidates, board_snap.as_ref(), args.no_board);
-    let limited_candidates = limit_candidates(candidates, args.limit);
+    let board_filtered =
+        apply_board_filter(candidates, board_snap.as_ref(), args.no_board);
+    let limited_candidates =
+        limit_candidates(board_filtered.candidates, args.limit);
 
     let active_index_root = store.index_root.display().to_string();
     let mut payload = json!({
@@ -78,8 +75,8 @@ pub(super) fn run(
         },
         "count": limited_candidates.len(),
         "items": build_items(&limited_candidates, &model),
-        "excluded_by_board": excluded_by_board,
-        "warnings": warnings(board_snap.as_ref()),
+        "excluded_by_board": board_filtered.excluded_by_board,
+        "warnings": board_filtered.warnings,
     });
 
     if let Some(scope) = next_scope {
@@ -234,71 +231,6 @@ fn intersect_scopes(
     }
 }
 
-fn excluded_by_board(
-    board_snap: Option<&BoardSnapshot>,
-    candidates: &[Uuid],
-    no_board: bool,
-) -> Vec<Value> {
-    if no_board {
-        return Vec::new();
-    }
-
-    let candidate_ids: HashSet<Uuid> = candidates.iter().copied().collect();
-    board_snap
-        .map(|snapshot| {
-            snapshot
-                .entries
-                .iter()
-                .filter(|entry| {
-                    tracked_by_board(entry.status.clone())
-                        && candidate_ids.contains(&entry.ticket_id)
-                })
-                .map(|entry| {
-                    json!({
-                        "ticket_id": entry.ticket_id,
-                        "agent_id": entry.agent_id,
-                        "status": board_status(entry.status.clone()),
-                        "intent": entry.intent,
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn filter_board_candidates<'a>(
-    candidates: Vec<Uuid>,
-    board_snap: Option<&BoardSnapshot>,
-    no_board: bool,
-) -> Vec<Uuid> {
-    if no_board {
-        return candidates;
-    }
-
-    let board_ticket_ids = board_ticket_ids(board_snap);
-    candidates
-        .into_iter()
-        .filter(|ticket_id| !board_ticket_ids.contains(ticket_id))
-        .collect()
-}
-
-fn board_ticket_ids(board_snap: Option<&BoardSnapshot>) -> HashSet<Uuid> {
-    board_snap
-        .map(|snapshot| {
-            snapshot
-                .entries
-                .iter()
-                .filter(|entry| tracked_by_board(entry.status.clone()))
-                .map(|entry| entry.ticket_id)
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn tracked_by_board(status: BoardEntryStatus) -> bool {
-    status == BoardEntryStatus::Active || status == BoardEntryStatus::Stale
-}
-
 fn limit_candidates<'a>(
     mut candidates: Vec<Uuid>,
     limit: usize,
@@ -424,41 +356,4 @@ fn build_tree_item(
             .map(|child| build_tree_item(child, model, satisfied_ids))
             .collect::<Vec<_>>(),
     })
-}
-
-fn warnings(board_snap: Option<&BoardSnapshot>) -> Vec<String> {
-    let Some(snapshot) = board_snap else {
-        return Vec::new();
-    };
-
-    let mut warnings = Vec::new();
-    let max_wip = snapshot.config.max_wip;
-    if snapshot.active_count >= max_wip {
-        warnings.push(format!(
-            "WIP limit reached: {}/{} active entries \u{2014} pause new work and reduce the board.",
-            snapshot.active_count, max_wip
-        ));
-    } else if max_wip > 0 && snapshot.active_count + 1 >= max_wip {
-        warnings.push(format!(
-            "Approaching WIP limit: {}/{} active entries.",
-            snapshot.active_count, max_wip
-        ));
-    }
-    if snapshot.stale_count > 0 {
-        warnings.push(format!(
-            "{} stale board entr{} \u{2014} heartbeat has expired; run 'ticket board heartbeat' or 'ticket board clean'.",
-            snapshot.stale_count,
-            if snapshot.stale_count == 1 { "y" } else { "ies" }
-        ));
-    }
-    warnings
-}
-
-fn board_status(status: BoardEntryStatus) -> &'static str {
-    match status {
-        BoardEntryStatus::Active => "active",
-        BoardEntryStatus::Stale => "stale",
-        BoardEntryStatus::Conflict => "conflict",
-        BoardEntryStatus::Completed => "completed",
-    }
 }

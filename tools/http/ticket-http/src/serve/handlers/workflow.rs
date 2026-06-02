@@ -23,8 +23,10 @@ use serde::{
 use ticket_api::{
     storage::store::TicketStore,
     workflow::{
+        BoardExcludedCandidate,
         WorkflowModel,
         WorkflowTreeNode,
+        apply_board_filter,
     },
 };
 use uuid::Uuid;
@@ -148,6 +150,8 @@ pub struct WorkflowNextResponse {
     pub remaining_blocker_count: Option<usize>,
     pub count: usize,
     pub items: Vec<WorkflowCandidateItem>,
+    pub excluded_by_board: Vec<BoardExcludedCandidate>,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -208,6 +212,7 @@ pub async fn workflow_next(
             Ok(model) => model,
             Err(error) => return storage_err(error, &request_id),
         };
+        let board_snap = store.board_show(None).ok();
 
         if let Some(root_id) = params.root {
             if model.ticket(&root_id).is_none() {
@@ -216,7 +221,8 @@ pub async fn workflow_next(
             }
         }
 
-        let filtered_scope = WorkflowModel::filter_scope(&tickets, params.filter.as_deref());
+        let filtered_scope =
+            WorkflowModel::filter_scope(&tickets, params.filter.as_deref());
         let satisfied_ids = params.root.into_iter().collect::<HashSet<_>>();
         let next_scope = match params.root {
             Some(root_id) => match build_next_scope(
@@ -245,6 +251,9 @@ pub async fn workflow_next(
             )
         };
         model.sort_candidate_ids(&mut candidates);
+        let board_filtered =
+            apply_board_filter(candidates, board_snap.as_ref(), false);
+        let mut candidates = board_filtered.candidates;
         candidates.truncate(params.limit.min(100));
 
         let items = match build_candidate_items(
@@ -280,6 +289,8 @@ pub async fn workflow_next(
                 .map(|scope| scope.remaining_blockers.len()),
             count: items.len(),
             items,
+            excluded_by_board: board_filtered.excluded_by_board,
+            warnings: board_filtered.warnings,
         })
         .into_response()
     })
@@ -705,6 +716,8 @@ mod tests {
         assert!(items[0]["became_actionable_at"].as_str().is_some());
         assert!(items[1]["became_actionable_at"].as_str().is_some());
         assert_eq!(next["scope"]["workspace"], workspace.as_str());
+        assert_eq!(next["excluded_by_board"], json!([]));
+        assert_eq!(next["warnings"], json!([]));
         assert!(
             next["scope"]["active_index_root"].as_str().is_some(),
             "scope.active_index_root should be present",
@@ -767,11 +780,77 @@ mod tests {
         assert_eq!(scoped["remaining_blocker_count"], 1);
         assert_eq!(scoped["items"][0]["id"], scoped_blocker.to_string());
         assert_eq!(scoped["scope"]["workspace"], workspace.as_str());
+        assert_eq!(scoped["excluded_by_board"], json!([]));
+        assert_eq!(scoped["warnings"], json!([]));
         assert!(
             scoped["scope"]["active_index_root"].as_str().is_some(),
             "scope.active_index_root should be present in scoped response",
         );
         assert_eq!(scoped["scope"]["root"], root.to_string());
+    }
+
+    #[tokio::test]
+    async fn workflow_next_filters_board_active_candidates_into_excluded_by_board() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = workspace_name(dir.path());
+        let store = make_store(dir.path());
+        let app = make_router(Arc::clone(&store));
+
+        let active = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Active board ticket"),
+                Some("ready"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .unwrap();
+        let free = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Free candidate ticket"),
+                Some("ready"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        store
+            .board_configure(Some(ticket_api::BoardConfig {
+                max_wip: 1,
+                stale_after_secs: 3600,
+                completed_audit_window_secs: 3600,
+            }))
+            .unwrap();
+        store
+            .board_check_in(&active, "http-parity-agent", 3600, "in flight", Vec::new())
+            .unwrap();
+
+        let next =
+            get_json(app, format!("/api/workflow/next?workspace={workspace}")).await;
+        let items = next["items"].as_array().unwrap();
+        let excluded = next["excluded_by_board"].as_array().unwrap();
+        let warnings = next["warnings"].as_array().unwrap();
+
+        assert!(items.iter().any(|item| item["id"] == free.to_string()));
+        assert!(!items.iter().any(|item| item["id"] == active.to_string()));
+        assert!(
+            excluded
+                .iter()
+                .any(|entry| entry["ticket_id"] == active.to_string()),
+            "active board ticket must be surfaced in excluded_by_board: {excluded:?}"
+        );
+        assert!(
+            warnings.iter().any(|warning| warning
+                .as_str()
+                .unwrap_or("")
+                .contains("WIP limit reached")),
+            "expected WIP warning, got {warnings:?}"
+        );
     }
 
     #[tokio::test]
