@@ -1,0 +1,18 @@
+[package]
+name = "session-api"
+version = "0.1.0"
+edition = "2024"
+description = "Copilot session capture models and store-layout planning for memory-api-backed persistence"
+
+[lib]
+name = "session_api"
+path = "src/lib.rs"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+
+[dev-dependencies]
+pretty_assertions = "1"
+serde_json = "1"
