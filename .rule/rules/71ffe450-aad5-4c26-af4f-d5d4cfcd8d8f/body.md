@@ -4,7 +4,7 @@ CLI interface for `ticket-api`.
 
 ## Interface
 
-Use `ticket` for local ticket CRUD, dependency graphs, ready-work discovery, board coordination, and JSON automation.
+Use `ticket` for local ticket CRUD, dependency graphs, ready-work discovery, board coordination, and machine-readable automation.
 
 - `create`, `get`, `update`, `close`, `cancel`, `delete`, `list`, `search`: maintain tickets and state transitions.
 - `link`, `unlink`, `links`, `subgraph`, `topgraph`: inspect and manage dependency edges.
@@ -16,7 +16,8 @@ Use `ticket` for local ticket CRUD, dependency graphs, ready-work discovery, boa
 Global options:
 
 - `--json`: emit machine-readable JSON output.
-- `--request-id <id>`: include a request id in JSON envelopes.
+- `--toon`: emit machine-readable TOON output.
+- `--request-id <id>`: include a request id in JSON or TOON envelopes.
 - `--index-root <path>`: override the `.ticket` index root.
 - `--schema-dir <path>`: load additional ticket schema files.
 
@@ -31,13 +32,15 @@ cargo run -p ticket-cli --bin ticket -- --help
 
 `ticket` discovers the nearest `.ticket` workspace by walking up from the current directory. Use `--index-root` when you need to point at another ticket store.
 
+When you need the most compact structured output in this repository, prefer `rtk ticket --toon ...` over `rtk ticket --json ...`. Use `toon-format` / `toon-rust` to decode TOON in Rust tooling or tests.
+
 ## Workflow notes
 
 `ticket next` uses convergence-first ranking. When an earlier-state prerequisite is blocking a more advanced dependent, it can rank ahead of otherwise similar candidates so the queue naturally moves back toward prerequisite-first execution.
 
-`ticket next --json` surfaces the explainability fields behind that promotion, including `dependees`, `transitive_reverse_dependents`, `affected_reverse_dependent_reach`, `max_affected_dependent_state`, and `dependency_state_gap`.
+`ticket next --json` and `ticket next --toon` surface the explainability fields behind that promotion, including `dependees`, `transitive_reverse_dependents`, `affected_reverse_dependent_reach`, `max_affected_dependent_state`, and `dependency_state_gap`.
 
-`ticket health --json` reports `dependency_convergence` findings when a dependent is ahead of a blocking prerequisite, with both ticket ids and the relevant state-gap evidence.
+`ticket health --json` and `ticket health --toon` report `dependency_convergence` findings when a dependent is ahead of a blocking prerequisite, with both ticket ids and the relevant state-gap evidence.
 
 ## Examples
 
@@ -48,8 +51,8 @@ ticket board show
 # Move one ticket forward
 ticket update <ticket-id> --to-state in-implementation
 
-# Inspect convergence-first next ranking
-ticket next --json
+# Inspect convergence-first next ranking with compact machine output
+rtk ticket --toon next
 
 # Detect dependency-state inversions before review
 ticket health <ticket-id> --json
