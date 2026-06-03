@@ -29,6 +29,27 @@ pub enum SessionError {
         source: serde_json::Error,
     },
 
+    #[error("failed to deserialize session data from {path}: {source}")]
+    Deserialize {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+
+    #[error("session data was not found at {path}")]
+    NotFound {
+        path: PathBuf,
+    },
+
+    #[error(
+        "incoming transcript would rewrite existing turns for session {session_id} ({existing_turns} existing, {incoming_turns} incoming)"
+    )]
+    TranscriptConflict {
+        session_id: String,
+        existing_turns: usize,
+        incoming_turns: usize,
+    },
+
     #[error("filesystem operation failed for {path}: {source}")]
     Io {
         path: PathBuf,

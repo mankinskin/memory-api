@@ -19,6 +19,7 @@ pub use model::{
 pub use store::{
     PersistedSessionManifest,
     PersistedSessionTranscript,
+    SessionQuery,
     SessionStoreConfig,
     SessionStorePaths,
     SessionStorePlan,
