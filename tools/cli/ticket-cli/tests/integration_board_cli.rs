@@ -1027,7 +1027,7 @@ fn next_and_board_prefer_recently_actionable_candidates_and_surface_timing_metad
     assert_eq!(recommended[0]["ticket_id"], recently_actionable.as_str());
     assert_eq!(recommended[1]["ticket_id"], steadier_newer.as_str());
     assert!(recommended[0]["became_actionable_at"].as_str().is_some());
-    assert!(recommended[0]["last_blocker_progress_at"].is_null());
+    assert!(recommended[0].get("last_blocker_progress_at").is_none());
     assert!(recommended[1]["became_actionable_at"].as_str().is_some());
 }
 

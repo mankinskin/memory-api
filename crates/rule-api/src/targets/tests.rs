@@ -412,6 +412,80 @@ fn load_render_target_config_imports_directory_fragments_in_sorted_order() {
 }
 
 #[test]
+fn load_render_target_config_accepts_top_level_directory_configs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo_root = tmp.path().join("repo");
+    let targets_dir = repo_root.join("rule-targets");
+    fs::create_dir_all(&targets_dir).unwrap();
+
+    fs::write(
+        targets_dir.join("20-agents.yaml"),
+        concat!(
+            "targets:\n",
+            "  - name: context-engine-agents\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    output_path: AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+    fs::write(
+        targets_dir.join("10-readme.yaml"),
+        concat!(
+            "targets:\n",
+            "  - name: context-engine-readme\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: README\n",
+            "    output_path: README.md\n",
+        ),
+    )
+    .unwrap();
+    fs::write(targets_dir.join("notes.txt"), "ignore me\n").unwrap();
+
+    let config = load_render_target_config(&targets_dir).unwrap();
+    let names = config
+        .targets
+        .iter()
+        .map(|target| target.name.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        names,
+        vec!["context-engine-readme", "context-engine-agents",]
+    );
+
+    let readme = render_target_by_name(&config, "context-engine-readme")
+        .unwrap();
+    assert_eq!(
+        readme.source_config_path.as_deref(),
+        Some(targets_dir.join("10-readme.yaml").as_path())
+    );
+    assert_eq!(
+        readme.source_output_root.as_deref(),
+        Some(repo_root.as_path())
+    );
+    assert_eq!(
+        resolve_render_target_output(&targets_dir, readme),
+        repo_root.join("README.md")
+    );
+
+    let agents = render_target_by_name(&config, "context-engine-agents")
+        .unwrap();
+    assert_eq!(
+        agents.source_config_path.as_deref(),
+        Some(targets_dir.join("20-agents.yaml").as_path())
+    );
+    assert_eq!(
+        agents.source_output_root.as_deref(),
+        Some(repo_root.as_path())
+    );
+    assert_eq!(
+        resolve_render_target_output(&targets_dir, agents),
+        repo_root.join("AGENTS.md")
+    );
+}
+
+#[test]
 fn load_render_target_config_rejects_duplicate_names_across_imports() {
     let tmp = tempfile::tempdir().unwrap();
     let repo_root = tmp.path().join("repo");

@@ -48,13 +48,17 @@ fn section(name: &str) -> String {
     .unwrap_or_else(|_| panic!("missing section {name}"))
 }
 
+fn normalize_newlines(input: &str) -> String {
+    input.replace("\r\n", "\n")
+}
+
 #[test]
 fn readme_install_flow_section_matches_readme_rule_entry() {
     let expected = section("readme-install-flow");
     let actual =
         fs::read_to_string(memory_api_root().join(README_RULE_PATH)).unwrap();
 
-    assert_eq!(actual, expected);
+    assert_eq!(normalize_newlines(&actual), normalize_newlines(&expected));
 }
 
 #[test]

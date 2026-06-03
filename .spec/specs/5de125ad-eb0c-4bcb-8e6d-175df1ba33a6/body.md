@@ -1,6 +1,6 @@
 # Summary
 
-Nested rule workspaces should extend the existing `rule-api` store and target model from "one store + one config" into a discovered workspace graph. The owning repo workspace remains the unit of authoring, while generation and explanation can traverse child workspaces deterministically.
+Nested rule workspaces should extend the existing `rule-api` store and target model from "one store + one config" into an explicitly scanned workspace graph. The owning repo workspace remains the unit of authoring, while generation and explanation can reuse persisted child-workspace scan roots deterministically.
 
 ## Current Seam
 
@@ -10,7 +10,7 @@ Current generation opens one `RuleStore` and one config path:
 - `load_render_target_config(config_path)`
 - `resolve_render_target_output(config_path, target)`
 
-The store also supports extra scan roots, but that is still a manually assembled view inside a single workspace. There is no repo-level discovery model, no child-workspace provenance, and no parent-to-child composition contract.
+The store already supports extra scan roots, but ordinary read and render commands should treat those roots as persisted state, not as a trigger to walk the repo tree on every invocation. Child-workspace discovery belongs to explicit maintenance flows so repeated `get`, `list`, `search`, `generate-target`, `explain-target`, and `sync-targets` runs can reuse the stored aggregate view instead of rescanning the filesystem.
 
 ## Required Behavior
 
@@ -19,10 +19,12 @@ The store also supports extra scan roots, but that is still a manually assembled
 - A repo-local workspace is identified by a `.rule/` store root.
 - Nested workspaces may exist in submodule repositories or explicit subfolders.
 - CLI and MCP operations must be able to resolve the local workspace from the current directory or an explicit workspace root.
+- Descendant child workspaces must only be discovered by explicit maintenance commands such as `rule scan` or explicit root registration.
+- Discovered child workspaces must be persisted as scan roots so later read and render commands can reuse them without another filesystem walk.
 
 ### Aggregated read model
 
-- Parent workspaces may read rules from descendant workspaces.
+- Parent workspaces may read rules from descendant workspaces after an explicit scan or explicit root registration.
 - Child workspaces remain independently queryable and generatable in isolation.
 - Rule provenance must include the workspace root that supplied each matched rule.
 
@@ -41,23 +43,25 @@ The store also supports extra scan roots, but that is still a manually assembled
 ## Usage Guide
 
 1. Enter the repo whose workspace you want to operate on.
-2. Run `rule list`, `rule explain-target`, or `rule sync-targets` against that workspace root.
-3. When operating from a parent repo, review the explanation output to confirm which child workspace contributed each rule.
-4. Use repo-prefixed slugs and repo scopes so aggregated generation remains deterministic and auditable.
+2. Run `rule scan` when you want that workspace to discover child `.rule/` stores and persist them for reuse.
+3. Run `rule list`, `rule explain-target`, or `rule sync-targets` against that workspace root after the scan roots you need are already persisted.
+4. When operating from a parent repo, review the explanation output to confirm which child workspace contributed each rule.
+5. Use repo-prefixed slugs and repo scopes so aggregated generation remains deterministic and auditable.
 
 ## Test Strategy
 
 The implementation should add or expand tests for:
 
-- workspace discovery order across nested repos
-- parent generation that includes child rules
+- explicit scan discovery order across nested repos
+- parent generation that includes child rules only after a scan persists the child workspace roots
 - isolation of child-only generation
 - provenance in explain output
 - generated target identity keyed by workspace root + config path + target name
 
 ## Acceptance Criteria
 
-- `memory-viewers/` can generate parent targets using rules from `memory-api/` and `viewer-api/` child workspaces.
+- `memory-viewers/` can generate parent targets using rules from `memory-api/` and `viewer-api/` child workspaces after `rule scan` persists those child roots.
 - A nested repo can generate its own targets without loading unrelated parent outputs.
+- Before a scan persists child roots, parent `get`, `list`, `search`, and render commands do not walk the repo tree to discover child workspaces implicitly.
 - Explain output identifies the originating workspace for every matched rule.
 - Existing tests for hierarchical targets and generated target persistence remain valid or are updated with nested-workspace coverage.

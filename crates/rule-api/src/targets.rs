@@ -1,5 +1,8 @@
 use std::{
-    collections::HashSet,
+    collections::{
+        HashMap,
+        HashSet,
+    },
     fs,
     path::{
         Path,
@@ -39,11 +42,81 @@ struct RawRenderTargetConfig {
     #[serde(default)]
     imports: Vec<PathBuf>,
     #[serde(default)]
-    targets: Vec<RenderTarget>,
+    schemas: Vec<RenderTargetSchema>,
+    #[serde(default)]
+    targets: Vec<RawRenderTarget>,
     #[serde(default)]
     folders: Vec<RenderTargetFolder>,
     #[serde(default)]
     files: Vec<RenderTargetFile>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct RawRenderTarget {
+    name: String,
+    repo_scope: String,
+    file_kind: String,
+    #[serde(default)]
+    path_scope: Option<String>,
+    #[serde(default)]
+    section: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    nodes: Vec<RenderTargetNode>,
+    output_path: String,
+    #[serde(default)]
+    schema: Option<String>,
+    #[serde(default)]
+    target_kind: Option<RenderTargetKind>,
+    #[serde(default)]
+    node_mode: Option<RenderTargetNodeMode>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct RenderTargetSchema {
+    name: String,
+    #[serde(default)]
+    nodes: Vec<RenderTargetNode>,
+    #[serde(default)]
+    required_blocks: RenderTargetRequiredBlocks,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+struct RenderTargetRequiredBlocks {
+    #[serde(default)]
+    root: Vec<String>,
+    #[serde(default)]
+    child: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum RenderTargetKind {
+    Root,
+    Child,
+}
+
+impl RenderTargetKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Root => "root",
+            Self::Child => "child",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum RenderTargetNodeMode {
+    Replace,
+    Append,
+}
+
+#[derive(Debug, Default)]
+struct LoadedRenderTargets {
+    targets: Vec<RenderTarget>,
+    schemas: HashMap<String, RenderTargetSchema>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -74,6 +147,12 @@ struct RenderTargetDefinition {
     state: Option<String>,
     #[serde(default)]
     nodes: Vec<RenderTargetNode>,
+    #[serde(default)]
+    schema: Option<String>,
+    #[serde(default)]
+    target_kind: Option<RenderTargetKind>,
+    #[serde(default)]
+    node_mode: Option<RenderTargetNodeMode>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -220,15 +299,6 @@ impl RenderTarget {
         self.source_config_path.as_deref().unwrap_or(fallback)
     }
 
-    fn with_source_config_path(
-        mut self,
-        config_path: &Path,
-    ) -> Self {
-        self.source_config_path = Some(config_path.to_path_buf());
-        self.source_output_root = Some(resolve_config_output_root(config_path));
-        self
-    }
-
     pub fn flat_filter(&self) -> RenderTargetFilter {
         RenderTargetFilter {
             repo_scope: Some(self.repo_scope.clone()),
@@ -261,20 +331,73 @@ impl RawRenderTargetConfig {
     fn into_render_targets(
         self,
         config_path: &Path,
-    ) -> Vec<RenderTarget> {
+        schemas: &HashMap<String, RenderTargetSchema>,
+    ) -> Result<Vec<RenderTarget>, TargetConfigError> {
         let mut targets = self
             .targets
             .into_iter()
-            .map(|target| target.with_source_config_path(config_path))
-            .collect::<Vec<_>>();
+            .map(|target| target.into_render_target(config_path, schemas))
+            .collect::<Result<Vec<_>, _>>()?;
         let root = PathBuf::new();
 
-        push_tree_files(&root, self.files, config_path, &mut targets);
+        push_tree_files(&root, self.files, config_path, schemas, &mut targets)?;
         for folder in self.folders {
-            folder.collect_targets(&root, config_path, &mut targets);
+            folder.collect_targets(&root, config_path, schemas, &mut targets)?;
         }
 
-        targets
+        Ok(targets)
+    }
+}
+
+impl LoadedRenderTargets {
+    fn insert_schema(
+        &mut self,
+        schema: RenderTargetSchema,
+    ) -> Result<(), TargetConfigError> {
+        let name = schema.name.clone();
+        if self.schemas.insert(name.clone(), schema).is_some() {
+            return Err(TargetConfigError::DuplicateSchemaName(name));
+        }
+        Ok(())
+    }
+
+    fn merge(
+        &mut self,
+        other: Self,
+    ) -> Result<(), TargetConfigError> {
+        for schema in other.schemas.into_values() {
+            self.insert_schema(schema)?;
+        }
+        self.targets.extend(other.targets);
+        Ok(())
+    }
+}
+
+impl RawRenderTarget {
+    fn into_render_target(
+        self,
+        config_path: &Path,
+        schemas: &HashMap<String, RenderTargetSchema>,
+    ) -> Result<RenderTarget, TargetConfigError> {
+        Ok(RenderTarget {
+            name: self.name.clone(),
+            repo_scope: self.repo_scope,
+            file_kind: self.file_kind,
+            path_scope: self.path_scope,
+            section: self.section,
+            state: self.state,
+            nodes: resolve_target_nodes(
+                &self.name,
+                self.nodes,
+                self.schema.as_deref(),
+                self.target_kind,
+                self.node_mode,
+                schemas,
+            )?,
+            output_path: self.output_path,
+            source_config_path: Some(config_path.to_path_buf()),
+            source_output_root: Some(resolve_config_output_root(config_path)),
+        })
     }
 }
 
@@ -283,14 +406,17 @@ impl RenderTargetFolder {
         self,
         parent: &Path,
         config_path: &Path,
+        schemas: &HashMap<String, RenderTargetSchema>,
         targets: &mut Vec<RenderTarget>,
-    ) {
+    ) -> Result<(), TargetConfigError> {
         let prefix = parent.join(self.name);
 
-        push_tree_files(&prefix, self.files, config_path, targets);
+        push_tree_files(&prefix, self.files, config_path, schemas, targets)?;
         for folder in self.folders {
-            folder.collect_targets(&prefix, config_path, targets);
+            folder.collect_targets(&prefix, config_path, schemas, targets)?;
         }
+
+        Ok(())
     }
 }
 
@@ -299,19 +425,42 @@ impl RenderTargetFile {
         self,
         parent: &Path,
         config_path: &Path,
-    ) -> RenderTarget {
-        RenderTarget {
-            name: self.target.name,
-            repo_scope: self.target.repo_scope,
-            file_kind: self.target.file_kind,
-            path_scope: self.target.path_scope,
-            section: self.target.section,
-            state: self.target.state,
-            nodes: self.target.nodes,
-            output_path: tree_output_path(parent, &self.name),
+        schemas: &HashMap<String, RenderTargetSchema>,
+    ) -> Result<RenderTarget, TargetConfigError> {
+        self.target.into_render_target(
+            tree_output_path(parent, &self.name),
+            config_path,
+            schemas,
+        )
+    }
+}
+
+impl RenderTargetDefinition {
+    fn into_render_target(
+        self,
+        output_path: String,
+        config_path: &Path,
+        schemas: &HashMap<String, RenderTargetSchema>,
+    ) -> Result<RenderTarget, TargetConfigError> {
+        Ok(RenderTarget {
+            name: self.name.clone(),
+            repo_scope: self.repo_scope,
+            file_kind: self.file_kind,
+            path_scope: self.path_scope,
+            section: self.section,
+            state: self.state,
+            nodes: resolve_target_nodes(
+                &self.name,
+                self.nodes,
+                self.schema.as_deref(),
+                self.target_kind,
+                self.node_mode,
+                schemas,
+            )?,
+            output_path,
             source_config_path: Some(config_path.to_path_buf()),
             source_output_root: Some(resolve_config_output_root(config_path)),
-        }
+        })
     }
 }
 
@@ -319,11 +468,81 @@ fn push_tree_files(
     parent: &Path,
     files: Vec<RenderTargetFile>,
     config_path: &Path,
+    schemas: &HashMap<String, RenderTargetSchema>,
     targets: &mut Vec<RenderTarget>,
-) {
+) -> Result<(), TargetConfigError> {
     for file in files {
-        targets.push(file.into_render_target(parent, config_path));
+        targets.push(file.into_render_target(parent, config_path, schemas)?);
     }
+
+    Ok(())
+}
+
+fn resolve_target_nodes(
+    target_name: &str,
+    nodes: Vec<RenderTargetNode>,
+    schema_name: Option<&str>,
+    target_kind: Option<RenderTargetKind>,
+    node_mode: Option<RenderTargetNodeMode>,
+    schemas: &HashMap<String, RenderTargetSchema>,
+) -> Result<Vec<RenderTargetNode>, TargetConfigError> {
+    let Some(schema_name) = schema_name else {
+        return Ok(nodes);
+    };
+
+    let schema = schemas.get(schema_name).ok_or_else(|| {
+        TargetConfigError::UnknownSchema {
+            target: target_name.to_string(),
+            schema: schema_name.to_string(),
+        }
+    })?;
+
+    let resolved = if nodes.is_empty() {
+        schema.nodes.clone()
+    } else if matches!(node_mode, Some(RenderTargetNodeMode::Append)) {
+        let mut merged = schema.nodes.clone();
+        merged.extend(nodes);
+        merged
+    } else {
+        nodes
+    };
+
+    validate_required_blocks(target_name, schema, target_kind, &resolved)?;
+
+    Ok(resolved)
+}
+
+fn validate_required_blocks(
+    target_name: &str,
+    schema: &RenderTargetSchema,
+    target_kind: Option<RenderTargetKind>,
+    nodes: &[RenderTargetNode],
+) -> Result<(), TargetConfigError> {
+    let Some(target_kind) = target_kind else {
+        return Ok(());
+    };
+
+    let required = match target_kind {
+        RenderTargetKind::Root => &schema.required_blocks.root,
+        RenderTargetKind::Child => &schema.required_blocks.child,
+    };
+    let present = nodes
+        .iter()
+        .map(|node| node.name.as_str())
+        .collect::<HashSet<_>>();
+
+    for required_block in required {
+        if !present.contains(required_block.as_str()) {
+            return Err(TargetConfigError::MissingRequiredBlock {
+                target: target_name.to_string(),
+                schema: schema.name.clone(),
+                target_kind: target_kind.as_str().to_string(),
+                block: required_block.clone(),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 fn tree_output_path(
@@ -406,7 +625,7 @@ fn resolve_import_path(
 fn load_import_targets(
     import_path: &Path,
     loading: &mut Vec<PathBuf>,
-) -> Result<Vec<RenderTarget>, TargetConfigError> {
+) -> Result<LoadedRenderTargets, TargetConfigError> {
     let metadata = fs::metadata(import_path).map_err(|source| {
         TargetConfigError::Io {
             path: import_path.to_path_buf(),
@@ -439,21 +658,22 @@ fn load_import_targets(
 
     fragment_paths.sort();
 
-    let mut targets = Vec::new();
+    let mut loaded = LoadedRenderTargets::default();
     for fragment_path in fragment_paths {
-        targets.extend(load_render_target_config_inner(
-            &fragment_path,
-            loading,
-        )?);
+        loaded.merge(load_render_target_config_inner(&fragment_path, loading)?)?;
     }
 
-    Ok(targets)
+    Ok(loaded)
 }
 
 fn load_render_target_config_inner(
     path: &Path,
     loading: &mut Vec<PathBuf>,
-) -> Result<Vec<RenderTarget>, TargetConfigError> {
+) -> Result<LoadedRenderTargets, TargetConfigError> {
+    if path.is_dir() {
+        return Err(directory_target_config_error(path));
+    }
+
     let canonical =
         fs::canonicalize(path).map_err(|source| TargetConfigError::Io {
             path: path.to_path_buf(),
@@ -468,15 +688,21 @@ fn load_render_target_config_inner(
     loading.push(canonical);
     let result = (|| {
         let raw = parse_render_target_config(path)?;
-        let mut targets = Vec::new();
+        let mut loaded = LoadedRenderTargets::default();
 
         for import in raw.imports.clone() {
             let import_path = resolve_import_path(path, &import);
-            targets.extend(load_import_targets(&import_path, loading)?);
+            loaded.merge(load_import_targets(&import_path, loading)?)?;
         }
 
-        targets.extend(raw.into_render_targets(path));
-        Ok(targets)
+        for schema in raw.schemas.iter().cloned() {
+            loaded.insert_schema(schema)?;
+        }
+
+        loaded
+            .targets
+            .extend(raw.into_render_targets(path, &loaded.schemas)?);
+        Ok(loaded)
     })();
     loading.pop();
     result
@@ -635,6 +861,15 @@ pub enum TargetConfigError {
         path: PathBuf,
         source: std::io::Error,
     },
+    #[error(
+        "render target config must be a file, not a directory: {path}. Did you mean {suggested}?"
+    )]
+    DirectoryPathWithSuggestion {
+        path: PathBuf,
+        suggested: PathBuf,
+    },
+    #[error("render target config must be a file, not a directory: {path}")]
+    DirectoryPath { path: PathBuf },
     #[error("parse render target config {path} as TOML: {source}")]
     ParseToml {
         path: PathBuf,
@@ -647,18 +882,77 @@ pub enum TargetConfigError {
     },
     #[error("render target not found: {0}")]
     NotFound(String),
+    #[error("render target selector {selector} matches multiple targets: {matches}")]
+    AmbiguousSelector {
+        selector: String,
+        matches: String,
+    },
     #[error("duplicate render target name: {0}")]
     DuplicateName(String),
+    #[error("duplicate render target schema name: {0}")]
+    DuplicateSchemaName(String),
     #[error("render target config import cycle detected at {path}")]
     ImportCycle { path: PathBuf },
+    #[error("render target {target} references unknown schema {schema}")]
+    UnknownSchema {
+        target: String,
+        schema: String,
+    },
+    #[error(
+        "render target {target} missing required {target_kind} README block {block} from schema {schema}"
+    )]
+    MissingRequiredBlock {
+        target: String,
+        schema: String,
+        target_kind: String,
+        block: String,
+    },
+}
+
+fn directory_target_config_error(
+    path: &Path,
+) -> TargetConfigError {
+    if let Some(suggested) = suggested_render_target_config_path(path) {
+        TargetConfigError::DirectoryPathWithSuggestion {
+            path: path.to_path_buf(),
+            suggested,
+        }
+    } else {
+        TargetConfigError::DirectoryPath {
+            path: path.to_path_buf(),
+        }
+    }
+}
+
+fn suggested_render_target_config_path(
+    path: &Path,
+) -> Option<PathBuf> {
+    let parent = path.parent()?;
+    let stem = path.file_name()?.to_str()?;
+
+    ["yaml", "yml", "toml"]
+        .into_iter()
+        .map(|extension| parent.join(format!("{stem}.{extension}")))
+        .find(|candidate| candidate.is_file())
+}
+
+fn normalize_render_target_selector(
+    selector: &str,
+) -> String {
+    selector.replace('\\', "/")
 }
 
 pub fn load_render_target_config(
     path: &Path
 ) -> Result<RenderTargetConfig, TargetConfigError> {
     let mut loading = Vec::new();
+    let loaded = if path.is_dir() {
+        load_import_targets(path, &mut loading)?
+    } else {
+        load_render_target_config_inner(path, &mut loading)?
+    };
     let config = RenderTargetConfig {
-        targets: load_render_target_config_inner(path, &mut loading)?,
+        targets: loaded.targets,
     };
 
     let mut names = HashSet::new();
@@ -680,6 +974,44 @@ pub fn render_target_by_name<'a>(
         .iter()
         .find(|target| target.name == name)
         .ok_or_else(|| TargetConfigError::NotFound(name.to_string()))
+}
+
+pub fn render_target_by_selector<'a>(
+    config: &'a RenderTargetConfig,
+    config_path: &Path,
+    selector: &str,
+) -> Result<&'a RenderTarget, TargetConfigError> {
+    if let Ok(target) = render_target_by_name(config, selector) {
+        return Ok(target);
+    }
+
+    let selector = normalize_render_target_selector(selector);
+    let matches = config
+        .targets
+        .iter()
+        .filter(|target| {
+            normalize_render_target_selector(&target.output_path) == selector
+                ||
+            normalize_render_target_selector(
+                resolve_render_target_output(config_path, target)
+                    .to_string_lossy()
+                    .as_ref(),
+            ) == selector
+        })
+        .collect::<Vec<_>>();
+
+    match matches.as_slice() {
+        [target] => Ok(*target),
+        [] => Err(TargetConfigError::NotFound(selector)),
+        _ => Err(TargetConfigError::AmbiguousSelector {
+            selector,
+            matches: matches
+                .iter()
+                .map(|target| target.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+        }),
+    }
 }
 
 pub fn resolve_render_target_output(

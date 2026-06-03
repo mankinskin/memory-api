@@ -1,7 +1,10 @@
 use std::{
     collections::BTreeSet,
     fs,
-    path::Path,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
 use memory_api::model::filesystem::ScanRoot;
@@ -16,7 +19,7 @@ use rule_api::{
     explain_target,
     load_render_target_config,
     render_markdown_file,
-    render_target_by_name,
+    render_target_by_selector,
     resolve_render_target_output,
 };
 use serde_json::{
@@ -85,32 +88,6 @@ pub(super) fn dispatch_with_workspace_root(
     }
 
     let mut store = RuleStore::open(index_root)?;
-    if command_uses_descendant_scan_roots(&command) {
-        if let Some(workspace_root) =
-            resolve_workspace_root(
-                &command,
-                index_root,
-                workspace_root_override,
-            )
-        {
-            let mut known_scan_roots = store
-                .entity_store()
-                .list_scan_roots()?
-                .into_iter()
-                .map(|root| root.path)
-                .collect::<BTreeSet<_>>();
-            let mut reindex = false;
-
-            for root in discover_workspace_scan_roots(&workspace_root) {
-                if known_scan_roots.insert(root.path.clone()) {
-                    reindex = true;
-                }
-                store.entity_store().add_scan_root(root)?;
-            }
-            store.scan(reindex)?;
-        }
-    }
-
     match command {
         RuleCommandCli::Create(args) => create_command(&mut store, args),
         RuleCommandCli::Get(args) => get_command(&store, args),
@@ -119,23 +96,11 @@ pub(super) fn dispatch_with_workspace_root(
             import_file_command(&mut store, args),
         RuleCommandCli::Update(args) => update_command(&mut store, args),
         RuleCommandCli::Feedback(args) => feedback_command(&mut store, args),
+        RuleCommandCli::Scan(args) =>
+            scan_command(&mut store, args, index_root, workspace_root_override),
         RuleCommandCli::Init => unreachable!("Init handled before store open"),
         other => dispatch_secondary(other, &mut store),
     }
-}
-
-fn command_uses_descendant_scan_roots(command: &RuleCommandCli) -> bool {
-    matches!(
-        command,
-        RuleCommandCli::Get(_)
-            | RuleCommandCli::GenerateFile(_)
-            | RuleCommandCli::GenerateTarget(_)
-            | RuleCommandCli::ExplainTarget(_)
-            | RuleCommandCli::SyncTargets(_)
-            | RuleCommandCli::List(_)
-            | RuleCommandCli::Search(_)
-            | RuleCommandCli::Scan(_)
-    )
 }
 
 fn dispatch_secondary(
@@ -152,7 +117,6 @@ fn dispatch_secondary(
         RuleCommandCli::SyncTargets(args) => sync_targets_command(store, args),
         RuleCommandCli::List(args) => list_command(store, args),
         RuleCommandCli::Search(args) => search_command(store, args),
-        RuleCommandCli::Scan(args) => scan_command(store, args),
         RuleCommandCli::AddRoot(args) => add_root_command(store, args),
         RuleCommandCli::Create(_)
         | RuleCommandCli::Get(_)
@@ -160,8 +124,60 @@ fn dispatch_secondary(
         | RuleCommandCli::ImportFile(_)
         | RuleCommandCli::Update(_)
         | RuleCommandCli::Feedback(_)
+        | RuleCommandCli::Scan(_)
         | RuleCommandCli::Init => unreachable!("handled in primary dispatch"),
     }
+}
+
+fn discover_child_scan_roots(
+    store: &mut RuleStore,
+    workspace_root: &Path,
+) -> Result<bool, CliRunError> {
+    let mut known_scan_roots = store
+        .entity_store()
+        .list_scan_roots()?
+        .into_iter()
+        .map(|root| root.path)
+        .collect::<BTreeSet<_>>();
+    let mut reindex = false;
+
+    for root in discover_workspace_scan_roots(workspace_root) {
+        if known_scan_roots.insert(root.path.clone()) {
+            reindex = true;
+        }
+        store.entity_store().add_scan_root(root)?;
+    }
+
+    Ok(reindex)
+}
+
+fn display_scan_path(path: &Path) -> String {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        memory_api::workspace::working_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(path)
+    };
+    let normalized = fs::canonicalize(&absolute)
+        .or_else(|_| {
+            absolute.parent().map_or_else(
+                || Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+                |parent| {
+                    fs::canonicalize(parent).map(|canonical_parent| {
+                        canonical_parent.join(
+                            absolute.file_name().unwrap_or_default(),
+                        )
+                    })
+                },
+            )
+        })
+        .unwrap_or(absolute);
+    let rendered = normalized.to_string_lossy().replace('\\', "/");
+    rendered
+        .strip_prefix("//?/")
+        .unwrap_or(rendered.as_str())
+        .to_string()
 }
 
 fn create_command(
@@ -333,7 +349,8 @@ fn generate_target_command(
 ) -> Result<Value, CliRunError> {
     validate_generate_target_args(&args)?;
     let config = load_render_target_config(&args.config)?;
-    let target = render_target_by_name(&config, &args.target)?;
+    let target =
+        render_target_by_selector(&config, &args.config, &args.target)?;
     let output = resolve_render_target_output(&args.config, target);
     let payload = generate_target_payload(
         store,
@@ -345,7 +362,7 @@ fn generate_target_command(
 
     Ok(json!({
         "status": "ok",
-        "target": args.target,
+        "target": target.name,
         "output": output,
         "count": payload.count,
         "file_kind": target.file_kind,
@@ -363,13 +380,14 @@ fn explain_target_command(
     args: ExplainTargetArgs,
 ) -> Result<Value, CliRunError> {
     let config = load_render_target_config(&args.config)?;
-    let target = render_target_by_name(&config, &args.target)?;
+    let target =
+        render_target_by_selector(&config, &args.config, &args.target)?;
     let output = resolve_render_target_output(&args.config, target);
     let outline = explain_target(store, target)?;
 
     Ok(json!({
         "status": "ok",
-        "target": args.target,
+        "target": target.name,
         "output": output,
         "outline": outline,
     }))
@@ -423,14 +441,74 @@ fn search_command(
 fn scan_command(
     store: &mut RuleStore,
     args: ScanArgs,
+    index_root: &Path,
+    workspace_root_override: Option<&Path>,
 ) -> Result<Value, CliRunError> {
-    let report = store.scan(args.force)?;
+    let reindex = resolve_workspace_root(
+        &RuleCommandCli::Scan(ScanArgs { force: args.force }),
+        index_root,
+        workspace_root_override,
+    )
+    .map(|workspace_root| discover_child_scan_roots(store, &workspace_root))
+    .transpose()?
+    .unwrap_or(false);
+    let reindexed = args.force || reindex;
+    let report = store.scan(reindexed)?;
+    let default_scan_root = ScanRoot {
+        path: store.entity_store().index_root.join("entities"),
+        label: "default".to_string(),
+    };
+    let registered_scan_roots = store.entity_store().list_scan_roots()?;
+    let mut seen_scan_roots = BTreeSet::new();
+    let active_scan_roots = std::iter::once((&default_scan_root, "default"))
+        .chain(
+            registered_scan_roots
+                .iter()
+                .map(|root| (root, "registered")),
+        )
+        .filter_map(|(root, kind)| {
+            let path = display_scan_path(&root.path);
+            let key = format!("{kind}:{path}");
+            seen_scan_roots.insert(key).then(|| {
+            json!({
+                "kind": kind,
+                "label": root.label,
+                "path": path,
+            })
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut seen_diagnostics = BTreeSet::new();
+    let diagnostics = report
+        .diagnostics
+        .iter()
+        .filter_map(|diagnostic| {
+            let path = display_scan_path(&diagnostic.path);
+            let key = format!("{path}:{}", diagnostic.reason);
+            seen_diagnostics.insert(key).then(|| {
+            json!({
+                "path": path,
+                "reason": diagnostic.reason,
+            })
+            })
+        })
+        .collect::<Vec<_>>();
+
     Ok(json!({
         "status": "ok",
         "force": args.force,
+        "reindexed": reindexed,
         "integrated": report.integrated,
+        "integrated_entities": report.integrated,
+        "integrated_description": "Number of entity folders found on disk and integrated into the index and search stores during this scan.",
         "pruned": report.pruned,
-        "diagnostics_count": report.diagnostics.len(),
+        "pruned_entities": report.pruned,
+        "pruned_description": "Number of stale indexed entities removed during a reindex because they were no longer present on disk.",
+        "scan_root_count": active_scan_roots.len(),
+        "active_scan_roots": active_scan_roots,
+        "diagnostics_count": diagnostics.len(),
+        "diagnostics_description": "Manifest and parse problems encountered while scanning active roots. Each diagnostic includes the path and the parser error.",
+        "diagnostics": diagnostics,
     }))
 }
 

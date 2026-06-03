@@ -353,10 +353,6 @@ pub(crate) fn parse_board_recommendation(
             .get("became_actionable_at")
             .and_then(Value::as_str)
             .map(str::to_string),
-        last_blocker_progress_at: value
-            .get("last_blocker_progress_at")
-            .and_then(Value::as_str)
-            .map(str::to_string),
         created_at: value
             .get("created_at")
             .and_then(Value::as_str)

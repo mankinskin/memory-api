@@ -1,6 +1,9 @@
 use std::{
     fs,
-    path::PathBuf,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
 use rule_api::{
@@ -78,6 +81,99 @@ fn create_nested_rule_fixture() -> (tempfile::TempDir, PathBuf, PathBuf, String)
     let child_id = child_store.create(&child_rule, None).unwrap();
 
     (dir, parent_index_root, child_index_root, child_id.to_string())
+}
+
+fn scan_nested_rule_fixture(parent_index_root: &Path) {
+    let payload = dispatch::dispatch(
+        RuleCommandCli::Scan(ScanArgs { force: false }),
+        parent_index_root,
+    )
+    .unwrap();
+
+    assert_eq!(payload["status"], "ok");
+}
+
+#[test]
+fn scan_command_reports_diagnostics_and_explains_counts() {
+    let dir = tempdir().unwrap();
+    let index_root = dir.path().join(".rule");
+    let mut store = RuleStore::init(&index_root).unwrap();
+    store
+        .create(
+            &sample_rule(
+                "shared/agents/scan-root",
+                "Scan Root",
+                "scan-root",
+                "A valid rule so scan integrates one entity.",
+                10,
+            ),
+            None,
+        )
+        .unwrap();
+
+    let rules_root = store
+        .entity_store()
+        .list_scan_roots()
+        .unwrap()
+        .into_iter()
+        .find(|root| root.label == "rules")
+        .unwrap()
+        .path;
+    let broken_rule_dir =
+        rules_root.join("123e4567-e89b-12d3-a456-426614174000");
+    fs::create_dir_all(&broken_rule_dir).unwrap();
+    fs::write(
+        broken_rule_dir.join("rule.toml"),
+        "this is not valid = [toml",
+    )
+    .unwrap();
+    drop(store);
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::Scan(ScanArgs { force: false }),
+        &index_root,
+    )
+    .unwrap();
+
+    assert_eq!(payload["status"], "ok");
+    assert!(payload["integrated"].is_number());
+    assert_eq!(payload["integrated"], payload["integrated_entities"]);
+    assert!(payload["integrated_description"]
+        .as_str()
+        .unwrap()
+        .contains("integrated"));
+    assert!(payload["pruned"].is_number());
+    assert_eq!(payload["pruned"], payload["pruned_entities"]);
+    assert!(payload["pruned_description"]
+        .as_str()
+        .unwrap()
+        .contains("reindex"));
+    assert_eq!(payload["diagnostics_count"], 1);
+    assert!(payload["diagnostics_description"]
+        .as_str()
+        .unwrap()
+        .contains("path"));
+    assert_eq!(payload["diagnostics"].as_array().unwrap().len(), 1);
+    assert!(payload["diagnostics"][0]["path"]
+        .as_str()
+        .unwrap()
+        .replace('\\', "/")
+        .ends_with("/rule.toml"));
+    assert!(!payload["diagnostics"][0]["reason"]
+        .as_str()
+        .unwrap()
+        .is_empty());
+    assert!(payload["scan_root_count"].as_u64().unwrap() >= 1);
+    assert!(payload["active_scan_roots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|root| root["kind"] == "default"));
+    assert!(payload["active_scan_roots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|root| root["kind"] == "registered"));
 }
 
 #[test]
@@ -221,9 +317,23 @@ fn delete_command_removes_rule_by_slug() {
 }
 
 #[test]
-fn get_command_collects_rules_from_nested_workspaces() {
+fn get_command_requires_explicit_scan_for_nested_workspaces() {
     let (_dir, parent_index_root, _child_index_root, child_id) =
         create_nested_rule_fixture();
+
+    let result = dispatch::dispatch(
+        RuleCommandCli::Get(IdArgs {
+            id: child_id.clone(),
+        }),
+        &parent_index_root,
+    );
+
+    assert!(matches!(
+        result,
+        Err(crate::cli::CliRunError::Rule(rule_api::error::RuleError::NotFound(_)))
+    ));
+
+    scan_nested_rule_fixture(&parent_index_root);
 
     let payload = dispatch::dispatch(
         RuleCommandCli::Get(IdArgs {
@@ -242,9 +352,28 @@ fn get_command_collects_rules_from_nested_workspaces() {
 }
 
 #[test]
-fn list_command_collects_rules_from_nested_workspaces() {
+fn list_command_requires_explicit_scan_for_nested_workspaces() {
     let (_dir, parent_index_root, _child_index_root, child_id) =
         create_nested_rule_fixture();
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::List(ListArgs {
+            filter: empty_filter_args(),
+            limit: Some(10),
+        }),
+        &parent_index_root,
+    )
+    .unwrap();
+
+    assert_eq!(payload["status"], "ok");
+    assert_eq!(payload["count"], 1);
+    assert!(!payload["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["id"] == child_id));
+
+    scan_nested_rule_fixture(&parent_index_root);
 
     let payload = dispatch::dispatch(
         RuleCommandCli::List(ListArgs {
@@ -265,9 +394,24 @@ fn list_command_collects_rules_from_nested_workspaces() {
 }
 
 #[test]
-fn search_command_collects_rules_from_nested_workspaces() {
+fn search_command_requires_explicit_scan_for_nested_workspaces() {
     let (_dir, parent_index_root, _child_index_root, child_id) =
         create_nested_rule_fixture();
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::Search(SearchArgs {
+            query: "overview".to_string(),
+            filter: empty_filter_args(),
+            limit: 10,
+        }),
+        &parent_index_root,
+    )
+    .unwrap();
+
+    assert_eq!(payload["status"], "ok");
+    assert_eq!(payload["count"], 0);
+
+    scan_nested_rule_fixture(&parent_index_root);
 
     let payload = dispatch::dispatch(
         RuleCommandCli::Search(SearchArgs {
@@ -501,6 +645,114 @@ fn generate_target_uses_config_output_path() {
     assert!(rendered.contains("slug=shared/agents/opening"));
     assert!(!rendered.contains("slug=shared/agents/other"));
     assert!(rendered.starts_with("<!-- rule-api:file generated=true -->"));
+}
+
+#[test]
+fn generate_target_accepts_output_path_selector() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut rule = RuleManifest::new(
+        "shared/copilot/rtk",
+        "RTK",
+        "copilot-instructions",
+        "rtk-token-optimized-cli",
+        "Always prefix shell commands with rtk.",
+    );
+    rule.set_repo_scopes(["context-engine"]);
+    rule.set_path_scopes([".github/copilot-instructions.md"]);
+    rule.set_order_key(10);
+    store.create(&rule, None).unwrap();
+
+    let config_path = dir.path().join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: context-engine-copilot-instructions\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: copilot-instructions\n",
+            "    path_scope: .github/copilot-instructions.md\n",
+            "    output_path: .github/copilot-instructions.md\n",
+        ),
+    )
+    .unwrap();
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_path,
+            target: ".github/copilot-instructions.md".to_string(),
+            dry_run: true,
+            check: false,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    assert_eq!(payload["target"], "context-engine-copilot-instructions");
+    assert!(payload["output"]
+        .as_str()
+        .unwrap()
+        .replace('\\', "/")
+        .ends_with("/.github/copilot-instructions.md"));
+    assert_eq!(payload["count"], 1);
+    assert!(payload["content"]
+        .as_str()
+        .unwrap()
+        .contains("slug=shared/copilot/rtk"));
+}
+
+#[test]
+fn generate_target_supports_directory_config() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
+    let config_dir = dir.path().join("rule-targets");
+    fs::create_dir_all(&config_dir).unwrap();
+    let mut rule = RuleManifest::new(
+        "shared/copilot/rtk",
+        "RTK",
+        "copilot-instructions",
+        "rtk-token-optimized-cli",
+        "Always prefix shell commands with rtk.",
+    );
+    rule.set_repo_scopes(["context-engine"]);
+    rule.set_path_scopes([".github/copilot-instructions.md"]);
+    rule.set_order_key(10);
+    store.create(&rule, None).unwrap();
+    fs::write(
+        config_dir.join("20-github-copilot.yaml"),
+        concat!(
+            "targets:\n",
+            "  - name: context-engine-copilot-instructions\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: copilot-instructions\n",
+            "    path_scope: .github/copilot-instructions.md\n",
+            "    output_path: .github/copilot-instructions.md\n",
+        ),
+    )
+    .unwrap();
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_dir,
+            target: ".github/copilot-instructions.md".to_string(),
+            dry_run: true,
+            check: false,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    assert_eq!(payload["target"], "context-engine-copilot-instructions");
+    assert!(payload["output"]
+        .as_str()
+        .unwrap()
+        .replace('\\', "/")
+        .ends_with("/.github/copilot-instructions.md"));
+    assert_eq!(payload["count"], 1);
+    assert!(payload["content"]
+        .as_str()
+        .unwrap()
+        .contains("slug=shared/copilot/rtk"));
 }
 
 #[test]
@@ -878,7 +1130,7 @@ fn feedback_command_self_heals_after_missing_rule_folder() {
 }
 
 #[test]
-fn generate_target_collects_rules_from_nested_workspaces() {
+fn generate_target_requires_explicit_scan_for_nested_workspaces() {
     let dir = tempdir().unwrap();
     let repo_root = dir.path().join("repo");
     let parent_index_root = repo_root.join(".rule");
@@ -930,20 +1182,35 @@ fn generate_target_collects_rules_from_nested_workspaces() {
     )
     .unwrap();
 
-    dispatch::dispatch(
+    let payload = dispatch::dispatch(
         RuleCommandCli::GenerateTarget(GenerateTargetArgs {
             config: config_path,
             target: "combined-agents".to_string(),
-            dry_run: false,
+            dry_run: true,
             check: false,
         }),
         &parent_index_root,
     )
     .unwrap();
 
-    let rendered =
-        fs::read_to_string(repo_root.join("generated").join("AGENTS.md"))
-            .unwrap();
+    let rendered = payload["content"].as_str().unwrap();
+    assert!(rendered.contains("slug=shared/agents/opening"));
+    assert!(!rendered.contains("slug=memory-api/agents/overview"));
+
+    scan_nested_rule_fixture(&parent_index_root);
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: repo_root.join("rule-targets.yaml"),
+            target: "combined-agents".to_string(),
+            dry_run: true,
+            check: false,
+        }),
+        &parent_index_root,
+    )
+    .unwrap();
+
+    let rendered = payload["content"].as_str().unwrap();
     assert!(rendered.contains("slug=shared/agents/opening"));
     assert!(rendered.contains("slug=memory-api/agents/overview"));
 }

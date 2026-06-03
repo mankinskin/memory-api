@@ -97,10 +97,10 @@ flowchart LR
 
 ### Install the CLI tools
 
-From the `context-engine` repo root, the shared installer can install the CLI binaries plus the coverage collector used by `audit`:
+From the `context-engine` repo root, the shared installer can run the same four Cargo installs for you:
 
 ```bash
-bash ./install-tools.sh --tool rule-cli --tool spec-cli --tool ticket-cli --tool audit-cli --tool cargo-llvm-cov
+bash ./install-tools.sh --tool rule-cli --tool spec-cli --tool ticket-cli --tool audit-cli
 ```
 
 If you are working directly from a `memory-viewers/memory-api` checkout instead of the repo root, run the underlying install commands from this workspace:
@@ -110,11 +110,9 @@ cargo install --path tools/cli/rule-cli --bin rule
 cargo install --path tools/cli/spec-cli --bin spec
 cargo install --path tools/cli/ticket-cli --bin ticket
 cargo install --path tools/cli/audit-cli --bin audit
-cargo install cargo-llvm-cov
-rustup component add llvm-tools-preview
 ```
 
-After that, verify the install with `rule --help`, `spec --help`, `ticket --help`, `audit --help`, and `cargo llvm-cov --version`. The command-specific docs live in [tools/cli/rule-cli/README.md](tools/cli/rule-cli/README.md), [tools/cli/spec-cli/README.md](tools/cli/spec-cli/README.md), [tools/cli/ticket-cli/README.md](tools/cli/ticket-cli/README.md), and [tools/cli/audit-cli/README.md](tools/cli/audit-cli/README.md).
+After that, verify the install with `rule --help`, `spec --help`, `ticket --help`, and `audit --help`. The command-specific docs live in [tools/cli/rule-cli/README.md](tools/cli/rule-cli/README.md), [tools/cli/spec-cli/README.md](tools/cli/spec-cli/README.md), [tools/cli/ticket-cli/README.md](tools/cli/ticket-cli/README.md), and [tools/cli/audit-cli/README.md](tools/cli/audit-cli/README.md).
 
 ### Set up a workspace repository
 

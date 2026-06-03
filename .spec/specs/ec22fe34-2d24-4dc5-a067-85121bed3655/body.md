@@ -28,6 +28,7 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - `ticket board show` must expose at least 10 `Next Up` recommendations when at least 10 candidates exist.
 - `ticket next` and `ticket-mcp` `next_tickets` must not embed a second board snapshot; `board show` remains the single board surface, while `next` surfaces only candidate data plus board-aware exclusions or warnings when relevant.
 - `ticket next`, `ticket board show` recommendation JSON, and `ticket-mcp` `next_tickets` items must surface the derived numeric `dependee_count` field.
+- `ticket board show` recommendation JSON may omit fields that are constant in its actionable-only context; specifically, it does not emit `last_blocker_progress_at` because the board recommendation bridge only forwards actionable items where that value is always null.
 - The CLI `ticket board show` human `Next Up` section must render each recommendation as a compact labeled card that keeps all surfaced recommendation keys while prioritizing rank, short ticket id, and title.
 - The CLI `ticket board show` `Immediate Actions` section must describe the suggested ticket as `Start <state> <short-id> "<title>" next.`, preserving the ticket state and escaping any inner title quotes.
 - Default non-JSON `ticket next` output must render its candidate `items` using the same compact labeled card format as `ticket board show` `Next Up`, while preserving next-specific metadata like `count`, `warnings`, and `excluded_by_board`.
@@ -47,6 +48,7 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - `ticket board show` returns 10 `recommended_next` entries when at least 10 candidates are available.
 - `ticket-mcp` `next_tickets` returns higher-`dependee_count` tickets ahead of lower-`dependee_count` tickets when state and priority are equal, even when the lower-`dependee_count` ticket is newer.
 - `ticket next`, `ticket board show`, and `ticket-mcp` `next_tickets` surface the numeric `dependee_count` field for each recommended item.
+- `ticket board show` recommendation JSON omits `last_blocker_progress_at` while preserving `became_actionable_at` and `created_at`.
 - `ticket board show` recommendation JSON preserves `created_at`, and the CLI `Next Up` cards print all recommendation keys while formatting `created_at` as a compact human timestamp that includes the year.
 - `ticket board show` human `Immediate Actions` text includes the candidate's current state, short ticket id, and a quoted title with inner quotes escaped.
 - Default non-JSON `ticket board show` output does not append the generic structured `[recommended_next]` dump after the board-specific human renderer.
@@ -60,6 +62,7 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - Tracking ticket: `.ticket/tickets/2d85467b-23a3-4a70-a376-70ef5370d9f8`
 - Tracking ticket: `.ticket/tickets/77629631-8076-4fca-9640-316583ff290c`
 - Tracking ticket: `.ticket/tickets/11450369-0d45-4922-988f-49bc88fd4079`
+- Tracking ticket: [74fd59ca Remove constant blocker-progress field from board show JSON recommendations](../../../../../.ticket/tickets/74fd59ca-8253-4e18-99bd-0b1fa204c6d6/ticket.toml)
 - Updated interface contract text: `tools/mcp/ticket-mcp/src/server.rs`
 - Updated CLI contract text: `tools/cli/ticket-cli/src/cli.rs`
 - Updated CLI human-output serializer: `tools/cli/ticket-cli/src/cli/human_output.rs`
@@ -75,5 +78,6 @@ No dedicated ticket-http `next` or board recommendation endpoint exists today, s
 - `cargo test -p ticket-cli board_show_lists_ten_recommendations_when_available -- --nocapture`
 - `cargo test -p ticket-cli board_show_text_output_stops_after_dashboard -- --nocapture`
 - `cargo test -p ticket-cli next_text_output_uses_pretty_card_format -- --nocapture`
+- `cargo test -p ticket-cli next_and_board_prefer_recently_actionable_candidates_and_surface_timing_metadata --test integration_board_cli -- --nocapture`
 - `cargo run --quiet --manifest-path tools/cli/ticket-cli/Cargo.toml -- next --limit 3`
 - `spec refs ec22fe34 validate --json --workspace-root .`

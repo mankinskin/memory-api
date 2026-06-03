@@ -50,6 +50,7 @@ pub use targets::{
     explain_target,
     load_render_target_config,
     render_target_by_name,
+    render_target_by_selector,
     resolve_render_target_output,
 };
 pub use workspace::{
