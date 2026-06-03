@@ -14,6 +14,7 @@ use serde::{
 };
 
 use crate::{
+    hook::copilot_payload_from_transcript_path,
     CopilotHookPayload,
     SessionCaptureRequest,
     SessionError,
@@ -108,6 +109,20 @@ impl SessionStoreConfig {
         payload: CopilotHookPayload,
     ) -> Result<SessionStorePlan, SessionError> {
         self.persist_capture(SessionCaptureRequest::copilot(payload))
+    }
+
+    pub fn capture_copilot_transcript(
+        &self,
+        transcript_path: impl AsRef<Path>,
+        trigger: impl Into<String>,
+    ) -> Result<SessionStorePlan, SessionError> {
+        let payload = copilot_payload_from_transcript_path(
+            transcript_path,
+            self.workspace_slug.clone(),
+            Some(trigger.into()),
+        )?;
+
+        self.capture_copilot_hook(payload)
     }
 
     pub fn read_session(
@@ -769,5 +784,35 @@ mod tests {
         assert_eq!(by_text[0].session_id, "session-beta");
         assert_eq!(by_conversation.len(), 1);
         assert_eq!(by_conversation[0].session_id, "session-alpha");
+    }
+
+    #[test]
+    fn capture_copilot_transcript_persists_visible_transcript_messages() {
+        let tempdir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let transcript_path = tempdir.path().join("copilot.jsonl");
+
+        std::fs::write(
+            &transcript_path,
+            concat!(
+                "{\"type\":\"session.start\",\"timestamp\":\"2026-06-02T23:06:54.049Z\",\"data\":{\"sessionId\":\"session-transcript\",\"producer\":\"copilot-agent\",\"startTime\":\"2026-06-02T23:06:54.049Z\"}}\n",
+                "{\"type\":\"user.message\",\"timestamp\":\"2026-06-02T23:07:00.000Z\",\"data\":{\"content\":\"Persist this transcript\"}}\n",
+                "{\"type\":\"assistant.message\",\"timestamp\":\"2026-06-02T23:07:05.000Z\",\"data\":{\"content\":\"Transcript persisted.\"}}\n",
+                "{\"type\":\"assistant.message\",\"timestamp\":\"2026-06-02T23:07:06.000Z\",\"data\":{\"content\":\"\"}}\n"
+            ),
+        )
+        .unwrap();
+
+        let plan = config
+            .capture_copilot_transcript(&transcript_path, "stop")
+            .unwrap();
+        let record = config.read_session("session-transcript").unwrap();
+
+        assert!(plan.paths.manifest_path.exists());
+        assert_eq!(record.session_id, "session-transcript");
+        assert_eq!(record.metadata.trigger.as_deref(), Some("stop"));
+        assert_eq!(record.turns.len(), 2);
+        assert_eq!(record.turns[0].content, "Persist this transcript");
+        assert_eq!(record.turns[1].content, "Transcript persisted.");
     }
 }

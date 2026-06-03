@@ -4,6 +4,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum SessionError {
+    #[error("invalid hook input: {0}")]
+    InvalidHookInput(String),
+
     #[error("session capture is missing a session id")]
     MissingSessionId,
 

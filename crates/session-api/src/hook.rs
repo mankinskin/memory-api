@@ -1,8 +1,18 @@
+use std::{
+    fs::File,
+    io::{
+        BufRead,
+        BufReader,
+    },
+    path::Path,
+};
+
 use chrono::{
     DateTime,
     Utc,
 };
 use serde::{
+    de::DeserializeOwned,
     Deserialize,
     Serialize,
 };
@@ -113,6 +123,173 @@ impl TryFrom<SessionCaptureRequest> for SessionRecord {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct TranscriptEventEnvelope {
+    #[serde(rename = "type")]
+    event_type: String,
+    timestamp: DateTime<Utc>,
+    #[serde(default)]
+    data: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct TranscriptSessionStartData {
+    #[serde(rename = "sessionId")]
+    session_id: String,
+    #[serde(default)]
+    producer: Option<String>,
+    #[serde(default, rename = "startTime")]
+    start_time: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TranscriptMessageData {
+    #[serde(default)]
+    content: String,
+}
+
+pub fn copilot_payload_from_transcript_path(
+    transcript_path: impl AsRef<Path>,
+    workspace_slug: impl Into<String>,
+    trigger: Option<String>,
+) -> Result<CopilotHookPayload, SessionError> {
+    let transcript_path = transcript_path.as_ref();
+    let file = File::open(transcript_path).map_err(|source| SessionError::Io {
+        path: transcript_path.to_path_buf(),
+        source,
+    })?;
+    let reader = BufReader::new(file);
+
+    copilot_payload_from_transcript_reader_with_path(
+        reader,
+        transcript_path,
+        workspace_slug.into(),
+        trigger,
+    )
+}
+
+pub fn copilot_payload_from_transcript_reader<R: BufRead>(
+    reader: R,
+    workspace_slug: impl Into<String>,
+    trigger: Option<String>,
+) -> Result<CopilotHookPayload, SessionError> {
+    copilot_payload_from_transcript_reader_with_path(
+        reader,
+        Path::new("<copilot-transcript>"),
+        workspace_slug.into(),
+        trigger,
+    )
+}
+
+fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
+    reader: R,
+    transcript_path: &Path,
+    workspace_slug: String,
+    trigger: Option<String>,
+) -> Result<CopilotHookPayload, SessionError> {
+    let mut session_id = None;
+    let mut agent_id = None;
+    let mut captured_at = None;
+    let mut started_at = None;
+    let mut messages = vec![];
+
+    for line in reader.lines() {
+        let line = line.map_err(|source| SessionError::Io {
+            path: transcript_path.to_path_buf(),
+            source,
+        })?;
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let event: TranscriptEventEnvelope = deserialize_transcript_event(&line, transcript_path)?;
+
+        match event.event_type.as_str() {
+            "session.start" => {
+                let data: TranscriptSessionStartData =
+                    deserialize_transcript_data(event.data, transcript_path)?;
+                if session_id.is_none() {
+                    session_id = Some(data.session_id);
+                }
+                if agent_id.is_none() {
+                    agent_id = data.producer.filter(|value| !value.trim().is_empty());
+                }
+                if started_at.is_none() {
+                    started_at = data.start_time.or(Some(event.timestamp));
+                }
+                if captured_at.is_none() {
+                    captured_at = Some(event.timestamp);
+                }
+            }
+            "user.message" => {
+                let data: TranscriptMessageData =
+                    deserialize_transcript_data(event.data, transcript_path)?;
+                if data.content.trim().is_empty() {
+                    continue;
+                }
+                captured_at = Some(event.timestamp);
+                messages.push(CopilotHookMessage {
+                    role: SessionRole::User,
+                    content: data.content,
+                    tool_name: None,
+                    captured_at: Some(event.timestamp),
+                });
+            }
+            "assistant.message" => {
+                let data: TranscriptMessageData =
+                    deserialize_transcript_data(event.data, transcript_path)?;
+                if data.content.trim().is_empty() {
+                    continue;
+                }
+                captured_at = Some(event.timestamp);
+                messages.push(CopilotHookMessage {
+                    role: SessionRole::Assistant,
+                    content: data.content,
+                    tool_name: None,
+                    captured_at: Some(event.timestamp),
+                });
+            }
+            _ => {}
+        }
+    }
+
+    let session_id = session_id.ok_or(SessionError::MissingSessionId)?;
+    if messages.is_empty() {
+        return Err(SessionError::EmptyTurns);
+    }
+
+    Ok(CopilotHookPayload {
+        session_id,
+        workspace_slug,
+        captured_at: captured_at.or(started_at).unwrap_or_else(Utc::now),
+        conversation_id: None,
+        agent_id,
+        model: None,
+        trigger,
+        messages,
+    })
+}
+
+fn deserialize_transcript_event(
+    line: &str,
+    transcript_path: &Path,
+) -> Result<TranscriptEventEnvelope, SessionError> {
+    serde_json::from_str(line).map_err(|source| SessionError::Deserialize {
+        path: transcript_path.to_path_buf(),
+        source,
+    })
+}
+
+fn deserialize_transcript_data<T: DeserializeOwned>(
+    value: serde_json::Value,
+    transcript_path: &Path,
+) -> Result<T, SessionError> {
+    serde_json::from_value(value).map_err(|source| SessionError::Deserialize {
+        path: transcript_path.to_path_buf(),
+        source,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::TimeZone;
@@ -124,6 +301,7 @@ mod tests {
     };
 
     use super::{
+        copilot_payload_from_transcript_reader,
         CopilotHookMessage,
         CopilotHookPayload,
         SessionCaptureRequest,
@@ -197,5 +375,32 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, SessionError::MissingSessionId));
+    }
+
+    #[test]
+    fn transcript_reader_maps_visible_messages_into_payload() {
+        let transcript = r#"{"type":"session.start","timestamp":"2026-06-02T23:06:54.049Z","data":{"sessionId":"session-123","producer":"copilot-agent","startTime":"2026-06-02T23:06:54.049Z"}}
+{"type":"user.message","timestamp":"2026-06-02T23:07:00.000Z","data":{"content":"Hello"}}
+{"type":"assistant.message","timestamp":"2026-06-02T23:07:05.000Z","data":{"content":"World"}}
+{"type":"assistant.message","timestamp":"2026-06-02T23:07:06.000Z","data":{"content":"   "}}
+{"type":"tool.execution_complete","timestamp":"2026-06-02T23:07:07.000Z","data":{"toolName":"read_file"}}"#;
+
+        let payload = copilot_payload_from_transcript_reader(
+            std::io::Cursor::new(transcript),
+            "context-engine",
+            Some("stop".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(payload.session_id, "session-123");
+        assert_eq!(payload.workspace_slug, "context-engine");
+        assert_eq!(payload.agent_id.as_deref(), Some("copilot-agent"));
+        assert_eq!(payload.trigger.as_deref(), Some("stop"));
+        assert_eq!(payload.messages.len(), 2);
+        assert_eq!(payload.messages[0].role, SessionRole::User);
+        assert_eq!(payload.messages[0].content, "Hello");
+        assert_eq!(payload.messages[1].role, SessionRole::Assistant);
+        assert_eq!(payload.messages[1].content, "World");
+        assert_eq!(payload.captured_at, chrono::Utc.with_ymd_and_hms(2026, 6, 2, 23, 7, 5).single().unwrap());
     }
 }

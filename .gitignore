@@ -1,6 +1,7 @@
 target/
 agents/tmp/
 node_modules/
+.memory-api/
 
 # Built frontend assets
 tools/viewer/**/static/

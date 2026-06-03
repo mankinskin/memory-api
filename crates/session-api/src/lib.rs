@@ -5,6 +5,8 @@ pub mod store;
 
 pub use error::SessionError;
 pub use hook::{
+    copilot_payload_from_transcript_path,
+    copilot_payload_from_transcript_reader,
     CopilotHookMessage,
     CopilotHookPayload,
     SessionCaptureRequest,
