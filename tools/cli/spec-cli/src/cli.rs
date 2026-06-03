@@ -31,8 +31,12 @@ pub use args::*;
 )]
 pub struct SpecCli {
     /// Return machine-readable JSON output.
-    #[arg(long, global = true)]
+    #[arg(long, global = true, conflicts_with = "toon")]
     pub json: bool,
+
+    /// Return machine-readable TOON output.
+    #[arg(long, global = true, conflicts_with = "json")]
+    pub toon: bool,
 
     /// Root directory for the SQLite index and Tantivy search index.
     #[arg(long, global = true)]
@@ -103,8 +107,14 @@ pub enum CliRunError {
 }
 
 pub enum CliOutput {
-    Json(Value),
+    Machine(Value, MachineOutputFormat),
     Text(String),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MachineOutputFormat {
+    Json,
+    Toon,
 }
 
 // ── entry point ───────────────────────────────────────────────────────────────
@@ -115,10 +125,10 @@ pub fn run(cli: SpecCli) -> Result<CliOutput, CliRunError> {
             cli.command,
             cli.index_root.as_deref(),
             cli.workspace_root.as_deref(),
-            cli.json,
+            cli.json || cli.toon,
         )?;
-    if cli.json {
-        Ok(CliOutput::Json(payload))
+    if let Some(format) = machine_output_format(cli.json, cli.toon) {
+        Ok(CliOutput::Machine(payload, format))
     } else {
         Ok(CliOutput::Text(render_human(&payload)))
     }
@@ -131,13 +141,48 @@ fn render_human(payload: &Value) -> String {
 
 pub fn error_output(
     message: &str,
-    as_json: bool,
+    format: Option<MachineOutputFormat>,
 ) -> String {
-    if as_json {
-        json!({"status": "error", "message": message}).to_string()
-    } else {
-        message.to_string()
+    let payload = json!({"status": "error", "message": message});
+    match format {
+        Some(MachineOutputFormat::Json) => payload.to_string(),
+        Some(MachineOutputFormat::Toon) =>
+            toon_format::encode_default(&payload)
+                .unwrap_or_else(|_| format!("status: error\nmessage: {message}")),
+        None => message.to_string(),
     }
+}
+
+pub fn render_machine_output(
+    payload: &Value,
+    format: MachineOutputFormat,
+) -> Result<String, String> {
+    match format {
+        MachineOutputFormat::Json =>
+            serde_json::to_string_pretty(payload).map_err(|err| err.to_string()),
+        MachineOutputFormat::Toon =>
+            toon_format::encode_default(payload).map_err(|err| err.to_string()),
+    }
+}
+
+pub fn machine_output_format(
+    as_json: bool,
+    as_toon: bool,
+) -> Option<MachineOutputFormat> {
+    if as_json {
+        Some(MachineOutputFormat::Json)
+    } else if as_toon {
+        Some(MachineOutputFormat::Toon)
+    } else {
+        None
+    }
+}
+
+pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat> {
+    machine_output_format(
+        std::env::args().any(|arg| arg == "--json"),
+        std::env::args().any(|arg| arg == "--toon"),
+    )
 }
 
 pub fn parse_cli_from<I, T>(args: I) -> Result<SpecCli, clap::Error>
@@ -153,6 +198,21 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+
+    #[test]
+    fn parse_list_accepts_toon_flag() {
+        let cli = parse_cli_from([
+            "spec",
+            "--toon",
+            "list",
+        ])
+        .unwrap();
+
+        match cli.command {
+            SpecCommandCli::List(ListArgs { .. }) => {},
+            other => panic!("expected list command, got {other:?}"),
+        }
+    }
 
     #[test]
     fn parse_refs_validate_keeps_workspace_root_meanings_distinct() {

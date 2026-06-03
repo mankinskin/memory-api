@@ -815,4 +815,75 @@ mod tests {
 
         assert_eq!(health_after["issues_count"], 0);
     }
+
+    #[test]
+    fn dispatch_structured_contract_fields_accept_toon_files() {
+        let (_dir, repo) = create_cli_spec_fixture();
+        let fixture = load_contract_parity_fixture();
+        let create_fields_path = repo.join("contract-fields.toon");
+        let update_fields_path = repo.join("contract-update.toon");
+
+        std::fs::write(
+            &create_fields_path,
+            toon_format::encode_default(&fixture.fields).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            &update_fields_path,
+            toon_format::encode_default(&fixture.fulfillment_update).unwrap(),
+        )
+        .unwrap();
+
+        let created = dispatch(
+            SpecCommandCli::Create(crate::cli::CreateArgs {
+                title: "Structured contract TOON parity spec".to_string(),
+                slug: "contract/structured-toon-parity".to_string(),
+                component: "context-engine".to_string(),
+                parent: None,
+                scope: Some("public".to_string()),
+                body_file: None,
+                fields_file: Some(create_fields_path),
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        let spec_id = created["id"].as_str().unwrap().to_string();
+
+        dispatch(
+            SpecCommandCli::Update(crate::cli::UpdateArgs {
+                id: spec_id.clone(),
+                fields: Vec::new(),
+                to_state: None,
+                body_file: None,
+                fields_file: Some(update_fields_path),
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        let fetched = dispatch(
+            SpecCommandCli::Get(crate::cli::GetArgs {
+                id: spec_id,
+                full: false,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(
+            fetched["spec"]["fields"]["contract_mode"],
+            "expectation-oriented"
+        );
+        assert_eq!(
+            fetched["spec"]["fields"]["fulfillment_summaries"][0]["status"],
+            "satisfied"
+        );
+    }
 }

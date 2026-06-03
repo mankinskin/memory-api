@@ -4,6 +4,8 @@ use ticket_cli::cli::{
     CliOutput,
     error_output,
     parse_cli_from,
+    render_machine_output,
+    requested_machine_output_format_from_args,
     run,
 };
 
@@ -20,27 +22,34 @@ fn main() {
                 print!("{err}");
                 std::process::exit(0);
             }
-            let wants_json = std::env::args().any(|a| a == "--json");
-            let rendered = error_output(&err.to_string(), wants_json);
+            let rendered = error_output(
+                &err.to_string(),
+                requested_machine_output_format_from_args(),
+            );
             eprintln!("{rendered}");
             std::process::exit(2);
         },
     };
 
     match run(cli) {
-        Ok(CliOutput::Json(value)) => {
-            match serde_json::to_string_pretty(&value) {
+        Ok(CliOutput::Machine(value, format)) => {
+            match render_machine_output(&value, format) {
                 Ok(rendered) => println!("{rendered}"),
                 Err(err) => {
-                    eprintln!("{}", error_output(&err.to_string(), true));
+                    eprintln!("{}", error_output(&err, Some(format)));
                     std::process::exit(1);
                 },
             }
         },
         Ok(CliOutput::Text(text)) => println!("{text}"),
         Err(err) => {
-            let wants_json = std::env::args().any(|a| a == "--json");
-            eprintln!("{}", error_output(&err.to_string(), wants_json));
+            eprintln!(
+                "{}",
+                error_output(
+                    &err.to_string(),
+                    requested_machine_output_format_from_args(),
+                )
+            );
             std::process::exit(1);
         },
     }

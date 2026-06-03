@@ -19,6 +19,7 @@ ticket-http = { path = "../../http/ticket-http" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toon-format = "0.5"
 shell-words = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["serde", "v4"] }

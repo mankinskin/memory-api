@@ -17,6 +17,7 @@ Use `rule` when you are authoring canonical rule entries, recording feedback on 
 Global options:
 
 - `--json`: emit machine-readable output.
+- `--toon`: emit machine-readable TOON output.
 - `--index-root <path>`: override the `.rule` index root.
 - `--workspace-root <path>`: target a nested workspace repo root and normalize it to the owning `.rule` store.
 
@@ -31,6 +32,8 @@ cargo run -p rule-cli --bin rule -- --help
 
 `rule` discovers the nearest `.rule` workspace by walking up from the current directory. Use `--index-root` when you want to point at a different store, or `--workspace-root` when you want to target a nested workspace repo root from an ancestor checkout.
 
+When you want compact structured output for scripts or agent workflows, prefer `rtk rule --toon ...` over `rtk rule --json ...` and decode TOON with `toon-format` / `toon-rust`.
+
 Read and render commands use the scan roots that are already persisted in the active store; they do not walk descendant workspaces automatically on every invocation. Run `rule scan` when you want to discover child `.rule` stores from the active workspace and persist those roots for later `get`, `list`, `search`, `generate-target`, `explain-target`, or `sync-targets` runs.
 
 `rule scan` reports the active scan roots it used, the number of entity folders it integrated into the index/search stores, the number of stale indexed entities it pruned during a reindex, and the full list of manifest parse diagnostics with `path` and `reason` fields.
@@ -44,6 +47,9 @@ Feedback is rule-entry scoped. If you are reacting to a specific spec entry or g
 ```bash
 # Search canonical rule entries
 rule search "ticket board"
+
+# Emit compact machine-readable output
+rtk rule --toon search "ticket board"
 
 # Discover child workspaces once and reuse the persisted scan roots
 rule scan

@@ -14,8 +14,11 @@ use clap::{
     arg_required_else_help = true
 )]
 pub struct RuleCli {
-    #[arg(long, global = true)]
+    #[arg(long, global = true, conflicts_with = "toon")]
     pub json: bool,
+
+    #[arg(long, global = true, conflicts_with = "json")]
+    pub toon: bool,
 
     #[arg(long, global = true)]
     pub index_root: Option<PathBuf>,

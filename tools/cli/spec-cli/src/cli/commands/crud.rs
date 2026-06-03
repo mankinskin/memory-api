@@ -25,10 +25,12 @@ fn read_fields_file(
     let content = std::fs::read_to_string(path).map_err(|e| {
         CliRunError::BadRequest(format!("cannot read fields-file: {e}"))
     })?;
-    serde_json::from_str(&content).map_err(|e| {
-        CliRunError::BadRequest(format!(
-            "cannot parse fields-file as JSON object: {e}"
-        ))
+    serde_json::from_str(&content).or_else(|json_err| {
+        toon_format::decode_default(&content).map_err(|toon_err| {
+            CliRunError::BadRequest(format!(
+                "cannot parse fields-file as JSON or TOON object: json={json_err}; toon={toon_err}"
+            ))
+        })
     })
 }
 

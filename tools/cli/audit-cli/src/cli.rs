@@ -37,8 +37,11 @@ use audit_api::{
     arg_required_else_help = true
 )]
 pub struct AuditCli {
-    #[arg(long, global = true)]
+    #[arg(long, global = true, conflicts_with = "toon")]
     pub json: bool,
+
+    #[arg(long, global = true, conflicts_with = "json")]
+    pub toon: bool,
 
     #[command(subcommand)]
     pub command: AuditCommand,
@@ -108,8 +111,14 @@ pub enum CliRunError {
 }
 
 pub enum CliOutput {
-    Json(Value),
+    Machine(Value, MachineOutputFormat),
     Text(String),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MachineOutputFormat {
+    Json,
+    Toon,
 }
 
 pub fn parse_cli_from<I, T>(args: I) -> Result<AuditCli, clap::Error>
@@ -124,8 +133,8 @@ pub fn run(cli: AuditCli) -> Result<CliOutput, CliRunError> {
     match cli.command {
         AuditCommand::Run(args) => {
             let report = run_audit(&args)?;
-            if cli.json {
-                Ok(CliOutput::Json(json!(report)))
+            if let Some(format) = machine_output_format(cli.json, cli.toon) {
+                Ok(CliOutput::Machine(json!(report), format))
             } else {
                 Ok(CliOutput::Text(render_human(&report)))
             }
@@ -133,8 +142,8 @@ pub fn run(cli: AuditCli) -> Result<CliOutput, CliRunError> {
         AuditCommand::Summary(summary) => {
             let report = run_audit(&summary.args)?;
             let summary = summarize_report(&report, summary.by.into())?;
-            if cli.json {
-                Ok(CliOutput::Json(json!(summary)))
+            if let Some(format) = machine_output_format(cli.json, cli.toon) {
+                Ok(CliOutput::Machine(json!(summary), format))
             } else {
                 Ok(CliOutput::Text(render_summary_human(&summary)))
             }
@@ -159,22 +168,58 @@ fn run_audit(args: &AuditArgs) -> Result<AuditReport, CliRunError> {
 
 pub fn error_output(
     message: &str,
-    as_json: bool,
+    format: Option<MachineOutputFormat>,
 ) -> String {
-    if as_json {
-        serde_json::to_string_pretty(&json!({
-            "code": "invalid_request",
-            "message": message,
-        }))
-        .unwrap_or_else(|_| {
-            format!(
-                "{{\"code\":\"invalid_request\",\"message\":{:?}}}",
-                message
-            )
-        })
-    } else {
-        message.to_string()
+    let payload = json!({
+        "code": "invalid_request",
+        "message": message,
+    });
+    match format {
+        Some(MachineOutputFormat::Json) =>
+            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| {
+                format!(
+                    "{{\"code\":\"invalid_request\",\"message\":{:?}}}",
+                    message
+                )
+            }),
+        Some(MachineOutputFormat::Toon) =>
+            toon_format::encode_default(&payload).unwrap_or_else(|_| {
+                format!("code: invalid_request\nmessage: {message}")
+            }),
+        None => message.to_string(),
     }
+}
+
+pub fn render_machine_output(
+    payload: &Value,
+    format: MachineOutputFormat,
+) -> Result<String, String> {
+    match format {
+        MachineOutputFormat::Json =>
+            serde_json::to_string_pretty(payload).map_err(|err| err.to_string()),
+        MachineOutputFormat::Toon =>
+            toon_format::encode_default(payload).map_err(|err| err.to_string()),
+    }
+}
+
+pub fn machine_output_format(
+    as_json: bool,
+    as_toon: bool,
+) -> Option<MachineOutputFormat> {
+    if as_json {
+        Some(MachineOutputFormat::Json)
+    } else if as_toon {
+        Some(MachineOutputFormat::Toon)
+    } else {
+        None
+    }
+}
+
+pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat> {
+    machine_output_format(
+        std::env::args().any(|arg| arg == "--json"),
+        std::env::args().any(|arg| arg == "--toon"),
+    )
 }
 
 fn render_human(report: &AuditReport) -> String {

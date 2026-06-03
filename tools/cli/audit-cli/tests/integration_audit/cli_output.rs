@@ -30,7 +30,7 @@ fn cli_supports_json_and_text_output() {
     .expect("parse cli");
 
     match run(cli).expect("run cli") {
-        CliOutput::Json(value) => {
+        CliOutput::Machine(value, audit_cli::cli::MachineOutputFormat::Json) => {
             assert_eq!(value["service"], "audit-mcp");
             assert!(
                 value["findings"]
@@ -51,6 +51,9 @@ fn cli_supports_json_and_text_output() {
                 &compiler_warning["evidence"]["sample"][0]["path"],
             );
         },
+        CliOutput::Machine(_, format) => {
+            panic!("expected json machine output, got {format:?}");
+        },
         CliOutput::Text(_) => panic!("expected json output"),
     }
 
@@ -67,7 +70,7 @@ fn cli_supports_json_and_text_output() {
 
     match run(text_cli).expect("run text cli") {
         CliOutput::Text(output) => assert_unix_formatted_output_text(&output),
-        CliOutput::Json(_) => panic!("expected text output"),
+        CliOutput::Machine(_, _) => panic!("expected text output"),
     }
 
     let mut command = Command::cargo_bin("audit").expect("audit binary");
@@ -92,4 +95,44 @@ fn cli_without_subcommand_shows_help() {
         .success()
         .stdout(predicates::str::contains("Repository quality audit CLI"))
         .stdout(predicates::str::contains("run"));
+}
+
+#[test]
+fn cli_supports_toon_output() {
+    let repo = tempdir().expect("temp repo");
+    write_sample_repo(repo.path());
+
+    let out = Command::cargo_bin("audit")
+        .expect("audit binary")
+        .arg("--toon")
+        .arg("run")
+        .arg(repo.path())
+        .arg("--max-file-lines")
+        .arg("20")
+        .arg("--max-cyclomatic-complexity")
+        .arg("3")
+        .output()
+        .expect("run audit with toon");
+
+    assert!(
+        out.status.success(),
+        "audit --toon run failed ({})\nstdout: {}\nstderr: {}",
+        out.status,
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+
+    let rendered =
+        String::from_utf8(out.stdout).expect("toon output should be utf-8");
+    let parsed: serde_json::Value = toon_format::decode_default(&rendered)
+        .expect("toon output should decode");
+
+    assert_eq!(parsed["service"], "audit-mcp");
+    assert!(
+        parsed["findings"]
+            .as_array()
+            .is_some_and(|findings| !findings.is_empty())
+    );
+    assert_unix_formatted_output_value(&parsed["repo_root"]);
+    assert_unix_formatted_output_value(&parsed["index_database"]);
 }

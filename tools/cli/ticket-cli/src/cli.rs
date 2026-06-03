@@ -46,8 +46,12 @@ pub(crate) use helpers::*;
 )]
 pub struct TicketCli {
     /// Return machine-readable JSON envelope output.
-    #[arg(long, global = true)]
+    #[arg(long, global = true, conflicts_with = "toon")]
     pub json: bool,
+
+    /// Return machine-readable TOON envelope output.
+    #[arg(long, global = true, conflicts_with = "json")]
+    pub toon: bool,
 
     /// Optional request identifier propagated in JSON envelope output.
     #[arg(long, global = true)]
@@ -192,8 +196,14 @@ pub enum CliRunError {
 }
 
 pub enum CliOutput {
-    Json(Value),
+    Machine(Value, MachineOutputFormat),
     Text(String),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MachineOutputFormat {
+    Json,
+    Toon,
 }
 
 // ── entry point ────────────────────────────────────────────────────────────────
@@ -207,14 +217,14 @@ pub fn run(cli: TicketCli) -> Result<CliOutput, CliRunError> {
         cli.json,
         cli.dry_run,
     )?;
-    if cli.json {
+    if let Some(format) = machine_output_format(cli.json, cli.toon) {
         let request_id =
             cli.request_id.unwrap_or_else(|| Uuid::new_v4().to_string());
         let envelope = CommandEnvelope {
             request_id,
             payload,
         };
-        Ok(CliOutput::Json(json!(envelope)))
+        Ok(CliOutput::Machine(json!(envelope), format))
     } else {
         Ok(CliOutput::Text(render_human(payload)))
     }
@@ -228,22 +238,59 @@ fn render_human(payload: Value) -> String {
 
 pub fn error_output(
     message: &str,
-    as_json: bool,
+    format: Option<MachineOutputFormat>,
 ) -> String {
-    if as_json {
-        serde_json::to_string_pretty(&ErrorEnvelope {
-            code: "invalid_request".to_string(),
-            message: message.to_string(),
-        })
-        .unwrap_or_else(|_| {
-            format!(
-                "{{\"code\":\"invalid_request\",\"message\":\"{}\"}}",
-                message
-            )
-        })
-    } else {
-        message.to_string()
+    let error = ErrorEnvelope {
+        code: "invalid_request".to_string(),
+        message: message.to_string(),
+    };
+    match format {
+        Some(MachineOutputFormat::Json) => serde_json::to_string_pretty(&error)
+            .unwrap_or_else(|_| {
+                format!(
+                    "{{\"code\":\"invalid_request\",\"message\":\"{}\"}}",
+                    message
+                )
+            }),
+        Some(MachineOutputFormat::Toon) => {
+            toon_format::encode_default(&json!(error)).unwrap_or_else(|_| {
+                format!("code: invalid_request\nmessage: {message}")
+            })
+        },
+        None => message.to_string(),
     }
+}
+
+pub fn render_machine_output(
+    payload: &Value,
+    format: MachineOutputFormat,
+) -> Result<String, String> {
+    match format {
+        MachineOutputFormat::Json => serde_json::to_string_pretty(payload)
+            .map_err(|err| err.to_string()),
+        MachineOutputFormat::Toon =>
+            toon_format::encode_default(payload).map_err(|err| err.to_string()),
+    }
+}
+
+pub fn machine_output_format(
+    as_json: bool,
+    as_toon: bool,
+) -> Option<MachineOutputFormat> {
+    if as_json {
+        Some(MachineOutputFormat::Json)
+    } else if as_toon {
+        Some(MachineOutputFormat::Toon)
+    } else {
+        None
+    }
+}
+
+pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat> {
+    machine_output_format(
+        std::env::args().any(|arg| arg == "--json"),
+        std::env::args().any(|arg| arg == "--toon"),
+    )
 }
 
 pub fn parse_cli_from<I, T>(args: I) -> Result<TicketCli, clap::Error>

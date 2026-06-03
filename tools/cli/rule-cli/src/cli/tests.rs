@@ -265,6 +265,7 @@ fn generate_target_respects_explicit_workspace_root_over_config_path() {
 
     let result = run(RuleCli {
         json: true,
+        toon: false,
         index_root: None,
         workspace_root: Some(child_workspace),
         command: RuleCommandCli::GenerateTarget(GenerateTargetArgs {
@@ -277,12 +278,15 @@ fn generate_target_respects_explicit_workspace_root_over_config_path() {
     .unwrap();
 
     match result {
-        CliOutput::Json(payload) => {
+        CliOutput::Machine(payload, MachineOutputFormat::Json) => {
             assert_eq!(payload["count"], 0);
             assert_eq!(payload["target"], "root-only");
         },
         CliOutput::Text(text) => {
             panic!("expected json output, got text: {text}");
+        },
+        CliOutput::Machine(_, format) => {
+            panic!("expected json machine output, got {format:?}");
         },
     }
 }
