@@ -56,7 +56,11 @@ impl TicketServer {
     fn json_result<T: Serialize>(
         value: &T
     ) -> Result<CallToolResult, McpError> {
-        let text = serde_json::to_string_pretty(value).map_err(|error| {
+        let mut value = serde_json::to_value(value).map_err(|error| {
+            McpError::internal_error(format!("serialization: {error}"), None)
+        })?;
+        ticket_api::output::strip_default_metadata(&mut value);
+        let text = serde_json::to_string_pretty(&value).map_err(|error| {
             McpError::internal_error(format!("serialization: {error}"), None)
         })?;
         Ok(CallToolResult::success(vec![Content::text(text)]))

@@ -209,7 +209,7 @@ pub enum MachineOutputFormat {
 // ── entry point ────────────────────────────────────────────────────────────────
 
 pub fn run(cli: TicketCli) -> Result<CliOutput, CliRunError> {
-    let payload = dispatch::dispatch(
+    let mut payload = dispatch::dispatch(
         cli.command,
         cli.index_root.as_deref(),
         cli.workspace_root.as_deref(),
@@ -217,6 +217,7 @@ pub fn run(cli: TicketCli) -> Result<CliOutput, CliRunError> {
         cli.json,
         cli.dry_run,
     )?;
+    ticket_api::output::strip_default_metadata(&mut payload);
     if let Some(format) = machine_output_format(cli.json, cli.toon) {
         let request_id =
             cli.request_id.unwrap_or_else(|| Uuid::new_v4().to_string());

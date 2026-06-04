@@ -45,10 +45,27 @@ impl Sandbox {
     pub fn new() -> Self {
         let dir = TempDir::new().expect("failed to create sandbox temp dir");
         let index_root = dir.path().to_path_buf();
-        Self {
+        let sandbox = Self {
             _dir: dir,
             index_root,
+        };
+        let out = sandbox
+            .base()
+            .arg("--json")
+            .arg("init")
+            .output()
+            .unwrap_or_else(|e| panic!("failed to initialize sandbox: {e}"));
+
+        if !out.status.success() {
+            panic!(
+                "ticket init failed ({})\nstdout: {}\nstderr: {}",
+                out.status,
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr),
+            );
         }
+
+        sandbox
     }
 
     // ------------------------------------------------------------------

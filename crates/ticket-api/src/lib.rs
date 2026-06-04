@@ -3,6 +3,7 @@ pub mod error;
 pub mod execution;
 pub mod health;
 pub mod model;
+pub mod output;
 pub mod storage;
 pub mod watcher;
 pub mod workflow;

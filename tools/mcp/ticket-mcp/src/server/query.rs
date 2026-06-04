@@ -237,10 +237,46 @@ mod tests {
         let text = extract_text(&result);
         let json: Value = serde_json::from_str(&text).expect("valid json");
 
+        assert!(json.get("workspace").is_none());
         assert_eq!(
             json["ticket"]["path"].as_str(),
             Some(indexed.path.display().to_string().as_str())
         );
+        assert!(json["ticket"]["fields"].get("type").is_none());
+    }
+
+    #[tokio::test]
+    async fn list_tickets_tool_omits_default_ticket_type_and_workspace() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let server = TicketServer::new(dir.path().to_path_buf());
+        let store = TicketStore::init(dir.path()).expect("open store");
+        store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("default output shaping"),
+                Some("new"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create ticket");
+
+        let result = server
+            .list_tickets_tool(ListTicketsInput {
+                workspace: "default".to_string(),
+                state: None,
+                type_id: None,
+                query: None,
+                limit: None,
+            })
+            .await
+            .expect("list_tickets_tool ok");
+        let text = extract_text(&result);
+        let json: Value = serde_json::from_str(&text).expect("valid json");
+
+        assert!(json.get("workspace").is_none());
+        assert!(json["items"][0].get("type").is_none());
     }
 }
 
