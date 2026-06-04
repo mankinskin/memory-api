@@ -124,6 +124,12 @@ pub struct UpdateArgs {
     pub body: Option<String>,
     #[arg(long = "body-file")]
     pub body_file: Option<PathBuf>,
+    /// Replace path_scopes entirely with the given values.
+    #[arg(long = "path-scope", conflicts_with = "add_path_scope")]
+    pub path_scope: Vec<String>,
+    /// Append one or more values to the existing path_scopes (deduplicates).
+    #[arg(long = "add-path-scope", conflicts_with = "path_scope")]
+    pub add_path_scope: Vec<String>,
 }
 
 #[derive(Debug, Args)]

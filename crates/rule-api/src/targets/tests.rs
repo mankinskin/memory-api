@@ -99,7 +99,7 @@ fn load_render_target_config_supports_file_folder_tree_structure() {
             "              name: context-engine-prompt-spec\n",
             "              repo_scope: context-engine\n",
             "              file_kind: .prompt\n",
-            "              path_scope: .github/prompts/spec.prompt.md\n",
+            "              path_scope: .agents/prompts/spec.prompt.md\n",
             "              nodes:\n",
             "                - name: spec-prompt\n",
             "                  section: spec-prompt\n",
@@ -118,7 +118,7 @@ fn load_render_target_config_supports_file_folder_tree_structure() {
     );
     assert_eq!(
         config.targets[2].output_path,
-        ".github/prompts/spec.prompt.md"
+        ".agents/prompts/spec.prompt.md"
     );
     assert_eq!(config.targets[2].nodes.len(), 1);
     assert_eq!(config.targets[2].nodes[0].name, "spec-prompt");
@@ -165,7 +165,7 @@ fn load_render_target_config_preserves_domain_tree_target_order() {
             "              name: context-engine-prompt-spec\n",
             "              repo_scope: context-engine\n",
             "              file_kind: .prompt\n",
-            "              path_scope: .github/prompts/spec.prompt.md\n",
+            "              path_scope: .agents/prompts/spec.prompt.md\n",
             "  - name: .agents\n",
             "    folders:\n",
             "      - name: instructions\n",
@@ -208,7 +208,7 @@ fn load_render_target_config_preserves_domain_tree_target_order() {
             "AGENTS.md",
             "memory-viewers/AGENTS.md",
             "memory-viewers/memory-api/AGENTS.md",
-            ".github/prompts/spec.prompt.md",
+            ".agents/prompts/spec.prompt.md",
             ".agents/instructions/audit.instructions.md",
         ]
     );
@@ -1066,7 +1066,7 @@ fn infer_file_kind_recognises_well_known_filenames() {
         Some("copilot-instructions")
     );
     assert_eq!(infer_file_kind(".agents/agents/interview.agent.md"), Some(".agent"));
-    assert_eq!(infer_file_kind(".github/prompts/spec.prompt.md"), Some(".prompt"));
+    assert_eq!(infer_file_kind(".agents/prompts/spec.prompt.md"), Some(".prompt"));
     assert_eq!(
         infer_file_kind(".agents/instructions/audit.instructions.md"),
         Some(".instructions")

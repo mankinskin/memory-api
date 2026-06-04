@@ -966,7 +966,7 @@ fn generate_target_supports_dot_prefixed_prompt_tree_output() {
         "---\nname: spec\n---\nCreate a new spec entry.\n",
     );
     prompt.set_repo_scopes(["context-engine"]);
-    prompt.set_path_scopes([".github/prompts/spec.prompt.md"]);
+    prompt.set_path_scopes([".agents/prompts/spec.prompt.md"]);
     prompt.set_order_key(10);
     store.create(&prompt, None).unwrap();
 
@@ -984,7 +984,7 @@ fn generate_target_supports_dot_prefixed_prompt_tree_output() {
             "              name: context-engine-prompt-spec\n",
             "              repo_scope: context-engine\n",
             "              file_kind: .prompt\n",
-            "              path_scope: .github/prompts/spec.prompt.md\n",
+            "              path_scope: .agents/prompts/spec.prompt.md\n",
             "              nodes:\n",
             "                - name: spec-prompt\n",
             "                  section: spec-prompt\n",
@@ -1033,7 +1033,7 @@ fn repo_spec_prompt_target_matches_expectation_oriented_contract() {
         .expect("context-engine repo root")
         .to_path_buf();
 
-    let prompt_path = repo_root.join(".github/prompts/spec.prompt.md");
+    let prompt_path = repo_root.join(".agents/prompts/spec.prompt.md");
     let rendered = fs::read_to_string(&prompt_path).unwrap();
 
     assert!(rendered.contains("intended system properties"));

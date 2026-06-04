@@ -259,11 +259,34 @@ fn update_command(
     store: &mut RuleStore,
     args: UpdateArgs,
 ) -> Result<Value, CliRunError> {
-    let patch = parse_fields(&args.fields)?;
+    let mut patch = parse_fields(&args.fields)?;
     if let Some(body) =
         read_optional_body(args.body, args.body_file.as_deref())?
     {
         store.update_body(&args.id, &body)?;
+    }
+    if !args.path_scope.is_empty() {
+        patch.insert(
+            "path_scopes".to_string(),
+            Value::Array(
+                args.path_scope
+                    .into_iter()
+                    .map(Value::String)
+                    .collect(),
+            ),
+        );
+    } else if !args.add_path_scope.is_empty() {
+        let current = store.get(&args.id)?;
+        let mut scopes = current.path_scopes();
+        for s in args.add_path_scope {
+            if !scopes.contains(&s) {
+                scopes.push(s);
+            }
+        }
+        patch.insert(
+            "path_scopes".to_string(),
+            Value::Array(scopes.into_iter().map(Value::String).collect()),
+        );
     }
     let rule = store.update(&args.id, patch, args.to_state.as_deref())?;
     Ok(json!({

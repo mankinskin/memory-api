@@ -165,10 +165,17 @@ pub(super) fn parse_fields(
                 "invalid field format '{field}', expected key=value"
             ))
         })?;
-        patch.insert(
-            key.trim().to_string(),
-            Value::String(value.trim().to_string()),
-        );
+        let value = value.trim();
+        let parsed = if value.starts_with('[') || value.starts_with('{') {
+            serde_json::from_str(value).map_err(|e| {
+                CliRunError::BadRequest(format!(
+                    "invalid JSON value for field '{key}': {e}"
+                ))
+            })?
+        } else {
+            Value::String(value.to_string())
+        };
+        patch.insert(key.trim().to_string(), parsed);
     }
     Ok(patch)
 }
