@@ -1,0 +1,15 @@
+schemas:
+  - name: repository-root-readme-v1
+    nodes:
+      - name: tool-surface
+        section: memory-api
+      - name: dependency-graph
+        title: Dependency Graph
+        section: memory-api/usage-guide
+      - name: tool-use-examples
+        title: Tool Use Examples
+        section: memory-api/crate-groups
+  - name: tool-readme-v1
+    nodes:
+      - name: onboarding
+        section: tools/readme

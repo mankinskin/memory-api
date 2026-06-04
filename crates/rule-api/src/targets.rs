@@ -134,9 +134,24 @@ enum RenderTargetNodeMode {
     Append,
 }
 
+/// Accumulator returned by each loader call — targets only; schemas are shared
+/// globally through `LoadCtx` so every fragment can see schemas registered by
+/// any prior import.
 #[derive(Debug, Default)]
 struct LoadedRenderTargets {
     targets: Vec<RenderTarget>,
+}
+
+/// Shared mutable context threaded through the entire config-load tree.
+/// Schemas are registered here on first encounter and are visible to all
+/// subsequent fragments regardless of import order.
+#[derive(Debug, Default)]
+struct LoadCtx {
+    /// Canonicalized paths of files currently being loaded (cycle detection).
+    visiting: Vec<PathBuf>,
+    /// Canonicalized paths of files that have been fully loaded (dedup guard).
+    visited: HashSet<PathBuf>,
+    /// All schemas registered so far across every loaded fragment.
     schemas: HashMap<String, RenderTargetSchema>,
 }
 
@@ -389,25 +404,27 @@ impl RawRenderTargetConfig {
 }
 
 impl LoadedRenderTargets {
+    fn merge(
+        &mut self,
+        other: Self,
+    ) {
+        self.targets.extend(other.targets);
+    }
+}
+
+impl LoadCtx {
     fn insert_schema(
         &mut self,
         schema: RenderTargetSchema,
     ) -> Result<(), TargetConfigError> {
         let name = schema.name.clone();
-        if self.schemas.insert(name.clone(), schema).is_some() {
+        if let Some(existing) = self.schemas.get(&name) {
+            if existing == &schema {
+                return Ok(());
+            }
             return Err(TargetConfigError::DuplicateSchemaName(name));
         }
-        Ok(())
-    }
-
-    fn merge(
-        &mut self,
-        other: Self,
-    ) -> Result<(), TargetConfigError> {
-        for schema in other.schemas.into_values() {
-            self.insert_schema(schema)?;
-        }
-        self.targets.extend(other.targets);
+        self.schemas.insert(name, schema);
         Ok(())
     }
 }
@@ -777,7 +794,7 @@ fn resolve_import_path(
 
 fn load_import_targets(
     import_path: &Path,
-    loading: &mut Vec<PathBuf>,
+    ctx: &mut LoadCtx,
 ) -> Result<LoadedRenderTargets, TargetConfigError> {
     let metadata = fs::metadata(import_path).map_err(|source| {
         TargetConfigError::Io {
@@ -787,7 +804,7 @@ fn load_import_targets(
     })?;
 
     if !metadata.is_dir() {
-        return load_render_target_config_inner(import_path, loading);
+        return load_render_target_config_inner(import_path, ctx);
     }
 
     let mut fragment_paths = Vec::new();
@@ -813,7 +830,7 @@ fn load_import_targets(
 
     let mut loaded = LoadedRenderTargets::default();
     for fragment_path in fragment_paths {
-        loaded.merge(load_render_target_config_inner(&fragment_path, loading)?)?;
+        loaded.merge(load_render_target_config_inner(&fragment_path, ctx)?);
     }
 
     Ok(loaded)
@@ -821,7 +838,7 @@ fn load_import_targets(
 
 fn load_render_target_config_inner(
     path: &Path,
-    loading: &mut Vec<PathBuf>,
+    ctx: &mut LoadCtx,
 ) -> Result<LoadedRenderTargets, TargetConfigError> {
     if path.is_dir() {
         return Err(directory_target_config_error(path));
@@ -832,32 +849,47 @@ fn load_render_target_config_inner(
             path: path.to_path_buf(),
             source,
         })?;
-    if loading.contains(&canonical) {
+
+    // Already loaded in a prior pass — skip silently to avoid duplicate
+    // schemas/targets when a file is both imported and scanned directly.
+    if ctx.visited.contains(&canonical) {
+        return Ok(LoadedRenderTargets::default());
+    }
+
+    // Active call stack: detect cycles.
+    if ctx.visiting.contains(&canonical) {
         return Err(TargetConfigError::ImportCycle {
             path: path.to_path_buf(),
         });
     }
 
-    loading.push(canonical);
+    ctx.visiting.push(canonical.clone());
     let result = (|| {
         let raw = parse_render_target_config(path)?;
         let mut loaded = LoadedRenderTargets::default();
 
         for import in raw.imports.clone() {
             let import_path = resolve_import_path(path, &import);
-            loaded.merge(load_import_targets(&import_path, loading)?)?;
+            loaded.merge(load_import_targets(&import_path, ctx)?);
         }
 
+        // Register schemas into the shared global map so all subsequent
+        // fragments (siblings and children) can resolve references to them.
         for schema in raw.schemas.iter().cloned() {
-            loaded.insert_schema(schema)?;
+            ctx.insert_schema(schema)?;
         }
 
         loaded
             .targets
-            .extend(raw.into_render_targets(path, &loaded.schemas)?);
+            .extend(raw.into_render_targets(path, &ctx.schemas)?);
         Ok(loaded)
     })();
-    loading.pop();
+    ctx.visiting.pop();
+    // Mark as fully loaded only on success so a parse/validation error
+    // doesn't permanently silence the file on a later retry.
+    if result.is_ok() {
+        ctx.visited.insert(canonical);
+    }
     result
 }
 
@@ -1119,11 +1151,11 @@ fn normalize_render_target_selector(
 pub fn load_render_target_config(
     path: &Path
 ) -> Result<RenderTargetConfig, TargetConfigError> {
-    let mut loading = Vec::new();
+    let mut ctx = LoadCtx::default();
     let loaded = if path.is_dir() {
-        load_import_targets(path, &mut loading)?
+        load_import_targets(path, &mut ctx)?
     } else {
-        load_render_target_config_inner(path, &mut loading)?
+        load_render_target_config_inner(path, &mut ctx)?
     };
     let config = RenderTargetConfig {
         targets: loaded.targets,

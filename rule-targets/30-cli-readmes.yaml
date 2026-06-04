@@ -1,3 +1,6 @@
+imports:
+- 20-readme-schemas.yaml
+
 defaults:
   repo_scope: memory-api
 folders:
@@ -11,6 +14,8 @@ folders:
         target:
           name: rule-cli-readme
           path_scope: tools/cli/rule-cli/README.md
+          schema: tool-readme-v1
+          node_mode: append
           nodes:
           - name: onboarding
             section: tools/cli/rule-cli/readme
@@ -20,6 +25,8 @@ folders:
         target:
           name: spec-cli-readme
           path_scope: tools/cli/spec-cli/README.md
+          schema: tool-readme-v1
+          node_mode: append
           nodes:
           - name: onboarding
             section: tools/cli/spec-cli/readme
@@ -29,6 +36,8 @@ folders:
         target:
           name: ticket-cli-readme
           path_scope: tools/cli/ticket-cli/README.md
+          schema: tool-readme-v1
+          node_mode: append
           nodes:
           - name: onboarding
             section: tools/cli/ticket-cli/readme
@@ -38,6 +47,8 @@ folders:
         target:
           name: audit-cli-readme
           path_scope: tools/cli/audit-cli/README.md
+          schema: tool-readme-v1
+          node_mode: append
           nodes:
           - name: onboarding
             section: tools/cli/audit-cli/readme

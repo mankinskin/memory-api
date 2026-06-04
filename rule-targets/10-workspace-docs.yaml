@@ -1,3 +1,6 @@
+imports:
+- 20-readme-schemas.yaml
+
 defaults:
   repo_scope: memory-api
 files:
@@ -5,15 +8,7 @@ files:
   target:
     name: memory-api-readme
     path_scope: README.md
-    nodes:
-    - name: tool-surface
-      section: memory-api
-    - name: dependency-graph
-      title: Dependency Graph
-      section: memory-api/usage-guide
-    - name: tool-use-examples
-      title: Tool Use Examples
-      section: memory-api/crate-groups
+    schema: repository-root-readme-v1
 - name: AGENTS.md
   target:
     name: memory-api-agents

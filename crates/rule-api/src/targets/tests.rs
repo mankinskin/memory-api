@@ -785,6 +785,59 @@ fn readme_schema_rejects_child_targets_missing_required_parent_block() {
 }
 
 #[test]
+fn load_render_target_config_allows_identical_schema_imports_across_fragments() {
+    let tmp = tempdir().unwrap();
+    let shared = tmp.path().join("shared-schema.yaml");
+    fs::write(
+        &shared,
+        concat!(
+            "schemas:\n",
+            "  - name: repository-readme-v1\n",
+            "    nodes:\n",
+            "      - name: summary\n",
+            "        title: Summary\n",
+        ),
+    )
+    .unwrap();
+
+    let config_dir = tmp.path().join("rule-targets");
+    fs::create_dir(&config_dir).unwrap();
+    fs::write(
+        config_dir.join("10-root.yaml"),
+        concat!(
+            "imports:\n",
+            "- ../shared-schema.yaml\n",
+            "targets:\n",
+            "  - name: root-readme\n",
+            "    repo_scope: memory-api\n",
+            "    file_kind: README\n",
+            "    output_path: README.md\n",
+            "    schema: repository-readme-v1\n",
+        ),
+    )
+    .unwrap();
+    fs::write(
+        config_dir.join("20-child.yaml"),
+        concat!(
+            "imports:\n",
+            "- ../shared-schema.yaml\n",
+            "targets:\n",
+            "  - name: child-readme\n",
+            "    repo_scope: memory-api\n",
+            "    file_kind: README\n",
+            "    output_path: tools/cli/rule-cli/README.md\n",
+            "    schema: repository-readme-v1\n",
+        ),
+    )
+    .unwrap();
+
+    let config = load_render_target_config(&config_dir).unwrap();
+
+    assert!(render_target_by_name(&config, "root-readme").is_ok());
+    assert!(render_target_by_name(&config, "child-readme").is_ok());
+}
+
+#[test]
 fn resolve_render_target_output_uses_config_parent_for_relative_paths() {
     let config_path = PathBuf::from("repo/rule-targets.yaml");
     let target = RenderTarget {

@@ -1,3 +1,6 @@
+imports:
+- 20-readme-schemas.yaml
+
 defaults:
   repo_scope: memory-api
 folders:
@@ -11,6 +14,8 @@ folders:
         target:
           name: rule-mcp-readme
           path_scope: tools/mcp/rule-mcp/README.md
+          schema: tool-readme-v1
+          node_mode: append
           nodes:
           - name: onboarding
             section: tools/mcp/rule-mcp/readme
@@ -20,6 +25,8 @@ folders:
         target:
           name: spec-mcp-readme
           path_scope: tools/mcp/spec-mcp/README.md
+          schema: tool-readme-v1
+          node_mode: append
           nodes:
           - name: onboarding
             section: tools/mcp/spec-mcp/readme
@@ -29,6 +36,8 @@ folders:
         target:
           name: ticket-mcp-readme
           path_scope: tools/mcp/ticket-mcp/README.md
+          schema: tool-readme-v1
+          node_mode: append
           nodes:
           - name: onboarding
             section: tools/mcp/ticket-mcp/readme
@@ -38,6 +47,8 @@ folders:
         target:
           name: audit-mcp-readme
           path_scope: tools/mcp/audit-mcp/README.md
+          schema: tool-readme-v1
+          node_mode: append
           nodes:
           - name: onboarding
             section: tools/mcp/audit-mcp/readme
