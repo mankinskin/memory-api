@@ -37,10 +37,26 @@ pub struct RenderTargetConfig {
     pub targets: Vec<RenderTarget>,
 }
 
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+struct RawTargetDefaults {
+    #[serde(default)]
+    repo_scope: Option<String>,
+    #[serde(default)]
+    file_kind: Option<String>,
+    #[serde(default)]
+    path_scope: Option<String>,
+    #[serde(default)]
+    section: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 struct RawRenderTargetConfig {
     #[serde(default)]
     imports: Vec<PathBuf>,
+    #[serde(default)]
+    defaults: RawTargetDefaults,
     #[serde(default)]
     schemas: Vec<RenderTargetSchema>,
     #[serde(default)]
@@ -54,8 +70,12 @@ struct RawRenderTargetConfig {
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 struct RawRenderTarget {
     name: String,
-    repo_scope: String,
-    file_kind: String,
+    #[serde(default)]
+    scope: Option<String>,
+    #[serde(default)]
+    repo_scope: Option<String>,
+    #[serde(default)]
+    file_kind: Option<String>,
     #[serde(default)]
     path_scope: Option<String>,
     #[serde(default)]
@@ -64,7 +84,8 @@ struct RawRenderTarget {
     state: Option<String>,
     #[serde(default)]
     nodes: Vec<RenderTargetNode>,
-    output_path: String,
+    #[serde(default)]
+    output_path: Option<String>,
     #[serde(default)]
     schema: Option<String>,
     #[serde(default)]
@@ -137,8 +158,12 @@ struct RenderTargetFile {
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 struct RenderTargetDefinition {
     name: String,
-    repo_scope: String,
-    file_kind: String,
+    #[serde(default)]
+    scope: Option<String>,
+    #[serde(default)]
+    repo_scope: Option<String>,
+    #[serde(default)]
+    file_kind: Option<String>,
     #[serde(default)]
     path_scope: Option<String>,
     #[serde(default)]
@@ -333,16 +358,30 @@ impl RawRenderTargetConfig {
         config_path: &Path,
         schemas: &HashMap<String, RenderTargetSchema>,
     ) -> Result<Vec<RenderTarget>, TargetConfigError> {
+        let defaults = &self.defaults;
         let mut targets = self
             .targets
             .into_iter()
-            .map(|target| target.into_render_target(config_path, schemas))
+            .map(|target| target.into_render_target(config_path, schemas, defaults))
             .collect::<Result<Vec<_>, _>>()?;
         let root = PathBuf::new();
 
-        push_tree_files(&root, self.files, config_path, schemas, &mut targets)?;
+        push_tree_files(
+            &root,
+            self.files,
+            config_path,
+            schemas,
+            defaults,
+            &mut targets,
+        )?;
         for folder in self.folders {
-            folder.collect_targets(&root, config_path, schemas, &mut targets)?;
+            folder.collect_targets(
+                &root,
+                config_path,
+                schemas,
+                defaults,
+                &mut targets,
+            )?;
         }
 
         Ok(targets)
@@ -378,14 +417,31 @@ impl RawRenderTarget {
         self,
         config_path: &Path,
         schemas: &HashMap<String, RenderTargetSchema>,
+        defaults: &RawTargetDefaults,
     ) -> Result<RenderTarget, TargetConfigError> {
+        let (repo_scope, file_kind, path_scope) = resolve_scope_fields(
+            &self.name,
+            self.repo_scope,
+            self.file_kind,
+            self.path_scope,
+            self.scope,
+            defaults,
+        )?;
+        let section = self.section.or_else(|| defaults.section.clone());
+        let state = self.state.or_else(|| defaults.state.clone());
+        let output_path = self
+            .output_path
+            .or_else(|| path_scope.clone())
+            .ok_or_else(|| TargetConfigError::MissingOutputPath {
+                target: self.name.clone(),
+            })?;
         Ok(RenderTarget {
             name: self.name.clone(),
-            repo_scope: self.repo_scope,
-            file_kind: self.file_kind,
-            path_scope: self.path_scope,
-            section: self.section,
-            state: self.state,
+            repo_scope,
+            file_kind,
+            path_scope,
+            section,
+            state,
             nodes: resolve_target_nodes(
                 &self.name,
                 self.nodes,
@@ -394,7 +450,7 @@ impl RawRenderTarget {
                 self.node_mode,
                 schemas,
             )?,
-            output_path: self.output_path,
+            output_path,
             source_config_path: Some(config_path.to_path_buf()),
             source_output_root: Some(resolve_config_output_root(config_path)),
         })
@@ -407,13 +463,20 @@ impl RenderTargetFolder {
         parent: &Path,
         config_path: &Path,
         schemas: &HashMap<String, RenderTargetSchema>,
+        defaults: &RawTargetDefaults,
         targets: &mut Vec<RenderTarget>,
     ) -> Result<(), TargetConfigError> {
         let prefix = parent.join(self.name);
 
-        push_tree_files(&prefix, self.files, config_path, schemas, targets)?;
+        push_tree_files(&prefix, self.files, config_path, schemas, defaults, targets)?;
         for folder in self.folders {
-            folder.collect_targets(&prefix, config_path, schemas, targets)?;
+            folder.collect_targets(
+                &prefix,
+                config_path,
+                schemas,
+                defaults,
+                targets,
+            )?;
         }
 
         Ok(())
@@ -426,11 +489,13 @@ impl RenderTargetFile {
         parent: &Path,
         config_path: &Path,
         schemas: &HashMap<String, RenderTargetSchema>,
+        defaults: &RawTargetDefaults,
     ) -> Result<RenderTarget, TargetConfigError> {
         self.target.into_render_target(
             tree_output_path(parent, &self.name),
             config_path,
             schemas,
+            defaults,
         )
     }
 }
@@ -441,14 +506,25 @@ impl RenderTargetDefinition {
         output_path: String,
         config_path: &Path,
         schemas: &HashMap<String, RenderTargetSchema>,
+        defaults: &RawTargetDefaults,
     ) -> Result<RenderTarget, TargetConfigError> {
+        let (repo_scope, file_kind, path_scope) = resolve_scope_fields(
+            &self.name,
+            self.repo_scope,
+            self.file_kind,
+            self.path_scope,
+            self.scope,
+            defaults,
+        )?;
+        let section = self.section.or_else(|| defaults.section.clone());
+        let state = self.state.or_else(|| defaults.state.clone());
         Ok(RenderTarget {
             name: self.name.clone(),
-            repo_scope: self.repo_scope,
-            file_kind: self.file_kind,
-            path_scope: self.path_scope,
-            section: self.section,
-            state: self.state,
+            repo_scope,
+            file_kind,
+            path_scope,
+            section,
+            state,
             nodes: resolve_target_nodes(
                 &self.name,
                 self.nodes,
@@ -469,10 +545,11 @@ fn push_tree_files(
     files: Vec<RenderTargetFile>,
     config_path: &Path,
     schemas: &HashMap<String, RenderTargetSchema>,
+    defaults: &RawTargetDefaults,
     targets: &mut Vec<RenderTarget>,
 ) -> Result<(), TargetConfigError> {
     for file in files {
-        targets.push(file.into_render_target(parent, config_path, schemas)?);
+        targets.push(file.into_render_target(parent, config_path, schemas, defaults)?);
     }
 
     Ok(())
@@ -552,6 +629,82 @@ fn tree_output_path(
     let mut path = parent.to_path_buf();
     path.push(name);
     path.to_string_lossy().replace('\\', "/")
+}
+
+/// Parses a `scope` shorthand like `"repo_scope:path_scope"` and returns
+/// `(repo_scope, path_scope)`.  Both parts must be non-empty.
+fn parse_scope(
+    target_name: &str,
+    scope: &str,
+) -> Result<(String, String), TargetConfigError> {
+    scope
+        .split_once(':')
+        .filter(|(repo, path)| !repo.is_empty() && !path.is_empty())
+        .map(|(repo, path)| (repo.to_string(), path.to_string()))
+        .ok_or_else(|| TargetConfigError::InvalidScope {
+            target: target_name.to_string(),
+            scope: scope.to_string(),
+        })
+}
+
+/// Infers `file_kind` from a well-known path pattern.  Returns `None` when the
+/// path does not match any recognised convention.
+fn infer_file_kind(path: &str) -> Option<&'static str> {
+    let filename = path.rsplit('/').next().unwrap_or(path);
+    match filename {
+        "AGENTS.md" => Some("AGENTS"),
+        "README.md" => Some("README"),
+        "copilot-instructions.md" => Some("copilot-instructions"),
+        _ if filename.ends_with(".agent.md") => Some(".agent"),
+        _ if filename.ends_with(".prompt.md") => Some(".prompt"),
+        _ if filename.ends_with(".instructions.md") => Some(".instructions"),
+        _ if path.starts_with(".spec/specs/") => Some("spec-doc"),
+        _ => None,
+    }
+}
+
+/// Resolves `repo_scope`, `file_kind`, and `path_scope` for a target by
+/// merging the explicit fields, the `scope` shorthand, and the config-level
+/// `defaults` (in that precedence order).
+fn resolve_scope_fields(
+    target_name: &str,
+    explicit_repo_scope: Option<String>,
+    explicit_file_kind: Option<String>,
+    explicit_path_scope: Option<String>,
+    scope: Option<String>,
+    defaults: &RawTargetDefaults,
+) -> Result<(String, String, Option<String>), TargetConfigError> {
+    let (scope_repo, scope_path) = if let Some(s) = scope {
+        let (r, p) = parse_scope(target_name, &s)?;
+        (Some(r), Some(p))
+    } else {
+        (None, None)
+    };
+
+    let repo_scope = explicit_repo_scope
+        .or(scope_repo)
+        .or_else(|| defaults.repo_scope.clone())
+        .ok_or_else(|| TargetConfigError::MissingRepoScope {
+            target: target_name.to_string(),
+        })?;
+
+    let path_scope = explicit_path_scope
+        .or(scope_path)
+        .or_else(|| defaults.path_scope.clone());
+
+    let file_kind = explicit_file_kind
+        .or_else(|| defaults.file_kind.clone())
+        .or_else(|| {
+            path_scope
+                .as_deref()
+                .and_then(infer_file_kind)
+                .map(str::to_owned)
+        })
+        .ok_or_else(|| TargetConfigError::MissingFileKind {
+            target: target_name.to_string(),
+        })?;
+
+    Ok((repo_scope, file_kind, path_scope))
 }
 
 fn parse_render_target_config(
@@ -907,6 +1060,27 @@ pub enum TargetConfigError {
         target_kind: String,
         block: String,
     },
+    #[error(
+        "render target \"{target}\": missing repo_scope \
+         (set it explicitly, via `scope: \"repo:path\"`, or in a `defaults:` block)"
+    )]
+    MissingRepoScope { target: String },
+    #[error(
+        "render target \"{target}\": missing file_kind \
+         (set it explicitly, in a `defaults:` block, or use a recognised path \
+         like AGENTS.md, README.md, *.agent.md, *.prompt.md, *.instructions.md)"
+    )]
+    MissingFileKind { target: String },
+    #[error(
+        "render target \"{target}\": invalid scope \"{scope}\" \
+         (expected \"repo_scope:path_scope\", both parts non-empty)"
+    )]
+    InvalidScope { target: String, scope: String },
+    #[error(
+        "render target \"{target}\": missing output_path \
+         (set it explicitly or provide a `path_scope` / `scope:` shorthand to use as default)"
+    )]
+    MissingOutputPath { target: String },
 }
 
 fn directory_target_config_error(
