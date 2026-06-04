@@ -144,6 +144,10 @@ required = false
 field_type = "string"
 required = false
 
+[fields.effort]
+field_type = "string"
+required = false
+
 [fields.bootstrap_blocker]
 field_type = "boolean"
 required = false

@@ -108,6 +108,7 @@ pub struct WorkflowModel {
     tickets: HashMap<Uuid, IndexedTicket>,
     state_index: HashMap<String, usize>,
     priorities: HashMap<Uuid, String>,
+    efforts: HashMap<Uuid, u64>,
     dependency_counts: HashMap<Uuid, usize>,
     dependee_counts: HashMap<Uuid, usize>,
     unresolved_deps: HashMap<Uuid, Vec<Uuid>>,
@@ -125,6 +126,7 @@ impl WorkflowModel {
     ) -> Result<Self, StorageError> {
         let state_index = build_state_index(store);
         let priorities = read_priorities(&tickets);
+        let efforts = read_efforts(&tickets);
         let workflow_facts = store
             .get_workflow_facts_many(
                 &tickets.iter().map(|ticket| ticket.id).collect::<Vec<_>>(),
@@ -134,6 +136,7 @@ impl WorkflowModel {
             all_edges,
             state_index,
             priorities,
+            efforts,
             workflow_facts,
         ))
     }
@@ -157,6 +160,13 @@ impl WorkflowModel {
         ticket_id: &Uuid,
     ) -> &str {
         self.priority(ticket_id).unwrap_or("none")
+    }
+
+    pub fn effort(
+        &self,
+        ticket_id: &Uuid,
+    ) -> Option<u64> {
+        self.efforts.get(ticket_id).copied()
     }
 
     pub fn metrics(
@@ -530,6 +540,10 @@ impl WorkflowModel {
                 .cmp(&right.unresolved_frontier_leaf_count)
                 .then_with(|| left.blocker_distance.cmp(&right.blocker_distance))
                 .then_with(|| {
+                    effort_sort_key(self.effort(&left.ticket_id))
+                        .cmp(&effort_sort_key(self.effort(&right.ticket_id)))
+                })
+                .then_with(|| {
                     right
                         .dependency_state_gap
                         .cmp(&left.dependency_state_gap)
@@ -560,6 +574,7 @@ impl WorkflowModel {
         all_edges: Vec<EdgeRecord>,
         state_index: HashMap<String, usize>,
         priorities: HashMap<Uuid, String>,
+        efforts: HashMap<Uuid, u64>,
         workflow_facts: HashMap<Uuid, WorkflowFacts>,
     ) -> Self {
         let tickets: HashMap<Uuid, IndexedTicket> = tickets
@@ -589,6 +604,7 @@ impl WorkflowModel {
             tickets,
             state_index,
             priorities,
+            efforts,
             dependency_counts,
             dependee_counts,
             unresolved_deps,
@@ -625,6 +641,10 @@ impl WorkflowModel {
                 right_metrics
                     .affected_reverse_dependent_reach
                     .cmp(&left_metrics.affected_reverse_dependent_reach)
+            })
+            .then_with(|| {
+                effort_sort_key(self.effort(&left))
+                    .cmp(&effort_sort_key(self.effort(&right)))
             })
             .then_with(|| {
                 right_metrics
@@ -770,6 +790,46 @@ fn build_state_index(store: &TicketStore) -> HashMap<String, usize> {
     state_index
 }
 
+pub fn parse_effort(value: &str) -> Option<u64> {
+    let compact = value.trim().to_ascii_lowercase().replace([',', '_'], "");
+    let chars: Vec<char> = compact.chars().collect();
+    let mut index = 0;
+
+    while index < chars.len() {
+        if chars[index].is_ascii_digit() {
+            let start = index;
+            let mut seen_dot = false;
+            index += 1;
+            while index < chars.len() {
+                let ch = chars[index];
+                if ch.is_ascii_digit() {
+                    index += 1;
+                    continue;
+                }
+                if ch == '.' && !seen_dot {
+                    seen_dot = true;
+                    index += 1;
+                    continue;
+                }
+                break;
+            }
+
+            let number = compact[start..index].parse::<f64>().ok()?;
+            let suffix = chars.get(index).copied();
+            let multiplier = match suffix {
+                Some('k') => 1_000_f64,
+                Some('m') => 1_000_000_f64,
+                Some('b') => 1_000_000_000_f64,
+                _ => 1_f64,
+            };
+            return Some((number * multiplier).round() as u64);
+        }
+        index += 1;
+    }
+
+    None
+}
+
 fn read_priorities(tickets: &[IndexedTicket]) -> HashMap<Uuid, String> {
     tickets
         .iter()
@@ -783,6 +843,26 @@ fn read_priorities(tickets: &[IndexedTicket]) -> HashMap<Uuid, String> {
             })
         })
         .collect()
+}
+
+fn read_efforts(tickets: &[IndexedTicket]) -> HashMap<Uuid, u64> {
+    tickets
+        .iter()
+        .filter_map(|ticket| {
+            TicketFs::read(&ticket.path).ok().and_then(|manifest| {
+                manifest
+                    .extra
+                    .get("effort")
+                    .and_then(|value| value.as_str())
+                    .and_then(parse_effort)
+                    .map(|effort| (ticket.id, effort))
+            })
+        })
+        .collect()
+}
+
+fn effort_sort_key(effort: Option<u64>) -> u64 {
+    effort.unwrap_or(u64::MAX)
 }
 
 fn dependency_counts(all_edges: &[EdgeRecord]) -> HashMap<Uuid, usize> {
@@ -1065,13 +1145,20 @@ mod tests {
         edges: Vec<EdgeRecord>,
         priorities: HashMap<Uuid, String>,
     ) -> WorkflowModel {
-        build_model_with_facts(tickets, edges, priorities, HashMap::new())
+        build_model_with_facts(
+            tickets,
+            edges,
+            priorities,
+            HashMap::new(),
+            HashMap::new(),
+        )
     }
 
     fn build_model_with_facts(
         tickets: Vec<IndexedTicket>,
         edges: Vec<EdgeRecord>,
         priorities: HashMap<Uuid, String>,
+        efforts: HashMap<Uuid, u64>,
         workflow_facts: HashMap<Uuid, WorkflowFacts>,
     ) -> WorkflowModel {
         WorkflowModel::build_from_parts(
@@ -1085,6 +1172,7 @@ mod tests {
                 ("done".to_string(), 4usize),
             ]),
             priorities,
+            efforts,
             workflow_facts,
         )
     }
@@ -1189,6 +1277,7 @@ mod tests {
                 (older_created.id, "high".to_string()),
                 (newer_created.id, "high".to_string()),
             ]),
+            HashMap::new(),
             HashMap::from([
                 (
                     older_created.id,
@@ -1293,6 +1382,7 @@ mod tests {
                 (prerequisite.id, "high".to_string()),
                 (recently_actionable.id, "high".to_string()),
             ]),
+            HashMap::new(),
             HashMap::from([(
                 recently_actionable.id,
                 WorkflowFacts {
@@ -1561,6 +1651,46 @@ mod tests {
             "expected stale warning, got {:?}",
             result.warnings
         );
+    }
+
+    #[test]
+    fn sort_candidates_prefers_lower_effort_before_newer_tickets() {
+        let lower_effort = ticket(
+            "Lower effort ticket",
+            "ready",
+            Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
+        );
+        let higher_effort = ticket(
+            "Higher effort ticket",
+            "ready",
+            Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap(),
+        );
+        let mut candidates = vec![higher_effort.id, lower_effort.id];
+        let model = build_model_with_facts(
+            vec![lower_effort.clone(), higher_effort.clone()],
+            Vec::new(),
+            HashMap::from([
+                (lower_effort.id, "high".to_string()),
+                (higher_effort.id, "high".to_string()),
+            ]),
+            HashMap::from([
+                (lower_effort.id, 1_200_u64),
+                (higher_effort.id, 8_000_u64),
+            ]),
+            HashMap::new(),
+        );
+
+        model.sort_candidate_ids(&mut candidates);
+
+        assert_eq!(candidates, vec![lower_effort.id, higher_effort.id]);
+    }
+
+    #[test]
+    fn parse_effort_accepts_numeric_token_budgets() {
+        assert_eq!(parse_effort("1500"), Some(1_500));
+        assert_eq!(parse_effort("2.5k tokens"), Some(2_500));
+        assert_eq!(parse_effort("budget: 1_250"), Some(1_250));
+        assert_eq!(parse_effort("unknown"), None);
     }
 
     #[test]

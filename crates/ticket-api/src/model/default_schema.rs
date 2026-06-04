@@ -96,6 +96,13 @@ pub fn tracker_improvement_schema() -> TicketTypeSchema {
             },
         ),
         (
+            "effort",
+            FieldSchema {
+                field_type: FieldType::String,
+                required: false,
+            },
+        ),
+        (
             "interview_file_type",
             FieldSchema {
                 field_type: FieldType::String,

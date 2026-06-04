@@ -22,12 +22,13 @@ impl TicketStore {
         type_filter: Option<&str>,
         limit: Option<usize>,
     ) -> Result<Vec<IndexedTicket>, StorageError> {
-        let filtered = self
+        let mut filtered: Vec<IndexedTicket> = self
             .normalize_indexed_tickets(self.index.list_tickets(false)?)
             .into_iter()
             .filter(|ticket| matches_filters(ticket, state_filter, type_filter))
-            .take(limit.unwrap_or(usize::MAX))
             .collect();
+        sort_tickets_by_effort(&mut filtered);
+        filtered.truncate(limit.unwrap_or(usize::MAX));
         Ok(filtered)
     }
 
@@ -40,7 +41,7 @@ impl TicketStore {
         field_filters: &[(String, String)],
     ) -> Result<Vec<IndexedTicket>, StorageError> {
         let needs_manifest_check = !field_filters.is_empty();
-        let filtered = self
+        let mut filtered: Vec<IndexedTicket> = self
             .normalize_indexed_tickets(
                 self.index.list_tickets(include_deleted)?,
             )
@@ -53,8 +54,9 @@ impl TicketStore {
                     needs_manifest_check,
                 )
             })
-            .take(limit.unwrap_or(usize::MAX))
             .collect();
+        sort_tickets_by_effort(&mut filtered);
+        filtered.truncate(limit.unwrap_or(usize::MAX));
         Ok(filtered)
     }
 
@@ -171,6 +173,36 @@ impl TicketStore {
         }
         Ok(())
     }
+}
+
+fn sort_tickets_by_effort(tickets: &mut [IndexedTicket]) {
+    tickets.sort_by(|left, right| {
+        ticket_effort(left)
+            .unwrap_or(u64::MAX)
+            .cmp(&ticket_effort(right).unwrap_or(u64::MAX))
+            .then_with(|| right.updated_at.cmp(&left.updated_at))
+            .then_with(|| {
+                left.title
+                    .as_deref()
+                    .unwrap_or("")
+                    .cmp(right.title.as_deref().unwrap_or(""))
+            })
+            .then_with(|| left.id.cmp(&right.id))
+    });
+}
+
+fn ticket_effort(ticket: &IndexedTicket) -> Option<u64> {
+    TicketFs::read(&ticket.path)
+        .ok()
+        .and_then(|manifest| {
+            manifest
+                .extra
+                .get("effort")
+                .and_then(|value| value.as_str())
+                .map(str::to_owned)
+        })
+        .as_deref()
+        .and_then(crate::workflow::parse_effort)
 }
 
 fn matches_filters(

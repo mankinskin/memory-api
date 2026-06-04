@@ -17,6 +17,8 @@ pub struct TicketSummary {
     pub type_id: String,
     pub title: Option<String>,
     pub state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<u64>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 

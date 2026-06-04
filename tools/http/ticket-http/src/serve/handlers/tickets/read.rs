@@ -37,6 +37,13 @@ use crate::serve::{
 
 use ticket_api::storage::ticket_fs::TicketFs;
 
+fn effort_from_fields(fields: &BTreeMap<String, serde_json::Value>) -> Option<u64> {
+    fields
+        .get("effort")
+        .and_then(serde_json::Value::as_str)
+        .and_then(ticket_api::workflow::parse_effort)
+}
+
 use super::types::{
     HistoryEntry,
     TicketDescriptionResponse,
@@ -192,7 +199,12 @@ pub async fn list_tickets(
                             Some(&local_ticket_ref),
                             resolved_ticket,
                         ) {
-                            ticket_summary_from_indexed(local_ticket_ref, &ticket)
+                            let mut summary = ticket_summary_from_indexed(local_ticket_ref, &ticket);
+                            summary.effort = store
+                                .get(&ticket.id)
+                                .ok()
+                                .and_then(|manifest| effort_from_fields(&manifest.extra));
+                            summary
                         } else if let Some(resolved_ticket) = resolved_ticket {
                             ticket_summary_from_resolved(resolved_ticket)
                         } else {
@@ -200,6 +212,19 @@ pub async fn list_tickets(
                         };
                         summaries.push(summary);
                     }
+                    summaries.sort_by(|left, right| {
+                        left.effort
+                            .unwrap_or(u64::MAX)
+                            .cmp(&right.effort.unwrap_or(u64::MAX))
+                            .then_with(|| right.updated_at.cmp(&left.updated_at))
+                            .then_with(|| {
+                                left.title
+                                    .as_deref()
+                                    .unwrap_or("")
+                                    .cmp(right.title.as_deref().unwrap_or(""))
+                            })
+                            .then_with(|| left.id.cmp(&right.id))
+                    });
                     summaries
                 },
                 Err(e) => return storage_err(e, &request_id),
@@ -447,6 +472,7 @@ fn ticket_summary_from_indexed(
         type_id: ticket.type_id.clone(),
         title: ticket.title.clone(),
         state: ticket.state.clone(),
+        effort: None,
         created_at: ticket.created_at,
         updated_at: ticket.updated_at,
         fields: BTreeMap::new(),
@@ -454,12 +480,18 @@ fn ticket_summary_from_indexed(
 }
 
 fn ticket_summary_from_resolved(ticket: &ResolvedIndexedTicket) -> TicketSummary {
+    let effort = ticket
+        .store
+        .get(&ticket.ticket.id)
+        .ok()
+        .and_then(|manifest| effort_from_fields(&manifest.extra));
     TicketSummary {
         id: ticket.ticket.id.to_string(),
         ticket_ref: ticket_ref_from_resolved(ticket),
         type_id: ticket.ticket.type_id.clone(),
         title: ticket.ticket.title.clone(),
         state: ticket.ticket.state.clone(),
+        effort,
         created_at: ticket.ticket.created_at,
         updated_at: ticket.ticket.updated_at,
         fields: BTreeMap::new(),

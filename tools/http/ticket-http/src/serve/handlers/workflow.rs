@@ -88,6 +88,7 @@ pub struct WorkflowCandidateItem {
     #[serde(rename = "type")]
     pub ticket_type: String,
     pub priority: String,
+    pub effort: Option<u64>,
     pub dependency_count: usize,
     pub remaining_blocker_count: usize,
     pub dependee_count: usize,
@@ -515,6 +516,7 @@ fn build_candidate_items(
             state: ticket.state.clone(),
             ticket_type: ticket.type_id.clone(),
             priority: model.priority_or_none(ticket_id).to_string(),
+            effort: model.effort(ticket_id),
             dependency_count: model.dependency_count(ticket_id),
             remaining_blocker_count: model
                 .unresolved_dependencies_excluding(ticket_id, satisfied_ids)

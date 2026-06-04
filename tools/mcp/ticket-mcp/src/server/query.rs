@@ -160,6 +160,7 @@ fn search_ticket_summaries(
             type_id: result.ticket_type.unwrap_or_default(),
             title: result.title,
             state: result.state,
+            effort: None,
             updated_at: indexed_updated_at(store, &result.id),
         })
         .collect())
@@ -170,14 +171,20 @@ fn listed_ticket_summaries(
     input: &ListTicketsInput,
 ) -> Result<Vec<TicketSummary>, ticket_api::error::StorageError> {
     let limit = input.limit.map(|value| value.min(1000));
-    Ok(store
-        .list(input.state.as_deref(), input.type_id.as_deref(), limit)?
+    let tickets = store.list(input.state.as_deref(), input.type_id.as_deref(), limit)?;
+    let model = ticket_api::workflow::WorkflowModel::build(
+        store,
+        tickets.clone(),
+        store.list_all_edges()?,
+    )?;
+    Ok(tickets
         .into_iter()
         .map(|ticket| TicketSummary {
             id: ticket.id.to_string(),
             type_id: ticket.type_id,
             title: ticket.title,
             state: ticket.state,
+            effort: model.effort(&ticket.id),
             updated_at: ticket.updated_at,
         })
         .collect())

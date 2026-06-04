@@ -136,6 +136,7 @@ fn ranked_items(
                 "state": ticket.state,
                 "type": ticket.type_id,
                 "priority": model.priority_or_none(ticket_id),
+                "effort": model.effort(ticket_id),
                 "dependee_count": model.dependee_count(ticket_id),
                 "transitive_reverse_dependents": metrics.transitive_reverse_dependents,
                 "affected_reverse_dependent_reach": metrics.affected_reverse_dependent_reach,

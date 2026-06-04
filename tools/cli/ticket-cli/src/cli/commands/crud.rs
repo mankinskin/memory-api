@@ -26,6 +26,23 @@ use crate::cli::{
     repro_summary_from_fields,
 };
 
+fn effort_from_ticket(
+    _store: &TicketStore,
+    ticket: &ticket_api::storage::indexed::IndexedTicket,
+) -> Option<u64> {
+    TicketFs::read(&ticket.path)
+        .ok()
+        .and_then(|manifest| {
+            manifest
+                .extra
+                .get("effort")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .as_deref()
+        .and_then(ticket_api::workflow::parse_effort)
+}
+
 fn resolve_author(explicit: Option<&str>) -> Option<String> {
     explicit.map(str::to_string).or_else(|| {
         std::env::var("TICKET_AUTHOR")
@@ -298,6 +315,20 @@ pub(crate) fn cmd_list(
         args.include_deleted,
         &field_filters,
     )?;
+    let mut items = items;
+    items.sort_by(|left, right| {
+        effort_from_ticket(store, left)
+            .unwrap_or(u64::MAX)
+            .cmp(&effort_from_ticket(store, right).unwrap_or(u64::MAX))
+            .then_with(|| right.updated_at.cmp(&left.updated_at))
+            .then_with(|| {
+                left.title
+                    .as_deref()
+                    .unwrap_or("")
+                    .cmp(right.title.as_deref().unwrap_or(""))
+            })
+            .then_with(|| left.id.cmp(&right.id))
+    });
     let items_json: Vec<Value> = items
         .iter()
         .map(|t| {
@@ -306,6 +337,7 @@ pub(crate) fn cmd_list(
                 "type": t.type_id,
                 "title": t.title,
                 "state": t.state,
+                "effort": effort_from_ticket(store, t),
                 "updated_at": t.updated_at,
             });
 

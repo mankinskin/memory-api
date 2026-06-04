@@ -340,6 +340,10 @@ pub(crate) fn parse_board_recommendation(
             .and_then(Value::as_str)
             .unwrap_or("none")
             .to_string(),
+        effort: value
+            .get("effort")
+            .and_then(Value::as_str)
+            .map(str::to_string),
         dependency_count: value
             .get("dependency_count")
             .and_then(Value::as_u64)
