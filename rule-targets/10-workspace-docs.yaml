@@ -1,9 +1,9 @@
+defaults:
+  repo_scope: memory-api
 files:
 - name: README.md
   target:
     name: memory-api-readme
-    repo_scope: memory-api
-    file_kind: README
     path_scope: README.md
     nodes:
     - name: tool-surface
@@ -17,8 +17,6 @@ files:
 - name: AGENTS.md
   target:
     name: memory-api-agents
-    repo_scope: memory-api
-    file_kind: AGENTS
     path_scope: AGENTS.md
     nodes:
     - name: agent-rules

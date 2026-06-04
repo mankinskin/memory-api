@@ -1,11 +1,5 @@
 targets:
 - name: spec-api-generated-documents-body
-  repo_scope: memory-api
-  file_kind: spec-doc
-  path_scope: .spec/specs/1cf68c36-7f64-4d81-b553-1947b978fbe3/body.md
-  output_path: .spec/specs/1cf68c36-7f64-4d81-b553-1947b978fbe3/body.md
+  scope: memory-api:.spec/specs/1cf68c36-7f64-4d81-b553-1947b978fbe3/body.md
 - name: spec-api-generated-documents-migration-workflow
-  repo_scope: memory-api
-  file_kind: spec-doc
-  path_scope: .spec/specs/1cf68c36-7f64-4d81-b553-1947b978fbe3/sections/migration-workflow.md
-  output_path: .spec/specs/1cf68c36-7f64-4d81-b553-1947b978fbe3/sections/migration-workflow.md
+  scope: memory-api:.spec/specs/1cf68c36-7f64-4d81-b553-1947b978fbe3/sections/migration-workflow.md

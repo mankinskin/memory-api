@@ -1,3 +1,5 @@
+defaults:
+  repo_scope: memory-api
 folders:
 - name: tools
   folders:
@@ -8,8 +10,6 @@ folders:
       - name: README.md
         target:
           name: ticket-http-readme
-          repo_scope: memory-api
-          file_kind: README
           path_scope: tools/http/ticket-http/README.md
           nodes:
           - name: onboarding
@@ -19,8 +19,6 @@ folders:
       - name: README.md
         target:
           name: spec-http-readme
-          repo_scope: memory-api
-          file_kind: README
           path_scope: tools/http/spec-http/README.md
           nodes:
           - name: onboarding
