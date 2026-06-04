@@ -21,9 +21,6 @@ Agent files contain the authoritative plans, designs, bug analyses, and research
 - Interviews, research, and analysis aren't linked to their parent tickets
 - 30+ ad-hoc fields create inconsistency in filtering
 
-### Cross-Reference Map
-See session memory `/memories/session/ticket-agent-file-map.md` for the full 44-ticket mapping.
-
 ## Execution Phases
 
 ### Phase 1: Schema Improvements
