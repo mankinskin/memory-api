@@ -38,6 +38,7 @@ pub(super) struct GenerateTargetPayload {
     pub(super) content: Option<String>,
 }
 
+#[derive(Debug)]
 pub(super) struct SyncTargetsPayload {
     pub(super) generated: Vec<Value>,
     pub(super) removed: Vec<Value>,
@@ -135,6 +136,14 @@ pub(super) fn generate_target_payload(
     output: &Path,
 ) -> Result<GenerateTargetPayload, CliRunError> {
     let rules = collect_target_rules(store, target)?;
+
+    if rules.is_empty() && !dry_run && !check {
+        return Err(CliRunError::BadRequest(format!(
+            "refusing to write generated output {} for target {}: matched zero rules",
+            output.display(),
+            target.name,
+        )));
+    }
 
     if is_spec_doc_target(target) {
         let snippets = rules_as_snippets(&rules);
@@ -247,6 +256,33 @@ pub(super) fn sync_targets_payload(
     check: bool,
 ) -> Result<SyncTargetsPayload, CliRunError> {
     let config = load_render_target_config(config_path)?;
+
+    if !dry_run && !check {
+        let zero_matches = config
+            .targets
+            .iter()
+            .filter_map(|target| {
+                let output = resolve_render_target_output(config_path, target);
+                match collect_target_rules(store, target) {
+                    Ok(rules) if rules.is_empty() => Some(Ok(format!(
+                        "{} -> {}",
+                        target.name,
+                        output.display()
+                    ))),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(CliRunError::from(error))),
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if !zero_matches.is_empty() {
+            return Err(CliRunError::BadRequest(format!(
+                "refusing to overwrite generated outputs because these targets matched zero rules: {}",
+                zero_matches.join(", ")
+            )));
+        }
+    }
+
     let previous = store.list_generated_targets(config_path)?;
     let current_outputs = config
         .targets

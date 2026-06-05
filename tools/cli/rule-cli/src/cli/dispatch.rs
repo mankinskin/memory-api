@@ -87,7 +87,13 @@ pub(super) fn dispatch_with_workspace_root(
         }));
     }
 
-    let mut store = RuleStore::open(index_root)?;
+    let mut store = RuleStore::open_or_init(index_root)?;
+    bootstrap_rule_store(
+        &mut store,
+        &command,
+        index_root,
+        workspace_root_override,
+    )?;
     match command {
         RuleCommandCli::Create(args) => create_command(&mut store, args),
         RuleCommandCli::Get(args) => get_command(&store, args),
@@ -101,6 +107,35 @@ pub(super) fn dispatch_with_workspace_root(
         RuleCommandCli::Init => unreachable!("Init handled before store open"),
         other => dispatch_secondary(other, &mut store),
     }
+}
+
+fn bootstrap_rule_store(
+    store: &mut RuleStore,
+    command: &RuleCommandCli,
+    index_root: &Path,
+    workspace_root_override: Option<&Path>,
+) -> Result<(), CliRunError> {
+    if !matches!(
+        command,
+        RuleCommandCli::GenerateFile(_)
+            | RuleCommandCli::GenerateTarget(_)
+            | RuleCommandCli::ExplainTarget(_)
+            | RuleCommandCli::SyncTargets(_)
+            | RuleCommandCli::List(_)
+            | RuleCommandCli::Search(_)
+    ) {
+        return Ok(());
+    }
+
+    let Some(workspace_root) =
+        resolve_workspace_root(command, index_root, workspace_root_override)
+    else {
+        return Ok(());
+    };
+
+    let reindex = discover_child_scan_roots(store, &workspace_root)?;
+    store.scan(reindex)?;
+    Ok(())
 }
 
 fn dispatch_secondary(

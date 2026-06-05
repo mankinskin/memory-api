@@ -279,8 +279,12 @@ fn generate_target_respects_explicit_workspace_root_over_config_path() {
 
     match result {
         CliOutput::Machine(payload, MachineOutputFormat::Json) => {
-            assert_eq!(payload["count"], 0);
+            assert_eq!(payload["count"], 1);
             assert_eq!(payload["target"], "root-only");
+            assert!(payload["content"]
+                .as_str()
+                .unwrap()
+                .contains("slug=shared/agents/opening"));
         },
         CliOutput::Text(text) => {
             panic!("expected json output, got text: {text}");
@@ -356,28 +360,9 @@ fn get_command_requires_explicit_scan_for_nested_workspaces() {
 }
 
 #[test]
-fn list_command_requires_explicit_scan_for_nested_workspaces() {
+fn list_command_bootstraps_nested_workspaces_automatically() {
     let (_dir, parent_index_root, _child_index_root, child_id) =
         create_nested_rule_fixture();
-
-    let payload = dispatch::dispatch(
-        RuleCommandCli::List(ListArgs {
-            filter: empty_filter_args(),
-            limit: Some(10),
-        }),
-        &parent_index_root,
-    )
-    .unwrap();
-
-    assert_eq!(payload["status"], "ok");
-    assert_eq!(payload["count"], 1);
-    assert!(!payload["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|item| item["id"] == child_id));
-
-    scan_nested_rule_fixture(&parent_index_root);
 
     let payload = dispatch::dispatch(
         RuleCommandCli::List(ListArgs {
@@ -398,24 +383,9 @@ fn list_command_requires_explicit_scan_for_nested_workspaces() {
 }
 
 #[test]
-fn search_command_requires_explicit_scan_for_nested_workspaces() {
+fn search_command_bootstraps_nested_workspaces_automatically() {
     let (_dir, parent_index_root, _child_index_root, child_id) =
         create_nested_rule_fixture();
-
-    let payload = dispatch::dispatch(
-        RuleCommandCli::Search(SearchArgs {
-            query: "overview".to_string(),
-            filter: empty_filter_args(),
-            limit: 10,
-        }),
-        &parent_index_root,
-    )
-    .unwrap();
-
-    assert_eq!(payload["status"], "ok");
-    assert_eq!(payload["count"], 0);
-
-    scan_nested_rule_fixture(&parent_index_root);
 
     let payload = dispatch::dispatch(
         RuleCommandCli::Search(SearchArgs {
@@ -1134,7 +1104,7 @@ fn feedback_command_self_heals_after_missing_rule_folder() {
 }
 
 #[test]
-fn generate_target_requires_explicit_scan_for_nested_workspaces() {
+fn generate_target_bootstraps_nested_workspaces_automatically() {
     let dir = tempdir().unwrap();
     let repo_root = dir.path().join("repo");
     let parent_index_root = repo_root.join(".rule");
@@ -1188,7 +1158,7 @@ fn generate_target_requires_explicit_scan_for_nested_workspaces() {
 
     let payload = dispatch::dispatch(
         RuleCommandCli::GenerateTarget(GenerateTargetArgs {
-            config: config_path,
+            config: repo_root.join("rule-targets.yaml"),
             target: "combined-agents".to_string(),
             dry_run: true,
             check: false,
@@ -1199,18 +1169,77 @@ fn generate_target_requires_explicit_scan_for_nested_workspaces() {
 
     let rendered = payload["content"].as_str().unwrap();
     assert!(rendered.contains("slug=shared/agents/opening"));
-    assert!(!rendered.contains("slug=memory-api/agents/overview"));
+    assert!(rendered.contains("slug=memory-api/agents/overview"));
+}
 
-    scan_nested_rule_fixture(&parent_index_root);
+#[test]
+fn generate_target_from_child_workspace_bootstraps_empty_local_index() {
+    let dir = tempdir().unwrap();
+    let repo_root = dir.path().join("repo");
+    let parent_index_root = repo_root.join(".rule");
+    let child_workspace = repo_root.join("memory-viewers").join("memory-api");
+    let child_index_root = child_workspace.join(".rule");
+    fs::create_dir_all(&child_workspace).unwrap();
+
+    let mut parent_store = RuleStore::init(&parent_index_root).unwrap();
+    let mut parent_rule = sample_rule(
+        "shared/agents/opening",
+        "Opening",
+        "opening",
+        "Start with the concrete anchor.",
+        10,
+    );
+    parent_rule.set_path_scopes(["AGENTS.md"]);
+    parent_store.create(&parent_rule, None).unwrap();
+
+    let mut child_store = RuleStore::init(&child_index_root).unwrap();
+    let mut child_rule = RuleManifest::new(
+        "memory-api/agents/overview",
+        "Overview",
+        "AGENTS",
+        "overview",
+        "Document memory-api specifics.",
+    );
+    child_rule.set_repo_scopes(["memory-api"]);
+    child_rule.set_path_scopes(["AGENTS.md"]);
+    child_rule.set_order_key(20);
+    child_store.create(&child_rule, None).unwrap();
+    drop(child_store);
+
+    fs::remove_file(child_index_root.join("entities.db")).unwrap();
+    let _ = fs::remove_file(child_index_root.join("entities.db-shm"));
+    let _ = fs::remove_file(child_index_root.join("entities.db-wal"));
+    let _ = fs::remove_dir_all(child_index_root.join("search_index"));
+    RuleStore::init(&child_index_root).unwrap();
+
+    let config_path = child_workspace.join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: combined-agents\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    path_scope: AGENTS.md\n",
+            "    output_path: generated/AGENTS.md\n",
+            "    nodes:\n",
+            "      - name: opening\n",
+            "        section: opening\n",
+            "      - name: child-overview\n",
+            "        repo_scope: memory-api\n",
+            "        section: overview\n",
+        ),
+    )
+    .unwrap();
 
     let payload = dispatch::dispatch(
         RuleCommandCli::GenerateTarget(GenerateTargetArgs {
-            config: repo_root.join("rule-targets.yaml"),
+            config: config_path,
             target: "combined-agents".to_string(),
             dry_run: true,
             check: false,
         }),
-        &parent_index_root,
+        &child_index_root,
     )
     .unwrap();
 
@@ -1292,4 +1321,51 @@ fn sync_targets_prunes_removed_outputs_from_previous_sync() {
     assert_eq!(payload.removed.len(), 1);
     assert!(!dir.path().join("memory-viewers/.github/README.md").exists());
     assert!(!dir.path().join("memory-viewers/.github").exists());
+}
+
+#[test]
+fn sync_targets_refuses_zero_match_writes_before_touching_outputs() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
+
+    let mut rule = sample_rule(
+        "shared/agents/root-readme",
+        "Root README",
+        "root-readme",
+        "Root body.",
+        10,
+    );
+    rule.set_path_scopes(["AGENTS.md"]);
+    store.create(&rule, None).unwrap();
+
+    let config_path = dir.path().join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: valid-agents\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    section: root-readme\n",
+            "    path_scope: AGENTS.md\n",
+            "    output_path: generated/AGENTS.md\n",
+            "  - name: missing-agents\n",
+            "    repo_scope: memory-api\n",
+            "    file_kind: AGENTS\n",
+            "    section: does-not-exist\n",
+            "    path_scope: AGENTS.md\n",
+            "    output_path: generated/memory-api-AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+
+    let err =
+        rendering::sync_targets_payload(&mut store, &config_path, false, false)
+            .unwrap_err();
+
+    assert!(err
+        .to_string()
+        .contains("matched zero rules"));
+    assert!(!dir.path().join("generated/AGENTS.md").exists());
+    assert!(!dir.path().join("generated/memory-api-AGENTS.md").exists());
 }

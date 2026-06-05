@@ -152,8 +152,19 @@ pub fn discover_workspace_scan_roots(
     entity_dir: &str,
 ) -> Vec<ScanRoot> {
     let workspace_root = normalize_working_dir_path(start_dir(workspace_root));
+    let mut store_roots = find_descendant_store_roots_from(&workspace_root, store_dir);
 
-    find_descendant_store_roots_from(&workspace_root, store_dir)
+    for ancestor in workspace_root.ancestors().skip(1) {
+        let candidate = ancestor.join(store_dir);
+        if candidate.is_dir() {
+            store_roots.push(candidate);
+        }
+    }
+
+    store_roots.sort();
+    store_roots.dedup();
+
+    store_roots
         .into_iter()
         .map(|store_root| {
             let owning_workspace =
@@ -163,7 +174,13 @@ pub fn discover_workspace_scan_roots(
                 .ok()
                 .filter(|path| !path.as_os_str().is_empty())
                 .map(|path| path.to_string_lossy().replace('\\', "/"))
-                .unwrap_or_else(|| ".".to_string());
+                .unwrap_or_else(|| {
+                    owning_workspace
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .map(|name| format!("ancestor:{name}"))
+                        .unwrap_or_else(|| "ancestor".to_string())
+                });
 
             ScanRoot {
                 path: store_root.join(entity_dir),
@@ -505,6 +522,31 @@ mod tests {
                 ScanRoot {
                     path: child.join(".rule").join("rules"),
                     label: "memory-api".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn discover_workspace_scan_roots_includes_ancestor_store_roots() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("memory-viewers").join("memory-api");
+        std::fs::create_dir_all(repo.join(".rule")).unwrap();
+        std::fs::create_dir_all(child.join(".rule")).unwrap();
+
+        let roots = discover_workspace_scan_roots(&child, ".rule", "rules");
+
+        assert_eq!(
+            roots,
+            vec![
+                ScanRoot {
+                    path: repo.join(".rule").join("rules"),
+                    label: "ancestor:repo".to_string(),
+                },
+                ScanRoot {
+                    path: child.join(".rule").join("rules"),
+                    label: ".".to_string(),
                 },
             ]
         );
