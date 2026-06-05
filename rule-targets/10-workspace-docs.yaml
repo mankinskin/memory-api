@@ -8,7 +8,7 @@ files:
   target:
     name: memory-api-readme
     path_scope: README.md
-    schema: repository-root-readme-v1
+    schema: memory-api-root-readme-v1
 - name: AGENTS.md
   target:
     name: memory-api-agents

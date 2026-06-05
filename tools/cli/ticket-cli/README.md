@@ -44,9 +44,9 @@ When you need the most compact structured output in this repository, prefer `rtk
 
 `ticket next` uses convergence-first ranking. When an earlier-state prerequisite is blocking a more advanced dependent, it can rank ahead of otherwise similar candidates so the queue naturally moves back toward prerequisite-first execution.
 
-`ticket next --json` and `ticket next --toon` surface the explainability fields behind that promotion, including `dependees`, `transitive_reverse_dependents`, `affected_reverse_dependent_reach`, `max_affected_dependent_state`, and `dependency_state_gap`.
+`ticket next --toon` and `ticket next --json` surface the explainability fields behind that promotion, including `dependees`, `transitive_reverse_dependents`, `affected_reverse_dependent_reach`, `max_affected_dependent_state`, and `dependency_state_gap`.
 
-`ticket health --json` and `ticket health --toon` report `dependency_convergence` findings when a dependent is ahead of a blocking prerequisite, with both ticket ids and the relevant state-gap evidence.
+`ticket health --toon` and `ticket health --json` report `dependency_convergence` findings when a dependent is ahead of a blocking prerequisite, with both ticket ids and the relevant state-gap evidence.
 
 ## Examples
 
@@ -61,7 +61,7 @@ ticket update <ticket-id> --to-state in-implementation
 rtk ticket --toon next
 
 # Detect dependency-state inversions before review
-ticket health <ticket-id> --json
+ticket health <ticket-id> --toon
 
 # Inspect dependency context before starting work
 ticket subgraph <ticket-id>

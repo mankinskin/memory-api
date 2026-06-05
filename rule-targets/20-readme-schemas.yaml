@@ -1,5 +1,5 @@
 schemas:
-  - name: repository-root-readme-v1
+  - name: memory-api-root-readme-v1
     nodes:
       - name: tool-surface
         section: memory-api
