@@ -32,7 +32,7 @@ Returned `next_tickets` items include the same explainability fields used by the
 
 `health_check` emits `dependency_convergence` findings with dependent and prerequisite ids, both states, and the reach or state-gap evidence needed for triage.
 
-`update_ticket` accepts sparse request payloads. Omit untouched keys entirely; use only the fields being changed. When a caller needs to traverse valid consecutive workflow states in one call, provide `transition_states` for the intermediate states and `to_state` for the final state. The response returns minimal update metadata such as `id`, `path`, `changed_fields`, `state_transition`, and `description_updated` when those values are directly relevant.
+`update_ticket` accepts sparse request payloads. Omit untouched keys entirely; use only the fields being changed. The response returns minimal update metadata such as `id`, `path`, `changed_fields`, `state_transition`, and `description_updated` when those values are directly relevant.
 
 ## Usage
 
@@ -63,4 +63,3 @@ Example VS Code MCP configuration:
 - Call `subgraph` before implementation when a client needs the dependency context around one ticket.
 - Call `board_show` and `board_check_in` to coordinate active work without leaving the MCP client.
 - For `update_ticket`, prefer sparse payloads such as `{"workspace":"default","id":"<uuid>","to_state":"in-review"}` instead of sending unchanged placeholders.
-- For multi-step progressions, send `{"workspace":"default","id":"<uuid>","transition_states":["ready"],"to_state":"in-implementation"}`.
