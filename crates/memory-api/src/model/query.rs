@@ -17,6 +17,8 @@ pub enum ValueExpr {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Expr {
     And(Vec<Expr>),
+    Or(Vec<Expr>),
+    Not(Box<Expr>),
     Fts(String),
     Field { key: String, value: ValueExpr },
 }
@@ -49,48 +51,84 @@ fn parse_query_internal(
         ));
     }
 
-    let mut exprs = Vec::with_capacity(tokens.len());
+    let mut groups: Vec<Vec<Expr>> = vec![Vec::new()];
     for token in tokens {
-        if let Some((key, raw_value)) = token.split_once(':') {
-            if key.is_empty() || raw_value.is_empty() {
-                return Err(QueryParseError::InvalidExpression(format!(
-                    "invalid field predicate: {token}"
-                )));
-            }
-
-            if let Some(fields) = known_fields {
-                validate_field_key(key, fields)?;
-            }
-
-            let value = if raw_value.starts_with('[')
-                && raw_value.ends_with(']')
-                && raw_value.contains(" TO ")
-            {
-                let inner = &raw_value[1..raw_value.len() - 1];
-                let (start, end) =
-                    inner.split_once(" TO ").ok_or_else(|| {
-                        QueryParseError::InvalidExpression(format!(
-                            "invalid range expression: {token}"
-                        ))
-                    })?;
-                ValueExpr::Range {
-                    start: start.to_string(),
-                    end: end.to_string(),
-                }
-            } else {
-                ValueExpr::Text(trim_quotes(raw_value))
-            };
-
-            exprs.push(Expr::Field {
-                key: key.to_string(),
-                value,
-            });
-        } else {
-            exprs.push(Expr::Fts(trim_quotes(&token)));
+        if token.eq_ignore_ascii_case("OR") {
+            groups.push(Vec::new());
+            continue;
         }
+
+        let expr = parse_token(&token, known_fields)?;
+        groups
+            .last_mut()
+            .expect("query groups should always have a current group")
+            .push(expr);
     }
 
-    Ok(Expr::And(exprs))
+    if groups.iter().any(Vec::is_empty) {
+        return Err(QueryParseError::InvalidExpression(
+            "OR must separate two query expressions".to_string(),
+        ));
+    }
+
+    if groups.len() == 1 {
+        Ok(Expr::And(groups.pop().unwrap_or_default()))
+    } else {
+        Ok(Expr::Or(groups.into_iter().map(Expr::And).collect()))
+    }
+}
+
+fn parse_token(
+    token: &str,
+    known_fields: Option<&BTreeSet<String>>,
+) -> Result<Expr, QueryParseError> {
+    let (negated, raw_token) = match token.strip_prefix('-') {
+        Some(rest) if !rest.is_empty() => (true, rest),
+        _ => (false, token),
+    };
+
+    let expr = if let Some((key, raw_value)) = raw_token.split_once(':') {
+        if key.is_empty() || raw_value.is_empty() {
+            return Err(QueryParseError::InvalidExpression(format!(
+                "invalid field predicate: {raw_token}"
+            )));
+        }
+
+        if let Some(fields) = known_fields {
+            validate_field_key(key, fields)?;
+        }
+
+        let value = if raw_value.starts_with('[')
+            && raw_value.ends_with(']')
+            && raw_value.contains(" TO ")
+        {
+            let inner = &raw_value[1..raw_value.len() - 1];
+            let (start, end) = inner.split_once(" TO ").ok_or_else(|| {
+                QueryParseError::InvalidExpression(format!(
+                    "invalid range expression: {raw_token}"
+                ))
+            })?;
+            ValueExpr::Range {
+                start: start.to_string(),
+                end: end.to_string(),
+            }
+        } else {
+            ValueExpr::Text(trim_quotes(raw_value))
+        };
+
+        Expr::Field {
+            key: key.to_string(),
+            value,
+        }
+    } else {
+        Expr::Fts(trim_quotes(raw_token))
+    };
+
+    if negated {
+        Ok(Expr::Not(Box::new(expr)))
+    } else {
+        Ok(expr)
+    }
 }
 
 fn validate_field_key(

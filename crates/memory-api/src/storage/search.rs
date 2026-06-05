@@ -362,6 +362,8 @@ fn expr_to_query(
         Expr::Fts(text) => full_text_query(text, fields, index),
         Expr::Field { key, value } => field_expr_to_query(key, value, fields),
         Expr::And(exprs) => and_expr_to_query(exprs, fields, index),
+        Expr::Or(exprs) => or_expr_to_query(exprs, fields, index),
+        Expr::Not(expr) => not_expr_to_query(expr, fields, index),
     }
 }
 
@@ -538,6 +540,45 @@ fn and_expr_to_query(
         .map(|expr| (Occur::Must, expr_to_query(expr, fields, index)))
         .collect();
     Box::new(BooleanQuery::new(clauses))
+}
+
+fn or_expr_to_query(
+    exprs: &[Expr],
+    fields: &SearchFields,
+    index: &Index,
+) -> Box<dyn tantivy::query::Query> {
+    use tantivy::query::{
+        AllQuery,
+        BooleanQuery,
+        Occur,
+    };
+
+    if exprs.is_empty() {
+        return Box::new(AllQuery);
+    }
+
+    let clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = exprs
+        .iter()
+        .map(|expr| (Occur::Should, expr_to_query(expr, fields, index)))
+        .collect();
+    Box::new(BooleanQuery::new(clauses))
+}
+
+fn not_expr_to_query(
+    expr: &Expr,
+    fields: &SearchFields,
+    index: &Index,
+) -> Box<dyn tantivy::query::Query> {
+    use tantivy::query::{
+        AllQuery,
+        BooleanQuery,
+        Occur,
+    };
+
+    Box::new(BooleanQuery::new(vec![
+        (Occur::Must, Box::new(AllQuery)),
+        (Occur::MustNot, expr_to_query(expr, fields, index)),
+    ]))
 }
 
 fn truncate_snippet(

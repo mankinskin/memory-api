@@ -70,3 +70,39 @@ fn strict_parser_allows_dynamic_namespaced_field() {
         _ => panic!("expected Expr::And"),
     }
 }
+
+#[test]
+fn parse_or_groups_into_disjunction_of_and_clauses() {
+    let expr = parse_query("status:open OR assigned:alice \"login page\"")
+        .expect("query parses");
+
+    match expr {
+        Expr::Or(groups) => {
+            assert_eq!(groups.len(), 2);
+            assert!(matches!(&groups[0], Expr::And(parts) if parts.len() == 1));
+            assert!(matches!(&groups[1], Expr::And(parts) if parts.len() == 2));
+        },
+        _ => panic!("expected Expr::Or"),
+    }
+}
+
+#[test]
+fn parse_dash_prefix_as_not_expression() {
+    let expr = parse_query("status:open -assigned:bob")
+        .expect("query parses");
+
+    match expr {
+        Expr::And(parts) => {
+            assert_eq!(parts.len(), 2);
+            assert!(matches!(parts[1], Expr::Not(_)));
+        },
+        _ => panic!("expected Expr::And"),
+    }
+}
+
+#[test]
+fn parse_or_without_rhs_fails() {
+    let err = parse_query("status:open OR")
+        .expect_err("dangling OR should fail");
+    assert!(err.to_string().contains("OR must separate two query expressions"));
+}
