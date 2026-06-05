@@ -22,7 +22,7 @@ impl TicketServer {
 
         let workspace = input.workspace;
         let id_str = input.id;
-        let from_state = input.from_state;
+        let transition_states = input.transition_states;
         let to_state = input.to_state;
         let patch = parse_field_patch(input.fields, input.field_map)?;
         let description = input.description;
@@ -41,7 +41,7 @@ impl TicketServer {
                     .update(
                         &id,
                         patch,
-                        from_state.as_deref(),
+                        Some(transition_states.as_slice()),
                         to_state.as_deref(),
                         description.as_deref(),
                         author.as_deref(),
@@ -266,9 +266,13 @@ impl TicketServer {
             .field_map
             .as_ref()
             .is_some_and(|fields| !fields.is_empty());
-        if input.to_state.is_some() || has_fields || has_field_map {
+        if input.to_state.is_some()
+            || !input.transition_states.is_empty()
+            || has_fields
+            || has_field_map
+        {
             return Err(McpError::invalid_params(
-                "undo cannot be combined with to_state, fields, or field_map",
+                "undo cannot be combined with to_state, transition_states, fields, or field_map",
                 None,
             ));
         }

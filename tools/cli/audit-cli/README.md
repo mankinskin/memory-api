@@ -1,5 +1,8 @@
 <!-- rule-api:file generated=true -->
 
+<!-- rule-api:entry id=b8535c8a-4097-4042-8f2a-745123d269ee slug=memory-api/readme/tools/parent-readme/l1 -->
+Back to [memory-api/README.md](../../../README.md).
+
 <!-- rule-api:entry id=011df0af-b945-434a-b681-a3949de76ec0 slug=memory-api/readme/tools/cli/audit-cli/l1 -->
 # audit-cli
 

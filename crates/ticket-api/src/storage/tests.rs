@@ -227,7 +227,7 @@ fn workflow_facts_set_last_blocker_progress_at_while_ticket_remains_blocked() {
         .update(
             &progressing_blocker,
             BTreeMap::new(),
-            None,
+            Some(&[]),
             Some("ready"),
             None,
             None,
@@ -388,7 +388,7 @@ fn run_scan_reconciliation_visibility_agreement(reindex: bool) {
         .update(
             &stable_id,
             stable_patch,
-            Some("ready"),
+            Some(&[]),
             Some("in-implementation"),
             None,
             None,
@@ -419,7 +419,7 @@ fn run_scan_reconciliation_visibility_agreement(reindex: bool) {
         .update(
             &move_id,
             move_patch,
-            Some("in-review"),
+            Some(&[]),
             Some("in-implementation"),
             None,
             None,
@@ -627,7 +627,7 @@ fn scan_refreshes_nested_workspace_ticket_state_changes() {
         .update(
             &ticket_id,
             Default::default(),
-            Some("in-review"),
+            Some(&[]),
             Some("in-implementation"),
             None,
             None,
@@ -728,7 +728,7 @@ fn scan_repairs_corrupted_nested_workspace_ticket_path() {
         .update(
             &ticket_id,
             Default::default(),
-            Some("in-review"),
+            Some(&[]),
             Some("in-implementation"),
             None,
             None,

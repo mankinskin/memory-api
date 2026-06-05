@@ -15,6 +15,7 @@ folders:
           name: ticket-http-readme
           path_scope: tools/http/ticket-http/README.md
           schema: tool-readme-v1
+          target_kind: child
           node_mode: append
           nodes:
           - name: onboarding
@@ -26,6 +27,7 @@ folders:
           name: spec-http-readme
           path_scope: tools/http/spec-http/README.md
           schema: tool-readme-v1
+          target_kind: child
           node_mode: append
           nodes:
           - name: onboarding

@@ -148,7 +148,7 @@ pub struct UpdateTicketInput {
     pub workspace: String,
     pub id: String,
     #[serde(default)]
-    pub from_state: Option<String>,
+    pub transition_states: Vec<String>,
     #[serde(default)]
     pub to_state: Option<String>,
     #[serde(default)]

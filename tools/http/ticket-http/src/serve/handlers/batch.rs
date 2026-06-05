@@ -67,7 +67,8 @@ enum BatchCommand {
         #[serde(default)]
         fields: BTreeMap<String, Value>,
         state: Option<String>,
-        from_state: Option<String>,
+        #[serde(default)]
+        transition_states: Vec<String>,
     },
     Close {
         id: Uuid,
@@ -215,13 +216,13 @@ fn dispatch_command(
             id,
             fields,
             state,
-            from_state,
+            transition_states,
         } => {
             let pre = snapshot_ticket(store, &id);
             let manifest = store.update(
                 &id,
                 fields,
-                from_state.as_deref(),
+                Some(transition_states.as_slice()),
                 state.as_deref(),
                 None,
                 None,
@@ -283,7 +284,7 @@ fn dispatch_command(
             let manifest = store.update(
                 &id,
                 patch,
-                None,
+                Some(&[]),
                 Some("cancelled"),
                 None,
                 None,

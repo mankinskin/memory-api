@@ -530,7 +530,7 @@ impl TicketStore {
         &self,
         id: &Uuid,
         patch: BTreeMap<String, Value>,
-        from_state: Option<&str>,
+        transition_states: Option<&[String]>,
         to_state: Option<&str>,
         description: Option<&str>,
         author: Option<&str>,
@@ -541,38 +541,39 @@ impl TicketStore {
             return Err(StorageError::NotFound(*id));
         }
 
-        // Validate state transition if type schema is known and state change requested.
-        if let Some(to) = to_state {
-            let current_state = indexed.state.as_deref().unwrap_or("new");
-            let from = from_state.unwrap_or(current_state);
-            if let Some(schema) = self.schema_registry.get(&indexed.type_id) {
-                schema.ensure_transition(from, to)?;
-                // Enforce required_states before entering a terminal state.
-                if !schema.required_states.is_empty()
-                    && schema.terminal_states.contains(&to.to_string())
-                {
-                    let history = TicketFs::read_history(&indexed.path)
-                        .unwrap_or_default();
-                    let visited: Vec<String> = history
-                        .iter()
-                        .filter_map(|r| {
-                            r.fields
-                                .get("state")
-                                .and_then(|v| v.as_str())
-                                .map(String::from)
-                        })
-                        .collect();
-                    schema.validate_workflow(to, &visited)?;
-                }
-            }
-        }
-
-        let new_state = to_state
-            .map(str::to_string)
-            .or_else(|| indexed.state.clone());
+        let (new_state, transition_path) = if let Some(to) = to_state {
+            let path = self.resolve_transition_path(
+                &indexed,
+                transition_states.unwrap_or(&[]),
+                to,
+            )?;
+            let final_state = path
+                .last()
+                .cloned()
+                .unwrap_or_else(|| to.to_string());
+            (Some(final_state), path)
+        } else {
+            (indexed.state.clone(), Vec::new())
+        };
         let previous_state = indexed.state.clone();
-        let updated_manifest =
-            TicketFs::update(&indexed.path, &patch, to_state)?;
+        let updated_manifest = if transition_path.is_empty() {
+            TicketFs::update(&indexed.path, &patch, new_state.as_deref())?
+        } else {
+            let mut manifest = None;
+            for (index, state) in transition_path.iter().enumerate() {
+                let step_patch = if index + 1 == transition_path.len() {
+                    patch.clone()
+                } else {
+                    BTreeMap::new()
+                };
+                manifest = Some(TicketFs::update(
+                    &indexed.path,
+                    &step_patch,
+                    Some(state.as_str()),
+                )?);
+            }
+            manifest.expect("transition path produces at least one manifest")
+        };
 
         // Write description if provided.
         if let Some(desc) = description {
@@ -627,6 +628,52 @@ impl TicketStore {
         }
 
         Ok(updated_manifest)
+    }
+
+    fn resolve_transition_path(
+        &self,
+        indexed: &IndexedTicket,
+        transition_states: &[String],
+        target_state: &str,
+    ) -> Result<Vec<String>, StorageError> {
+        let current_state = indexed.state.as_deref().unwrap_or("new");
+        if current_state == target_state && transition_states.is_empty() {
+            return Ok(vec![]);
+        }
+        let schema = self.schema_registry.get(&indexed.type_id).ok_or_else(|| {
+            StorageError::Other(format!("no schema for type '{}'", indexed.type_id))
+        })?;
+
+        let mut path = Vec::new();
+        let mut from = current_state.to_string();
+        for state in transition_states {
+            schema.ensure_transition(&from, state)?;
+            path.push(state.clone());
+            from = state.clone();
+        }
+
+        schema.ensure_transition(&from, target_state)?;
+        path.push(target_state.to_string());
+
+        if !schema.required_states.is_empty()
+            && schema.terminal_states.contains(&target_state.to_string())
+        {
+            let history = TicketFs::read_history(&indexed.path).unwrap_or_default();
+            let mut visited: Vec<String> = history
+                .iter()
+                .filter_map(|r| {
+                    r.fields
+                        .get("state")
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                })
+                .collect();
+            visited.push(current_state.to_string());
+            visited.extend(path.iter().cloned());
+            schema.validate_workflow(target_state, &visited)?;
+        }
+
+        Ok(path)
     }
 }
 

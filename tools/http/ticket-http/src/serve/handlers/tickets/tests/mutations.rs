@@ -140,7 +140,7 @@ async fn update_ticket_patches_fields() {
         Json(UpdateTicketBody {
             fields: Some(patch),
             state: None,
-            from_state: None,
+            transition_states: vec![],
             description: None,
         }),
     )
@@ -186,7 +186,7 @@ async fn update_ticket_transitions_state() {
         Json(UpdateTicketBody {
             fields: None,
             state: Some("ready".to_string()),
-            from_state: None,
+            transition_states: vec![],
             description: None,
         }),
     )

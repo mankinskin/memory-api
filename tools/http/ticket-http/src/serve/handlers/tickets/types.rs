@@ -130,7 +130,8 @@ pub struct CreateTicketBody {
 pub struct UpdateTicketBody {
     pub fields: Option<BTreeMap<String, Value>>,
     pub state: Option<String>,
-    pub from_state: Option<String>,
+    #[serde(default)]
+    pub transition_states: Vec<String>,
     pub description: Option<String>,
 }
 

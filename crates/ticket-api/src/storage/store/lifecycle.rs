@@ -164,37 +164,31 @@ impl TicketStore {
             return Ok((manifest, vec![]));
         }
 
-        let schema =
-            self.schema_registry.get(&indexed.type_id).ok_or_else(|| {
-                StorageError::Other(format!(
-                    "no schema for type '{}'",
-                    indexed.type_id
-                ))
-            })?;
-        let path =
-            schema
-                .find_path(current_state, target_state)
-                .ok_or_else(|| {
-                    StorageError::Other(format!(
-                        "no path from '{}' to '{}'",
-                        current_state, target_state
-                    ))
-                })?;
+        let schema = self.schema_registry.get(&indexed.type_id).ok_or_else(|| {
+            StorageError::Other(format!("no schema for type '{}'", indexed.type_id))
+        })?;
+        let path = schema.find_path(current_state, target_state).ok_or_else(|| {
+            StorageError::Other(format!(
+                "no path from '{}' to '{}'",
+                current_state, target_state
+            ))
+        })?;
 
         let empty_patch = BTreeMap::new();
-        let mut last_manifest = None;
-        for state in &path {
-            last_manifest = Some(self.update(
-                id,
-                empty_patch.clone(),
-                None,
-                Some(state),
-                None,
-                author,
-            )?);
-        }
+        let (final_state, transition_states) = path
+            .split_last()
+            .expect("close path always contains at least one target state");
 
-        Ok((last_manifest.unwrap(), path))
+        let last_manifest = self.update(
+            id,
+            empty_patch,
+            Some(transition_states),
+            Some(final_state.as_str()),
+            None,
+            author,
+        )?;
+
+        Ok((last_manifest, path))
     }
 
     pub fn attach(

@@ -15,6 +15,7 @@ folders:
           name: rule-cli-readme
           path_scope: tools/cli/rule-cli/README.md
           schema: tool-readme-v1
+          target_kind: child
           node_mode: append
           nodes:
           - name: onboarding
@@ -26,6 +27,7 @@ folders:
           name: spec-cli-readme
           path_scope: tools/cli/spec-cli/README.md
           schema: tool-readme-v1
+          target_kind: child
           node_mode: append
           nodes:
           - name: onboarding
@@ -37,6 +39,7 @@ folders:
           name: ticket-cli-readme
           path_scope: tools/cli/ticket-cli/README.md
           schema: tool-readme-v1
+          target_kind: child
           node_mode: append
           nodes:
           - name: onboarding
@@ -48,6 +51,7 @@ folders:
           name: audit-cli-readme
           path_scope: tools/cli/audit-cli/README.md
           schema: tool-readme-v1
+          target_kind: child
           node_mode: append
           nodes:
           - name: onboarding

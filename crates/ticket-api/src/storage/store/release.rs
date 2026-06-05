@@ -155,10 +155,10 @@ impl TicketStore {
         }
 
         let passed = result == "passed";
-        let (new_state, status_str, from_state) = if passed {
-            (Some("done"), "passed", Some("in-review"))
+        let (new_state, status_str, transition_states) = if passed {
+            (Some("done"), "passed", vec![])
         } else {
-            (None, "failed", None)
+            (None, "failed", vec![])
         };
 
         let mut patch = BTreeMap::new();
@@ -197,8 +197,14 @@ impl TicketStore {
             );
         }
 
-        let _updated =
-            self.update(ticket_id, patch, from_state, new_state, None, None)?;
+        let _updated = self.update(
+            ticket_id,
+            patch,
+            Some(transition_states.as_slice()),
+            new_state,
+            None,
+            None,
+        )?;
 
         Ok(ValidationResultOutcome {
             ticket_id: *ticket_id,
@@ -258,7 +264,7 @@ impl TicketStore {
             ),
         );
 
-        self.update(ticket_id, patch, Some("done"), Some("done"), None, None)
+        self.update(ticket_id, patch, Some(&[]), Some("done"), None, None)
     }
 
     pub fn release_gate_check(

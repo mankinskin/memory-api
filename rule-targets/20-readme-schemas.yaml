@@ -10,6 +10,10 @@ schemas:
         title: Tool Use Examples
         section: memory-api/crate-groups
   - name: tool-readme-v1
+    required_blocks:
+      child:
+        - parent-readme
     nodes:
-      - name: onboarding
-        section: tools/readme
+      - name: parent-readme
+        title: Parent README
+        section: tools/readme/parent-readme

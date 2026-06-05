@@ -1,5 +1,8 @@
 <!-- rule-api:file generated=true -->
 
+<!-- rule-api:entry id=b8535c8a-4097-4042-8f2a-745123d269ee slug=memory-api/readme/tools/parent-readme/l1 -->
+Back to [memory-api/README.md](../../../README.md).
+
 <!-- rule-api:entry id=63c7a664-ba17-478a-8fd8-32b325c64ad1 slug=memory-api/readme/tools/mcp/audit-mcp/l1 -->
 # audit-mcp
 

@@ -132,11 +132,11 @@ pub(crate) fn cmd_update(
 
     if args.undo {
         if args.to_state.is_some()
-            || args.from_state.is_some()
+            || !args.transition_states.is_empty()
             || !args.fields.is_empty()
         {
             return Err(CliRunError::BadRequest(
-                "--undo cannot be combined with --to-state, --from-state, or --field".into(),
+                "--undo cannot be combined with --to-state, --transition-state, or --field".into(),
             ));
         }
         let revisions = store.get_history(&id)?;
@@ -165,7 +165,7 @@ pub(crate) fn cmd_update(
     let manifest = store.update(
         &id,
         patch,
-        args.from_state.as_deref(),
+        Some(args.transition_states.as_slice()),
         args.to_state.as_deref(),
         args.description.as_deref(),
         author.as_deref(),

@@ -1,5 +1,8 @@
 <!-- rule-api:file generated=true -->
 
+<!-- rule-api:entry id=b8535c8a-4097-4042-8f2a-745123d269ee slug=memory-api/readme/tools/parent-readme/l1 -->
+Back to [memory-api/README.md](../../../README.md).
+
 <!-- rule-api:entry id=71ffe450-aad5-4c26-af4f-d5d4cfcd8d8f slug=memory-api/readme/tools/cli/ticket-cli/l1 -->
 # ticket-cli
 

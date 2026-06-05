@@ -138,7 +138,7 @@ pub async fn update_ticket(
         };
 
     let patch = body.fields.unwrap_or_default();
-    let from_state = body.from_state;
+    let transition_states = body.transition_states;
     let to_state = body.state;
     let description = body.description;
     let author = author_from_headers(&headers);
@@ -151,7 +151,7 @@ pub async fn update_ticket(
         let manifest = match store.update(
             &id,
             patch,
-            from_state.as_deref(),
+            Some(transition_states.as_slice()),
             to_state.as_deref(),
             description.as_deref(),
             author.as_deref(),
@@ -266,7 +266,7 @@ pub async fn cancel_ticket(
         let manifest = match store.update(
             &id,
             patch,
-            None,
+            Some(&[]),
             Some("cancelled"),
             None,
             author.as_deref(),

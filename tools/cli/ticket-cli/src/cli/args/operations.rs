@@ -205,8 +205,8 @@ pub struct FmtArgs {
 pub struct UpdateArgs {
     /// Ticket UUID or 8+ character hex prefix.
     pub id: String,
-    #[arg(long = "from-state")]
-    pub from_state: Option<String>,
+    #[arg(long = "transition-state")]
+    pub transition_states: Vec<String>,
     #[arg(long = "to-state")]
     pub to_state: Option<String>,
     #[arg(long = "field")]

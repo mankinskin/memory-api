@@ -50,7 +50,7 @@ async fn update_ticket_accepts_sparse_payload_and_returns_minimal_response() {
         .update_ticket(Parameters(UpdateTicketInput {
             workspace: "default".to_string(),
             id: ticket_id.to_string(),
-            from_state: None,
+            transition_states: vec![],
             to_state: Some("ready".to_string()),
             fields: None,
             field_map: None,

@@ -15,6 +15,7 @@ folders:
           name: rule-mcp-readme
           path_scope: tools/mcp/rule-mcp/README.md
           schema: tool-readme-v1
+          target_kind: child
           node_mode: append
           nodes:
           - name: onboarding
@@ -26,6 +27,7 @@ folders:
           name: spec-mcp-readme
           path_scope: tools/mcp/spec-mcp/README.md
           schema: tool-readme-v1
+          target_kind: child
           node_mode: append
           nodes:
           - name: onboarding
@@ -37,6 +39,7 @@ folders:
           name: ticket-mcp-readme
           path_scope: tools/mcp/ticket-mcp/README.md
           schema: tool-readme-v1
+          target_kind: child
           node_mode: append
           nodes:
           - name: onboarding
@@ -48,6 +51,7 @@ folders:
           name: audit-mcp-readme
           path_scope: tools/mcp/audit-mcp/README.md
           schema: tool-readme-v1
+          target_kind: child
           node_mode: append
           nodes:
           - name: onboarding
