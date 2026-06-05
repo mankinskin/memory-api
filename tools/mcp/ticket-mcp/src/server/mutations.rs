@@ -20,16 +20,23 @@ impl TicketServer {
             return self.undo_ticket_update(input).await;
         }
 
-        let patch = parse_field_patch(&input.fields)?;
         let workspace = input.workspace;
         let id_str = input.id;
         let from_state = input.from_state;
         let to_state = input.to_state;
+        let patch = parse_field_patch(input.fields, input.field_map)?;
         let description = input.description;
         let author = input.author;
-        let (manifest, path) = self
+        let changed_fields = patch.clone();
+        let state_transition_requested = to_state.clone();
+        let description_updated = description.is_some();
+        let (manifest, path, previous_state) = self
             .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
+                let previous_state = store
+                    .get_indexed(&id)
+                    .map_err(Self::store_err)?
+                    .and_then(|ticket| ticket.state);
                 let manifest = store
                     .update(
                         &id,
@@ -41,15 +48,37 @@ impl TicketServer {
                     )
                     .map_err(Self::store_err)?;
                 let path = indexed_ticket_path(store, &id)?;
-                Ok((manifest, path))
+                Ok((manifest, path, previous_state))
             })
             .await?;
 
-        Self::json_result(&serde_json::json!({
-            "workspace": workspace,
-            "status": "ok",
-            "ticket": detail_from_manifest(manifest, path),
-        }))
+        let mut response = serde_json::Map::from_iter([
+            ("status".to_string(), Value::String("ok".to_string())),
+            ("id".to_string(), Value::String(manifest.id.to_string())),
+        ]);
+        if let Some(path) = path {
+            response.insert("path".to_string(), Value::String(path));
+        }
+        if !changed_fields.is_empty() {
+            response.insert(
+                "changed_fields".to_string(),
+                Value::Object(changed_fields.into_iter().collect()),
+            );
+        }
+        if let Some(to_state) = state_transition_requested {
+            response.insert(
+                "state_transition".to_string(),
+                serde_json::json!({
+                    "from": previous_state,
+                    "to": to_state,
+                }),
+            );
+        }
+        if description_updated {
+            response.insert("description_updated".to_string(), Value::Bool(true));
+        }
+
+        Self::json_result(&Value::Object(response))
     }
 
     pub(crate) async fn close_ticket_tool(
@@ -106,7 +135,7 @@ impl TicketServer {
         &self,
         input: CreateTicketInput,
     ) -> Result<CallToolResult, McpError> {
-        let extra = parse_field_patch(&input.fields)?;
+        let extra = parse_field_patch(Some(input.fields.clone()), None)?;
         let workspace = input.workspace;
         let type_id = input.type_id;
         let title = input.title;
@@ -229,9 +258,17 @@ impl TicketServer {
         &self,
         input: UpdateTicketInput,
     ) -> Result<CallToolResult, McpError> {
-        if input.to_state.is_some() || !input.fields.is_empty() {
+        let has_fields = input
+            .fields
+            .as_ref()
+            .is_some_and(|fields| !fields.is_empty());
+        let has_field_map = input
+            .field_map
+            .as_ref()
+            .is_some_and(|fields| !fields.is_empty());
+        if input.to_state.is_some() || has_fields || has_field_map {
             return Err(McpError::invalid_params(
-                "undo cannot be combined with to_state or fields",
+                "undo cannot be combined with to_state, fields, or field_map",
                 None,
             ));
         }
@@ -272,11 +309,12 @@ impl TicketServer {
 }
 
 fn parse_field_patch(
-    fields: &[String]
+    fields: Option<Vec<String>>,
+    field_map: Option<BTreeMap<String, Value>>,
 ) -> Result<BTreeMap<String, Value>, McpError> {
-    let mut patch = BTreeMap::new();
+    let mut patch = field_map.unwrap_or_default();
 
-    for raw in fields {
+    for raw in fields.unwrap_or_default() {
         let (key, value) = raw.split_once('=').ok_or_else(|| {
             McpError::invalid_params(
                 format!("invalid field format '{raw}', expected key=value"),

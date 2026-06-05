@@ -152,7 +152,9 @@ pub struct UpdateTicketInput {
     #[serde(default)]
     pub to_state: Option<String>,
     #[serde(default)]
-    pub fields: Vec<String>,
+    pub fields: Option<Vec<String>>,
+    #[serde(default)]
+    pub field_map: Option<BTreeMap<String, Value>>,
     #[serde(default)]
     pub undo: bool,
     #[serde(default)]

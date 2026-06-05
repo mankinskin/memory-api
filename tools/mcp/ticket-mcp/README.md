@@ -29,6 +29,8 @@ Returned `next_tickets` items include the same explainability fields used by the
 
 `health_check` emits `dependency_convergence` findings with dependent and prerequisite ids, both states, and the reach or state-gap evidence needed for triage.
 
+`update_ticket` accepts sparse request payloads. Omit untouched keys entirely; use only the fields being changed. The response returns minimal update metadata such as `id`, `path`, `changed_fields`, `state_transition`, and `description_updated` when those values are directly relevant.
+
 ## Usage
 
 Run the server on stdio:
@@ -57,3 +59,4 @@ Example VS Code MCP configuration:
 - Call `health_check` before review or automation to detect dependency-state inversions.
 - Call `subgraph` before implementation when a client needs the dependency context around one ticket.
 - Call `board_show` and `board_check_in` to coordinate active work without leaving the MCP client.
+- For `update_ticket`, prefer sparse payloads such as `{"workspace":"default","id":"<uuid>","to_state":"in-review"}` instead of sending unchanged placeholders.

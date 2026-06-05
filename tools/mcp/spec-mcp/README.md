@@ -16,6 +16,8 @@ Named tool groups:
 - Sections: `spec_section_add`, `spec_section_list`, `spec_section_get`, `spec_section_delete`
 - Maintenance: `spec_scan`, `spec_add_root`
 
+`spec_update` accepts sparse request payloads. Omit untouched keys entirely; send only the fields, `to_state`, or `body` being changed. The response returns only directly relevant update metadata such as `id`, `changed_fields`, `state_transition`, and `body_updated`.
+
 Store discovery:
 
 - Set `SPEC_INDEX_ROOT` to point at a specific spec store.
@@ -48,3 +50,4 @@ Example VS Code MCP configuration:
 - Call `spec_list` when a client needs the current specification inventory.
 - Call `spec_tree` to render the section hierarchy for one spec.
 - Call `spec_refs_validate` before review to confirm that referenced files and symbols still resolve.
+- For `spec_update`, prefer sparse payloads such as `{"id":"<id-or-slug>","field_map":{"fulfillment_status":"done"}}` or `{"id":"<id-or-slug>","to_state":"reviewed"}`.

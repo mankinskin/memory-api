@@ -50,7 +50,7 @@ pub struct UpdateSpecInput {
     pub id: String,
     /// Field patches as key=value pairs (e.g. ["title=New Title", "state=active"]).
     #[serde(default)]
-    pub fields: Vec<String>,
+    pub fields: Option<Vec<String>>,
     /// Optional state to transition to.
     #[serde(default)]
     pub to_state: Option<String>,
@@ -59,7 +59,7 @@ pub struct UpdateSpecInput {
     pub body: Option<String>,
     /// Additional structured field patches.
     #[serde(default)]
-    pub field_map: BTreeMap<String, Value>,
+    pub field_map: Option<BTreeMap<String, Value>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

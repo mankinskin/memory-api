@@ -318,7 +318,7 @@ impl TicketServer {
         name = "update_ticket",
         description = "Update a ticket: apply field patches and/or transition state. Set undo=true to revert to the previous history revision."
     )]
-    async fn update_ticket(
+    pub async fn update_ticket(
         &self,
         Parameters(input): Parameters<UpdateTicketInput>,
     ) -> Result<CallToolResult, McpError> {

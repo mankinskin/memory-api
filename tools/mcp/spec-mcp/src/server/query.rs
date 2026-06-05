@@ -105,8 +105,9 @@ impl SpecServer {
         input: UpdateSpecInput,
     ) -> Result<CallToolResult, McpError> {
         self.with_store(|store| {
-            let mut patch = input.field_map.clone();
-            for raw in &input.fields {
+            let previous = store.get(&input.id).map_err(Self::spec_err)?;
+            let mut patch = input.field_map.clone().unwrap_or_default();
+            for raw in input.fields.clone().unwrap_or_default() {
                 let (key, value) = raw.split_once('=').ok_or_else(|| {
                     McpError::invalid_params(
                         format!(
@@ -125,14 +126,33 @@ impl SpecServer {
                 store.update_body(&input.id, body).map_err(Self::spec_err)?;
             }
 
+            let changed_fields = patch.clone();
             let spec = store
                 .update(&input.id, patch, input.to_state.as_deref())
                 .map_err(Self::spec_err)?;
-            Self::json_result(&json!({
-                "status": "ok",
-                "id": spec.id,
-                "fields": spec.extra,
-            }))
+            let mut response = serde_json::Map::from_iter([
+                ("status".to_string(), Value::String("ok".to_string())),
+                ("id".to_string(), json!(spec.id)),
+            ]);
+            if !changed_fields.is_empty() {
+                response.insert(
+                    "changed_fields".to_string(),
+                    Value::Object(changed_fields.into_iter().collect()),
+                );
+            }
+            if let Some(to_state) = input.to_state {
+                response.insert(
+                    "state_transition".to_string(),
+                    json!({
+                        "from": previous.state(),
+                        "to": to_state,
+                    }),
+                );
+            }
+            if input.body.is_some() {
+                response.insert("body_updated".to_string(), Value::Bool(true));
+            }
+            Self::json_result(&Value::Object(response))
         })
         .await
     }
@@ -428,10 +448,10 @@ mod tests {
             server
                 .spec_update_tool(UpdateSpecInput {
                     id: spec_id.clone(),
-                    fields: Vec::new(),
+                    fields: None,
                     to_state: None,
                     body: None,
-                    field_map: fixture.fulfillment_update.clone(),
+                    field_map: Some(fixture.fulfillment_update.clone()),
                 })
                 .await
                 .unwrap(),

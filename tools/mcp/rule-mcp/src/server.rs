@@ -137,7 +137,7 @@ impl RuleServer {
 
     #[tool(
         name = "rule_update",
-        description = "Update a rule entry's fields, state, or body."
+        description = "Update a rule entry's fields, state, or body. Omit untouched keys; the response returns only changed or directly relevant fields."
     )]
     pub async fn rule_update(
         &self,

@@ -15,6 +15,8 @@ Named tool groups:
 - Rendering: `rule_generate_file`, `rule_generate_target`, `rule_explain_target`
 - Maintenance: `rule_scan`, `rule_add_root`
 
+`rule_update` accepts sparse request payloads. Omit untouched keys entirely; send only the fields, `to_state`, or `body` being changed. The response returns only directly relevant update metadata such as `id`, `changed_fields`, `state_transition`, and `body_updated`.
+
 Store discovery:
 
 - Set `RULE_INDEX_ROOT` to point at a specific rule store.
@@ -51,3 +53,4 @@ Example VS Code MCP configuration:
 - Call `rule_list` or `rule_search` with `low_rated_only` or `unresolved_only` when the client needs a review queue.
 - Call `rule_explain_target` before changing `rule-targets.yaml` so the client can inspect which canonical entries each node matches.
 - Call `rule_generate_target` when a client needs the rendered markdown for one configured output file.
+- For `rule_update`, prefer sparse payloads such as `{"id":"<id-or-slug>","to_state":"reviewed"}` or `{"id":"<id-or-slug>","field_map":{"order_key":10}}`.

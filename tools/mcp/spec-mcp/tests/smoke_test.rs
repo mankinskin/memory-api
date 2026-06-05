@@ -71,29 +71,32 @@ async fn spec_crud_lifecycle() {
     let result = server
         .spec_update(Parameters(UpdateSpecInput {
             id: spec_id.clone(),
-            fields: vec!["title=Updated Title".to_string()],
+            fields: Some(vec!["title=Updated Title".to_string()]),
             to_state: Some("reviewed".to_string()),
             body: None,
-            field_map: BTreeMap::new(),
+            field_map: None,
         }))
         .await
         .expect("spec_update");
     let json = extract_json(result);
     assert_eq!(json["status"], "ok");
+    assert_eq!(json["changed_fields"]["title"], "Updated Title");
+    assert!(json.get("fields").is_none());
 
     // 5. Update body
     let result = server
         .spec_update(Parameters(UpdateSpecInput {
             id: spec_id.clone(),
-            fields: vec![],
+            fields: None,
             to_state: None,
             body: Some("# Updated body".to_string()),
-            field_map: BTreeMap::new(),
+            field_map: None,
         }))
         .await
         .expect("spec_update body");
     let json = extract_json(result);
     assert_eq!(json["status"], "ok");
+    assert_eq!(json["body_updated"], true);
 
     // 6. List all
     let result = server
@@ -127,6 +130,44 @@ async fn spec_crud_lifecycle() {
         .expect("spec_delete");
     let json = extract_json(result);
     assert_eq!(json["status"], "ok");
+}
+
+#[tokio::test]
+async fn spec_update_accepts_sparse_payload_and_returns_minimal_response() {
+    let (_tmp, server) = make_sandbox();
+
+    let created = extract_json(
+        server
+            .spec_create(Parameters(CreateSpecInput {
+                title: "Sparse Update".to_string(),
+                slug: "tests/sparse-update".to_string(),
+                component: "tests".to_string(),
+                parent: None,
+                scope: None,
+                body: None,
+                fields: BTreeMap::new(),
+            }))
+            .await
+            .expect("create"),
+    );
+    let spec_id = created["id"].as_str().unwrap().to_string();
+
+    let result = server
+        .spec_update(Parameters(UpdateSpecInput {
+            id: spec_id,
+            fields: None,
+            to_state: Some("reviewed".to_string()),
+            body: None,
+            field_map: None,
+        }))
+        .await
+        .expect("sparse state-only update");
+    let json = extract_json(result);
+
+    assert_eq!(json["status"], "ok");
+    assert_eq!(json["state_transition"]["to"], "reviewed");
+    assert!(json.get("changed_fields").is_none());
+    assert!(json.get("fields").is_none());
 }
 
 /// Section operations: add → list → get → delete.

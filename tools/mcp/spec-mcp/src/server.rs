@@ -124,7 +124,7 @@ impl SpecServer {
 
     #[tool(
         name = "spec_update",
-        description = "Update a spec's fields, state, or body."
+        description = "Update a spec's fields, state, or body. Omit untouched keys; the response returns only changed or directly relevant fields."
     )]
     pub async fn spec_update(
         &self,

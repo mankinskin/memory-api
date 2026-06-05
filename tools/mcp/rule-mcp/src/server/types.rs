@@ -1,8 +1,11 @@
+use std::collections::BTreeMap;
+
 use rmcp::schemars::{
     self,
     JsonSchema,
 };
 use serde::Deserialize;
+use serde_json::Value;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RuleRefInput {
@@ -13,7 +16,9 @@ pub struct RuleRefInput {
 pub struct UpdateRuleInput {
     pub id: String,
     #[serde(default)]
-    pub fields: Vec<String>,
+    pub fields: Option<Vec<String>>,
+    #[serde(default)]
+    pub field_map: Option<BTreeMap<String, Value>>,
     #[serde(default)]
     pub to_state: Option<String>,
     #[serde(default)]
