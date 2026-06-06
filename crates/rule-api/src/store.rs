@@ -167,6 +167,13 @@ impl RuleStore {
             let title = entity.extra.get("title").and_then(Value::as_str);
             let state = entity.extra.get("state").and_then(Value::as_str);
             let body = self.read_rule_body(&indexed.path, Some(&entity));
+            let created_at_str = indexed.created_at.to_rfc3339();
+            let effort_str = entity.extra.get("effort")
+                .and_then(|v| match v {
+                    serde_json::Value::String(s) => Some(s.clone()),
+                    serde_json::Value::Number(n) => Some(n.to_string()),
+                    _ => None,
+                });
 
             self.inner.search.upsert(
                 &indexed.id,
@@ -174,6 +181,8 @@ impl RuleStore {
                 body.as_deref(),
                 state,
                 Some(RULE_ENTRY_TYPE_ID),
+                Some(&created_at_str),
+                effort_str.as_deref(),
             )?;
         }
 
@@ -302,12 +311,21 @@ impl RuleStore {
             deleted: false,
         };
         self.inner.index.insert_ticket(&indexed)?;
+        let created_at_str = manifest.created_at.to_rfc3339();
+        let effort_str = entity.extra.get("effort")
+            .and_then(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            });
         self.inner.search.upsert(
             &manifest.id,
             manifest.title(),
             manifest.body(),
             manifest.state(),
             Some(RULE_ENTRY_TYPE_ID),
+            Some(&created_at_str),
+            effort_str.as_deref(),
         )?;
         let _ =
             self.inner
@@ -446,12 +464,21 @@ impl RuleStore {
         self.inner.index.insert_ticket(&refreshed)?;
 
         let body = self.read_rule_body(&indexed.path, Some(&updated_entity));
+        let created_at_str = indexed.created_at.to_rfc3339();
+        let effort_str = updated_entity.extra.get("effort")
+            .and_then(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            });
         self.inner.search.upsert(
             &uuid,
             title.as_deref(),
             body.as_deref(),
             state.as_deref(),
             Some(RULE_ENTRY_TYPE_ID),
+            Some(&created_at_str),
+            effort_str.as_deref(),
         )?;
 
         let _ = self.inner.fs.append_history(
@@ -480,12 +507,21 @@ impl RuleStore {
             .ok_or_else(|| RuleError::NotFound(uuid.to_string()))?;
         let updated_entity = self.inner.fs.read(&indexed.path)?;
         self.inner.fs.write_description(&indexed.path, body)?;
+        let created_at_str = indexed.created_at.to_rfc3339();
+        let effort_str = updated_entity.extra.get("effort")
+            .and_then(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            });
         self.inner.search.upsert(
             &uuid,
             updated_entity.extra.get("title").and_then(Value::as_str),
             Some(body),
             updated_entity.extra.get("state").and_then(Value::as_str),
             Some(RULE_ENTRY_TYPE_ID),
+            Some(&created_at_str),
+            effort_str.as_deref(),
         )?;
         let _ = self.inner.fs.append_history(
             &indexed.path,

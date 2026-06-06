@@ -277,12 +277,21 @@ fn integrate_entry(
     }
 
     let body = TicketFs::read_description(&entry.path);
+    let created_at_str = indexed.created_at.to_rfc3339();
+    let effort_str = entry.manifest.extra.get("effort")
+        .and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        });
     search.upsert(
         &entry.id,
         title.as_deref(),
         body.as_deref(),
         state.as_deref(),
         Some(&type_id),
+        Some(&created_at_str),
+        effort_str.as_deref(),
     )?;
 
     Ok(())

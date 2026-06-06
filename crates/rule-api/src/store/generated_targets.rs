@@ -111,12 +111,21 @@ impl RuleStore {
                 deleted: false,
             };
             self.inner.index.insert_ticket(&refreshed)?;
+            let created_at_str = indexed.created_at.to_rfc3339();
+            let effort_str = updated.extra.get("effort")
+                .and_then(|v| match v {
+                    serde_json::Value::String(s) => Some(s.clone()),
+                    serde_json::Value::Number(n) => Some(n.to_string()),
+                    _ => None,
+                });
             self.inner.search.upsert(
                 &existing_id,
                 Some(target_name),
                 Some(&output_path),
                 Some("active"),
                 Some(GENERATED_TARGET_TYPE_ID),
+                Some(&created_at_str),
+                effort_str.as_deref(),
             )?;
             let _ = self.inner.fs.append_history(
                 &indexed.path,
@@ -164,12 +173,21 @@ impl RuleStore {
             deleted: false,
         };
         self.inner.index.insert_ticket(&indexed)?;
+        let created_at_str = entity.created_at.to_rfc3339();
+        let effort_str = entity.extra.get("effort")
+            .and_then(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            });
         self.inner.search.upsert(
             &id,
             Some(target_name),
             Some(&output_path),
             Some("active"),
             Some(GENERATED_TARGET_TYPE_ID),
+            Some(&created_at_str),
+            effort_str.as_deref(),
         )?;
         let _ =
             self.inner

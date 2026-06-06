@@ -394,12 +394,21 @@ impl TicketStore {
         let body_for_index = body
             .map(str::to_string)
             .or_else(|| TicketFs::read_description(&indexed.path));
+        let created_at_str = indexed.created_at.to_rfc3339();
+        let effort_str = manifest.extra.get("effort")
+            .and_then(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            });
         self.search.upsert(
             &id,
             title,
             body_for_index.as_deref(),
             Some(&state),
             Some(type_id),
+            Some(&created_at_str),
+            effort_str.as_deref(),
         )?;
 
         // Append initial history snapshot (rev 1).
@@ -592,12 +601,21 @@ impl TicketStore {
         self.index.insert_ticket(&indexed)?;
 
         let body = TicketFs::read_description(&indexed.path);
+        let created_at_str = indexed.created_at.to_rfc3339();
+        let effort_str = updated_manifest.extra.get("effort")
+            .and_then(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            });
         self.search.upsert(
             id,
             indexed.title.as_deref(),
             body.as_deref(),
             indexed.state.as_deref(),
             Some(indexed.type_id.as_str()),
+            Some(&created_at_str),
+            effort_str.as_deref(),
         )?;
 
         // Append history snapshot after successful write.

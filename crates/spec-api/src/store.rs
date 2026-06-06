@@ -534,12 +534,21 @@ impl SpecStore {
         };
         self.inner.index.insert_ticket(&indexed)?;
         let search_content = build_search_content(manifest, body);
+        let created_at_str = manifest.created_at.to_rfc3339();
+        let effort_str = entity.extra.get("effort")
+            .and_then(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            });
         self.inner.search.upsert(
             &manifest.id,
             title.as_deref(),
             search_content.as_deref(),
             state.as_deref(),
             Some(&type_id),
+            Some(&created_at_str),
+            effort_str.as_deref(),
         )?;
 
         self.slug_index.insert(slug.to_string(), manifest.id)?;
@@ -732,12 +741,21 @@ impl SpecStore {
 
         let body = read_body(&indexed.path);
         let search_content = build_search_content(&spec, &body);
+        let created_at_str = indexed.created_at.to_rfc3339();
+        let effort_str = updated_entity.extra.get("effort")
+            .and_then(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            });
         self.inner.search.upsert(
             &uuid,
             title.as_deref(),
             search_content.as_deref(),
             state.as_deref(),
             Some(&type_id),
+            Some(&created_at_str),
+            effort_str.as_deref(),
         )?;
 
         let _ = self.inner.fs.append_history(

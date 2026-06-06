@@ -64,12 +64,21 @@ impl TicketStore {
         }
         self.index.insert_ticket(&refreshed)?;
         let body = TicketFs::read_description(&refreshed.path);
+        let created_at_str = refreshed.created_at.to_rfc3339();
+        let effort_str = saved_extra.get("effort")
+            .and_then(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            });
         self.search.upsert(
             id,
             refreshed.title.as_deref(),
             body.as_deref(),
             refreshed.state.as_deref(),
             Some(refreshed.type_id.as_str()),
+            Some(&created_at_str),
+            effort_str.as_deref(),
         )?;
         let state_progressed = self.state_rank_for_type(
             &refreshed.type_id,
@@ -120,12 +129,21 @@ impl TicketStore {
         }
         self.index.insert_ticket(&refreshed)?;
         let body = TicketFs::read_description(&refreshed.path);
+        let created_at_str = refreshed.created_at.to_rfc3339();
+        let effort_str = patch.get("effort")
+            .and_then(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            });
         self.search.upsert(
             id,
             refreshed.title.as_deref(),
             body.as_deref(),
             refreshed.state.as_deref(),
             Some(refreshed.type_id.as_str()),
+            Some(&created_at_str),
+            effort_str.as_deref(),
         )?;
         let state_progressed = self.state_rank_for_type(
             &refreshed.type_id,

@@ -284,12 +284,21 @@ impl EntityStore {
 
         if reindex {
             let body = self.fs.read_description(&entry.path);
+            let created_at_str = indexed.created_at.to_rfc3339();
+            let effort_str = entry.manifest.extra.get("effort")
+                .and_then(|v| match v {
+                    serde_json::Value::String(s) => Some(s.clone()),
+                    serde_json::Value::Number(n) => Some(n.to_string()),
+                    _ => None,
+                });
             self.search.upsert(
                 &entry.id,
                 title.as_deref(),
                 body.as_deref(),
                 state.as_deref(),
                 Some(&type_id),
+                Some(&created_at_str),
+                effort_str.as_deref(),
             )?;
         }
 
@@ -331,5 +340,80 @@ mod tests {
         let report = store.scan(false).unwrap();
         assert_eq!(report.integrated, 0);
         assert_eq!(report.pruned, 0);
+    }
+
+    #[test]
+    fn test_query_ordering_comparisons() {
+        use chrono::TimeZone;
+        use crate::model::entity::EntityManifest;
+        use serde_json::json;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let store = EntityStore::open(tmp.path(), test_fs()).unwrap();
+        let entity_dir = tmp.path().join("entities");
+        std::fs::create_dir_all(&entity_dir).unwrap();
+
+        let id1 = Uuid::new_v4();
+        let date1 = Utc.with_ymd_and_hms(2026, 6, 1, 12, 0, 0).unwrap();
+        let mut manifest1 = EntityManifest::new(id1, date1);
+        manifest1.extra.insert("type".to_string(), json!("tracker-improvement"));
+        manifest1.extra.insert("title".to_string(), json!("Low effort, early date"));
+        manifest1.extra.insert("state".to_string(), json!("ready"));
+        manifest1.extra.insert("effort".to_string(), json!("3"));
+        store.fs.create(&manifest1, &entity_dir, Some("Description 1")).unwrap();
+
+        let id2 = Uuid::new_v4();
+        let date2 = Utc.with_ymd_and_hms(2026, 6, 5, 12, 0, 0).unwrap();
+        let mut manifest2 = EntityManifest::new(id2, date2);
+        manifest2.extra.insert("type".to_string(), json!("tracker-improvement"));
+        manifest2.extra.insert("title".to_string(), json!("Medium effort, mid date"));
+        manifest2.extra.insert("state".to_string(), json!("in-implementation"));
+        manifest2.extra.insert("effort".to_string(), json!("5"));
+        store.fs.create(&manifest2, &entity_dir, Some("Description 2")).unwrap();
+
+        let id3 = Uuid::new_v4();
+        let date3 = Utc.with_ymd_and_hms(2026, 6, 10, 12, 0, 0).unwrap();
+        let mut manifest3 = EntityManifest::new(id3, date3);
+        manifest3.extra.insert("type".to_string(), json!("tracker-improvement"));
+        manifest3.extra.insert("title".to_string(), json!("High effort, late date"));
+        manifest3.extra.insert("state".to_string(), json!("done"));
+        manifest3.extra.insert("effort".to_string(), json!("8"));
+        store.fs.create(&manifest3, &entity_dir, Some("Description 3")).unwrap();
+
+        // Scan and index them all!
+        store.scan(true).unwrap();
+
+        // Query 1: effort gt 3 (should return id2 and id3)
+        let results = store.search("effort:>3", 10).unwrap();
+        assert_eq!(results.len(), 2);
+        let ids: Vec<Uuid> = results.iter().map(|r| r.id).collect();
+        assert!(ids.contains(&id2));
+        assert!(ids.contains(&id3));
+
+        // Query 2: effort lte 5 (should return id1 and id2)
+        let results = store.search("effort:<=5", 10).unwrap();
+        assert_eq!(results.len(), 2);
+        let ids: Vec<Uuid> = results.iter().map(|r| r.id).collect();
+        assert!(ids.contains(&id1));
+        assert!(ids.contains(&id2));
+
+        // Query 3: effort range [4 TO 8] (should return id2 and id3)
+        let results = store.search("effort:[4 TO 8]", 10).unwrap();
+        assert_eq!(results.len(), 2);
+        let ids: Vec<Uuid> = results.iter().map(|r| r.id).collect();
+        assert!(ids.contains(&id2));
+        assert!(ids.contains(&id3));
+
+        // Query 4: created_at gt mid date (should return id3)
+        let results = store.search("created_at:>2026-06-05T12:00:00Z", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, id3);
+
+        // Query 5: created_at range (should return id1 and id2)
+        let results = store.search("created_at:[2026-06-01T00:00:00Z TO 2026-06-06T00:00:00Z]", 10).unwrap();
+        assert_eq!(results.len(), 2);
+        let ids: Vec<Uuid> = results.iter().map(|r| r.id).collect();
+        assert!(ids.contains(&id1));
+        assert!(ids.contains(&id2));
     }
 }

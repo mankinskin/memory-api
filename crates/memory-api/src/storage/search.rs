@@ -16,6 +16,7 @@ use tantivy::{
     schema::{
         FAST,
         Field,
+        INDEXED,
         STORED,
         STRING,
         Schema,
@@ -49,6 +50,8 @@ pub struct SearchFields {
     pub body: Field,
     pub state: Field,
     pub ticket_type: Field,
+    pub created_at: Field,
+    pub effort: Field,
 }
 
 /// Tantivy-backed full-text search index.
@@ -142,6 +145,8 @@ impl TantivySearchIndex {
         body: Option<&str>,
         state: Option<&str>,
         entity_type: Option<&str>,
+        created_at: Option<&str>,
+        effort: Option<&str>,
     ) -> Result<(), StorageError> {
         Self::with_retry(|| {
             let index = self.open_index()?;
@@ -164,6 +169,14 @@ impl TantivySearchIndex {
             }
             if let Some(tp) = entity_type {
                 d.add_text(self.fields.ticket_type, tp);
+            }
+            if let Some(c) = created_at {
+                d.add_text(self.fields.created_at, c);
+            }
+            if let Some(eff_str) = effort {
+                if let Ok(val) = eff_str.parse::<i64>() {
+                    d.add_i64(self.fields.effort, val);
+                }
             }
             writer.add_document(d).map_err(|e: TantivyError| {
                 StorageError::SearchIndex(e.to_string())
@@ -330,6 +343,10 @@ fn build_schema() -> (Schema, SearchFields) {
     let state = builder.add_text_field("state", STRING | STORED | FAST);
     let ticket_type =
         builder.add_text_field("ticket_type", STRING | STORED | FAST);
+    let created_at =
+        builder.add_text_field("created_at", STRING | STORED | FAST);
+    let effort =
+        builder.add_i64_field("effort", INDEXED | STORED | FAST);
     let schema = builder.build();
     (
         schema,
@@ -339,6 +356,8 @@ fn build_schema() -> (Schema, SearchFields) {
             body,
             state,
             ticket_type,
+            created_at,
+            effort,
         },
     )
 }
@@ -361,9 +380,168 @@ fn expr_to_query(
     match expr {
         Expr::Fts(text) => full_text_query(text, fields, index),
         Expr::Field { key, value } => field_expr_to_query(key, value, fields),
+        Expr::Compare { key, op, value } =>
+            compare_expr_to_query(key, *op, value, fields),
         Expr::And(exprs) => and_expr_to_query(exprs, fields, index),
         Expr::Or(exprs) => or_expr_to_query(exprs, fields, index),
         Expr::Not(expr) => not_expr_to_query(expr, fields, index),
+    }
+}
+
+/// Translate a comparison predicate into a Tantivy query.
+///
+/// The shared parser now emits comparison operators and deep-field paths, but
+/// full numeric/temporal range evaluation against fast fields is a follow-on
+/// slice. For now:
+/// - `Contains` reuses the substring regex query on the resolved field.
+/// - `Exists` matches any document that has the resolved indexed field.
+/// - Ordering comparisons (`Gt`/`Gte`/`Lt`/`Lte`) and unresolved deep fields
+///   degrade to `AllQuery` so they never silently drop candidates; precise
+///   evaluation is layered in when fast fields are added.
+fn tantivy_field_name_for_key(key: &str) -> Option<&str> {
+    match key {
+        "state" | "status" => Some("state"),
+        "type" | "ticket_type" => Some("ticket_type"),
+        "id" => Some("id"),
+        "title" => Some("title"),
+        "created" | "created_at" => Some("created_at"),
+        "effort" => Some("effort"),
+        _ => None,
+    }
+}
+
+fn compare_expr_to_query(
+    key: &str,
+    op: crate::model::query::CompareOp,
+    value: &ValueExpr,
+    fields: &SearchFields,
+) -> Box<dyn tantivy::query::Query> {
+    use crate::model::query::CompareOp;
+    use tantivy::query::AllQuery;
+
+    let Some(field) = search_field_for_key(key, fields) else {
+        return Box::new(AllQuery);
+    };
+    let Some(field_name) = tantivy_field_name_for_key(key) else {
+        return Box::new(AllQuery);
+    };
+
+    match (op, value) {
+        (CompareOp::Contains, ValueExpr::Text(text)) =>
+            substring_query_for_fields(text, &[field])
+                .unwrap_or_else(|| Box::new(AllQuery)),
+        (CompareOp::Exists, _) => exists_query(field),
+        (CompareOp::Gt, _) | (CompareOp::Gte, _) | (CompareOp::Lt, _) | (CompareOp::Lte, _) | (CompareOp::Range, _) => {
+            build_range_query(field, field_name, fields, op, value)
+        }
+        _ => Box::new(AllQuery),
+    }
+}
+
+fn build_range_query(
+    field: Field,
+    field_name: &str,
+    fields: &SearchFields,
+    op: crate::model::query::CompareOp,
+    value: &ValueExpr,
+) -> Box<dyn tantivy::query::Query> {
+    use crate::model::query::CompareOp;
+    use tantivy::query::{RangeQuery, EmptyQuery};
+    use std::ops::Bound;
+
+    let get_term = |val_str: &str| -> Option<Term> {
+        if field == fields.effort {
+            val_str.parse::<i64>().ok().map(|val| Term::from_field_i64(field, val))
+        } else {
+            Some(Term::from_field_text(field, val_str))
+        }
+    };
+
+    let field_type = if field == fields.effort {
+        tantivy::schema::Type::I64
+    } else {
+        tantivy::schema::Type::Str
+    };
+
+    match (op, value) {
+        (CompareOp::Gt, ValueExpr::Text(text)) => {
+            let Some(term) = get_term(text) else {
+                return Box::new(EmptyQuery);
+            };
+            Box::new(RangeQuery::new_term_bounds(
+                field_name.to_string(),
+                field_type,
+                &Bound::Excluded(term),
+                &Bound::Unbounded,
+            ))
+        }
+        (CompareOp::Gte, ValueExpr::Text(text)) => {
+            let Some(term) = get_term(text) else {
+                return Box::new(EmptyQuery);
+            };
+            Box::new(RangeQuery::new_term_bounds(
+                field_name.to_string(),
+                field_type,
+                &Bound::Included(term),
+                &Bound::Unbounded,
+            ))
+        }
+        (CompareOp::Lt, ValueExpr::Text(text)) => {
+            let Some(term) = get_term(text) else {
+                return Box::new(EmptyQuery);
+            };
+            Box::new(RangeQuery::new_term_bounds(
+                field_name.to_string(),
+                field_type,
+                &Bound::Unbounded,
+                &Bound::Excluded(term),
+            ))
+        }
+        (CompareOp::Lte, ValueExpr::Text(text)) => {
+            let Some(term) = get_term(text) else {
+                return Box::new(EmptyQuery);
+            };
+            Box::new(RangeQuery::new_term_bounds(
+                field_name.to_string(),
+                field_type,
+                &Bound::Unbounded,
+                &Bound::Included(term),
+            ))
+        }
+        (CompareOp::Range, ValueExpr::Range { start, end }) => {
+            let Some(start_term) = get_term(start) else {
+                return Box::new(EmptyQuery);
+            };
+            let Some(end_term) = get_term(end) else {
+                return Box::new(EmptyQuery);
+            };
+            Box::new(RangeQuery::new_term_bounds(
+                field_name.to_string(),
+                field_type,
+                &Bound::Included(start_term),
+                &Bound::Included(end_term),
+            ))
+        }
+        _ => Box::new(EmptyQuery),
+    }
+}
+
+/// Match any document that has a non-null value in `field`.
+fn exists_query(field: Field) -> Box<dyn tantivy::query::Query> {
+    use tantivy::query::{
+        BooleanQuery,
+        Occur,
+        RegexQuery,
+    };
+
+    // A field exists when it matches any non-empty value. `.+` over the
+    // indexed text approximates presence for STRING/TEXT fields.
+    match RegexQuery::from_pattern(".+", field) {
+        Ok(query) => Box::new(BooleanQuery::new(vec![(
+            Occur::Must,
+            Box::new(query) as Box<dyn tantivy::query::Query>,
+        )])),
+        Err(_) => Box::new(tantivy::query::AllQuery),
     }
 }
 
@@ -493,7 +671,14 @@ fn field_expr_to_query(
         ValueExpr::Text(text) if key == "id" =>
             id_field_query(text, fields),
         ValueExpr::Text(text) => term_query(field, text),
-        ValueExpr::Range { .. } => Box::new(AllQuery),
+        ValueExpr::Range { .. } => {
+            if let Some(field_name) = tantivy_field_name_for_key(key) {
+                build_range_query(field, field_name, fields, crate::model::query::CompareOp::Range, value)
+            } else {
+                Box::new(AllQuery)
+            }
+        }
+        ValueExpr::Empty => Box::new(AllQuery),
     }
 }
 
@@ -506,6 +691,8 @@ fn search_field_for_key(
         "type" | "ticket_type" => Some(fields.ticket_type),
         "id" => Some(fields.id),
         "title" => Some(fields.title),
+        "created" | "created_at" => Some(fields.created_at),
+        "effort" => Some(fields.effort),
         _ => None,
     }
 }

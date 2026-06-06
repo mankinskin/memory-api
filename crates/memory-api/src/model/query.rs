@@ -12,6 +12,34 @@ pub const DYNAMIC_FIELD_PREFIX: &str = "x_";
 pub enum ValueExpr {
     Text(String),
     Range { start: String, end: String },
+    /// Value-less marker used by the existence predicate (`key:?`).
+    Empty,
+}
+
+/// Comparison operator for a field predicate.
+///
+/// `Eq` is the canonical equality form and is also represented by the legacy
+/// [`Expr::Field`] variant for backward compatibility; the parser keeps
+/// emitting [`Expr::Field`] for plain `key:value` so existing consumers and
+/// tests remain valid. All other operators are emitted as [`Expr::Compare`].
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CompareOp {
+    /// Exact match: `key:value`.
+    Eq,
+    /// Substring match on the field's text value: `key:~value` or `key:*value*`.
+    Contains,
+    /// Strictly greater than: `key:>value`.
+    Gt,
+    /// Greater than or equal: `key:>=value`.
+    Gte,
+    /// Strictly less than: `key:<value`.
+    Lt,
+    /// Less than or equal: `key:<=value`.
+    Lte,
+    /// Inclusive range: `key:[a TO b]`.
+    Range,
+    /// Field present and non-empty: `key:?`.
+    Exists,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -20,7 +48,19 @@ pub enum Expr {
     Or(Vec<Expr>),
     Not(Box<Expr>),
     Fts(String),
+    /// Legacy equality / range field predicate (`key:value`, `key:[a TO b]`).
+    ///
+    /// Retained as the canonical `Eq`/`Range` shape so existing parser output
+    /// and consumers keep working. New comparison operators are emitted via
+    /// [`Expr::Compare`].
     Field { key: String, value: ValueExpr },
+    /// Field predicate carrying an explicit comparison operator and a
+    /// (possibly deep / dotted) field path.
+    Compare {
+        key: String,
+        op: CompareOp,
+        value: ValueExpr,
+    },
 }
 
 pub fn parse_query(input: &str) -> Result<Expr, QueryParseError> {
@@ -87,38 +127,38 @@ fn parse_token(
         _ => (false, token),
     };
 
-    let expr = if let Some((key, raw_value)) = raw_token.split_once(':') {
-        if key.is_empty() || raw_value.is_empty() {
+    let expr = if let Some((raw_key, raw_value)) = raw_token.split_once(':') {
+        if raw_key.is_empty() || raw_value.is_empty() {
             return Err(QueryParseError::InvalidExpression(format!(
                 "invalid field predicate: {raw_token}"
             )));
         }
 
+        // Normalize dotted deep-field addressing (`x.<type>.<field>`) to the
+        // canonical flat dynamic key (`x_<type>_<field>`) so storage/index
+        // keys stay stable. Non-dynamic dotted paths are left untouched.
+        let key = normalize_field_path(raw_key);
+
         if let Some(fields) = known_fields {
-            validate_field_key(key, fields)?;
+            validate_field_key(&key, fields)?;
         }
 
-        let value = if raw_value.starts_with('[')
-            && raw_value.ends_with(']')
-            && raw_value.contains(" TO ")
-        {
-            let inner = &raw_value[1..raw_value.len() - 1];
-            let (start, end) = inner.split_once(" TO ").ok_or_else(|| {
-                QueryParseError::InvalidExpression(format!(
-                    "invalid range expression: {raw_token}"
-                ))
-            })?;
-            ValueExpr::Range {
-                start: start.to_string(),
-                end: end.to_string(),
-            }
-        } else {
-            ValueExpr::Text(trim_quotes(raw_value))
-        };
+        let (op, value) = parse_field_value(&key, raw_value, raw_token)?;
 
-        Expr::Field {
-            key: key.to_string(),
-            value,
+        match op {
+            CompareOp::Eq => Expr::Field {
+                key,
+                value,
+            },
+            CompareOp::Range => Expr::Field {
+                key,
+                value,
+            },
+            _ => Expr::Compare {
+                key,
+                op,
+                value,
+            },
         }
     } else {
         Expr::Fts(trim_quotes(raw_token))
@@ -129,6 +169,81 @@ fn parse_token(
     } else {
         Ok(expr)
     }
+}
+
+/// Normalize a raw field path token to the canonical storage key.
+///
+/// Dotted dynamic addressing `x.<type>.<field>` collapses to the flat
+/// `x_<type>_<field>` form. Any other path (including plain keys without dots
+/// and non-`x` dotted paths) is returned unchanged.
+fn normalize_field_path(raw_key: &str) -> String {
+    if let Some(rest) = raw_key.strip_prefix("x.") {
+        if !rest.is_empty() && rest.contains('.') {
+            return format!("{DYNAMIC_FIELD_PREFIX}{}", rest.replace('.', "_"));
+        }
+    }
+    raw_key.to_string()
+}
+
+/// Parse the comparison operator and value from the raw value side of a
+/// `key:<value>` token.
+fn parse_field_value(
+    key: &str,
+    raw_value: &str,
+    raw_token: &str,
+) -> Result<(CompareOp, ValueExpr), QueryParseError> {
+    // Existence predicate: `key:?`.
+    if raw_value == "?" {
+        return Ok((CompareOp::Exists, ValueExpr::Empty));
+    }
+
+    // Range predicate: `key:[a TO b]`.
+    if raw_value.starts_with('[')
+        && raw_value.ends_with(']')
+        && raw_value.contains(" TO ")
+    {
+        let inner = &raw_value[1..raw_value.len() - 1];
+        let (start, end) = inner.split_once(" TO ").ok_or_else(|| {
+            QueryParseError::InvalidExpression(format!(
+                "invalid range expression: {raw_token}"
+            ))
+        })?;
+        return Ok((
+            CompareOp::Range,
+            ValueExpr::Range {
+                start: start.trim().to_string(),
+                end: end.trim().to_string(),
+            },
+        ));
+    }
+
+    // Comparison operators, longest-prefix first so `>=`/`<=` win over `>`/`<`.
+    let (op, rest) = if let Some(rest) = raw_value.strip_prefix(">=") {
+        (CompareOp::Gte, rest)
+    } else if let Some(rest) = raw_value.strip_prefix("<=") {
+        (CompareOp::Lte, rest)
+    } else if let Some(rest) = raw_value.strip_prefix('>') {
+        (CompareOp::Gt, rest)
+    } else if let Some(rest) = raw_value.strip_prefix('<') {
+        (CompareOp::Lt, rest)
+    } else if let Some(rest) = raw_value.strip_prefix('~') {
+        (CompareOp::Contains, rest)
+    } else if raw_value.len() >= 2
+        && raw_value.starts_with('*')
+        && raw_value.ends_with('*')
+    {
+        (CompareOp::Contains, &raw_value[1..raw_value.len() - 1])
+    } else {
+        (CompareOp::Eq, raw_value)
+    };
+
+    if rest.is_empty() {
+        return Err(QueryParseError::InvalidExpression(format!(
+            "comparison operator on field '{key}' is missing a value: {raw_token}"
+        )));
+    }
+
+    Ok((op, ValueExpr::Text(trim_quotes(rest))))
 }
 
 fn validate_field_key(
@@ -179,6 +294,7 @@ fn tokenize(input: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
+    let mut bracket_depth: usize = 0;
 
     for ch in input.chars() {
         match ch {
@@ -186,7 +302,17 @@ fn tokenize(input: &str) -> Vec<String> {
                 in_quotes = !in_quotes;
                 current.push(ch);
             },
-            c if c.is_whitespace() && !in_quotes =>
+            // Suppress splitting inside a `[a TO b]` range so the embedded
+            // space does not break the token apart.
+            '[' if !in_quotes => {
+                bracket_depth += 1;
+                current.push(ch);
+            },
+            ']' if !in_quotes && bracket_depth > 0 => {
+                bracket_depth -= 1;
+                current.push(ch);
+            },
+            c if c.is_whitespace() && !in_quotes && bracket_depth == 0 =>
                 if !current.is_empty() {
                     tokens.push(current.clone());
                     current.clear();
