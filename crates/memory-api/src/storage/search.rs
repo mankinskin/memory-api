@@ -164,20 +164,13 @@ impl TantivySearchIndex {
             if let Some(b) = body {
                 d.add_text(self.fields.body, b);
             }
-            if let Some(s) = state {
-                d.add_text(self.fields.state, s);
-            }
-            if let Some(tp) = entity_type {
-                d.add_text(self.fields.ticket_type, tp);
-            }
-            if let Some(c) = created_at {
-                d.add_text(self.fields.created_at, c);
-            }
-            if let Some(eff_str) = effort {
-                if let Ok(val) = eff_str.parse::<i64>() {
-                    d.add_i64(self.fields.effort, val);
-                }
-            }
+            d.add_text(self.fields.state, state.unwrap_or(""));
+            d.add_text(self.fields.ticket_type, entity_type.unwrap_or(""));
+            d.add_text(self.fields.created_at, created_at.unwrap_or(""));
+            let eff_val = effort
+                .and_then(|eff_str| eff_str.parse::<i64>().ok())
+                .unwrap_or(0);
+            d.add_i64(self.fields.effort, eff_val);
             writer.add_document(d).map_err(|e: TantivyError| {
                 StorageError::SearchIndex(e.to_string())
             })?;
