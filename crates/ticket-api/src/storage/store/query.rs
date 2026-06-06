@@ -67,7 +67,7 @@ impl TicketStore {
     ) -> Result<Vec<SearchResult>, StorageError> {
         let expression =
             parse_query(query_expr).map_err(StorageError::QueryParse)?;
-        self.search.search(&expression, limit)
+        self.with_search_repair(|| self.search.search(&expression, limit))
     }
 
     pub fn edges_from(

@@ -34,7 +34,7 @@ impl TicketStore {
         TicketFs::mark_deleted(&indexed.path)?;
         self.index.soft_delete_ticket(id)?;
         self.index.remove_workflow_facts(id)?;
-        self.search.remove(id)?;
+        self.with_search_repair(|| self.search.remove(id))?;
 
         if let Some(hook) = self.hook() {
             hook.ticket_delete(*id);
@@ -71,15 +71,17 @@ impl TicketStore {
                 serde_json::Value::Number(n) => Some(n.to_string()),
                 _ => None,
             });
-        self.search.upsert(
-            id,
-            refreshed.title.as_deref(),
-            body.as_deref(),
-            refreshed.state.as_deref(),
-            Some(refreshed.type_id.as_str()),
-            Some(&created_at_str),
-            effort_str.as_deref(),
-        )?;
+        self.with_search_repair(|| {
+            self.search.upsert(
+                id,
+                refreshed.title.as_deref(),
+                body.as_deref(),
+                refreshed.state.as_deref(),
+                Some(refreshed.type_id.as_str()),
+                Some(&created_at_str),
+                effort_str.as_deref(),
+            )
+        })?;
         let state_progressed = self.state_rank_for_type(
             &refreshed.type_id,
             refreshed.state.as_deref(),
@@ -136,15 +138,17 @@ impl TicketStore {
                 serde_json::Value::Number(n) => Some(n.to_string()),
                 _ => None,
             });
-        self.search.upsert(
-            id,
-            refreshed.title.as_deref(),
-            body.as_deref(),
-            refreshed.state.as_deref(),
-            Some(refreshed.type_id.as_str()),
-            Some(&created_at_str),
-            effort_str.as_deref(),
-        )?;
+        self.with_search_repair(|| {
+            self.search.upsert(
+                id,
+                refreshed.title.as_deref(),
+                body.as_deref(),
+                refreshed.state.as_deref(),
+                Some(refreshed.type_id.as_str()),
+                Some(&created_at_str),
+                effort_str.as_deref(),
+            )
+        })?;
         let state_progressed = self.state_rank_for_type(
             &refreshed.type_id,
             refreshed.state.as_deref(),

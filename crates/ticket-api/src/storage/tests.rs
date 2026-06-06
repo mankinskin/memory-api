@@ -40,6 +40,12 @@ fn known_id_set(ids: &[Uuid]) -> BTreeSet<Uuid> {
     ids.iter().copied().collect()
 }
 
+fn corrupt_search_index_meta(index_root: &Path) {
+    let search_dir = index_root.join("search_index");
+    fs::create_dir_all(&search_dir).unwrap();
+    fs::write(search_dir.join("meta.json"), b"not valid json").unwrap();
+}
+
 fn assert_visibility_surfaces_agree(
     store: &TicketStore,
     query: &str,
@@ -1237,6 +1243,61 @@ fn open_rebuilds_existing_empty_index_from_manifests() {
     let manifest = reopened.get(&ticket_id).unwrap();
 
     assert_eq!(manifest.id, ticket_id);
+}
+
+#[test]
+fn search_and_delete_self_heal_after_search_index_corruption() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let ticket_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Search repair ticket"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    corrupt_search_index_meta(&store.index_root);
+
+    let results = store.search_tickets("Search repair ticket", 10).unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].id, ticket_id);
+
+    corrupt_search_index_meta(&store.index_root);
+
+    store.delete(&ticket_id).unwrap();
+
+    let results = store.search_tickets("Search repair ticket", 10).unwrap();
+    assert!(results.is_empty());
+}
+
+#[test]
+fn scan_force_self_heals_after_search_index_corruption() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let ticket_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Scan repair ticket"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    corrupt_search_index_meta(&store.index_root);
+
+    store.scan(true).unwrap();
+
+    let results = store.search_tickets("Scan repair ticket", 10).unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].id, ticket_id);
 }
 
 #[test]

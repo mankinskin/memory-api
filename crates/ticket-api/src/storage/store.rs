@@ -117,6 +117,23 @@ impl TicketStore {
         self.hook.get().map(|b| b.as_ref())
     }
 
+    pub(crate) fn with_search_repair<T, F>(
+        &self,
+        mut op: F,
+    ) -> Result<T, StorageError>
+    where
+        F: FnMut() -> Result<T, StorageError>,
+    {
+        match op() {
+            Ok(value) => Ok(value),
+            Err(error) if TantivySearchIndex::should_rebuild_search_index(&error) => {
+                self.scan(true)?;
+                op()
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     fn normalize_path(path: PathBuf) -> PathBuf {
         #[cfg(windows)]
         {
@@ -288,7 +305,13 @@ impl TicketStore {
         let search_dir = index_root.join("search_index");
 
         let index = RedbIndexStore::open(&db_path)?;
-        let search = TantivySearchIndex::open_or_create(&search_dir)?;
+        let search = match TantivySearchIndex::open_or_create(&search_dir) {
+            Ok(search) => search,
+            Err(_) => {
+                let _ = std::fs::remove_dir_all(&search_dir);
+                TantivySearchIndex::open_or_create(&search_dir)?
+            },
+        };
 
         let store = Self {
             index,
@@ -309,6 +332,14 @@ impl TicketStore {
         &self,
     ) -> Result<(), StorageError> {
         if self.count_tickets()? > 0 {
+            if self
+                .search
+                .search(&crate::model::query::Expr::And(Vec::new()), 1)
+                .map(|results| results.is_empty())
+                .unwrap_or(true)
+            {
+                self.scan(true)?;
+            }
             return Ok(());
         }
 
@@ -401,15 +432,17 @@ impl TicketStore {
                 serde_json::Value::Number(n) => Some(n.to_string()),
                 _ => None,
             });
-        self.search.upsert(
-            &id,
-            title,
-            body_for_index.as_deref(),
-            Some(&state),
-            Some(type_id),
-            Some(&created_at_str),
-            effort_str.as_deref(),
-        )?;
+        self.with_search_repair(|| {
+            self.search.upsert(
+                &id,
+                title,
+                body_for_index.as_deref(),
+                Some(&state),
+                Some(type_id),
+                Some(&created_at_str),
+                effort_str.as_deref(),
+            )
+        })?;
 
         // Append initial history snapshot (rev 1).
         let _ = TicketFs::append_history(
@@ -608,15 +641,17 @@ impl TicketStore {
                 serde_json::Value::Number(n) => Some(n.to_string()),
                 _ => None,
             });
-        self.search.upsert(
-            id,
-            indexed.title.as_deref(),
-            body.as_deref(),
-            indexed.state.as_deref(),
-            Some(indexed.type_id.as_str()),
-            Some(&created_at_str),
-            effort_str.as_deref(),
-        )?;
+        self.with_search_repair(|| {
+            self.search.upsert(
+                id,
+                indexed.title.as_deref(),
+                body.as_deref(),
+                indexed.state.as_deref(),
+                Some(indexed.type_id.as_str()),
+                Some(&created_at_str),
+                effort_str.as_deref(),
+            )
+        })?;
 
         // Append history snapshot after successful write.
         let _ = TicketFs::append_history(

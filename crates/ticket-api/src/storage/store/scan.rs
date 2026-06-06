@@ -66,6 +66,20 @@ impl TicketStore {
         &self,
         reindex: bool,
     ) -> Result<ScanReport, StorageError> {
+        match self.scan_once(reindex) {
+            Ok(report) => Ok(report),
+            Err(error) if reindex && TantivySearchIndex::should_rebuild_search_index(&error) => {
+                self.search.reset_dir()?;
+                self.scan_once(reindex)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    fn scan_once(
+        &self,
+        reindex: bool,
+    ) -> Result<ScanReport, StorageError> {
         if reindex {
             self.backfill_file_backed_edges_from_index()?;
             self.search.clear_all()?;
@@ -192,8 +206,7 @@ fn stale_reconciliation_diagnostic(
     roots: &[ScanRoot],
 ) -> ParseDiagnostic {
     let manifest_path = ticket.path.join(TICKET_MANIFEST_FILE);
-    let reason = if roots.iter().all(|root| !ticket.path.starts_with(&root.path))
-    {
+    let reason = if roots.iter().all(|root| !ticket.path.starts_with(&root.path)) {
         "ticket path left configured scan roots; pruned stale index/search entry"
             .to_string()
     } else if TicketFs::read(&ticket.path)
@@ -278,7 +291,10 @@ fn integrate_entry(
 
     let body = TicketFs::read_description(&entry.path);
     let created_at_str = indexed.created_at.to_rfc3339();
-    let effort_str = entry.manifest.extra.get("effort")
+    let effort_str = entry
+        .manifest
+        .extra
+        .get("effort")
         .and_then(|v| match v {
             serde_json::Value::String(s) => Some(s.clone()),
             serde_json::Value::Number(n) => Some(n.to_string()),
@@ -298,7 +314,7 @@ fn integrate_entry(
 }
 
 fn manifest_edges(
-    entry: &TicketScanEntry
+    entry: &TicketScanEntry,
 ) -> Vec<crate::model::edge::EdgeRecord> {
     let mut edges = Vec::new();
 
