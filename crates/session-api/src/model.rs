@@ -2,6 +2,7 @@ use chrono::{
     DateTime,
     Utc,
 };
+use std::path::PathBuf;
 use serde::{
     Deserialize,
     Serialize,
@@ -62,9 +63,41 @@ pub struct SessionMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ticket_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trigger: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<SessionWorktreeAssignment>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionWorktreeAllocationMode {
+    New,
+    Reused,
+    Rotated,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionWorktreeStatus {
+    Active,
+    Superseded,
+    Invalidated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionWorktreeAssignment {
+    pub path: PathBuf,
+    pub branch: String,
+    pub allocation_mode: SessionWorktreeAllocationMode,
+    pub status: SessionWorktreeStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predecessor_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predecessor_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,6 +123,7 @@ impl SessionRecord {
 mod tests {
     use chrono::TimeZone;
     use pretty_assertions::assert_eq;
+    use std::path::PathBuf;
 
     use super::{
         SessionLinks,
@@ -97,6 +131,9 @@ mod tests {
         SessionRecord,
         SessionRole,
         SessionTurn,
+        SessionWorktreeAllocationMode,
+        SessionWorktreeAssignment,
+        SessionWorktreeStatus,
     };
 
     fn sample_time() -> chrono::DateTime<chrono::Utc> {
@@ -117,8 +154,17 @@ mod tests {
                 workspace_slug: "context-engine".to_string(),
                 conversation_id: Some("conversation-1".to_string()),
                 agent_id: Some("github-copilot-gpt-5.4".to_string()),
+                ticket_id: Some("ticket-1".to_string()),
                 model: Some("GPT-5.4".to_string()),
                 trigger: Some("post-turn".to_string()),
+                worktree: Some(SessionWorktreeAssignment {
+                    path: PathBuf::from("worktrees/session-123"),
+                    branch: "session/session-123".to_string(),
+                    allocation_mode: SessionWorktreeAllocationMode::New,
+                    status: SessionWorktreeStatus::Active,
+                    predecessor_session_id: None,
+                    predecessor_path: None,
+                }),
             },
             turns: vec![SessionTurn {
                 sequence: 0,

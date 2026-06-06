@@ -22,6 +22,9 @@ use crate::{
     SessionMetadata,
     SessionRecord,
     SessionTurn,
+    SessionWorktreeAllocationMode,
+    SessionWorktreeAssignment,
+    SessionWorktreeStatus,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,6 +87,32 @@ pub struct SessionQuery {
 pub struct SessionStoreConfig {
     pub root: PathBuf,
     pub workspace_slug: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionWorktreeCheckInRequest {
+    pub session_id: String,
+    pub owner_id: String,
+    pub ticket_id: String,
+    pub worktree_path: PathBuf,
+    pub branch: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predecessor_session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionWorktreeCheckInReceipt {
+    pub session_id: String,
+    pub owner_id: String,
+    pub ticket_id: String,
+    pub worktree_path: PathBuf,
+    pub branch: String,
+    pub allocation_mode: SessionWorktreeAllocationMode,
+    pub status: SessionWorktreeStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predecessor_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predecessor_path: Option<PathBuf>,
 }
 
 impl SessionStoreConfig {
@@ -192,6 +221,135 @@ impl SessionStoreConfig {
         Ok(records)
     }
 
+    pub fn check_in_worktree(
+        &self,
+        request: SessionWorktreeCheckInRequest,
+    ) -> Result<SessionWorktreeCheckInReceipt, SessionError> {
+        validate_worktree_request(&request)?;
+
+        if let Ok(mut existing_record) = self.read_session(&request.session_id) {
+            let existing_assignment = existing_record
+                .metadata
+                .worktree
+                .clone()
+                .ok_or_else(|| SessionError::MissingWorktreeAssignment {
+                    session_id: request.session_id.clone(),
+                })?;
+
+            if existing_record.metadata.agent_id.as_deref() != Some(request.owner_id.as_str())
+                || existing_record.metadata.ticket_id.as_deref()
+                    != Some(request.ticket_id.as_str())
+            {
+                return Err(SessionError::SessionOwnershipMismatch {
+                    session_id: request.session_id,
+                });
+            }
+
+            if can_reuse_assignment(&existing_assignment, &request) {
+                existing_record.metadata.worktree = Some(SessionWorktreeAssignment {
+                    allocation_mode: SessionWorktreeAllocationMode::Reused,
+                    ..existing_assignment
+                });
+                existing_record.captured_at = chrono::Utc::now();
+                self.persist_record(existing_record.clone())?;
+                return receipt_from_record(&existing_record);
+            }
+
+            fs::create_dir_all(&request.worktree_path).map_err(|source| SessionError::Io {
+                path: request.worktree_path.clone(),
+                source,
+            })?;
+            self.ensure_no_active_worktree_conflict(
+                &request.worktree_path,
+                Some(request.session_id.as_str()),
+            )?;
+
+            existing_record.metadata.worktree = Some(SessionWorktreeAssignment {
+                path: request.worktree_path,
+                branch: request.branch,
+                allocation_mode: SessionWorktreeAllocationMode::Rotated,
+                status: SessionWorktreeStatus::Active,
+                predecessor_session_id: None,
+                predecessor_path: Some(existing_assignment.path),
+            });
+            existing_record.captured_at = chrono::Utc::now();
+            self.persist_record(existing_record.clone())?;
+            return receipt_from_record(&existing_record);
+        }
+
+        let mut predecessor_path = None;
+        if let Some(predecessor_session_id) = &request.predecessor_session_id {
+            let mut predecessor = self.read_session(predecessor_session_id)?;
+            let predecessor_assignment = predecessor
+                .metadata
+                .worktree
+                .clone()
+                .ok_or_else(|| SessionError::MissingWorktreeAssignment {
+                    session_id: predecessor_session_id.clone(),
+                })?;
+
+            if predecessor_assignment.path == request.worktree_path {
+                return Err(SessionError::CrossSessionReuseRequiresAdopt {
+                    session_id: predecessor_session_id.clone(),
+                    path: predecessor_assignment.path,
+                });
+            }
+
+            predecessor_path = Some(predecessor_assignment.path.clone());
+            predecessor.metadata.worktree = Some(SessionWorktreeAssignment {
+                status: SessionWorktreeStatus::Superseded,
+                ..predecessor_assignment
+            });
+            predecessor.captured_at = chrono::Utc::now();
+            self.persist_record(predecessor)?;
+        }
+
+        fs::create_dir_all(&request.worktree_path).map_err(|source| SessionError::Io {
+            path: request.worktree_path.clone(),
+            source,
+        })?;
+        self.ensure_no_active_worktree_conflict(&request.worktree_path, None)?;
+
+        let record = SessionRecord {
+            session_id: request.session_id,
+            source: "session-worktree-check-in".to_string(),
+            started_at: chrono::Utc::now(),
+            captured_at: chrono::Utc::now(),
+            metadata: SessionMetadata {
+                workspace_slug: self.workspace_slug.clone(),
+                conversation_id: None,
+                agent_id: Some(request.owner_id),
+                ticket_id: Some(request.ticket_id),
+                model: None,
+                trigger: Some("session-check-in".to_string()),
+                worktree: Some(SessionWorktreeAssignment {
+                    path: request.worktree_path,
+                    branch: request.branch,
+                    allocation_mode: if request.predecessor_session_id.is_some() {
+                        SessionWorktreeAllocationMode::Rotated
+                    } else {
+                        SessionWorktreeAllocationMode::New
+                    },
+                    status: SessionWorktreeStatus::Active,
+                    predecessor_session_id: request.predecessor_session_id,
+                    predecessor_path,
+                }),
+            },
+            turns: vec![],
+            links: SessionLinks::default(),
+        };
+        self.persist_record(record.clone())?;
+        receipt_from_record(&record)
+    }
+
+    pub fn lookup_worktree(
+        &self,
+        session_id: &str,
+    ) -> Result<SessionWorktreeCheckInReceipt, SessionError> {
+        let record = self.read_session(session_id)?;
+        receipt_from_record(&record)
+    }
+
     fn paths_for_session_id(
         &self,
         session_id: &str,
@@ -245,6 +403,41 @@ impl SessionStoreConfig {
         let plan = self.plan_capture(request)?;
         plan.persist()?;
         Ok(plan)
+    }
+
+    fn persist_record(
+        &self,
+        record: SessionRecord,
+    ) -> Result<SessionStorePlan, SessionError> {
+        let paths = self.paths_for(&record)?;
+        let plan = SessionStorePlan { record, paths };
+        plan.persist()?;
+        Ok(plan)
+    }
+
+    fn ensure_no_active_worktree_conflict(
+        &self,
+        requested_path: &Path,
+        ignored_session_id: Option<&str>,
+    ) -> Result<(), SessionError> {
+        for record in self.query_sessions(&SessionQuery::default())? {
+            if ignored_session_id == Some(record.session_id.as_str()) {
+                continue;
+            }
+
+            let Some(worktree) = record.metadata.worktree.as_ref() else {
+                continue;
+            };
+
+            if worktree.status == SessionWorktreeStatus::Active && worktree.path == requested_path {
+                return Err(SessionError::WorktreeConflict {
+                    path: requested_path.to_path_buf(),
+                    session_id: record.session_id,
+                });
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -368,9 +561,64 @@ fn merge_metadata(
         },
         conversation_id: incoming.conversation_id.or(existing.conversation_id),
         agent_id: incoming.agent_id.or(existing.agent_id),
+        ticket_id: incoming.ticket_id.or(existing.ticket_id),
         model: incoming.model.or(existing.model),
         trigger: incoming.trigger.or(existing.trigger),
+        worktree: incoming.worktree.or(existing.worktree),
     }
+}
+
+fn validate_worktree_request(
+    request: &SessionWorktreeCheckInRequest,
+) -> Result<(), SessionError> {
+    validate_segment(&request.session_id, false)?;
+    if request.owner_id.trim().is_empty() {
+        return Err(SessionError::MissingOwnerId);
+    }
+    if request.ticket_id.trim().is_empty() {
+        return Err(SessionError::MissingTicketId);
+    }
+    if request.worktree_path.as_os_str().is_empty() {
+        return Err(SessionError::EmptyWorktreePath);
+    }
+    if request.branch.trim().is_empty() {
+        return Err(SessionError::EmptyWorktreeBranch);
+    }
+    Ok(())
+}
+
+fn can_reuse_assignment(
+    existing: &SessionWorktreeAssignment,
+    request: &SessionWorktreeCheckInRequest,
+) -> bool {
+    existing.status == SessionWorktreeStatus::Active
+        && existing.path == request.worktree_path
+        && existing.branch == request.branch
+        && existing.path.exists()
+}
+
+fn receipt_from_record(
+    record: &SessionRecord,
+) -> Result<SessionWorktreeCheckInReceipt, SessionError> {
+    let worktree = record
+        .metadata
+        .worktree
+        .clone()
+        .ok_or_else(|| SessionError::MissingWorktreeAssignment {
+            session_id: record.session_id.clone(),
+        })?;
+
+    Ok(SessionWorktreeCheckInReceipt {
+        session_id: record.session_id.clone(),
+        owner_id: record.metadata.agent_id.clone().unwrap_or_default(),
+        ticket_id: record.metadata.ticket_id.clone().unwrap_or_default(),
+        worktree_path: worktree.path,
+        branch: worktree.branch,
+        allocation_mode: worktree.allocation_mode,
+        status: worktree.status,
+        predecessor_session_id: worktree.predecessor_session_id,
+        predecessor_path: worktree.predecessor_path,
+    })
 }
 
 fn merge_links(
@@ -518,6 +766,9 @@ mod tests {
         SessionQuery,
         SessionRole,
         SessionStoreConfig,
+        SessionWorktreeAllocationMode,
+        SessionWorktreeCheckInRequest,
+        SessionWorktreeStatus,
     };
 
     fn sample_time() -> chrono::DateTime<chrono::Utc> {
@@ -577,6 +828,23 @@ mod tests {
             captured_at,
             messages,
         ))
+    }
+
+    fn sample_worktree_request(
+        session_id: &str,
+        owner_id: &str,
+        ticket_id: &str,
+        worktree_path: std::path::PathBuf,
+        branch: &str,
+    ) -> SessionWorktreeCheckInRequest {
+        SessionWorktreeCheckInRequest {
+            session_id: session_id.to_string(),
+            owner_id: owner_id.to_string(),
+            ticket_id: ticket_id.to_string(),
+            worktree_path,
+            branch: branch.to_string(),
+            predecessor_session_id: None,
+        }
     }
 
     #[test]
@@ -814,5 +1082,171 @@ mod tests {
         assert_eq!(record.turns.len(), 2);
         assert_eq!(record.turns[0].content, "Persist this transcript");
         assert_eq!(record.turns[1].content, "Transcript persisted.");
+    }
+
+    #[test]
+    fn check_in_worktree_creates_and_returns_new_assignment() {
+        let tempdir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let worktree_path = tempdir.path().join("worktrees").join("session-a");
+
+        let receipt = config
+            .check_in_worktree(sample_worktree_request(
+                "session-a",
+                "github-copilot",
+                "ticket-a",
+                worktree_path.clone(),
+                "session/session-a",
+            ))
+            .unwrap();
+
+        assert_eq!(receipt.session_id, "session-a");
+        assert_eq!(receipt.owner_id, "github-copilot");
+        assert_eq!(receipt.ticket_id, "ticket-a");
+        assert_eq!(receipt.worktree_path, worktree_path);
+        assert_eq!(receipt.branch, "session/session-a");
+        assert_eq!(receipt.allocation_mode, SessionWorktreeAllocationMode::New);
+        assert_eq!(receipt.status, SessionWorktreeStatus::Active);
+        assert!(receipt.worktree_path.exists());
+    }
+
+    #[test]
+    fn check_in_worktree_reuses_existing_assignment_for_same_session() {
+        let tempdir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let worktree_path = tempdir.path().join("worktrees").join("session-a");
+
+        config
+            .check_in_worktree(sample_worktree_request(
+                "session-a",
+                "github-copilot",
+                "ticket-a",
+                worktree_path.clone(),
+                "session/session-a",
+            ))
+            .unwrap();
+
+        let receipt = config
+            .check_in_worktree(sample_worktree_request(
+                "session-a",
+                "github-copilot",
+                "ticket-a",
+                worktree_path.clone(),
+                "session/session-a",
+            ))
+            .unwrap();
+
+        assert_eq!(receipt.allocation_mode, SessionWorktreeAllocationMode::Reused);
+        assert_eq!(receipt.worktree_path, worktree_path);
+
+        let lookup = config.lookup_worktree("session-a").unwrap();
+        assert_eq!(lookup.allocation_mode, SessionWorktreeAllocationMode::Reused);
+        assert_eq!(lookup.status, SessionWorktreeStatus::Active);
+    }
+
+    #[test]
+    fn check_in_worktree_rotates_for_handoff_and_supersedes_predecessor() {
+        let tempdir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let first_path = tempdir.path().join("worktrees").join("session-a");
+        let second_path = tempdir.path().join("worktrees").join("session-b");
+
+        config
+            .check_in_worktree(sample_worktree_request(
+                "session-a",
+                "github-copilot",
+                "ticket-a",
+                first_path.clone(),
+                "session/session-a",
+            ))
+            .unwrap();
+
+        let mut handoff = sample_worktree_request(
+            "session-b",
+            "github-copilot-2",
+            "ticket-a",
+            second_path.clone(),
+            "session/session-b",
+        );
+        handoff.predecessor_session_id = Some("session-a".to_string());
+
+        let receipt = config.check_in_worktree(handoff).unwrap();
+        let predecessor = config.read_session("session-a").unwrap();
+
+        assert_eq!(receipt.allocation_mode, SessionWorktreeAllocationMode::Rotated);
+        assert_eq!(receipt.predecessor_session_id.as_deref(), Some("session-a"));
+        assert_eq!(receipt.predecessor_path, Some(first_path));
+        assert_eq!(
+            predecessor.metadata.worktree.unwrap().status,
+            SessionWorktreeStatus::Superseded
+        );
+    }
+
+    #[test]
+    fn check_in_worktree_rotates_when_existing_path_is_missing() {
+        let tempdir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let first_path = tempdir.path().join("worktrees").join("session-a");
+        let second_path = tempdir.path().join("worktrees").join("session-a-rotated");
+
+        config
+            .check_in_worktree(sample_worktree_request(
+                "session-a",
+                "github-copilot",
+                "ticket-a",
+                first_path.clone(),
+                "session/session-a",
+            ))
+            .unwrap();
+        std::fs::remove_dir_all(&first_path).unwrap();
+
+        let receipt = config
+            .check_in_worktree(sample_worktree_request(
+                "session-a",
+                "github-copilot",
+                "ticket-a",
+                second_path.clone(),
+                "session/session-a",
+            ))
+            .unwrap();
+
+        assert_eq!(receipt.allocation_mode, SessionWorktreeAllocationMode::Rotated);
+        assert_eq!(receipt.predecessor_session_id, None);
+        assert_eq!(receipt.predecessor_path, Some(first_path));
+        assert_eq!(receipt.worktree_path, second_path);
+        assert!(receipt.worktree_path.exists());
+    }
+
+    #[test]
+    fn cross_session_reuse_requires_adopt_flow() {
+        let tempdir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let shared_path = tempdir.path().join("worktrees").join("session-a");
+
+        config
+            .check_in_worktree(sample_worktree_request(
+                "session-a",
+                "github-copilot",
+                "ticket-a",
+                shared_path.clone(),
+                "session/session-a",
+            ))
+            .unwrap();
+
+        let mut handoff = sample_worktree_request(
+            "session-b",
+            "github-copilot-2",
+            "ticket-a",
+            shared_path.clone(),
+            "session/session-b",
+        );
+        handoff.predecessor_session_id = Some("session-a".to_string());
+
+        let error = config.check_in_worktree(handoff).unwrap_err();
+
+        assert!(matches!(
+            error,
+            SessionError::CrossSessionReuseRequiresAdopt { .. }
+        ));
     }
 }

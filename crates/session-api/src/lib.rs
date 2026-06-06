@@ -17,11 +17,16 @@ pub use model::{
     SessionRecord,
     SessionRole,
     SessionTurn,
+    SessionWorktreeAllocationMode,
+    SessionWorktreeAssignment,
+    SessionWorktreeStatus,
 };
 pub use store::{
     PersistedSessionManifest,
     PersistedSessionTranscript,
     SessionQuery,
+    SessionWorktreeCheckInReceipt,
+    SessionWorktreeCheckInRequest,
     SessionStoreConfig,
     SessionStorePaths,
     SessionStorePlan,

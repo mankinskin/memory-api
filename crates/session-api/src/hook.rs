@@ -106,8 +106,10 @@ impl SessionCaptureRequest {
                 workspace_slug: payload.workspace_slug,
                 conversation_id: payload.conversation_id,
                 agent_id: payload.agent_id,
+                ticket_id: None,
                 model: payload.model,
                 trigger: payload.trigger,
+                worktree: None,
             },
             turns,
             links: self.links,
@@ -347,6 +349,8 @@ mod tests {
         assert_eq!(record.session_id, "session-123");
         assert_eq!(record.source, "copilot-hook");
         assert_eq!(record.metadata.workspace_slug, "context-engine");
+        assert_eq!(record.metadata.ticket_id, None);
+        assert_eq!(record.metadata.worktree, None);
         assert_eq!(record.turns.len(), 2);
         assert!(record.links.links_to_ticket("ticket-session"));
         assert!(record.has_turns());

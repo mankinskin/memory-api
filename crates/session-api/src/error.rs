@@ -22,8 +22,42 @@ pub enum SessionError {
     #[error("workspace slug contains invalid path characters: {0}")]
     InvalidWorkspaceSlug(String),
 
+    #[error("session owner id cannot be empty")]
+    MissingOwnerId,
+
+    #[error("session ticket id cannot be empty")]
+    MissingTicketId,
+
+    #[error("worktree path cannot be empty")]
+    EmptyWorktreePath,
+
+    #[error("worktree branch cannot be empty")]
+    EmptyWorktreeBranch,
+
     #[error("store path has no parent directory: {0}")]
     InvalidStorePath(PathBuf),
+
+    #[error("session {session_id} does not have a persisted worktree assignment")]
+    MissingWorktreeAssignment {
+        session_id: String,
+    },
+
+    #[error("session {session_id} ownership mismatch for worktree check-in")]
+    SessionOwnershipMismatch {
+        session_id: String,
+    },
+
+    #[error("worktree path {path} is already owned by active session {session_id}")]
+    WorktreeConflict {
+        path: PathBuf,
+        session_id: String,
+    },
+
+    #[error("cross-session worktree reuse requires an explicit adopt flow: predecessor {session_id} already owns {path}")]
+    CrossSessionReuseRequiresAdopt {
+        session_id: String,
+        path: PathBuf,
+    },
 
     #[error("failed to serialize session data for {path}: {source}")]
     Serialize {
