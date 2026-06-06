@@ -19,13 +19,14 @@ Each principle is its own section so a `rule scan` materialises one canonical en
 - `depends-on-only-blocking-edge` — `depends_on` is the only blocking edge; other relations are non-blocking and use the edge index rather than Tantivy.
 - `append-only-history-materialized-index` — Stores write append-only history files and rebuild a materialized SQLite/Tantivy index from them.
 - `nested-workspace-resolution` — The workspace resolver normalises any path to a single owning root; parents declare child stores via `imports:`.
-- `required-states-one-way` — Tickets and specs use a `required_states` schema-gated, one-way state machine.
+- `required-states-bidirectional-default` — Tickets and specs use a `required_states` schema-gated state machine, and declared transitions are treated as usable in both directions by default unless a schema says otherwise.
 
 <!-- spec-api:entry id=74d940e6-88b0-4c20-be70-72cdd9db2b89 slug=memory-api/recurring-principles/memory-api-recurring-principles/related-tickets/l19 -->
 ## Related tickets
 
 - [f147eb0e Migrate recurring spec principles to canonical rule entries via spec sync-generated](.ticket/tickets/f147eb0e-c758-459b-a956-a1162c3e1af6/ticket.toml)
 - [a5fe4c58 Adopt rule targets for generated spec artifacts](memory-viewers/memory-api/.ticket/tickets/a5fe4c58-f59c-4d97-8ee6-3447724b5fac/ticket.toml)
+- [185419e0 Allow reverse ticket state transitions through schema](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/.ticket/tickets/185419e0-bea4-4c7b-abda-1e92193f32e7/ticket.toml)
 
 <!-- spec-api:entry id=f2d4d117-cee4-4749-b542-43ea435c50f2 slug=memory-api/recurring-principles/memory-api-recurring-principles/related-specs/l24 -->
 ## Related specs

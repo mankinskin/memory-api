@@ -81,7 +81,7 @@ impl EntityTypeSchema {
     ) -> bool {
         self.transitions
             .iter()
-            .any(|t| t.from == from && t.to == to)
+            .any(|t| (t.from == from && t.to == to) || (t.from == to && t.to == from))
     }
 
     pub fn ensure_transition(
@@ -163,14 +163,26 @@ impl EntityTypeSchema {
 
         while let Some((current, path)) = queue.pop_front() {
             for t in &self.transitions {
-                if t.from == current && !visited.contains(&t.to) {
+                let next = if t.from == current {
+                    Some(&t.to)
+                } else if t.to == current {
+                    Some(&t.from)
+                } else {
+                    None
+                };
+
+                if let Some(next) = next {
+                    if visited.contains(next) {
+                        continue;
+                    }
+
                     let mut new_path = path.clone();
-                    new_path.push(t.to.clone());
-                    if t.to == to {
+                    new_path.push(next.clone());
+                    if next == to {
                         return Some(new_path);
                     }
-                    visited.insert(t.to.clone());
-                    queue.push_back((t.to.clone(), new_path));
+                    visited.insert(next.clone());
+                    queue.push_back((next.clone(), new_path));
                 }
             }
         }

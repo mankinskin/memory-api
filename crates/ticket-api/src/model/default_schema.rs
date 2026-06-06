@@ -169,6 +169,7 @@ pub fn tracker_improvement_schema() -> TicketTypeSchema {
         ("on-hold", "in-review"),
         ("on-hold", "cancelled"),
         ("in-review", "cancelled"),
+        ("cancelled", "new"),
         // ready ->
         ("ready", "on-hold"),
         // in-implementation ->
