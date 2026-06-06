@@ -32,6 +32,8 @@ pub struct WorkspaceRegistry {
     primary_workspace: String,
     /// public workspace id → filesystem path and display label.
     workspaces: HashMap<String, WorkspaceEntry>,
+    /// Legacy nested path aliases → canonical workspace id.
+    legacy_aliases: HashMap<String, String>,
     /// Lazy-opened stores, keyed by name.
     stores: Mutex<HashMap<String, Arc<TicketStore>>>,
     /// Workspaces currently being opened by another thread.
@@ -136,6 +138,7 @@ impl WorkspaceRegistry {
         Self {
             primary_workspace,
             workspaces,
+            legacy_aliases: HashMap::new(),
             stores: Mutex::new(HashMap::new()),
             opening: Mutex::new(HashSet::new()),
             opening_cv: Condvar::new(),
@@ -157,12 +160,14 @@ impl WorkspaceRegistry {
                 label: workspace_label_for_index_root(&path, "workspace"),
             },
         );
-        extend_related_paths(&mut workspaces, &store);
+        let mut legacy_aliases = HashMap::new();
+        extend_related_paths(&mut workspaces, &mut legacy_aliases, &store);
         let mut stores = HashMap::new();
         stores.insert(primary_workspace.clone(), store);
         Self {
             primary_workspace,
             workspaces,
+            legacy_aliases,
             stores: Mutex::new(stores),
             opening: Mutex::new(HashSet::new()),
             opening_cv: Condvar::new(),
@@ -199,6 +204,10 @@ impl WorkspaceRegistry {
     ) -> Result<Option<String>, WorkspaceResolveError> {
         if self.workspaces.contains_key(workspace) {
             return Ok(Some(workspace.to_string()));
+        }
+
+        if let Some(workspace) = self.legacy_aliases.get(workspace) {
+            return Ok(Some(workspace.clone()));
         }
 
         let mut matches = self
@@ -318,7 +327,7 @@ impl WorkspaceRegistry {
         }
 
         // Lazy open outside mutexes to avoid blocking unrelated requests.
-        let opened = match TicketStore::open(&path) {
+        let opened = match TicketStore::open_or_init(&path) {
             Ok(store) => Some(Arc::new(store)),
             Err(e) => {
                 tracing::warn!(workspace, error = %e, "failed to open workspace store");
@@ -383,10 +392,15 @@ impl ResolvedIndexedTicket {
 
 fn extend_related_paths(
     workspaces: &mut HashMap<String, WorkspaceEntry>,
+    legacy_aliases: &mut HashMap<String, String>,
     store: &TicketStore,
 ) {
-    for (name, entry) in discover_descendant_workspace_paths(store) {
+    for (name, entry, alias) in discover_descendant_workspace_paths(store) {
+        let canonical_name = name.clone();
         workspaces.entry(name).or_insert(entry);
+        if let Some(alias) = alias {
+            legacy_aliases.entry(alias).or_insert(canonical_name);
+        }
     }
     for (name, entry) in discover_ancestor_workspace_paths(store) {
         workspaces.entry(name).or_insert(entry);
@@ -395,10 +409,12 @@ fn extend_related_paths(
 
 fn discover_descendant_workspace_paths(
     store: &TicketStore
-) -> Vec<(String, WorkspaceEntry)> {
+) -> Vec<(String, WorkspaceEntry, Option<String>)> {
     let Ok(scan_roots) = store.list_scan_roots() else {
         return Vec::new();
     };
+
+    let active_workspace_root = workspace_root_for_store(store).to_path_buf();
 
     scan_roots
         .into_iter()
@@ -407,7 +423,8 @@ fn discover_descendant_workspace_paths(
             if index_root == store.index_root {
                 return None;
             }
-            let label = workspace_label_for_index_root(&index_root, &root.label);
+            let label =
+                workspace_label_for_index_root(&index_root, &root.label);
             Some((
                 canonical_workspace_name_for_index_root(
                     &index_root,
@@ -417,9 +434,25 @@ fn discover_descendant_workspace_paths(
                     path: index_root,
                     label,
                 },
+                legacy_path_alias(&active_workspace_root, &root.path),
             ))
         })
         .collect()
+}
+
+fn legacy_path_alias(
+    active_workspace_root: &Path,
+    scan_root: &Path,
+) -> Option<String> {
+    let store_root = store_root_for_scan_root(scan_root)?;
+    let workspace_root = workspace_root_for_index_root(&store_root);
+    let relative = workspace_root
+        .strip_prefix(active_workspace_root)
+        .ok()?
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    relative.contains('/').then_some(relative)
 }
 
 fn discover_ancestor_workspace_paths(
@@ -436,10 +469,7 @@ fn discover_ancestor_workspace_paths(
             let fallback = ancestor_label(depth);
             let label = workspace_label_for_index_root(&candidate, &fallback);
             ancestors.push((
-                canonical_workspace_name_for_index_root(
-                    &candidate,
-                    &fallback,
-                ),
+                canonical_workspace_name_for_index_root(&candidate, &fallback),
                 WorkspaceEntry {
                     path: candidate,
                     label,
@@ -497,16 +527,27 @@ pub(crate) fn store_root_for_scan_root(scan_root: &Path) -> Option<PathBuf> {
 }
 
 fn detect_store_root(dir: &std::path::Path) -> Option<PathBuf> {
-    if dir.join("tickets.db").is_file() {
+    if dir.join("tickets.db").is_file() || has_ticket_manifest(dir) {
         return Some(dir.to_path_buf());
     }
 
     let hidden = dir.join(".ticket");
-    if hidden.join("tickets.db").is_file() {
+    if hidden.join("tickets.db").is_file() || has_ticket_manifest(&hidden) {
         return Some(hidden);
     }
 
     None
+}
+
+fn has_ticket_manifest(store_root: &Path) -> bool {
+    let tickets_dir = store_root.join("tickets");
+    let Ok(entries) = std::fs::read_dir(tickets_dir) else {
+        return false;
+    };
+
+    entries
+        .flatten()
+        .any(|entry| entry.path().join("ticket.toml").is_file())
 }
 
 fn ancestor_label(depth: usize) -> String {
@@ -622,8 +663,10 @@ mod workspace_resolution_tests {
             })
             .expect("add parent scan root");
 
-        let left_index_root = root.path().join("alpha").join("shared").join(".ticket");
-        let right_index_root = root.path().join("beta").join("shared").join(".ticket");
+        let left_index_root =
+            root.path().join("alpha").join("shared").join(".ticket");
+        let right_index_root =
+            root.path().join("beta").join("shared").join(".ticket");
         std::fs::create_dir_all(left_index_root.join("tickets"))
             .expect("mkdir left store");
         std::fs::create_dir_all(right_index_root.join("tickets"))
@@ -653,7 +696,11 @@ mod workspace_resolution_tests {
 
         assert_eq!(shared_workspaces.len(), 2);
         assert_ne!(shared_workspaces[0].name, shared_workspaces[1].name);
-        assert!(shared_workspaces.iter().all(|info| info.name.starts_with("shared--")));
+        assert!(
+            shared_workspaces
+                .iter()
+                .all(|info| info.name.starts_with("shared--"))
+        );
 
         let ambiguous = registry
             .resolve_workspace_name("shared")
@@ -667,6 +714,89 @@ mod workspace_resolution_tests {
                     .map(|info| info.name.clone())
                     .collect(),
             }
+        );
+    }
+
+    #[test]
+    fn nested_workspace_path_alias_resolves_to_canonical_workspace_id() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let parent_store = Arc::new(
+            TicketStore::init(root.path()).expect("open parent store"),
+        );
+        parent_store
+            .add_scan_root(ScanRoot {
+                path: root.path().join("tickets"),
+                label: "default".to_string(),
+            })
+            .expect("add parent scan root");
+
+        let child_index_root = root
+            .path()
+            .join("memory-viewers")
+            .join("memory-api")
+            .join(".ticket");
+        std::fs::create_dir_all(child_index_root.join("tickets"))
+            .expect("mkdir child store");
+        TicketStore::init(&child_index_root).expect("open child store");
+
+        parent_store
+            .add_scan_root(ScanRoot {
+                path: child_index_root.join("tickets"),
+                label: "memory-viewers/memory-api".to_string(),
+            })
+            .expect("add child scan root to parent");
+
+        let registry = WorkspaceRegistry::single_opened(parent_store);
+        let child_id = registry
+            .workspace_infos()
+            .into_iter()
+            .find(|info| info.label == "memory-api")
+            .expect("child workspace info")
+            .name;
+
+        assert_eq!(
+            registry
+                .resolve_workspace_name("memory-viewers/memory-api")
+                .expect("nested path alias should resolve"),
+            Some(child_id),
+        );
+    }
+
+    #[test]
+    fn manifest_only_hidden_child_store_is_discovered() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let parent_store = Arc::new(
+            TicketStore::init(root.path()).expect("open parent store"),
+        );
+        parent_store
+            .add_scan_root(ScanRoot {
+                path: root.path().join("tickets"),
+                label: "default".to_string(),
+            })
+            .expect("add parent scan root");
+
+        let child_index_root = root
+            .path()
+            .join("memory-viewers")
+            .join("memory-api")
+            .join(".ticket");
+        std::fs::create_dir_all(child_index_root.join("tickets"))
+            .expect("mkdir child store");
+
+        parent_store
+            .add_scan_root(ScanRoot {
+                path: child_index_root.join("tickets"),
+                label: "memory-viewers/memory-api".to_string(),
+            })
+            .expect("add child scan root to parent");
+
+        let registry = WorkspaceRegistry::single_opened(parent_store);
+
+        assert!(
+            registry
+                .workspace_infos()
+                .into_iter()
+                .any(|info| info.label == "memory-api")
         );
     }
 

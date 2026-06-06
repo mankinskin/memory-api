@@ -32,15 +32,26 @@ fn main() {
         }
     }
 
-    let store = {
-        let root =
-            index_root.map(std::path::PathBuf::from).unwrap_or_else(|| {
-                let (path, _source) =
-                    ticket_api::workspace::resolve_workspace();
-                path
-            });
-        TicketStore::open(&root).expect("failed to open ticket store")
-    };
+    let root = index_root.map(std::path::PathBuf::from).unwrap_or_else(|| {
+        let (path, _source) = ticket_api::workspace::resolve_workspace();
+        path
+    });
+    let workspace_root =
+        ticket_api::workspace::resolve_workspace_root_from_store_root(
+            &root,
+            ticket_api::workspace::TICKET_INDEX_DIR,
+        );
+    let store = TicketStore::open(&root).expect("failed to open ticket store");
+    if ticket_http::serve::register_descendant_scan_roots(
+        &store,
+        &workspace_root,
+    )
+    .expect("failed to register descendant workspaces")
+    {
+        store
+            .scan(true)
+            .expect("failed to reindex ticket store after registering descendant workspaces");
+    }
 
     let registry = WorkspaceRegistry::single_opened(std::sync::Arc::new(store));
 

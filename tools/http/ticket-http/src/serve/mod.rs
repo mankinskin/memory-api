@@ -12,8 +12,12 @@ pub mod routes;
 pub mod stream;
 
 use std::{
-    collections::HashSet,
+    collections::{
+        BTreeSet,
+        HashSet,
+    },
     net::SocketAddr,
+    path::Path,
     sync::{
         Arc,
         Mutex,
@@ -27,8 +31,10 @@ use axum::{
 use serde_json::json;
 use tokio::net::TcpListener;
 
-use viewer_api::auth::TokenSet;
-use viewer_api::error::ApiError;
+use viewer_api::{
+    auth::TokenSet,
+    error::ApiError,
+};
 
 pub use auth_state::AuthState;
 pub use registry::WorkspaceRegistry;
@@ -37,6 +43,31 @@ pub use stream::{
     StreamBroker,
 };
 use ticket_api::storage::store::TicketStore;
+
+pub fn register_descendant_scan_roots(
+    store: &TicketStore,
+    workspace_root: &Path,
+) -> Result<bool, ticket_api::error::StorageError> {
+    let mut known_scan_roots = store
+        .list_scan_roots()?
+        .into_iter()
+        .map(|root| root.path)
+        .collect::<BTreeSet<_>>();
+    let mut reindex = false;
+
+    for root in ticket_api::workspace::discover_workspace_scan_roots(
+        workspace_root,
+        ticket_api::workspace::TICKET_INDEX_DIR,
+        "tickets",
+    ) {
+        if known_scan_roots.insert(root.path.clone()) {
+            reindex = true;
+        }
+        store.add_scan_root(root)?;
+    }
+
+    Ok(reindex)
+}
 
 /// Configuration for `ticket serve`.
 #[derive(Debug, Clone)]
@@ -120,10 +151,10 @@ impl AppState {
             Some(workspace) => workspace,
             None => return Ok(None),
         };
-        let store = self
-            .registry
-            .get(&workspace)
-            .expect("resolved workspace should exist");
+        let Some(store) = self.registry.get(&workspace) else {
+            tracing::warn!(workspace, "resolved workspace could not be opened");
+            return Ok(None);
+        };
 
         let mut ready = self.runtime_ready.lock().unwrap();
         if !ready.insert(workspace.to_string()) {
@@ -221,13 +252,53 @@ mod tests {
         AppState,
         StreamBroker,
         WorkspaceRegistry,
+        register_descendant_scan_roots,
     };
     use crate::serve::stream::event::SseEvent;
     use std::{
         collections::BTreeMap,
         sync::Arc,
     };
-    use ticket_api::model::filesystem::ScanRoot;
+    use ticket_api::{
+        model::filesystem::ScanRoot,
+        storage::store::TicketStore,
+    };
+
+    #[test]
+    fn register_descendant_scan_roots_adds_nested_ticket_workspace() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = TicketStore::init(root.path()).expect("open root store");
+        store
+            .add_scan_root(ScanRoot {
+                path: root.path().join("tickets"),
+                label: "default".to_string(),
+            })
+            .expect("add root scan root");
+
+        let child_store_root = root
+            .path()
+            .join("memory-viewers")
+            .join("memory-api")
+            .join(".ticket");
+        std::fs::create_dir_all(child_store_root.join("tickets"))
+            .expect("create child store dirs");
+        TicketStore::init(&child_store_root).expect("open child store");
+
+        let reindex = register_descendant_scan_roots(&store, root.path())
+            .expect("register descendant scan roots");
+
+        assert!(reindex, "new descendant roots should request reindex");
+        assert!(
+            store
+                .list_scan_roots()
+                .expect("list scan roots")
+                .iter()
+                .any(|root| {
+                    root.path == child_store_root.join("tickets")
+                        && root.label == "memory-viewers/memory-api"
+                })
+        );
+    }
 
     #[tokio::test]
     async fn ensure_workspace_runtime_wires_hook_for_lazy_open_store() {
@@ -237,7 +308,6 @@ mod tests {
             Arc::new(StreamBroker::new()),
         );
         let workspace = state.registry.primary_workspace_name().to_string();
-
         let mut rx = state.broker.subscribe(&workspace);
         let store = state
             .ensure_workspace_runtime(&workspace)
