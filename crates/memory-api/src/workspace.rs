@@ -116,6 +116,41 @@ pub fn resolve_requested_store_root_from(
     PathBuf::from(dir_name)
 }
 
+/// Resolve a session-style store root relative to the tool execution directory.
+///
+/// Unlike [`resolve_local_root_from`], which only walks upward, this helper also
+/// prefers an existing hidden store nested *below* the execution root. This is
+/// required for stores that live inside a submodule (for example the
+/// `memory-api` workspace's `.memory-api` directory): running the tool from the
+/// repository root must reuse that nested store instead of creating a duplicate
+/// hidden directory at the root.
+///
+/// Resolution order:
+/// 1. An existing store discovered by walking upward from `cwd`.
+/// 2. An existing store nested under `cwd` (shallowest first).
+/// 3. A hidden store at the execution root (`cwd/<dir_name>`).
+pub fn resolve_session_store_root_from(
+    cwd: Option<&Path>,
+    dir_name: &str,
+) -> PathBuf {
+    let Some(cwd) = cwd else {
+        return PathBuf::from(dir_name);
+    };
+
+    if let Some(existing) = find_local_root_from(cwd, dir_name) {
+        return existing;
+    }
+
+    if let Some(nested) = find_descendant_store_roots_from(cwd, dir_name)
+        .into_iter()
+        .next()
+    {
+        return nested;
+    }
+
+    resolve_local_root_from(cwd, dir_name)
+}
+
 pub fn resolve_workspace_root_from_store_root(
     store_root: &Path,
     dir_name: &str,
@@ -169,21 +204,25 @@ pub fn discover_workspace_scan_roots(
         .map(|store_root| {
             let owning_workspace =
                 resolve_workspace_root_from_store_root(&store_root, store_dir);
-            let label = owning_workspace
-                .strip_prefix(&workspace_root)
-                .ok()
-                .filter(|path| !path.as_os_str().is_empty())
-                .map(|path| path.to_string_lossy().replace('\\', "/"))
-                .unwrap_or_else(|| {
-                    owning_workspace
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .map(|name| format!("ancestor:{name}"))
-                        .unwrap_or_else(|| "ancestor".to_string())
-                });
+            let label = if owning_workspace == workspace_root {
+                ".".to_string()
+            } else {
+                owning_workspace
+                    .strip_prefix(&workspace_root)
+                    .ok()
+                    .filter(|path| !path.as_os_str().is_empty())
+                    .map(|path| path.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_else(|| {
+                        owning_workspace
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .map(|name| format!("ancestor:{name}"))
+                            .unwrap_or_else(|| "ancestor".to_string())
+                    })
+            };
 
             ScanRoot {
-                path: store_root.join(entity_dir),
+                path: normalize_working_dir_path(&store_root.join(entity_dir)),
                 label,
             }
         })
@@ -581,6 +620,51 @@ mod tests {
         let resolved = resolve_working_dir(None, Some(pwd));
 
         assert_eq!(resolved, Some(normalize_working_dir_path(pwd)));
+    }
+
+    #[test]
+    fn resolve_session_store_root_from_prefers_ancestor_store() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let memory_api = repo.join("memory-viewers").join("memory-api");
+        let nested = memory_api.join("crates").join("session-api");
+        std::fs::create_dir_all(memory_api.join(".memory-api")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let resolved = resolve_session_store_root_from(Some(&nested), ".memory-api");
+
+        assert_eq!(resolved, normalize_working_dir_path(&memory_api.join(".memory-api")));
+    }
+
+    #[test]
+    fn resolve_session_store_root_from_prefers_nested_store_under_execution_root() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let memory_api = repo.join("memory-viewers").join("memory-api");
+        std::fs::create_dir_all(memory_api.join(".memory-api")).unwrap();
+        std::fs::create_dir_all(repo.join("src")).unwrap();
+
+        let resolved = resolve_session_store_root_from(Some(&repo), ".memory-api");
+
+        assert_eq!(resolved, normalize_working_dir_path(&memory_api.join(".memory-api")));
+    }
+
+    #[test]
+    fn resolve_session_store_root_from_falls_back_to_execution_root() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let resolved = resolve_session_store_root_from(Some(&repo), ".memory-api");
+
+        assert_eq!(resolved, normalize_working_dir_path(&repo.join(".memory-api")));
+    }
+
+    #[test]
+    fn resolve_session_store_root_from_defaults_without_cwd() {
+        let resolved = resolve_session_store_root_from(None, ".memory-api");
+
+        assert_eq!(resolved, PathBuf::from(".memory-api"));
     }
 
     #[cfg(windows)]

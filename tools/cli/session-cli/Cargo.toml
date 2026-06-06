@@ -1,0 +1,28 @@
+[package]
+name = "session-cli"
+version = "0.1.0"
+edition = "2024"
+description = "CLI interface for session-api: the `session` command"
+
+[[bin]]
+name = "session"
+path = "src/bin/session.rs"
+
+[lib]
+name = "session_cli"
+path = "src/lib.rs"
+
+[dependencies]
+session-api = { path = "../../../crates/session-api" }
+memory-api = { path = "../../../crates/memory-api" }
+
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toon-format = "0.5"
+thiserror = "2"
+
+[dev-dependencies]
+pretty_assertions = "1"
+tempfile = "3"
+chrono = { version = "0.4", features = ["serde"] }

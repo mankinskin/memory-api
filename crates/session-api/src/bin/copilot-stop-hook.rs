@@ -1,5 +1,6 @@
 use std::{
     env,
+    path::Path,
     path::PathBuf,
     process,
 };
@@ -24,15 +25,26 @@ fn main() {
 
 fn run() -> Result<(), SessionError> {
     let args = parse_args()?;
-    let config = SessionStoreConfig::new(args.store_root, args.workspace_slug);
+    let store_root = resolve_store_root(args.store_root, memory_api::workspace::working_dir().as_deref());
+    let config = SessionStoreConfig::new(store_root, args.workspace_slug);
 
     config.capture_copilot_transcript(args.transcript_path, args.trigger)?;
     Ok(())
 }
 
+fn resolve_store_root(
+    store_root: Option<PathBuf>,
+    cwd: Option<&Path>,
+) -> PathBuf {
+    match store_root {
+        Some(store_root) => store_root,
+        None => memory_api::workspace::resolve_session_store_root_from(cwd, ".memory-api"),
+    }
+}
+
 struct Args {
     transcript_path: PathBuf,
-    store_root: PathBuf,
+    store_root: Option<PathBuf>,
     workspace_slug: String,
     trigger: String,
 }
@@ -71,9 +83,7 @@ fn parse_args() -> Result<Args, SessionError> {
         transcript_path: transcript_path.ok_or_else(|| {
             SessionError::InvalidHookInput("missing --transcript-path".to_string())
         })?,
-        store_root: store_root.ok_or_else(|| {
-            SessionError::InvalidHookInput("missing --store-root".to_string())
-        })?,
+        store_root,
         workspace_slug: workspace_slug.ok_or_else(|| {
             SessionError::InvalidHookInput("missing --workspace-slug".to_string())
         })?,
@@ -92,6 +102,42 @@ fn next_value(
 
 fn print_usage() {
     println!(
-        "Usage: copilot-stop-hook --transcript-path <PATH> --store-root <PATH> --workspace-slug <SLUG> [--trigger <NAME>]"
+        "Usage: copilot-stop-hook --transcript-path <PATH> [--store-root <PATH>] --workspace-slug <SLUG> [--trigger <NAME>]"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use std::path::PathBuf;
+
+    use super::resolve_store_root;
+
+    #[test]
+    fn resolve_store_root_uses_explicit_path_when_present() {
+        let explicit = PathBuf::from("C:/repo/.memory-api");
+
+        assert_eq!(resolve_store_root(Some(explicit.clone()), None), explicit);
+    }
+
+    #[test]
+    fn resolve_store_root_defaults_to_hidden_store_in_current_directory() {
+        let cwd = tempdir().unwrap();
+
+        let resolved = resolve_store_root(None, Some(cwd.path()));
+
+        assert_eq!(resolved, cwd.path().join(".memory-api"));
+    }
+
+    #[test]
+    fn resolve_store_root_reuses_nested_memory_api_store_from_repo_root() {
+        let repo = tempdir().unwrap();
+        let memory_api = repo.path().join("memory-viewers").join("memory-api");
+        std::fs::create_dir_all(memory_api.join(".memory-api")).unwrap();
+
+        let resolved = resolve_store_root(None, Some(repo.path()));
+
+        assert_eq!(resolved, memory_api.join(".memory-api"));
+    }
 }

@@ -1,6 +1,7 @@
 pub mod error;
 pub mod hook;
 pub mod model;
+pub mod peek;
 pub mod store;
 
 pub use error::SessionError;
@@ -20,6 +21,14 @@ pub use model::{
     SessionWorktreeAllocationMode,
     SessionWorktreeAssignment,
     SessionWorktreeStatus,
+};
+pub use peek::{
+    peek_skeleton,
+    peek_turn_range,
+    SessionSkeleton,
+    SessionSkeletonEntry,
+    SessionTurnRange,
+    DEFAULT_SKELETON_PREVIEW_CHARS,
 };
 pub use store::{
     PersistedSessionManifest,

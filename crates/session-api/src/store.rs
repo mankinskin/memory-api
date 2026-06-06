@@ -15,6 +15,12 @@ use serde::{
 
 use crate::{
     hook::copilot_payload_from_transcript_path,
+    peek::{
+        peek_skeleton,
+        peek_turn_range,
+        SessionSkeleton,
+        SessionTurnRange,
+    },
     CopilotHookPayload,
     SessionCaptureRequest,
     SessionError,
@@ -348,6 +354,27 @@ impl SessionStoreConfig {
     ) -> Result<SessionWorktreeCheckInReceipt, SessionError> {
         let record = self.read_session(session_id)?;
         receipt_from_record(&record)
+    }
+
+    /// Return a bounded window of transcript turns for a persisted session.
+    pub fn peek_range(
+        &self,
+        session_id: &str,
+        start: usize,
+        end: Option<usize>,
+    ) -> Result<SessionTurnRange, SessionError> {
+        let record = self.read_session(session_id)?;
+        Ok(peek_turn_range(&record, start, end))
+    }
+
+    /// Return a body-stripped skeleton overview of a persisted session.
+    pub fn peek_skeleton(
+        &self,
+        session_id: &str,
+        preview_chars: usize,
+    ) -> Result<SessionSkeleton, SessionError> {
+        let record = self.read_session(session_id)?;
+        Ok(peek_skeleton(&record, preview_chars))
     }
 
     fn paths_for_session_id(
