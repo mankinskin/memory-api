@@ -74,7 +74,10 @@ impl HealthReport {
 // ─── Public entry point ──────────────────────────────────────────────────────
 
 /// Produce a normalized `HealthReport` for `tickets` using edge and workflow
-/// context.  Done or cancelled tickets are skipped automatically.
+/// context.
+///
+/// Graph participation checks run for all tickets to preserve topology parity,
+/// while non-topology checks skip done/cancelled tickets.
 ///
 /// This is the single canonical implementation consumed by CLI, HTTP, and MCP.
 pub fn collect_findings(
@@ -96,6 +99,7 @@ pub fn collect_findings(
 
     let mut report = HealthReport::default();
     for ticket in tickets {
+        append_graph_participation_findings(ticket, all_edges, &mut report);
         if done_ids.contains(&ticket.id) {
             continue;
         }
@@ -113,11 +117,34 @@ fn append_ticket_findings(
     workflow: &WorkflowModel,
     report: &mut HealthReport,
 ) {
-    append_graph_participation_findings(ticket, all_edges, report);
+    append_effort_estimation_findings(ticket, workflow, report);
     append_description_findings(ticket, report);
     append_title_finding(ticket, report);
     append_dependency_state_findings(ticket, workflow, report);
     append_dangling_edge_findings(store, ticket, all_edges, report);
+}
+
+fn append_effort_estimation_findings(
+    ticket: &IndexedTicket,
+    workflow: &WorkflowModel,
+    report: &mut HealthReport,
+) {
+    if workflow.effort(&ticket.id).is_some() {
+        return;
+    }
+
+    report.record(
+        "missing_effort_estimation",
+        base_finding(
+            ticket,
+            "missing_effort_estimation",
+            "warning",
+            "Ticket is missing an effort estimation (for example '1200' or '2.5k tokens').".to_string(),
+            vec![
+                "Set the ticket 'effort' field to a token-budget estimate so planning and ranking remain accurate.".to_string(),
+            ],
+        ),
+    );
 }
 
 fn append_graph_participation_findings(
@@ -158,8 +185,6 @@ fn append_graph_participation_findings(
 }
 
 fn append_description_findings(ticket: &IndexedTicket, report: &mut HealthReport) {
-    let short_id = short_id(ticket.id);
-    let title = ticket.title.as_deref().unwrap_or("?").to_string();
     match TicketFs::read_description(&ticket.path) {
         None => report.record(
             "missing_description",
@@ -377,6 +402,15 @@ mod tests {
         workflow::WorkflowModel,
     };
 
+    fn extra_with_effort(value: &str) -> BTreeMap<String, serde_json::Value> {
+        let mut extra = BTreeMap::new();
+        extra.insert(
+            "effort".to_string(),
+            serde_json::Value::String(value.to_string()),
+        );
+        extra
+    }
+
     fn open_store() -> (tempfile::TempDir, TicketStore) {
         let dir = tempdir().unwrap();
         let store = TicketStore::init(dir.path()).unwrap();
@@ -392,7 +426,7 @@ mod tests {
                 "tracker-improvement",
                 Some("My well-described ticket"),
                 Some("ready"),
-                BTreeMap::new(),
+                extra_with_effort("1200"),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
             )
@@ -403,7 +437,7 @@ mod tests {
                 "tracker-improvement",
                 Some("My well-described dependent ticket"),
                 Some("ready"),
-                BTreeMap::new(),
+                extra_with_effort("800"),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
             )
@@ -439,7 +473,7 @@ mod tests {
                 "tracker-improvement",
                 Some("Ticket with no description"),
                 Some("ready"),
-                BTreeMap::new(),
+                extra_with_effort("900"),
                 None,
                 None,
             )
@@ -472,7 +506,7 @@ mod tests {
                 "tracker-improvement",
                 Some("Ticket with terse description"),
                 Some("ready"),
-                BTreeMap::new(),
+                extra_with_effort("600"),
                 None,
                 Some("Short."),
             )
@@ -492,9 +526,9 @@ mod tests {
     }
 
     #[test]
-    fn done_ticket_is_skipped() {
+    fn done_ticket_skips_non_topology_checks() {
         let (_dir, store) = open_store();
-        let id = store
+        let done = store
             .create(
                 None,
                 "tracker-improvement",
@@ -505,6 +539,25 @@ mod tests {
                 None,
             )
             .unwrap();
+        let linked = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Linked ticket"),
+                Some("done"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .unwrap();
+        store
+            .add_edge(crate::model::edge::EdgeRecord {
+                from: done,
+                to: linked,
+                kind: "depends_on".to_string(),
+                created_at: chrono::Utc::now(),
+            })
+            .unwrap();
 
         let tickets = store.list(None, None, None).unwrap();
         let edges = store.list_all_edges().unwrap();
@@ -514,11 +567,11 @@ mod tests {
         let ticket_findings: Vec<_> = report
             .findings
             .iter()
-            .filter(|f| f.ticket_id == id)
+            .filter(|f| f.ticket_id == done)
             .collect();
         assert!(
             ticket_findings.is_empty(),
-            "done ticket must produce no findings, got {ticket_findings:?}"
+            "done ticket should skip non-topology checks, got {ticket_findings:?}"
         );
     }
 
@@ -531,7 +584,7 @@ mod tests {
                 "tracker-improvement",
                 Some("Orphan ticket"),
                 Some("in-implementation"),
-                BTreeMap::new(),
+                extra_with_effort("1500"),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
             )
@@ -551,6 +604,57 @@ mod tests {
         assert!(
             finding.message.contains("depends_on graph"),
             "message must mention depends_on graph"
+        );
+    }
+
+    #[test]
+    fn missing_effort_estimation_produces_warning() {
+        let (_dir, store) = open_store();
+        let parent = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Parent"),
+                Some("ready"),
+                extra_with_effort("500"),
+                None,
+                Some("This description is definitely long enough to pass the 50-character threshold."),
+            )
+            .unwrap();
+        let id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Missing effort"),
+                Some("ready"),
+                BTreeMap::new(),
+                None,
+                Some("This description is definitely long enough to pass the 50-character threshold."),
+            )
+            .unwrap();
+        store
+            .add_edge(crate::model::edge::EdgeRecord {
+                from: parent,
+                to: id,
+                kind: "depends_on".to_string(),
+                created_at: chrono::Utc::now(),
+            })
+            .unwrap();
+
+        let tickets = store.list(None, None, None).unwrap();
+        let edges = store.list_all_edges().unwrap();
+        let workflow = WorkflowModel::build(&store, tickets.clone(), edges.clone()).unwrap();
+        let report = super::collect_findings(&store, &tickets, &edges, &workflow);
+
+        let finding = report
+            .findings
+            .iter()
+            .find(|f| f.ticket_id == id && f.check == "missing_effort_estimation")
+            .expect("expected missing_effort_estimation finding");
+        assert_eq!(finding.severity, "warning");
+        assert!(
+            finding.message.contains("effort estimation"),
+            "message must mention effort estimation"
         );
     }
 }
