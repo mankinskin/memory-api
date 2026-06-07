@@ -1,11 +1,9 @@
-use std::{
-    collections::HashMap,
-    path::Path,
-};
+use std::path::Path;
 
 use serde_json::json;
 use ticket_api::{
     error::StorageError,
+    health,
     storage::TicketStore,
     workflow::WorkflowModel,
 };
@@ -70,34 +68,25 @@ pub fn evaluate(repo_root: &Path) -> TicketGraphResult {
         },
     };
 
-    let mut dependency_counts = HashMap::new();
-    let mut dependee_counts = HashMap::new();
-    for edge in edges.into_iter().filter(|edge| edge.kind == "depends_on") {
-        *dependency_counts.entry(edge.from).or_insert(0usize) += 1;
-        *dependee_counts.entry(edge.to).or_insert(0usize) += 1;
-    }
-
-    let mut tickets = tickets;
-    tickets.sort_by(|left, right| left.path.cmp(&right.path));
-
-    let orphan_findings: Vec<AuditFinding> = tickets
+    let canonical_health = health::collect_findings(&store, &tickets, &edges, &workflow);
+    let orphan_findings: Vec<AuditFinding> = canonical_health
+        .findings
         .into_iter()
-        .filter_map(|ticket| {
-            let dependency_count = dependency_counts.get(&ticket.id).copied().unwrap_or(0);
-            let dependee_count = dependee_counts.get(&ticket.id).copied().unwrap_or(0);
-            if dependency_count > 0 || dependee_count > 0 {
+        .filter_map(|finding| {
+            if finding.check != "graph_participation" {
                 return None;
             }
 
-            let display_path = relative_ticket_path(repo_root, &ticket.path);
-            let title = ticket
-                .title
-                .clone()
-                .unwrap_or_else(|| ticket.id.to_string());
+            let display_path = relative_ticket_path(repo_root, &finding.path);
+            let title = if finding.title.is_empty() {
+                finding.ticket_id.to_string()
+            } else {
+                finding.title.clone()
+            };
             Some(AuditFinding {
-                id: format!("ticket_graph:{}", ticket.id),
+                id: format!("ticket_graph:{}", finding.ticket_id),
                 category: "ticket_graph".to_string(),
-                severity: orphan_severity(ticket.state.as_deref()),
+                severity: orphan_severity(finding.state.as_deref()),
                 summary: format!(
                     "{} is not linked into the depends_on graph.",
                     title
@@ -107,19 +96,23 @@ pub fn evaluate(repo_root: &Path) -> TicketGraphResult {
                 metric_name: "orphan_ticket_count".to_string(),
                 metric_value: json!(1),
                 threshold: Some(json!(0)),
-                instructions: vec![
-                    format!(
-                        "Link {} to its real prerequisites with depends_on edges, or attach it under an existing parent ticket.",
-                        display_path
-                    ),
-                    "If this is otherwise standalone work, create a project-tracker parent ticket that depends_on this ticket so the task is still connected to the broader plan.".to_string(),
-                ],
+                instructions: if finding.instructions.is_empty() {
+                    vec![
+                        format!(
+                            "Link {} to its real prerequisites with depends_on edges, or attach it under an existing parent ticket.",
+                            display_path
+                        ),
+                        "If this is otherwise standalone work, create a project-tracker parent ticket that depends_on this ticket so the task is still connected to the broader plan.".to_string(),
+                    ]
+                } else {
+                    finding.instructions.clone()
+                },
                 evidence: json!({
-                    "ticket_id": ticket.id,
+                    "ticket_id": finding.ticket_id,
                     "path": display_path,
-                    "state": ticket.state,
-                    "dependency_count": dependency_count,
-                    "dependee_count": dependee_count,
+                    "state": finding.state,
+                    "type": finding.r#type,
+                    "check": finding.check,
                 }),
             })
         })

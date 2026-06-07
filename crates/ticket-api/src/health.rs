@@ -5,6 +5,7 @@
 //! how they are serialized to their respective envelopes.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use serde::Serialize;
 use uuid::Uuid;
@@ -27,9 +28,15 @@ pub struct HealthFinding {
     pub ticket_id: Uuid,
     pub short_id: String,
     pub title: String,
+    pub path: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    pub r#type: String,
     pub check: String,
     pub severity: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub instructions: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prerequisite_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -106,10 +113,48 @@ fn append_ticket_findings(
     workflow: &WorkflowModel,
     report: &mut HealthReport,
 ) {
+    append_graph_participation_findings(ticket, all_edges, report);
     append_description_findings(ticket, report);
     append_title_finding(ticket, report);
     append_dependency_state_findings(ticket, workflow, report);
     append_dangling_edge_findings(store, ticket, all_edges, report);
+}
+
+fn append_graph_participation_findings(
+    ticket: &IndexedTicket,
+    all_edges: &[EdgeRecord],
+    report: &mut HealthReport,
+) {
+    let dependency_count = all_edges
+        .iter()
+        .filter(|edge| edge.kind == "depends_on" && edge.from == ticket.id)
+        .count();
+    let dependee_count = all_edges
+        .iter()
+        .filter(|edge| edge.kind == "depends_on" && edge.to == ticket.id)
+        .count();
+
+    if dependency_count > 0 || dependee_count > 0 {
+        return;
+    }
+
+    let title = ticket.title.as_deref().unwrap_or("?").to_string();
+    let path = ticket.path.to_string_lossy().to_string();
+    report.record(
+        "graph_participation",
+        base_finding(
+            ticket,
+            "graph_participation",
+            "warning",
+            format!("{title} is not linked into the depends_on graph."),
+            vec![
+                format!(
+                    "Link {path} to real prerequisites or dependees using depends_on edges."
+                ),
+                "If this is standalone work, place it under a tracker ticket to keep the graph connected.".to_string(),
+            ],
+        ),
+    );
 }
 
 fn append_description_findings(ticket: &IndexedTicket, report: &mut HealthReport) {
@@ -118,32 +163,30 @@ fn append_description_findings(ticket: &IndexedTicket, report: &mut HealthReport
     match TicketFs::read_description(&ticket.path) {
         None => report.record(
             "missing_description",
-            HealthFinding {
-                ticket_id: ticket.id,
-                short_id,
-                title,
-                check: "missing_description".into(),
-                severity: "warning".into(),
-                message: "No description.md file — ticket lacks detailed context.".into(),
-                ..Default::default()
-            },
+            base_finding(
+                ticket,
+                "missing_description",
+                "warning",
+                "No description.md file — ticket lacks detailed context.".into(),
+                vec!["Add a description.md with goal, scope, acceptance checks, and current status.".to_string()],
+            ),
         ),
         Some(body) => {
             let trimmed_len = body.trim().len();
             if trimmed_len < 50 {
                 report.record(
                     "short_description",
-                    HealthFinding {
-                        ticket_id: ticket.id,
-                        short_id,
-                        title,
-                        check: "short_description".into(),
-                        severity: "info".into(),
-                        message: format!(
+                    base_finding(
+                        ticket,
+                        "short_description",
+                        "info",
+                        format!(
                             "description.md is very short ({trimmed_len} chars) — consider adding more detail."
                         ),
-                        ..Default::default()
-                    },
+                        vec![
+                            "Expand description.md with acceptance criteria, dependencies, and validation evidence.".to_string(),
+                        ],
+                    ),
                 );
             }
         },
@@ -154,15 +197,13 @@ fn append_title_finding(ticket: &IndexedTicket, report: &mut HealthReport) {
     if ticket.title.is_none() || ticket.title.as_deref() == Some("") {
         report.record(
             "missing_title",
-            HealthFinding {
-                ticket_id: ticket.id,
-                short_id: short_id(ticket.id),
-                title: "(none)".into(),
-                check: "missing_title".into(),
-                severity: "error".into(),
-                message: "Ticket has no title.".into(),
-                ..Default::default()
-            },
+            base_finding(
+                ticket,
+                "missing_title",
+                "error",
+                "Ticket has no title.".into(),
+                vec!["Set a concise ticket title describing the change intent and scope.".to_string()],
+            ),
         );
     }
 }
@@ -180,18 +221,18 @@ fn append_dependency_state_findings(
     if let Some(unresolved) = workflow.unresolved_dependencies(&ticket.id) {
         report.record(
             "unblocked_with_deps",
-            HealthFinding {
-                ticket_id: ticket.id,
-                short_id: short_id(ticket.id),
-                title: ticket.title.as_deref().unwrap_or("?").to_string(),
-                check: "unblocked_with_deps".into(),
-                severity: "info".into(),
-                message: format!(
+            base_finding(
+                ticket,
+                "unblocked_with_deps",
+                "info",
+                format!(
                     "Ticket is '{state}' but has {} unresolved dependency/ies — may need state review.",
                     unresolved.len()
                 ),
-                ..Default::default()
-            },
+                vec![
+                    "Move the ticket to a blocked or earlier state, or resolve the remaining dependencies first.".to_string(),
+                ],
+            ),
         );
     }
 
@@ -203,17 +244,16 @@ fn append_dependency_state_findings(
         report.record(
             "dependency_convergence",
             HealthFinding {
-                ticket_id: ticket.id,
-                short_id: short_id(ticket.id),
-                title: ticket.title.as_deref().unwrap_or("?").to_string(),
-                check: "dependency_convergence".into(),
-                severity: "warning".into(),
                 message: format!(
                     "Ticket depends on {} in earlier state '{}' while this ticket is '{}'.",
                     short_id(inversion.prerequisite_id),
                     inversion.prerequisite_state.as_deref().unwrap_or("?"),
                     inversion.dependent_state.as_deref().unwrap_or(state),
                 ),
+                instructions: vec![
+                    "Advance the prerequisite ticket before continuing this dependent ticket when dependency order is still valid.".to_string(),
+                    "If out-of-order progress is intentional, document the exception and update states to make it explicit.".to_string(),
+                ],
                 prerequisite_id: Some(inversion.prerequisite_id),
                 prerequisite_title: inversion.prerequisite_title.clone(),
                 prerequisite_state: inversion.prerequisite_state.clone(),
@@ -224,6 +264,13 @@ fn append_dependency_state_findings(
                     inversion.affected_reverse_dependent_reach,
                 ),
                 transitive_reverse_dependents: Some(inversion.transitive_reverse_dependents),
+                ..base_finding(
+                    ticket,
+                    "dependency_convergence",
+                    "warning",
+                    String::new(),
+                    Vec::new(),
+                )
             },
         );
     }
@@ -250,18 +297,18 @@ fn append_dangling_edge_findings(
         }
         report.record(
             "dangling_edge",
-            HealthFinding {
-                ticket_id: ticket.id,
-                short_id: short_id(ticket.id),
-                title: ticket.title.as_deref().unwrap_or("?").to_string(),
-                check: "dangling_edge".into(),
-                severity: "error".into(),
-                message: format!(
+            base_finding(
+                ticket,
+                "dangling_edge",
+                "error",
+                format!(
                     "depends_on edge points to {} which is deleted or missing.",
                     short_id(edge.to)
                 ),
-                ..Default::default()
-            },
+                vec![
+                    "Remove or retarget the stale depends_on edge to an existing prerequisite ticket.".to_string(),
+                ],
+            ),
         );
     }
 }
@@ -272,15 +319,41 @@ fn short_id(id: Uuid) -> String {
     id.to_string()[..8].to_string()
 }
 
+fn base_finding(
+    ticket: &IndexedTicket,
+    check: &str,
+    severity: &str,
+    message: String,
+    instructions: Vec<String>,
+) -> HealthFinding {
+    HealthFinding {
+        ticket_id: ticket.id,
+        short_id: short_id(ticket.id),
+        title: ticket.title.as_deref().unwrap_or("?").to_string(),
+        path: ticket.path.clone(),
+        state: ticket.state.clone(),
+        r#type: ticket.type_id.clone(),
+        check: check.to_string(),
+        severity: severity.to_string(),
+        message,
+        instructions,
+        ..Default::default()
+    }
+}
+
 impl Default for HealthFinding {
     fn default() -> Self {
         Self {
             ticket_id: Uuid::nil(),
             short_id: String::new(),
             title: String::new(),
+            path: PathBuf::new(),
+            state: None,
+            r#type: String::new(),
             check: String::new(),
             severity: String::new(),
             message: String::new(),
+            instructions: Vec::new(),
             prerequisite_id: None,
             prerequisite_title: None,
             prerequisite_state: None,
@@ -313,7 +386,7 @@ mod tests {
     #[test]
     fn no_findings_for_ticket_with_good_description() {
         let (_dir, store) = open_store();
-        let id = store
+        let linked_parent = store
             .create(
                 None,
                 "tracker-improvement",
@@ -323,6 +396,25 @@ mod tests {
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
             )
+            .unwrap();
+        let id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("My well-described dependent ticket"),
+                Some("ready"),
+                BTreeMap::new(),
+                None,
+                Some("This description is definitely long enough to pass the 50-character threshold."),
+            )
+            .unwrap();
+        store
+            .add_edge(crate::model::edge::EdgeRecord {
+                from: linked_parent,
+                to: id,
+                kind: "depends_on".to_string(),
+                created_at: chrono::Utc::now(),
+            })
             .unwrap();
 
         let tickets = store.list(None, None, None).unwrap();
@@ -427,6 +519,38 @@ mod tests {
         assert!(
             ticket_findings.is_empty(),
             "done ticket must produce no findings, got {ticket_findings:?}"
+        );
+    }
+
+    #[test]
+    fn orphan_ticket_produces_graph_participation_finding() {
+        let (_dir, store) = open_store();
+        let id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Orphan ticket"),
+                Some("in-implementation"),
+                BTreeMap::new(),
+                None,
+                Some("This description is definitely long enough to pass the 50-character threshold."),
+            )
+            .unwrap();
+
+        let tickets = store.list(None, None, None).unwrap();
+        let edges = store.list_all_edges().unwrap();
+        let workflow = WorkflowModel::build(&store, tickets.clone(), edges.clone()).unwrap();
+        let report = super::collect_findings(&store, &tickets, &edges, &workflow);
+
+        let finding = report
+            .findings
+            .iter()
+            .find(|f| f.ticket_id == id && f.check == "graph_participation")
+            .expect("expected graph_participation finding");
+        assert_eq!(finding.severity, "warning");
+        assert!(
+            finding.message.contains("depends_on graph"),
+            "message must mention depends_on graph"
         );
     }
 }
