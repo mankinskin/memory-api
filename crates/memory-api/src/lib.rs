@@ -17,3 +17,12 @@ pub use storage::{
     EntityStore,
     ReconcileAction,
 };
+
+// Re-export index entry schema types at the crate root for convenient access.
+pub use model::index_entry::{
+    ContentKind,
+    IndexEntry,
+    IndexRef,
+    IndexRelations,
+    RelationKind,
+};
