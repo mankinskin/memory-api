@@ -1,5 +1,6 @@
 pub mod error;
 pub mod generated_markdown;
+pub mod index_generator;
 pub mod model;
 pub mod storage;
 pub mod workspace;
@@ -19,6 +20,13 @@ pub use storage::{
 };
 
 // Re-export index entry schema types at the crate root for convenient access.
+pub use model::index_sidecar::{
+    IndexSidecar,
+    SidecarError,
+    SidecarValidationIssue,
+    read_sidecar,
+    write_sidecar,
+};
 pub use model::index_entry::{
     ContentKind,
     IndexEntry,
