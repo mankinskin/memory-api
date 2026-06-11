@@ -38,7 +38,10 @@ fn resolve_store_root(
 ) -> PathBuf {
     match store_root {
         Some(store_root) => store_root,
-        None => memory_api::workspace::resolve_session_store_root_from(cwd, ".memory-api"),
+        None => match cwd {
+            Some(cwd) => memory_api::workspace::resolve_local_root_from(cwd, ".memory-api"),
+            None => std::path::PathBuf::from(".memory-api"),
+        },
     }
 }
 
@@ -131,13 +134,26 @@ mod tests {
     }
 
     #[test]
-    fn resolve_store_root_reuses_nested_memory_api_store_from_repo_root() {
+    fn resolve_store_root_walks_up_to_ancestor_store() {
+        let repo = tempdir().unwrap();
+        let nested = repo.path().join("memory-viewers").join("memory-api");
+        std::fs::create_dir_all(repo.path().join(".memory-api")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let resolved = resolve_store_root(None, Some(&nested));
+
+        assert_eq!(resolved, repo.path().join(".memory-api"));
+    }
+
+    #[test]
+    fn resolve_store_root_does_not_descend_into_submodules() {
         let repo = tempdir().unwrap();
         let memory_api = repo.path().join("memory-viewers").join("memory-api");
         std::fs::create_dir_all(memory_api.join(".memory-api")).unwrap();
 
+        // Running from repo root: must NOT descend into the submodule — creates at CWD.
         let resolved = resolve_store_root(None, Some(repo.path()));
 
-        assert_eq!(resolved, memory_api.join(".memory-api"));
+        assert_eq!(resolved, repo.path().join(".memory-api"));
     }
 }
