@@ -5,6 +5,9 @@ tools/ticket-vscode/
   package.json          — manifest: contributes (views, commands, menus, config), engines, deps
   tsconfig.json         — compiles src/ → out/; strict mode
   jest.config.ts        — Jest + ts-jest; tests in test/unit/
+  scripts/
+    install-vsix.mjs    — packages the extension and installs the newest VSIX via the VS Code CLI
+    run-vsce.cjs        — launches the local vsce CLI with a Node-18 compatibility shim
   src/
     extension.ts        — entry point: activate(), deactivate(), all command registrations
     ticketProvider.ts   — TicketTreeProvider (TreeDataProvider + Disposable)
@@ -24,6 +27,8 @@ tools/ticket-vscode/
 | `ticketProvider.ts` | Implements `vscode.TreeDataProvider<TreeNode>`; groups tickets by state; manages dependency map; lazy tooltips via `resolveTreeItem`; on-disk folder browsing |
 | `api.ts` | Stateless HTTP client functions; all calls carry a 6 s GET timeout / 10 s mutation timeout; cursor-based pagination in `fetchAllTickets` |
 | `browserBridge.ts` | Local HTTP control server on a configurable port; VS Code Simple Browser navigation; Playwright-over-CDP page automation (dynamically required) |
+| `scripts/run-vsce.cjs` | Small compatibility shim that loads the local `@vscode/vsce` CLI under Node 18 before packaging |
+| `scripts/install-vsix.mjs` | Developer helper that packages the current extension into a VSIX and installs the newest artifact into the local VS Code profile |
 
 ## Data Flow
 

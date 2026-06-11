@@ -10,6 +10,8 @@ code_refs = [
 	{ description = "Tree items for state groups, ticket rows, and on-disk ticket files/folders; ticket rows invoke the openTicket command on click.", file = "tools/ticket-vscode/src/ticketTreeItems.ts", kind = "module", line_end = 129, line_start = 1, symbol = "ticketTreeItems" },
 	{ description = "Typed HTTP client for the ticket-viewer REST API: read and mutation endpoints, cursor pagination, and error handling.", file = "tools/ticket-vscode/src/api.ts", kind = "module", line_end = 268, line_start = 1, symbol = "api" },
 	{ description = "BrowserBridge: localhost HTTP control server plus optional CDP automation hooks for the ticket-viewer page.", file = "tools/ticket-vscode/src/browserBridge.ts", kind = "module", line_end = 370, line_start = 1, symbol = "BrowserBridge" },
+	{ description = "Node compatibility wrapper for the local vsce CLI so VSIX packaging works on the repo's current Node runtime.", file = "tools/ticket-vscode/scripts/run-vsce.cjs", kind = "module", line_end = 40, line_start = 1, symbol = "run-vsce" },
+	{ description = "Local packaging helper that creates the latest VSIX and installs it through the VS Code CLI, with a dry-run mode for validation.", file = "tools/ticket-vscode/scripts/install-vsix.mjs", kind = "module", line_end = 120, line_start = 1, symbol = "install-vsix" },
 ]
 component = "ticket-vscode"
 scope = "component"

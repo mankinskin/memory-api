@@ -1,5 +1,6 @@
 {
   "name": "ticket-viewer",
+  "publisher": "context-engine",
   "displayName": "Ticket Viewer",
   "description": "View and navigate the ticket graph directly from the VS Code sidebar.",
   "version": "0.1.0",
@@ -313,13 +314,16 @@
   "scripts": {
     "compile": "tsc -p tsconfig.json",
     "watch": "tsc --watch -p tsconfig.json",
-    "package": "vsce package --no-dependencies",
+    "package": "npm run compile && node ./scripts/run-vsce.cjs package --no-dependencies --allow-missing-repository --skip-license",
+    "install:vsix": "node ./scripts/install-vsix.mjs",
+    "install:vsix:dry-run": "node ./scripts/install-vsix.mjs --dry-run",
     "test:unit": "jest --config jest.config.ts"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^2.32.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.4.9",
     "ts-node": "^10.9.2",

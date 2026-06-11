@@ -1,1 +1,2 @@
 {"rev":1,"ts":"2026-05-18T10:56:18.373264800+00:00","fields":{"component":"ticket-vscode","priority":"high","risk_level":"medium","state":"ready","title":"[ticket-vscode] Add dual-host packaging, bundling, and extension test harnesses","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-06-11T12:41:32.148478900+00:00","fields":{"component":"ticket-vscode","priority":"high","risk_level":"medium","state":"in-implementation","title":"[ticket-vscode] Add dual-host packaging, bundling, and extension test harnesses","type":"tracker-improvement"}}
