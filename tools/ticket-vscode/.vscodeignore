@@ -1,15 +1,14 @@
 node_modules/
 .vscode/
+.gitignore
 *.vsix
 # Source maps excluded from VSIX to keep size small.
 # NOTE: do NOT exclude out/*.wasm — the WASM binary must be present for both
 # the desktop (main) and browser entries to load the Rust/WASM core.
 out/*.js.map
+out/__mocks__/
 src/
 test/
 scripts/
 tsconfig*.json
 jest.config.ts
-pkg/
-!pkg/*.wasm
-!pkg/*_bg.wasm

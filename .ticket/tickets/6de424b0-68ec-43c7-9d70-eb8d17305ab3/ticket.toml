@@ -1,7 +1,7 @@
 id = "6de424b0-68ec-43c7-9d70-eb8d17305ab3"
 created_at = "2026-05-18T10:56:19.146718300+00:00"
 title = "[ticket-vscode] Validate Rust/WASM parity across desktop, web, and remote hosts"
-state = "ready"
+state = "in-implementation"
 component = "ticket-vscode"
 depends_on = ["362448d4-ccf1-4b9d-90f3-d4577da83a65"]
 priority = "high"

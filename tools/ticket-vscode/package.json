@@ -316,10 +316,10 @@
     "compile": "tsc -p tsconfig.json",
     "bundle:browser": "node ./scripts/bundle-browser.mjs",
     "build": "npm run compile && npm run bundle:browser",
-    "build:wasm": "wasm-pack build ../../../crates/ticket-vscode-core --target bundler --out-dir ../tools/ticket-vscode/pkg",
+    "build:wasm": "wasm-pack build ../../crates/ticket-vscode-core --target bundler --out-dir ../../tools/ticket-vscode/pkg",
     "build:full": "npm run build:wasm && npm run build",
     "watch": "tsc --watch -p tsconfig.json",
-    "package": "npm run build && node ./scripts/run-vsce.cjs package --no-dependencies --allow-missing-repository --skip-license",
+    "package": "npm run build:full && node ./scripts/run-vsce.cjs package --no-dependencies --allow-missing-repository --skip-license",
     "install:vsix": "node ./scripts/install-vsix.mjs",
     "install:vsix:dry-run": "node ./scripts/install-vsix.mjs --dry-run",
     "test:unit": "jest --config jest.config.ts"

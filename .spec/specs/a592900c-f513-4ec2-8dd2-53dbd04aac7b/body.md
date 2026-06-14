@@ -116,10 +116,25 @@ Single-file bundle (no `require`, no dynamic external `import()`). `"module": "e
 ### Build pipeline
 
 ```
-wasm-pack build crates/ticket-vscode-core --target bundler --out-dir tools/ticket-vscode/pkg/
+wasm-pack build ../../crates/ticket-vscode-core --target bundler --out-dir ../../tools/ticket-vscode/pkg
 npm run compile          # tsc -> out/extension.js  (main entry)
 npm run bundle:browser   # esbuild src/extension.browser.ts -> out/extension.browser.js
 ```
+
+## Validation Status (2026-06-15)
+
+Automated validation passed:
+- `cargo test -p ticket-vscode-core` -> 16 passed, 0 failed
+- `cargo check -p ticket-vscode-core --target wasm32-unknown-unknown --features wasm` -> passed
+- `cd memory-viewers/memory-api/tools/ticket-vscode && npm run build` -> passed
+- `cd memory-viewers/memory-api/tools/ticket-vscode && npm run test:unit` -> 32 passed, 0 failed
+- `cd memory-viewers/memory-api/tools/ticket-vscode && npm run package` -> passed, VSIX includes `pkg/ticket_vscode_core_bg.wasm` and glue files
+
+Validation still blocked / incomplete:
+- no `@vscode/test-web` harness or `test:web` script exists yet in `tools/ticket-vscode/package.json`
+- no external Chromium-family manual validation has been captured yet
+- no remote-oriented validation run has been captured yet
+- `package.json` still contributes desktop-only commands (`ticket-viewer.startServer`, `ticket-viewer.bridgeNavigate`, `ticket-viewer.bridgeConnectCdp`, `ticket-viewer.bridgeStatus`) unconditionally, so host-gating is not yet fully evidenced
 
 ## Planned Work Track
 
