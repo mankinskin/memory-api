@@ -54,7 +54,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     state.serverUrl,
     state.workspace,
     state.config.autoRefreshSeconds,
-    resolveTicketsDir(state.workspace),
+    resolveTicketsDir(state.workspace, state.displayName),
   );
   context.subscriptions.push(provider);
 
@@ -98,10 +98,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }
 
+  async function syncProviderToResolvedWorkspace(): Promise<void> {
+    const resolvedWorkspace = await resolveActiveWorkspace(
+      state.serverUrl,
+      state.config.workspace,
+      context,
+    );
+    state.workspace = resolvedWorkspace.workspace;
+    state.displayName = resolvedWorkspace.displayName;
+    provider.update(
+      state.serverUrl,
+      state.workspace,
+      state.config.autoRefreshSeconds,
+      resolveTicketsDir(state.workspace, state.displayName),
+    );
+    statusBarItem.tooltip = `Open Ticket Viewer (${state.serverUrl})`;
+    updateStatusBar();
+  }
+
   // Update status bar whenever the tree data changes.
   context.subscriptions.push(
     provider.onDidChangeTreeData(() => updateStatusBar()),
   );
+
+  if (state.config.autoStartServer && _serverProcess) {
+    void pollUntilReachable(state.serverUrl, 30_000)
+      .then(() => syncProviderToResolvedWorkspace())
+      .catch(() => undefined);
+  }
 
   registerExtensionCommands({
     context,

@@ -48,6 +48,20 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
     );
   }
 
+  async function syncProviderToResolvedWorkspace(): Promise<void> {
+    const resolved = await resolveActiveWorkspace(state.serverUrl, state.config.workspace, context);
+    state.workspace = resolved.workspace;
+    state.displayName = resolved.displayName;
+    provider.update(
+      state.serverUrl,
+      state.workspace,
+      state.config.autoRefreshSeconds,
+      resolveTicketsDir(state.workspace, state.displayName),
+    );
+    statusBarItem.tooltip = `Open Ticket Viewer (${state.serverUrl})`;
+    updateStatusBar();
+  }
+
   context.subscriptions.push(
     vscode.commands.registerCommand('ticket-viewer.openBrowser', () => {
       openTicketViewer(state.serverUrl);
@@ -132,7 +146,7 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
   context.subscriptions.push(
     vscode.commands.registerCommand('ticket-viewer.startServer', async () => {
       if (await pingServer(state.serverUrl)) {
-        provider.refresh();
+        await syncProviderToResolvedWorkspace();
         vscode.window.setStatusBarMessage(`$(server) Server already running at ${state.serverUrl}`, 3000);
         return;
       }
@@ -145,14 +159,10 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
         setServerProcess(handle.process);
         state.serverUrl = handle.serverUrl;
         vscode.window.setStatusBarMessage(`$(server) Ticket server running on ${state.serverUrl}`, 5000);
-        provider.update(
-          state.serverUrl,
-          state.workspace,
-          state.config.autoRefreshSeconds,
-          resolveTicketsDir(state.workspace),
-        );
         statusBarItem.tooltip = `Open Ticket Viewer (${state.serverUrl})`;
-        void pollUntilReachable(state.serverUrl, 30_000).then(() => provider.refresh());
+        void pollUntilReachable(state.serverUrl, 30_000)
+          .then(() => syncProviderToResolvedWorkspace())
+          .catch(() => undefined);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         void vscode.window.showErrorMessage(`Failed to start server: ${msg}`);
@@ -351,16 +361,7 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
       });
       if (!pick) { return; }
       await context.workspaceState.update('activeTicketFolder', pick.folderName);
-      const resolved = await resolveActiveWorkspace(state.serverUrl, state.config.workspace, context);
-      state.workspace = resolved.workspace;
-      state.displayName = resolved.displayName;
-      provider.update(
-        state.serverUrl,
-        state.workspace,
-        state.config.autoRefreshSeconds,
-        resolveTicketsDir(state.workspace),
-      );
-      updateStatusBar();
+      await syncProviderToResolvedWorkspace();
     }),
   );
 
@@ -406,16 +407,7 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(async () => {
-      const resolved = await resolveActiveWorkspace(state.serverUrl, state.config.workspace, context);
-      state.workspace = resolved.workspace;
-      state.displayName = resolved.displayName;
-      provider.update(
-        state.serverUrl,
-        state.workspace,
-        state.config.autoRefreshSeconds,
-        resolveTicketsDir(state.workspace),
-      );
-      updateStatusBar();
+      await syncProviderToResolvedWorkspace();
     }),
   );
 
@@ -426,17 +418,7 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
       if (!state.config.autoStartServer) {
         state.serverUrl = state.config.serverUrl;
       }
-      const resolved = await resolveActiveWorkspace(state.serverUrl, state.config.workspace, context);
-      state.workspace = resolved.workspace;
-      state.displayName = resolved.displayName;
-      provider.update(
-        state.serverUrl,
-        state.workspace,
-        state.config.autoRefreshSeconds,
-        resolveTicketsDir(state.workspace),
-      );
-      statusBarItem.tooltip = `Open Ticket Viewer (${state.serverUrl})`;
-      updateStatusBar();
+      await syncProviderToResolvedWorkspace();
     }),
   );
 }

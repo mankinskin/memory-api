@@ -11,10 +11,17 @@ jest.mock('node:fs', () => ({
   statSync: jest.fn(),
 }));
 
-import { resolveServerLaunch, type TicketViewerConfig } from '../../src/extensionSupport';
+import { fetchWorkspaces } from '../../src/api';
+import {
+  resolveActiveWorkspace,
+  resolveServerLaunch,
+  resolveTicketsDir,
+  type TicketViewerConfig,
+} from '../../src/extensionSupport';
 
 const mockFs = fs as jest.Mocked<typeof fs>;
 const mockWorkspace = vscode.workspace as any;
+const mockFetchWorkspaces = fetchWorkspaces as jest.MockedFunction<typeof fetchWorkspaces>;
 
 function makeConfig(overrides: Partial<TicketViewerConfig> = {}): TicketViewerConfig {
   return {
@@ -58,6 +65,7 @@ describe('resolveServerLaunch', () => {
   const pathBinary = path.join(pathDir, binaryName);
 
   beforeEach(() => {
+    mockFetchWorkspaces.mockReset();
     mockFs.existsSync.mockReset();
     mockFs.statSync.mockReset();
     mockWorkspace.workspaceFolders = [
@@ -133,5 +141,88 @@ describe('resolveServerLaunch', () => {
     expect(resolved.cmd).toBe(debugBinary);
     expect(resolved.args).toEqual(['--index-root', ticketDir]);
     expect(resolved.cwd).toBe(workspaceRoot);
+  });
+
+  test('prefers the label-matched canonical workspace id over the first server workspace', async () => {
+    mockFs.statSync.mockImplementation(candidate => {
+      if (candidate.toString() === ticketDir) {
+        return directoryStat();
+      }
+      throw new Error(`ENOENT: ${candidate.toString()}`);
+    });
+    mockFetchWorkspaces.mockResolvedValue({
+      request_id: 'req-1',
+      workspaces: [
+        {
+          name: 'C:/Users/linus/git/graph_app/context-engine/context-stack/tools/context-editor/.ticket',
+          label: 'context-editor',
+        },
+        {
+          name: 'default',
+          label: 'workspace',
+        },
+      ],
+    });
+
+    const resolved = await resolveActiveWorkspace(
+      'http://localhost:3002',
+      '',
+      {
+        workspaceState: {
+          get: jest.fn(),
+          update: jest.fn(),
+        },
+      } as unknown as vscode.ExtensionContext,
+    );
+
+    expect(resolved).toEqual({ workspace: 'default', displayName: 'workspace' });
+  });
+
+  test('falls back to the server active workspace when folder-name matching misses', async () => {
+    mockFs.statSync.mockImplementation(candidate => {
+      if (candidate.toString() === ticketDir) {
+        return directoryStat();
+      }
+      throw new Error(`ENOENT: ${candidate.toString()}`);
+    });
+    mockFetchWorkspaces.mockResolvedValue({
+      request_id: 'req-2',
+      active_workspace: 'default',
+      workspaces: [
+        {
+          name: 'C:/Users/linus/git/graph_app/context-engine/context-stack/tools/context-editor/.ticket',
+          label: 'context-editor',
+        },
+        {
+          name: 'default',
+          label: 'context-engine',
+        },
+      ],
+    });
+
+    const resolved = await resolveActiveWorkspace(
+      'http://localhost:3002',
+      '',
+      {
+        workspaceState: {
+          get: jest.fn(),
+          update: jest.fn(),
+        },
+      } as unknown as vscode.ExtensionContext,
+    );
+
+    expect(resolved).toEqual({ workspace: 'default', displayName: 'workspace' });
+  });
+
+  test('resolves the local tickets directory from display name when workspace ids are canonical', () => {
+    mockFs.statSync.mockImplementation(candidate => {
+      const candidatePath = candidate.toString();
+      if (candidatePath === ticketDir || candidatePath === path.join(ticketDir, 'tickets')) {
+        return directoryStat();
+      }
+      throw new Error(`ENOENT: ${candidatePath}`);
+    });
+
+    expect(resolveTicketsDir('shared--abc123', 'workspace')).toBe(path.join(ticketDir, 'tickets'));
   });
 });

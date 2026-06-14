@@ -94,7 +94,7 @@ function createArgs() {
     setSearchQuery: jest.fn(),
     setStateFilter: jest.fn(),
     clearFilters: jest.fn(),
-  } as never;
+  } as any;
 
   registerExtensionCommands({
     context,
@@ -107,7 +107,7 @@ function createArgs() {
     setServerProcess: jest.fn(),
   });
 
-  return { registered };
+  return { registered, provider, state, context };
 }
 
 describe('registerExtensionCommands', () => {
@@ -137,5 +137,67 @@ describe('registerExtensionCommands', () => {
       'markdown.showPreviewToSide',
       expect.anything(),
     );
+  });
+
+  test('ticket-viewer.startServer re-resolves the workspace when the server is already reachable', async () => {
+    const { registered, provider, state, context } = createArgs();
+    const startServer = registered.get('ticket-viewer.startServer');
+
+    (extensionSupport.pingServer as jest.Mock).mockResolvedValue(true);
+    (extensionSupport.resolveActiveWorkspace as jest.Mock).mockResolvedValue({
+      workspace: 'shared--abc123',
+      displayName: 'workspace',
+    });
+
+    await startServer?.();
+
+    expect(extensionSupport.resolveActiveWorkspace).toHaveBeenCalledWith(
+      'http://localhost:3002',
+      'default',
+      context,
+    );
+    expect(extensionSupport.resolveTicketsDir).toHaveBeenCalledWith('shared--abc123', 'workspace');
+    expect(provider.update).toHaveBeenCalledWith(
+      'http://localhost:3002',
+      'shared--abc123',
+      0,
+      'C:/tickets',
+    );
+    expect(state.workspace).toBe('shared--abc123');
+    expect(state.displayName).toBe('workspace');
+  });
+
+  test('ticket-viewer.startServer re-resolves the workspace after a spawned server becomes reachable', async () => {
+    const { registered, provider, state, context } = createArgs();
+    const startServer = registered.get('ticket-viewer.startServer');
+
+    (extensionSupport.pingServer as jest.Mock).mockResolvedValue(false);
+    (extensionSupport.startServerTask as jest.Mock).mockResolvedValue({
+      process: { killed: false },
+      serverUrl: 'http://localhost:55838',
+    });
+    (extensionSupport.pollUntilReachable as jest.Mock).mockResolvedValue(undefined);
+    (extensionSupport.resolveActiveWorkspace as jest.Mock).mockResolvedValue({
+      workspace: 'shared--abc123',
+      displayName: 'workspace',
+    });
+
+    await startServer?.();
+    await Promise.resolve();
+
+    expect(extensionSupport.pollUntilReachable).toHaveBeenCalledWith('http://localhost:55838', 30_000);
+    expect(extensionSupport.resolveActiveWorkspace).toHaveBeenCalledWith(
+      'http://localhost:55838',
+      'default',
+      context,
+    );
+    expect(extensionSupport.resolveTicketsDir).toHaveBeenCalledWith('shared--abc123', 'workspace');
+    expect(provider.update).toHaveBeenCalledWith(
+      'http://localhost:55838',
+      'shared--abc123',
+      0,
+      'C:/tickets',
+    );
+    expect(state.serverUrl).toBe('http://localhost:55838');
   });
 });

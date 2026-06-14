@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 
-import { fetchWorkspaces } from './api';
+import { fetchWorkspaces, type WorkspaceInfo } from './api';
 
 export const TICKET_STATES = [
   'new', 'ready', 'in-implementation',
@@ -53,6 +53,94 @@ export interface ActiveWorkspace {
 export interface ServerHandle {
   process: ChildProcess;
   serverUrl: string;
+}
+
+function normalizePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/\/+$|\/$/g, '').toLowerCase();
+}
+
+function stripTicketSuffix(value: string): string {
+  const normalized = normalizePath(value);
+  return normalized.endsWith('/.ticket')
+    ? normalized.slice(0, -'/.ticket'.length)
+    : normalized;
+}
+
+function displayWorkspaceLabel(workspace: WorkspaceInfo): string {
+  const label = workspace.label?.trim();
+  return label && label !== '' ? label : workspace.name;
+}
+
+function matchesDetectedWorkspace(
+  workspace: WorkspaceInfo,
+  detected: DetectedWorkspace,
+): boolean {
+  const normalizedName = normalizePath(workspace.name);
+  const normalizedLabel = normalizePath(workspace.label ?? '');
+  const folderName = detected.folderName.trim().toLowerCase();
+  const folderPath = normalizePath(detected.folder.uri.fsPath);
+  const ticketPath = normalizePath(detected.ticketPath);
+
+  if (workspace.name === detected.folderName) {
+    return true;
+  }
+
+  if ((workspace.label ?? '').trim() === detected.folderName) {
+    return true;
+  }
+
+  return [normalizedName, normalizedLabel].some(candidate => {
+    if (candidate === '') {
+      return false;
+    }
+
+    return candidate === folderPath
+      || candidate === ticketPath
+      || stripTicketSuffix(candidate) === folderPath
+      || stripTicketSuffix(candidate) === ticketPath
+      || candidate === folderName;
+  });
+}
+
+function resolveWorkspaceSelection(
+  serverWorkspaces: WorkspaceInfo[],
+  activeWorkspace: string | undefined,
+  detected: DetectedWorkspace | undefined,
+): { workspace: string; displayName: string } {
+  const activeName = activeWorkspace?.trim() || undefined;
+
+  if (detected) {
+    const exactMatch = serverWorkspaces.find(workspace =>
+      matchesDetectedWorkspace(workspace, detected),
+    );
+    if (exactMatch) {
+      return {
+        workspace: exactMatch.name,
+        displayName: detected.folderName,
+      };
+    }
+  }
+
+  if (activeName) {
+    const activeMatch = serverWorkspaces.find(workspace => workspace.name === activeName);
+    if (activeMatch) {
+      return {
+        workspace: activeMatch.name,
+        displayName: detected?.folderName ?? displayWorkspaceLabel(activeMatch),
+      };
+    }
+  }
+
+  const fallback = serverWorkspaces[0];
+  if (fallback) {
+    return {
+      workspace: fallback.name,
+      displayName: detected?.folderName ?? displayWorkspaceLabel(fallback),
+    };
+  }
+
+  const displayName = detected?.folderName ?? 'default';
+  return { workspace: 'default', displayName };
 }
 
 function preferredBrowserCandidates(): string[] {
@@ -135,18 +223,16 @@ export async function resolveActiveWorkspace(
 
   const detected = detectTicketWorkspaces();
 
-  let serverWorkspaces: string[] = [];
+  let serverWorkspaces: WorkspaceInfo[] = [];
+  let activeWorkspace: string | undefined;
   try {
-    const list = await fetchWorkspaces(serverUrl);
-    serverWorkspaces = list.map(workspace => workspace.name);
+    const response = await fetchWorkspaces(serverUrl);
+    serverWorkspaces = response.workspaces;
+    activeWorkspace = response.active_workspace;
   } catch { /* server may not be running yet */ }
 
   if (detected.length === 1) {
-    const { folderName } = detected[0];
-    const workspace = serverWorkspaces.includes(folderName)
-      ? folderName
-      : (serverWorkspaces[0] ?? 'default');
-    return { workspace, displayName: folderName };
+    return resolveWorkspaceSelection(serverWorkspaces, activeWorkspace, detected[0]);
   }
 
   if (detected.length > 1) {
@@ -154,10 +240,7 @@ export async function resolveActiveWorkspace(
     if (stored) {
       const match = detected.find(candidate => candidate.folderName === stored);
       if (match) {
-        const workspace = serverWorkspaces.includes(match.folderName)
-          ? match.folderName
-          : (serverWorkspaces[0] ?? 'default');
-        return { workspace, displayName: match.folderName };
+        return resolveWorkspaceSelection(serverWorkspaces, activeWorkspace, match);
       }
     }
 
@@ -172,15 +255,12 @@ export async function resolveActiveWorkspace(
     });
     if (pick) {
       await context.workspaceState.update('activeTicketFolder', pick.folderName);
-      const workspace = serverWorkspaces.includes(pick.folderName)
-        ? pick.folderName
-        : (serverWorkspaces[0] ?? 'default');
-      return { workspace, displayName: pick.folderName };
+      const detectedMatch = detected.find(candidate => candidate.folderName === pick.folderName);
+      return resolveWorkspaceSelection(serverWorkspaces, activeWorkspace, detectedMatch);
     }
   }
 
-  const workspace = serverWorkspaces[0] ?? 'default';
-  return { workspace, displayName: workspace };
+  return resolveWorkspaceSelection(serverWorkspaces, activeWorkspace, undefined);
 }
 
 export function openTicketViewer(url: string): void {
@@ -201,9 +281,22 @@ export function openTicketViewer(url: string): void {
   child.unref();
 }
 
-export function resolveTicketsDir(workspaceName: string): string | undefined {
+export function resolveTicketsDir(workspaceName: string, displayName?: string): string | undefined {
   const detected = detectTicketWorkspaces();
-  const match = detected.find(candidate => candidate.folderName === workspaceName) ?? detected[0];
+  const normalizedWorkspace = normalizePath(workspaceName);
+  const normalizedDisplay = displayName?.trim().toLowerCase();
+  const match = detected.find(candidate => {
+    const normalizedFolder = candidate.folderName.trim().toLowerCase();
+    const normalizedFolderPath = normalizePath(candidate.folder.uri.fsPath);
+    const normalizedTicketPath = normalizePath(candidate.ticketPath);
+
+    return normalizedFolder === normalizedDisplay
+      || normalizedFolder === workspaceName.trim().toLowerCase()
+      || normalizedFolderPath === normalizedWorkspace
+      || normalizedTicketPath === normalizedWorkspace
+      || stripTicketSuffix(normalizedWorkspace) === normalizedFolderPath
+      || stripTicketSuffix(normalizedWorkspace) === normalizedTicketPath;
+  }) ?? detected[0];
   if (!match) { return undefined; }
   const dir = path.join(match.ticketPath, 'tickets');
   try {

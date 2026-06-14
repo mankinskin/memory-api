@@ -3,10 +3,12 @@
 
 export interface WorkspaceInfo {
   name: string;
+  label?: string;
 }
 
 export interface WorkspacesResponse {
   request_id: string;
+  active_workspace?: string;
   workspaces: WorkspaceInfo[];
 }
 
@@ -47,9 +49,8 @@ async function apiFetch<T>(url: string): Promise<T> {
   }
 }
 
-export async function fetchWorkspaces(baseUrl: string): Promise<WorkspaceInfo[]> {
-  const data = await apiFetch<WorkspacesResponse>(`${baseUrl}/api/workspaces`);
-  return data.workspaces;
+export async function fetchWorkspaces(baseUrl: string): Promise<WorkspacesResponse> {
+  return apiFetch<WorkspacesResponse>(`${baseUrl}/api/workspaces`);
 }
 
 export async function fetchTickets(
