@@ -9,6 +9,12 @@ Core workflows to validate:
 - copy the selected ticket ID to the clipboard
 - file-browsing and desktop-only helpers, where still supported
 
+## Dependency links
+
+- Tracker: [6d07d610 Rust/WASM port track](../6d07d610-75c1-448a-afd5-6ae15098ca21/ticket.toml)
+- Depends on: [362448d4 Add dual-host packaging, bundling, and extension test harnesses](../362448d4-ccf1-4b9d-90f3-d4577da83a65/ticket.toml)
+- Final validation ticket in the execution chain.
+
 Acceptance criteria:
 - [ ] Validation results are recorded for desktop/local, browser/web, and at least one remote-oriented host scenario or documented equivalent.
 - [ ] External Chromium-family manual validation is captured for the browser-facing path, including the window or display resolution used.

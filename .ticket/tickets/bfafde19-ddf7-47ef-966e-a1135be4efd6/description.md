@@ -9,6 +9,12 @@ This includes redesigning or scoping these current behaviors:
 - local preferred-browser launching
 - Browser Bridge / CDP automation
 
+## Dependency links
+
+- Tracker: [6d07d610 Rust/WASM port track](../6d07d610-75c1-448a-afd5-6ae15098ca21/ticket.toml)
+- Depends on: [011563c2 Extract portable Rust core for ticket/domain logic](../011563c2-59e7-48f1-a61f-d8fdc80d2f6e/ticket.toml)
+- Unblocks: [362448d4 Add dual-host packaging, bundling, and extension test harnesses](../362448d4-ccf1-4b9d-90f3-d4577da83a65/ticket.toml)
+
 Acceptance criteria:
 - [ ] Runtime-sensitive behavior is moved behind capability adapters or split host-specific modules.
 - [ ] File and folder browsing uses VS Code URI/workspace APIs where supported and defines fallback behavior for virtual workspaces.

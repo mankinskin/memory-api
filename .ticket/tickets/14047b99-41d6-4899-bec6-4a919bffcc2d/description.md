@@ -2,6 +2,12 @@
 
 Build a narrow architecture spike that proves a Rust/WASM module can be loaded by both VS Code extension hosts used by this port.
 
+## Dependency links
+
+- Tracker: [6d07d610 Rust/WASM port track](../6d07d610-75c1-448a-afd5-6ae15098ca21/ticket.toml)
+- Depends on: [93f7e422 Freeze Rust/WASM architecture spec and feature matrix](../93f7e422-1e41-4145-b8ba-0dcf7fc730ac/ticket.toml)
+- Unblocks: [011563c2 Extract portable Rust core for ticket/domain logic](../011563c2-59e7-48f1-a61f-d8fdc80d2f6e/ticket.toml)
+
 Acceptance criteria:
 - [x] A minimal Rust crate compiles to `wasm32-unknown-unknown` and exports a smoke-tested function callable from the extension host.
 - [x] The desktop `main` entry and the web `browser` entry both activate successfully while loading the same WASM module or the same generated bindings.

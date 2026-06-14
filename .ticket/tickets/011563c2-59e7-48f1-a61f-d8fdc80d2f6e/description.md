@@ -9,6 +9,12 @@ Candidate logic to port first:
 - tree-model derivation used by the sidebar view
 - ticket URL / command intent derivation that does not require direct VS Code APIs
 
+## Dependency links
+
+- Tracker: [6d07d610 Rust/WASM port track](../6d07d610-75c1-448a-afd5-6ae15098ca21/ticket.toml)
+- Depends on: [14047b99 Prove dual-host WASM activation](../14047b99-41d6-4899-bec6-4a919bffcc2d/ticket.toml)
+- Unblocks: [bfafde19 Replace Node-bound behaviors with host capability adapters](../bfafde19-ddf7-47ef-966e-a1135be4efd6/ticket.toml)
+
 Acceptance criteria:
 - [ ] The Rust core crate contains no direct VS Code API bindings and no Node-specific assumptions.
 - [ ] The JS/TS host passes API payloads into the core and receives serializable tree/view-model output.
