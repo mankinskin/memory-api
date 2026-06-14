@@ -7,6 +7,15 @@ use serde::{
     Serialize,
 };
 
+mod error;
+mod store;
+
+pub use error::TestError;
+pub use store::{
+    ExecutionQuery,
+    TestStoreConfig,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ValidationLinks {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -1,0 +1,11 @@
+{
+  "id": "vt-browser-web",
+  "title": "ticket-vscode browser/web host parity validation",
+  "command": "vscode-test-web (@vscode/test-web)",
+  "detail": "No web harness exists yet; not executable.",
+  "links": {
+    "ticket_ids": [
+      "6de424b0-68ec-43c7-9d70-eb8d17305ab3"
+    ]
+  }
+}

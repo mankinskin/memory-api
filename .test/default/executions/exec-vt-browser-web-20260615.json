@@ -1,0 +1,12 @@
+{
+  "id": "exec-vt-browser-web-20260615",
+  "validation_spec_id": "vt-browser-web",
+  "outcome": "blocked",
+  "executed_at": "2026-06-15T00:00:00Z",
+  "detail": "No browser/web-extension test harness available in this environment",
+  "links": {
+    "ticket_ids": [
+      "6de424b0-68ec-43c7-9d70-eb8d17305ab3"
+    ]
+  }
+}

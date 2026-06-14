@@ -1,0 +1,12 @@
+{
+  "id": "exec-vt-remote-20260615",
+  "validation_spec_id": "vt-remote",
+  "outcome": "blocked",
+  "executed_at": "2026-06-15T00:00:00Z",
+  "detail": "No remote-host harness available in this environment",
+  "links": {
+    "ticket_ids": [
+      "6de424b0-68ec-43c7-9d70-eb8d17305ab3"
+    ]
+  }
+}

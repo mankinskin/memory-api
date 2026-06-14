@@ -1,0 +1,12 @@
+{
+  "id": "exec-vt-ext-package-20260615",
+  "validation_spec_id": "vt-ext-package",
+  "outcome": "passed",
+  "executed_at": "2026-06-15T00:00:00Z",
+  "detail": "npm run package: VSIX built, contains pkg/ticket_vscode_core_bg.wasm + glue",
+  "links": {
+    "ticket_ids": [
+      "6de424b0-68ec-43c7-9d70-eb8d17305ab3"
+    ]
+  }
+}
