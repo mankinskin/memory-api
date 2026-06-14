@@ -1,7 +1,7 @@
 id = "011563c2-59e7-48f1-a61f-d8fdc80d2f6e"
 created_at = "2026-05-18T10:56:16.284852600+00:00"
 title = "[ticket-vscode] Extract portable Rust core for ticket/domain logic"
-state = "ready"
+state = "done"
 component = "ticket-vscode"
 depends_on = ["14047b99-41d6-4899-bec6-4a919bffcc2d"]
 priority = "high"

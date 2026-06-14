@@ -39,6 +39,7 @@ jest.mock('../../src/extensionSupport', () => ({
   rememberServerUrl: jest.fn(() => Promise.resolve()),
   resolveActiveWorkspace: jest.fn(),
   resolveTicketsDir: jest.fn(() => 'C:/tickets'),
+  resolveTicketsDirUri: jest.fn(() => ({ fsPath: 'C:/tickets' })),
   startServerTask: jest.fn(),
 }));
 
@@ -159,12 +160,12 @@ describe('registerExtensionCommands', () => {
       'default',
       context,
     );
-    expect(extensionSupport.resolveTicketsDir).toHaveBeenCalledWith('shared--abc123', 'workspace');
+    expect(extensionSupport.resolveTicketsDirUri).toHaveBeenCalledWith('shared--abc123', 'workspace');
     expect(provider.update).toHaveBeenCalledWith(
       'http://localhost:3002',
       'shared--abc123',
       0,
-      'C:/tickets',
+      expect.objectContaining({ fsPath: expect.stringContaining('tickets') }),
     );
     expect(state.workspace).toBe('shared--abc123');
     expect(state.displayName).toBe('workspace');
@@ -193,7 +194,7 @@ describe('registerExtensionCommands', () => {
       'http://localhost:55838',
       'shared--abc123',
       0,
-      'C:/tickets',
+      expect.objectContaining({ fsPath: expect.stringContaining('tickets') }),
     );
     expect(state.serverUrl).toBe('http://localhost:55838');
   });
@@ -223,12 +224,12 @@ describe('registerExtensionCommands', () => {
       'default',
       context,
     );
-    expect(extensionSupport.resolveTicketsDir).toHaveBeenCalledWith('shared--abc123', 'workspace');
+    expect(extensionSupport.resolveTicketsDirUri).toHaveBeenCalledWith('shared--abc123', 'workspace');
     expect(provider.update).toHaveBeenCalledWith(
       'http://localhost:55838',
       'shared--abc123',
       0,
-      'C:/tickets',
+      expect.objectContaining({ fsPath: expect.stringContaining('tickets') }),
     );
     expect(state.serverUrl).toBe('http://localhost:55838');
   });

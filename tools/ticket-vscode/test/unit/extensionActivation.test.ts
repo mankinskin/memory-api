@@ -4,7 +4,7 @@ jest.mock('../../src/ticketProvider', () => {
   const instances: any[] = [];
 
   const TicketTreeProvider = jest.fn().mockImplementation(
-    (baseUrl: string, workspace: string, autoRefreshSeconds: number, ticketsDir?: string) => {
+    (baseUrl: string, workspace: string, autoRefreshSeconds: number, ticketsDirUri?: import('vscode').Uri) => {
       const provider = {
         allTickets: [],
         filterSummary: undefined,
@@ -12,7 +12,7 @@ jest.mock('../../src/ticketProvider', () => {
         update: jest.fn(),
         onDidChangeTreeData: jest.fn(() => ({ dispose: () => {} })),
         dispose: jest.fn(),
-        _ctor: { baseUrl, workspace, autoRefreshSeconds, ticketsDir },
+        _ctor: { baseUrl, workspace, autoRefreshSeconds, ticketsDirUri },
       };
       instances.push(provider);
       return provider;
@@ -37,6 +37,7 @@ jest.mock('../../src/extensionSupport', () => ({
   rememberServerUrl: jest.fn(() => Promise.resolve()),
   resolveActiveWorkspace: jest.fn(),
   resolveTicketsDir: jest.fn(() => 'C:/tickets'),
+  resolveTicketsDirUri: jest.fn(() => ({ fsPath: 'C:/tickets' })),
   startServerTask: jest.fn(),
 }));
 
@@ -52,7 +53,7 @@ type ProviderMock = {
     baseUrl: string;
     workspace: string;
     autoRefreshSeconds: number;
-    ticketsDir?: string;
+    ticketsDirUri?: import('vscode').Uri;
   };
 };
 
@@ -117,21 +118,21 @@ describe('extension activation', () => {
 
     const [provider] = getProviderInstances();
 
-    expect(provider._ctor).toEqual({
+    expect(provider._ctor).toMatchObject({
       baseUrl: 'http://localhost:55838',
       workspace: 'default',
       autoRefreshSeconds: 30,
-      ticketsDir: 'C:/tickets',
     });
+    expect((provider._ctor.ticketsDirUri as any)?.fsPath).toContain('tickets');
     expect(extensionSupport.pollUntilReachable).toHaveBeenCalledTimes(1);
     expect(extensionSupport.pollUntilReachable).toHaveBeenCalledWith('http://localhost:55838', 30_000);
     expect(extensionSupport.resolveActiveWorkspace).toHaveBeenNthCalledWith(2, 'http://localhost:55838', '', context);
-    expect(extensionSupport.resolveTicketsDir).toHaveBeenLastCalledWith('shared--abc123', 'workspace');
+    expect(extensionSupport.resolveTicketsDirUri).toHaveBeenLastCalledWith('shared--abc123', 'workspace');
     expect(provider.update).toHaveBeenCalledWith(
       'http://localhost:55838',
       'shared--abc123',
       30,
-      'C:/tickets',
+      expect.objectContaining({ fsPath: expect.stringContaining('tickets') }),
     );
     expect(registerExtensionCommands).toHaveBeenCalledTimes(1);
   });
@@ -162,11 +163,11 @@ describe('extension activation', () => {
 
     expect(extensionSupport.startServerTask).not.toHaveBeenCalled();
     expect(extensionSupport.pingServer).not.toHaveBeenCalled();
-    expect(provider._ctor).toEqual({
+    expect(provider._ctor).toMatchObject({
       baseUrl: 'http://localhost:55838',
       workspace: 'shared--abc123',
       autoRefreshSeconds: 30,
-      ticketsDir: 'C:/tickets',
     });
+    expect((provider._ctor.ticketsDirUri as any)?.fsPath).toContain('tickets');
   });
 });

@@ -1,9 +1,0 @@
-id = "f64aea9d-55f8-4999-a3dc-5de285c203bb"
-created_at = "2026-03-21T02:19:57.176738800Z"
-acceptance_criteria = "Full reindex deletes all existing Tantivy docs before re-inserting; `ticket search` after delete+reindex returns no stale hits"
-component = "storage"
-deleted = true
-risk_level = "medium"
-state = "cancelled"
-title = "Impl: fix scan --reindex — clear stale Tantivy entries before rebuild"
-type = "tracker-improvement"

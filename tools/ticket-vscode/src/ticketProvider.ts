@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import type { WorkspaceFsCapability } from './hostCapabilities';
 import {
   fetchAllTickets,
   fetchEdges,
@@ -114,26 +113,33 @@ export class TicketTreeProvider
   /** Map from child ticket ID to the IDs of its parent tickets (reverse of _depsOf). */
   private _parentOf = new Map<string, string[]>();
 
-  /** Absolute path to the .ticket/tickets/ directory on disk, or undefined if not found. */
-  private _ticketsDir: string | undefined;
+  /**
+   * URI of the .ticket/tickets/ directory, or undefined if not found.
+   * Replaces the old string path so virtual/web workspace URIs resolve too.
+   */
+  private _ticketsDirUri: vscode.Uri | undefined;
+  /** Capability adapter for file browsing — undefined in browser/virtual hosts. */
+  private _workspaceFs: WorkspaceFsCapability | undefined;
 
   private _baseUrl: string;
   private _workspace: string;
   private _autoRefreshSec: number;
   private readonly _recoverConnection?: (
     error: unknown,
-  ) => Promise<{ baseUrl: string; workspace: string; ticketsDir?: string } | undefined>;
+  ) => Promise<{ baseUrl: string; workspace: string; ticketsDirUri?: vscode.Uri } | undefined>;
 
   constructor(
     baseUrl: string,
     workspace: string,
     autoRefreshSec: number,
-    ticketsDir?: string,
+    ticketsDirUri?: vscode.Uri,
     recoverConnection?: (
       error: unknown,
-    ) => Promise<{ baseUrl: string; workspace: string; ticketsDir?: string } | undefined>,
+    ) => Promise<{ baseUrl: string; workspace: string; ticketsDirUri?: vscode.Uri } | undefined>,
+    workspaceFs?: WorkspaceFsCapability,
   ) {
-    this._ticketsDir = ticketsDir;
+    this._ticketsDirUri = ticketsDirUri;
+    this._workspaceFs = workspaceFs;
     this._baseUrl = baseUrl;
     this._workspace = workspace;
     this._autoRefreshSec = autoRefreshSec;
@@ -199,11 +205,12 @@ export class TicketTreeProvider
   }
 
   /** Update connection settings and reload. */
-  update(baseUrl: string, workspace: string, autoRefreshSec: number, ticketsDir?: string): void {
+  update(baseUrl: string, workspace: string, autoRefreshSec: number, ticketsDirUri?: vscode.Uri, workspaceFs?: WorkspaceFsCapability): void {
     this._baseUrl = baseUrl;
     this._workspace = workspace;
     this._autoRefreshSec = autoRefreshSec;
-    this._ticketsDir = ticketsDir;
+    this._ticketsDirUri = ticketsDirUri;
+    this._workspaceFs = workspaceFs;
     this._descriptionCache.clear();
     this.scheduleAutoRefresh();
     void this.load();
@@ -242,7 +249,10 @@ export class TicketTreeProvider
     }
 
     if (element instanceof TicketFolderItem) {
-      return this._readDirEntries(element.folderPath);
+      // Async via WorkspaceFsCapability; returns [] synchronously and fires a
+      // tree refresh once the promise resolves (browser/virtual = always []).
+      void this._readDirEntriesAsync(vscode.Uri.file(element.folderPath));
+      return [];
     }
 
     // TicketFileItem and InfoItem are leaves.
@@ -357,29 +367,39 @@ export class TicketTreeProvider
     return children;
   }
 
-  /** Return file/folder entries for the ticket's on-disk folder. */
+  /** Return file/folder entries for the ticket's directory. */
   private _getTicketFolderChildren(ticketId: string): (TicketFileItem | TicketFolderItem)[] {
-    if (!this._ticketsDir) { return []; }
-    const ticketDir = path.join(this._ticketsDir, ticketId);
-    return this._readDirEntries(ticketDir);
+    if (!this._ticketsDirUri) { return []; }
+    const ticketDirUri = vscode.Uri.joinPath(this._ticketsDirUri, ticketId);
+    // Kick off async read; tree will refresh when the promise resolves.
+    void this._readDirEntriesAsync(ticketDirUri);
+    return [];
   }
 
-  /** Read a directory and return sorted TicketFolderItem / TicketFileItem nodes. */
-  private _readDirEntries(dirPath: string): (TicketFileItem | TicketFolderItem)[] {
-    let entries: fs.Dirent[];
+  /**
+   * Async directory read via WorkspaceFsCapability.
+   *
+   * Rule 3 (frozen): no node:fs or node:path. WorkspaceFsCapability is absent
+   * in browser/virtual hosts — those hosts return an empty list silently.
+   */
+  private async _readDirEntriesAsync(
+    dirUri: vscode.Uri,
+  ): Promise<(TicketFileItem | TicketFolderItem)[]> {
+    if (!this._workspaceFs) { return []; }
+    let entries: [string, vscode.FileType][];
     try {
-      entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      entries = await this._workspaceFs.readDirectory(dirUri);
     } catch {
       return [];
     }
     const folders: TicketFolderItem[] = [];
     const files: TicketFileItem[] = [];
-    for (const entry of entries) {
-      const full = path.join(dirPath, entry.name);
-      if (entry.isDirectory()) {
-        folders.push(new TicketFolderItem(full));
-      } else if (entry.isFile()) {
-        files.push(new TicketFileItem(full));
+    for (const [name, fileType] of entries) {
+      const childUri = vscode.Uri.joinPath(dirUri, name);
+      if (fileType === vscode.FileType.Directory) {
+        folders.push(new TicketFolderItem(childUri.fsPath));
+      } else if (fileType === vscode.FileType.File) {
+        files.push(new TicketFileItem(childUri.fsPath));
       }
     }
     folders.sort((a, b) => a.folderPath.localeCompare(b.folderPath));
@@ -497,7 +517,7 @@ export class TicketTreeProvider
         if (recovered) {
           this._baseUrl = recovered.baseUrl;
           this._workspace = recovered.workspace;
-          this._ticketsDir = recovered.ticketsDir;
+          this._ticketsDirUri = recovered.ticketsDirUri;
           return this.load(false);
         }
       }

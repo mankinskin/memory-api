@@ -6,7 +6,7 @@ import type { ChildProcess } from 'node:child_process';
 import { BrowserBridge } from './browserBridge';
 import { addEdge, cancelTicket, closeTicket, createTicket, deleteTicket, undoTicket, updateTicket } from './api';
 import { TicketItem, TicketTreeProvider } from './ticketProvider';
-import { TICKET_STATES, TICKET_TYPES, detectTicketWorkspaces, discoverRunningServerUrl, openTicketViewer, pingServer, pollUntilReachable, readConfig, rememberServerUrl, resolveActiveWorkspace, resolveTicketsDir, startServerTask, type TicketViewerConfig } from './extensionSupport';
+import { TICKET_STATES, TICKET_TYPES, detectTicketWorkspaces, discoverRunningServerUrl, openTicketViewer, pingServer, pollUntilReachable, readConfig, rememberServerUrl, resolveActiveWorkspace, resolveTicketsDir, resolveTicketsDirUri, startServerTask, type TicketViewerConfig } from './extensionSupport';
 
 export interface ActivationState {
   config: TicketViewerConfig;
@@ -56,7 +56,7 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
       state.serverUrl,
       state.workspace,
       state.config.autoRefreshSeconds,
-      resolveTicketsDir(state.workspace, state.displayName),
+      resolveTicketsDirUri(state.workspace, state.displayName),
     );
     statusBarItem.tooltip = `Open Ticket Viewer (${state.serverUrl})`;
     updateStatusBar();

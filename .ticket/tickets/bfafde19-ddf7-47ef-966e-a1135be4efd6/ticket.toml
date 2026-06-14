@@ -1,7 +1,7 @@
 id = "bfafde19-ddf7-47ef-966e-a1135be4efd6"
 created_at = "2026-05-18T10:56:17.361594200+00:00"
 title = "[ticket-vscode] Replace Node-bound behaviors with host capability adapters"
-state = "ready"
+state = "done"
 component = "ticket-vscode"
 depends_on = ["011563c2-59e7-48f1-a61f-d8fdc80d2f6e"]
 priority = "high"

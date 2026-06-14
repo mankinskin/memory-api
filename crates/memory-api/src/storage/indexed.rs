@@ -21,8 +21,6 @@ pub struct IndexedEntity {
     pub state: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    /// Soft-delete flag. Deleted entities are kept in the index for audit.
-    pub deleted: bool,
 }
 
 /// Indexed workflow facts used by ticket dependency ordering and tree views.

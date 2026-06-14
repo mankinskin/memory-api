@@ -9,6 +9,7 @@ import {
   rememberServerUrl,
   resolveActiveWorkspace,
   resolveTicketsDir,
+  resolveTicketsDirUri,
   startServerTask,
 } from './extensionSupport';
 
@@ -74,7 +75,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     state.serverUrl,
     state.workspace,
     state.config.autoRefreshSeconds,
-    resolveTicketsDir(state.workspace, state.displayName),
+    resolveTicketsDirUri(state.workspace, state.displayName),
     async () => {
       const recoveredServerUrl = await discoverRunningServerUrl(
         context,
@@ -101,7 +102,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return {
         baseUrl: state.serverUrl,
         workspace: state.workspace,
-        ticketsDir: resolveTicketsDir(state.workspace, state.displayName),
+        ticketsDirUri: resolveTicketsDirUri(state.workspace, state.displayName),
       };
     },
   );
@@ -155,7 +156,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       state.serverUrl,
       state.workspace,
       state.config.autoRefreshSeconds,
-      resolveTicketsDir(state.workspace, state.displayName),
+      resolveTicketsDirUri(state.workspace, state.displayName),
     );
     statusBarItem.tooltip = `Open Ticket Viewer (${state.serverUrl})`;
     updateStatusBar();

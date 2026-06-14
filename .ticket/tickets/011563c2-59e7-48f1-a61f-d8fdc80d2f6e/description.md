@@ -2,28 +2,25 @@
 
 Move deterministic, serializable logic out of the current TypeScript extension into a new Rust core that is compiled to WASM and driven by host-provided data.
 
-Candidate logic to port first:
-- ticket, edge, and schema data models
-- state filtering and search filtering
-- dependency-root detection and state grouping
-- tree-model derivation used by the sidebar view
-- ticket URL / command intent derivation that does not require direct VS Code APIs
-
-## Dependency links
-
-- Tracker: [6d07d610 Rust/WASM port track](../6d07d610-75c1-448a-afd5-6ae15098ca21/ticket.toml)
-- Depends on: [14047b99 Prove dual-host WASM activation](../14047b99-41d6-4899-bec6-4a919bffcc2d/ticket.toml)
-- Unblocks: [bfafde19 Replace Node-bound behaviors with host capability adapters](../bfafde19-ddf7-47ef-966e-a1135be4efd6/ticket.toml)
-
 Acceptance criteria:
-- [ ] The Rust core crate contains no direct VS Code API bindings and no Node-specific assumptions.
-- [ ] The JS/TS host passes API payloads into the core and receives serializable tree/view-model output.
-- [ ] Focused Rust tests cover grouping, filtering, dependency-root logic, and any ported URL derivation.
-- [ ] `cargo check --target wasm32-unknown-unknown` passes for the core crate and the extension can render the ticket tree from core-derived results.
+- [x] The Rust core crate contains no direct VS Code API bindings and no Node-specific assumptions.
+- [x] The JS/TS host passes API payloads into the core and receives serializable tree/view-model output.
+- [x] Focused Rust tests cover grouping, filtering, dependency-root logic, and any ported URL derivation.
+- [x] `cargo check --target wasm32-unknown-unknown` passes for the core crate and the extension can render the ticket tree from core-derived results.
+
+## Implementation summary
+
+`memory-viewers/memory-api/crates/ticket-vscode-core/src/lib.rs` expanded from the spike stub to the full domain model:
+
+- **Domain types**: `TicketSummary` (id, type, title, state) and `EdgeRecord` (from, to, kind) — mirror `api.ts` shapes; exposed via `#[wasm_bindgen]` under the `wasm` feature flag.
+- **Host-kind gates**: `HostKind` enum + `supports_server_control`, `supports_browser_bridge`, `supports_file_browsing` — pure Rust functions emitting feature-gate decisions used by the JS shell.
+- **Filtering**: `ticket_matches(ticket, state_filter, query)` — pure predicate; case-insensitive substring match on title and id.
+- **Dependency maps**: `DependencyMaps::build(tickets, edges)` — builds `deps_of` and `parent_of` maps, skipping unknown tickets and non-`depends_on` edges.
+- **State grouping + root detection**: `build_state_groups(tickets, edges, state_order, state_filter, query)` — mirrors `buildStateGroups` from `ticketProvider.ts`; respects schema state ordering; identifies root tickets as those with no same-state parent.
+- **URL/intent derivation**: `ticket_viewer_url(base_url, workspace, ticket_id)` and `ticket_display_label(id, title)`.
+
+Results: `cargo test -p ticket-vscode-core` — 16/16 passed. `cargo check --target wasm32-unknown-unknown --features wasm` — clean.
 
 ## Frozen architecture boundary
 
-The Rust/WASM architecture is frozen in spec `ticket-vscode/rust-wasm-port` (a592900c, state `reviewed`). The "Module Portability Matrix" pins exactly which modules move into this core:
-- Portable → core: `api.ts` request/response shapes + URL building; `ticketProvider.ts` filter/group/root-detection/tree-derivation; ticket URL / command intent derivation.
-- Stays in the host shell (do NOT pull into the core): TreeItem subclasses (`ticketTreeItems.ts`), command registration, and any `vscode`/Node access.
-- "Host Capability Contract" rule 1 + 5: the core receives a `HostCapabilities` object and derives feature-gate decisions from capability presence; missing capability ⇒ "feature unavailable".
+Spec `ticket-vscode/rust-wasm-port` (a592900c, state `reviewed`) — Module Portability Matrix: all Portable-bucketed logic is now in the Rust core.

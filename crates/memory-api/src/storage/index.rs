@@ -137,10 +137,7 @@ impl RedbIndexStore {
         }
     }
 
-    pub fn list_tickets(
-        &self,
-        include_deleted: bool,
-    ) -> Result<Vec<IndexedEntity>, StorageError> {
+    pub fn list_tickets(&self) -> Result<Vec<IndexedEntity>, StorageError> {
         let conn = self.read_conn()?;
         let mut stmt =
             conn.prepare(&format!("SELECT data FROM {TABLE_TICKETS}"))?;
@@ -149,9 +146,7 @@ impl RedbIndexStore {
         for bytes in rows {
             let entity: IndexedEntity = bincode::deserialize(&bytes?)
                 .map_err(|e| StorageError::Serialization(e.to_string()))?;
-            if include_deleted || !entity.deleted {
-                entities.push(entity);
-            }
+            entities.push(entity);
         }
         Ok(entities)
     }
@@ -185,48 +180,12 @@ impl RedbIndexStore {
         for bytes in rows {
             let entity: IndexedEntity = bincode::deserialize(&bytes?)
                 .map_err(|e| StorageError::Serialization(e.to_string()))?;
-            if !entity.deleted {
-                map.insert(entity.id, entity);
-            }
+            map.insert(entity.id, entity);
         }
         Ok(map)
     }
 
-    /// Soft-delete: marks the index entry as deleted.
-    pub fn soft_delete_ticket(
-        &self,
-        id: &Uuid,
-    ) -> Result<(), StorageError> {
-        let key = id.to_string();
-        self.with_write(|conn| {
-            let mut entity = {
-                let mut stmt = conn
-                    .prepare(&format!("SELECT data FROM {TABLE_TICKETS} WHERE id = ?1"))?;
-                let mut rows = stmt.query(params![&key])?;
-                match rows.next()? {
-                    Some(row) => {
-                        let bytes: Vec<u8> = row.get(0)?;
-                        bincode::deserialize::<IndexedEntity>(&bytes)
-                            .map_err(|e| StorageError::Serialization(e.to_string()))?
-                    }
-                    None => return Err(StorageError::NotFound(*id)),
-                }
-            };
-            entity.deleted = true;
-            entity.updated_at = chrono::Utc::now();
-            let bytes = bincode::serialize(&entity)
-                .map_err(|e| StorageError::Serialization(e.to_string()))?;
-            conn.execute(
-                &format!(
-                    "INSERT OR REPLACE INTO {TABLE_TICKETS} (id, data) VALUES (?1, ?2)"
-                ),
-                params![key, bytes],
-            )?;
-            Ok(())
-        })
-    }
-
-    /// Hard-delete an entity from the index.
+    /// Remove an entity from the index.
     pub fn remove_ticket(
         &self,
         id: &Uuid,

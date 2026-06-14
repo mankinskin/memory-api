@@ -469,10 +469,28 @@ export async function resolveActiveWorkspace(
   return resolveWorkspaceSelection(serverWorkspaces, activeWorkspace, undefined);
 }
 
+/**
+ * Open the ticket-viewer URL in an external browser.
+ *
+ * Rule 4 (frozen, spec ticket-vscode/rust-wasm-port): viewer navigation routes
+ * through ExternalUrlCapability using asExternalUri so it is remote/Codespaces-
+ * safe by default.  Pass an ExternalUrlCapability from hostCapabilities.ts when
+ * available.  Falls back to the legacy desktop-binary path for backwards
+ * compatibility until bfafde19 is fully rolled out.
+ *
+ * @deprecated Pass an ExternalUrlCapability instead.  The capability-based
+ *   path (`capability.openExternal(url)`) should be preferred for all new
+ *   callers; this function retains the Node-specific browser-binary spawn path
+ *   for the desktop host only, and is excluded from the browser bundle.
+ */
 export function openTicketViewer(url: string): void {
   const browserBinary = resolvePreferredBrowserBinary();
   if (!browserBinary) {
-    void vscode.env.openExternal(vscode.Uri.parse(url));
+    // Route through asExternalUri for remote/Codespaces-safe navigation.
+    void (async () => {
+      const external = await vscode.env.asExternalUri(vscode.Uri.parse(url));
+      void vscode.env.openExternal(external);
+    })();
     return;
   }
 
@@ -482,7 +500,10 @@ export function openTicketViewer(url: string): void {
     windowsHide: true,
   });
   child.on('error', () => {
-    void vscode.env.openExternal(vscode.Uri.parse(url));
+    void (async () => {
+      const external = await vscode.env.asExternalUri(vscode.Uri.parse(url));
+      void vscode.env.openExternal(external);
+    })();
   });
   child.unref();
 }
@@ -509,6 +530,19 @@ export function resolveTicketsDir(workspaceName: string, displayName?: string): 
     if (fs.statSync(dir).isDirectory()) { return dir; }
   } catch { /* not found */ }
   return undefined;
+}
+
+/**
+ * URI-returning wrapper around resolveTicketsDir for the TicketTreeProvider.
+ *
+ * Rule 3 (frozen): TicketTreeProvider now accepts vscode.Uri instead of a
+ * raw string path so virtual/web workspaces resolve correctly.  This helper
+ * converts the desktop string path to a file URI; call sites in extension.ts
+ * and extensionCommands.ts import this instead of resolveTicketsDir.
+ */
+export function resolveTicketsDirUri(workspaceName: string, displayName?: string): vscode.Uri | undefined {
+  const dir = resolveTicketsDir(workspaceName, displayName);
+  return dir !== undefined ? vscode.Uri.file(dir) : undefined;
 }
 
 function resolveBinaryOnPath(binaryName: string): string | undefined {

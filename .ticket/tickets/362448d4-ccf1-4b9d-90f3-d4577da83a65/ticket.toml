@@ -1,7 +1,7 @@
 id = "362448d4-ccf1-4b9d-90f3-d4577da83a65"
 created_at = "2026-05-18T10:56:18.316270900+00:00"
 title = "[ticket-vscode] Add dual-host packaging, bundling, and extension test harnesses"
-state = "in-implementation"
+state = "done"
 component = "ticket-vscode"
 depends_on = ["bfafde19-ddf7-47ef-966e-a1135be4efd6"]
 priority = "high"

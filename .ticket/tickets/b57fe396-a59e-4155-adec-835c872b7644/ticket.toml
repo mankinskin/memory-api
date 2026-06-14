@@ -1,9 +1,0 @@
-id = "b57fe396-a59e-4155-adec-835c872b7644"
-created_at = "2026-03-21T02:20:55.451352700Z"
-acceptance_criteria = "batch exec reverts all already-applied writes when any command fails; integration test verifies no partial state on mid-batch error"
-component = "storage"
-deleted = true
-risk_level = "medium"
-state = "cancelled"
-title = "Impl: fix exec --batch — true rollback semantics on first failure"
-type = "tracker-improvement"
