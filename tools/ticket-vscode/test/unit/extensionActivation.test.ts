@@ -30,9 +30,11 @@ jest.mock('../../src/extensionCommands', () => ({
 }));
 
 jest.mock('../../src/extensionSupport', () => ({
+  discoverRunningServerUrl: jest.fn(),
   pingServer: jest.fn(),
   pollUntilReachable: jest.fn(() => Promise.resolve()),
   readConfig: jest.fn(),
+  rememberServerUrl: jest.fn(() => Promise.resolve()),
   resolveActiveWorkspace: jest.fn(),
   resolveTicketsDir: jest.fn(() => 'C:/tickets'),
   startServerTask: jest.fn(),
@@ -97,6 +99,7 @@ describe('extension activation', () => {
       serverWorkingDirectory: '',
       workspace: '',
     });
+    (extensionSupport.discoverRunningServerUrl as jest.Mock).mockResolvedValue(undefined);
     (extensionSupport.pingServer as jest.Mock).mockResolvedValue(false);
     (extensionSupport.startServerTask as jest.Mock).mockResolvedValue({
       process: processMock,
@@ -131,5 +134,39 @@ describe('extension activation', () => {
       'C:/tickets',
     );
     expect(registerExtensionCommands).toHaveBeenCalledTimes(1);
+  });
+
+  test('connects to a discovered running server before attempting auto-start', async () => {
+    (extensionSupport.readConfig as jest.Mock).mockReturnValue({
+      autoConnectCdp: false,
+      autoRefreshSeconds: 30,
+      autoStartServer: true,
+      bridgePort: 0,
+      cdpPort: 0,
+      serverBinaryPath: '',
+      serverUrl: 'http://localhost:3002',
+      serverWorkingDirectory: '',
+      workspace: '',
+    });
+    (extensionSupport.discoverRunningServerUrl as jest.Mock).mockResolvedValue('http://localhost:55838');
+    (extensionSupport.resolveActiveWorkspace as jest.Mock).mockResolvedValue({
+      workspace: 'shared--abc123',
+      displayName: 'workspace',
+    });
+
+    const context = makeContext();
+
+    await activate(context);
+
+    const [provider] = getProviderInstances();
+
+    expect(extensionSupport.startServerTask).not.toHaveBeenCalled();
+    expect(extensionSupport.pingServer).not.toHaveBeenCalled();
+    expect(provider._ctor).toEqual({
+      baseUrl: 'http://localhost:55838',
+      workspace: 'shared--abc123',
+      autoRefreshSeconds: 30,
+      ticketsDir: 'C:/tickets',
+    });
   });
 });

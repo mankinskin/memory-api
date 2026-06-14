@@ -231,6 +231,54 @@ describe('TicketTreeProvider — state folder grouping', () => {
     });
   });
 
+  test('recovers from an initial ticket fetch failure by rebinding and retrying once', async () => {
+    const tickets = [
+      makeTicket('a0000000-0000-0000-0000-000000000001', 'new', 'Recovered ticket'),
+    ];
+    const mockApi = api as jest.Mocked<typeof api>;
+    const recovery = jest.fn().mockResolvedValue({
+      baseUrl: 'http://localhost:55838',
+      workspace: 'shared--abc123',
+      ticketsDir: 'C:/tickets',
+    });
+
+    mockApi.fetchAllTickets
+      .mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:3002'))
+      .mockResolvedValueOnce(tickets);
+    mockApi.fetchEdges.mockResolvedValue([]);
+    mockApi.fetchSchemas.mockResolvedValue([
+      {
+        type_id: 'tracker-improvement',
+        states: SCHEMA_STATES,
+        transitions: [],
+        required_states: ['in-review'],
+        terminal_states: ['done', 'cancelled'],
+      },
+    ]);
+
+    const provider = new TicketTreeProvider(
+      'http://localhost:3002',
+      'default',
+      0,
+      undefined,
+      recovery,
+    );
+
+    await new Promise<void>(resolve => {
+      const sub = provider.onDidChangeTreeData(() => {
+        if ((provider as any).state !== 'loading') {
+          sub.dispose();
+          resolve();
+        }
+      });
+    });
+
+    expect(recovery).toHaveBeenCalledTimes(1);
+    expect(mockApi.fetchAllTickets).toHaveBeenNthCalledWith(1, 'http://localhost:3002', 'default', {});
+    expect(mockApi.fetchAllTickets).toHaveBeenNthCalledWith(2, 'http://localhost:55838', 'shared--abc123', {});
+    expect(provider.allTickets).toHaveLength(1);
+  });
+
   // ── AC2/AC3 — hierarchy within same state ─────────────────────────────────
 
   describe('AC2/AC3 — hierarchy within same state', () => {

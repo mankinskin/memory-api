@@ -6,7 +6,7 @@ import type { ChildProcess } from 'node:child_process';
 import { BrowserBridge } from './browserBridge';
 import { addEdge, cancelTicket, closeTicket, createTicket, deleteTicket, undoTicket, updateTicket } from './api';
 import { TicketItem, TicketTreeProvider } from './ticketProvider';
-import { TICKET_STATES, TICKET_TYPES, detectTicketWorkspaces, openTicketViewer, pingServer, pollUntilReachable, readConfig, resolveActiveWorkspace, resolveTicketsDir, startServerTask, type TicketViewerConfig } from './extensionSupport';
+import { TICKET_STATES, TICKET_TYPES, detectTicketWorkspaces, discoverRunningServerUrl, openTicketViewer, pingServer, pollUntilReachable, readConfig, rememberServerUrl, resolveActiveWorkspace, resolveTicketsDir, startServerTask, type TicketViewerConfig } from './extensionSupport';
 
 export interface ActivationState {
   config: TicketViewerConfig;
@@ -145,7 +145,21 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
 
   context.subscriptions.push(
     vscode.commands.registerCommand('ticket-viewer.startServer', async () => {
+      const discoveredServerUrl = await discoverRunningServerUrl(
+        context,
+        state.config,
+        outputChannel,
+        [state.serverUrl],
+      );
+      if (discoveredServerUrl) {
+        state.serverUrl = discoveredServerUrl;
+        await syncProviderToResolvedWorkspace();
+        vscode.window.setStatusBarMessage(`$(server) Server already running at ${state.serverUrl}`, 3000);
+        return;
+      }
+
       if (await pingServer(state.serverUrl)) {
+        await rememberServerUrl(context, state.serverUrl);
         await syncProviderToResolvedWorkspace();
         vscode.window.setStatusBarMessage(`$(server) Server already running at ${state.serverUrl}`, 3000);
         return;
@@ -158,12 +172,26 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
         const handle = await startServerTask(outputChannel, state.config);
         setServerProcess(handle.process);
         state.serverUrl = handle.serverUrl;
+        await rememberServerUrl(context, state.serverUrl);
         vscode.window.setStatusBarMessage(`$(server) Ticket server running on ${state.serverUrl}`, 5000);
         statusBarItem.tooltip = `Open Ticket Viewer (${state.serverUrl})`;
         void pollUntilReachable(state.serverUrl, 30_000)
           .then(() => syncProviderToResolvedWorkspace())
           .catch(() => undefined);
       } catch (err) {
+        const fallbackServerUrl = await discoverRunningServerUrl(
+          context,
+          state.config,
+          outputChannel,
+          [state.serverUrl],
+        );
+        if (fallbackServerUrl) {
+          state.serverUrl = fallbackServerUrl;
+          await syncProviderToResolvedWorkspace();
+          vscode.window.setStatusBarMessage(`$(server) Connected to running ticket server on ${state.serverUrl}`, 5000);
+          return;
+        }
+
         const msg = err instanceof Error ? err.message : String(err);
         void vscode.window.showErrorMessage(`Failed to start server: ${msg}`);
       }

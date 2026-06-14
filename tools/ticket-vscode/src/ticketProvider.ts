@@ -62,12 +62,24 @@ export class TicketTreeProvider
   private _baseUrl: string;
   private _workspace: string;
   private _autoRefreshSec: number;
+  private readonly _recoverConnection?: (
+    error: unknown,
+  ) => Promise<{ baseUrl: string; workspace: string; ticketsDir?: string } | undefined>;
 
-  constructor(baseUrl: string, workspace: string, autoRefreshSec: number, ticketsDir?: string) {
+  constructor(
+    baseUrl: string,
+    workspace: string,
+    autoRefreshSec: number,
+    ticketsDir?: string,
+    recoverConnection?: (
+      error: unknown,
+    ) => Promise<{ baseUrl: string; workspace: string; ticketsDir?: string } | undefined>,
+  ) {
     this._ticketsDir = ticketsDir;
     this._baseUrl = baseUrl;
     this._workspace = workspace;
     this._autoRefreshSec = autoRefreshSec;
+    this._recoverConnection = recoverConnection;
     this.scheduleAutoRefresh();
     void this.load();
   }
@@ -405,7 +417,7 @@ export class TicketTreeProvider
     void this.load();
   }
 
-  private async load(): Promise<void> {
+  private async load(allowRecovery = true): Promise<void> {
     this.state = 'loading';
     this._onDidChangeTreeData.fire(undefined);
 
@@ -421,6 +433,16 @@ export class TicketTreeProvider
       this.state = 'idle';
       this.errorMessage = '';
     } catch (err) {
+      if (allowRecovery && this._recoverConnection) {
+        const recovered = await this._recoverConnection(err);
+        if (recovered) {
+          this._baseUrl = recovered.baseUrl;
+          this._workspace = recovered.workspace;
+          this._ticketsDir = recovered.ticketsDir;
+          return this.load(false);
+        }
+      }
+
       this.errorMessage = err instanceof Error ? err.message : String(err);
       this.state = 'error';
       this.tickets = [];

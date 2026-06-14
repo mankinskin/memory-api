@@ -2,9 +2,11 @@ import * as vscode from 'vscode';
 import { TicketTreeProvider } from './ticketProvider';
 import { registerExtensionCommands, type ActivationState } from './extensionCommands';
 import {
+  discoverRunningServerUrl,
   pingServer,
   pollUntilReachable,
   readConfig,
+  rememberServerUrl,
   resolveActiveWorkspace,
   resolveTicketsDir,
   startServerTask,
@@ -24,20 +26,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
   state.serverUrl = state.config.serverUrl;
 
-  if (state.config.autoStartServer) {
+  const discoveredServerUrl = await discoverRunningServerUrl(context, state.config, outputChannel);
+  if (discoveredServerUrl) {
+    state.serverUrl = discoveredServerUrl;
+  }
+
+  if (!discoveredServerUrl && state.config.autoStartServer) {
     if (await pingServer(state.config.serverUrl)) {
       outputChannel.appendLine(`[ticket-viewer] Existing server detected at ${state.config.serverUrl} — skipping auto-start.`);
       state.serverUrl = state.config.serverUrl;
+      await rememberServerUrl(context, state.serverUrl);
     } else {
       try {
         const handle = await startServerTask(outputChannel, state.config);
         _serverProcess = handle.process;
         state.serverUrl = handle.serverUrl;
+        await rememberServerUrl(context, state.serverUrl);
         vscode.window.setStatusBarMessage(`$(server) Ticket server running on ${state.serverUrl}`, 5000);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        outputChannel.appendLine(`[ticket-viewer] Failed to start server: ${msg}`);
-        void vscode.window.showWarningMessage(`Ticket Viewer server failed to start: ${msg}`);
+        const fallbackServerUrl = await discoverRunningServerUrl(
+          context,
+          state.config,
+          outputChannel,
+          [state.serverUrl],
+        );
+        if (fallbackServerUrl) {
+          state.serverUrl = fallbackServerUrl;
+          vscode.window.setStatusBarMessage(`$(server) Connected to running ticket server on ${state.serverUrl}`, 5000);
+        } else {
+          const msg = err instanceof Error ? err.message : String(err);
+          outputChannel.appendLine(`[ticket-viewer] Failed to start server: ${msg}`);
+          void vscode.window.showWarningMessage(`Ticket Viewer server failed to start: ${msg}`);
+        }
       }
     }
   }
@@ -55,6 +75,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     state.workspace,
     state.config.autoRefreshSeconds,
     resolveTicketsDir(state.workspace, state.displayName),
+    async () => {
+      const recoveredServerUrl = await discoverRunningServerUrl(
+        context,
+        state.config,
+        outputChannel,
+        [state.serverUrl],
+      );
+      if (!recoveredServerUrl) {
+        return undefined;
+      }
+
+      state.serverUrl = recoveredServerUrl;
+      await rememberServerUrl(context, state.serverUrl);
+      const resolvedWorkspace = await resolveActiveWorkspace(
+        state.serverUrl,
+        state.config.workspace,
+        context,
+      );
+      state.workspace = resolvedWorkspace.workspace;
+      state.displayName = resolvedWorkspace.displayName;
+      statusBarItem.tooltip = `Open Ticket Viewer (${state.serverUrl})`;
+      updateStatusBar();
+
+      return {
+        baseUrl: state.serverUrl,
+        workspace: state.workspace,
+        ticketsDir: resolveTicketsDir(state.workspace, state.displayName),
+      };
+    },
   );
   context.subscriptions.push(provider);
 

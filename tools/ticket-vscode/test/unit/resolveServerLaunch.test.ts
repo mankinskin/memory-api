@@ -2,6 +2,14 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
+jest.mock('node:child_process', () => {
+  const actual = jest.requireActual('node:child_process');
+  return {
+    ...actual,
+    execFile: jest.fn(),
+  };
+});
+
 jest.mock('../../src/api', () => ({
   fetchWorkspaces: jest.fn(),
 }));
@@ -13,15 +21,20 @@ jest.mock('node:fs', () => ({
 
 import { fetchWorkspaces } from '../../src/api';
 import {
+  buildServerDiscoveryCandidates,
+  discoverRunningServerUrl,
+  parseListeningPorts,
   resolveActiveWorkspace,
   resolveServerLaunch,
   resolveTicketsDir,
   type TicketViewerConfig,
 } from '../../src/extensionSupport';
+import { execFile } from 'node:child_process';
 
 const mockFs = fs as jest.Mocked<typeof fs>;
 const mockWorkspace = vscode.workspace as any;
 const mockFetchWorkspaces = fetchWorkspaces as jest.MockedFunction<typeof fetchWorkspaces>;
+const mockExecFile = execFile as jest.MockedFunction<typeof execFile>;
 
 function makeConfig(overrides: Partial<TicketViewerConfig> = {}): TicketViewerConfig {
   return {
@@ -66,6 +79,7 @@ describe('resolveServerLaunch', () => {
 
   beforeEach(() => {
     mockFetchWorkspaces.mockReset();
+    mockExecFile.mockReset();
     mockFs.existsSync.mockReset();
     mockFs.statSync.mockReset();
     mockWorkspace.workspaceFolders = [
@@ -214,6 +228,45 @@ describe('resolveServerLaunch', () => {
     expect(resolved).toEqual({ workspace: 'default', displayName: 'workspace' });
   });
 
+  test('ignores a stale configured workspace id when the server exposes canonical workspace names', async () => {
+    mockFs.statSync.mockImplementation(candidate => {
+      if (candidate.toString() === ticketDir) {
+        return directoryStat();
+      }
+      throw new Error(`ENOENT: ${candidate.toString()}`);
+    });
+    mockFetchWorkspaces.mockResolvedValue({
+      request_id: 'req-3',
+      active_workspace: 'context-engine--9bce5444',
+      workspaces: [
+        {
+          name: 'context-editor--b0870155',
+          label: 'context-editor',
+        },
+        {
+          name: 'context-engine--9bce5444',
+          label: 'workspace',
+        },
+      ],
+    });
+
+    const resolved = await resolveActiveWorkspace(
+      'http://localhost:56882',
+      'default',
+      {
+        workspaceState: {
+          get: jest.fn(),
+          update: jest.fn(),
+        },
+      } as unknown as vscode.ExtensionContext,
+    );
+
+    expect(resolved).toEqual({
+      workspace: 'context-engine--9bce5444',
+      displayName: 'workspace',
+    });
+  });
+
   test('resolves the local tickets directory from display name when workspace ids are canonical', () => {
     mockFs.statSync.mockImplementation(candidate => {
       const candidatePath = candidate.toString();
@@ -224,5 +277,63 @@ describe('resolveServerLaunch', () => {
     });
 
     expect(resolveTicketsDir('shared--abc123', 'workspace')).toBe(path.join(ticketDir, 'tickets'));
+  });
+
+  test('parseListeningPorts extracts localhost listen ports across command formats', () => {
+    const output = [
+      'TCP    127.0.0.1:55838    0.0.0.0:0    LISTENING    1234',
+      'LISTEN 0 128 127.0.0.1:3002 0.0.0.0:*',
+      'node 123 user 10u IPv4 0x0 TCP *:4002 (LISTEN)',
+    ].join('\n');
+
+    expect(parseListeningPorts(output)).toEqual([55838, 3002, 4002]);
+  });
+
+  test('buildServerDiscoveryCandidates prefers preferred, stored, configured, then scanned localhost ports', () => {
+    expect(buildServerDiscoveryCandidates(
+      'http://localhost:3002',
+      'http://localhost:55838',
+      [3002, 60123],
+      ['http://localhost:4002'],
+    )).toEqual([
+      'http://localhost:4002',
+      'http://localhost:55838',
+      'http://localhost:3002',
+      'http://localhost:60123',
+    ]);
+  });
+
+  test('discoverRunningServerUrl probes local listeners and stores the first reachable ticket server', async () => {
+    mockExecFile.mockImplementation((...args: any[]) => {
+      const callback = args[args.length - 1];
+      callback(null, 'TCP    127.0.0.1:55838    0.0.0.0:0    LISTENING    1234\n', '');
+      return {} as any;
+    });
+
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true });
+    (globalThis as any).fetch = fetchMock;
+
+    const update = jest.fn().mockResolvedValue(undefined);
+    const context = {
+      workspaceState: {
+        get: jest.fn().mockReturnValue(undefined),
+        update,
+      },
+    } as unknown as vscode.ExtensionContext;
+
+    const discovered = await discoverRunningServerUrl(
+      context,
+      makeConfig(),
+      undefined,
+      ['http://localhost:55838'],
+    );
+
+    expect(discovered).toBe('http://localhost:55838');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:55838/api/workspaces',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(update).toHaveBeenCalledWith('ticketViewer.lastServerUrl', 'http://localhost:55838');
   });
 });

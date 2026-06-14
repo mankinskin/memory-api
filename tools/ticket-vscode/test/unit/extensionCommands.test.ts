@@ -31,10 +31,12 @@ jest.mock('../../src/extensionSupport', () => ({
   TICKET_STATES: ['new', 'ready', 'in-implementation', 'in-review', 'done', 'cancelled'],
   TICKET_TYPES: ['tracker-improvement'],
   detectTicketWorkspaces: jest.fn(() => []),
+  discoverRunningServerUrl: jest.fn(),
   openTicketViewer: jest.fn(),
   pingServer: jest.fn(),
   pollUntilReachable: jest.fn(() => Promise.resolve()),
   readConfig: jest.fn(),
+  rememberServerUrl: jest.fn(() => Promise.resolve()),
   resolveActiveWorkspace: jest.fn(),
   resolveTicketsDir: jest.fn(() => 'C:/tickets'),
   startServerTask: jest.fn(),
@@ -143,6 +145,7 @@ describe('registerExtensionCommands', () => {
     const { registered, provider, state, context } = createArgs();
     const startServer = registered.get('ticket-viewer.startServer');
 
+    (extensionSupport.discoverRunningServerUrl as jest.Mock).mockResolvedValue(undefined);
     (extensionSupport.pingServer as jest.Mock).mockResolvedValue(true);
     (extensionSupport.resolveActiveWorkspace as jest.Mock).mockResolvedValue({
       workspace: 'shared--abc123',
@@ -167,10 +170,39 @@ describe('registerExtensionCommands', () => {
     expect(state.displayName).toBe('workspace');
   });
 
+  test('ticket-viewer.startServer uses a discovered running server before trying to spawn', async () => {
+    const { registered, provider, state, context } = createArgs();
+    const startServer = registered.get('ticket-viewer.startServer');
+
+    (extensionSupport.discoverRunningServerUrl as jest.Mock).mockResolvedValue('http://localhost:55838');
+    (extensionSupport.resolveActiveWorkspace as jest.Mock).mockResolvedValue({
+      workspace: 'shared--abc123',
+      displayName: 'workspace',
+    });
+
+    await startServer?.();
+
+    expect(extensionSupport.startServerTask).not.toHaveBeenCalled();
+    expect(extensionSupport.pingServer).not.toHaveBeenCalled();
+    expect(extensionSupport.resolveActiveWorkspace).toHaveBeenCalledWith(
+      'http://localhost:55838',
+      'default',
+      context,
+    );
+    expect(provider.update).toHaveBeenCalledWith(
+      'http://localhost:55838',
+      'shared--abc123',
+      0,
+      'C:/tickets',
+    );
+    expect(state.serverUrl).toBe('http://localhost:55838');
+  });
+
   test('ticket-viewer.startServer re-resolves the workspace after a spawned server becomes reachable', async () => {
     const { registered, provider, state, context } = createArgs();
     const startServer = registered.get('ticket-viewer.startServer');
 
+    (extensionSupport.discoverRunningServerUrl as jest.Mock).mockResolvedValue(undefined);
     (extensionSupport.pingServer as jest.Mock).mockResolvedValue(false);
     (extensionSupport.startServerTask as jest.Mock).mockResolvedValue({
       process: { killed: false },
