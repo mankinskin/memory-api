@@ -1,1 +1,2 @@
 {"rev":1,"ts":"2026-05-18T10:56:16.596152100+00:00","fields":{"component":"ticket-vscode","priority":"high","risk_level":"high","state":"ready","title":"[ticket-vscode] Extract portable Rust core for ticket/domain logic","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-06-14T19:11:27.416108500+00:00","fields":{"component":"ticket-vscode","depends_on":["14047b99-41d6-4899-bec6-4a919bffcc2d"],"priority":"high","risk_level":"high","state":"ready","title":"[ticket-vscode] Extract portable Rust core for ticket/domain logic","type":"tracker-improvement"}}

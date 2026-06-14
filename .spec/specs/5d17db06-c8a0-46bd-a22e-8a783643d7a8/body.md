@@ -19,6 +19,7 @@ The extension activates unconditionally at VS Code startup (`onStartupFinished`)
 	When the server exposes canonical workspace ids that differ from VS Code folder names, the extension must map the detected local `.ticket` root to the matching server workspace by label or path and otherwise prefer the server-declared active workspace over the first returned workspace.
 	When auto-start races server readiness, the extension must re-resolve the active workspace after the server becomes reachable before relying on the provider's durable workspace binding for ticket listing.
  	When ticket loading still fails after startup because the bound server URL or workspace is stale, the provider must perform one automatic recovery pass that re-discovers a running ticket server, re-resolves the active workspace, and retries the load before surfacing an error state.
+ 	When the provider does surface an error state, the message must include the caller context and the failed request details: server URL, workspace, active filters, request method and URL, and any HTTP status/response body returned by the API.
 3. Registers the `TicketTreeProvider` and attaches it to the `ticket-viewer.tickets` TreeView.
 4. Starts the `BrowserBridge` control server.
 5. Creates a status bar item showing the workspace name and live ticket counts.

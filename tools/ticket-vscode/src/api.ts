@@ -34,23 +34,68 @@ export interface TicketListFilters {
   state?: string;
 }
 
-async function apiFetch<T>(url: string): Promise<T> {
+export interface ApiRequestContext {
+  operation: string;
+  method?: string;
+}
+
+export class ApiRequestError extends Error {
+  readonly name = 'ApiRequestError';
+
+  constructor(
+    message: string,
+    public readonly operation: string,
+    public readonly url: string,
+    public readonly method: string,
+    public readonly status?: number,
+    public readonly responseBody?: string,
+    public readonly causeError?: unknown,
+  ) {
+    super(message);
+  }
+}
+
+function buildRequestError(
+  context: ApiRequestContext,
+  url: string,
+  status?: number,
+  responseBody?: string,
+  causeError?: unknown,
+): ApiRequestError {
+  const method = context.method ?? 'GET';
+  const prefix = `${context.operation} failed (${method} ${url})`;
+
+  if (typeof status === 'number') {
+    const body = responseBody && responseBody !== '' ? `: ${responseBody}` : '';
+    return new ApiRequestError(`${prefix} -> HTTP ${status}${body}`, context.operation, url, method, status, responseBody, causeError);
+  }
+
+  const causeMessage = causeError instanceof Error ? causeError.message : String(causeError ?? 'unknown error');
+  return new ApiRequestError(`${prefix} -> ${causeMessage}`, context.operation, url, method, undefined, responseBody, causeError);
+}
+
+async function apiFetch<T>(url: string, context: ApiRequestContext): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 6000);
   try {
     const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) {
       const body = await res.text().catch(() => res.statusText);
-      throw new Error(`HTTP ${res.status}: ${body}`);
+      throw buildRequestError(context, url, res.status, body);
     }
     return res.json() as Promise<T>;
+  } catch (err) {
+    if (err instanceof ApiRequestError) {
+      throw err;
+    }
+    throw buildRequestError(context, url, undefined, undefined, err);
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
 export async function fetchWorkspaces(baseUrl: string): Promise<WorkspacesResponse> {
-  return apiFetch<WorkspacesResponse>(`${baseUrl}/api/workspaces`);
+  return apiFetch<WorkspacesResponse>(`${baseUrl}/api/workspaces`, { operation: 'Fetch workspaces' });
 }
 
 export async function fetchTickets(
@@ -63,7 +108,7 @@ export async function fetchTickets(
   if (cursor) { params.set('cursor', cursor); }
   if (filters.query) { params.set('query', filters.query); }
   if (filters.state) { params.set('state', filters.state); }
-  return apiFetch<TicketsResponse>(`${baseUrl}/api/tickets?${params}`);
+  return apiFetch<TicketsResponse>(`${baseUrl}/api/tickets?${params}`, { operation: 'List tickets' });
 }
 
 /** Fetches all tickets across all cursor pages. */
@@ -102,7 +147,7 @@ export async function fetchEdges(
 ): Promise<EdgeRecord[]> {
   const params = new URLSearchParams({ workspace });
   if (kind) { params.set('kind', kind); }
-  const data = await apiFetch<EdgesResponse>(`${baseUrl}/api/edges?${params}`);
+  const data = await apiFetch<EdgesResponse>(`${baseUrl}/api/edges?${params}`, { operation: 'List edges' });
   return data.items;
 }
 
@@ -121,6 +166,7 @@ export async function fetchTicketDescription(
   const params = new URLSearchParams({ workspace });
   const data = await apiFetch<TicketDescriptionResponse>(
     `${baseUrl}/api/tickets/${encodeURIComponent(ticketId)}/description?${params}`,
+    { operation: 'Fetch ticket description' },
   );
   return data.description;
 }
@@ -264,6 +310,6 @@ export async function fetchSchemas(
   workspace: string,
 ): Promise<TypeSchema[]> {
   const params = new URLSearchParams({ workspace });
-  const data = await apiFetch<SchemaListResponse>(`${baseUrl}/api/schema?${params}`);
+  const data = await apiFetch<SchemaListResponse>(`${baseUrl}/api/schema?${params}`, { operation: 'List schemas' });
   return data.types;
 }

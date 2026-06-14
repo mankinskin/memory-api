@@ -3,6 +3,7 @@ created_at = "2026-05-18T10:56:15.449157800+00:00"
 title = "[ticket-vscode] Prove dual-host WASM activation"
 state = "ready"
 component = "ticket-vscode"
+depends_on = ["93f7e422-1e41-4145-b8ba-0dcf7fc730ac"]
 priority = "high"
 risk_level = "high"
 type = "tracker-improvement"

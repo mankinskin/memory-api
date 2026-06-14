@@ -13,7 +13,7 @@
  */
 
 import { TicketTreeProvider, StateGroupItem, TicketItem } from '../../src/ticketProvider';
-import { FilterControlItem } from '../../src/ticketTreeItems';
+import { FilterControlItem, InfoItem } from '../../src/ticketTreeItems';
 import type { TicketSummary, EdgeRecord } from '../../src/api';
 
 // Mock the API module so we can inject controlled test data.
@@ -277,6 +277,47 @@ describe('TicketTreeProvider — state folder grouping', () => {
     expect(mockApi.fetchAllTickets).toHaveBeenNthCalledWith(1, 'http://localhost:3002', 'default', {});
     expect(mockApi.fetchAllTickets).toHaveBeenNthCalledWith(2, 'http://localhost:55838', 'shared--abc123', {});
     expect(provider.allTickets).toHaveLength(1);
+  });
+
+  test('surfaces request URL, workspace, filters, and response details in the error state', async () => {
+    const mockApi = api as jest.Mocked<typeof api>;
+    mockApi.fetchAllTickets.mockRejectedValue(
+      {
+        name: 'ApiRequestError',
+        message: 'List tickets failed (GET http://localhost:3002/api/tickets?workspace=default&limit=500&state=new) -> HTTP 404: {"code":"not_found","message":"workspace not found"}',
+        operation: 'List tickets',
+        url: 'http://localhost:3002/api/tickets?workspace=default&limit=500&state=new',
+        method: 'GET',
+        status: 404,
+        responseBody: '{"code":"not_found","message":"workspace not found"}',
+      },
+    );
+    mockApi.fetchEdges.mockResolvedValue([]);
+    mockApi.fetchSchemas.mockResolvedValue([]);
+
+    const provider = new TicketTreeProvider(
+      'http://localhost:3002',
+      'default',
+      0,
+    );
+
+    await waitForProviderReload(provider, () => {
+      provider.setStateFilter('new');
+    });
+
+    const infoItems = provider.getChildren(undefined)
+      .filter((item): item is InfoItem => item instanceof InfoItem);
+    expect(infoItems).toHaveLength(1);
+    const [errorItem] = infoItems;
+    const tooltip = String(errorItem.tooltip);
+    expect(errorItem.label).toBe('Ticket request failed');
+    expect(tooltip).toContain('Server URL: http://localhost:3002');
+    expect(tooltip).toContain('Workspace: default');
+    expect(tooltip).toContain('Filters: state=new');
+    expect(tooltip).toContain('Operation: List tickets');
+    expect(tooltip).toContain('Request: GET http://localhost:3002/api/tickets?workspace=default&limit=500&state=new');
+    expect(tooltip).toContain('HTTP status: 404');
+    expect(tooltip).toContain('workspace not found');
   });
 
   // ── AC2/AC3 — hierarchy within same state ─────────────────────────────────

@@ -27,6 +27,63 @@ function normalizeFilterValue(value: string | undefined): string | undefined {
   return normalized ? normalized : undefined;
 }
 
+function isApiRequestError(error: unknown): error is {
+  operation: string;
+  url: string;
+  method: string;
+  status?: number;
+  responseBody?: string;
+  message: string;
+} {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const candidate = error as Record<string, unknown>;
+  return typeof candidate.operation === 'string'
+    && typeof candidate.url === 'string'
+    && typeof candidate.method === 'string'
+    && typeof candidate.message === 'string';
+}
+
+function formatErrorStateMessage(
+  baseUrl: string,
+  workspace: string,
+  filters: TicketListFilters,
+  error: unknown,
+): { label: string; tooltip: string } {
+  const lines = [
+    `Server URL: ${baseUrl}`,
+    `Workspace: ${workspace}`,
+  ];
+  const filterSummary = [
+    filters.query ? `query=${filters.query}` : undefined,
+    filters.state ? `state=${filters.state}` : undefined,
+  ].filter((value): value is string => Boolean(value));
+  lines.push(`Filters: ${filterSummary.length > 0 ? filterSummary.join(', ') : 'none'}`);
+
+  if (isApiRequestError(error)) {
+    lines.push(`Operation: ${error.operation}`);
+    lines.push(`Request: ${error.method} ${error.url}`);
+    if (typeof error.status === 'number') {
+      lines.push(`HTTP status: ${error.status}`);
+    }
+    if (error.responseBody && error.responseBody !== '') {
+      lines.push(`Response: ${error.responseBody}`);
+    }
+    return {
+      label: 'Ticket request failed',
+      tooltip: `${lines.join('\n')}\n\n${error.message}\n\nUse the ▶ button to start or reconnect the server task.`,
+    };
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    label: 'Server not reachable',
+    tooltip: `${lines.join('\n')}\n\n${message}\n\nUse the ▶ button to start or reconnect the server task.`,
+  };
+}
+
 // ── Provider ─────────────────────────────────────────────────────────────────
 
 export class TicketTreeProvider
@@ -39,6 +96,7 @@ export class TicketTreeProvider
   private tickets: TicketSummary[] = [];
   private state: 'idle' | 'loading' | 'error' = 'idle';
   private errorMessage = '';
+  private errorLabel = 'Server not reachable';
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
   private _descriptionCache = new Map<string, string | null>();
   /** Ordered state names from the schema endpoint; undefined until first fetch. */
@@ -198,9 +256,9 @@ export class TicketTreeProvider
       return [
         ...filterControls,
         new InfoItem(
-          'Server not reachable',
+          this.errorLabel,
           'error',
-          `Could not connect to ${this._baseUrl}\n\n${this.errorMessage}\n\nUse the ▶ button to start the server task.`,
+          this.errorMessage,
         ),
       ];
     }
@@ -432,6 +490,7 @@ export class TicketTreeProvider
       this._buildDependencyMaps(edges);
       this.state = 'idle';
       this.errorMessage = '';
+      this.errorLabel = 'Server not reachable';
     } catch (err) {
       if (allowRecovery && this._recoverConnection) {
         const recovered = await this._recoverConnection(err);
@@ -443,7 +502,14 @@ export class TicketTreeProvider
         }
       }
 
-      this.errorMessage = err instanceof Error ? err.message : String(err);
+      const formattedError = formatErrorStateMessage(
+        this._baseUrl,
+        this._workspace,
+        this._filters,
+        err,
+      );
+      this.errorLabel = formattedError.label;
+      this.errorMessage = formattedError.tooltip;
       this.state = 'error';
       this.tickets = [];
       this._ticketMap.clear();
