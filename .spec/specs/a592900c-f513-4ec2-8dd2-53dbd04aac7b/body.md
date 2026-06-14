@@ -2,85 +2,124 @@
 
 ## Goal
 
-Port the current `memory-viewers/memory-api/tools/ticket-vscode` extension to a Rust/WASM-backed implementation without breaking the existing ticket browsing workflow.
-
-The target is not a zero-JavaScript extension. VS Code still requires JavaScript entrypoints for extension activation and API calls. The practical target is a dual-host extension with a thin JS/TS shell and a Rust/WASM core.
+Port `memory-viewers/memory-api/tools/ticket-vscode` to a dual-host Rust/WASM-backed architecture without breaking the existing ticket browsing workflow. Target: thin JS/TS host shell + Rust/WASM core, shipping both `main` (Node/Electron/remote) and `browser` (WebWorker) entrypoints.
 
 ## Research Findings
 
-### VS Code runtime constraints
+VS Code runtime constraints: the `browser` entry runs in a WebWorker bundled as a single file. `process`, `path`, `fs`, `child_process` are not available. Files go through `vscode.workspace.fs`. Processes cannot be spawned. Remote/Codespaces navigation uses `vscode.env.openExternal`, `asExternalUri`, and `clipboard`.
 
-- A web-compatible VS Code extension must provide a `browser` entry in `package.json`.
-- The `browser` entry runs inside a WebWorker and must be bundled into a single file.
-- In the web extension host, `require('vscode')` is supported, but general module loading is not.
-- Node globals and modules such as `process`, `path`, `fs`, and `child_process` are not available in the browser host.
-- Workspace and extension files must be accessed through `vscode.workspace.fs` and URI-based APIs.
-- Running child processes or local binaries is not possible in the browser host.
-- Remote and Codespaces scenarios require `vscode.env.openExternal`, `vscode.env.asExternalUri`, and `vscode.env.clipboard` instead of local process-based helpers.
-
-### Current ticket-vscode architecture findings
-
-The current TypeScript extension mixes portable logic with Node-specific host behavior:
-
-- `src/api.ts` is mostly portable HTTP/data-shape code.
-- `src/ticketProvider.ts` contains portable filtering/grouping/root-detection logic, but also directly uses `node:fs` and `node:path` to expose on-disk ticket files under each ticket node.
-- `src/extensionSupport.ts` is strongly Node-bound: config helpers, `.ticket` workspace discovery with `fs/path`, browser binary discovery with `process.env`, and `child_process.spawn()` for browser launching and server startup.
-- `src/browserBridge.ts` is desktop-only: local HTTP control server, CDP probing, Simple Browser control, and Playwright-over-CDP automation.
-- `src/extensionCommands.ts` currently combines VS Code command wiring with direct filesystem/process assumptions.
-
-### Portability conclusion
-
-A full rewrite of the extension surface in Rust is not realistic if the goal includes web and remote support. The viable split is:
-
-- JS/TS host layer:
-  - VS Code activation/deactivation
-  - command registration
-  - TreeItem creation and contribution wiring
-  - capability adapters for clipboard, URIs, workspace FS, notifications, and host detection
-  - any remaining desktop-only features
-- Rust/WASM core:
-  - ticket/edge/schema data models
-  - filtering, grouping, root-ticket detection, and tree model derivation
-  - URL and command intent derivation
-  - capability-aware feature gating decisions
-  - deterministic state transformations that can be unit-tested outside VS Code
+Current extension mixes portable logic (`src/api.ts`, `src/ticketProvider.ts` filter/group/root logic) with Node-bound behavior (`src/extensionSupport.ts` server start/discovery/browser-binary-detection, `src/browserBridge.ts`/`src/browserBridgeCdp.ts` CDP automation, `src/extensionCommands.ts` filesystem assumptions).
 
 ## Target Architecture
 
-### Runtime model
+Both `main` and `browser` entries call the same Rust/WASM core through a narrow `HostCapabilities` adapter boundary. The core never imports `vscode` or Node modules.
 
-Ship both:
+## Module Portability Matrix
 
-- `main` desktop entry for Node/Electron and remote workspace hosts
-- `browser` entry for the web extension host
+Frozen classification — every follow-on ticket must honor these buckets.
 
-Both entries should call into the same Rust/WASM core through a narrow adapter boundary.
+Buckets: **Portable** (no VS Code/Node dep; Rust core target), **Host shell** (activation/registration/TreeItem; JS/TS in both entries), **Host-adapted** (all hosts, different implementations behind a capability adapter), **Desktop-only/deferred** (Node/Electron only; gated off in web/virtual).
 
-### Capability boundary
+| Module | Bucket | Port action |
+|---|---|---|
+| `src/api.ts` | Portable | Move shapes + URL building into Rust core; `fetch` behind `FetchCapability` adapter |
+| `src/ticketProvider.ts` filter/group/root logic | Portable | Move into Rust core as deterministic tree-model derivation |
+| `src/ticketProvider.ts` on-disk folder browsing | Host-adapted | Replace `fs.readdirSync`/`path.join` with `WorkspaceFsCapability` (`vscode.workspace.fs` + `Uri`) |
+| `src/ticketTreeItems.ts` | Host shell | Keep in JS shell; replace `Uri.file` with workspace-FS URIs from adapter |
+| `src/extensionSupport.ts` config | Host shell | Keep; expose config snapshot to core as plain data |
+| `src/extensionSupport.ts` workspace discovery | Host-adapted | HTTP workspace enumeration portable; on-disk `.ticket` scan becomes `WorkspaceFsCapability` |
+| `src/extensionSupport.ts` server start | Desktop-only/deferred | Gate behind `ServerControlCapability`; absent in web/virtual |
+| `src/extensionSupport.ts` browser binary discovery | Desktop-only/deferred | Drop in web; replace intent with `vscode.env.openExternal` |
+| `src/extensionSupport.ts` open external | Host-adapted | Canonical viewer-navigation via `asExternalUri` for all hosts |
+| `src/browserBridge.ts` + `src/browserBridgeCdp.ts` | Desktop-only/deferred | Not loaded in web/virtual hosts |
+| `src/extensionCommands.ts` | Host shell + adapted | Keep command registration; route file/process/intent through capability adapters |
+| `src/extension.ts` | Host shell | Split into shared activation core + `main`/`browser` entrypoints; server orchestration behind `ServerControlCapability` |
 
-Define a host capability contract before porting behavior:
+Command classification: **Portable/all hosts**: `refresh`, `setSearchQuery`, `setStateFilter`, `clearFilters`, `copyId`, `selectWorkspace`, `openInTicketViewer`, `openBrowser`. **Host-adapted**: `createTicket`, `editTitle`, `setState`, `editDescription`, `previewDescription`, `closeTicket`, `cancelTicket`, `undoTicket`, `addDependency`, `deleteTicket`. **Desktop-only/deferred** (hidden or no-op when capability absent): `startServer`, `bridgeNavigate`, `bridgeConnectCdp`, `bridgeStatus`.
 
-- fetch ticket API data
-- enumerate workspaces
-- read/list ticket files through VS Code URIs
-- copy to clipboard
-- open external URLs
-- optionally start or connect to a ticket-viewer server when the host supports it
-- detect host mode: desktop node, remote workspace, browser/web, virtual workspace
+## Host Capability Contract
 
-### Feature policy
+The seam between JS/TS host shell and Rust/WASM core. Core receives a nullable `HostCapabilities` object.
 
-The spec work must explicitly classify every existing feature into one of three buckets:
+| Capability | Purpose | Desktop | Remote | Browser/virtual |
+|---|---|---|---|---|
+| `FetchCapability` | HTTP ticket API and workspace enumeration | global `fetch` | global `fetch` + `asExternalUri` | global `fetch` (CORS-bound) |
+| `WorkspaceDiscoveryCapability` | List ticket workspaces | HTTP + FS scan | HTTP + `workspace.fs` | HTTP only |
+| `WorkspaceFsCapability` | Read/list ticket files via `readDirectory`/`readFile`/`stat` | full | full | best-effort |
+| `ClipboardCapability` | Copy ticket ID/URL via `env.clipboard.writeText` | yes | yes | yes |
+| `ExternalUrlCapability` | Open viewer/URLs via `openExternal(asExternalUri(uri))` | yes | yes (port-forwarded) | yes (new tab) |
+| `NotificationCapability` | Info/warn/error and prompts | yes | yes | yes |
+| `HostDetectionCapability` | `{ uiKind, extensionKind, remoteName, isVirtualWorkspace, isTrusted }` | `desktop-node` | `remote-workspace` | `browser-web`/`virtual` |
+| `ServerControlCapability` (optional) | Start/connect a local ticket-viewer server | present | present (remote) | **absent** |
+| `BrowserBridgeCapability` (optional) | CDP/Simple-Browser automation | opt-in | absent | **absent** |
 
-1. portable and required in all hosts
-2. host-adapted with different implementations per host
-3. desktop-only or deferred because web hosts cannot support it directly
+Contract rules (frozen):
+1. Core depends only on required capabilities. Optional capabilities are nullable; core derives feature availability from their presence and emits gate decisions the shell renders.
+2. Host detection uses `env.uiKind`, `extension.extensionKind`, `env.remoteName`, `workspace.isVirtualWorkspace` — never `process` or `navigator` sniffing.
+3. All filesystem access goes through `WorkspaceFsCapability`. No core or shared-shell code may import `node:fs`/`node:path`. `vscode.Uri.file(...)` replaced by workspace-folder URIs.
+4. Viewer navigation always routes through `ExternalUrlCapability` using `asExternalUri`.
+5. Absent capability resolves to `undefined`; core treats it as "feature unavailable"; shell hides/disables the corresponding command/menu.
 
-Initial candidates:
+## Per-Host Behavior Differences
 
-- Portable: ticket list loading, filter/search state, tree derivation, selected-ticket URL creation, copy-ID intent
-- Host-adapted: workspace discovery, local ticket file browsing, open-in-viewer behavior, server reachability checks
-- Desktop-only or deferred: Browser Bridge control server, CDP automation, local browser binary selection, direct process spawning
+### Server startup
+- Desktop: `ServerControlCapability` spawns binary via `child_process`, parses ports, remembers URL.
+- Remote: Server runs on remote; client URLs wrapped with `asExternalUri`.
+- Browser/virtual: `ServerControlCapability` absent. No spawn. Extension consumes an already-running HTTP server. `startServer` hidden. No server reachable shows "configure a server URL" info node.
+
+### Viewer navigation
+- Desktop/Remote: `vscode.env.openExternal(asExternalUri(uri))`. Remote: `asExternalUri` performs port forwarding.
+- Browser/virtual: `openExternal` opens new tab. No Simple Browser/CDP path.
+
+### File browsing
+- Desktop/Remote: `WorkspaceFsCapability` over `vscode.workspace.fs` replaces `fs.readdirSync`/`path.join`. TreeItem `resourceUri` uses folder URI not `Uri.file`.
+- Browser/virtual: `workspace.fs` may be empty. File-child nodes best-effort: render only when `readDirectory` succeeds; otherwise collapse to API-derived data. No `node:fs` fallback.
+
+### Browser-bridge
+- Desktop: Optional opt-in, requires `--remote-debugging-port`.
+- Remote/Browser/virtual: Not available. `bridge*` commands hidden. Explicit Phase-1 non-goal.
+
+### Host detection summary
+
+| Signal | Desktop node | Remote workspace | Browser/web | Virtual |
+|---|---|---|---|---|
+| `env.uiKind` | Desktop | Desktop | Web | Web/Desktop |
+| `extension.extensionKind` | ui | workspace | web | web |
+| `env.remoteName` | undefined | set | undefined | undefined |
+| `workspace.isVirtualWorkspace` | false | false | maybe | true |
+| `ServerControlCapability` | present | present | absent | absent |
+| `BrowserBridgeCapability` | opt-in | absent | absent | absent |
+
+## Loader Constraints (Spike Findings — ticket 14047b99)
+
+### Shared WASM loader
+
+Both `main` and `browser` entries load the `.wasm` binary via `vscode.workspace.fs.readFile` against the extension URI (works in both Node and web hosts):
+
+```ts
+const wasmUri = vscode.Uri.joinPath(context.extensionUri, 'out', 'ticket_vscode_core_bg.wasm');
+const wasmBytes = await vscode.workspace.fs.readFile(wasmUri);
+```
+
+### Desktop `main` entry
+
+CommonJS (`"module": "commonjs"`). wasm-pack target `--target bundler`. `.wasm` copied to `out/` as a separate asset.
+
+### Browser `browser` entry
+
+Single-file bundle (no `require`, no dynamic external `import()`). `"module": "esnext"` in `tsconfig.browser.json`. esbuild bundles `src/extension.browser.ts` to `out/extension.browser.js`. `.wasm` stays as `out/ticket_vscode_core_bg.wasm` — not inlined.
+
+### VSIX packaging
+
+`.vscodeignore` must not exclude `out/*.wasm`. Both entries share the same WASM asset.
+
+### Build pipeline
+
+```
+wasm-pack build crates/ticket-vscode-core --target bundler --out-dir tools/ticket-vscode/pkg/
+npm run compile          # tsc -> out/extension.js  (main entry)
+npm run bundle:browser   # esbuild src/extension.browser.ts -> out/extension.browser.js
+```
 
 ## Planned Work Track
 
@@ -93,30 +132,14 @@ Initial candidates:
 
 ## Validation Strategy
 
-### Rust/WASM core
-
-- `cargo test -p <new-core-crate>` for pure logic
-- `cargo check -p <new-core-crate> --target wasm32-unknown-unknown`
-
-### Extension packaging
-
-- TypeScript typecheck / bundler build for both `main` and `browser` entrypoints
-- extension activation smoke test in VS Code desktop using `--extensionDevelopmentKind=web`
-- browser-hosted smoke or integration tests via `@vscode/test-web`
-
-### Behavior validation
-
-- verify ticket list render, filter changes, and open-ticket actions in desktop VS Code
-- verify copy-to-clipboard and external ticket-viewer navigation in a remote/Codespaces-safe way
-- verify desktop-only features are hidden or clearly explained when unavailable
-
-### Manual validation
-
-- browser validation must use an external Chromium-family browser, not VS Code's integrated browser
-- record the browser window or display resolution used for any manual UI verification
+- `cargo test -p ticket-vscode-core` and `cargo check -p ticket-vscode-core --target wasm32-unknown-unknown` for the Rust core.
+- TypeScript typecheck and esbuild bundle for both `main` and `browser` entrypoints.
+- Extension activation smoke test with `--extensionDevelopmentKind=web`.
+- Browser-hosted tests via `@vscode/test-web`.
+- Manual: external Chromium-family browser for browser-host path; record window/display resolution.
 
 ## Non-Goals For Phase 1
 
-- Eliminating the JS/TS extension entrypoints entirely
-- Porting CDP/Browser Bridge automation into the web extension host
-- Preserving every current desktop helper in identical form when the host does not support the required runtime capabilities
+- Eliminating the JS/TS extension entrypoints entirely.
+- Porting CDP/Browser Bridge automation into the web extension host.
+- Preserving every current desktop helper in identical form when the host does not support the required runtime capabilities.

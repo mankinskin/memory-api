@@ -15,6 +15,7 @@
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
+  "browser": "./out/extension.browser.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -313,8 +314,10 @@
   },
   "scripts": {
     "compile": "tsc -p tsconfig.json",
+    "bundle:browser": "node ./scripts/bundle-browser.mjs",
+    "build": "npm run compile && npm run bundle:browser",
     "watch": "tsc --watch -p tsconfig.json",
-    "package": "npm run compile && node ./scripts/run-vsce.cjs package --no-dependencies --allow-missing-repository --skip-license",
+    "package": "npm run build && node ./scripts/run-vsce.cjs package --no-dependencies --allow-missing-repository --skip-license",
     "install:vsix": "node ./scripts/install-vsix.mjs",
     "install:vsix:dry-run": "node ./scripts/install-vsix.mjs --dry-run",
     "test:unit": "jest --config jest.config.ts"
@@ -324,6 +327,7 @@
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^2.32.0",
+    "esbuild": "^0.25.12",
     "jest": "^29.7.0",
     "ts-jest": "^29.4.9",
     "ts-node": "^10.9.2",
