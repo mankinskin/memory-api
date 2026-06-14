@@ -104,13 +104,6 @@ impl TicketServer {
                     )
                 })?;
 
-            if indexed.deleted {
-                return Err(McpError::invalid_params(
-                    format!("ticket deleted: {id}"),
-                    None,
-                ));
-            }
-
             Self::json_result(&serde_json::json!({
                 "workspace": workspace,
                 "id": id.to_string(),

@@ -159,7 +159,7 @@ pub(crate) fn cmd_list(
     args: ListArgs,
     store: &SpecStore,
 ) -> Result<Value, CliRunError> {
-    let all = store.entity_store().list_indexed(false)?;
+    let all = store.entity_store().list_indexed()?;
     let mut items: Vec<Value> = Vec::new();
 
     'outer: for indexed in &all {

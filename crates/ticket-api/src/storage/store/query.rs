@@ -23,7 +23,7 @@ impl TicketStore {
         limit: Option<usize>,
     ) -> Result<Vec<IndexedTicket>, StorageError> {
         let mut filtered: Vec<IndexedTicket> = self
-            .normalize_indexed_tickets(self.index.list_tickets(false)?)
+            .normalize_indexed_tickets(self.index.list_tickets()?)
             .into_iter()
             .filter(|ticket| matches_filters(ticket, state_filter, type_filter))
             .collect();
@@ -37,13 +37,12 @@ impl TicketStore {
         state_filter: Option<&str>,
         type_filter: Option<&str>,
         limit: Option<usize>,
-        include_deleted: bool,
         field_filters: &[(String, String)],
     ) -> Result<Vec<IndexedTicket>, StorageError> {
         let needs_manifest_check = !field_filters.is_empty();
         let mut filtered: Vec<IndexedTicket> = self
             .normalize_indexed_tickets(
-                self.index.list_tickets(include_deleted)?,
+                self.index.list_tickets()?,
             )
             .into_iter()
             .filter(|ticket| matches_filters(ticket, state_filter, type_filter))
@@ -107,9 +106,6 @@ impl TicketStore {
         let mut source = self
             .get_indexed(&edge.from)?
             .ok_or(StorageError::NotFound(edge.from))?;
-        if source.deleted {
-            return Err(StorageError::NotFound(edge.from));
-        }
 
         let (manifest, changed) = TicketFs::update_edge_field(
             &source.path,
@@ -144,9 +140,6 @@ impl TicketStore {
         let mut source = self
             .get_indexed(&edge.from)?
             .ok_or(StorageError::NotFound(edge.from))?;
-        if source.deleted {
-            return Err(StorageError::NotFound(edge.from));
-        }
 
         let (manifest, changed) = TicketFs::update_edge_field(
             &source.path,

@@ -312,7 +312,6 @@ pub(crate) fn cmd_list(
         args.state.as_deref(),
         args.ticket_type.as_deref(),
         args.limit,
-        args.include_deleted,
         &field_filters,
     )?;
     let mut items = items;
@@ -340,10 +339,6 @@ pub(crate) fn cmd_list(
                 "effort": effort_from_ticket(store, t),
                 "updated_at": t.updated_at,
             });
-
-            if t.deleted {
-                item["deleted"] = json!(true);
-            }
 
             if args.with_repro {
                 let repro = store
@@ -402,9 +397,6 @@ pub(crate) fn cmd_describe(
     let indexed = store.get_indexed(&id)?.ok_or_else(|| {
         CliRunError::BadRequest(format!("ticket not found: {}", id))
     })?;
-    if indexed.deleted {
-        return Err(CliRunError::BadRequest(format!("ticket deleted: {}", id)));
-    }
     let description = TicketFs::read_description(&indexed.path);
     Ok(json!({
         "command": "describe",

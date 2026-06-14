@@ -315,8 +315,7 @@ fn append_dangling_edge_findings(
             .get_indexed(&edge.to)
             .ok()
             .flatten()
-            .map(|t| !t.deleted)
-            .unwrap_or(false);
+            .is_some();
         if target_exists {
             continue;
         }
@@ -327,7 +326,7 @@ fn append_dangling_edge_findings(
                 "dangling_edge",
                 "error",
                 format!(
-                    "depends_on edge points to {} which is deleted or missing.",
+                    "depends_on edge points to {} which is missing.",
                     short_id(edge.to)
                 ),
                 vec![

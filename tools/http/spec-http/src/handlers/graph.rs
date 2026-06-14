@@ -93,7 +93,7 @@ fn load_specs(
     store: &mut SpecStore,
     request_id: &str,
 ) -> Result<Vec<SpecManifest>, Response> {
-    let all = match store.entity_store().list_indexed(false) {
+    let all = match store.entity_store().list_indexed() {
         Ok(all) => all,
         Err(err) => return Err(storage_err(err, request_id)),
     };

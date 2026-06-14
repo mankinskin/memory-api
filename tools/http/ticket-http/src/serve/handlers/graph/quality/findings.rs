@@ -212,7 +212,7 @@ fn append_dangling_edge_findings(
                 "title": title,
                 "check": "dangling_edge",
                 "severity": "error",
-                "message": format!("depends_on edge points to {} which is deleted or missing.", short_ticket_id(target)),
+                "message": format!("depends_on edge points to {} which is missing.", short_ticket_id(target)),
             }),
         );
     }
@@ -249,8 +249,7 @@ fn ticket_exists(
         .get_indexed(&ticket_id)
         .ok()
         .flatten()
-        .map(|ticket| !ticket.deleted)
-        .unwrap_or(false)
+        .is_some()
 }
 
 fn short_ticket_id(ticket_id: Uuid) -> String {

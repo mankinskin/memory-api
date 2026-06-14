@@ -182,7 +182,7 @@ pub async fn list_specs(
     let mut store = state.store.lock().await;
     let _ = store.scan(false);
 
-    let all = match store.entity_store().list_indexed(false) {
+    let all = match store.entity_store().list_indexed() {
         Ok(a) => a,
         Err(e) => return crate::error::storage_err(e, &rid.0),
     };

@@ -20,9 +20,8 @@ impl TicketStore {
     pub(super) fn rebuild_workflow_facts(&self) -> Result<(), StorageError> {
         self.index.clear_workflow_facts()?;
         let all_ticket_ids = self
-            .normalize_indexed_tickets(self.index.list_tickets(false)?)
+            .normalize_indexed_tickets(self.index.list_tickets()?)
             .into_iter()
-            .filter(|ticket| !ticket.deleted)
             .map(|ticket| ticket.id)
             .collect::<Vec<_>>();
         self.recompute_workflow_facts_for_ids(&all_ticket_ids, None)
@@ -67,10 +66,8 @@ impl TicketStore {
             if !visited.insert(current) {
                 continue;
             }
-            if let Some(ticket) = self.get_indexed(&current)? {
-                if !ticket.deleted {
-                    affected.insert(current);
-                }
+            if let Some(_ticket) = self.get_indexed(&current)? {
+                affected.insert(current);
             }
 
             for edge in self.index.edges_to(&current)? {
@@ -95,10 +92,6 @@ impl TicketStore {
                 self.index.remove_workflow_facts(ticket_id)?;
                 continue;
             };
-            if ticket.deleted {
-                self.index.remove_workflow_facts(ticket_id)?;
-                continue;
-            }
 
             let dependency_ids = self
                 .index

@@ -214,7 +214,7 @@ async fn cancel_ticket_transitions_to_cancelled_with_reason() {
 }
 
 #[tokio::test]
-async fn delete_ticket_marks_as_deleted() {
+async fn delete_ticket_removes_folder() {
     let dir = tempfile::tempdir().expect("tempdir");
     let store = make_store(dir.path());
 
@@ -229,6 +229,9 @@ async fn delete_ticket_marks_as_deleted() {
             None,
         )
         .expect("create");
+
+    let ticket_path = store.get_indexed(&id).unwrap().unwrap().path.clone();
+    assert!(ticket_path.exists(), "folder must exist before delete");
 
     let state = make_state(Arc::clone(&store));
     let workspace = state.registry.primary_workspace_name().to_string();
@@ -253,11 +256,11 @@ async fn delete_ticket_marks_as_deleted() {
     assert_eq!(payload["ticket_ref"]["workspace"], workspace);
     assert_eq!(payload["ticket_ref"]["id"], id.to_string());
 
-    let indexed = store
-        .get_indexed(&id)
-        .expect("indexed ok")
-        .expect("indexed exists");
-    assert!(indexed.deleted, "ticket should be marked deleted");
+    assert!(!ticket_path.exists(), "folder must be removed after delete");
+    assert!(
+        store.get_indexed(&id).expect("indexed ok").is_none(),
+        "ticket must be absent from index after delete"
+    );
 }
 
 #[tokio::test]

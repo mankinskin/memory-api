@@ -279,8 +279,8 @@ fn indexed_ticket_state(
     ticket_id: Uuid,
 ) -> Result<(Option<String>, Option<String>), CliRunError> {
     Ok(match store.get_indexed(&ticket_id)? {
-        Some(ticket) if !ticket.deleted => (ticket.title, ticket.state),
-        _ => (None, None),
+        Some(ticket) => (ticket.title, ticket.state),
+        None => (None, None),
     })
 }
 

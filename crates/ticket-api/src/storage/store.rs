@@ -416,7 +416,6 @@ impl TicketStore {
             state: Some(state.clone()),
             created_at: now,
             updated_at: now,
-            deleted: false,
         };
         self.index.insert_ticket(&indexed)?;
 
@@ -518,9 +517,6 @@ impl TicketStore {
     ) -> Result<TicketManifest, StorageError> {
         let indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
-        if indexed.deleted {
-            return Err(StorageError::NotFound(*id));
-        }
         TicketFs::read(&indexed.path)
     }
 
@@ -537,8 +533,8 @@ impl TicketStore {
 
     /// Fetch multiple tickets by ID in a single ReDB read transaction.
     ///
-    /// Returns a `HashMap<Uuid, IndexedTicket>` for O(1) lookup. Missing or
-    /// deleted IDs are omitted. Prefer this over N separate `get_indexed()`
+    /// Returns a `HashMap<Uuid, IndexedTicket>` for O(1) lookup. Missing
+    /// IDs are omitted. Prefer this over N separate `get_indexed()`
     /// calls when you need metadata for a known set of IDs (e.g. BFS nodes).
     pub fn get_indexed_many(
         &self,
@@ -579,9 +575,6 @@ impl TicketStore {
     ) -> Result<TicketManifest, StorageError> {
         let mut indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
-        if indexed.deleted {
-            return Err(StorageError::NotFound(*id));
-        }
 
         let (new_state, transition_path) = if let Some(to) = to_state {
             let path = self.resolve_transition_path(

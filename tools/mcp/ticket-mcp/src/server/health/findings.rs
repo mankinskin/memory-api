@@ -185,8 +185,7 @@ fn append_dangling_edge_findings(
             .get_indexed(&edge.to)
             .ok()
             .flatten()
-            .map(|target| !target.deleted)
-            .unwrap_or(false);
+            .is_some();
         if target_exists {
             continue;
         }
@@ -201,7 +200,7 @@ fn append_dangling_edge_findings(
                 "check": "dangling_edge",
                 "severity": "error",
                 "message": format!(
-                    "depends_on edge points to {} which is deleted or missing.",
+                    "depends_on edge points to {} which is missing.",
                     short_id(edge.to)
                 ),
             }),

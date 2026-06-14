@@ -272,7 +272,7 @@ impl TicketStore {
         release_target: &str,
         required_gates: &[String],
     ) -> Result<GateCheckOutcome, StorageError> {
-        let all = self.index.list_tickets(false)?;
+        let all = self.index.list_tickets()?;
         let candidates: Vec<_> = all
             .iter()
             .filter(|ticket| ticket.state.as_deref() == Some("done"))
@@ -336,7 +336,7 @@ impl TicketStore {
 
         let to_promote: Vec<Uuid> = self
             .index
-            .list_tickets(false)?
+            .list_tickets()?
             .into_iter()
             .filter(|ticket| ticket.state.as_deref() == Some("done"))
             .map(|ticket| ticket.id)

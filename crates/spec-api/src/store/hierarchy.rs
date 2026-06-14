@@ -19,7 +19,7 @@ impl SpecStore {
         let uuid_str = uuid.to_string();
         let mut children = Vec::new();
 
-        for indexed in &self.inner.list_indexed(false)? {
+        for indexed in &self.inner.list_indexed()? {
             if let Ok(spec) = read_spec_manifest(&indexed.path) {
                 if spec.parent() == Some(&uuid_str) {
                     children.push(spec);
@@ -51,7 +51,7 @@ impl SpecStore {
         id_or_slug: &str,
     ) -> Result<Vec<SpecManifest>, SpecError> {
         let uuid = self.resolve_id(id_or_slug)?;
-        let all = self.inner.list_indexed(false)?;
+        let all = self.inner.list_indexed()?;
         let mut result = Vec::new();
         let mut queue = VecDeque::from([uuid]);
 

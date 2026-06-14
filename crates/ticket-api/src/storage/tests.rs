@@ -23,10 +23,7 @@ use memory_api::{
 use tempfile::tempdir;
 use uuid::Uuid;
 
-use super::{
-    TicketStore,
-    ticket_fs::TicketFs,
-};
+use super::TicketStore;
 use crate::model::{
     manifest_format::format_manifest_toml,
     ticket::TicketManifest,
@@ -81,11 +78,7 @@ fn assert_visibility_surfaces_agree(
 
     for id in &known_ids {
         if expected_ids.contains(id) {
-            let indexed = store.get_indexed(id).unwrap().unwrap();
-            assert!(
-                !indexed.deleted,
-                "visible ticket {id} should not remain tombstoned"
-            );
+            let _indexed = store.get_indexed(id).unwrap().unwrap();
             assert!(store.get(id).is_ok(), "visible ticket {id} should be readable");
         } else {
             assert!(
@@ -508,7 +501,6 @@ fn run_scan_reconciliation_visibility_agreement(reindex: bool) {
     poisoned.title = Some("Wrong title".to_string());
     poisoned.state = Some("new".to_string());
     poisoned.created_at = expected_move.created_at - Duration::days(1);
-    poisoned.deleted = false;
     poisoned_index.insert_ticket(&poisoned).unwrap();
 
     root_store.scan(reindex).unwrap();
@@ -531,7 +523,7 @@ fn run_scan_reconciliation_visibility_agreement(reindex: bool) {
     );
 
     let delete_path = child_store_a.get_indexed(&delete_id).unwrap().unwrap().path;
-    TicketFs::mark_deleted(&delete_path).unwrap();
+    fs::remove_dir_all(&delete_path).unwrap();
 
     root_store.scan(reindex).unwrap();
     assert_visibility_surfaces_agree(
@@ -790,7 +782,6 @@ fn scan_repairs_corrupted_nested_workspace_ticket_path() {
     poisoned.title = Some("Wrong title".to_string());
     poisoned.state = Some("in-review".to_string());
     poisoned.created_at = child_indexed.created_at - Duration::days(1);
-    poisoned.deleted = true;
     poisoned_index.insert_ticket(&poisoned).unwrap();
 
     child_store
@@ -812,7 +803,6 @@ fn scan_repairs_corrupted_nested_workspace_ticket_path() {
     assert_eq!(indexed.title.as_deref(), Some("Nested workspace ticket"));
     assert_eq!(indexed.state.as_deref(), Some("in-implementation"));
     assert_eq!(indexed.created_at, child_indexed.created_at);
-    assert!(!indexed.deleted);
 
     let manifest = root_store.get(&ticket_id).unwrap();
     assert_eq!(
@@ -864,7 +854,6 @@ fn scan_without_reindex_repairs_moved_nested_ticket_path_and_search_doc() {
     poisoned.title = Some("Wrong title".to_string());
     poisoned.state = Some("in-review".to_string());
     poisoned.created_at = expected.created_at - Duration::days(1);
-    poisoned.deleted = true;
     poisoned_index.insert_ticket(&poisoned).unwrap();
 
     root_store.scan(false).unwrap();
@@ -875,7 +864,6 @@ fn scan_without_reindex_repairs_moved_nested_ticket_path_and_search_doc() {
     assert_eq!(indexed.title, expected.title);
     assert_eq!(indexed.state, expected.state);
     assert_eq!(indexed.created_at, expected.created_at);
-    assert!(!indexed.deleted);
     assert!(root_store.get(&ticket_id).is_ok());
     assert!(root_store
         .search_tickets("Nested workspace ticket", 10)
@@ -919,14 +907,14 @@ fn scan_indexes_manual_ticket_with_missing_optional_fields() {
 }
 
 #[test]
-fn scan_force_prunes_existing_row_for_deleted_ticket_manifest() {
+fn scan_force_prunes_row_for_physically_removed_ticket() {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();
     let ticket_id = store
         .create(
             None,
             "tracker-improvement",
-            Some("Deleted on disk"),
+            Some("Removed from disk"),
             Some("in-review"),
             Default::default(),
             None,
@@ -935,7 +923,7 @@ fn scan_force_prunes_existing_row_for_deleted_ticket_manifest() {
         .unwrap();
 
     let ticket_path = store.get_indexed(&ticket_id).unwrap().unwrap().path;
-    TicketFs::mark_deleted(&ticket_path).unwrap();
+    fs::remove_dir_all(&ticket_path).unwrap();
 
     store.scan(true).unwrap();
 
@@ -978,15 +966,15 @@ fn scan_without_reindex_prunes_deleted_nested_ticket_from_search_and_index() {
         .any(|result| result.id == ticket_id));
 
     let ticket_path = child_store.get_indexed(&ticket_id).unwrap().unwrap().path;
-    let manifest_path = ticket_path.join("ticket.toml");
-    TicketFs::mark_deleted(&ticket_path).unwrap();
+    let parent_path = ticket_path.parent().unwrap().to_path_buf();
+    fs::remove_dir_all(&ticket_path).unwrap();
 
     let report = root_store.scan(false).unwrap();
 
     assert_eq!(report.pruned, 1);
     assert!(report.diagnostics.iter().any(|diag| {
-        diag.path == manifest_path
-            && diag.reason.contains("marked deleted on disk")
+        diag.path.starts_with(&parent_path)
+            && diag.reason.contains("missing on disk")
     }));
     assert!(root_store.get_indexed(&ticket_id).unwrap().is_none());
     assert!(root_store.get(&ticket_id).is_err());

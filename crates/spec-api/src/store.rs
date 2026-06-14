@@ -441,7 +441,7 @@ impl SpecStore {
     }
 
     fn rebuild_slug_index(&mut self) -> Result<(), SpecError> {
-        let all = self.inner.list_indexed(false)?;
+        let all = self.inner.list_indexed()?;
         let entries = all.iter().filter_map(|entry| {
             let manifest = self.inner.fs.read(&entry.path).ok()?;
             let slug = manifest.extra.get("slug")?.as_str()?.to_string();
@@ -473,7 +473,7 @@ impl SpecStore {
         if prefix.len() < 4 {
             return Ok(None);
         }
-        let all = self.inner.list_indexed(false).map_err(SpecError::Storage)?;
+        let all = self.inner.list_indexed().map_err(SpecError::Storage)?;
         let matches: Vec<_> = all
             .iter()
             .filter(|entry| entry.id.to_string().starts_with(prefix))
@@ -530,7 +530,6 @@ impl SpecStore {
             state: state.clone(),
             created_at: manifest.created_at,
             updated_at: now,
-            deleted: false,
         };
         self.inner.index.insert_ticket(&indexed)?;
         let search_content = build_search_content(manifest, body);
@@ -612,9 +611,6 @@ impl SpecStore {
             .inner
             .get_indexed(&uuid)?
             .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
-        if indexed.deleted {
-            return Err(SpecError::NotFound(uuid.to_string()));
-        }
         read_spec_manifest(&indexed.path)
     }
 
@@ -627,9 +623,6 @@ impl SpecStore {
             .inner
             .get_indexed(&uuid)?
             .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
-        if indexed.deleted {
-            return Err(SpecError::NotFound(uuid.to_string()));
-        }
         let spec = read_spec_manifest(&indexed.path)?;
         let body = read_body(&indexed.path);
         Ok((spec, body))
@@ -644,7 +637,7 @@ impl SpecStore {
     }
 
     pub fn health_all(&self) -> Result<SpecHealthReport, SpecError> {
-        let all = self.inner.list_indexed(false).map_err(SpecError::Storage)?;
+        let all = self.inner.list_indexed().map_err(SpecError::Storage)?;
         let specs = all
             .iter()
             .filter_map(|indexed| self.get(&indexed.id.to_string()).ok())
@@ -735,7 +728,6 @@ impl SpecStore {
             state: state.clone(),
             created_at: indexed.created_at,
             updated_at: Utc::now(),
-            deleted: false,
         };
         self.inner.index.insert_ticket(&refreshed)?;
 
@@ -918,12 +910,9 @@ impl SpecStore {
         {
             self.slug_index.remove(slug);
         }
-        self.inner.fs.mark_deleted(&indexed.path)?;
-
-        let mut refreshed = indexed.clone();
-        refreshed.deleted = true;
-        refreshed.updated_at = Utc::now();
-        self.inner.index.insert_ticket(&refreshed)?;
+        self.inner.fs.delete(&indexed.path)?;
+        self.inner.index.remove_ticket(&uuid)?;
+        self.inner.search.remove(&uuid)?;
 
         Ok(())
     }

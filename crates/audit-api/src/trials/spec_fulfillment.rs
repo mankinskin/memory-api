@@ -60,7 +60,7 @@ pub fn evaluate(repo_root: &Path) -> SpecFulfillmentResult {
         };
     }
 
-    let indexed_specs = match store.entity_store().list_indexed(false) {
+    let indexed_specs = match store.entity_store().list_indexed() {
         Ok(indexed) => indexed,
         Err(err) => {
             return SpecFulfillmentResult {

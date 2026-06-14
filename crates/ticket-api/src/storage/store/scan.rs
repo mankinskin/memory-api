@@ -114,7 +114,7 @@ impl TicketStore {
         }
 
         let mut pruned = 0usize;
-        for ticket in self.index.list_tickets(true)? {
+        for ticket in self.index.list_tickets()? {
             if !disk_ids.contains(&ticket.id) {
                 diagnostics.push(stale_reconciliation_diagnostic(
                     &ticket,
@@ -146,9 +146,6 @@ impl TicketStore {
             let Some(source) = self.get_indexed(&edge.from)? else {
                 continue;
             };
-            if source.deleted {
-                continue;
-            }
             if !source.path.join(TICKET_MANIFEST_FILE).is_file() {
                 continue;
             }
@@ -181,14 +178,6 @@ impl TicketStore {
             Ok(manifest) => manifest,
             Err(_) => return Ok(false),
         };
-        let is_deleted = manifest
-            .extra
-            .get("deleted")
-            .and_then(|value| value.as_bool())
-            .unwrap_or(false);
-        if is_deleted {
-            return Ok(false);
-        }
 
         let entry = TicketScanEntry {
             id,
@@ -208,18 +197,6 @@ fn stale_reconciliation_diagnostic(
     let manifest_path = ticket.path.join(TICKET_MANIFEST_FILE);
     let reason = if roots.iter().all(|root| !ticket.path.starts_with(&root.path)) {
         "ticket path left configured scan roots; pruned stale index/search entry"
-            .to_string()
-    } else if TicketFs::read(&ticket.path)
-        .ok()
-        .and_then(|manifest| {
-            manifest
-                .extra
-                .get("deleted")
-                .and_then(|value| value.as_bool())
-        })
-        == Some(true)
-    {
-        "ticket marked deleted on disk; pruned stale index/search entry"
             .to_string()
     } else if !ticket.path.exists() {
         "ticket folder missing on disk; pruned stale index/search entry"
@@ -270,7 +247,6 @@ fn integrate_entry(
             existing.updated_at = now;
             existing.title = title.clone();
             existing.state = state.clone();
-            existing.deleted = false;
             existing
         },
         None => IndexedTicket {
@@ -281,7 +257,6 @@ fn integrate_entry(
             state: state.clone(),
             created_at: entry.manifest.created_at,
             updated_at: now,
-            deleted: false,
         },
     };
     index.insert_ticket(&indexed)?;

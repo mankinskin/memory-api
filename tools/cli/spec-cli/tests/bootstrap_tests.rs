@@ -78,7 +78,7 @@ fn bootstrap_dry_run_returns_correct_count() {
     );
 
     // Nothing should have been written to the store
-    let list = store.entity_store().list_indexed(false).unwrap();
+    let list = store.entity_store().list_indexed().unwrap();
     assert_eq!(list.len(), 0, "dry_run must not write specs");
 }
 

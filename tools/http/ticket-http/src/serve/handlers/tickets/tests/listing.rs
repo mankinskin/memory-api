@@ -1309,7 +1309,7 @@ async fn duplicate_basename_workspaces_keep_followups_distinct() {
 }
 
 #[tokio::test]
-async fn search_list_excludes_deleted_hits_and_followups() {
+async fn search_list_excludes_stale_search_hits_and_followups() {
     let dir = tempfile::tempdir().expect("tempdir");
     let store = make_store(dir.path());
 

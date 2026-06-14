@@ -117,11 +117,8 @@ impl EntityStore {
         self.index.get_ticket(id)
     }
 
-    pub fn list_indexed(
-        &self,
-        include_deleted: bool,
-    ) -> Result<Vec<IndexedEntity>, StorageError> {
-        self.index.list_tickets(include_deleted)
+    pub fn list_indexed(&self) -> Result<Vec<IndexedEntity>, StorageError> {
+        self.index.list_tickets()
     }
 
     // ── Full-text search ────────────────────────────────────────────
@@ -217,7 +214,7 @@ impl EntityStore {
 
         let mut pruned = 0usize;
         if reindex {
-            let indexed = self.index.list_tickets(true)?;
+            let indexed = self.index.list_tickets()?;
             for entity in indexed {
                 if !disk_ids.contains(&entity.id) {
                     self.index.remove_ticket(&entity.id)?;
@@ -266,7 +263,6 @@ impl EntityStore {
                 existing.updated_at = now;
                 existing.title = title.clone();
                 existing.state = state.clone();
-                existing.deleted = false;
                 existing
             },
             None => IndexedEntity {
@@ -277,7 +273,6 @@ impl EntityStore {
                 state: state.clone(),
                 created_at: entry.manifest.created_at,
                 updated_at: now,
-                deleted: false,
             },
         };
         self.index.insert_ticket(&indexed)?;
@@ -326,7 +321,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let store = EntityStore::open(tmp.path(), test_fs()).unwrap();
 
-        let indexed = store.list_indexed(false).unwrap();
+        let indexed = store.list_indexed().unwrap();
         assert!(indexed.is_empty());
 
         let results = store.search("nonexistent", 10).unwrap();

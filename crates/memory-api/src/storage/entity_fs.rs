@@ -181,25 +181,12 @@ impl EntityFs {
         result
     }
 
-    /// Soft-delete an entity by writing a `deleted = true` marker in the manifest.
-    pub fn mark_deleted(
+    /// Physically delete an entity folder from disk.
+    pub fn delete(
         &self,
         entity_path: &Path,
     ) -> Result<(), StorageError> {
-        let lock_path = entity_path.join(self.config.lock_file);
-        let lock_file = acquire_lock(&lock_path)?;
-
-        let result = (|| -> Result<(), StorageError> {
-            let mut manifest = self.read(entity_path)?;
-            manifest
-                .extra
-                .insert("deleted".to_string(), Value::Bool(true));
-            self.write_manifest(entity_path, &manifest)?;
-            Ok(())
-        })();
-
-        release_lock(&lock_file, &lock_path);
-        result
+        std::fs::remove_dir_all(entity_path).map_err(StorageError::Io)
     }
 
     /// Walk `scan_root` and locate all valid entity folders.
@@ -246,7 +233,6 @@ impl EntityFs {
         }
 
         match self.read(&path) {
-            Ok(manifest) if entity_is_deleted(&manifest) => Ok(None),
             Ok(manifest) => Ok(Some(EntityScanEntry { id, path, manifest })),
             Err(StorageError::ParseError { path, reason }) =>
                 Err(ParseDiagnostic { path, reason }),
@@ -413,20 +399,12 @@ fn scan_candidate(path: PathBuf) -> Option<(PathBuf, Uuid)> {
     }
 
     let name = path.file_name().and_then(|value| value.to_str())?;
-    if name.ends_with(".tmp") || name.ends_with(".deleted") {
+    if name.ends_with(".tmp") {
         return None;
     }
 
     let id = name.parse().ok()?;
     Some((path, id))
-}
-
-fn entity_is_deleted(manifest: &EntityManifest) -> bool {
-    manifest
-        .extra
-        .get("deleted")
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false)
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────

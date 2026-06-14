@@ -39,7 +39,7 @@ impl RuleStore {
         let config_path = stable_path_key(config_path);
         let mut records = Vec::new();
 
-        for indexed in self.inner.list_indexed(false)? {
+        for indexed in self.inner.list_indexed()? {
             if indexed.type_id != GENERATED_TARGET_TYPE_ID {
                 continue;
             }
@@ -108,7 +108,6 @@ impl RuleStore {
                 state: Some("active".to_string()),
                 created_at: indexed.created_at,
                 updated_at: Utc::now(),
-                deleted: false,
             };
             self.inner.index.insert_ticket(&refreshed)?;
             let created_at_str = indexed.created_at.to_rfc3339();
@@ -170,7 +169,6 @@ impl RuleStore {
             state: Some("active".to_string()),
             created_at: entity.created_at,
             updated_at: Utc::now(),
-            deleted: false,
         };
         self.inner.index.insert_ticket(&indexed)?;
         let created_at_str = entity.created_at.to_rfc3339();
@@ -220,12 +218,8 @@ impl RuleStore {
         {
             self.slug_index.remove(existing_slug);
         }
-        self.inner.fs.mark_deleted(&indexed.path)?;
-
-        let mut refreshed = indexed.clone();
-        refreshed.deleted = true;
-        refreshed.updated_at = Utc::now();
-        self.inner.index.insert_ticket(&refreshed)?;
+        self.inner.fs.delete(&indexed.path)?;
+        self.inner.index.remove_ticket(&uuid)?;
         self.inner.search.remove(&uuid)?;
 
         Ok(())

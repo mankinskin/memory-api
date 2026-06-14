@@ -1,6 +1,6 @@
 //! Ticket store index generator (ticket `c5e9bb39`).
 //!
-//! Reads all non-deleted tickets from a `TicketStore`-compatible entity store
+//! Reads all tickets from a `TicketStore`-compatible entity store
 //! (exposed via [`EntityStore::list_indexed`]) and produces an [`IndexSidecar`]
 //! for `.ticket/index.toon`.
 //!
@@ -23,7 +23,7 @@ use crate::storage::indexed::IndexedEntity;
 
 /// Input for the ticket sidecar generator.
 pub struct TicketIndexInput<'a> {
-    /// All non-deleted indexed ticket entities to include.
+    /// All indexed ticket entities to include.
     pub tickets: &'a [IndexedEntity],
     /// Workspace root used to compute workspace-relative `source_path` values.
     pub workspace_root: &'a Path,
@@ -44,7 +44,6 @@ pub fn generate_ticket_sidecar(input: TicketIndexInput<'_>) -> IndexSidecar {
     let mut entries: Vec<IndexEntry> = input
         .tickets
         .iter()
-        .filter(|t| !t.deleted)
         .map(|t| make_ticket_entry(t, input.workspace_root))
         .collect();
 
@@ -138,7 +137,6 @@ mod tests {
             state: Some(state.to_string()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
-            deleted: false,
         }
     }
 
@@ -173,18 +171,4 @@ mod tests {
         assert!(!sidecar.entries[0].source_path.contains('\\'));
     }
 
-    #[test]
-    fn deleted_tickets_are_excluded() {
-        let ws = PathBuf::from("/workspace");
-        let id = Uuid::new_v4();
-        let mut t = fake_ticket(id, "Deleted ticket", "done", ws.join(".ticket/tickets/x/ticket.toml"));
-        t.deleted = true;
-
-        let sidecar = generate_ticket_sidecar(TicketIndexInput {
-            tickets: &[t],
-            workspace_root: &ws,
-            store_dir: ".ticket",
-        });
-        assert!(sidecar.entries.is_empty());
-    }
 }

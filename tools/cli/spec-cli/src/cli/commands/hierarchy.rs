@@ -36,7 +36,7 @@ pub(crate) fn cmd_tree(
         }))
     } else {
         // Show all root specs (no parent) with their direct child counts
-        let all = store.entity_store().list_indexed(false)?;
+        let all = store.entity_store().list_indexed()?;
         let mut roots = Vec::new();
         for indexed in &all {
             if let Ok(spec) = store.get(&indexed.id.to_string()) {

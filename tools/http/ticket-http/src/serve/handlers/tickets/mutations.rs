@@ -415,7 +415,7 @@ pub async fn undo_ticket(
 
 /// `DELETE /api/tickets/{id}?workspace=<name>`
 ///
-/// Soft-delete (mark deleted) a ticket. Emits a `ticket.delete` SSE event.
+/// Delete a ticket permanently, removing its folder from disk. Emits a `ticket.delete` SSE event.
 pub async fn delete_ticket(
     State(state): State<AppState>,
     Extension(rid): Extension<RequestIdExt>,
@@ -431,24 +431,25 @@ pub async fn delete_ticket(
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
 
-    tokio::task::spawn_blocking(move || match store.delete(&id) {
-        Ok(()) => {
-            let request_id = task_request_id.clone();
-            let ticket_ref = match ticket_ref_for_id(&store, &workspace, &id) {
-                Ok(ticket_ref) => ticket_ref,
-                Err(e) => return storage_err(e, &request_id),
-            };
-
-            Json(DeleteResponse {
-                request_id: request_id.clone(),
-                active_workspace: workspace.clone(),
-                workspace: workspace.clone(),
-                id: id.to_string(),
-                ticket_ref,
-            })
-            .into_response()
-        },
-        Err(e) => storage_err(e, &task_request_id),
+    tokio::task::spawn_blocking(move || {
+        // Capture ref before deletion while entity still exists in index.
+        let ticket_ref = match ticket_ref_for_id(&store, &workspace, &id) {
+            Ok(ticket_ref) => ticket_ref,
+            Err(e) => return storage_err(e, &task_request_id),
+        };
+        match store.delete(&id) {
+            Ok(()) => {
+                Json(DeleteResponse {
+                    request_id: task_request_id.clone(),
+                    active_workspace: workspace.clone(),
+                    workspace: workspace.clone(),
+                    id: id.to_string(),
+                    ticket_ref,
+                })
+                .into_response()
+            },
+            Err(e) => storage_err(e, &task_request_id),
+        }
     })
     .await
     .unwrap_or_else(|_| task_join_err(&request_id, "ticket delete request"))

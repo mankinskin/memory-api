@@ -179,7 +179,7 @@ impl SpecServer {
         self.with_store(|store| {
             let all = store
                 .entity_store()
-                .list_indexed(false)
+                .list_indexed()
                 .map_err(Self::storage_err)?;
             let mut items: Vec<Value> = Vec::new();
             'outer: for indexed in &all {
@@ -280,7 +280,7 @@ impl SpecServer {
             } else {
                 let all = store
                     .entity_store()
-                    .list_indexed(false)
+                    .list_indexed()
                     .map_err(Self::storage_err)?;
                 let mut roots = Vec::new();
                 for indexed in &all {

@@ -158,7 +158,7 @@ impl RuleStore {
     }
 
     fn reindex_rule_bodies(&self) -> Result<(), RuleError> {
-        for indexed in self.inner.list_indexed(false)? {
+        for indexed in self.inner.list_indexed()? {
             if indexed.type_id != RULE_ENTRY_TYPE_ID {
                 continue;
             }
@@ -191,7 +191,7 @@ impl RuleStore {
 
     pub fn rebuild_slug_index(&mut self) -> Result<(), RuleError> {
         let mut next = HashMap::new();
-        for indexed in self.inner.list_indexed(false)? {
+        for indexed in self.inner.list_indexed()? {
             let manifest = self.read_indexed_manifest(&indexed)?;
             if let Some(slug) =
                 manifest.extra.get("slug").and_then(Value::as_str)
@@ -206,7 +206,7 @@ impl RuleStore {
     fn prune_missing_index_entries(&mut self) -> Result<(), RuleError> {
         let stale_ids: Vec<_> = self
             .inner
-            .list_indexed(true)?
+            .list_indexed()?
             .into_iter()
             .filter(|indexed| is_missing_index_entry(indexed))
             .map(|indexed| indexed.id)
@@ -308,7 +308,6 @@ impl RuleStore {
             state: manifest.state().map(ToOwned::to_owned),
             created_at: manifest.created_at,
             updated_at: Utc::now(),
-            deleted: false,
         };
         self.inner.index.insert_ticket(&indexed)?;
         let created_at_str = manifest.created_at.to_rfc3339();
@@ -345,9 +344,6 @@ impl RuleStore {
             .inner
             .get_indexed(&uuid)?
             .ok_or_else(|| RuleError::NotFound(uuid.to_string()))?;
-        if indexed.deleted {
-            return Err(RuleError::NotFound(uuid.to_string()));
-        }
 
         self.hydrate_rule(&indexed)
     }
@@ -362,12 +358,10 @@ impl RuleStore {
             .get_indexed(&uuid)?
             .ok_or_else(|| RuleError::NotFound(uuid.to_string()))?;
 
-        if indexed.deleted
-            || !matches!(
-                indexed.type_id.as_str(),
-                RULE_ENTRY_TYPE_ID | GENERATED_TARGET_TYPE_ID
-            )
-        {
+        if !matches!(
+            indexed.type_id.as_str(),
+            RULE_ENTRY_TYPE_ID | GENERATED_TARGET_TYPE_ID
+        ) {
             return Err(RuleError::NotFound(id_or_slug.to_string()));
         }
 
@@ -378,12 +372,8 @@ impl RuleStore {
             self.slug_index.remove(existing_slug);
         }
 
-        self.inner.fs.mark_deleted(&indexed.path)?;
-
-        let mut refreshed = indexed.clone();
-        refreshed.deleted = true;
-        refreshed.updated_at = Utc::now();
-        self.inner.index.insert_ticket(&refreshed)?;
+        self.inner.fs.delete(&indexed.path)?;
+        self.inner.index.remove_ticket(&uuid)?;
         self.inner.search.remove(&uuid)?;
 
         Ok(())
@@ -459,7 +449,6 @@ impl RuleStore {
             state: state.clone(),
             created_at: indexed.created_at,
             updated_at: Utc::now(),
-            deleted: false,
         };
         self.inner.index.insert_ticket(&refreshed)?;
 
@@ -541,7 +530,7 @@ impl RuleStore {
             .inner
             .get_indexed(&uuid)?
             .ok_or_else(|| RuleError::NotFound(uuid.to_string()))?;
-        if indexed.deleted || indexed.type_id != RULE_ENTRY_TYPE_ID {
+        if indexed.type_id != RULE_ENTRY_TYPE_ID {
             return Err(RuleError::NotFound(uuid.to_string()));
         }
 
@@ -562,7 +551,7 @@ impl RuleStore {
     ) -> Result<Vec<RuleManifest>, RuleError> {
         let mut rules = Vec::new();
 
-        for indexed in self.inner.list_indexed(false)? {
+        for indexed in self.inner.list_indexed()? {
             if let Some(state) = filter.state.as_deref() {
                 if indexed.state.as_deref() != Some(state) {
                     continue;
@@ -603,8 +592,8 @@ impl RuleStore {
 
         for candidate in candidates {
             let indexed = match self.inner.get_indexed(&candidate.id)? {
-                Some(indexed) if !indexed.deleted => indexed,
-                _ => continue,
+                Some(indexed) => indexed,
+                None => continue,
             };
             if indexed.type_id != RULE_ENTRY_TYPE_ID {
                 continue;
@@ -632,7 +621,7 @@ impl RuleStore {
 
         let matches: Vec<_> = self
             .inner
-            .list_indexed(false)?
+            .list_indexed()?
             .into_iter()
             .filter(|entity| entity.id.to_string().starts_with(prefix))
             .collect();

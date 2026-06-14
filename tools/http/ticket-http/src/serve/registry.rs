@@ -257,9 +257,6 @@ impl WorkspaceRegistry {
             );
             let found = store.get_indexed_many(ids)?;
             for (id, ticket) in found {
-                if ticket.deleted {
-                    continue;
-                }
                 let candidate = ResolvedIndexedTicket {
                     workspace: canonical_workspace.clone(),
                     store: Arc::clone(&store),

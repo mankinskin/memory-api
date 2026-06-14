@@ -112,9 +112,7 @@ fn explicit_tickets(
         if let Some(ticket) =
             store.get_indexed(&id).map_err(TicketServer::store_err)?
         {
-            if !ticket.deleted {
-                tickets.push(ticket);
-            }
+            tickets.push(ticket);
         }
     }
 
@@ -135,7 +133,6 @@ fn root_scope_tickets(
     Ok(scope_ids
         .iter()
         .filter_map(|id| store.get_indexed(id).ok().flatten())
-        .filter(|ticket| !ticket.deleted)
         .collect())
 }
 

@@ -21,7 +21,7 @@ use super::ticket::to_relative_slash;
 
 /// Input for the spec sidecar generator.
 pub struct SpecIndexInput<'a> {
-    /// All non-deleted indexed spec entities.
+    /// All indexed spec entities.
     pub specs: &'a [IndexedEntity],
     /// Workspace root for relative path computation.
     pub workspace_root: &'a Path,
@@ -42,7 +42,6 @@ pub fn generate_spec_sidecar(input: SpecIndexInput<'_>) -> IndexSidecar {
     let mut entries: Vec<IndexEntry> = input
         .specs
         .iter()
-        .filter(|s| !s.deleted)
         .map(|s| make_spec_entry(s, input.workspace_root))
         .collect();
 
@@ -121,7 +120,6 @@ mod tests {
             state: Some(state.to_string()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
-            deleted: false,
         }
     }
 

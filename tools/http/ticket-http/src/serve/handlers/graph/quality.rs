@@ -228,7 +228,6 @@ fn load_live_tickets(
 ) -> Vec<IndexedTicket> {
     ids.iter()
         .filter_map(|id| store.get_indexed(id).ok().flatten())
-        .filter(|ticket| !ticket.deleted)
         .collect()
 }
 

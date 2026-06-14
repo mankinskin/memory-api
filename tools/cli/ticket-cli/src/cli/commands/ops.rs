@@ -102,12 +102,6 @@ pub(crate) fn cmd_assets(
 
 pub(crate) fn cmd_audit(store: &TicketStore) -> Result<Value, CliRunError> {
     let all = store.list(None, None, None)?;
-    let deleted = store
-        .list_extended(None, None, None, true, &[])?
-        .into_iter()
-        .filter(|t| t.deleted)
-        .count();
-    let total = all.len() + deleted;
 
     let mut state_counts = BTreeMap::new();
     for t in &all {
@@ -123,9 +117,7 @@ pub(crate) fn cmd_audit(store: &TicketStore) -> Result<Value, CliRunError> {
     Ok(json!({
         "command": "audit",
         "status": "ok",
-        "total": total,
-        "active": all.len(),
-        "deleted": deleted,
+        "total": all.len(),
         "by_state": state_counts,
         "by_type": type_counts,
     }))

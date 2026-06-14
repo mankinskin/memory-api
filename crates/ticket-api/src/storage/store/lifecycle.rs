@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    fs,
     path::{
         Path,
         PathBuf,
@@ -28,11 +29,8 @@ impl TicketStore {
     ) -> Result<(), StorageError> {
         let indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
-        if indexed.deleted {
-            return Err(StorageError::NotFound(*id));
-        }
-        TicketFs::mark_deleted(&indexed.path)?;
-        self.index.soft_delete_ticket(id)?;
+        fs::remove_dir_all(&indexed.path).map_err(StorageError::Io)?;
+        self.index.remove_ticket(id)?;
         self.index.remove_workflow_facts(id)?;
         self.with_search_repair(|| self.search.remove(id))?;
 
@@ -96,9 +94,6 @@ impl TicketStore {
     ) -> Result<Vec<HistoryRevision>, StorageError> {
         let indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
-        if indexed.deleted {
-            return Err(StorageError::NotFound(*id));
-        }
         TicketFs::read_history(&indexed.path)
     }
 
@@ -110,9 +105,6 @@ impl TicketStore {
     ) -> Result<u64, StorageError> {
         let indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
-        if indexed.deleted {
-            return Err(StorageError::NotFound(*id));
-        }
 
         let target_state = fields
             .get("state")
@@ -175,9 +167,6 @@ impl TicketStore {
     ) -> Result<(TicketManifest, Vec<String>), StorageError> {
         let indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
-        if indexed.deleted {
-            return Err(StorageError::NotFound(*id));
-        }
 
         let current_state = indexed.state.as_deref().unwrap_or("new");
         if current_state == target_state {
@@ -221,9 +210,6 @@ impl TicketStore {
     ) -> Result<PathBuf, StorageError> {
         let indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
-        if indexed.deleted {
-            return Err(StorageError::NotFound(*id));
-        }
 
         let file_name = asset_name.map(String::from).unwrap_or_else(|| {
             source_path
@@ -256,9 +242,6 @@ impl TicketStore {
     ) -> Result<Vec<String>, StorageError> {
         let indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
-        if indexed.deleted {
-            return Err(StorageError::NotFound(*id));
-        }
 
         let assets_dir = indexed.path.join("assets");
         if !assets_dir.exists() {

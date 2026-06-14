@@ -269,8 +269,7 @@ fn should_use_local_ticket(
     ticket: &ticket_api::storage::indexed::IndexedTicket,
     ticket_ref: &TicketRef,
 ) -> bool {
-    !ticket.deleted
-        && ticket_ref.workspace != active_workspace
+    ticket_ref.workspace != active_workspace
         && ticket.path.join("ticket.toml").is_file()
 }
 

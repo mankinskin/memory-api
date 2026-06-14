@@ -167,25 +167,6 @@ impl TicketFs {
         result
     }
 
-    /// Soft-delete a ticket by writing a `deleted = true` marker in the manifest.
-    /// The folder is not removed.
-    pub fn mark_deleted(ticket_path: &Path) -> Result<(), StorageError> {
-        let lock_path = ticket_path.join(TICKET_LOCK_FILE);
-        let lock_file = acquire_lock(&lock_path)?;
-
-        let result = (|| -> Result<(), StorageError> {
-            let mut manifest = Self::read(ticket_path)?;
-            manifest
-                .extra
-                .insert("deleted".to_string(), Value::Bool(true));
-            write_manifest(ticket_path, &manifest)?;
-            Ok(())
-        })();
-
-        release_lock(&lock_file, &lock_path);
-        result
-    }
-
     /// Walk `scan_root` and locate all valid ticket folders.
     ///
     /// A folder is considered a valid ticket folder if it:
@@ -407,7 +388,7 @@ fn scan_candidate_path(
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("");
-    if name.ends_with(".tmp") || name.ends_with(".deleted") {
+    if name.ends_with(".tmp") {
         return None;
     }
 
@@ -431,18 +412,7 @@ fn load_scan_entry(
 ) -> Result<Option<TicketScanEntry>, crate::model::filesystem::ParseDiagnostic>
 {
     match TicketFs::read(&path) {
-        Ok(manifest) => {
-            let is_deleted = manifest
-                .extra
-                .get("deleted")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false);
-            if is_deleted {
-                Ok(None)
-            } else {
-                Ok(Some(TicketScanEntry { id, path, manifest }))
-            }
-        },
+        Ok(manifest) => Ok(Some(TicketScanEntry { id, path, manifest })),
         Err(StorageError::ParseError { path, reason }) =>
             Err(crate::model::filesystem::ParseDiagnostic { path, reason }),
         Err(error) => Err(crate::model::filesystem::ParseDiagnostic {

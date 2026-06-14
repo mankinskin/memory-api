@@ -186,7 +186,6 @@ impl TicketServer {
             "workspace": workspace,
             "status": "ok",
             "id": id.to_string(),
-            "deleted": true,
         }))
     }
 

@@ -20,7 +20,7 @@ use super::ticket::to_relative_slash;
 
 /// Input for the rule sidecar generator.
 pub struct RuleIndexInput<'a> {
-    /// All non-deleted indexed rule entities.
+    /// All indexed rule entities.
     pub rules: &'a [IndexedEntity],
     /// Workspace root for relative path computation.
     pub workspace_root: &'a Path,
@@ -41,7 +41,6 @@ pub fn generate_rule_sidecar(input: RuleIndexInput<'_>) -> IndexSidecar {
     let mut entries: Vec<IndexEntry> = input
         .rules
         .iter()
-        .filter(|r| !r.deleted)
         .map(|r| make_rule_entry(r, input.workspace_root))
         .collect();
 
@@ -146,7 +145,6 @@ mod tests {
             state: Some("active".to_string()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
-            deleted: false,
         }
     }
 

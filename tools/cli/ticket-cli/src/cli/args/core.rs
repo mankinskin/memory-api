@@ -50,9 +50,6 @@ pub struct ListArgs {
     /// Include latest reproduction metadata in each list item.
     #[arg(long, default_value_t = false)]
     pub with_repro: bool,
-    /// Include soft-deleted tickets in the listing.
-    #[arg(long, default_value_t = false)]
-    pub include_deleted: bool,
     /// Filter by field values (key=value). Can be repeated.
     #[arg(long = "where")]
     pub where_clauses: Vec<String>,

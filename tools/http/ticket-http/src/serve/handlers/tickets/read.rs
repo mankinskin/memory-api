@@ -143,10 +143,6 @@ pub async fn list_tickets(
                                 ticket_id = %result.id,
                                 active_workspace = %workspace,
                                 has_local = local_ticket.is_some(),
-                                local_deleted = local_ticket
-                                    .as_ref()
-                                    .map(|ticket| ticket.deleted)
-                                    .unwrap_or(false),
                                 has_resolved = resolved_ticket.is_some(),
                                 "dropping unresolved search hit"
                             );
@@ -569,7 +565,6 @@ fn should_use_local_ticket(
     ticket: &ticket_api::storage::indexed::IndexedTicket,
     ticket_ref: &TicketRef,
 ) -> bool {
-    !ticket.deleted
-        && ticket_ref.workspace != active_workspace
+    ticket_ref.workspace != active_workspace
         && ticket.path.join("ticket.toml").is_file()
 }

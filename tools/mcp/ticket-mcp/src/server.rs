@@ -360,7 +360,7 @@ impl TicketServer {
 
     #[tool(
         name = "delete_ticket",
-        description = "Soft-delete a ticket. The ticket is marked deleted but its history is preserved."
+        description = "Delete a ticket permanently, removing its folder from disk."
     )]
     async fn delete_ticket(
         &self,
