@@ -100,9 +100,6 @@ fn load_specs(
 
     let mut specs = Vec::with_capacity(all.len());
     for indexed in &all {
-        if indexed.deleted {
-            continue;
-        }
         if let Ok(spec) = store.get(&indexed.id.to_string()) {
             specs.push(spec);
         }

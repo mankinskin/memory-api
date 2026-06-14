@@ -1,6 +1,6 @@
 # Summary
 
-`audit-api` should flag orphan tickets so every non-deleted ticket participates
+`audit-api` should flag orphan tickets so every active ticket participates
 in the repository's `depends_on` graph.
 
 ## Required behavior
@@ -11,7 +11,7 @@ in the repository's `depends_on` graph.
 - Only `depends_on` edges satisfy this rule. A ticket is considered linked when
 	it has at least one outgoing `depends_on` dependency or at least one incoming
 	dependee.
-- Any non-deleted ticket with neither dependencies nor dependees produces an
+- Any active ticket with neither dependencies nor dependees produces an
 	audit finding with the ticket folder path, ticket id, state, and the observed
 	edge counts.
 - Findings must guide the user toward either linking the ticket to its real
