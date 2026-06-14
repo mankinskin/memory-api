@@ -27,7 +27,7 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: extensionDir,
     stdio: 'inherit',
-    shell: false,
+    shell: process.platform === 'win32',
     ...options,
   });
 
@@ -49,7 +49,7 @@ function resolveCodeCommand() {
     const probe = spawnSync(candidate, ['--version'], {
       cwd: extensionDir,
       stdio: 'ignore',
-      shell: false,
+      shell: process.platform === 'win32',
     });
 
     if (!probe.error && probe.status === 0) {
