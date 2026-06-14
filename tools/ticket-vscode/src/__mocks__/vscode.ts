@@ -6,6 +6,11 @@ export enum TreeItemCollapsibleState {
   Expanded = 2,
 }
 
+export enum StatusBarAlignment {
+  Left = 1,
+  Right = 2,
+}
+
 export class TreeItem {
   label: string | undefined;
   collapsibleState: TreeItemCollapsibleState | undefined;
@@ -76,6 +81,22 @@ export class CancellationToken {
 }
 
 export const window = {
+  createOutputChannel: jest.fn(() => ({
+    append: jest.fn(),
+    appendLine: jest.fn(),
+    dispose: jest.fn(),
+  })),
+  createTreeView: jest.fn(() => ({
+    message: undefined,
+    dispose: jest.fn(),
+  })),
+  createStatusBarItem: jest.fn(() => ({
+    command: undefined,
+    tooltip: undefined,
+    text: '',
+    show: jest.fn(),
+    dispose: jest.fn(),
+  })),
   showErrorMessage: jest.fn(),
   showInformationMessage: jest.fn(),
   showWarningMessage: jest.fn(),

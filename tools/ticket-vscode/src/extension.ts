@@ -58,10 +58,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   context.subscriptions.push(provider);
 
-  if (state.config.autoStartServer && _serverProcess) {
-    void pollUntilReachable(state.serverUrl, 30_000).then(() => provider.refresh());
-  }
-
   const treeView = vscode.window.createTreeView('ticket-viewer.tickets', {
     treeDataProvider: provider,
     showCollapseAll: true,

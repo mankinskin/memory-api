@@ -5,6 +5,7 @@ const config: Config = {
   testEnvironment: 'node',
   rootDir: '.',
   testMatch: ['<rootDir>/test/unit/**/*.test.ts'],
+  modulePathIgnorePatterns: ['<rootDir>/out/'],
   moduleNameMapper: {
     '^vscode$': '<rootDir>/src/__mocks__/vscode.ts',
   },
