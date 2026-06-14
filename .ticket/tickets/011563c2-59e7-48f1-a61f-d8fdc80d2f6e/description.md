@@ -14,3 +14,10 @@ Acceptance criteria:
 - [ ] The JS/TS host passes API payloads into the core and receives serializable tree/view-model output.
 - [ ] Focused Rust tests cover grouping, filtering, dependency-root logic, and any ported URL derivation.
 - [ ] `cargo check --target wasm32-unknown-unknown` passes for the core crate and the extension can render the ticket tree from core-derived results.
+
+## Frozen architecture boundary
+
+The Rust/WASM architecture is frozen in spec `ticket-vscode/rust-wasm-port` (a592900c, state `reviewed`). The "Module Portability Matrix" pins exactly which modules move into this core:
+- Portable → core: `api.ts` request/response shapes + URL building; `ticketProvider.ts` filter/group/root-detection/tree-derivation; ticket URL / command intent derivation.
+- Stays in the host shell (do NOT pull into the core): TreeItem subclasses (`ticketTreeItems.ts`), command registration, and any `vscode`/Node access.
+- "Host Capability Contract" rule 1 + 5: the core receives a `HostCapabilities` object and derives feature-gate decisions from capability presence; missing capability ⇒ "feature unavailable".

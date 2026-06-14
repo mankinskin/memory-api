@@ -14,3 +14,10 @@ Acceptance criteria:
 - [ ] External Chromium-family manual validation is captured for the browser-facing path, including the window or display resolution used.
 - [ ] Desktop-only or unsupported web-host features are explicitly documented and linked back to the spec.
 - [ ] Spec traceability and ticket descriptions include the exact validation commands, outcomes, and any remaining blockers.
+
+## Frozen architecture boundary
+
+The Rust/WASM architecture is frozen in spec `ticket-vscode/rust-wasm-port` (a592900c, state `reviewed`). Validate against it directly:
+- "Per-Host Behavior Differences" is the expected-behavior oracle per host: server startup, viewer navigation (`asExternalUri`), file browsing (`workspace.fs` best-effort on virtual), and browser-bridge (desktop-only).
+- "Host Capability Contract" rule 5: confirm commands whose capability is absent (`startServer`, `bridge*`) are hidden/disabled rather than failing — covers the "desktop-only features hidden or explained" acceptance criterion.
+- "Validation Strategy": run `cargo test` + `cargo check --target wasm32-unknown-unknown` for the core, and the desktop + `@vscode/test-web` extension harnesses; manual browser validation must use an external Chromium-family browser with the window/display resolution recorded.

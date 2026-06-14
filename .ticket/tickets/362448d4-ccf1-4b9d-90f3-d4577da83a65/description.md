@@ -1,10 +1,22 @@
 # [ticket-vscode] Add dual-host packaging, bundling, and extension test harnesses
 
-Once the runtime spike and capability boundary are settled, package the extension so the same project can run in both desktop and browser-compatible hosts.
+Package the ported extension so it activates in both the desktop/remote Node host and the web extension host, and add the harnesses that validate both.
+
+Scope:
+- `package.json` must expose both `main` and `browser` entrypoints (currently only `main`).
+- bundle the `browser` entry into a single WebWorker-compatible file including the WASM asset + JS glue.
+- desktop-only modules (`browserBridge.ts`, `browserBridgeCdp.ts`, server-spawn helpers) must be excluded from the web bundle.
 
 Acceptance criteria:
-- [ ] `package.json` exposes the required `main` and `browser` entrypoints and any needed `extensionKind` guidance.
-- [ ] Build scripts generate the desktop bundle, the single-file web extension bundle, and the associated WASM artifact/glue consistently.
-- [ ] Launch/debug tasks cover a desktop run and a web-extension-host run.
-- [ ] Automated smoke coverage exists for extension activation in at least one desktop-host path and one `@vscode/test-web` path.
-- [ ] The packaging docs describe how to build, run, and troubleshoot the Rust/WASM-backed extension locally.
+- [ ] `package.json` ships both `main` and `browser` entries and the web bundle is a single WebWorker-compatible file.
+- [ ] The WASM asset and generated glue are included for both desktop and web packaging paths.
+- [ ] Desktop-only code is not loaded in the web bundle.
+- [ ] TypeScript typecheck and bundler builds pass for both entrypoints, plus a `@vscode/test-web` smoke harness.
+
+## Frozen architecture boundary
+
+The Rust/WASM architecture is frozen in spec `ticket-vscode/rust-wasm-port` (a592900c, state `reviewed`):
+- "Target Architecture → Runtime model": ship both `main` (desktop/remote) and `browser` (web worker) entries calling the same core through one adapter boundary.
+- "Module Portability Matrix": desktop-only/deferred modules (`browserBridge.ts`, `browserBridgeCdp.ts`, server-spawn/binary-discovery in `extensionSupport.ts`) must be excluded from the web bundle.
+- "Validation Strategy → Extension packaging": typecheck/bundle both entries, activation smoke test, and `@vscode/test-web` browser-hosted test.
+- Loader/bundling constraints recorded by the dual-host activation spike (14047b99) feed this ticket.

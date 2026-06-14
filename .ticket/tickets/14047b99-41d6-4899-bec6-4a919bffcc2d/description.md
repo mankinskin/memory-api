@@ -15,3 +15,10 @@ Acceptance criteria:
 
 Notes:
 - This ticket is about runtime feasibility and bundling shape only, not feature parity.
+
+## Frozen architecture boundary
+
+The Rust/WASM architecture is frozen in spec `ticket-vscode/rust-wasm-port` (a592900c, state `reviewed`). Use it as authoritative instead of re-deciding locally:
+- "Host Capability Contract" rule 1-2: the core depends only on required capabilities and never imports `vscode`/Node; the spike must keep the same narrow adapter seam for both `main` and `browser` entries.
+- "Per-Host Behavior Differences" → host detection summary: `env.uiKind` / `extension.extensionKind` / `env.remoteName` / `isVirtualWorkspace` are the only allowed host-mode signals.
+- "Module Portability Matrix": `extension.ts` splits into a shared activation core plus `main`/`browser` entrypoints — the spike proves that shape.
