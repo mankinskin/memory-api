@@ -128,8 +128,61 @@ impl EntityStore {
         query_expr: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, StorageError> {
+        // Proactively guarantee the search index is valid and complete before a
+        // read, healing structural corruption and repopulating from disk if the
+        // index is empty or partial.
+        self.ensure_search_ready()?;
         let expr = parse_query(query_expr)?;
-        self.search.search(&expr, limit)
+
+        match self.search.search(&expr, limit) {
+            Ok(results) => Ok(results),
+            // Deep segment-content corruption keeps `meta.json` valid, so it
+            // passes the cheap structural and completeness checks above and only
+            // surfaces here when the searcher reads a segment. This is the one
+            // class of damage that cannot be detected without reading every
+            // segment, so it is the sole case repaired reactively: rebuild from
+            // the filesystem source of truth and retry the read once.
+            Err(error)
+                if TantivySearchIndex::is_rebuildable_read_failure(&error) =>
+            {
+                self.search.reset_dir()?;
+                self.scan_once(true)?;
+                self.search.search(&expr, limit)
+            },
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Enforce the search-index readiness invariants before a read.
+    ///
+    /// Structural invariants (directory present, index openable, schema
+    /// current) are healed inside [`TantivySearchIndex::num_docs`] /
+    /// [`TantivySearchIndex::open_index`]. The **completeness** invariant —
+    /// every entity in the metadata index has a search document — is then
+    /// checked by comparing document counts; a mismatch (for example an empty
+    /// index left by a structural rebuild) is repaired by re-indexing from the
+    /// filesystem source of truth.
+    fn ensure_search_ready(&self) -> Result<(), StorageError> {
+        if self.search_needs_rebuild()? {
+            self.scan_once(true)?;
+        }
+        Ok(())
+    }
+
+    /// Whether the search index must be rebuilt before it can be trusted.
+    ///
+    /// Returns `true` when the search index cannot be opened/counted (structural
+    /// or segment-content corruption — [`TantivySearchIndex::num_docs`] errors)
+    /// or when its document count differs from the metadata index (the
+    /// filesystem-backed source of truth, which survives Tantivy corruption).
+    /// Calling this also heals the cheap structural invariants, so a stale or
+    /// empty index reports as needing a rebuild.
+    fn search_needs_rebuild(&self) -> Result<bool, StorageError> {
+        let indexed = self.index.list_tickets()?.len() as u64;
+        match self.search.num_docs() {
+            Ok(docs) => Ok(docs != indexed),
+            Err(_) => Ok(true),
+        }
     }
 
     // ── Edge management ─────────────────────────────────────────────
@@ -176,36 +229,26 @@ impl EntityStore {
     /// Scan all registered roots (plus the default entities dir under
     /// `index_root`) and reconcile the index + search stores.
     ///
-    /// When `reindex` is `true`, the search index is cleared first and
-    /// stale SQLite entries are pruned.
+    /// When `reindex` is `true` (or the search index is missing, partial, or
+    /// corrupt), the search directory is **reset** and rebuilt from scratch
+    /// before scanning, and stale SQLite entries are pruned.
     ///
-    /// If a reindex hits a rebuild-worthy search-index error (for example a
-    /// stale on-disk Tantivy schema whose fast-field layout no longer matches
-    /// the current schema, which makes the fast-field writer panic on a
-    /// background thread), the search directory is reset and the scan is retried
-    /// once so the index is rebuilt from the current schema.
+    /// Resetting the directory (rather than clearing documents from the existing
+    /// index) makes a forced rebuild robust against any on-disk corruption —
+    /// including a stale Tantivy schema whose fast-field layout would otherwise
+    /// panic the writer, or truncated/missing segment files that cannot be
+    /// opened. The index is then repopulated from the filesystem source of
+    /// truth, so the completeness invariant is restored.
     pub fn scan(
         &self,
         reindex: bool,
     ) -> Result<ScanReport, StorageError> {
-        if reindex {
-            // Proactively rebuild the directory when the on-disk Tantivy schema
-            // predates a fast field that was added later. Writing into the
-            // stale layout would panic the fast-field writer on a background
-            // thread before the reactive catch below could observe an error.
-            self.search.ensure_schema_current()?;
-        }
-        match self.scan_once(reindex) {
-            Ok(report) => Ok(report),
-            Err(error)
-                if reindex
-                    && TantivySearchIndex::should_rebuild_search_index(&error) =>
-            {
-                self.search.reset_dir()?;
-                self.scan_once(reindex)
-            },
-            Err(error) => Err(error),
-        }
+        // Proactively enforce all search-index invariants before writing. The
+        // rebuild check heals structural corruption (via `num_docs`) and detects
+        // an empty/partial/unreadable index; either condition forces a full
+        // rebuild from the filesystem.
+        let force = reindex || self.search_needs_rebuild()?;
+        self.scan_once(force)
     }
 
     fn scan_once(
@@ -213,7 +256,11 @@ impl EntityStore {
         reindex: bool,
     ) -> Result<ScanReport, StorageError> {
         if reindex {
-            self.search.clear_all()?;
+            // Reset the directory instead of clearing documents: a forced
+            // rebuild must not depend on opening the (possibly corrupt) existing
+            // index. The next upsert recreates a fresh index from the current
+            // schema.
+            self.search.reset_dir()?;
         }
 
         let roots = self.index.list_scan_roots()?;
@@ -288,6 +335,15 @@ impl EntityStore {
             Ok(manifest) => manifest,
             Err(_) => return Ok(false),
         };
+
+        // Proactively heal the search index before a single-entity write so a
+        // corrupt/stale/empty index does not lose the other entities'
+        // documents. If the index needed a rebuild, the full repopulation
+        // already integrated this entity.
+        if self.search_needs_rebuild()? {
+            self.scan_once(true)?;
+            return Ok(true);
+        }
 
         let entry = EntityScanEntry {
             id,
@@ -465,6 +521,117 @@ mod tests {
         tantivy::Index::create_in_dir(&search_dir, builder.build()).unwrap();
 
         // Must not panic; self-heals and indexes the entity.
+        store.scan(true).unwrap();
+
+        let results = store.search("searchable", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, id);
+    }
+
+    /// A read must proactively heal and repopulate the search index across the
+    /// full corruption matrix — without any manual `scan` — because the search
+    /// index is a derived cache rebuildable from the filesystem source of truth.
+    #[test]
+    fn search_heals_every_corruption_mode_without_manual_scan() {
+        use crate::model::entity::EntityManifest;
+        use serde_json::json;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let store = EntityStore::open(tmp.path(), test_fs()).unwrap();
+        let entity_dir = tmp.path().join("entities");
+        std::fs::create_dir_all(&entity_dir).unwrap();
+
+        // Seed three searchable entities.
+        let mut ids = Vec::new();
+        for (n, body) in [
+            ("needle alpha document", "alpha"),
+            ("needle beta document", "beta"),
+            ("needle gamma document", "gamma"),
+        ] {
+            let id = Uuid::new_v4();
+            let mut manifest = EntityManifest::new(id, Utc::now());
+            manifest.extra.insert("type".into(), json!("rule-entry"));
+            manifest.extra.insert("title".into(), json!(n));
+            manifest.extra.insert("state".into(), json!("ready"));
+            store.fs.create(&manifest, &entity_dir, Some(body)).unwrap();
+            ids.push(id);
+        }
+        store.scan(true).unwrap();
+        assert_eq!(store.search("needle", 10).unwrap().len(), 3);
+
+        let search_dir = tmp.path().join("search_index");
+        let list_files = |ext: &str| -> Vec<std::path::PathBuf> {
+            std::fs::read_dir(&search_dir)
+                .unwrap()
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| {
+                    p.extension().and_then(|x| x.to_str()) == Some(ext)
+                })
+                .collect()
+        };
+
+        // 1. Corrupt meta.json (unopenable index).
+        std::fs::write(search_dir.join("meta.json"), b"not valid json").unwrap();
+        assert_eq!(store.search("needle", 10).unwrap().len(), 3);
+
+        // 2. Wipe the whole index directory.
+        std::fs::remove_dir_all(&search_dir).unwrap();
+        assert_eq!(store.search("needle", 10).unwrap().len(), 3);
+
+        // 3. Truncate a segment store file (segment-content corruption that
+        //    keeps meta.json valid — only surfaces on read).
+        for f in list_files("store") {
+            std::fs::write(&f, b"x").unwrap();
+        }
+        assert_eq!(store.search("needle", 10).unwrap().len(), 3);
+
+        // 4. Delete the term dictionary files.
+        for f in list_files("term") {
+            std::fs::remove_file(&f).unwrap();
+        }
+        assert_eq!(store.search("needle", 10).unwrap().len(), 3);
+
+        // 5. Overwrite a fast-field file with garbage.
+        for f in list_files("fast") {
+            std::fs::write(&f, b"zzzzz").unwrap();
+        }
+        assert_eq!(store.search("needle", 10).unwrap().len(), 3);
+
+        // The index is healthy and every seeded entity is searchable again.
+        let healed: std::collections::HashSet<_> =
+            store.search("needle", 10).unwrap().into_iter().map(|r| r.id).collect();
+        for id in ids {
+            assert!(healed.contains(&id));
+        }
+    }
+
+    /// A forced reindex must succeed even when the existing index is corrupt,
+    /// because a rebuild resets the directory rather than opening the index.
+    #[test]
+    fn scan_reindex_succeeds_over_corrupt_index() {
+        use crate::model::entity::EntityManifest;
+        use serde_json::json;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let store = EntityStore::open(tmp.path(), test_fs()).unwrap();
+        let entity_dir = tmp.path().join("entities");
+        std::fs::create_dir_all(&entity_dir).unwrap();
+
+        let id = Uuid::new_v4();
+        let mut manifest = EntityManifest::new(id, Utc::now());
+        manifest.extra.insert("type".into(), json!("rule-entry"));
+        manifest.extra.insert("title".into(), json!("Corrupt reindex"));
+        store.fs.create(&manifest, &entity_dir, Some("searchable body")).unwrap();
+        store.scan(true).unwrap();
+
+        // Corrupt every segment file, then force a reindex.
+        let search_dir = tmp.path().join("search_index");
+        for entry in std::fs::read_dir(&search_dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_file() {
+                std::fs::write(&path, b"corrupt").unwrap();
+            }
+        }
         store.scan(true).unwrap();
 
         let results = store.search("searchable", 10).unwrap();

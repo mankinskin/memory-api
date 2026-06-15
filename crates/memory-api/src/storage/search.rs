@@ -71,30 +71,67 @@ pub struct TantivySearchIndex {
     fields: SearchFields,
 }
 
+/// A single readiness invariant the search index must satisfy before it can
+/// serve correct results for **any** read operation.
+///
+/// The full set of conditions that must hold before a read can be trusted:
+///
+/// 1. [`IndexInvariant::DirectoryExists`] — the index directory is present on
+///    disk so Tantivy has somewhere to read segments from.
+/// 2. [`IndexInvariant::Openable`] — a non-empty directory opens as a
+///    structurally valid Tantivy index (its `meta.json` is present and parses,
+///    and segment files are not truncated or corrupt).
+/// 3. [`IndexInvariant::SchemaCurrent`] — the on-disk schema matches the
+///    current [`build_schema`] layout exactly: field set, declaration order,
+///    value types, and indexing options (including `FAST`). A stale layout
+///    makes Tantivy's fast-field writer index past its `fast_field_names`
+///    vector and panic on a background thread.
+///
+/// These invariants are enforced *proactively* on every interaction with the
+/// index — both reads and writes — by [`TantivySearchIndex::ensure_ready`],
+/// which validates each condition and heals any violation before the operation
+/// proceeds, rather than catching errors after the fact.
+///
+/// An **empty** directory is always valid: it is not yet an index and is
+/// created from the current schema on first use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexInvariant {
+    /// The index directory exists on disk.
+    DirectoryExists,
+    /// A non-empty directory opens as a valid Tantivy index (not corrupt,
+    /// truncated, or missing `meta.json`).
+    Openable,
+    /// The on-disk schema matches the current [`build_schema`] exactly.
+    SchemaCurrent,
+}
+
 const SEARCH_IO_RETRY_ATTEMPTS: usize = 8;
 const SEARCH_IO_RETRY_BASE_DELAY_MS: u64 = 25;
 
 impl TantivySearchIndex {
     pub fn open_or_create(dir: &Path) -> Result<Self, StorageError> {
-        std::fs::create_dir_all(dir)?;
-
-        let (schema, fields) = build_schema();
-
-        // Open (or create) the index once to validate the directory, then
-        // immediately drop it.  We do NOT keep it open so that Windows
-        // MmapDirectory handles are released between operations.
-        open_or_create_index(dir, schema)?;
-
-        Ok(Self {
+        let (_, fields) = build_schema();
+        let index = Self {
             dir: dir.to_path_buf(),
             fields,
-        })
+        };
+
+        // Validate and heal every readiness invariant up front, then drop the
+        // returned handle so no Windows MmapDirectory file handles are held
+        // between operations.
+        index.ensure_ready()?;
+
+        Ok(index)
     }
 
-    /// Open a fresh `Index` handle for a single operation, then drop it.
+    /// Open a fresh, **ready** `Index` handle for a single operation, then drop
+    /// it.
+    ///
+    /// Every read and write goes through here, so this is the single choke
+    /// point where [`Self::ensure_ready`] enforces the index invariants before
+    /// the caller touches the index.
     fn open_index(&self) -> Result<Index, StorageError> {
-        let (schema, _) = build_schema();
-        open_or_create_index(&self.dir, schema)
+        self.ensure_ready()
     }
 
     fn make_writer(index: &Index) -> Result<IndexWriter, StorageError> {
@@ -137,6 +174,41 @@ impl TantivySearchIndex {
         unreachable!("retry loop must return or error")
     }
 
+    /// Run a read operation, converting a Tantivy panic into a recoverable
+    /// error.
+    ///
+    /// Tantivy panics (rather than returning an error) on some classes of
+    /// on-disk corruption — for example a truncated segment whose slice offset
+    /// underflows (`attempt to subtract with overflow`). On the calling thread
+    /// such a panic would abort the read, so it is caught here and mapped to a
+    /// `SearchIndex` error containing `"panic"`, which
+    /// [`Self::should_rebuild_search_index`] and
+    /// [`Self::is_rebuildable_read_failure`] both classify as rebuild-worthy.
+    /// Catching is safe because the search index is a derived cache that is
+    /// rebuilt from the filesystem source of truth on the next operation.
+    fn catch_index_panic<T, F>(op: F) -> Result<T, StorageError>
+    where
+        F: FnOnce() -> Result<T, StorageError>,
+    {
+        // Suppress the default panic hook's stderr backtrace for this scoped
+        // read: a caught, recovered-from corruption panic is not a crash.
+        let previous_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(op));
+        std::panic::set_hook(previous_hook);
+
+        match result {
+            Ok(inner) => inner,
+            Err(_) => Err(StorageError::SearchIndex(
+                "search index read panicked (corrupt on-disk segment); \
+                 rebuild required"
+                    .to_string(),
+            )),
+        }
+    }
+
+
     pub fn should_rebuild_search_index(error: &StorageError) -> bool {
         let StorageError::SearchIndex(message) = error else {
             return false;
@@ -150,6 +222,22 @@ impl TantivySearchIndex {
             || lower.contains("panic")
     }
 
+    /// Whether a failure observed while **reading** the index warrants
+    /// rebuilding it from the source of truth.
+    ///
+    /// Segment-content damage (truncated, corrupt, or missing segment files)
+    /// keeps `meta.json` valid, so it passes the cheap structural and
+    /// completeness checks and only surfaces when the searcher reads a segment.
+    /// The error messages vary widely (`File corrupted`, `FileDoesNotExist`,
+    /// `UnexpectedEof`, background-thread panics, …), so any search-index error
+    /// that is **not** a transient, retryable IO/permission error is treated as
+    /// on-disk damage that a rebuild repairs. Rebuilding is always safe because
+    /// the filesystem entities are the authoritative source.
+    pub fn is_rebuildable_read_failure(error: &StorageError) -> bool {
+        matches!(error, StorageError::SearchIndex(_))
+            && !Self::is_retryable_search_error(error)
+    }
+
     pub fn reset_dir(&self) -> Result<(), StorageError> {
         if self.dir.exists() {
             std::fs::remove_dir_all(&self.dir)?;
@@ -158,46 +246,154 @@ impl TantivySearchIndex {
         Ok(())
     }
 
-    /// Reset the on-disk index when its schema no longer matches the current
-    /// [`build_schema`] layout.
+    /// Validate and heal every [`IndexInvariant`], returning an open [`Index`]
+    /// that is guaranteed to satisfy all readiness conditions.
     ///
-    /// When fast fields are added to the schema after an index was first
-    /// created, the on-disk index still reports the old field count. Tantivy's
-    /// fast-field writer then indexes past the end of its `fast_field_names`
-    /// vector and panics on a background thread
-    /// (`fastfield/writer.rs: index out of bounds`). Detecting the mismatch and
-    /// rebuilding the directory **before** any document is written avoids that
-    /// panic entirely. A corrupt or unreadable index is left untouched so the
-    /// reactive rebuild path (driven by [`Self::should_rebuild_search_index`])
-    /// can repair it instead.
-    pub fn ensure_schema_current(&self) -> Result<(), StorageError> {
-        if !self.on_disk_schema_is_current() {
-            self.reset_dir()?;
-        }
-        Ok(())
-    }
+    /// This is the single proactive gate that every read and write passes
+    /// through. It enforces, in order:
+    ///
+    /// 1. **Directory exists** — created if missing.
+    /// 2. **Openable** — a non-empty directory must open as a valid Tantivy
+    ///    index; a corrupt/truncated index is rebuilt from the current schema.
+    /// 3. **Schema current** — the on-disk schema must match [`build_schema`]
+    ///    exactly; a stale layout is rebuilt *before* any document is written,
+    ///    so the fast-field writer can never index past its `fast_field_names`
+    ///    vector.
+    ///
+    /// Healing is proactive: schema drift and corruption are repaired here, not
+    /// caught downstream after a panic or error. An empty directory is valid
+    /// and is created from the current schema.
+    fn ensure_ready(&self) -> Result<Index, StorageError> {
+        // Invariant 1: the directory must exist.
+        std::fs::create_dir_all(&self.dir)?;
 
-    /// Whether the on-disk index schema matches the current [`build_schema`].
-    ///
-    /// Returns `true` (treat as current) when the directory is empty or the
-    /// index cannot be opened — those cases are handled by create-on-empty or
-    /// the reactive rebuild path rather than a proactive reset.
-    fn on_disk_schema_is_current(&self) -> bool {
-        let has_entries = self
+        let is_empty = self
             .dir
             .read_dir()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
-        if !has_entries {
-            return true;
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(true);
+        if is_empty {
+            return self.create_fresh_index();
         }
 
-        let Ok(index) = Index::open_in_dir(&self.dir) else {
-            return true;
+        // Invariant 2: a non-empty directory must open as a valid index.
+        let index = match Index::open_in_dir(&self.dir) {
+            Ok(index) => index,
+            Err(error) => {
+                tracing::warn!(
+                    dir = %self.dir.display(),
+                    %error,
+                    "search index unreadable; rebuilding from current schema",
+                );
+                return self.create_fresh_index();
+            },
+        };
+
+        // Invariant 3: the on-disk schema must match the current schema.
+        let (expected, _) = build_schema();
+        if schemas_match(&index.schema(), &expected) {
+            return Ok(index);
+        }
+
+        drop(index);
+        tracing::warn!(
+            dir = %self.dir.display(),
+            "search index schema is stale; rebuilding from current schema",
+        );
+        self.create_fresh_index()
+    }
+
+    /// Reset the directory and create a brand-new index from the current
+    /// schema. Used by [`Self::ensure_ready`] to heal a missing, corrupt, or
+    /// stale-schema index.
+    fn create_fresh_index(&self) -> Result<Index, StorageError> {
+        self.reset_dir()?;
+        let (schema, _) = build_schema();
+        Index::create_in_dir(&self.dir, schema)
+            .map_err(|e| StorageError::SearchIndex(e.to_string()))
+    }
+
+    /// Validate every [`IndexInvariant`] **without** mutating the index and
+    /// return the first violation, if any.
+    ///
+    /// This is the read-only counterpart to [`Self::ensure_ready`], intended
+    /// for health checks and tests. `Ok(None)` means the index is ready (or is
+    /// an empty directory that will be created on first use).
+    pub fn check_invariants(
+        &self
+    ) -> Result<Option<IndexInvariant>, StorageError> {
+        if !self.dir.exists() {
+            return Ok(Some(IndexInvariant::DirectoryExists));
+        }
+
+        let is_empty = self
+            .dir
+            .read_dir()
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(true);
+        if is_empty {
+            return Ok(None);
+        }
+
+        let index = match Index::open_in_dir(&self.dir) {
+            Ok(index) => index,
+            Err(_) => return Ok(Some(IndexInvariant::Openable)),
         };
 
         let (expected, _) = build_schema();
-        schemas_match(&index.schema(), &expected)
+        if !schemas_match(&index.schema(), &expected) {
+            return Ok(Some(IndexInvariant::SchemaCurrent));
+        }
+
+        Ok(None)
+    }
+
+    /// Proactively validate and heal all index invariants.
+    ///
+    /// Thin wrapper over [`Self::ensure_ready`] for callers that want to force
+    /// the index into a known-good state without performing an operation (for
+    /// example before a bulk reindex). The healed index handle is dropped
+    /// immediately so no file handles are retained.
+    pub fn ensure_schema_current(&self) -> Result<(), StorageError> {
+        self.ensure_ready().map(|_| ())
+    }
+
+    /// Proactively validate the **structural** invariants and rebuild the index
+    /// when any is violated (missing directory, unopenable/corrupt index, or
+    /// stale schema).
+    ///
+    /// Returns `true` when a rebuild occurred. Because a rebuild produces an
+    /// empty index, the caller is then responsible for restoring the
+    /// **completeness** invariant — re-indexing every entity from the
+    /// filesystem source of truth (the search index cannot do this itself; only
+    /// the owning store knows the entities). Returns `false` when the index was
+    /// already structurally valid, so no repopulation is needed.
+    pub fn heal_if_needed(&self) -> Result<bool, StorageError> {
+        std::fs::create_dir_all(&self.dir)?;
+        match self.check_invariants()? {
+            None => Ok(false),
+            Some(_) => {
+                self.create_fresh_index()?;
+                Ok(true)
+            },
+        }
+    }
+
+    /// Number of live documents in the index.
+    ///
+    /// Routes through [`Self::open_index`], so the structural invariants are
+    /// enforced first; a freshly-rebuilt (healed) index reports `0`. The owning
+    /// store compares this against its metadata-index entity count to detect an
+    /// empty or partial search index that must be repopulated (the
+    /// **completeness** invariant).
+    pub fn num_docs(&self) -> Result<u64, StorageError> {
+        Self::catch_index_panic(|| {
+            let index = self.open_index()?;
+            let reader = index
+                .reader()
+                .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
+            Ok(reader.searcher().num_docs())
+        })
     }
 
     /// Index or update an entity document. Deletes any existing document for the
@@ -312,6 +508,9 @@ impl TantivySearchIndex {
             },
         };
 
+        // Catch panics from corrupt on-disk segments so the read can be retried
+        // against a rebuilt index instead of aborting the process.
+        Self::catch_index_panic(|| {
         let index = self.open_index()?;
         let reader = index
             .reader()
@@ -362,24 +561,7 @@ impl TantivySearchIndex {
         );
 
         Ok(results)
-    }
-}
-
-/// Open the Tantivy index at `dir`, or create it from `schema` if the
-/// directory is empty.
-fn open_or_create_index(
-    dir: &Path,
-    schema: Schema,
-) -> Result<Index, StorageError> {    if dir
-        .read_dir()
-        .map(|mut d| d.next().is_some())
-        .unwrap_or(false)
-    {
-        Index::open_in_dir(dir)
-            .map_err(|e| StorageError::SearchIndex(e.to_string()))
-    } else {
-        Index::create_in_dir(dir, schema)
-            .map_err(|e| StorageError::SearchIndex(e.to_string()))
+        })
     }
 }
 
@@ -874,7 +1056,44 @@ mod tests {
     }
 
     #[test]
-    fn ensure_schema_current_rebuilds_stale_fast_field_schema() {
+    fn read_failure_rebuilds_for_any_non_transient_search_error() {
+        // Segment-content damage surfaces with many different messages, none of
+        // which the substring classifier covers — all must trigger a rebuild.
+        for message in [
+            "Failed to open file for read: FileDoesNotExist(\"seg.term\")",
+            "File corrupted. The file is smaller than 4 bytes (len=2).",
+            "UnexpectedEof while reading segment",
+            "schema mismatch in segment",
+        ] {
+            let error = StorageError::SearchIndex(message.to_string());
+            assert!(
+                TantivySearchIndex::is_rebuildable_read_failure(&error),
+                "expected rebuild for: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn read_failure_does_not_rebuild_for_transient_permission_errors() {
+        for message in [
+            "PermissionDenied (os error 5)",
+            "Access is denied. (os error 5)",
+        ] {
+            let error = StorageError::SearchIndex(message.to_string());
+            assert!(
+                !TantivySearchIndex::is_rebuildable_read_failure(&error),
+                "expected no rebuild for transient: {message}"
+            );
+        }
+
+        // Non-search errors are never rebuildable.
+        assert!(!TantivySearchIndex::is_rebuildable_read_failure(
+            &StorageError::DependencyCycle
+        ));
+    }
+
+    #[test]
+    fn open_or_create_heals_stale_fast_field_schema_on_construction() {
         let dir = tempfile::tempdir().unwrap();
         let index_dir = dir.path().join("search_index");
         std::fs::create_dir_all(&index_dir).unwrap();
@@ -889,15 +1108,13 @@ mod tests {
         builder.add_text_field("ticket_type", STRING | STORED | FAST);
         Index::create_in_dir(&index_dir, builder.build()).unwrap();
 
+        // Construction proactively validates and heals the stale schema, so the
+        // index is already current before any operation runs.
         let search = TantivySearchIndex::open_or_create(&index_dir).unwrap();
-        assert!(!search.on_disk_schema_is_current());
+        assert_eq!(search.check_invariants().unwrap(), None);
 
-        // Proactive reset must rebuild the directory with the current schema so
-        // the fast-field writer never indexes past the stale field count.
-        search.ensure_schema_current().unwrap();
-        assert!(search.on_disk_schema_is_current());
-
-        // A write that references the newer fast fields must now succeed.
+        // A write that references the newer fast fields must succeed (the
+        // fast-field writer must not index past a stale field count).
         let id = Uuid::new_v4();
         search
             .upsert(
@@ -910,6 +1127,78 @@ mod tests {
                 Some("3"),
             )
             .unwrap();
+
+        let expr = crate::model::query::parse_query("searchable").unwrap();
+        assert_eq!(search.search(&expr, 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn check_invariants_detects_then_heals_stale_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let index_dir = dir.path().join("search_index");
+
+        // Start from a current, healthy index.
+        let search = TantivySearchIndex::open_or_create(&index_dir).unwrap();
+        assert_eq!(search.check_invariants().unwrap(), None);
+
+        // Replace the on-disk index with an older 5-field schema behind the
+        // existing handle (simulating a schema change across versions).
+        std::fs::remove_dir_all(&index_dir).unwrap();
+        std::fs::create_dir_all(&index_dir).unwrap();
+        let mut builder = Schema::builder();
+        builder.add_text_field("id", STRING | STORED);
+        builder.add_text_field("title", TEXT | STORED);
+        builder.add_text_field("body", TEXT | STORED);
+        builder.add_text_field("state", STRING | STORED | FAST);
+        builder.add_text_field("ticket_type", STRING | STORED | FAST);
+        Index::create_in_dir(&index_dir, builder.build()).unwrap();
+
+        // The read-only check detects the stale schema...
+        assert_eq!(
+            search.check_invariants().unwrap(),
+            Some(IndexInvariant::SchemaCurrent)
+        );
+
+        // ...and the proactive gate heals it before any operation proceeds.
+        search.ensure_schema_current().unwrap();
+        assert_eq!(search.check_invariants().unwrap(), None);
+
+        let id = Uuid::new_v4();
+        search
+            .upsert(&id, Some("t"), Some("healed token"), None, None, None, None)
+            .unwrap();
+        let expr = crate::model::query::parse_query("token").unwrap();
+        assert_eq!(search.search(&expr, 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn check_invariants_detects_then_heals_corrupt_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let index_dir = dir.path().join("search_index");
+
+        let search = TantivySearchIndex::open_or_create(&index_dir).unwrap();
+        let id = Uuid::new_v4();
+        search
+            .upsert(&id, Some("before"), Some("before body"), None, None, None, None)
+            .unwrap();
+
+        // Corrupt the index metadata so it can no longer be opened.
+        std::fs::write(index_dir.join("meta.json"), b"not valid json").unwrap();
+        assert_eq!(
+            search.check_invariants().unwrap(),
+            Some(IndexInvariant::Openable)
+        );
+
+        // The next operation proactively rebuilds the index from the current
+        // schema instead of erroring out.
+        let id2 = Uuid::new_v4();
+        search
+            .upsert(&id2, Some("after"), Some("after token"), None, None, None, None)
+            .unwrap();
+        assert_eq!(search.check_invariants().unwrap(), None);
+
+        let expr = crate::model::query::parse_query("token").unwrap();
+        assert_eq!(search.search(&expr, 10).unwrap().len(), 1);
     }
 
     #[test]
@@ -923,7 +1212,7 @@ mod tests {
             .upsert(&id, Some("keep"), Some("keep body"), None, None, None, None)
             .unwrap();
 
-        assert!(search.on_disk_schema_is_current());
+        assert_eq!(search.check_invariants().unwrap(), None);
         // No-op when the schema already matches: the existing document survives.
         search.ensure_schema_current().unwrap();
 

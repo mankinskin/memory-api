@@ -6,7 +6,10 @@ use crate::{
     },
     storage::{
         indexed::IndexedTicket,
-        search::SearchResult,
+        search::{
+            SearchResult,
+            TantivySearchIndex,
+        },
         ticket_fs::TicketFs,
     },
 };
@@ -66,7 +69,24 @@ impl TicketStore {
     ) -> Result<Vec<SearchResult>, StorageError> {
         let expression =
             parse_query(query_expr).map_err(StorageError::QueryParse)?;
-        self.with_search_repair(|| self.search.search(&expression, limit))
+        // Proactively ensure the search index is valid and complete before the
+        // read, repopulating from the on-disk tickets if it is empty or partial.
+        self.ensure_search_complete()?;
+
+        match self.search.search(&expression, limit) {
+            Ok(results) => Ok(results),
+            // Deep segment-content corruption keeps `meta.json` valid, so it
+            // passes the cheap structural and completeness checks and only
+            // surfaces on read. Rebuild from the on-disk tickets and retry once.
+            Err(error)
+                if TantivySearchIndex::is_rebuildable_read_failure(&error) =>
+            {
+                self.search.reset_dir()?;
+                self.scan(true)?;
+                self.search.search(&expression, limit)
+            },
+            Err(error) => Err(error),
+        }
     }
 
     pub fn edges_from(

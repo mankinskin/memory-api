@@ -124,13 +124,41 @@ impl TicketStore {
     where
         F: FnMut() -> Result<T, StorageError>,
     {
-        match op() {
-            Ok(value) => Ok(value),
-            Err(error) if TantivySearchIndex::should_rebuild_search_index(&error) => {
-                self.scan(true)?;
-                op()
-            }
-            Err(error) => Err(error),
+        // Proactively enforce the search-index structural invariants before a
+        // write instead of catching a failure afterwards. A rebuild leaves the
+        // index empty; the completeness invariant is restored by re-indexing the
+        // on-disk tickets. Writes use the structural (rebuild-only) check rather
+        // than the document-count check so an in-progress mutation that has
+        // already updated the metadata index does not trigger a full reindex.
+        if self.search.heal_if_needed()? {
+            self.scan(true)?;
+        }
+        op()
+    }
+
+    /// Enforce the search-index completeness invariant before a read.
+    ///
+    /// Heals structural corruption (via [`TantivySearchIndex::num_docs`]) and
+    /// repopulates the index from the on-disk tickets when its document count
+    /// does not match the metadata index — the filesystem-backed source of
+    /// truth that survives Tantivy corruption.
+    pub(crate) fn ensure_search_complete(&self) -> Result<(), StorageError> {
+        if self.search_needs_rebuild()? {
+            self.scan(true)?;
+        }
+        Ok(())
+    }
+
+    /// Whether the search index must be rebuilt before it can be trusted.
+    ///
+    /// Returns `true` when the index cannot be opened/counted (structural or
+    /// segment-content corruption) or when its document count differs from the
+    /// metadata index. Calling this also heals the cheap structural invariants.
+    fn search_needs_rebuild(&self) -> Result<bool, StorageError> {
+        let indexed = self.index.list_tickets()?.len() as u64;
+        match self.search.num_docs() {
+            Ok(docs) => Ok(docs != indexed),
+            Err(_) => Ok(true),
         }
     }
 

@@ -66,14 +66,12 @@ impl TicketStore {
         &self,
         reindex: bool,
     ) -> Result<ScanReport, StorageError> {
-        match self.scan_once(reindex) {
-            Ok(report) => Ok(report),
-            Err(error) if reindex && TantivySearchIndex::should_rebuild_search_index(&error) => {
-                self.search.reset_dir()?;
-                self.scan_once(reindex)
-            }
-            Err(error) => Err(error),
-        }
+        // Proactively enforce all search-index invariants before any write. The
+        // rebuild check heals structural corruption (via `num_docs`) and detects
+        // an empty/partial/unreadable index; either forces a full rebuild so the
+        // search index is reset and repopulated from the on-disk tickets.
+        let force = reindex || self.search_needs_rebuild()?;
+        self.scan_once(force)
     }
 
     fn scan_once(
@@ -82,7 +80,11 @@ impl TicketStore {
     ) -> Result<ScanReport, StorageError> {
         if reindex {
             self.backfill_file_backed_edges_from_index()?;
-            self.search.clear_all()?;
+            // Reset the directory instead of clearing documents: a forced
+            // rebuild must not depend on opening the (possibly corrupt) existing
+            // index. The next upsert recreates a fresh index from the current
+            // schema.
+            self.search.reset_dir()?;
             self.index.clear_edges()?;
         }
 
