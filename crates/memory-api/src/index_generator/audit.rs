@@ -19,7 +19,7 @@ use crate::model::index_entry::{
 };
 use crate::model::index_sidecar::IndexSidecar;
 
-use super::ticket::deterministic_uuid;
+use super::util::deterministic_uuid;
 
 /// Namespace UUID for deterministic audit root UUIDs.
 const AUDIT_NS: Uuid = Uuid::from_bytes([

@@ -17,7 +17,7 @@ use crate::model::index_entry::{
 use crate::model::index_sidecar::IndexSidecar;
 use crate::storage::indexed::IndexedEntity;
 
-use super::ticket::to_relative_slash;
+use super::util::to_relative_slash;
 
 /// Input for the spec sidecar generator.
 pub struct SpecIndexInput<'a> {

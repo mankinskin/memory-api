@@ -158,6 +158,48 @@ impl TantivySearchIndex {
         Ok(())
     }
 
+    /// Reset the on-disk index when its schema no longer matches the current
+    /// [`build_schema`] layout.
+    ///
+    /// When fast fields are added to the schema after an index was first
+    /// created, the on-disk index still reports the old field count. Tantivy's
+    /// fast-field writer then indexes past the end of its `fast_field_names`
+    /// vector and panics on a background thread
+    /// (`fastfield/writer.rs: index out of bounds`). Detecting the mismatch and
+    /// rebuilding the directory **before** any document is written avoids that
+    /// panic entirely. A corrupt or unreadable index is left untouched so the
+    /// reactive rebuild path (driven by [`Self::should_rebuild_search_index`])
+    /// can repair it instead.
+    pub fn ensure_schema_current(&self) -> Result<(), StorageError> {
+        if !self.on_disk_schema_is_current() {
+            self.reset_dir()?;
+        }
+        Ok(())
+    }
+
+    /// Whether the on-disk index schema matches the current [`build_schema`].
+    ///
+    /// Returns `true` (treat as current) when the directory is empty or the
+    /// index cannot be opened — those cases are handled by create-on-empty or
+    /// the reactive rebuild path rather than a proactive reset.
+    fn on_disk_schema_is_current(&self) -> bool {
+        let has_entries = self
+            .dir
+            .read_dir()
+            .map(|mut entries| entries.next().is_some())
+            .unwrap_or(false);
+        if !has_entries {
+            return true;
+        }
+
+        let Ok(index) = Index::open_in_dir(&self.dir) else {
+            return true;
+        };
+
+        let (expected, _) = build_schema();
+        schemas_match(&index.schema(), &expected)
+    }
+
     /// Index or update an entity document. Deletes any existing document for the
     /// same `id` first to ensure upsert semantics.
     pub fn upsert(
@@ -328,8 +370,7 @@ impl TantivySearchIndex {
 fn open_or_create_index(
     dir: &Path,
     schema: Schema,
-) -> Result<Index, StorageError> {
-    if dir
+) -> Result<Index, StorageError> {    if dir
         .read_dir()
         .map(|mut d| d.next().is_some())
         .unwrap_or(false)
@@ -339,6 +380,22 @@ fn open_or_create_index(
     } else {
         Index::create_in_dir(dir, schema)
             .map_err(|e| StorageError::SearchIndex(e.to_string()))
+    }
+}
+
+/// Compare two schemas structurally (field names, types, and options).
+///
+/// Serializing the schema captures field order, names, value types, and
+/// per-field options (`FAST`, `STORED`, `INDEXED`, …), so any layout change —
+/// including a newly added fast field — produces a mismatch. A serialization
+/// failure conservatively reports a mismatch so the caller rebuilds.
+fn schemas_match(
+    a: &Schema,
+    b: &Schema,
+) -> bool {
+    match (serde_json::to_string(a), serde_json::to_string(b)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
     }
 }
 
@@ -815,4 +872,63 @@ mod tests {
 
         assert!(!TantivySearchIndex::should_rebuild_search_index(&error));
     }
+
+    #[test]
+    fn ensure_schema_current_rebuilds_stale_fast_field_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let index_dir = dir.path().join("search_index");
+        std::fs::create_dir_all(&index_dir).unwrap();
+
+        // Build an OLDER 5-field schema (before `created_at`/`effort` fast
+        // fields existed) so the on-disk layout no longer matches.
+        let mut builder = Schema::builder();
+        builder.add_text_field("id", STRING | STORED);
+        builder.add_text_field("title", TEXT | STORED);
+        builder.add_text_field("body", TEXT | STORED);
+        builder.add_text_field("state", STRING | STORED | FAST);
+        builder.add_text_field("ticket_type", STRING | STORED | FAST);
+        Index::create_in_dir(&index_dir, builder.build()).unwrap();
+
+        let search = TantivySearchIndex::open_or_create(&index_dir).unwrap();
+        assert!(!search.on_disk_schema_is_current());
+
+        // Proactive reset must rebuild the directory with the current schema so
+        // the fast-field writer never indexes past the stale field count.
+        search.ensure_schema_current().unwrap();
+        assert!(search.on_disk_schema_is_current());
+
+        // A write that references the newer fast fields must now succeed.
+        let id = Uuid::new_v4();
+        search
+            .upsert(
+                &id,
+                Some("title"),
+                Some("searchable body"),
+                Some("ready"),
+                Some("rule-entry"),
+                Some("2026-06-15T00:00:00Z"),
+                Some("3"),
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn ensure_schema_current_keeps_current_schema_intact() {
+        let dir = tempfile::tempdir().unwrap();
+        let index_dir = dir.path().join("search_index");
+
+        let search = TantivySearchIndex::open_or_create(&index_dir).unwrap();
+        let id = Uuid::new_v4();
+        search
+            .upsert(&id, Some("keep"), Some("keep body"), None, None, None, None)
+            .unwrap();
+
+        assert!(search.on_disk_schema_is_current());
+        // No-op when the schema already matches: the existing document survives.
+        search.ensure_schema_current().unwrap();
+
+        let expr = crate::model::query::parse_query("keep").unwrap();
+        assert_eq!(search.search(&expr, 10).unwrap().len(), 1);
+    }
 }
+

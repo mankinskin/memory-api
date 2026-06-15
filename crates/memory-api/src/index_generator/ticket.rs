@@ -11,8 +11,8 @@
 use std::path::Path;
 
 use chrono::Utc;
-use uuid::Uuid;
 
+use super::util::to_relative_slash;
 use crate::model::index_entry::{
     ContentKind,
     IndexEntry,
@@ -103,30 +103,12 @@ fn make_ticket_entry(
     }
 }
 
-/// Convert an absolute path to a workspace-relative string with `/` separators.
-pub(super) fn to_relative_slash(
-    workspace_root: &Path,
-    abs_path: &Path,
-) -> String {
-    abs_path
-        .strip_prefix(workspace_root)
-        .unwrap_or(abs_path)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
-/// Stable synthetic UUID derived from a fixed namespace + slug string.
-///
-/// Used for workspace summary and agent-hook entries that have no store UUID.
-pub(super) fn deterministic_uuid(namespace: Uuid, slug: &str) -> Uuid {
-    Uuid::new_v5(&namespace, slug.as_bytes())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
     use chrono::Utc;
+    use uuid::Uuid;
 
     fn fake_ticket(id: Uuid, title: &str, state: &str, path: PathBuf) -> IndexedEntity {
         IndexedEntity {

@@ -188,6 +188,13 @@ impl EntityStore {
         &self,
         reindex: bool,
     ) -> Result<ScanReport, StorageError> {
+        if reindex {
+            // Proactively rebuild the directory when the on-disk Tantivy schema
+            // predates a fast field that was added later. Writing into the
+            // stale layout would panic the fast-field writer on a background
+            // thread before the reactive catch below could observe an error.
+            self.search.ensure_schema_current()?;
+        }
         match self.scan_once(reindex) {
             Ok(report) => Ok(report),
             Err(error)
