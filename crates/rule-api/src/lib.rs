@@ -5,6 +5,7 @@ pub mod import;
 pub mod manifest;
 pub mod render;
 pub mod store;
+pub mod store_index;
 pub mod targets;
 pub mod workspace;
 
@@ -36,6 +37,12 @@ pub use render::{
 pub use store::{
     RuleFilter,
     RuleStore,
+};
+pub use store_index::{
+    RULE_CATALOG_AGENT_HOOK_PATH,
+    RuleCatalogArtifacts,
+    RuleCatalogSource,
+    generate_rule_catalog,
 };
 pub use targets::{
     ExplainedRuleMatch,

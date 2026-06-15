@@ -55,6 +55,8 @@ pub enum RuleCommandCli {
     List(ListArgs),
     Search(SearchArgs),
     Scan(ScanArgs),
+    #[command(name = "store-index")]
+    StoreIndex(StoreIndexArgs),
     #[command(name = "add-root")]
     AddRoot(AddRootArgs),
 }
@@ -245,6 +247,16 @@ pub struct AddRootArgs {
     pub path: PathBuf,
     #[arg(long)]
     pub label: Option<String>,
+}
+
+/// Generate (or check) the committed rule catalog artifacts:
+/// `.rule/README.md`, `.rule/index.toon`, and `.agents/rules-catalog.md`.
+#[derive(Debug, Args)]
+pub struct StoreIndexArgs {
+    /// Check-only mode: render the catalog and exit non-zero on drift without
+    /// writing. Mirrors `sync-targets --check`; the hook uses this variant.
+    #[arg(long, default_value_t = false)]
+    pub check: bool,
 }
 
 #[cfg(test)]

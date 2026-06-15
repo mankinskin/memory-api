@@ -41,6 +41,7 @@ use super::{
     RuleCommandCli,
     ScanArgs,
     SearchArgs,
+    StoreIndexArgs,
     SyncTargetsArgs,
     UpdateArgs,
     helpers::{
@@ -105,7 +106,7 @@ pub(super) fn dispatch_with_workspace_root(
         RuleCommandCli::Scan(args) =>
             scan_command(&mut store, args, index_root, workspace_root_override),
         RuleCommandCli::Init => unreachable!("Init handled before store open"),
-        other => dispatch_secondary(other, &mut store),
+        other => dispatch_secondary(other, &mut store, index_root),
     }
 }
 
@@ -123,6 +124,7 @@ fn bootstrap_rule_store(
             | RuleCommandCli::SyncTargets(_)
             | RuleCommandCli::List(_)
             | RuleCommandCli::Search(_)
+            | RuleCommandCli::StoreIndex(_)
     ) {
         return Ok(());
     }
@@ -141,6 +143,7 @@ fn bootstrap_rule_store(
 fn dispatch_secondary(
     command: RuleCommandCli,
     store: &mut RuleStore,
+    index_root: &Path,
 ) -> Result<Value, CliRunError> {
     match command {
         RuleCommandCli::GenerateFile(args) =>
@@ -152,6 +155,8 @@ fn dispatch_secondary(
         RuleCommandCli::SyncTargets(args) => sync_targets_command(store, args),
         RuleCommandCli::List(args) => list_command(store, args),
         RuleCommandCli::Search(args) => search_command(store, args),
+        RuleCommandCli::StoreIndex(args) =>
+            store_index_command(store, args, index_root),
         RuleCommandCli::AddRoot(args) => add_root_command(store, args),
         RuleCommandCli::Create(_)
         | RuleCommandCli::Get(_)
@@ -568,6 +573,143 @@ fn scan_command(
         "diagnostics_description": "Manifest and parse problems encountered while scanning active roots. Each diagnostic includes the path and the parser error.",
         "diagnostics": diagnostics,
     }))
+}
+
+fn store_index_command(
+    store: &mut RuleStore,
+    args: StoreIndexArgs,
+    index_root: &Path,
+) -> Result<Value, CliRunError> {
+    use rule_api::{
+        RuleCatalogSource,
+        RuleFilter,
+        generate_rule_catalog,
+        prepare_generated_output,
+    };
+
+    const STORE_DIR: &str = ".rule";
+
+    let workspace_root = rule_api::workspace_root_for_index_root(index_root)
+        .or_else(|| index_root.parent().map(Path::to_path_buf))
+        .ok_or_else(|| {
+            CliRunError::BadRequest(
+                "could not resolve workspace root for rule store".to_string(),
+            )
+        })?;
+
+    // Join rule manifests with their indexed on-disk paths + mtimes.
+    let manifests = store.list(&RuleFilter::default(), None)?;
+    let indexed: std::collections::HashMap<_, _> = store
+        .entity_store()
+        .list_indexed()?
+        .into_iter()
+        .map(|e| (e.id, e))
+        .collect();
+
+    let sources: Vec<RuleCatalogSource<'_>> = manifests
+        .iter()
+        .map(|manifest| {
+            let entity = indexed.get(&manifest.id);
+            let source_path = entity
+                .map(|e| {
+                    let file = e.path.join("rule.toml");
+                    memory_api::index_generator::to_relative_slash(
+                        &workspace_root,
+                        &file,
+                    )
+                })
+                .unwrap_or_default();
+            RuleCatalogSource {
+                manifest,
+                source_path,
+            }
+        })
+        .collect();
+
+    let artifacts = generate_rule_catalog(&sources, STORE_DIR);
+
+    let readme_path = workspace_root.join(STORE_DIR).join("README.md");
+    let sidecar_path = workspace_root.join(STORE_DIR).join("index.toon");
+    let agent_hook_path =
+        workspace_root.join(rule_api::RULE_CATALOG_AGENT_HOOK_PATH);
+
+    let sidecar_toon = artifacts
+        .sidecar
+        .encode_toon()
+        .map_err(|e| CliRunError::BadRequest(e.to_string()))?;
+
+    // Match existing on-disk line endings so the diff is content-only.
+    let readme_out = prepare_generated_output(
+        &artifacts.readme_markdown,
+        read_existing(&readme_path).as_deref(),
+    );
+    let agent_hook_out = prepare_generated_output(
+        &artifacts.agent_hook_markdown,
+        read_existing(&agent_hook_path).as_deref(),
+    );
+    let sidecar_out = prepare_generated_output(
+        &sidecar_toon,
+        read_existing(&sidecar_path).as_deref(),
+    );
+
+    let planned = [
+        (&readme_path, &readme_out),
+        (&sidecar_path, &sidecar_out),
+        (&agent_hook_path, &agent_hook_out),
+    ];
+
+    if args.check {
+        let drifted: Vec<String> = planned
+            .iter()
+            .filter(|(path, content)| {
+                read_existing(path).as_deref() != Some(content.as_str())
+            })
+            .map(|(path, _)| display_scan_path(path))
+            .collect();
+
+        if !drifted.is_empty() {
+            return Err(CliRunError::BadRequest(format!(
+                "rule store-index is out of date; regenerate and re-stage: {}",
+                drifted.join(", ")
+            )));
+        }
+
+        return Ok(json!({
+            "command": "store-index",
+            "status": "ok",
+            "check": true,
+            "drift": false,
+            "rules": sources.len(),
+        }));
+    }
+
+    let mut written = Vec::new();
+    for (path, content) in planned {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(memory_api::error::StorageError::Io)?;
+        }
+        fs::write(path, content).map_err(memory_api::error::StorageError::Io)?;
+        written.push(display_scan_path(path));
+    }
+
+    Ok(json!({
+        "command": "store-index",
+        "status": "ok",
+        "check": false,
+        "rules": sources.len(),
+        "low_rated": artifacts
+            .sidecar
+            .entries
+            .iter()
+            .filter(|e| e.tags.iter().any(|t| t == "low-rated"))
+            .count(),
+        "written": written,
+    }))
+}
+
+fn read_existing(path: &Path) -> Option<String> {
+    fs::read_to_string(path).ok()
 }
 
 fn add_root_command(

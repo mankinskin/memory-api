@@ -1369,3 +1369,78 @@ fn sync_targets_refuses_zero_match_writes_before_touching_outputs() {
     assert!(!dir.path().join("generated/AGENTS.md").exists());
     assert!(!dir.path().join("generated/memory-api-AGENTS.md").exists());
 }
+
+#[test]
+fn store_index_writes_catalog_then_check_is_clean_and_detects_drift() {
+    let dir = tempdir().unwrap();
+    let index_root = dir.path().join(".rule");
+    let workspace_root = dir.path();
+
+    let mut store = RuleStore::init(&index_root).unwrap();
+    store
+        .create(
+            &sample_rule(
+                "shared/agent-rules/opening",
+                "Opening",
+                "opening",
+                "Start with the concrete anchor.",
+                10,
+            ),
+            None,
+        )
+        .unwrap();
+    store
+        .create(
+            &sample_rule(
+                "shared/agent-rules/closing",
+                "Closing",
+                "closing",
+                "Finish with the focused validation.",
+                20,
+            ),
+            None,
+        )
+        .unwrap();
+
+    // Write the catalog artifacts.
+    let payload = dispatch::dispatch(
+        RuleCommandCli::StoreIndex(StoreIndexArgs { check: false }),
+        &index_root,
+    )
+    .unwrap();
+    assert_eq!(payload["status"], "ok");
+    assert_eq!(payload["rules"], 2);
+
+    let readme = workspace_root.join(".rule/README.md");
+    let sidecar = workspace_root.join(".rule/index.toon");
+    let agent_hook = workspace_root.join(".agents/rules-catalog.md");
+    assert!(readme.exists());
+    assert!(sidecar.exists());
+    assert!(agent_hook.exists());
+
+    let readme_text = fs::read_to_string(&readme).unwrap();
+    assert!(readme_text.starts_with("<!-- rule-catalog:file generated=true -->"));
+    assert!(readme_text.contains("## shared/agent-rules"));
+    assert!(readme_text.contains("<!-- rule-catalog:entry id="));
+    assert!(readme_text.contains("digest="));
+
+    // --check is clean immediately after a write (idempotent).
+    let check = dispatch::dispatch(
+        RuleCommandCli::StoreIndex(StoreIndexArgs { check: true }),
+        &index_root,
+    )
+    .unwrap();
+    assert_eq!(check["drift"], false);
+
+    // Mutating a generated artifact makes --check fail (drift detected).
+    fs::write(&readme, "tampered\n").unwrap();
+    let drift = dispatch::dispatch(
+        RuleCommandCli::StoreIndex(StoreIndexArgs { check: true }),
+        &index_root,
+    );
+    assert!(drift.is_err(), "check must fail on drift");
+    assert!(drift
+        .unwrap_err()
+        .to_string()
+        .contains("out of date"));
+}
