@@ -178,7 +178,30 @@ impl EntityStore {
     ///
     /// When `reindex` is `true`, the search index is cleared first and
     /// stale SQLite entries are pruned.
+    ///
+    /// If a reindex hits a rebuild-worthy search-index error (for example a
+    /// stale on-disk Tantivy schema whose fast-field layout no longer matches
+    /// the current schema, which makes the fast-field writer panic on a
+    /// background thread), the search directory is reset and the scan is retried
+    /// once so the index is rebuilt from the current schema.
     pub fn scan(
+        &self,
+        reindex: bool,
+    ) -> Result<ScanReport, StorageError> {
+        match self.scan_once(reindex) {
+            Ok(report) => Ok(report),
+            Err(error)
+                if reindex
+                    && TantivySearchIndex::should_rebuild_search_index(&error) =>
+            {
+                self.search.reset_dir()?;
+                self.scan_once(reindex)
+            },
+            Err(error) => Err(error),
+        }
+    }
+
+    fn scan_once(
         &self,
         reindex: bool,
     ) -> Result<ScanReport, StorageError> {
@@ -230,10 +253,60 @@ impl EntityStore {
         })
     }
 
+    /// Re-integrate a single entity folder into the metadata index **and** the
+    /// full-text search index.
+    ///
+    /// This is the per-entry counterpart to [`Self::scan`]: instead of walking
+    /// every scan root, it reconciles just the entity located at `path`. It is
+    /// used by the filesystem watcher so any change to a filesystem entry
+    /// immediately refreshes that entry's search-index document.
+    ///
+    /// Returns `Ok(true)` when the entity was integrated, or `Ok(false)` when
+    /// `path` is not a valid entity folder (non-UUID name or unreadable
+    /// manifest).
+    pub fn integrate_orphan(
+        &self,
+        path: &Path,
+    ) -> Result<bool, StorageError> {
+        let id: Uuid = match path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.parse().ok())
+        {
+            Some(id) => id,
+            None => return Ok(false),
+        };
+
+        let manifest = match self.fs.read(path) {
+            Ok(manifest) => manifest,
+            Err(_) => return Ok(false),
+        };
+
+        let entry = EntityScanEntry {
+            id,
+            path: path.to_path_buf(),
+            manifest,
+        };
+        self.integrate_entry(entry, true)?;
+        Ok(true)
+    }
+
+    /// Remove a single entity from the metadata index and the search index.
+    ///
+    /// Used by the watcher when an entity folder is deleted from disk.
+    pub fn remove_entity(
+        &self,
+        id: &Uuid,
+    ) -> Result<(), StorageError> {
+        self.index.remove_ticket(id)?;
+        self.search.remove(id)?;
+        Ok(())
+    }
+
     fn integrate_entry(
         &self,
         entry: EntityScanEntry,
-        reindex: bool,
+        update_search: bool,
     ) -> Result<(), StorageError> {
         let type_id = entry
             .manifest
@@ -277,7 +350,7 @@ impl EntityStore {
         };
         self.index.insert_ticket(&indexed)?;
 
-        if reindex {
+        if update_search {
             let body = self.fs.read_description(&entry.path);
             let created_at_str = indexed.created_at.to_rfc3339();
             let effort_str = entry.manifest.extra.get("effort")
@@ -335,6 +408,61 @@ mod tests {
         let report = store.scan(false).unwrap();
         assert_eq!(report.integrated, 0);
         assert_eq!(report.pruned, 0);
+    }
+
+    #[test]
+    fn scan_reindex_self_heals_stale_search_index_schema() {
+        use crate::model::entity::EntityManifest;
+        use serde_json::json;
+        use tantivy::schema::{
+            Schema,
+            FAST,
+            STORED,
+            STRING,
+            TEXT,
+        };
+
+        let tmp = tempfile::tempdir().unwrap();
+        let store = EntityStore::open(tmp.path(), test_fs()).unwrap();
+        let entity_dir = tmp.path().join("entities");
+        std::fs::create_dir_all(&entity_dir).unwrap();
+
+        let id = Uuid::new_v4();
+        let mut manifest = EntityManifest::new(id, Utc::now());
+        manifest
+            .extra
+            .insert("type".to_string(), json!("rule-entry"));
+        manifest
+            .extra
+            .insert("title".to_string(), json!("Stale schema heals"));
+        manifest.extra.insert("state".to_string(), json!("ready"));
+        store
+            .fs
+            .create(&manifest, &entity_dir, Some("searchable body text"))
+            .unwrap();
+
+        // Replace the freshly-built (current-schema) index with one built from
+        // an OLDER 5-field schema (before `created_at` and `effort` were added).
+        // Writing a document that references the newer field ids would make the
+        // Tantivy fast-field writer panic on a background thread; the scan must
+        // detect this, reset the search dir, and rebuild from the current schema.
+        let search_dir = tmp.path().join("search_index");
+        std::fs::remove_dir_all(&search_dir).unwrap();
+        std::fs::create_dir_all(&search_dir).unwrap();
+        let mut builder = Schema::builder();
+        builder.add_text_field("id", STRING | STORED);
+        builder.add_text_field("title", TEXT | STORED);
+        builder.add_text_field("body", TEXT | STORED);
+        builder.add_text_field("state", STRING | STORED | FAST);
+        builder.add_text_field("ticket_type", STRING | STORED | FAST);
+        tantivy::Index::create_in_dir(&search_dir, builder.build()).unwrap();
+
+        // Must not panic; self-heals and indexes the entity.
+        store.scan(true).unwrap();
+
+        let results = store.search("searchable", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, id);
     }
 
     #[test]
