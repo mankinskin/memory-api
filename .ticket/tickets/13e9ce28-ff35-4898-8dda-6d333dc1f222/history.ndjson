@@ -1,0 +1,1 @@
+{"rev":1,"ts":"2026-06-15T09:20:25.393265400+00:00","fields":{"component":"ticket-api","priority":"high","risk_level":"high","state":"new","title":"[ticket-api] Cross-workspace move + automatic reference re-linking for store entries","type":"tracker-improvement"}}

@@ -1,0 +1,8 @@
+id = "44abe1d4-5727-45f8-be3b-d1ca5bf4c1ae"
+created_at = "2026-06-15T09:20:30.990898900+00:00"
+title = "[ticket-vscode] Move ticket 694d74b4 into the memory-api workspace store"
+state = "new"
+component = "ticket-vscode"
+depends_on = ["13e9ce28-ff35-4898-8dda-6d333dc1f222"]
+priority = "medium"
+type = "tracker-improvement"

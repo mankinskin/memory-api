@@ -1,0 +1,2 @@
+{"rev":1,"ts":"2026-06-15T09:20:31.051212300+00:00","fields":{"component":"ticket-vscode","priority":"medium","state":"new","title":"[ticket-vscode] Move ticket 694d74b4 into the memory-api workspace store","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-06-15T09:20:43.770663400+00:00","fields":{"component":"ticket-vscode","depends_on":["13e9ce28-ff35-4898-8dda-6d333dc1f222"],"priority":"medium","state":"new","title":"[ticket-vscode] Move ticket 694d74b4 into the memory-api workspace store","type":"tracker-improvement"}}
