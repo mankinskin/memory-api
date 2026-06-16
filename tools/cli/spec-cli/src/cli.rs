@@ -86,6 +86,9 @@ pub enum SpecCommandCli {
     Section(SectionArgs),
     /// Run health checks on specs.
     Health(HealthArgs),
+    /// Generate the committed spec catalog (.spec README + index.toon + .agents hook).
+    #[command(name = "store-index")]
+    StoreIndex(StoreIndexArgs),
     /// Bootstrap specs from a Rust crate's public API.
     Bootstrap(BootstrapArgs),
 }

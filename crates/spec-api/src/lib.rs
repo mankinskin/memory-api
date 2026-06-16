@@ -4,6 +4,7 @@ pub mod error;
 pub mod manifest;
 pub mod slug;
 pub mod store;
+pub mod store_index;
 
 pub use memory_api::generated_markdown::GeneratedMarkdownSnippet;
 
@@ -37,4 +38,10 @@ pub use store::{
     SpecStore,
     render_generated_body,
     render_generated_document,
+};
+pub use store_index::{
+    SPEC_INDEX_AGENT_HOOK_PATH,
+    SpecCatalogArtifacts,
+    SpecCatalogSource,
+    generate_spec_catalog,
 };

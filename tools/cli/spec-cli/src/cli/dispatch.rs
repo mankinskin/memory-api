@@ -75,6 +75,7 @@ fn command_uses_descendant_scan_roots(command: &SpecCommandCli) -> bool {
             | SpecCommandCli::Refs(_)
             | SpecCommandCli::SyncGenerated(_)
             | SpecCommandCli::Health(_)
+            | SpecCommandCli::StoreIndex(_)
             | SpecCommandCli::Scan(_)
     )
 }
@@ -127,6 +128,8 @@ fn dispatch_read_only(
         SpecCommandCli::Refs(args) =>
             commands::cmd_refs(args, store, default_workspace_root),
         SpecCommandCli::Health(args) => commands::cmd_health(args, store),
+        SpecCommandCli::StoreIndex(args) =>
+            commands::cmd_store_index(args, store, default_workspace_root),
         SpecCommandCli::Init => unreachable!("Init handled before store open"),
         _ => unreachable!(
             "command_mutates keeps mutating commands out of this path"
@@ -885,5 +888,75 @@ mod tests {
             fetched["spec"]["fields"]["fulfillment_summaries"][0]["status"],
             "satisfied"
         );
+    }
+
+    #[test]
+    fn dispatch_store_index_writes_catalog_with_hierarchy_then_check_detects_drift() {
+        use spec_api::SpecManifest;
+
+        let (_dir, repo) = create_cli_spec_fixture();
+        let mut store = SpecStore::open(&repo.join(".spec")).unwrap();
+
+        let parent = SpecManifest::new("root", "Root Spec", "comp-a");
+        let parent_id = store.create(&parent, "Root body.", None).unwrap();
+
+        let mut child = SpecManifest::new("root/child", "Child Spec", "comp-a");
+        child.set_parent(&parent_id.to_string());
+        store.create(&child, "Child body.", None).unwrap();
+
+        // Write the catalog artifacts.
+        let payload = dispatch(
+            SpecCommandCli::StoreIndex(crate::cli::StoreIndexArgs {
+                check: false,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+        assert_eq!(payload["status"], "ok");
+        assert_eq!(payload["specs"], 2);
+        assert_eq!(payload["roots"], 1);
+
+        let readme = repo.join(".spec/README.md");
+        let sidecar = repo.join(".spec/index.toon");
+        let agent_hook = repo.join(".agents/spec-catalog.md");
+        assert!(readme.is_file());
+        assert!(sidecar.is_file());
+        assert!(agent_hook.is_file());
+
+        let readme_text = fs::read_to_string(&readme).unwrap();
+        assert!(readme_text.starts_with("<!-- spec-index:file generated=true -->"));
+        assert!(readme_text.contains("## comp-a"));
+        assert!(readme_text.contains("<!-- spec-index:entry id="));
+        assert!(readme_text.contains("digest="));
+        assert!(readme_text.contains("_(root)_"));
+        assert!(readme_text.contains("- parent: `root`"));
+        assert!(readme_text.contains("- children (1): `root/child`"));
+
+        // --check is clean immediately after a write (idempotent).
+        let check = dispatch(
+            SpecCommandCli::StoreIndex(crate::cli::StoreIndexArgs {
+                check: true,
+            }),
+            None,
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+        assert_eq!(check["drift"], false);
+
+        // Mutating a generated artifact makes --check fail (drift detected).
+        fs::write(&readme, "tampered\n").unwrap();
+        let drift = dispatch(
+            SpecCommandCli::StoreIndex(crate::cli::StoreIndexArgs {
+                check: true,
+            }),
+            None,
+            Some(&repo),
+            true,
+        );
+        assert!(drift.is_err(), "check must fail on drift");
+        assert!(drift.unwrap_err().to_string().contains("out of date"));
     }
 }

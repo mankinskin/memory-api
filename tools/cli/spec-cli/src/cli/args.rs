@@ -104,6 +104,16 @@ pub struct AddRootArgs {
     pub label: Option<String>,
 }
 
+/// Generate (or check) the committed spec catalog artifacts:
+/// `.spec/README.md`, `.spec/index.toon`, and `.agents/spec-catalog.md`.
+#[derive(Debug, Args)]
+pub struct StoreIndexArgs {
+    /// Check-only mode: render the catalog and exit non-zero on drift without
+    /// writing. Mirrors `sync-targets --check`; the pre-commit hook uses this.
+    #[arg(long, default_value_t = false)]
+    pub check: bool,
+}
+
 #[derive(Debug, Args)]
 pub struct TreeArgs {
     /// Root spec ID or slug to start from (shows full tree if omitted).
