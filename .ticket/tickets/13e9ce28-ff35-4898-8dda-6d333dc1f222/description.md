@@ -2,76 +2,56 @@
 
 ## Goal
 
-Provide a first-class, safe operation to **move a store entry (primarily a ticket; ideally any memory-api entry) from one workspace/store to another** and **automatically re-link every reference to and from it** so no dangling edges, orphaned board entries, or stale index rows remain in either store.
+Provide a first-class, safe operation to move a ticket from one `memory-api` workspace store to another and automatically preserve the references that can be preserved safely, while refusing unsupported topologies before any partial move occurs.
 
-This is a **planning ticket** — it owns the design and hand-off. Implementation happens in follow-on tickets created from the plan below.
+This ticket owns the **design and hand-off only**. Execution now lives under tracker `505b2cd4`.
 
-## Problem / current state
+## Final design decision
 
-There is **no move/relocate/transfer capability** today. Confirmed by codebase research (no `move`/`relocate`/`transfer`/`migrate`/`change_workspace` command, route, or MCP tool in `ticket-api`, `ticket-cli`, `ticket-http`, or `ticket-mcp`).
+### v1 support boundary
 
-A workspace is **not a field** on a ticket — it is **inferred from the filesystem path** to the nearest `.ticket/` store. Each store has its own SQLite index (`tickets.db`) and Tantivy search index (`search_index/`). Moving an entry therefore means physically relocating its folder into a different `.ticket/` store and reconciling **two separate indexes**, not flipping a field.
+- **Entity scope**: ticket-only in v1. Generalizing to arbitrary `memory-api` entities is deferred until the ticket flow is proven.
+- **Git assumption**: source workspace, target workspace, and any tracked text files rewritten by the move must live in the **same git worktree**.
+- **Topology rule**: allow a move only when **every ticket-to-ticket reference involving the moved ticket remains visible from the destination store after the move**. If any inbound or outbound ticket reference would become invisible from the destination store, fail the move at preflight.
+- **Board rule**: fail closed on **active or stale** board claims/leases in v1; historical board rows migrate with the ticket.
+- **Reference rule**: UUID-keyed edges remain keyed by stable ticket ID; path-based references to the old ticket folder path in repo-local tracked text files are rewritten automatically and recorded in the move journal.
+- **Atomicity model**: there is no cross-store transaction, so the move must be **journaled, resumable, and rollbackable**, with source/target reindex validation after apply and rollback.
 
-Concrete trigger: ticket `694d74b4` ("Integrate Rust/WASM core into TS hosts…") was created in the **root** store (`context-engine/.ticket/`) but belongs in the **memory-api** store (`memory-viewers/memory-api/.ticket/`) alongside the rest of its track. A reminder ticket tracks moving it once this tool exists.
+### Why this boundary
 
-## Research findings (frozen context for the implementer)
+Research showed that sibling stores cannot resolve each other's UUIDs unless scan-root visibility is deliberately shared, and the resolver spec already says one owning root wins. A "best effort" cross-store move would therefore strand references in unsupported topologies. The safe default is to reject those moves rather than partially relocating a ticket.
 
-File:line references are from the research pass on `memory-viewers/memory-api`.
+## Gaps resolved by this planning pass
 
-### Workspace + storage model
-- Workspace is inferred from path; no `workspace` field in the manifest. `IndexedEntity` (`crates/memory-api/src/storage/indexed.rs`) carries `id`, `path`, `type_id`, `title`, `state`, timestamps — no workspace.
-- Workspace discovery walks up to the nearest `.ticket/` (`crates/memory-api/src/workspace.rs` ~L154-184); nested scan roots are discovered within one root (~L184-227).
-- `WorkspaceList/New/Use/Current/Remove` enum variants exist (`crates/ticket-api/src/contracts/command_schema.rs` L51-56) but are effectively **deprecated/unwired** — do not build on them without re-validating.
-- On disk per store: `.ticket/{tickets.db, search_index/, tickets/<uuid>/{ticket.toml, history.ndjson, assets/, .ticket-lock}}`.
-- Ticket folders are named by UUID; `TicketFs::create()` (`crates/ticket-api/src/storage/ticket_fs.rs` ~L83-140) writes atomically via `.tmp/` + rename.
+- Planning and execution are now separated. This ticket remains planning-only.
+- Execution is tracked by **[505b2cd4 Deliver safe cross-workspace ticket move for git-backed stores]**.
+- Focused child tickets now cover spec updates, preflight/visibility planning, storage execution, board handling, path-reference rewrites, CLI, MCP, HTTP, and validation.
+- Consumer reminder **44abe1d4** now blocks on the execution tracker rather than only the plan.
 
-### Edges / references
-- Edges are **dual-stored**: file-backed in `ticket.toml` `[extra]` as `depends_on = [...]` / `linked = [...]`, AND cached in the SQLite `EDGES` table (from_id, to_id, kind). Managed by `add_edge()` / `remove_edge()` (`crates/ticket-api/src/storage/store/query.rs` ~L91-164).
-- Edges are keyed by **UUID pairs**. They only resolve within a single aggregate index. A parent store that aggregates nested `.ticket/` scan roots can hold cross-nested edges; two **sibling** stores cannot see each other's UUIDs.
-- `scan(reindex)` (`crates/ticket-api/src/storage/store/scan.rs` ~L55-104): with `reindex=true` it clears the SQLite edge table + Tantivy index and backfills from manifests (~L81).
+## Follow-on execution tickets
 
-### Cross-store references that go stale on a move
-- **Board/draftboard**: `BoardEntry` and `LeaseInfo` reference the ticket UUID and live in the source store's SQLite (`crates/ticket-api/src/storage/store/board.rs` ~L29-92). After a move they become **orphaned** in the old store and **absent** in the new store.
-- **Inbound edges**: any other ticket whose `depends_on`/`linked` points at the moved UUID. If the linker lives in the old store and the target moves to a different store, the edge becomes **dangling**.
-- **Specs**: link tickets **textually** in markdown bodies (no schema-enforced array; `spec-api` `CodeRef` only holds `file_path`+`symbol`). Spec bodies that cite a ticket **folder path** go stale; bodies that cite only the UUID stay valid but should still be reviewed.
-- **Tests/validation**: executions link tickets via `ticket_ids`; these are UUID-keyed and survive a move, but any stored **path** goes stale.
+Execution tracker: `505b2cd4`
 
-### ID stability
-- Ticket UUIDs are **stable** across a move (folder named by UUID; UUID generated at create and never changes — `crates/ticket-api/src/storage/store.rs` ~L306-309). Re-linking can therefore key on UUID; only **paths** and **per-store index rows** must be rewritten.
-
-### Hardest part
-- **Dual-index consistency across two stores with no atomic multi-store transaction.** A correct move must coordinate: physical folder relocation, source-store edge/board/search/sqlite removal, target-store insertion, and rewriting of inbound linkers' manifests — with a failure window at every step. Needs a **move journal / resumable + rollbackable** design, not a best-effort sequence.
-
-## Scope of this planning ticket
-
-Produce a complete, reviewed design and the follow-on implementation tickets. In scope to **decide**:
-
-1. **Move semantics**: same-aggregate-index move (nested ↔ parent, cheap re-path) vs. cross-store move (separate sibling stores, full migration). Define both; they are different difficulty tiers.
-2. **Reference graph to re-link**: outbound edges, inbound edges (requires reverse lookup of all linkers), board entries/leases, and a **path-rewrite pass** for specs/tests/docs that cite the old folder path.
-3. **Atomicity strategy**: move journal with phases (validate → stage → relocate → reindex source → reindex target → rewrite linkers → commit/rollback), resumable after interruption.
-4. **Surface design**: new CLI command (`ticket move <id> --to-workspace-root <path>` or `--to-workspace <name>`), MCP tool, and HTTP route. Identify the wiring points:
-   - CLI: `tools/cli/ticket-cli/src/cli/dispatch.rs` (~L27-47) + new handler in `tools/cli/ticket-cli/src/cli/commands/`.
-   - HTTP: `tools/http/ticket-http/src/serve/routes.rs` (~L65-101).
-   - MCP: `tools/mcp/ticket-mcp/` tool registration.
-5. **Generality**: decide whether v1 is ticket-only or generalizes to any memory-api entry (specs, etc.). Recommend ticket-only for v1 with a clear extension seam.
-6. **Dangling-reference policy**: fail-closed (refuse move if inbound linkers can't be reached/rewritten) vs. warn-and-record. Define the safe default.
+- `dc70628a` — update workspace-ownership specs with the move/relink contract
+- `eb6033a8` — add move preflight planner and destination-visibility validation
+- `bc691249` — add journaled storage-layer move execution
+- `22cd3001` — enforce board safety and migrate historical board rows
+- `3a26572a` — rewrite repo path references that cite the moved ticket folder
+- `53176121` — add the `ticket move` CLI with dry-run and recovery guidance
+- `84d19fab` — expose move planning/execution over MCP
+- `373a3317` — add the HTTP move endpoint
+- `da27c074` — validate supported/rejected topologies and recovery end to end
 
 ## Acceptance criteria (planning)
 
-- [ ] A reviewed design doc/section captures move semantics for both same-index and cross-store cases, the full reference set to re-link, and the journal/rollback model.
-- [ ] Follow-on implementation tickets are created and linked under an appropriate tracker (core move op, reference re-linking, board migration, CLI surface, MCP surface, HTTP surface, tests), with dependencies ordered.
-- [ ] The design names the exact integration points (CLI dispatch, HTTP routes, MCP tools) and the storage methods that must change.
-- [ ] The reminder ticket to move `694d74b4` into the memory-api store is linked as a downstream consumer of the delivered tool.
-- [ ] Spec traceability: a spec for the move/relink contract is created or an existing one updated, with acceptance criteria a reviewer can verify.
+- [x] The support boundary for v1 is explicit and fail-closed.
+- [x] Planning and execution are separated into a planning ticket plus an execution tracker.
+- [x] Focused implementation tickets are created with ordered dependencies.
+- [x] The reminder ticket to move `694d74b4` is linked as a downstream consumer.
+- [x] A spec-update ticket exists instead of assuming a new duplicate spec.
 
 ## Non-goals
 
-- Implementing the move operation (follow-on tickets).
-- Multi-entry batch moves (can be a later enhancement once single-entry move is correct).
-- Reviving the deprecated `Workspace*` command variants.
-
-## Hand-off notes
-
-- Validate the deprecated-status of the `Workspace*` enum before relying on or removing it.
-- Prefer keying all re-linking on stable UUIDs; treat any stored **path** as the thing that goes stale.
-- Cross-store moves have no atomic transaction — the journal/rollback design is the crux of correctness and must be reviewed before implementation starts.
+- Implementing the move operation in this ticket.
+- Allowing unsupported sibling-store moves that would strand ticket references.
+- Batch moving multiple tickets in v1.

@@ -1,0 +1,10 @@
+id = "eb6033a8-f15b-4024-952e-5c86dc108939"
+created_at = "2026-06-16T11:35:50.263010400+00:00"
+title = "[ticket-api] Add move preflight planner and destination-visibility validation"
+state = "new"
+component = "ticket-api"
+depends_on = ["13e9ce28-ff35-4898-8dda-6d333dc1f222", "dc70628a-3a84-4441-ad46-f59b7757e1f7"]
+effort = "1400"
+priority = "high"
+risk_level = "high"
+type = "tracker-improvement"

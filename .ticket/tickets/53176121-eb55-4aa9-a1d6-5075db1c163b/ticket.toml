@@ -1,0 +1,10 @@
+id = "53176121-eb55-4aa9-a1d6-5075db1c163b"
+created_at = "2026-06-16T11:35:50.998357100+00:00"
+title = "[ticket-cli] Add `ticket move` CLI with dry-run and recovery guidance"
+state = "new"
+component = "ticket-cli"
+depends_on = ["13e9ce28-ff35-4898-8dda-6d333dc1f222", "22cd3001-0127-4a27-8834-721250ff39ff", "3a26572a-5e1a-4a57-aefa-9b342886a5ca", "bc691249-5a2d-409e-8e7b-2602d80cf61e", "e6e09d6f-a41c-49f7-bc6a-c6d8e822598b", "eb6033a8-f15b-4024-952e-5c86dc108939"]
+effort = "1100"
+priority = "high"
+risk_level = "medium"
+type = "tracker-improvement"

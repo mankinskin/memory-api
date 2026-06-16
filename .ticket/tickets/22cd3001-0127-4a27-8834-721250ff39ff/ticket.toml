@@ -1,0 +1,10 @@
+id = "22cd3001-0127-4a27-8834-721250ff39ff"
+created_at = "2026-06-16T11:35:50.575974900+00:00"
+title = "[ticket-api] Enforce board safety and migrate historical board rows during ticket moves"
+state = "new"
+component = "ticket-api"
+depends_on = ["13e9ce28-ff35-4898-8dda-6d333dc1f222", "dc70628a-3a84-4441-ad46-f59b7757e1f7", "eb6033a8-f15b-4024-952e-5c86dc108939"]
+effort = "900"
+priority = "medium"
+risk_level = "medium"
+type = "tracker-improvement"
