@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { TicketTreeProvider } from './ticketProvider';
 import { registerExtensionCommands, type ActivationState } from './extensionCommands';
+import { initWasmCore, type CoreApi } from './coreLoader';
+import { detectHostKind } from './hostCapabilities';
 import {
   discoverRunningServerUrl,
   pingServer,
@@ -18,6 +20,43 @@ let _serverProcess: import('node:child_process').ChildProcess | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const outputChannel = vscode.window.createOutputChannel('Ticket Viewer Server');
   context.subscriptions.push(outputChannel);
+
+  // ── Load WASM core ─────────────────────────────────────────────────────────
+  let core: CoreApi | undefined;
+  try {
+    const wasmUri = vscode.Uri.joinPath(
+      context.extensionUri, 'pkg', 'ticket_vscode_core_bg.wasm',
+    );
+    const wasmBytes = await vscode.workspace.fs.readFile(wasmUri);
+    core = await initWasmCore(wasmBytes);
+    outputChannel.appendLine(
+      `[ticket-viewer] WASM core loaded — version ${core.core_version()}`,
+    );
+  } catch (err) {
+    outputChannel.appendLine(
+      `[ticket-viewer] WASM core failed to load: ${String(err)} — degraded mode active`,
+    );
+  }
+
+  // ── Host-kind detection and capability gating ──────────────────────────────
+  const hostKind = detectHostKind({
+    uiKind: vscode.env.uiKind,
+    extensionKind: context.extension?.extensionKind ?? vscode.ExtensionKind.Workspace,
+    remoteName: vscode.env.remoteName,
+    isVirtualWorkspace: vscode.workspace.workspaceFolders
+      ? vscode.workspace.workspaceFolders.some(f => f.uri.scheme !== 'file')
+      : false,
+    isTrusted: vscode.workspace.isTrusted,
+  });
+  const serverControlEnabled = core ? core.supports_server_control(hostKind) : false;
+  const browserBridgeEnabled = core ? core.supports_browser_bridge(hostKind) : false;
+
+  void vscode.commands.executeCommand(
+    'setContext', 'ticketViewer.serverControlEnabled', serverControlEnabled,
+  );
+  void vscode.commands.executeCommand(
+    'setContext', 'ticketViewer.browserBridgeEnabled', browserBridgeEnabled,
+  );
 
   const state: ActivationState = {
     config: readConfig(),
@@ -105,6 +144,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ticketsDirUri: resolveTicketsDirUri(state.workspace, state.displayName),
       };
     },
+    undefined, // workspaceFs — set up separately for desktop host
+    core,
   );
   context.subscriptions.push(provider);
 
@@ -184,6 +225,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     setServerProcess: process => {
       _serverProcess = process;
     },
+    core,
   });
 }
 

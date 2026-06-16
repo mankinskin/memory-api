@@ -6,6 +6,8 @@ import type { ChildProcess } from 'node:child_process';
 import { BrowserBridge } from './browserBridge';
 import { addEdge, cancelTicket, closeTicket, createTicket, deleteTicket, undoTicket, updateTicket } from './api';
 import { TicketItem, TicketTreeProvider } from './ticketProvider';
+import { InfoItem } from './ticketTreeItems';
+import type { CoreApi } from './coreLoader';
 import { TICKET_STATES, TICKET_TYPES, detectTicketWorkspaces, discoverRunningServerUrl, openTicketViewer, pingServer, pollUntilReachable, readConfig, rememberServerUrl, resolveActiveWorkspace, resolveTicketsDir, resolveTicketsDirUri, startServerTask, type TicketViewerConfig } from './extensionSupport';
 
 export interface ActivationState {
@@ -24,10 +26,18 @@ interface RegisterExtensionCommandsArgs {
   updateStatusBar: () => void;
   getServerProcess: () => ChildProcess | undefined;
   setServerProcess: (process: ChildProcess | undefined) => void;
+  core?: CoreApi;
 }
 
 export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): void {
-  const { context, state, provider, outputChannel, statusBarItem, updateStatusBar, getServerProcess, setServerProcess } = args;
+  const { context, state, provider, outputChannel, statusBarItem, updateStatusBar, getServerProcess, setServerProcess, core } = args;
+
+  function buildTicketUrl(ticketId: string): string {
+    if (core) {
+      return core.ticket_viewer_url(state.serverUrl, state.workspace, ticketId);
+    }
+    return `${state.serverUrl}/workspace/${encodeURIComponent(state.workspace)}/ticket/${encodeURIComponent(ticketId)}`;
+  }
 
   async function runMutation(action: () => Promise<unknown>): Promise<void> {
     try {
@@ -200,8 +210,7 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
 
   context.subscriptions.push(
     vscode.commands.registerCommand('ticket-viewer.openTicket', (item: TicketItem) => {
-      const ticketUrl = `${state.serverUrl}/workspace/${encodeURIComponent(state.workspace)}/ticket/${encodeURIComponent(item.ticket.id)}`;
-      openTicketViewer(ticketUrl);
+      openTicketViewer(buildTicketUrl(item.ticket.id));
     }),
   );
 
@@ -214,9 +223,17 @@ export function registerExtensionCommands(args: RegisterExtensionCommandsArgs): 
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('ticket-viewer.copyError', (item: InfoItem) => {
+      const text = item.copyText ?? String(item.tooltip ?? item.label);
+      void vscode.env.clipboard.writeText(text).then(() => {
+        vscode.window.setStatusBarMessage('$(check) Error details copied to clipboard', 5000);
+      });
+    }),
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('ticket-viewer.openInTicketViewer', (item: TicketItem) => {
-      const ticketUrl = `${state.serverUrl}/workspace/${encodeURIComponent(state.workspace)}/ticket/${encodeURIComponent(item.ticket.id)}`;
-      openTicketViewer(ticketUrl);
+      openTicketViewer(buildTicketUrl(item.ticket.id));
     }),
   );
 

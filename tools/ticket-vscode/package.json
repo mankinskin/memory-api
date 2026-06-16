@@ -167,6 +167,12 @@
         "title": "Open in Ticket Viewer",
         "icon": "$(browser)",
         "category": "Ticket Viewer"
+      },
+      {
+        "command": "ticket-viewer.copyError",
+        "title": "Copy Error Details",
+        "icon": "$(copy)",
+        "category": "Ticket Viewer"
       }
     ],
     "menus": {
@@ -257,6 +263,16 @@
           "command": "ticket-viewer.deleteTicket",
           "when": "view == ticket-viewer.tickets && viewItem == ticket",
           "group": "9_delete@1"
+        },
+        {
+          "command": "ticket-viewer.copyError",
+          "when": "view == ticket-viewer.tickets && viewItem == error-info",
+          "group": "inline@0"
+        },
+        {
+          "command": "ticket-viewer.copyError",
+          "when": "view == ticket-viewer.tickets && viewItem == error-info",
+          "group": "0_error@1"
         }
       ]
     },
@@ -314,9 +330,10 @@
   },
   "scripts": {
     "compile": "tsc -p tsconfig.json",
+    "bundle:node": "node ./scripts/bundle-node.mjs",
     "bundle:browser": "node ./scripts/bundle-browser.mjs",
-    "build": "npm run compile && npm run bundle:browser",
-    "build:wasm": "wasm-pack build ../../crates/ticket-vscode-core --target bundler --out-dir ../../tools/ticket-vscode/pkg",
+    "build": "npm run compile && npm run bundle:node && npm run bundle:browser",
+    "build:wasm": "wasm-pack build ../../crates/ticket-vscode-core --target bundler --out-dir ../../tools/ticket-vscode/pkg -- --features wasm",
     "build:full": "npm run build:wasm && npm run build",
     "watch": "tsc --watch -p tsconfig.json",
     "package": "npm run build:full && node ./scripts/run-vsce.cjs package --no-dependencies --allow-missing-repository --skip-license",

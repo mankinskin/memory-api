@@ -310,7 +310,7 @@ describe('TicketTreeProvider — state folder grouping', () => {
     expect(infoItems).toHaveLength(1);
     const [errorItem] = infoItems;
     const tooltip = String(errorItem.tooltip);
-    expect(errorItem.label).toBe('Ticket request failed');
+    expect(errorItem.label).toBe('Request failed (HTTP 404): List tickets');
     expect(tooltip).toContain('Server URL: http://localhost:3002');
     expect(tooltip).toContain('Workspace: default');
     expect(tooltip).toContain('Filters: state=new');

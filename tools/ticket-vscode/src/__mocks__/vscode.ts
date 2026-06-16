@@ -11,6 +11,16 @@ export enum StatusBarAlignment {
   Right = 2,
 }
 
+export enum ExtensionKind {
+  UI = 1,
+  Workspace = 2,
+}
+
+export enum UIKind {
+  Desktop = 1,
+  Web = 2,
+}
+
 export class TreeItem {
   label: string | undefined;
   collapsibleState: TreeItemCollapsibleState | undefined;

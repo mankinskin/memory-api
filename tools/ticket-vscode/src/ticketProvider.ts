@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { WorkspaceFsCapability } from './hostCapabilities';
+import type { CoreApi } from './coreLoader';
 import {
   fetchAllTickets,
   fetchEdges,
@@ -70,8 +71,9 @@ function formatErrorStateMessage(
     if (error.responseBody && error.responseBody !== '') {
       lines.push(`Response: ${error.responseBody}`);
     }
+    const statusSuffix = typeof error.status === 'number' ? ` (HTTP ${error.status})` : '';
     return {
-      label: 'Ticket request failed',
+      label: `Request failed${statusSuffix}: ${error.operation}`,
       tooltip: `${lines.join('\n')}\n\n${error.message}\n\nUse the ▶ button to start or reconnect the server task.`,
     };
   }
@@ -108,10 +110,11 @@ export class TicketTreeProvider
   private _ticketMap = new Map<string, TicketSummary>();
   /** Map from ticket ID to the IDs of tickets it depends on (outgoing depends_on). */
   private _depsOf = new Map<string, string[]>();
-  /** Set of ticket IDs that are the target of at least one depends_on edge. */
-  private _hasParent = new Set<string>();
   /** Map from child ticket ID to the IDs of its parent tickets (reverse of _depsOf). */
   private _parentOf = new Map<string, string[]>();
+
+  /** Rust/WASM core — undefined only when WASM failed to load. */
+  private _core: CoreApi | undefined;
 
   /**
    * URI of the .ticket/tickets/ directory, or undefined if not found.
@@ -137,6 +140,7 @@ export class TicketTreeProvider
       error: unknown,
     ) => Promise<{ baseUrl: string; workspace: string; ticketsDirUri?: vscode.Uri } | undefined>,
     workspaceFs?: WorkspaceFsCapability,
+    core?: CoreApi,
   ) {
     this._ticketsDirUri = ticketsDirUri;
     this._workspaceFs = workspaceFs;
@@ -144,6 +148,7 @@ export class TicketTreeProvider
     this._workspace = workspace;
     this._autoRefreshSec = autoRefreshSec;
     this._recoverConnection = recoverConnection;
+    this._core = core;
     this.scheduleAutoRefresh();
     void this.load();
   }
@@ -205,12 +210,13 @@ export class TicketTreeProvider
   }
 
   /** Update connection settings and reload. */
-  update(baseUrl: string, workspace: string, autoRefreshSec: number, ticketsDirUri?: vscode.Uri, workspaceFs?: WorkspaceFsCapability): void {
+  update(baseUrl: string, workspace: string, autoRefreshSec: number, ticketsDirUri?: vscode.Uri, workspaceFs?: WorkspaceFsCapability, core?: CoreApi): void {
     this._baseUrl = baseUrl;
     this._workspace = workspace;
     this._autoRefreshSec = autoRefreshSec;
     this._ticketsDirUri = ticketsDirUri;
     this._workspaceFs = workspaceFs;
+    if (core !== undefined) { this._core = core; }
     this._descriptionCache.clear();
     this.scheduleAutoRefresh();
     void this.load();
@@ -268,6 +274,9 @@ export class TicketTreeProvider
         new InfoItem(
           this.errorLabel,
           'error',
+          this.errorMessage,
+          // Pass copyText so the item gets contextValue 'error-info' and the
+          // copy command has something to put on the clipboard.
           this.errorMessage,
         ),
       ];
@@ -334,7 +343,9 @@ export class TicketTreeProvider
   }
 
   private _setDescriptionTooltip(item: TicketItem, description: string | null): void {
-    const label = item.ticket.title ?? `(${item.ticket.id.slice(0, 8)})`;
+    const label = this._core
+      ? this._core.ticket_display_label(item.ticket.id, item.ticket.title)
+      : (item.ticket.title ?? `(${item.ticket.id.slice(0, 8)})`);
     const meta = `**${label}**\n\nID: \`${item.ticket.id}\`\nState: ${item.ticket.state ?? '\u2014'}\nType: ${item.ticket.type}`;
     const body = description ? `\n\n---\n\n${description}` : '';
     const md = new vscode.MarkdownString(`${meta}${body}`, true);
@@ -407,18 +418,46 @@ export class TicketTreeProvider
     return [...folders, ...files];
   }
 
-  /** Tickets visible after applying the client-side _localSearch substring filter. */
+  /** Tickets visible after applying the client-side _localSearch substring filter via the WASM core. */
   private _visibleTickets(): TicketSummary[] {
-    const needle = this._localSearch.trim().toLowerCase();
+    const needle = this._localSearch.trim();
     if (!needle) { return this.tickets; }
+    if (this._core) {
+      return this.tickets.filter(t => this._core!.ticket_matches(t, '', needle));
+    }
+    // Fallback when core is unavailable (WASM failed to load).
+    const lower = needle.toLowerCase();
     return this.tickets.filter(t =>
-      (t.title ?? '').toLowerCase().includes(needle) ||
-      t.id.toLowerCase().includes(needle),
+      (t.title ?? '').toLowerCase().includes(lower) ||
+      t.id.toLowerCase().includes(lower),
     );
   }
 
   private buildStateGroups(): StateGroupItem[] {
-    // 1. Group tickets by state (client-side _localSearch is applied first)
+    // Determine the active edge set and state order for grouping.
+    const edges: EdgeRecord[] = [];
+    for (const [from, depIds] of this._depsOf) {
+      for (const to of depIds) {
+        edges.push({ from, to, kind: 'depends_on' });
+      }
+    }
+    const stateOrder = this._schemaStates ?? [];
+    const query = this._localSearch.trim();
+
+    if (this._core) {
+      // Delegate to the WASM core.
+      const groups = this._core.build_state_groups(
+        this.tickets, edges, stateOrder, query,
+      );
+      return groups.map(g => {
+        const rootTickets = g.rootIds
+          .map(id => this._ticketMap.get(id))
+          .filter((t): t is TicketSummary => t !== undefined);
+        return new StateGroupItem(g.state, g.total, rootTickets);
+      });
+    }
+
+    // Fallback: pure-TS grouping when core is unavailable.
     const grouped = new Map<string, TicketSummary[]>();
     for (const ticket of this._visibleTickets()) {
       const s = ticket.state ?? 'unknown';
@@ -426,36 +465,25 @@ export class TicketTreeProvider
       if (!bucket) { bucket = []; grouped.set(s, bucket); }
       bucket.push(ticket);
     }
-
-    // 2. For each state, find root tickets (no same-state parent)
     const makeGroup = (s: string, bucket: TicketSummary[]): StateGroupItem => {
       const stateIds = new Set(bucket.map(t => t.id));
       const rootTickets: TicketSummary[] = [];
       for (const ticket of bucket) {
         const parents = this._parentOf.get(ticket.id) ?? [];
-        // Root if no parent is also in this same state
-        const hasSameStateParent = parents.some(pid => stateIds.has(pid));
-        if (!hasSameStateParent) {
+        if (!parents.some(pid => stateIds.has(pid))) {
           rootTickets.push(ticket);
         }
       }
       return new StateGroupItem(s, bucket.length, rootTickets);
     };
-
-    // 3. Order by schema states, then unknown alphabetically
     const result: StateGroupItem[] = [];
     const schemaStates = this._schemaStates ?? [];
     for (const s of schemaStates) {
       const bucket = grouped.get(s);
-      if (bucket && bucket.length > 0) {
-        result.push(makeGroup(s, bucket));
-        grouped.delete(s);
-      }
+      if (bucket && bucket.length > 0) { result.push(makeGroup(s, bucket)); grouped.delete(s); }
     }
     for (const [s, bucket] of [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-      if (bucket.length > 0) {
-        result.push(makeGroup(s, bucket));
-      }
+      if (bucket.length > 0) { result.push(makeGroup(s, bucket)); }
     }
     return result;
   }
@@ -534,33 +562,35 @@ export class TicketTreeProvider
       this.tickets = [];
       this._ticketMap.clear();
       this._depsOf.clear();
-      this._hasParent.clear();
+      this._parentOf.clear();
     }
 
     this._onDidChangeTreeData.fire(undefined);
   }
 
-  /** Build lookup maps from the fetched edges. */
+  /** Build lookup maps from the fetched edges using the WASM core. */
   private _buildDependencyMaps(edges: EdgeRecord[]): void {
     this._ticketMap.clear();
     this._depsOf.clear();
-    this._hasParent.clear();
     this._parentOf.clear();
 
     for (const t of this.tickets) {
       this._ticketMap.set(t.id, t);
     }
 
+    if (this._core) {
+      const result = this._core.build_dependency_maps(this.tickets, edges);
+      for (const [id, deps] of result.depsOf) { this._depsOf.set(id, deps); }
+      for (const [id, parents] of result.parentOf) { this._parentOf.set(id, parents); }
+      return;
+    }
+
+    // Fallback: manual construction when core unavailable.
     for (const edge of edges) {
-      // edge.from depends_on edge.to → from is parent, to is child in the tree
-      if (!this._ticketMap.has(edge.from) || !this._ticketMap.has(edge.to)) {
-        continue; // skip edges referencing unknown tickets
-      }
+      if (!this._ticketMap.has(edge.from) || !this._ticketMap.has(edge.to)) { continue; }
       let deps = this._depsOf.get(edge.from);
       if (!deps) { deps = []; this._depsOf.set(edge.from, deps); }
       deps.push(edge.to);
-      this._hasParent.add(edge.to);
-
       let parents = this._parentOf.get(edge.to);
       if (!parents) { parents = []; this._parentOf.set(edge.to, parents); }
       parents.push(edge.from);

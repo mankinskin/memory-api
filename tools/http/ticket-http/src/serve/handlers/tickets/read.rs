@@ -76,6 +76,16 @@ pub async fn list_tickets(
     let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || {
+        let _span = tracing::debug_span!(
+            "list_tickets",
+            request_id = %task_request_id,
+            workspace = %workspace,
+            state_filter = ?params.state,
+            query = ?params.query,
+            limit = ?params.limit,
+        )
+        .entered();
+
         let request_id = task_request_id.clone();
         let requested_limit = params.limit.unwrap_or(100).min(1000);
         let state_filter = params.state.as_deref();

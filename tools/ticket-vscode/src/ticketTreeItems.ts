@@ -1,7 +1,11 @@
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import type { TicketSummary } from './api';
+
+// Browser-compatible basename — works for both POSIX and Windows paths.
+function basename(p: string): string {
+  return p.split(/[/\\]/).filter(Boolean).pop() ?? p;
+}
 
 /** Best-effort icon map for well-known states; unknown states get 'tag'. */
 const STATE_ICONS: Record<string, string> = {
@@ -84,12 +88,15 @@ export class TicketItem extends vscode.TreeItem {
 /** Informational placeholder (loading, error, empty). */
 export class InfoItem extends vscode.TreeItem {
   readonly kind = 'info' as const;
+  /** Full text copied when the user invokes ticket-viewer.copyError. */
+  copyText: string | undefined;
 
-  constructor(label: string, icon: string, tooltip?: string) {
+  constructor(label: string, icon: string, tooltip?: string, copyText?: string) {
     super(label, vscode.TreeItemCollapsibleState.None);
     this.iconPath = new vscode.ThemeIcon(icon);
-    this.contextValue = 'info';
+    this.contextValue = copyText !== undefined ? 'error-info' : 'info';
     if (tooltip) { this.tooltip = tooltip; }
+    this.copyText = copyText;
   }
 }
 
@@ -98,7 +105,7 @@ export class TicketFileItem extends vscode.TreeItem {
   readonly kind = 'ticketFile' as const;
 
   constructor(public readonly filePath: string) {
-    super(path.basename(filePath), vscode.TreeItemCollapsibleState.None);
+    super(basename(filePath), vscode.TreeItemCollapsibleState.None);
     this.resourceUri = vscode.Uri.file(filePath);
     this.contextValue = 'ticketFile';
     this.command = {
@@ -114,7 +121,7 @@ export class TicketFolderItem extends vscode.TreeItem {
   readonly kind = 'ticketFolder' as const;
 
   constructor(public readonly folderPath: string) {
-    super(path.basename(folderPath), vscode.TreeItemCollapsibleState.Collapsed);
+    super(basename(folderPath), vscode.TreeItemCollapsibleState.Collapsed);
     this.resourceUri = vscode.Uri.file(folderPath);
     this.contextValue = 'ticketFolder';
     this.iconPath = new vscode.ThemeIcon('folder');

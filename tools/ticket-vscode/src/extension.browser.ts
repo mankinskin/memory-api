@@ -14,79 +14,126 @@
 // so the same loader works in both the Node `main` host and this web host.
 
 import * as vscode from 'vscode';
+import { TicketTreeProvider } from './ticketProvider';
+import { initWasmCore, type CoreApi } from './coreLoader';
+import { detectHostKind } from './hostCapabilities';
+import { fetchWorkspaces } from './api';
 
-// ---------------------------------------------------------------------------
-// WASM core loader
-// ---------------------------------------------------------------------------
+// ── Browser-safe config helpers ───────────────────────────────────────────────
+// These inline the parts of extensionSupport.ts that are browser-compatible.
+// extensionSupport.ts imports node:fs/path/child_process which cannot be
+// bundled for the web extension host.
 
-/**
- * Loads the ticket-vscode-core WASM binary from the extension package and
- * returns the instantiated WebAssembly exports.
- *
- * This loader uses `vscode.workspace.fs.readFile` against the extension URI,
- * which is available in both the desktop Node host and the web WebWorker host.
- * It avoids `fetch()` against a localhost URL (which would be blocked by CORS
- * in the browser host) and avoids `fs.readFileSync` (not available in the web
- * host).
- */
-async function loadWasmCore(
-  context: vscode.ExtensionContext,
-): Promise<WebAssembly.Exports> {
-  const wasmUri = vscode.Uri.joinPath(
-    context.extensionUri,
-    'pkg',
-    'ticket_vscode_core_bg.wasm',
-  );
-  const wasmBytes = await vscode.workspace.fs.readFile(wasmUri);
-
-  // Pass wasmBytes.buffer (ArrayBuffer) to disambiguate the
-  // WebAssembly.instantiate overload (-> WebAssemblyInstantiatedSource)
-  // from the Module overload (-> Instance).
-  const result = await WebAssembly.instantiate(wasmBytes.buffer, {});
-  return result.instance.exports;
+interface BrowserConfig {
+  serverUrl: string;
+  workspace: string;
+  autoRefreshSeconds: number;
 }
 
-// ---------------------------------------------------------------------------
-// Activation
-// ---------------------------------------------------------------------------
+function readConfig(): BrowserConfig {
+  const cfg = vscode.workspace.getConfiguration('ticketViewer');
+  return {
+    serverUrl: cfg.get<string>('serverUrl', 'http://localhost:3002'),
+    workspace: cfg.get<string>('workspace', ''),
+    autoRefreshSeconds: cfg.get<number>('autoRefreshSeconds', 30),
+  };
+}
+
+async function resolveActiveWorkspace(
+  serverUrl: string,
+  configured: string,
+): Promise<{ workspace: string; displayName: string }> {
+  const configuredName = configured.trim();
+  if (configuredName) {
+    return { workspace: configuredName, displayName: configuredName };
+  }
+  try {
+    const response = await fetchWorkspaces(serverUrl);
+    const ws = response.active_workspace ?? response.workspaces[0]?.name ?? 'default';
+    return { workspace: ws, displayName: ws };
+  } catch {
+    return { workspace: 'default', displayName: 'default' };
+  }
+}
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  let coreExports: WebAssembly.Exports | undefined;
-
+  // ── Load WASM core ─────────────────────────────────────────────────────────
+  let core: CoreApi | undefined;
   try {
-    coreExports = await loadWasmCore(context);
+    const wasmUri = vscode.Uri.joinPath(
+      context.extensionUri, 'pkg', 'ticket_vscode_core_bg.wasm',
+    );
+    const wasmBytes = await vscode.workspace.fs.readFile(wasmUri);
+    core = await initWasmCore(wasmBytes);
+    void vscode.window.showInformationMessage(
+      `[ticket-vscode] browser host active — core ${core.core_version()}`,
+    );
   } catch (err) {
-    // Activation must not throw — log and degrade gracefully.
     void vscode.window.showWarningMessage(
       `[ticket-vscode] WASM core failed to load in browser host: ${String(err)}`,
     );
   }
 
-  // Smoke-check: call core_version() if the export is available.
-  if (coreExports && typeof coreExports['core_version'] === 'function') {
-    const version = (coreExports['core_version'] as () => string)();
-    void vscode.window.showInformationMessage(
-      `[ticket-vscode] browser host active — core ${version}`,
-    );
-  }
+  // ── Host-kind detection and capability gating ──────────────────────────────
+  const hostKind = detectHostKind({
+    uiKind: vscode.env.uiKind,
+    extensionKind: context.extension.extensionKind,
+    remoteName: vscode.env.remoteName,
+    isVirtualWorkspace: vscode.workspace.workspaceFolders
+      ? vscode.workspace.workspaceFolders.some(f => f.uri.scheme !== 'file')
+      : false,
+    isTrusted: vscode.workspace.isTrusted,
+  });
 
-  // Register a minimal command so VS Code can confirm the browser entry
-  // activates and its contributions are visible.
+  const serverControlEnabled = core ? core.supports_server_control(hostKind) : false;
+  const browserBridgeEnabled = core ? core.supports_browser_bridge(hostKind) : false;
+
+  void vscode.commands.executeCommand(
+    'setContext', 'ticketViewer.serverControlEnabled', serverControlEnabled,
+  );
+  void vscode.commands.executeCommand(
+    'setContext', 'ticketViewer.browserBridgeEnabled', browserBridgeEnabled,
+  );
+
+  // ── Provider activation ────────────────────────────────────────────────────
+  const config = readConfig();
+
+  const resolved = await resolveActiveWorkspace(config.serverUrl, config.workspace);
+
+  const provider = new TicketTreeProvider(
+    config.serverUrl,
+    resolved.workspace,
+    config.autoRefreshSeconds,
+    undefined, // no local .ticket directory in browser host
+    undefined, // no server-recovery in browser host
+    undefined, // no WorkspaceFsCapability for file browsing (browser host)
+    core,
+  );
+  context.subscriptions.push(provider);
+
+  const treeView = vscode.window.createTreeView('ticket-viewer.tickets', {
+    treeDataProvider: provider,
+    showCollapseAll: true,
+  });
+  context.subscriptions.push(treeView);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ticket-viewer.refresh', () => {
+      provider.refresh();
+    }),
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('ticket-viewer.browserHostInfo', () => {
       const uiKind = vscode.env.uiKind === vscode.UIKind.Web ? 'web' : 'desktop';
       const remoteName = vscode.env.remoteName ?? '(none)';
       void vscode.window.showInformationMessage(
-        `[ticket-vscode] host: ${uiKind}, remote: ${remoteName}`,
+        `[ticket-vscode] host: ${uiKind}, remote: ${remoteName}, kind: ${hostKind}`,
       );
     }),
   );
-
-  // TODO (ticket bfafde19): register the full capability adapter set and
-  // forward to the shared activation core once the host capability contract
-  // is implemented.
 }
 
 export function deactivate(): void {
-  // Nothing to clean up in the browser entry yet.
+  // Nothing to clean up — subscriptions are released by VS Code.
 }

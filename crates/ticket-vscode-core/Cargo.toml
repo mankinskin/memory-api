@@ -12,10 +12,11 @@ crate-type = ["cdylib", "rlib"]
 [features]
 # When the "wasm" feature is active (wasm-pack sets this via wasm-bindgen)
 # the crate exposes #[wasm_bindgen] bindings. Disable for pure-Rust unit tests.
-wasm = ["wasm-bindgen"]
+wasm = ["wasm-bindgen", "js-sys"]
 
 [dependencies]
 wasm-bindgen = { version = "0.2.115", optional = true }
+js-sys = { version = "0.3", optional = true }
 
 [dev-dependencies]
 # wasm-bindgen-test is needed for in-browser tests via wasm-pack test.
