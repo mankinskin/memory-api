@@ -17,12 +17,10 @@
 //! - `generated_at` is set to `Utc::now()` at call time; callers may override it
 //!   if they need deterministic timestamps in tests.
 
-pub mod audit;
 pub mod ticket;
 pub mod util;
 pub mod workspace;
 
-pub use audit::generate_audit_sidecar;
 pub use ticket::generate_ticket_sidecar;
 pub use util::{
     deterministic_uuid,

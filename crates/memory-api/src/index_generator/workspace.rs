@@ -5,7 +5,7 @@
 //! a [`ContentKind::WorkspaceSummary`] [`IndexEntry`] for a single workspace
 //! node, including parent and child workspace refs.
 //!
-//! There is **no** global `.context/` store. Each workspace emits its own
+//! There is **no** global store. Each workspace emits its own
 //! isolated summary entry; the DAG topology is reconstructed by reading each
 //! workspace's sidecar and following `parent`/`child` refs.
 

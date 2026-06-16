@@ -1,6 +1,10 @@
 use std::{
     ffi::OsString,
-    path::PathBuf,
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
 use clap::{
@@ -22,12 +26,18 @@ use audit_api::{
         AuditReport,
         TrialStatus,
     },
+    store_index::{
+        AuditCatalogSource,
+        AUDIT_INDEX_AGENT_HOOK_PATH,
+        generate_audit_catalog,
+    },
     summary::{
         AuditSummaryBy,
         AuditSummaryReport,
         summarize_report,
     },
 };
+use memory_api::generated_markdown::prepare_generated_output;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -52,8 +62,28 @@ pub enum AuditCommand {
     /// Run an audit for a repository.
     Run(AuditArgs),
 
+    /// Generate (or check) the committed audit status catalog artifacts:
+    /// `.audit/README.md`, `.audit/index.toon`, and `.agents/audit-catalog.md`.
+    ///
+    /// Runs a full audit then writes the catalog. Not included in the pre-commit
+    /// hook (Q6.3) because full audits are too expensive for commit-time checks;
+    /// use manually or in CI.
+    StoreIndex(StoreIndexArgs),
+
     /// Summarize findings grouped by one key.
     Summary(AuditSummaryArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct StoreIndexArgs {
+    /// Repository root to audit.
+    #[arg(default_value = ".")]
+    pub repo_root: PathBuf,
+
+    /// Check whether the committed catalog is up to date instead of writing it.
+    /// Exits non-zero if any artifact is out of date.
+    #[arg(long)]
+    pub check: bool,
 }
 
 #[derive(Debug, Args)]
@@ -108,6 +138,9 @@ impl From<SummaryByArg> for AuditSummaryBy {
 pub enum CliRunError {
     #[error("audit error: {0}")]
     Audit(#[from] AuditError),
+
+    #[error("store-index error: {0}")]
+    StoreIndex(String),
 }
 
 pub enum CliOutput {
@@ -137,6 +170,14 @@ pub fn run(cli: AuditCli) -> Result<CliOutput, CliRunError> {
                 Ok(CliOutput::Machine(json!(report), format))
             } else {
                 Ok(CliOutput::Text(render_human(&report)))
+            }
+        },
+        AuditCommand::StoreIndex(args) => {
+            let result = cmd_store_index(args)?;
+            if let Some(format) = machine_output_format(cli.json, cli.toon) {
+                Ok(CliOutput::Machine(result, format))
+            } else {
+                Ok(CliOutput::Text(render_store_index_result(&result)))
             }
         },
         AuditCommand::Summary(summary) => {
@@ -389,5 +430,150 @@ fn render_spec_fulfillment_metric(
             .details
             .clone()
             .unwrap_or_else(|| "unavailable".to_string()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// store-index command
+// ---------------------------------------------------------------------------
+
+const STORE_DIR: &str = ".audit";
+
+/// Generate or check the committed audit catalog artifacts.
+fn cmd_store_index(args: StoreIndexArgs) -> Result<Value, CliRunError> {
+    let repo_root = args.repo_root.canonicalize().unwrap_or(args.repo_root);
+    let report = run_audit_from_root(&repo_root)?;
+
+    let source = AuditCatalogSource {
+        report: Some(&report),
+        store_dir: STORE_DIR,
+    };
+    let artifacts = generate_audit_catalog(&source);
+
+    let readme_path = repo_root.join(STORE_DIR).join("README.md");
+    let sidecar_path = repo_root.join(STORE_DIR).join("index.toon");
+    let agent_hook_path = repo_root.join(AUDIT_INDEX_AGENT_HOOK_PATH);
+
+    let sidecar_toon = artifacts
+        .sidecar
+        .encode_toon()
+        .map_err(|e| CliRunError::StoreIndex(e.to_string()))?;
+
+    let readme_out = prepare_generated_output(
+        &artifacts.readme_markdown,
+        read_existing(&readme_path).as_deref(),
+    );
+    let agent_hook_out = prepare_generated_output(
+        &artifacts.agent_hook_markdown,
+        read_existing(&agent_hook_path).as_deref(),
+    );
+    let sidecar_out = prepare_generated_output(
+        &sidecar_toon,
+        read_existing(&sidecar_path).as_deref(),
+    );
+
+    let planned = [
+        (&readme_path, &readme_out),
+        (&sidecar_path, &sidecar_out),
+        (&agent_hook_path, &agent_hook_out),
+    ];
+
+    let total_findings = report.findings.len();
+    let category_count = {
+        let mut cats: std::collections::BTreeSet<&str> = Default::default();
+        for f in &report.findings {
+            cats.insert(f.category.as_str());
+        }
+        cats.len()
+    };
+
+    if args.check {
+        let drifted: Vec<String> = planned
+            .iter()
+            .filter(|(path, content)| {
+                read_existing(path).as_deref() != Some(content.as_str())
+            })
+            .map(|(path, _)| display_path(path))
+            .collect();
+
+        if !drifted.is_empty() {
+            return Err(CliRunError::StoreIndex(format!(
+                "audit store-index is out of date; regenerate and re-stage: {}",
+                drifted.join(", ")
+            )));
+        }
+
+        return Ok(json!({
+            "command": "store-index",
+            "status": "ok",
+            "check": true,
+            "drift": false,
+            "findings": total_findings,
+            "categories": category_count,
+        }));
+    }
+
+    let mut written = Vec::new();
+    for (path, content) in &planned {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| CliRunError::StoreIndex(e.to_string()))?;
+        }
+        fs::write(path, content)
+            .map_err(|e| CliRunError::StoreIndex(e.to_string()))?;
+        written.push(display_path(path));
+    }
+
+    Ok(json!({
+        "command": "store-index",
+        "status": "ok",
+        "check": false,
+        "findings": total_findings,
+        "categories": category_count,
+        "written": written,
+    }))
+}
+
+fn run_audit_from_root(repo_root: &Path) -> Result<AuditReport, CliRunError> {
+    let args = AuditArgs {
+        repo_root: repo_root.to_path_buf(),
+        max_file_lines: None,
+        max_cyclomatic_complexity: None,
+        coverage_warn_below: None,
+    };
+    run_audit(&args)
+}
+
+fn read_existing(path: &Path) -> Option<String> {
+    fs::read_to_string(path).ok()
+}
+
+fn display_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn render_store_index_result(result: &Value) -> String {
+    let check = result["check"].as_bool().unwrap_or(false);
+    let findings = result["findings"].as_u64().unwrap_or(0);
+    let categories = result["categories"].as_u64().unwrap_or(0);
+    if check {
+        format!(
+            "audit store-index: ok (up to date) — {findings} findings in \
+             {categories} categories"
+        )
+    } else {
+        let written = result["written"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_default();
+        format!(
+            "audit store-index: written — {findings} findings in {categories} \
+             categories\nFiles: {written}"
+        )
     }
 }

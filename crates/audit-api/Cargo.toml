@@ -20,6 +20,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 sha2 = "0.10"
 syn = { version = "2", features = ["full", "visit"] }
 thiserror = "2"
+uuid = { version = "1", features = ["serde", "v4", "v5"] }
 ticket-api = { path = "../ticket-api" }
 spec-api = { path = "../spec-api" }
 memory-api = { path = "../memory-api" }
