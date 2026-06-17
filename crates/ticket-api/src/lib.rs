@@ -4,6 +4,7 @@ pub mod execution;
 pub mod health;
 pub mod model;
 pub mod output;
+pub mod store_index;
 pub mod storage;
 pub mod watcher;
 pub mod workflow;
@@ -20,4 +21,11 @@ pub use storage::{
     BoardReconcileResult,
     BoardSnapshot,
     ReconcileAction,
+};
+
+pub use store_index::{
+    TICKET_INDEX_AGENT_HOOK_PATH,
+    TicketCatalogArtifacts,
+    TicketCatalogSource,
+    generate_ticket_catalog,
 };

@@ -191,6 +191,13 @@ pub struct HealthArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct StoreIndexArgs {
+    /// Check-only mode: render the ticket catalog and exit non-zero on drift.
+    #[arg(long, default_value_t = false)]
+    pub check: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct FmtArgs {
     /// Report files needing reordering without writing any changes.
     ///

@@ -165,6 +165,9 @@ pub enum TicketCommandCli {
     Assets(IdArgs),
     /// Run health checks on a ticket. Use --depth to walk the subgraph.
     Health(HealthArgs),
+    /// Generate or check the committed ticket catalog (.ticket README + index.toon + .agents hook).
+    #[command(name = "store-index")]
+    StoreIndex(StoreIndexArgs),
     /// Audit the ticket store: report health, counts, and orphan checks.
     Audit,
     /// Reformat all ticket.toml files to canonical field ordering.

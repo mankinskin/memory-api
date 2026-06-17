@@ -134,6 +134,8 @@ fn dry_run_payload_runtime(command: &TicketCommandCli) -> Option<Value> {
             Some(dry_run_payload("watch", "start watcher/reconcile loop")),
         TicketCommandCli::Serve(_) =>
             Some(dry_run_payload("serve", "start HTTP server")),
+        TicketCommandCli::StoreIndex(_) =>
+            Some(dry_run_payload("store-index", "generate/check ticket catalog")),
         TicketCommandCli::Fmt(_) =>
             Some(dry_run_payload("fmt", "reformat ticket.toml files")),
         TicketCommandCli::Board(_) =>
@@ -248,6 +250,7 @@ fn command_uses_descendant_scan_roots(command: &TicketCommandCli) -> bool {
             | TicketCommandCli::UnblockedBy(_)
             | TicketCommandCli::Assets(_)
             | TicketCommandCli::Health(_)
+            | TicketCommandCli::StoreIndex(_)
             | TicketCommandCli::Audit
     )
 }
@@ -354,6 +357,7 @@ fn dispatch_store_command(
         | TicketCommandCli::Attach(_)
         | TicketCommandCli::Assets(_)
         | TicketCommandCli::Health(_)
+        | TicketCommandCli::StoreIndex(_)
         | TicketCommandCli::Audit
         | TicketCommandCli::Fmt(_)
         | TicketCommandCli::Board(_) =>
@@ -442,6 +446,7 @@ fn dispatch_store_command_ops(
         TicketCommandCli::Attach(args) => commands::cmd_attach(args, &store),
         TicketCommandCli::Assets(args) => commands::cmd_assets(args, &store),
         TicketCommandCli::Health(args) => commands::cmd_health(args, &store),
+        TicketCommandCli::StoreIndex(args) => commands::cmd_store_index(args, &store),
         TicketCommandCli::Audit => commands::cmd_audit(&store),
         TicketCommandCli::Fmt(args) => commands::cmd_fmt(args, &store),
         TicketCommandCli::Board(args) => commands::cmd_board(args, &store),
