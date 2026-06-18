@@ -18,7 +18,7 @@ Acceptance criteria:
 
 ### New Rust crate
 
-`memory-viewers/memory-api/crates/ticket-vscode-core/` added to the root workspace (`context-engine/Cargo.toml`).
+`memory-api/crates/ticket-vscode-core/` added to the root workspace (`context-engine/Cargo.toml`).
 
 - `Cargo.toml`: `crate-type = ["cdylib", "rlib"]`, `wasm-bindgen = "0.2.115"` behind `features = ["wasm"]` so native `cargo test` does not require wasm-bindgen.
 - `src/lib.rs`: exports `core_version() -> String`, `TicketSummary`, `HostKind`, `supports_server_control(HostKind) -> bool`, `supports_browser_bridge(HostKind) -> bool`, and pure `ticket_matches` filtering.

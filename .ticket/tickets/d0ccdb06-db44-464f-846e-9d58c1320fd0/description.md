@@ -1,6 +1,6 @@
 # Problem
 
-Nested rule work and repo-local README generation need a committed spec set in `memory-viewers/memory-api/.spec` with maintained code references and validation hooks. Initial planning specs now exist, but the implementation work still needs an explicit ticket to keep those specs current as behavior lands.
+Nested rule work and repo-local README generation need a committed spec set in `memory-api/.spec` with maintained code references and validation hooks. Initial planning specs now exist, but the implementation work still needs an explicit ticket to keep those specs current as behavior lands.
 
 ## Scope
 

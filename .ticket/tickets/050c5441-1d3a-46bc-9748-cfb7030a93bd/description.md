@@ -4,7 +4,7 @@
 
 ## Scope
 
-- Add repo-local `.rule` workspaces for `memory-viewers/`, `memory-viewers/memory-api/`, and `memory-viewers/viewer-api/`.
+- Add repo-local `.rule` workspaces for `memory-viewers/`, `memory-api/`, and `viewer-api/`.
 - Support nested workspace discovery for submodule repositories and explicit subfolders.
 - Extend CLI and MCP generation or explanation flows so they can resolve a local workspace root, load descendant workspaces, and report workspace provenance for matched rules.
 - Preserve current single-workspace behavior when no nested workspaces exist.

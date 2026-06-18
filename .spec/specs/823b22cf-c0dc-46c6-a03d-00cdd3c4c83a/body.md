@@ -21,7 +21,7 @@ Persist `session-api` capture requests into a deterministic filesystem layout th
 4. Focused unit tests prove file creation and persisted content shape.
 
 # Traceability
-- Ticket: [c8f79641 session persistence](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/c8f79641-6f99-4401-9b08-ad960a8d785c/ticket.toml)
+- Ticket: [c8f79641 session persistence](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-api/.ticket/tickets/c8f79641-6f99-4401-9b08-ad960a8d785c/ticket.toml)
 
 # Implemented Slice
 - Added `PersistedSessionManifest` and `PersistedSessionTranscript` as the first stable on-disk JSON shapes.

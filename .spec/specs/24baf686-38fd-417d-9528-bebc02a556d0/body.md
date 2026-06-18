@@ -6,7 +6,7 @@
 
 The repository tree is increasingly organized as a family of related sub-repositories. Navigation knowledge is currently split across generated READMEs, local rule targets, and tool-specific conventions. That makes it harder for humans and agents to answer a basic question: what exists in this repo, what belongs to a child workspace, and where should a given operation start?
 
-A dedicated `doc-api` family should expose repository documentation and navigation as a first-class surface inside `memory-viewers/memory-api/`, parallel to `rule-api`, `spec-api`, `ticket-api`, and `audit-api`.
+A dedicated `doc-api` family should expose repository documentation and navigation as a first-class surface inside `memory-api/`, parallel to `rule-api`, `spec-api`, `ticket-api`, and `audit-api`.
 
 ## Scope
 

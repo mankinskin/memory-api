@@ -7,8 +7,8 @@ This spec is about workspace topology and composition. The rule-folder storage c
 ## Repositories In Scope
 
 - `memory-viewers/`
-- `memory-viewers/memory-api/`
-- `memory-viewers/viewer-api/`
+- `memory-api/`
+- `viewer-api/`
 
 ## Problem
 

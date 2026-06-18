@@ -36,6 +36,6 @@ The current implementation stores edge mutations in the SQLite `edges` table but
 # Validation Status
 
 - `cargo test -p ticket-api scan_force_ -- --nocapture` — passed
-- `cargo run -p ticket-cli -- --index-root memory-viewers/memory-api/.ticket scan --force --json` — passed
+- `cargo run -p ticket-cli -- --index-root memory-api/.ticket scan --force --json` — passed
 - The forced-scan regression coverage now includes legacy DB-only edge backfill and stale-edge pruning for missing ticket folders in `crates/ticket-api/src/storage/tests.rs`.
-- The current `memory-viewers/memory-api/.ticket` store had no non-diagnostic live edges to materialize, so the real CLI validation confirmed the workflow without producing checked-in manifest edge diffs.
+- The current `memory-api/.ticket` store had no non-diagnostic live edges to materialize, so the real CLI validation confirmed the workflow without producing checked-in manifest edge diffs.

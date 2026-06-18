@@ -155,7 +155,7 @@ fn load_render_target_config_preserves_domain_tree_target_order() {
             "              name: memory-api-agents\n",
             "              repo_scope: memory-api\n",
             "              file_kind: AGENTS\n",
-            "              path_scope: memory-viewers/memory-api/AGENTS.md\n",
+            "              path_scope: memory-api/AGENTS.md\n",
             "  - name: .github\n",
             "    folders:\n",
             "      - name: prompts\n",
@@ -207,7 +207,7 @@ fn load_render_target_config_preserves_domain_tree_target_order() {
         vec![
             "AGENTS.md",
             "memory-viewers/AGENTS.md",
-            "memory-viewers/memory-api/AGENTS.md",
+            "memory-api/AGENTS.md",
             ".agents/prompts/spec.prompt.md",
             ".agents/instructions/audit.instructions.md",
         ]

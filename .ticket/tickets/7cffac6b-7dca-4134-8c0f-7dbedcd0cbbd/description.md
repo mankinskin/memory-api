@@ -4,9 +4,9 @@
 
 ## Scope
 
-- Add `memory-viewers/memory-api/.rule/rules/**` and a repo-local `memory-viewers/memory-api/rule-targets.yaml`.
+- Add `memory-api/.rule/rules/**` and a repo-local `memory-api/rule-targets.yaml`.
 - Create canonical local rule entries for the `memory-api` README sections.
-- Wire a local target that renders `memory-viewers/memory-api/README.md`.
+- Wire a local target that renders `memory-api/README.md`.
 - Ensure generation, sync, and stale-output cleanup work from the `memory-api/` repo root.
 - Align implementation with spec `rule-api/workspaces/memory-api-readme-generation`.
 

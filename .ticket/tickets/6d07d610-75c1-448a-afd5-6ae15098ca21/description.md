@@ -1,6 +1,6 @@
 # [ticket-vscode] Rust/WASM port track
 
-Port `memory-viewers/memory-api/tools/ticket-vscode` from a TypeScript-heavy implementation to a Rust/WASM-backed VS Code extension architecture.
+Port `memory-api/tools/ticket-vscode` from a TypeScript-heavy implementation to a Rust/WASM-backed VS Code extension architecture.
 
 The target is a dual-host extension, not a JS-free extension. VS Code still requires JS entrypoints for activation and API access. The migration should therefore:
 

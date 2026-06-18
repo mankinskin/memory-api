@@ -5,7 +5,7 @@ This spec defines the canonical installation contract for the `memory-api` opera
 ## In Scope
 
 - CLI installation and deinstallation for `rule`, `spec`, `ticket`, and `audit`
-- repo-local root discovery and first-run initialization described in the generated `memory-viewers/memory-api/README.md`
+- repo-local root discovery and first-run initialization described in the generated `memory-api/README.md`
 - the boundary between CLI install coverage and viewer install coverage
 - the synchronization contract between install-focused spec sections, executable validation, and the README rule entry that renders the install section
 
@@ -23,6 +23,6 @@ This spec defines the canonical installation contract for the `memory-api` opera
 
 ## Acceptance Criteria
 
-- The spec entry exists under `memory-viewers/memory-api/.spec/specs/**`.
+- The spec entry exists under `memory-api/.spec/specs/**`.
 - The spec records the exact README install snippet, the CLI scenario matrix, and the viewer coverage boundary.
 - A focused executable validation checks that the README rule install section stays synchronized with this spec.

@@ -10,7 +10,7 @@ Acceptance criteria:
 
 ## Implementation summary
 
-`memory-viewers/memory-api/crates/ticket-vscode-core/src/lib.rs` expanded from the spike stub to the full domain model:
+`memory-api/crates/ticket-vscode-core/src/lib.rs` expanded from the spike stub to the full domain model:
 
 - **Domain types**: `TicketSummary` (id, type, title, state) and `EdgeRecord` (from, to, kind) — mirror `api.ts` shapes; exposed via `#[wasm_bindgen]` under the `wasm` feature flag.
 - **Host-kind gates**: `HostKind` enum + `supports_server_control`, `supports_browser_bridge`, `supports_file_browsing` — pure Rust functions emitting feature-gate decisions used by the JS shell.

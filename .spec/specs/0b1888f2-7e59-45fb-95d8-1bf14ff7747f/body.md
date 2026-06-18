@@ -87,8 +87,8 @@ The fixture classes above are only useful if every relevant surface is checked a
 
 - Related ticket id: `429f6f1d-6429-4601-bfac-b572fdb4dbff`.
 	A live `ticket get` path lookup for this older ticket still fails with a storage I/O path error in the current store, so this spec keeps the id rather than synthesizing a folder path.
-- Adjacent design work: `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/700b9763-17f8-436e-ace0-45b88bedd1d7` covers parent-selected frontend aggregation of child-workspace tickets; this spec adds the reverse-direction requirement for child visibility into ancestor dependency entries.
-- Tooling traceability work: `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/91011568-ae0b-4b23-b060-b0c018e1e912` adds authoritative ticket-folder-path output so specs and reviews can record exact ticket folders without reconstructing them.
+- Adjacent design work: `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-api/.ticket/tickets/700b9763-17f8-436e-ace0-45b88bedd1d7` covers parent-selected frontend aggregation of child-workspace tickets; this spec adds the reverse-direction requirement for child visibility into ancestor dependency entries.
+- Tooling traceability work: `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-api/.ticket/tickets/91011568-ae0b-4b23-b060-b0c018e1e912` adds authoritative ticket-folder-path output so specs and reviews can record exact ticket folders without reconstructing them.
 
 ## Acceptance criteria
 

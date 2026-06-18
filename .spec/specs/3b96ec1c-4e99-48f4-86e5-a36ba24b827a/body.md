@@ -8,7 +8,7 @@ The current generated rule targets live at the parent repo level. That leaves `m
 
 ## Scope
 
-This spec defines the desired local rule workspace for `memory-viewers/memory-api/`:
+This spec defines the desired local rule workspace for `memory-api/`:
 
 - a repo-local `.rule/` store
 - a repo-local `rule-targets.yaml`
@@ -47,8 +47,8 @@ The generated README should, at minimum, cover:
 
 ## Acceptance Criteria
 
-- `memory-viewers/memory-api/` contains a repo-local rule workspace and `rule-targets.yaml`.
-- The README target is defined locally and renders to `memory-viewers/memory-api/README.md`.
+- `memory-api/` contains a repo-local rule workspace and `rule-targets.yaml`.
+- The README target is defined locally and renders to `memory-api/README.md`.
 - The local target config can be expressed as a file/folder tree with outputs grouped by root files, CLI tools, MCP tools, and HTTP tools.
 - The generated README is fully reproducible from local rule entries.
 - The implementation includes validation coverage for the target config, generated output tracking, and any local README-specific rendering rules.

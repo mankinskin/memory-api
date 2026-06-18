@@ -2,7 +2,7 @@
 
 The ticket explorer currently fails to honor the active state filter once the user types a search query.
 
-Root cause: `memory-viewers/memory-api/tools/http/ticket-http/src/serve/handlers/tickets/read.rs` takes a dedicated `query` branch that calls `store.search_tickets(query, limit)` and never applies `params.state`. The ticket-viewer sidebar relies on that endpoint through `memory-viewers/ticket-viewer/frontend/dioxus/src/routes/list/page.rs`, so the UI cannot produce correct combined search + state results.
+Root cause: `memory-api/tools/http/ticket-http/src/serve/handlers/tickets/read.rs` takes a dedicated `query` branch that calls `store.search_tickets(query, limit)` and never applies `params.state`. The ticket-viewer sidebar relies on that endpoint through `memory-viewers/ticket-viewer/frontend/dioxus/src/routes/list/page.rs`, so the UI cannot produce correct combined search + state results.
 
 ## Why this matters
 

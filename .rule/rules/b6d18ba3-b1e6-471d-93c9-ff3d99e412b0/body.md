@@ -7,7 +7,7 @@
 - Record the browser window or display resolution used for manual visual validation whenever layout, rendering, or responsive behavior could affect the result.
 - **Write Playwright end-to-end tests** for all browser-facing features and server interface changes.
   When executing browser-hosted frontend checks, first try the MCP Playwright/browser tools. Fall back to repo-local Playwright commands only when the MCP surface is unavailable or cannot cover the scenario.
-  Shared managed-viewer suites live under `memory-viewers/viewer-api/viewer-api/frontend/dioxus/e2e/shared/`.
+  Shared managed-viewer suites live under `viewer-api/viewer-api/frontend/dioxus/e2e/shared/`.
   Spec-viewer release E2E lives under `memory-viewers/spec-viewer/frontend/dioxus/`; run it with `npm run test:e2e:release`.
   Ticket-viewer release E2E lives under `memory-viewers/ticket-viewer/frontend/dioxus/`; run it with `npm run test:e2e:release`.
   Doc-viewer and log-viewer keep local Playwright wrappers under `tools/viewer/doc-viewer/e2e/` and `tools/viewer/log-viewer/e2e/`, importing shared suites from `memory-viewers/viewer-api`.

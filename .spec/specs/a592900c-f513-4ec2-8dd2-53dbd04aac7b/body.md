@@ -2,7 +2,7 @@
 
 ## Goal
 
-Port `memory-viewers/memory-api/tools/ticket-vscode` to a dual-host Rust/WASM-backed architecture without breaking the existing ticket browsing workflow. Target: thin JS/TS host shell + Rust/WASM core, shipping both `main` (Node/Electron/remote) and `browser` (WebWorker) entrypoints.
+Port `memory-api/tools/ticket-vscode` to a dual-host Rust/WASM-backed architecture without breaking the existing ticket browsing workflow. Target: thin JS/TS host shell + Rust/WASM core, shipping both `main` (Node/Electron/remote) and `browser` (WebWorker) entrypoints.
 
 ## Research Findings
 
@@ -126,9 +126,9 @@ npm run bundle:browser   # esbuild src/extension.browser.ts -> out/extension.bro
 Automated validation passed:
 - `cargo test -p ticket-vscode-core` -> 16 passed, 0 failed
 - `cargo check -p ticket-vscode-core --target wasm32-unknown-unknown --features wasm` -> passed
-- `cd memory-viewers/memory-api/tools/ticket-vscode && npm run build` -> passed
-- `cd memory-viewers/memory-api/tools/ticket-vscode && npm run test:unit` -> 32 passed, 0 failed
-- `cd memory-viewers/memory-api/tools/ticket-vscode && npm run package` -> passed, VSIX includes `pkg/ticket_vscode_core_bg.wasm` and glue files
+- `cd memory-api/tools/ticket-vscode && npm run build` -> passed
+- `cd memory-api/tools/ticket-vscode && npm run test:unit` -> 32 passed, 0 failed
+- `cd memory-api/tools/ticket-vscode && npm run package` -> passed, VSIX includes `pkg/ticket_vscode_core_bg.wasm` and glue files
 
 Validation still blocked / incomplete:
 - no `@vscode/test-web` harness or `test:web` script exists yet in `tools/ticket-vscode/package.json`

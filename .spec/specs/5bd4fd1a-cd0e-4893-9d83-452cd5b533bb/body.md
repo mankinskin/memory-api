@@ -80,19 +80,19 @@ This endpoint reuses the workspace-topology classes defined in `ticket-api/works
 
 ## Code references
 
-- `memory-viewers/memory-api/tools/http/ticket-http/src/serve/handlers/tickets/read.rs`
-- `memory-viewers/memory-api/crates/ticket-api/src/storage/store/query.rs`
+- `memory-api/tools/http/ticket-http/src/serve/handlers/tickets/read.rs`
+- `memory-api/crates/ticket-api/src/storage/store/query.rs`
 
 ## Traceability
 
 - Ticket: `.ticket/tickets/fcced2f3-c32c-4533-9743-56543f428222`
 - Related workspace contract tickets:
-  - `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/700b9763-17f8-436e-ace0-45b88bedd1d7`
+  - `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-api/.ticket/tickets/700b9763-17f8-436e-ace0-45b88bedd1d7`
   - `429f6f1d-6429-4601-bfac-b572fdb4dbff`
-  - `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/91011568-ae0b-4b23-b060-b0c018e1e912`
+  - `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-api/.ticket/tickets/91011568-ae0b-4b23-b060-b0c018e1e912`
   - `C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/.ticket/tickets/02723a9b-23ff-47b1-8306-0480be087ddd`
-- API validation/code: `memory-viewers/memory-api/tools/http/ticket-http/src/serve/handlers/tickets/tests/listing.rs`
-- Storage validation/code: `memory-viewers/memory-api/crates/ticket-api/src/storage/tests.rs`
+- API validation/code: `memory-api/tools/http/ticket-http/src/serve/handlers/tickets/tests/listing.rs`
+- Storage validation/code: `memory-api/crates/ticket-api/src/storage/tests.rs`
 - Contract validation passed:
   - `cargo test -p ticket-http search_list_ -- --nocapture`
   - `cargo test -p ticket-api scan_keeps_nested_workspace_tickets_searchable_without_reindex -- --nocapture`

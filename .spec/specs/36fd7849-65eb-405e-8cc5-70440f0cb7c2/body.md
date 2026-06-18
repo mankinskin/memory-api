@@ -23,7 +23,7 @@ Extend `session-api` so repeated Copilot hook captures preserve transcript histo
 5. Focused unit tests cover append-only persistence, session reads, hook capture, and query behavior.
 
 # Traceability
-- Ticket: [959c94bd session hook ingestion and read/query](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-viewers/memory-api/.ticket/tickets/959c94bd-4a42-47d6-bee4-a12332a23b52/ticket.toml)
+- Ticket: [959c94bd session hook ingestion and read/query](C:/Users/linus_behrbohm/git/SECOND_CHECKOUT/graph_app/context-engine/memory-api/.ticket/tickets/959c94bd-4a42-47d6-bee4-a12332a23b52/ticket.toml)
 - Prior slice: persistence writer spec `823b22cf-c0dc-46c6-a03d-00cdd3c4c83a`
 
 # Implemented Slice

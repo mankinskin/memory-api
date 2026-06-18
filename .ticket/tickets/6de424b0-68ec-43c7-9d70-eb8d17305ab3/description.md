@@ -25,14 +25,14 @@ Acceptance criteria:
 
 Validation results are recorded in the native test-result store instead of inline here. Each execution links back to this ticket (`6de424b0-68ec-43c7-9d70-eb8d17305ab3`).
 
-- Store root: `memory-viewers/memory-api/.test/default/`
-- Specs: `memory-viewers/memory-api/.test/default/specs/` (vt-core-tests, vt-core-wasm-check, vt-ext-build, vt-ext-unit, vt-ext-package, vt-browser-web, vt-remote)
-- Executions: `memory-viewers/memory-api/.test/default/executions/`
+- Store root: `memory-api/.test/default/`
+- Specs: `memory-api/.test/default/specs/` (vt-core-tests, vt-core-wasm-check, vt-ext-build, vt-ext-unit, vt-ext-package, vt-browser-web, vt-remote)
+- Executions: `memory-api/.test/default/executions/`
 
 Query the evidence linked to this ticket:
 
 ```bash
-./target/debug/test.exe --store-root "$PWD/memory-viewers/memory-api/.test" --toon list --ticket 6de424b0-68ec-43c7-9d70-eb8d17305ab3
+./target/debug/test.exe --store-root "$PWD/memory-api/.test" --toon list --ticket 6de424b0-68ec-43c7-9d70-eb8d17305ab3
 ```
 
 Recorded outcomes (2026-06-15):
