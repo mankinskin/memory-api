@@ -16,9 +16,29 @@ use chrono::{
 };
 
 use common::{
-    Sandbox,
+    TicketCommands,
+    TicketSandbox as Sandbox,
     create_ticket,
 };
+
+// ---------------------------------------------------------------------------
+// Typed representation of a `board show` recommended_next entry.
+//
+// Asserting against this struct instead of ad-hoc JSON indexing or human
+// string fragments gives compile-time field coverage: adding or removing a
+// field in the JSON contract breaks the struct definition, not a runtime
+// string comparison.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, PartialEq, serde::Deserialize)]
+struct NextTicketEntry {
+    ticket_id: String,
+    state: Option<String>,
+    priority: String,
+    effort: Option<String>,
+    dependee_count: usize,
+    dependency_count: usize,
+}
 
 const TICKET: &str = env!("CARGO_BIN_EXE_ticket");
 
@@ -364,7 +384,7 @@ fn board_show_text_output_stops_after_dashboard() {
 
     let out = Command::new(TICKET)
         .arg("--index-root")
-        .arg(&s.index_root)
+        .arg(&s.index_root())
         .args(["board", "show"])
         .output()
         .expect("failed to run ticket board show");
@@ -418,7 +438,7 @@ fn next_text_output_uses_pretty_card_format() {
 
     let out = Command::new(TICKET)
         .arg("--index-root")
-        .arg(&s.index_root)
+        .arg(&s.index_root())
         .args(["next"])
         .output()
         .expect("failed to run ticket next");
@@ -513,7 +533,7 @@ fn next_with_root_text_output_shows_root_scope() {
 
     let out = Command::new(TICKET)
         .arg("--index-root")
-        .arg(&s.index_root)
+        .arg(&s.index_root())
         .args(["next", &root])
         .output()
         .expect("failed to run ticket next with root scope");
@@ -679,7 +699,7 @@ fn blockers_text_output_shows_nested_tree_and_frontier_summary() {
 
     let out = Command::new(TICKET)
         .arg("--index-root")
-        .arg(&s.index_root)
+        .arg(&s.index_root())
         .args(["blockers", &root])
         .output()
         .expect("failed to run ticket blockers");
@@ -741,7 +761,7 @@ fn unblocked_by_text_output_shows_nested_tree_and_frontier_summary() {
 
     let out = Command::new(TICKET)
         .arg("--index-root")
-        .arg(&s.index_root)
+        .arg(&s.index_root())
         .args(["unblocked-by", &root])
         .output()
         .expect("failed to run ticket unblocked-by");
@@ -793,7 +813,7 @@ fn blockers_reports_empty_leaf_cleanly_in_json_and_text() {
 
     let out = Command::new(TICKET)
         .arg("--index-root")
-        .arg(&s.index_root)
+        .arg(&s.index_root())
         .args(["blockers", &root])
         .output()
         .expect("failed to run ticket blockers for empty leaf case");
@@ -839,7 +859,7 @@ fn unblocked_by_reports_empty_leaf_cleanly_in_json_and_text() {
 
     let out = Command::new(TICKET)
         .arg("--index-root")
-        .arg(&s.index_root)
+        .arg(&s.index_root())
         .args(["unblocked-by", &root])
         .output()
         .expect("failed to run ticket unblocked-by for empty leaf case");
@@ -960,12 +980,62 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
         &older_more_dependees[..8]
     )));
     assert!(human.contains(
-        "state: ready  priority: high  dependee_count: 2  dependency_count: 0"
+        "state: ready  priority: high  effort: -  dependee_count: 2  dependency_count: 0"
     ));
     assert!(human.contains(&format!("created_at: {pretty_created_at}")));
     assert!(human.contains(&format!("ticket_id: {older_more_dependees}")));
     assert!(!human.contains("DEPENDEES"));
     assert!(!human.contains(first_created_at));
+        let show = s.ticket_json(&["board", "show"]);
+        assert_eq!(show["status"], "ok");
+
+        // --- typed struct assertions (Finding 2) ---
+        // Deserialise the recommended_next array into `NextTicketEntry` values so
+        // that the compiler catches any field-name or type changes at build time
+        // rather than at runtime via string matching.
+        let entries: Vec<NextTicketEntry> =
+            serde_json::from_value(show["recommended_next"].clone())
+                .expect("recommended_next should deserialise into Vec<NextTicketEntry>");
+        assert!(entries.len() >= 2, "expected at least 2 recommended entries");
+        assert_eq!(
+            entries[0],
+            NextTicketEntry {
+                ticket_id: older_more_dependees.clone(),
+                state: Some("ready".into()),
+                priority: "high".into(),
+                effort: None,
+                dependee_count: 2,
+                dependency_count: 0,
+            }
+        );
+        assert_eq!(
+            entries[1],
+            NextTicketEntry {
+                ticket_id: newer_fewer_dependees.clone(),
+                state: Some("ready".into()),
+                priority: "high".into(),
+                effort: None,
+                dependee_count: 0,
+                dependency_count: 0,
+            }
+        );
+
+        // --- human rendering spot-checks ---
+        // These verify that the human output is formatted correctly; the
+        // data content is already covered by the typed assertions above.
+        let first_created_at = show["recommended_next"][0]["created_at"]
+            .as_str()
+            .expect("board show should preserve created_at");
+        let pretty_created_at = format_expected_board_created_at(first_created_at);
+        let human = show["human"].as_str().unwrap();
+        assert!(human.contains(&format!(
+            "#1  {}  Alpha older blocker",
+            &older_more_dependees[..8]
+        )));
+        assert!(human.contains(&format!("created_at: {pretty_created_at}")));
+        assert!(human.contains(&format!("ticket_id: {older_more_dependees}")));
+        assert!(!human.contains("DEPENDEES"));
+        assert!(!human.contains(first_created_at));
 }
 
 #[test]

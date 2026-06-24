@@ -1,9 +1,19 @@
-//! Shared sandboxed test harness for context-tasks integration tests.
+//! Shared sandboxed test harness for ticket-cli integration tests.
 //!
-//! Each test creates a `Sandbox` that owns an exclusive `TempDir` used as the
-//! `--index-root` for every `ticket` invocation.  When the `Sandbox` is
-//! dropped the entire directory tree — SQLite database, Tantivy search index,
-//! and all ticket folders — is deleted automatically.
+//! The generic sandbox infrastructure lives in `memory_api::testing` and is
+//! shared across all domains.  This module supplies two domain-specific
+//! [`memory_api::testing::SandboxSetup`] implementations:
+//!
+//! - [`FlatTicketSetup`] — `index_root` == `workspace_root` (the tempdir
+//!   itself acts as the index root).  Used by every test except those that
+//!   exercise the `store-index` command.
+//! - [`WorkspaceTicketSetup`] — `index_root` == `workspace_root/.ticket/`.
+//!   Used by `store-index` tests that need the conventional project-root /
+//!   `.ticket/` layout.
+//!
+//! Domain-specific CLI helpers (`ticket_json`, `ticket_fail`, …) are added
+//! via the [`TicketCommands`] extension trait, which is implemented for any
+//! [`memory_api::testing::Sandbox<S>`] regardless of setup type.
 //!
 //! The `ticket` binary is located via `env!("CARGO_BIN_EXE_ticket")`, which
 //! Cargo resolves at compile time to the correct path in `target/`.
@@ -12,14 +22,18 @@
 
 use std::{
     io::Write,
-    path::PathBuf,
+    path::Path,
     process::{
         Command,
         Stdio,
     },
 };
 
-use tempfile::TempDir;
+use memory_api::testing::{
+    Sandbox,
+    SandboxPaths,
+    SandboxSetup,
+};
 
 // ---------------------------------------------------------------------------
 // Binary path — resolved at compile time by Cargo.
@@ -28,65 +42,99 @@ use tempfile::TempDir;
 const TICKET: &str = env!("CARGO_BIN_EXE_ticket");
 
 // ---------------------------------------------------------------------------
-// Sandbox — per-test isolated environment
+// Domain-specific SandboxSetup implementations
 // ---------------------------------------------------------------------------
 
-/// An isolated sandbox: a fresh temp directory that acts as the sole
-/// `--index-root` for all `ticket` invocations within a single test.
-pub struct Sandbox {
-    /// Keeps the temp directory alive for the duration of the test.
-    pub _dir: TempDir,
-    /// Path used as `--index-root` for every `ticket` call.
-    pub index_root: PathBuf,
-}
+/// Flat layout: `index_root == workspace_root`.
+///
+/// The tempdir itself is the ticket index root.  This is the default layout
+/// for all tests that do not exercise workspace-root–relative features.
+pub struct FlatTicketSetup;
 
-impl Sandbox {
-    /// Create a new isolated sandbox backed by a fresh temporary directory.
-    pub fn new() -> Self {
-        let dir = TempDir::new().expect("failed to create sandbox temp dir");
-        let index_root = dir.path().to_path_buf();
-        let sandbox = Self {
-            _dir: dir,
-            index_root,
-        };
-        let out = sandbox
-            .base()
+impl SandboxSetup for FlatTicketSetup {
+    fn setup(workspace_root: &Path) -> SandboxPaths {
+        let index_root = workspace_root.to_path_buf();
+        let out = Command::new(TICKET)
+            .arg("--index-root")
+            .arg(&index_root)
             .arg("--json")
             .arg("init")
             .output()
-            .unwrap_or_else(|e| panic!("failed to initialize sandbox: {e}"));
-
-        if !out.status.success() {
-            panic!(
-                "ticket init failed ({})\nstdout: {}\nstderr: {}",
-                out.status,
-                String::from_utf8_lossy(&out.stdout),
-                String::from_utf8_lossy(&out.stderr),
-            );
+            .unwrap_or_else(|e| panic!("failed to run ticket init: {e}"));
+        assert!(
+            out.status.success(),
+            "ticket init failed ({})\nstdout: {}\nstderr: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+        SandboxPaths {
+            index_root,
+            workspace_root: workspace_root.to_path_buf(),
         }
-
-        sandbox
     }
+}
 
-    // ------------------------------------------------------------------
-    // Internal helper: build a base Command with --index-root pre-set.
-    // ------------------------------------------------------------------
+/// Workspace layout: `index_root == workspace_root/.ticket/`.
+///
+/// Used by `store-index` tests that verify the conventional project-root /
+/// `.ticket/` directory structure.
+pub struct WorkspaceTicketSetup;
+
+impl SandboxSetup for WorkspaceTicketSetup {
+    fn setup(workspace_root: &Path) -> SandboxPaths {
+        let index_root = workspace_root.join(".ticket");
+        let out = Command::new(TICKET)
+            .arg("--index-root")
+            .arg(&index_root)
+            .arg("--json")
+            .arg("init")
+            .output()
+            .unwrap_or_else(|e| panic!("failed to run ticket init: {e}"));
+        assert!(
+            out.status.success(),
+            "ticket init failed ({})\nstdout: {}\nstderr: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+        SandboxPaths {
+            index_root,
+            workspace_root: workspace_root.to_path_buf(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Type aliases used by tests
+// ---------------------------------------------------------------------------
+
+/// Default sandbox for ticket-cli tests (flat layout).
+pub type TicketSandbox = Sandbox<FlatTicketSetup>;
+
+/// Workspace-layout sandbox for tests that need a real project-root /
+/// `.ticket/` directory structure (e.g. `store-index` tests).
+pub type WorkspaceSandbox = Sandbox<WorkspaceTicketSetup>;
+
+// ---------------------------------------------------------------------------
+// Extension trait: ticket-specific CLI helpers
+//
+// Implemented for all `Sandbox<S>` so both `TicketSandbox` and
+// `WorkspaceSandbox` share the same helper methods without duplication.
+// ---------------------------------------------------------------------------
+
+/// Ticket CLI helpers available on any `Sandbox<S>`.
+pub trait TicketCommands {
+    fn index_root(&self) -> &Path;
 
     fn base(&self) -> Command {
         let mut cmd = Command::new(TICKET);
-        cmd.arg("--index-root").arg(&self.index_root);
+        cmd.arg("--index-root").arg(self.index_root());
         cmd
     }
 
-    // ------------------------------------------------------------------
-    // Public API
-    // ------------------------------------------------------------------
-
     /// Run `ticket --json <args>` and return the inner `payload` object.
-    ///
-    /// Panics with full diagnostic output if the command exits non-zero or the
-    /// output cannot be parsed as JSON.
-    pub fn ticket_json(
+    fn ticket_json(
         &self,
         args: &[&str],
     ) -> serde_json::Value {
@@ -114,15 +162,13 @@ impl Sandbox {
                     String::from_utf8_lossy(&out.stdout)
                 )
             });
-
-        // With --json the binary emits { "request_id": "...", "payload": { ... } }.
         envelope["payload"].clone()
     }
 
-    /// Run `ticket --json <args>` and **expect** it to exit with a non-zero code.
+    /// Run `ticket --json <args>` and expect a non-zero exit.
     ///
-    /// Panics if the command succeeds instead.  Returns `(exit_code, stderr)`.
-    pub fn ticket_fail(
+    /// Returns `(exit_code, stderr)`.
+    fn ticket_fail(
         &self,
         args: &[&str],
     ) -> (i32, String) {
@@ -146,10 +192,10 @@ impl Sandbox {
         )
     }
 
-    /// Run `ticket --json <args>` and feed `stdin_payload` to stdin.
+    /// Run `ticket --json <args>` with `stdin_payload` on stdin.
     ///
     /// Panics if the command exits non-zero. Returns envelope `payload`.
-    pub fn ticket_json_stdin(
+    fn ticket_json_stdin(
         &self,
         args: &[&str],
         stdin_payload: &str,
@@ -193,21 +239,29 @@ impl Sandbox {
                     String::from_utf8_lossy(&out.stdout)
                 )
             });
-
         envelope["payload"].clone()
     }
 }
 
+impl<S: SandboxSetup> TicketCommands for Sandbox<S> {
+    fn index_root(&self) -> &Path {
+        Sandbox::index_root(self)
+    }
+}
+
 // ---------------------------------------------------------------------------
-// Workflow helpers — reduce boilerplate inside individual test functions
+// Workflow helpers
 // ---------------------------------------------------------------------------
 
 /// Create a `tracker-improvement` ticket with the given title.
 /// Returns the UUID string of the created ticket.
-pub fn create_ticket(
-    s: &Sandbox,
+pub fn create_ticket<S: SandboxSetup>(
+    s: &Sandbox<S>,
     title: &str,
-) -> String {
+) -> String
+where
+    Sandbox<S>: TicketCommands,
+{
     let r = s.ticket_json(&[
         "create",
         "--title",

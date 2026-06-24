@@ -5,6 +5,9 @@ pub mod model;
 pub mod storage;
 pub mod workspace;
 
+#[cfg(feature = "testing")]
+pub mod testing;
+
 // Re-export board types at the crate root for convenient access.
 pub use storage::{
     BoardCleanPreview,

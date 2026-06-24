@@ -33,3 +33,4 @@ pretty_assertions = "1"
 tempfile = "3"
 chrono = "0.4"
 toml = "0.8"
+memory-api = { path = "../../../crates/memory-api", features = ["testing"] }

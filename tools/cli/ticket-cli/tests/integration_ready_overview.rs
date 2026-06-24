@@ -1,7 +1,8 @@
 mod common;
 
 use common::{
-    Sandbox,
+    TicketCommands,
+    TicketSandbox as Sandbox,
     create_ticket,
 };
 
