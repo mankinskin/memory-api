@@ -548,8 +548,7 @@ fn render_agent_hook(
     out.push_str(&format!(
         "The full specification catalog is generated at `{store_dir}/README.md`\n\
          (machine-readable sidecar with parent/child relations:\n\
-         `{store_dir}/index.toon`). Browse it before scanning raw `{store_dir}/`\n\
-         entry files.\n\n"
+         `{store_dir}/index.toon`).\n\n"
     ));
     out.push_str(&format!("- Total specs: {total}\n"));
     out.push_str(&format!("- Root specs (no parent): {root_count}\n"));

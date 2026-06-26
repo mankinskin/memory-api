@@ -518,8 +518,7 @@ fn render_agent_hook(store_dir: &str, sidecar: &IndexSidecar) -> String {
     out.push_str("\n\n# Audit Catalog\n\n");
     out.push_str(&format!(
         "The full audit status catalog is generated at `{store_dir}/README.md`\n\
-         (machine-readable sidecar: `{store_dir}/index.toon`). Browse it before\n\
-         scanning raw `{store_dir}/` data.\n\n"
+         (machine-readable sidecar: `{store_dir}/index.toon`).\n\n"
     ));
     out.push_str(&format!("- Finding categories: {total}\n"));
     if !category_list.is_empty() {

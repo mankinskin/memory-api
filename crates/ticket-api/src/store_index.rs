@@ -356,8 +356,7 @@ fn render_agent_hook(
     out.push_str("\n\n# Ticket Catalog\n\n");
     out.push_str(&format!(
         "The full ticket catalog is generated at `{store_dir}/README.md`\n\
-         (machine-readable sidecar: `{store_dir}/index.toon`). Use it before\n\
-         scanning raw `{store_dir}/tickets/` entries.\n\n"
+         (machine-readable sidecar: `{store_dir}/index.toon`).\n\n"
     ));
     out.push_str(&format!("- Total tickets: {total}\n"));
     if !state_counts.is_empty() {

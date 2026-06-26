@@ -434,8 +434,7 @@ fn render_agent_hook(
     out.push_str("\n\n# Rules Catalog\n\n");
     out.push_str(&format!(
         "The full guidance-rules catalog is generated at `{store_dir}/README.md`\n\
-         (machine-readable sidecar: `{store_dir}/index.toon`). Browse it before\n\
-         scanning raw `{store_dir}/` entry files.\n\n"
+         (machine-readable sidecar: `{store_dir}/index.toon`\n\n"
     ));
     out.push_str(&format!("- Total rules: {total}\n"));
     if !group_list.is_empty() {
