@@ -604,6 +604,8 @@ impl TicketStore {
         let mut indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
 
+        // Determine the target state and transition path.
+        // Priority: to_state > last element of transition_states > current state (no change)
         let (new_state, transition_path) = if let Some(to) = to_state {
             let path = self.resolve_transition_path(
                 &indexed,
@@ -615,7 +617,23 @@ impl TicketStore {
                 .cloned()
                 .unwrap_or_else(|| to.to_string());
             (Some(final_state), path)
+        } else if let Some(transition_states_slice) = transition_states {
+            // transition_states provided but no to_state: use last element as target
+            if let Some(final_target) = transition_states_slice.last() {
+                // Pass all elements except the last as intermediate steps
+                let intermediate_steps = &transition_states_slice[..transition_states_slice.len() - 1];
+                let path = self.resolve_transition_path(
+                    &indexed,
+                    intermediate_steps,
+                    final_target,
+                )?;
+                (Some(final_target.clone()), path)
+            } else {
+                // Empty transition_states array: no change
+                (indexed.state.clone(), Vec::new())
+            }
         } else {
+            // No to_state and no transition_states: preserve current state
             (indexed.state.clone(), Vec::new())
         };
         let previous_state = indexed.state.clone();

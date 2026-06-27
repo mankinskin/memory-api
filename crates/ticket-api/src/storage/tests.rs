@@ -1403,3 +1403,131 @@ fn scan_force_does_not_restore_removed_dependency_edges() {
 
     assert!(rebuilt.edges_from(&source_id).unwrap().is_empty());
 }
+
+#[test]
+fn bug_7f4aaa05_state_preserved_on_field_patch_without_to_state() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    // Create ticket
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Test ticket"),
+            Some("new"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    // Advance to ready
+    store
+        .update(&id, BTreeMap::new(), Some(&[]), Some("ready"), None, None)
+        .unwrap();
+
+    let indexed = store.get_indexed(&id).unwrap().unwrap();
+    assert_eq!(indexed.state.as_deref(), Some("ready"));
+
+    // BUG: Update description WITHOUT to_state - state should be preserved
+    let mut patch = BTreeMap::new();
+    patch.insert("custom_field".to_string(), Value::String("custom value".to_string()));
+
+    store
+        .update(&id, patch, None, None, None, None)
+        .unwrap();
+
+    let indexed = store.get_indexed(&id).unwrap().unwrap();
+    assert_eq!(
+        indexed.state.as_deref(),
+        Some("ready"),
+        "State should be preserved when patching fields without to_state"
+    );
+}
+
+#[test]
+fn bug_7f4aaa05_description_patch_with_to_state_transition() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    // Create ticket
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Test ticket"),
+            Some("new"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    // Advance to ready
+    store
+        .update(&id, BTreeMap::new(), Some(&[]), Some("ready"), None, None)
+        .unwrap();
+
+    let indexed = store.get_indexed(&id).unwrap().unwrap();
+    assert_eq!(indexed.state.as_deref(), Some("ready"));
+
+    // Combined: patch fields AND transition in one call
+    let mut patch = BTreeMap::new();
+    patch.insert("custom_field".to_string(), Value::String("custom value".to_string()));
+
+    store
+        .update(&id, patch, None, Some("in-implementation"), None, None)
+        .unwrap();
+
+    let indexed = store.get_indexed(&id).unwrap().unwrap();
+    assert_eq!(
+        indexed.state.as_deref(),
+        Some("in-implementation"),
+        "State should transition to in-implementation"
+    );
+    assert_eq!(
+        indexed.title.as_deref(),
+        Some("Test ticket"),
+        "Title should be preserved"
+    );
+}
+
+#[test]
+fn bug_7f4aaa05_transition_states_multi_step_path() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    // Create ticket
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Test ticket"),
+            Some("new"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    // Multi-step transition: new -> ready
+    let transition_states = vec!["ready".to_string()];
+    store
+        .update(
+            &id,
+            BTreeMap::new(),
+            Some(transition_states.as_slice()),
+            None, // NO to_state
+            None,
+            None,
+        )
+        .unwrap();
+
+    let indexed = store.get_indexed(&id).unwrap().unwrap();
+    assert_eq!(
+        indexed.state.as_deref(),
+        Some("ready"),
+        "transition_states should apply the final state from the path"
+    );
+}

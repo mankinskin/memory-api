@@ -103,6 +103,8 @@ async fn search_list_drops_unresolved_tantivy_only_hits() {
             Some("ghost-only unresolved search hit body"),
             Some("ready"),
             Some("tracker-improvement"),
+            Some(&chrono::Utc::now().to_rfc3339()),
+            None,
         )
         .expect("upsert ghost search doc");
 
@@ -540,6 +542,8 @@ async fn search_list_prefers_authoritative_mixed_workspace_hit() {
             Some("mixed-workspace stale parent body"),
             Some("new"),
             Some("tracker-improvement"),
+            Some(&chrono::Utc::now().to_rfc3339()),
+            None,
         )
         .expect("upsert stale parent search doc");
 
@@ -728,6 +732,8 @@ async fn mixed_workspace_search_followups_remain_reversible() {
             Some("mixed-workspace stale parent body"),
             Some("new"),
             Some("tracker-improvement"),
+            Some(&chrono::Utc::now().to_rfc3339()),
+            None,
         )
         .expect("upsert stale parent search doc");
 
@@ -1345,6 +1351,8 @@ async fn search_list_excludes_stale_search_hits_and_followups() {
             Some("deleted-hit regression description"),
             Some("ready"),
             Some("tracker-improvement"),
+            Some(&chrono::Utc::now().to_rfc3339()),
+            None,
         )
         .expect("upsert deleted residual search doc");
 
