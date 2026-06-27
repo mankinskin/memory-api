@@ -1,4 +1,5 @@
 use std::{
+    path::Path,
     path::PathBuf,
     sync::Arc,
 };
@@ -18,6 +19,10 @@ use rmcp::{
     transport::stdio,
 };
 use serde::Serialize;
+use serde_json::{
+    Value,
+    json,
+};
 use tokio::sync::Mutex;
 
 use spec_api::{
@@ -61,6 +66,40 @@ impl SpecServer {
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
+    fn json_result_with_scope(
+        value: Value,
+        active_index_root: &Path,
+        requested_workspace: Option<&str>,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace_root = memory_api::workspace::resolve_workspace_root_from_store_root(
+            active_index_root,
+            ".spec",
+        );
+        let workspace = requested_workspace
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("default")
+            .to_string();
+
+        let mut value = value;
+        if let Value::Object(map) = &mut value {
+            map.insert(
+                "scope".to_string(),
+                json!({
+                    "workspace": workspace,
+                    "active_index_root": active_index_root
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                    "workspace_root": workspace_root
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                }),
+            );
+        }
+
+        Self::json_result(&value)
+    }
+
     fn spec_err(e: SpecError) -> McpError {
         match &e {
             SpecError::NotFound(_) =>
@@ -77,6 +116,39 @@ impl SpecServer {
         McpError::internal_error(format!("storage error: {e}"), None)
     }
 
+    fn is_spec_store_root(path: &Path) -> bool {
+        path.join("specs").is_dir()
+            || path.join("entities.db").is_file()
+            || path.join("search_index").is_dir()
+    }
+
+    fn resolve_workspace_root(
+        &self,
+        workspace: Option<&str>,
+    ) -> Result<PathBuf, McpError> {
+        let workspace = workspace.unwrap_or("default").trim();
+        if workspace.is_empty() || workspace == "default" {
+            return Ok(self.index_root.clone());
+        }
+
+        let resolved = memory_api::workspace::resolve_store_root_from(
+            Path::new(workspace),
+            ".spec",
+        );
+        if resolved.file_name().and_then(|name| name.to_str()) == Some(".spec")
+            || Self::is_spec_store_root(&resolved)
+        {
+            return Ok(resolved);
+        }
+
+        Err(McpError::invalid_params(
+            format!(
+                "invalid workspace '{workspace}': expected 'default', a repo root containing .spec, the .spec store itself, a path inside that store, or an existing spec store root"
+            ),
+            None,
+        ))
+    }
+
     /// Open a mutable SpecStore under the serialization lock, run the closure,
     /// then drop both store and lock before returning.
     ///
@@ -84,13 +156,14 @@ impl SpecServer {
     /// slug index. The auto-scan ensures slug resolution works on every call.
     async fn with_store<T>(
         &self,
-        f: impl FnOnce(&mut SpecStore) -> Result<T, McpError>,
+        workspace: Option<&str>,
+        f: impl FnOnce(&mut SpecStore, &Path) -> Result<T, McpError>,
     ) -> Result<T, McpError> {
+        let index_root = self.resolve_workspace_root(workspace)?;
         let _guard = self.store_lock.lock().await;
-        let mut store =
-            SpecStore::open(&self.index_root).map_err(Self::spec_err)?;
+        let mut store = SpecStore::open(&index_root).map_err(Self::spec_err)?;
         store.scan(false).map_err(Self::spec_err)?;
-        let result = f(&mut store);
+        let result = f(&mut store, &index_root);
         drop(store);
         result
     }

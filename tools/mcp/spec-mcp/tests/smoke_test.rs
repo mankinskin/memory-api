@@ -27,6 +27,7 @@ async fn spec_crud_lifecycle() {
     // 1. Create a spec
     let result = server
         .spec_create(Parameters(CreateSpecInput {
+            workspace: None,
             title: "Test Spec".to_string(),
             slug: "test-component/test-spec".to_string(),
             component: "test-component".to_string(),
@@ -45,6 +46,7 @@ async fn spec_crud_lifecycle() {
     // 2. Get by slug
     let result = server
         .spec_get(Parameters(GetSpecInput {
+            workspace: None,
             id: "test-component/test-spec".to_string(),
             full: false,
         }))
@@ -57,6 +59,7 @@ async fn spec_crud_lifecycle() {
     // 3. Get full (with body)
     let result = server
         .spec_get(Parameters(GetSpecInput {
+            workspace: None,
             id: spec_id.clone(),
             full: true,
         }))
@@ -70,6 +73,7 @@ async fn spec_crud_lifecycle() {
     // 4. Update fields
     let result = server
         .spec_update(Parameters(UpdateSpecInput {
+            workspace: None,
             id: spec_id.clone(),
             fields: Some(vec!["title=Updated Title".to_string()]),
             to_state: Some("reviewed".to_string()),
@@ -86,6 +90,7 @@ async fn spec_crud_lifecycle() {
     // 5. Update body
     let result = server
         .spec_update(Parameters(UpdateSpecInput {
+            workspace: None,
             id: spec_id.clone(),
             fields: None,
             to_state: None,
@@ -101,6 +106,7 @@ async fn spec_crud_lifecycle() {
     // 6. List all
     let result = server
         .spec_list(Parameters(ListSpecsInput {
+            workspace: None,
             where_clauses: vec![],
             limit: None,
         }))
@@ -113,6 +119,7 @@ async fn spec_crud_lifecycle() {
     // 7. List with filter
     let result = server
         .spec_list(Parameters(ListSpecsInput {
+            workspace: None,
             where_clauses: vec!["component=test-component".to_string()],
             limit: None,
         }))
@@ -124,6 +131,7 @@ async fn spec_crud_lifecycle() {
     // 8. Delete
     let result = server
         .spec_delete(Parameters(SpecRefInput {
+            workspace: None,
             id: spec_id.clone(),
         }))
         .await
@@ -139,6 +147,7 @@ async fn spec_update_accepts_sparse_payload_and_returns_minimal_response() {
     let created = extract_json(
         server
             .spec_create(Parameters(CreateSpecInput {
+            workspace: None,
                 title: "Sparse Update".to_string(),
                 slug: "tests/sparse-update".to_string(),
                 component: "tests".to_string(),
@@ -154,6 +163,7 @@ async fn spec_update_accepts_sparse_payload_and_returns_minimal_response() {
 
     let result = server
         .spec_update(Parameters(UpdateSpecInput {
+            workspace: None,
             id: spec_id,
             fields: None,
             to_state: Some("reviewed".to_string()),
@@ -178,6 +188,7 @@ async fn spec_section_lifecycle() {
     // Create a spec first
     let result = server
         .spec_create(Parameters(CreateSpecInput {
+            workspace: None,
             title: "Section Test".to_string(),
             slug: "sections/test".to_string(),
             component: "sections".to_string(),
@@ -194,6 +205,7 @@ async fn spec_section_lifecycle() {
     // Add section
     let result = server
         .spec_section_add(Parameters(SectionAddInput {
+            workspace: None,
             id: spec_id.clone(),
             name: "design".to_string(),
             content: "## Design\n\nKey design notes.".to_string(),
@@ -206,6 +218,7 @@ async fn spec_section_lifecycle() {
     // List sections
     let result = server
         .spec_section_list(Parameters(SpecRefInput {
+            workspace: None,
             id: spec_id.clone(),
         }))
         .await
@@ -222,6 +235,7 @@ async fn spec_section_lifecycle() {
     // Get section
     let result = server
         .spec_section_get(Parameters(SectionRefInput {
+            workspace: None,
             id: spec_id.clone(),
             name: "design".to_string(),
         }))
@@ -239,6 +253,7 @@ async fn spec_section_lifecycle() {
     // Delete section
     let result = server
         .spec_section_delete(Parameters(SectionRefInput {
+            workspace: None,
             id: spec_id.clone(),
             name: "design".to_string(),
         }))
@@ -250,6 +265,7 @@ async fn spec_section_lifecycle() {
     // List again — empty
     let result = server
         .spec_section_list(Parameters(SpecRefInput {
+            workspace: None,
             id: spec_id.clone(),
         }))
         .await
@@ -266,6 +282,7 @@ async fn spec_tree_and_health() {
     // Create parent
     let result = server
         .spec_create(Parameters(CreateSpecInput {
+            workspace: None,
             title: "Parent Spec".to_string(),
             slug: "tree/parent".to_string(),
             component: "tree".to_string(),
@@ -281,6 +298,7 @@ async fn spec_tree_and_health() {
     // Create child
     let result = server
         .spec_create(Parameters(CreateSpecInput {
+            workspace: None,
             title: "Child Spec".to_string(),
             slug: "tree/parent/child".to_string(),
             component: "tree".to_string(),
@@ -296,6 +314,7 @@ async fn spec_tree_and_health() {
     // Tree from parent
     let result = server
         .spec_tree(Parameters(TreeInput {
+            workspace: None,
             id: Some(parent_id.clone()),
         }))
         .await
@@ -306,7 +325,8 @@ async fn spec_tree_and_health() {
 
     // Tree all roots
     let result = server
-        .spec_tree(Parameters(TreeInput { id: None }))
+        .spec_tree(Parameters(TreeInput {
+            workspace: None, id: None }))
         .await
         .expect("spec_tree roots");
     let json = extract_json(result);
@@ -316,6 +336,7 @@ async fn spec_tree_and_health() {
     // Health all
     let result = server
         .spec_health(Parameters(HealthInput {
+            workspace: None,
             id: None,
             all: true,
         }))
@@ -328,6 +349,7 @@ async fn spec_tree_and_health() {
     // Health single
     let result = server
         .spec_health(Parameters(HealthInput {
+            workspace: None,
             id: Some(parent_id.clone()),
             all: false,
         }))
@@ -344,7 +366,8 @@ async fn spec_scan_and_add_root() {
 
     // Scan (non-force)
     let result = server
-        .spec_scan(Parameters(ScanInput { force: false }))
+        .spec_scan(Parameters(ScanInput {
+            workspace: None, force: false }))
         .await
         .expect("spec_scan");
     let json = extract_json(result);
@@ -355,6 +378,7 @@ async fn spec_scan_and_add_root() {
     std::fs::create_dir_all(&new_root).expect("mkdir");
     let result = server
         .spec_add_root(Parameters(AddRootInput {
+            workspace: None,
             path: new_root.to_str().unwrap().to_string(),
             label: Some("extra".to_string()),
         }))
@@ -372,6 +396,7 @@ async fn spec_refs_validate_empty() {
 
     let result = server
         .spec_create(Parameters(CreateSpecInput {
+            workspace: None,
             title: "Ref Test".to_string(),
             slug: "refs/test".to_string(),
             component: "refs".to_string(),
@@ -386,6 +411,7 @@ async fn spec_refs_validate_empty() {
 
     let result = server
         .spec_refs_validate(Parameters(RefsValidateInput {
+            workspace: None,
             id: spec_id,
             workspace_root: ".".to_string(),
         }))
@@ -405,6 +431,7 @@ async fn spec_search_tool() {
     // Create a spec with searchable content
     server
         .spec_create(Parameters(CreateSpecInput {
+            workspace: None,
             title: "Searchable Alpha".to_string(),
             slug: "search/alpha".to_string(),
             component: "search".to_string(),
@@ -419,6 +446,7 @@ async fn spec_search_tool() {
     // Search (may not find it immediately if index is async, but should not error)
     let result = server
         .spec_search(Parameters(SearchSpecsInput {
+            workspace: None,
             query: "alpha".to_string(),
             limit: 10,
         }))

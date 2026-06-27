@@ -25,6 +25,9 @@ use crate::cli::{
     parse_fields_to_json,
     repro_summary_from_fields,
 };
+use crate::cli::commands::{
+    ticket_workspace_metadata_for_path,
+};
 
 fn effort_from_ticket(
     _store: &TicketStore,
@@ -107,10 +110,21 @@ pub(crate) fn cmd_get(
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
-    let manifest = store.get(&id)?;
+    let manifest = match store.get(&id) {
+        Ok(manifest) => manifest,
+        Err(ticket_api::error::StorageError::NotFound(_)) => {
+            return Err(CliRunError::BadRequest(format!(
+                "ticket '{id}' was not found in the active workspace. Retry with --workspace-root <workspace-path> or --index-root <path-to-.ticket>."
+            )));
+        }
+        Err(error) => return Err(CliRunError::Storage(error)),
+    };
     let path = store
         .get_indexed(&id)?
         .map(|ticket| ticket.path.display().to_string());
+    let workspace = store
+        .get_indexed(&id)?
+        .map(|ticket| ticket_workspace_metadata_for_path(store, &ticket.path));
     Ok(json!({
         "command": "get",
         "status": "ok",
@@ -119,6 +133,7 @@ pub(crate) fn cmd_get(
             "path": path,
             "created_at": manifest.created_at,
             "fields": manifest.extra,
+            "workspace": workspace,
         }
     }))
 }
@@ -338,6 +353,7 @@ pub(crate) fn cmd_list(
                 "state": t.state,
                 "effort": effort_from_ticket(store, t),
                 "updated_at": t.updated_at,
+                "workspace": ticket_workspace_metadata_for_path(store, &t.path),
             });
 
             if args.with_repro {

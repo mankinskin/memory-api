@@ -9,12 +9,18 @@ use serde_json::Value;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SpecRefInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Spec UUID, prefix, or slug.
     pub id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateSpecInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Spec title.
     pub title: String,
     /// Hierarchical slug (e.g. "ticket-api/storage/store").
@@ -37,6 +43,9 @@ pub struct CreateSpecInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetSpecInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Spec UUID, prefix, or slug.
     pub id: String,
     /// Include body and sections in output.
@@ -46,6 +55,9 @@ pub struct GetSpecInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateSpecInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Spec UUID, prefix, or slug.
     pub id: String,
     /// Field patches as key=value pairs (e.g. ["title=New Title", "state=active"]).
@@ -64,6 +76,9 @@ pub struct UpdateSpecInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListSpecsInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Filter by field=value predicates.
     #[serde(default)]
     pub where_clauses: Vec<String>,
@@ -74,6 +89,9 @@ pub struct ListSpecsInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SearchSpecsInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Full-text search query.
     pub query: String,
     /// Maximum results.
@@ -87,6 +105,9 @@ fn default_search_limit() -> usize {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct TreeInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Root spec ID or slug (omit for all roots).
     #[serde(default)]
     pub id: Option<String>,
@@ -94,6 +115,9 @@ pub struct TreeInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct HealthInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Spec UUID, prefix, or slug (omit with all=true for all specs).
     #[serde(default)]
     pub id: Option<String>,
@@ -104,6 +128,9 @@ pub struct HealthInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RefsValidateInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Spec UUID, prefix, or slug.
     pub id: String,
     /// Workspace root for resolving file paths.
@@ -117,6 +144,9 @@ fn default_workspace_root() -> String {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SectionAddInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Spec UUID, prefix, or slug.
     pub id: String,
     /// Section name.
@@ -127,6 +157,9 @@ pub struct SectionAddInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SectionRefInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Spec UUID, prefix, or slug.
     pub id: String,
     /// Section name.
@@ -135,6 +168,9 @@ pub struct SectionRefInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ScanInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Force full reindex.
     #[serde(default)]
     pub force: bool,
@@ -142,6 +178,9 @@ pub struct ScanInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct AddRootInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Directory path to register as a scan root.
     pub path: String,
     /// Optional label for this root.

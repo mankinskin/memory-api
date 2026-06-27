@@ -21,15 +21,16 @@ impl SpecServer {
         &self,
         input: SectionAddInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             store
                 .add_section(&input.id, &input.name, &input.content)
                 .map_err(Self::spec_err)?;
-            Self::json_result(&json!({
+            Self::json_result_with_scope(json!({
                 "status": "ok",
                 "spec": input.id,
                 "section": input.name,
-            }))
+            }), index_root, workspace.as_deref())
         })
         .await
     }
@@ -38,15 +39,16 @@ impl SpecServer {
         &self,
         input: SpecRefInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             let sections =
                 store.list_sections(&input.id).map_err(Self::spec_err)?;
-            Self::json_result(&json!({
+            Self::json_result_with_scope(json!({
                 "status": "ok",
                 "spec": input.id,
                 "count": sections.len(),
                 "sections": sections,
-            }))
+            }), index_root, workspace.as_deref())
         })
         .await
     }
@@ -55,7 +57,8 @@ impl SpecServer {
         &self,
         input: SectionRefInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             let uuid = store.resolve_id(&input.id).map_err(Self::spec_err)?;
             let indexed = store
                 .entity_store()
@@ -76,12 +79,12 @@ impl SpecServer {
                     None,
                 )
             })?;
-            Self::json_result(&json!({
+            Self::json_result_with_scope(json!({
                 "status": "ok",
                 "spec": input.id,
                 "section": input.name,
                 "content": content,
-            }))
+            }), index_root, workspace.as_deref())
         })
         .await
     }
@@ -90,15 +93,16 @@ impl SpecServer {
         &self,
         input: SectionRefInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             store
                 .delete_section(&input.id, &input.name)
                 .map_err(Self::spec_err)?;
-            Self::json_result(&json!({
+            Self::json_result_with_scope(json!({
                 "status": "ok",
                 "spec": input.id,
                 "section": input.name,
-            }))
+            }), index_root, workspace.as_deref())
         })
         .await
     }
@@ -107,15 +111,16 @@ impl SpecServer {
         &self,
         input: ScanInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             let report = store.scan(input.force).map_err(Self::spec_err)?;
-            Self::json_result(&json!({
+            Self::json_result_with_scope(json!({
                 "status": "ok",
                 "force": input.force,
                 "integrated": report.integrated,
                 "pruned": report.pruned,
                 "diagnostics_count": report.diagnostics.len(),
-            }))
+            }), index_root, workspace.as_deref())
         })
         .await
     }
@@ -124,7 +129,8 @@ impl SpecServer {
         &self,
         input: AddRootInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             let path = PathBuf::from(&input.path);
             let label = input.label.unwrap_or_else(|| {
                 path.file_name()
@@ -139,11 +145,11 @@ impl SpecServer {
                     label: label.clone(),
                 })
                 .map_err(Self::storage_err)?;
-            Self::json_result(&json!({
+            Self::json_result_with_scope(json!({
                 "status": "ok",
                 "path": path,
                 "label": label,
-            }))
+            }), index_root, workspace.as_deref())
         })
         .await
     }

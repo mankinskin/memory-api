@@ -20,7 +20,10 @@ use crate::cli::{
     NextArgs,
     UnblockedByArgs,
 };
-use crate::cli::commands::resolve_uuid_prefix;
+use crate::cli::commands::{
+    resolve_uuid_prefix,
+    ticket_workspace_metadata_for_id,
+};
 
 struct NextScope {
     root: Value,
@@ -74,7 +77,7 @@ pub(super) fn run(
             "root": root_id.map(|id| id.to_string()),
         },
         "count": limited_candidates.len(),
-        "items": build_items(&limited_candidates, &model),
+        "items": build_items(&limited_candidates, &model, store),
         "excluded_by_board": board_filtered.excluded_by_board,
         "warnings": board_filtered.warnings,
     });
@@ -242,6 +245,7 @@ fn limit_candidates<'a>(
 fn build_items(
     candidates: &[Uuid],
     model: &WorkflowModel,
+    store: &TicketStore,
 ) -> Vec<Value> {
     candidates
         .iter()
@@ -270,6 +274,7 @@ fn build_items(
                     .last_blocker_progress_at
                     .map(|timestamp| timestamp.to_rfc3339()),
                 "created_at": ticket.created_at.to_rfc3339(),
+                "workspace": ticket_workspace_metadata_for_id(store, ticket.id),
             })
             .into()
         })

@@ -32,7 +32,8 @@ impl SpecServer {
         &self,
         input: CreateSpecInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             let mut manifest =
                 SpecManifest::new(&input.slug, &input.title, &input.component);
             manifest.extra.extend(input.fields.clone());
@@ -51,14 +52,14 @@ impl SpecServer {
             let id = store
                 .create(&manifest, body, None)
                 .map_err(Self::spec_err)?;
-            Self::json_result(&json!({
+            Self::json_result_with_scope(json!({
                 "status": "ok",
                 "id": id,
                 "slug": input.slug,
                 "title": input.title,
                 "component": input.component,
                 "state": "draft",
-            }))
+            }), index_root, workspace.as_deref())
         })
         .await
     }
@@ -67,13 +68,14 @@ impl SpecServer {
         &self,
         input: GetSpecInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             if input.full {
                 let (spec, body) =
                     store.get_full(&input.id).map_err(Self::spec_err)?;
                 let sections =
                     store.list_sections(&input.id).map_err(Self::spec_err)?;
-                Self::json_result(&json!({
+                Self::json_result_with_scope(json!({
                     "status": "ok",
                     "spec": {
                         "id": spec.id,
@@ -83,10 +85,10 @@ impl SpecServer {
                     },
                     "body": body,
                     "sections": sections,
-                }))
+                }), index_root, workspace.as_deref())
             } else {
                 let spec = store.get(&input.id).map_err(Self::spec_err)?;
-                Self::json_result(&json!({
+                Self::json_result_with_scope(json!({
                     "status": "ok",
                     "spec": {
                         "id": spec.id,
@@ -94,7 +96,7 @@ impl SpecServer {
                         "fields": spec.extra,
                         "code_refs": spec.code_refs,
                     },
-                }))
+                }), index_root, workspace.as_deref())
             }
         })
         .await
@@ -104,7 +106,8 @@ impl SpecServer {
         &self,
         input: UpdateSpecInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             let previous = store.get(&input.id).map_err(Self::spec_err)?;
             let mut patch = input.field_map.clone().unwrap_or_default();
             for raw in input.fields.clone().unwrap_or_default() {
@@ -152,7 +155,11 @@ impl SpecServer {
             if input.body.is_some() {
                 response.insert("body_updated".to_string(), Value::Bool(true));
             }
-            Self::json_result(&Value::Object(response))
+            Self::json_result_with_scope(
+                Value::Object(response),
+                index_root,
+                workspace.as_deref(),
+            )
         })
         .await
     }
@@ -161,13 +168,14 @@ impl SpecServer {
         &self,
         input: SpecRefInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             let id = store.resolve_id(&input.id).map_err(Self::spec_err)?;
             store.delete(&input.id).map_err(Self::spec_err)?;
-            Self::json_result(&json!({
+            Self::json_result_with_scope(json!({
                 "status": "ok",
                 "id": id,
-            }))
+            }), index_root, workspace.as_deref())
         })
         .await
     }
@@ -176,7 +184,8 @@ impl SpecServer {
         &self,
         input: ListSpecsInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             let all = store
                 .entity_store()
                 .list_indexed()
@@ -211,11 +220,11 @@ impl SpecServer {
                     }
                 }
             }
-            Self::json_result(&json!({
+            Self::json_result_with_scope(json!({
                 "status": "ok",
                 "count": items.len(),
                 "items": items,
-            }))
+            }), index_root, workspace.as_deref())
         })
         .await
     }
@@ -224,7 +233,8 @@ impl SpecServer {
         &self,
         input: SearchSpecsInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             let results = store
                 .entity_store()
                 .search(&input.query, input.limit)
@@ -242,12 +252,12 @@ impl SpecServer {
                     })
                 })
                 .collect();
-            Self::json_result(&json!({
+            Self::json_result_with_scope(json!({
                 "status": "ok",
                 "query": input.query,
                 "count": items.len(),
                 "items": items,
-            }))
+            }), index_root, workspace.as_deref())
         })
         .await
     }
@@ -256,12 +266,13 @@ impl SpecServer {
         &self,
         input: TreeInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             if let Some(root_id) = &input.id {
                 let root = store.get(root_id).map_err(Self::spec_err)?;
                 let descendants =
                     store.subtree(root_id).map_err(Self::spec_err)?;
-                Self::json_result(&json!({
+                Self::json_result_with_scope(json!({
                     "status": "ok",
                     "root": {
                         "id": root.id,
@@ -276,7 +287,7 @@ impl SpecServer {
                         "state": child.state(),
                         "parent": child.parent(),
                     })).collect::<Vec<_>>(),
-                }))
+                }), index_root, workspace.as_deref())
             } else {
                 let all = store
                     .entity_store()
@@ -298,10 +309,10 @@ impl SpecServer {
                         }
                     }
                 }
-                Self::json_result(&json!({
+                Self::json_result_with_scope(json!({
                     "status": "ok",
                     "roots": roots,
-                }))
+                }), index_root, workspace.as_deref())
             }
         })
         .await
@@ -311,7 +322,8 @@ impl SpecServer {
         &self,
         input: HealthInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             let report = if input.all {
                 store.health_all().map_err(Self::spec_err)?
             } else if let Some(id) = &input.id {
@@ -322,12 +334,12 @@ impl SpecServer {
                     None,
                 ));
             };
-            Self::json_result(&json!({
+            Self::json_result_with_scope(json!({
                 "status": "ok",
                 "specs_checked": report.specs_checked,
                 "issues_count": report.issues_count(),
                 "issues": report.issues,
-            }))
+            }), index_root, workspace.as_deref())
         })
         .await
     }
@@ -336,7 +348,8 @@ impl SpecServer {
         &self,
         input: RefsValidateInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        let workspace = input.workspace.clone();
+        self.with_store(workspace.as_deref(), |store, index_root| {
             let spec = store.get(&input.id).map_err(Self::spec_err)?;
             let workspace_root = PathBuf::from(&input.workspace_root);
             let results = validate_refs(&spec.code_refs, &workspace_root);
@@ -356,13 +369,13 @@ impl SpecServer {
             let all_valid = results
                 .iter()
                 .all(|result| result.file_exists && result.line_range_valid);
-            Self::json_result(&json!({
+            Self::json_result_with_scope(json!({
                 "status": "ok",
                 "id": spec.id,
                 "valid": all_valid,
                 "count": items.len(),
                 "results": items,
-            }))
+            }), index_root, workspace.as_deref())
         })
         .await
     }
@@ -414,6 +427,7 @@ mod tests {
         let created = parse_tool_payload(
             server
                 .spec_create_tool(CreateSpecInput {
+                    workspace: None,
                     title: "Structured contract parity spec".to_string(),
                     slug: "contract/structured-parity".to_string(),
                     component: "context-engine".to_string(),
@@ -431,6 +445,7 @@ mod tests {
         let health_before = parse_tool_payload(
             server
                 .spec_health_tool(HealthInput {
+                    workspace: None,
                     id: Some(spec_id.clone()),
                     all: false,
                 })
@@ -447,6 +462,7 @@ mod tests {
         parse_tool_payload(
             server
                 .spec_update_tool(UpdateSpecInput {
+                    workspace: None,
                     id: spec_id.clone(),
                     fields: None,
                     to_state: None,
@@ -460,6 +476,7 @@ mod tests {
         let fetched = parse_tool_payload(
             server
                 .spec_get_tool(GetSpecInput {
+                    workspace: None,
                     id: spec_id.clone(),
                     full: false,
                 })
@@ -479,6 +496,7 @@ mod tests {
         let searched = parse_tool_payload(
             server
                 .spec_search_tool(SearchSpecsInput {
+                    workspace: None,
                     query: fixture.search_query,
                     limit: 10,
                 })
@@ -492,6 +510,7 @@ mod tests {
         let health_after = parse_tool_payload(
             server
                 .spec_health_tool(HealthInput {
+                    workspace: None,
                     id: Some(spec_id),
                     all: false,
                 })
