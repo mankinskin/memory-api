@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use serde_json::Value;
 use ticket_api::model::{
@@ -253,6 +254,132 @@ impl TicketServer {
         .await
     }
 
+    pub(crate) async fn move_preflight_tool(
+        &self,
+        input: MovePreflightInput,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let id_str = input.id;
+        let target_workspace = normalize_workspace_root(&input.to_workspace_root);
+        let plan = self
+            .with_store_ext(&workspace.clone(), move |store| {
+                let id = Self::resolve_uuid_with(store, &id_str)?;
+                let report = store
+                    .plan_move_preflight(&id, &target_workspace)
+                    .map_err(Self::store_err)?;
+                Ok((id, report))
+            })
+            .await?;
+
+        Self::json_result(&serde_json::json!({
+            "workspace": workspace,
+            "status": "ok",
+            "mode": "preflight",
+            "id": plan.0.to_string(),
+            "plan": move_plan_json(&plan.1),
+            "recovery": move_recovery_json(),
+        }))
+    }
+
+    pub(crate) async fn move_apply_tool(
+        &self,
+        input: MoveApplyInput,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let id_str = input.id;
+        let target_workspace = normalize_workspace_root(&input.to_workspace_root);
+        let (id, report, outcome) = self
+            .with_store_ext(&workspace.clone(), move |store| {
+                let id = Self::resolve_uuid_with(store, &id_str)?;
+                let report = store
+                    .plan_move_preflight(&id, &target_workspace)
+                    .map_err(Self::store_err)?;
+                if !report.supported() {
+                    let blockers = serde_json::to_string(&report.blockers)
+                        .unwrap_or_else(|_| "[]".to_string());
+                    return Err(McpError::invalid_params(
+                        format!(
+                            "move preflight blocked; run move_preflight for details. blockers={blockers}"
+                        ),
+                        None,
+                    ));
+                }
+                let outcome = store
+                    .execute_move_with_journal(&report)
+                    .map_err(Self::store_err)?;
+                Ok((id, report, outcome))
+            })
+            .await?;
+
+        Self::json_result(&serde_json::json!({
+            "workspace": workspace,
+            "status": "ok",
+            "mode": "apply",
+            "id": id.to_string(),
+            "plan": move_plan_json(&report),
+            "outcome": move_outcome_json(&outcome),
+            "recovery": move_recovery_json(),
+        }))
+    }
+
+    pub(crate) async fn move_resume_tool(
+        &self,
+        input: MoveJournalInput,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let journal_id = input.id.parse::<uuid::Uuid>().map_err(|error| {
+            McpError::invalid_params(
+                format!("invalid move journal id '{}': {error}", input.id),
+                None,
+            )
+        })?;
+
+        let outcome = self
+            .with_store_ext(&workspace.clone(), move |store| {
+                store
+                    .resume_move_with_journal(journal_id)
+                    .map_err(Self::store_err)
+            })
+            .await?;
+
+        Self::json_result(&serde_json::json!({
+            "workspace": workspace,
+            "status": "ok",
+            "mode": "resume",
+            "outcome": move_outcome_json(&outcome),
+            "recovery": move_recovery_json(),
+        }))
+    }
+
+    pub(crate) async fn move_rollback_tool(
+        &self,
+        input: MoveJournalInput,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let journal_id = input.id.parse::<uuid::Uuid>().map_err(|error| {
+            McpError::invalid_params(
+                format!("invalid move journal id '{}': {error}", input.id),
+                None,
+            )
+        })?;
+
+        let outcome = self
+            .with_store_ext(&workspace.clone(), move |store| {
+                store
+                    .rollback_move_with_journal(journal_id)
+                    .map_err(Self::store_err)
+            })
+            .await?;
+
+        Self::json_result(&serde_json::json!({
+            "workspace": workspace,
+            "status": "ok",
+            "mode": "rollback",
+            "outcome": move_outcome_json(&outcome),
+            "recovery": move_recovery_json(),
+        }))
+    }
+
     async fn undo_ticket_update(
         &self,
         input: UpdateTicketInput,
@@ -309,6 +436,63 @@ impl TicketServer {
             "ticket": detail_from_manifest(updated, path),
         }))
     }
+}
+
+fn move_plan_json(report: &ticket_api::storage::move_planner::MovePreflightReport) -> Value {
+    serde_json::json!({
+        "supported": report.supported(),
+        "source_workspace_root": normalize_display_path(&report.source_workspace_root),
+        "target_workspace_root": normalize_display_path(&report.target_workspace_root),
+        "source_store_root": normalize_display_path(&report.source_store_root),
+        "target_store_root": normalize_display_path(&report.target_store_root),
+        "source_ticket_path": normalize_display_path(&report.source_ticket_path),
+        "destination_ticket_path": normalize_display_path(&report.destination_ticket_path),
+        "path_reference_files": report.path_reference_files,
+        "reference_visibility": report.reference_visibility,
+        "active_board_entries": report.active_board_entries,
+        "historical_board_entries": report.historical_board_entries,
+        "active_leases": report.active_leases,
+        "blockers": report.blockers,
+        "captured_at": report.captured_at,
+    })
+}
+
+fn move_outcome_json(outcome: &ticket_api::storage::move_execution::MoveExecutionOutcome) -> Value {
+    serde_json::json!({
+        "resumed": outcome.resumed,
+        "rolled_back": outcome.rolled_back,
+        "journal": {
+            "id": outcome.journal.id,
+            "ticket_id": outcome.journal.ticket_id,
+            "phase": outcome.journal.phase,
+            "steps": outcome.journal.steps,
+            "rollback_steps": outcome.journal.rollback_steps,
+            "failure": outcome.journal.failure,
+            "next_recovery_step": outcome.journal.next_recovery_step,
+            "rewritten_path_files": outcome.journal.rewritten_path_files,
+            "manual_followups": outcome.journal.manual_followups,
+            "migrated_board_entries": outcome.journal.migrated_board_entries,
+            "created_at": outcome.journal.created_at,
+            "updated_at": outcome.journal.updated_at,
+        }
+    })
+}
+
+fn move_recovery_json() -> Value {
+    serde_json::json!({
+        "resume": "move_resume { workspace, id: <journal-uuid> }",
+        "rollback": "move_rollback { workspace, id: <journal-uuid> }",
+    })
+}
+
+fn normalize_workspace_root(value: &str) -> PathBuf {
+    let path = PathBuf::from(value);
+    std::fs::canonicalize(&path).unwrap_or(path)
+}
+
+fn normalize_display_path(path: &std::path::Path) -> String {
+    let raw = path.to_string_lossy().replace('\\', "/");
+    raw.strip_prefix("//?/").unwrap_or(&raw).to_string()
 }
 
 fn parse_field_patch(

@@ -159,6 +159,8 @@ pub enum TicketCommandCli {
     Close(CloseArgs),
     /// Cancel a ticket (shortcut for close --to-state cancelled).
     Cancel(CancelArgs),
+    /// Plan, execute, resume, or roll back a cross-workspace ticket move.
+    Move(MoveArgs),
     /// Attach a file as an asset to a ticket.
     Attach(AttachArgs),
     /// List assets attached to a ticket.

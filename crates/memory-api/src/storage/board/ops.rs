@@ -32,6 +32,111 @@ use super::{
 };
 
 impl RedbIndexStore {
+    pub fn board_list_entries_for_ticket(
+        &self,
+        ticket_id: Uuid,
+    ) -> Result<Vec<BoardEntry>, BoardError> {
+        self.with_db_ext(|conn| {
+            let mut stmt = conn
+                .prepare(&format!("SELECT data FROM {TABLE_BOARD_ENTRIES}"))
+                .map_err(db_err)?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, Vec<u8>>(0))
+                .map_err(db_err)?;
+
+            let mut entries = Vec::new();
+            for bytes in rows {
+                let entry = deserialize_entry(&bytes.map_err(db_err)?)?;
+                if entry.ticket_id == ticket_id {
+                    entries.push(entry);
+                }
+            }
+            Ok(entries)
+        })
+    }
+
+    pub fn board_upsert_entries_atomic(
+        &self,
+        entries: &[BoardEntry],
+    ) -> Result<(), BoardError> {
+        self.with_db_ext(|conn| {
+            conn.execute_batch("BEGIN IMMEDIATE;").map_err(db_err)?;
+            for entry in entries {
+                let entry_bytes = serialize_entry(entry)?;
+                conn.execute(
+                    &format!(
+                        "INSERT OR REPLACE INTO {TABLE_BOARD_ENTRIES} (id, data) VALUES (?1, ?2)"
+                    ),
+                    params![entry.entry_id.to_string(), entry_bytes],
+                )
+                .map_err(db_err)?;
+
+                let active_key = format!("{}:{}", entry.ticket_id, entry.agent_id);
+                if entry.status == BoardEntryStatus::Active {
+                    conn.execute(
+                        &format!(
+                            "INSERT OR REPLACE INTO {TABLE_BOARD_ACTIVE_INDEX} (key, value) VALUES (?1, ?2)"
+                        ),
+                        params![active_key, entry.entry_id.to_string()],
+                    )
+                    .map_err(db_err)?;
+                } else {
+                    conn.execute(
+                        &format!(
+                            "DELETE FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1 AND value = ?2"
+                        ),
+                        params![active_key, entry.entry_id.to_string()],
+                    )
+                    .map_err(db_err)?;
+                }
+            }
+            conn.execute_batch("COMMIT;").map_err(db_err)?;
+            Ok(())
+        })
+    }
+
+    pub fn board_delete_entries_atomic(
+        &self,
+        entry_ids: &[Uuid],
+    ) -> Result<(), BoardError> {
+        self.with_db_ext(|conn| {
+            conn.execute_batch("BEGIN IMMEDIATE;").map_err(db_err)?;
+            for entry_id in entry_ids {
+                let entry_key = entry_id.to_string();
+                let entry: Option<BoardEntry> = conn
+                    .query_row(
+                        &format!("SELECT data FROM {TABLE_BOARD_ENTRIES} WHERE id = ?1"),
+                        params![entry_key],
+                        |row| row.get::<_, Vec<u8>>(0),
+                    )
+                    .optional()
+                    .map_err(db_err)?
+                    .map(|bytes| deserialize_entry(&bytes))
+                    .transpose()?;
+
+                conn.execute(
+                    &format!("DELETE FROM {TABLE_BOARD_ENTRIES} WHERE id = ?1"),
+                    params![entry_id.to_string()],
+                )
+                .map_err(db_err)?;
+
+                if let Some(entry) = entry {
+                    let active_key = format!("{}:{}", entry.ticket_id, entry.agent_id);
+                    conn.execute(
+                        &format!(
+                            "DELETE FROM {TABLE_BOARD_ACTIVE_INDEX} WHERE key = ?1 AND value = ?2"
+                        ),
+                        params![active_key, entry_id.to_string()],
+                    )
+                    .map_err(db_err)?;
+                }
+            }
+
+            conn.execute_batch("COMMIT;").map_err(db_err)?;
+            Ok(())
+        })
+    }
+
     pub fn board_read_config(&self) -> Result<BoardConfig, BoardError> {
         self.with_db_ext(|conn| {
             let bytes: Option<Vec<u8>> = conn

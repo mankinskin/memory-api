@@ -340,3 +340,23 @@ pub struct BoardRenameFileInput {
     pub old_path: String,
     pub new_path: String,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct MovePreflightInput {
+    pub workspace: String,
+    pub id: String,
+    pub to_workspace_root: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct MoveApplyInput {
+    pub workspace: String,
+    pub id: String,
+    pub to_workspace_root: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct MoveJournalInput {
+    pub workspace: String,
+    pub id: String,
+}

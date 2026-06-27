@@ -79,6 +79,10 @@ pub fn build_router(state: AppState) -> Router {
             post(handlers::tickets::cancel_ticket),
         )
         .route(
+            "/api/tickets/{id}/move",
+            post(handlers::tickets::move_ticket),
+        )
+        .route(
             "/api/tickets/{id}/undo",
             post(handlers::tickets::undo_ticket),
         )

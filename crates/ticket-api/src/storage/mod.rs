@@ -1,8 +1,10 @@
 pub mod board;
 pub mod index;
 pub mod indexed;
+pub mod move_execution;
 pub mod schema;
 pub mod search;
+pub mod move_planner;
 pub mod store;
 pub mod ticket_fs;
 

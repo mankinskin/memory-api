@@ -151,6 +151,13 @@ pub struct RevertTicketBody {
     pub revision: u64,
 }
 
+#[derive(Deserialize)]
+pub struct MoveTicketBody {
+    pub to_workspace_root: String,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
 #[derive(Serialize)]
 pub struct MutationResponse {
     pub request_id: String,
@@ -166,6 +173,20 @@ pub struct DeleteResponse {
     pub workspace: String,
     pub id: String,
     pub ticket_ref: TicketRef,
+}
+
+#[derive(Serialize)]
+pub struct MoveTicketResponse {
+    pub request_id: String,
+    pub active_workspace: String,
+    pub workspace: String,
+    pub id: String,
+    pub status: String,
+    pub mode: String,
+    pub plan: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<serde_json::Value>,
+    pub recovery: serde_json::Value,
 }
 
 #[derive(Serialize)]

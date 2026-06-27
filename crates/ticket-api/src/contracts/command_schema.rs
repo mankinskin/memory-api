@@ -32,6 +32,7 @@ pub enum TicketCommand {
     ReadyOverview,
     UnblockedBy,
     Batch,
+    Move,
     // ── agent-protocol task_ names ────────────────────────────────────────────
     TaskCreate,
     TaskGet,
@@ -79,6 +80,7 @@ impl TicketCommand {
             "ready_overview",
             "unblocked_by",
             "batch",
+            "move",
             // task_ names (agent protocol canonical forms)
             "task_create",
             "task_get",

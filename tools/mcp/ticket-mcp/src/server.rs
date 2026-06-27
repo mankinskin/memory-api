@@ -392,6 +392,50 @@ impl TicketServer {
     }
 
     #[tool(
+        name = "move_preflight",
+        description = "Run move planning / dry-run for a cross-workspace ticket move and return structured blockers, reference visibility, and touched paths."
+    )]
+    async fn move_preflight(
+        &self,
+        Parameters(input): Parameters<MovePreflightInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.move_preflight_tool(input).await
+    }
+
+    #[tool(
+        name = "move_apply",
+        description = "Execute a supported cross-workspace ticket move using the shared journaled storage primitive."
+    )]
+    async fn move_apply(
+        &self,
+        Parameters(input): Parameters<MoveApplyInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.move_apply_tool(input).await
+    }
+
+    #[tool(
+        name = "move_resume",
+        description = "Resume an interrupted move from a move journal UUID."
+    )]
+    async fn move_resume(
+        &self,
+        Parameters(input): Parameters<MoveJournalInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.move_resume_tool(input).await
+    }
+
+    #[tool(
+        name = "move_rollback",
+        description = "Roll back a move from a move journal UUID."
+    )]
+    async fn move_rollback(
+        &self,
+        Parameters(input): Parameters<MoveJournalInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.move_rollback_tool(input).await
+    }
+
+    #[tool(
         name = "workflow",
         description = "Show ready-to-run ticket MCP call sequences for common tasks."
     )]

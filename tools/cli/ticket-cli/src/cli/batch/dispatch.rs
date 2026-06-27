@@ -124,6 +124,7 @@ fn forbidden_batch_message(cmd: TicketCommandCli) -> &'static str {
             "'export-command-schema' cannot be used in a batch",
         TicketCommandCli::FinalizeMerge(_) =>
             "'finalize-merge' is not supported in a batch",
+        TicketCommandCli::Move(_) => "'move' cannot be used in a batch",
         _ => unreachable!("handled before forbidden batch dispatch"),
     }
 }

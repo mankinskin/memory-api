@@ -41,6 +41,8 @@ use super::types::{
     CloseTicketBody,
     CreateTicketBody,
     DeleteResponse,
+    MoveTicketBody,
+    MoveTicketResponse,
     MutationResponse,
     MutationWorkspaceParam,
     RevertTicketBody,
@@ -295,6 +297,85 @@ pub async fn cancel_ticket(
     .unwrap_or_else(|_| task_join_err(&request_id, "ticket cancel request"))
 }
 
+/// `POST /api/tickets/{id}/move?workspace=<name>`
+///
+/// Dry-run or apply a cross-workspace ticket move using the storage-layer
+/// planner and journaled execution primitive.
+pub async fn move_ticket(
+    State(state): State<AppState>,
+    Extension(rid): Extension<RequestIdExt>,
+    Path(id): Path<Uuid>,
+    Query(params): Query<MutationWorkspaceParam>,
+    Json(body): Json<MoveTicketBody>,
+) -> Response {
+    let (workspace, store) =
+        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
+
+    let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
+    let target_workspace = normalize_workspace_root(&body.to_workspace_root);
+    let dry_run = body.dry_run;
+
+    tokio::task::spawn_blocking(move || {
+        let request_id = task_request_id.clone();
+        let plan = match store.plan_move_preflight(&id, &target_workspace) {
+            Ok(report) => report,
+            Err(error) => return storage_err(error, &request_id),
+        };
+
+        if dry_run || !plan.supported() {
+            let status = if plan.supported() {
+                StatusCode::OK
+            } else {
+                StatusCode::CONFLICT
+            };
+            return (
+                status,
+                Json(MoveTicketResponse {
+                    request_id,
+                    active_workspace: workspace.clone(),
+                    workspace: workspace.clone(),
+                    id: id.to_string(),
+                    status: if plan.supported() {
+                        "ok".to_string()
+                    } else {
+                        "blocked".to_string()
+                    },
+                    mode: "plan".to_string(),
+                    plan: move_plan_json(&plan),
+                    outcome: None,
+                    recovery: move_recovery_json(),
+                }),
+            )
+                .into_response();
+        }
+
+        let outcome = match store.execute_move_with_journal(&plan) {
+            Ok(outcome) => outcome,
+            Err(error) => return storage_err(error, &request_id),
+        };
+
+        Json(MoveTicketResponse {
+            request_id,
+            active_workspace: workspace.clone(),
+            workspace: workspace.clone(),
+            id: id.to_string(),
+            status: "ok".to_string(),
+            mode: "apply".to_string(),
+            plan: move_plan_json(&plan),
+            outcome: Some(move_outcome_json(&outcome)),
+            recovery: move_recovery_json(),
+        })
+        .into_response()
+    })
+    .await
+    .unwrap_or_else(|_| task_join_err(&request_id, "ticket move request"))
+}
+
 /// `POST /api/tickets/{id}/revert?workspace=<name>`
 ///
 /// Revert a ticket to a specific historical revision, identified by its
@@ -497,4 +578,61 @@ fn current_ticket_response(
         },
     })
     .into_response()
+}
+
+fn move_plan_json(report: &ticket_api::storage::move_planner::MovePreflightReport) -> Value {
+    serde_json::json!({
+        "supported": report.supported(),
+        "source_workspace_root": normalize_display_path(&report.source_workspace_root),
+        "target_workspace_root": normalize_display_path(&report.target_workspace_root),
+        "source_store_root": normalize_display_path(&report.source_store_root),
+        "target_store_root": normalize_display_path(&report.target_store_root),
+        "source_ticket_path": normalize_display_path(&report.source_ticket_path),
+        "destination_ticket_path": normalize_display_path(&report.destination_ticket_path),
+        "path_reference_files": report.path_reference_files,
+        "reference_visibility": report.reference_visibility,
+        "active_board_entries": report.active_board_entries,
+        "historical_board_entries": report.historical_board_entries,
+        "active_leases": report.active_leases,
+        "blockers": report.blockers,
+        "captured_at": report.captured_at,
+    })
+}
+
+fn move_outcome_json(outcome: &ticket_api::storage::move_execution::MoveExecutionOutcome) -> Value {
+    serde_json::json!({
+        "resumed": outcome.resumed,
+        "rolled_back": outcome.rolled_back,
+        "journal": {
+            "id": outcome.journal.id,
+            "ticket_id": outcome.journal.ticket_id,
+            "phase": outcome.journal.phase,
+            "steps": outcome.journal.steps,
+            "rollback_steps": outcome.journal.rollback_steps,
+            "failure": outcome.journal.failure,
+            "next_recovery_step": outcome.journal.next_recovery_step,
+            "rewritten_path_files": outcome.journal.rewritten_path_files,
+            "manual_followups": outcome.journal.manual_followups,
+            "migrated_board_entries": outcome.journal.migrated_board_entries,
+            "created_at": outcome.journal.created_at,
+            "updated_at": outcome.journal.updated_at,
+        }
+    })
+}
+
+fn move_recovery_json() -> Value {
+    serde_json::json!({
+        "resume": "ticket move --resume <journal-uuid>",
+        "rollback": "ticket move --rollback <journal-uuid>",
+    })
+}
+
+fn normalize_workspace_root(value: &str) -> std::path::PathBuf {
+    let path = std::path::PathBuf::from(value);
+    std::fs::canonicalize(&path).unwrap_or(path)
+}
+
+fn normalize_display_path(path: &std::path::Path) -> String {
+    let raw = path.to_string_lossy().replace('\\', "/");
+    raw.strip_prefix("//?/").unwrap_or(&raw).to_string()
 }

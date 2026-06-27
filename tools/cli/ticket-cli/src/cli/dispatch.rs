@@ -225,7 +225,7 @@ fn dispatch_store_backed(
         }
     }
 
-    dispatch_store_command(command, store)
+    dispatch_store_command(command, store, dry_run)
 }
 
 fn command_uses_descendant_scan_roots(command: &TicketCommandCli) -> bool {
@@ -248,6 +248,7 @@ fn command_uses_descendant_scan_roots(command: &TicketCommandCli) -> bool {
             | TicketCommandCli::Next(_)
             | TicketCommandCli::Blockers(_)
             | TicketCommandCli::UnblockedBy(_)
+            | TicketCommandCli::Move(_)
             | TicketCommandCli::Assets(_)
             | TicketCommandCli::Health(_)
             | TicketCommandCli::StoreIndex(_)
@@ -316,6 +317,7 @@ fn register_descendant_scan_roots(
 fn dispatch_store_command(
     command: TicketCommandCli,
     store: TicketStore,
+    dry_run: bool,
 ) -> Result<Value, CliRunError> {
     match command {
         TicketCommandCli::Create(_)
@@ -354,6 +356,7 @@ fn dispatch_store_command(
         TicketCommandCli::Serve(_)
         | TicketCommandCli::Close(_)
         | TicketCommandCli::Cancel(_)
+        | TicketCommandCli::Move(_)
         | TicketCommandCli::Attach(_)
         | TicketCommandCli::Assets(_)
         | TicketCommandCli::Health(_)
@@ -361,7 +364,7 @@ fn dispatch_store_command(
         | TicketCommandCli::Audit
         | TicketCommandCli::Fmt(_)
         | TicketCommandCli::Board(_) =>
-            dispatch_store_command_ops(command, store),
+            dispatch_store_command_ops(command, store, dry_run),
         TicketCommandCli::ExportCommandSchema | TicketCommandCli::Init => {
             unreachable!("handled before store dispatch")
         },
@@ -438,11 +441,13 @@ fn dispatch_store_command_graph(
 fn dispatch_store_command_ops(
     command: TicketCommandCli,
     store: TicketStore,
+    dry_run: bool,
 ) -> Result<Value, CliRunError> {
     match command {
         TicketCommandCli::Serve(args) => commands::cmd_serve(args, store),
         TicketCommandCli::Close(args) => commands::cmd_close(args, &store),
         TicketCommandCli::Cancel(args) => commands::cmd_cancel(args, &store),
+        TicketCommandCli::Move(args) => commands::cmd_move(args, &store, dry_run),
         TicketCommandCli::Attach(args) => commands::cmd_attach(args, &store),
         TicketCommandCli::Assets(args) => commands::cmd_assets(args, &store),
         TicketCommandCli::Health(args) => commands::cmd_health(args, &store),
@@ -692,6 +697,7 @@ mod tests {
                 limit: 10,
             }),
             root_store,
+            false,
         )
         .unwrap();
 
@@ -714,6 +720,7 @@ mod tests {
                 id: ticket_id.clone(),
             }),
             root_store,
+            false,
         )
         .unwrap();
 
@@ -736,6 +743,7 @@ mod tests {
                 limit: 10,
             }),
             root_store,
+            false,
         )
         .unwrap();
 

@@ -107,6 +107,24 @@ pub struct AttachArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct MoveArgs {
+    /// Ticket UUID or 8+ character hex prefix (required for plan/execute mode).
+    pub id: Option<String>,
+    /// Destination workspace root (normalized to its canonical `.ticket` store).
+    #[arg(long = "to-workspace-root")]
+    pub to_workspace_root: Option<PathBuf>,
+    /// Resume an interrupted move by journal UUID.
+    #[arg(long)]
+    pub resume: Option<String>,
+    /// Roll back a move by journal UUID.
+    #[arg(long)]
+    pub rollback: Option<String>,
+    /// Preview planning output without mutating storage.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct LinkArgs {
     /// UUID or 8+ character hex prefix of the source ticket.
     #[arg(long)]

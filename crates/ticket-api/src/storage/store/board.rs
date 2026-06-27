@@ -130,6 +130,27 @@ impl TicketStore {
         self.index.board_history_snapshot(agent_id)
     }
 
+    pub fn board_list_entries_for_ticket(
+        &self,
+        ticket_id: &Uuid,
+    ) -> Result<Vec<BoardEntry>, BoardError> {
+        self.index.board_list_entries_for_ticket(*ticket_id)
+    }
+
+    pub fn board_import_entries(
+        &self,
+        entries: &[BoardEntry],
+    ) -> Result<(), BoardError> {
+        self.index.board_upsert_entries_atomic(entries)
+    }
+
+    pub fn board_delete_entries(
+        &self,
+        entry_ids: &[Uuid],
+    ) -> Result<(), BoardError> {
+        self.index.board_delete_entries_atomic(entry_ids)
+    }
+
     pub fn board_configure(
         &self,
         config: Option<BoardConfig>,
