@@ -1,0 +1,10 @@
+id = "1bc3982c-e0c2-4b6a-b809-aff4eb78d161"
+created_at = "2026-06-28T19:00:38.218224800+00:00"
+title = "[memory-api][test] Real end-to-end validation surface — transports, provenance, representative fixtures (sub-tracker)"
+state = "new"
+component = "test-api"
+depends_on = ["01964def-4496-4155-9abe-eb4e9f0520d3", "260e37d7-ae90-43e4-871b-3c18937189ca", "274c5119-02cb-4306-b017-b998659ea514", "2dada4b7-e5c0-4fe5-be01-df9936659133", "387843e4-815e-4424-97fa-9855a464b5e6", "9138f4e7-2757-4d23-9676-3306608a429e", "93b8a331-da80-4fef-b13d-7f277cadb15f", "a03d8a97-2b31-4f1a-a2cb-b33848af2f2a"]
+effort = "~900k tokens (rollup)"
+priority = "high"
+risk_level = "medium"
+type = "tracker-improvement"
