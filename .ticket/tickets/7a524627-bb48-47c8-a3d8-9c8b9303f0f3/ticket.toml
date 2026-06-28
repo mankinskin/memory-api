@@ -1,0 +1,9 @@
+id = "7a524627-bb48-47c8-a3d8-9c8b9303f0f3"
+created_at = "2026-06-28T12:41:31.396665+00:00"
+title = "[test-api][log-api] Validation runner harness — cargo test/bench to executions + log capture"
+state = "new"
+component = "test-api"
+depends_on = ["124c6621-b39d-4009-b599-a3e5503d08f6"]
+priority = "high"
+risk_level = "medium"
+type = "tracker-improvement"

@@ -10,6 +10,7 @@ use std::{
 use serde::de::DeserializeOwned;
 
 use crate::{
+    ExecutionSort,
     TestError,
     ValidationExecution,
     ValidationOutcome,
@@ -41,6 +42,12 @@ pub struct ExecutionQuery {
     pub validation_spec_id: Option<String>,
     /// Only return executions with this outcome.
     pub outcome: Option<ValidationOutcome>,
+    /// Only return executions with duration >= this value.
+    pub min_duration_ms: Option<u64>,
+    /// Only return executions with duration <= this value.
+    pub max_duration_ms: Option<u64>,
+    /// Sort order for returned executions.
+    pub sort: ExecutionSort,
     /// Maximum number of executions to return (after sorting).
     pub limit: Option<usize>,
 }
@@ -129,10 +136,34 @@ impl TestStoreConfig {
                     return false;
                 }
             }
+            if let Some(min_duration_ms) = query.min_duration_ms {
+                match exec.duration_ms {
+                    Some(duration) if duration >= min_duration_ms => {},
+                    _ => return false,
+                }
+            }
+            if let Some(max_duration_ms) = query.max_duration_ms {
+                match exec.duration_ms {
+                    Some(duration) if duration <= max_duration_ms => {},
+                    _ => return false,
+                }
+            }
             true
         });
 
-        executions.sort_by(|a, b| b.executed_at.cmp(&a.executed_at).then(a.id.cmp(&b.id)));
+        match query.sort {
+            ExecutionSort::NewestFirst => {
+                executions.sort_by(|a, b| b.executed_at.cmp(&a.executed_at).then(a.id.cmp(&b.id)));
+            },
+            ExecutionSort::SlowestFirst => {
+                executions.sort_by(|a, b| {
+                    b.duration_ms
+                        .cmp(&a.duration_ms)
+                        .then(b.executed_at.cmp(&a.executed_at))
+                        .then(a.id.cmp(&b.id))
+                });
+            },
+        }
 
         if let Some(limit) = query.limit {
             executions.truncate(limit);
@@ -333,16 +364,19 @@ mod tests {
         let cfg = config(&dir);
 
         let mut passed = ValidationExecution::passed("exec-pass", "vt-a", at(1));
+        passed.duration_ms = Some(40);
         passed.links = ValidationLinks {
             ticket_ids: vec!["ticket-x".to_string()],
             ..Default::default()
         };
         let mut blocked = ValidationExecution::blocked("exec-blocked", "vt-b", at(2));
+        blocked.duration_ms = Some(80);
         blocked.links = ValidationLinks {
             ticket_ids: vec!["ticket-x".to_string()],
             ..Default::default()
         };
-        let other = ValidationExecution::passed("exec-other", "vt-a", at(3));
+        let mut other = ValidationExecution::passed("exec-other", "vt-a", at(3));
+        other.duration_ms = Some(15);
 
         cfg.record_execution(&passed).unwrap();
         cfg.record_execution(&blocked).unwrap();
@@ -374,6 +408,26 @@ mod tests {
             .unwrap();
         assert_eq!(by_spec.len(), 1);
         assert_eq!(by_spec[0].id, "exec-blocked");
+
+        let by_duration = cfg
+            .list_executions(&ExecutionQuery {
+                min_duration_ms: Some(20),
+                max_duration_ms: Some(60),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(by_duration.len(), 1);
+        assert_eq!(by_duration[0].id, "exec-pass");
+
+        let slowest = cfg
+            .list_executions(&ExecutionQuery {
+                sort: ExecutionSort::SlowestFirst,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(slowest[0].id, "exec-blocked");
+        assert_eq!(slowest[1].id, "exec-pass");
+        assert_eq!(slowest[2].id, "exec-other");
     }
 
     #[test]

@@ -17,6 +17,7 @@ use serde_json::{
 
 use memory_api::workspace;
 use test_api::{
+    ExecutionSort,
     ExecutionQuery,
     TestError,
     TestStoreConfig,
@@ -96,6 +97,21 @@ impl From<OutcomeArg> for ValidationOutcome {
     }
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SortArg {
+    NewestFirst,
+    SlowestFirst,
+}
+
+impl From<SortArg> for ExecutionSort {
+    fn from(value: SortArg) -> Self {
+        match value {
+            SortArg::NewestFirst => ExecutionSort::NewestFirst,
+            SortArg::SlowestFirst => ExecutionSort::SlowestFirst,
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 pub struct RecordSpecArgs {
     /// Stable spec id (path-safe).
@@ -110,6 +126,9 @@ pub struct RecordSpecArgs {
     /// Free-text detail.
     #[arg(long)]
     pub detail: Option<String>,
+    /// Slow-run budget threshold in milliseconds for this validation spec.
+    #[arg(long)]
+    pub slow_threshold_ms: Option<u64>,
     /// Linked ticket ids (repeatable).
     #[arg(long = "ticket")]
     pub ticket_ids: Vec<String>,
@@ -138,6 +157,12 @@ pub struct RecordArgs {
     /// RFC3339 execution timestamp. Defaults to now (UTC).
     #[arg(long)]
     pub executed_at: Option<String>,
+    /// Wall time in milliseconds for the validated operation.
+    #[arg(long)]
+    pub duration_ms: Option<u64>,
+    /// Optional throughput metric (ops/sec or items/sec).
+    #[arg(long)]
+    pub throughput: Option<f64>,
     /// Linked ticket ids (repeatable).
     #[arg(long = "ticket")]
     pub ticket_ids: Vec<String>,
@@ -167,6 +192,15 @@ pub struct ListArgs {
     /// Only executions with this outcome.
     #[arg(long, value_enum)]
     pub outcome: Option<OutcomeArg>,
+    /// Only executions with duration >= this threshold.
+    #[arg(long)]
+    pub min_duration_ms: Option<u64>,
+    /// Only executions with duration <= this threshold.
+    #[arg(long)]
+    pub max_duration_ms: Option<u64>,
+    /// Sort executions by newest-first or slowest-first.
+    #[arg(long, value_enum)]
+    pub sort: Option<SortArg>,
     /// Maximum number of executions to return.
     #[arg(long)]
     pub limit: Option<usize>,
@@ -223,6 +257,7 @@ fn dispatch(
             let mut spec = ValidationSpec::new(args.id, args.title);
             spec.command = args.command;
             spec.detail = args.detail;
+            spec.slow_threshold_ms = args.slow_threshold_ms;
             spec.links = ValidationLinks {
                 spec_ids: args.spec_ids,
                 acceptance_criterion_ids: args.criterion_ids,
@@ -245,6 +280,8 @@ fn dispatch(
                 args.outcome.into(),
                 executed_at,
             );
+            execution.duration_ms = args.duration_ms;
+            execution.throughput = args.throughput;
             execution.detail = args.detail;
             execution.links = ValidationLinks {
                 spec_ids: args.spec_ids,
@@ -281,6 +318,9 @@ fn dispatch(
                 ticket_id: args.ticket,
                 validation_spec_id: args.spec_id,
                 outcome: args.outcome.map(Into::into),
+                min_duration_ms: args.min_duration_ms,
+                max_duration_ms: args.max_duration_ms,
+                sort: args.sort.map(Into::into).unwrap_or_default(),
                 limit: args.limit,
             };
             let executions = config.list_executions(&query)?;

@@ -27,6 +27,7 @@ use serde::{
     Serialize,
 };
 use test_api::{
+    ExecutionSort,
     ExecutionQuery,
     TestError,
     TestStoreConfig,
@@ -50,6 +51,9 @@ pub struct RecordSpecInput {
     /// Additional detail or notes about the validation spec.
     #[serde(default)]
     pub detail: Option<String>,
+    /// Slow-run budget threshold in milliseconds for this validation spec.
+    #[serde(default)]
+    pub slow_threshold_ms: Option<u64>,
     /// Ticket ids this spec is associated with.
     #[serde(default)]
     pub ticket_ids: Vec<String>,
@@ -72,6 +76,12 @@ pub struct RecordExecutionInput {
     /// RFC3339 timestamp of when the check ran. Defaults to now when omitted.
     #[serde(default)]
     pub executed_at: Option<String>,
+    /// Wall time in milliseconds for the validated operation.
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
+    /// Optional throughput metric (ops/sec or items/sec).
+    #[serde(default)]
+    pub throughput: Option<f64>,
     /// Result summary or notes (command output highlights, blocker reason, etc.).
     #[serde(default)]
     pub detail: Option<String>,
@@ -115,6 +125,15 @@ pub struct ListExecutionsInput {
     /// Only return executions with this outcome (`passed`, `failed`, `blocked`).
     #[serde(default)]
     pub outcome: Option<String>,
+    /// Only return executions with duration >= this threshold.
+    #[serde(default)]
+    pub min_duration_ms: Option<u64>,
+    /// Only return executions with duration <= this threshold.
+    #[serde(default)]
+    pub max_duration_ms: Option<u64>,
+    /// Sort order (`newest-first` or `slowest-first`).
+    #[serde(default)]
+    pub sort: Option<String>,
     /// Maximum number of executions to return (newest first).
     #[serde(default)]
     pub limit: Option<usize>,
@@ -193,6 +212,22 @@ impl TestServer {
             },
         }
     }
+
+    fn parse_sort(raw: Option<&str>) -> Result<ExecutionSort, McpError> {
+        match raw {
+            None => Ok(ExecutionSort::NewestFirst),
+            Some(value) => match value.trim().to_ascii_lowercase().as_str() {
+                "newest-first" | "newest" => Ok(ExecutionSort::NewestFirst),
+                "slowest-first" | "slowest" => Ok(ExecutionSort::SlowestFirst),
+                other => Err(McpError::invalid_params(
+                    format!(
+                        "invalid sort `{other}` (expected newest-first or slowest-first)"
+                    ),
+                    None,
+                )),
+            },
+        }
+    }
 }
 
 // ── Tool implementations ──────────────────────────────────────────────────────
@@ -212,6 +247,7 @@ impl TestServer {
             title: input.title,
             command: input.command,
             detail: input.detail,
+            slow_threshold_ms: input.slow_threshold_ms,
             links: ValidationLinks {
                 spec_ids: input.spec_ids,
                 acceptance_criterion_ids: input.acceptance_criterion_ids,
@@ -244,6 +280,8 @@ impl TestServer {
             validation_spec_id: input.validation_spec_id,
             outcome,
             executed_at,
+            duration_ms: input.duration_ms,
+            throughput: input.throughput,
             detail: input.detail,
             links: ValidationLinks {
                 spec_ids: input.spec_ids,
@@ -317,10 +355,14 @@ impl TestServer {
             Some(raw) => Some(Self::parse_outcome(raw)?),
             None => None,
         };
+        let sort = Self::parse_sort(input.sort.as_deref())?;
         let query = ExecutionQuery {
             ticket_id: input.ticket_id,
             validation_spec_id: input.validation_spec_id,
             outcome,
+            min_duration_ms: input.min_duration_ms,
+            max_duration_ms: input.max_duration_ms,
+            sort,
             limit: input.limit,
         };
         let executions = self
@@ -389,6 +431,7 @@ mod tests {
                 title: "Core unit tests".to_string(),
                 command: Some("cargo test -p ticket-vscode-core".to_string()),
                 detail: None,
+                slow_threshold_ms: Some(1000),
                 ticket_ids: vec!["ticket-parity".to_string()],
                 spec_ids: vec![],
                 acceptance_criterion_ids: vec![],
@@ -403,6 +446,8 @@ mod tests {
                 validation_spec_id: "vt-core-tests".to_string(),
                 outcome: "passed".to_string(),
                 executed_at: Some("2026-06-15T00:00:00Z".to_string()),
+                duration_ms: Some(240),
+                throughput: Some(4.2),
                 detail: Some("16 passed".to_string()),
                 ticket_ids: vec!["ticket-parity".to_string()],
                 spec_ids: vec![],
@@ -419,6 +464,9 @@ mod tests {
                 ticket_id: Some("ticket-parity".to_string()),
                 validation_spec_id: None,
                 outcome: None,
+                min_duration_ms: None,
+                max_duration_ms: None,
+                sort: Some("slowest-first".to_string()),
                 limit: None,
             }))
             .await
@@ -441,6 +489,8 @@ mod tests {
                 validation_spec_id: "vt-core-tests".to_string(),
                 outcome: "nope".to_string(),
                 executed_at: None,
+                duration_ms: None,
+                throughput: None,
                 detail: None,
                 ticket_ids: vec![],
                 spec_ids: vec![],

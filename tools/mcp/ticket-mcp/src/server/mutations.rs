@@ -486,8 +486,7 @@ fn move_recovery_json() -> Value {
 }
 
 fn normalize_workspace_root(value: &str) -> PathBuf {
-    let path = PathBuf::from(value);
-    std::fs::canonicalize(&path).unwrap_or(path)
+    ticket_api::workspace::canonicalize_workspace_root(&PathBuf::from(value))
 }
 
 fn normalize_display_path(path: &std::path::Path) -> String {

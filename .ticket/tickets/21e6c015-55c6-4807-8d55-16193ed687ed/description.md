@@ -37,7 +37,17 @@ Concrete failing case observed: moving trackers `2b1279bd` / `671d4e47` from the
 - [ ] The concrete case (`2b1279bd` / `671d4e47` root → `memory-api`) is moved successfully using the tool once this lands, or covered by an equivalent test fixture.
 - [ ] Tests cover: parent→submodule move, submodule→parent move, rollback on each, and fail-closed on an unrelated/dirty worktree.
 
+## Implementation notes — fixes landed
+
+- **Windows verbatim-path (`\\?\`) bug fixed.** `std::fs::canonicalize` in the CLI move handler ([lifecycle.rs](memory-api/tools/cli/ticket-cli/src/cli/commands/lifecycle.rs)) and MCP (`normalize_workspace_root` in [mutations.rs](memory-api/tools/mcp/ticket-mcp/src/server/mutations.rs)) returned a Windows extended-length `\\?\` path. That prefix leaked into the move journal's `target_store_root`, into rewritten path references (corrupting tracked files with `//?/C:/...`), and into post-move validation (false `destination missing`). Fix: added `workspace::canonicalize_workspace_root` + `strip_verbatim_prefix` in [workspace.rs](memory-api/crates/memory-api/src/workspace.rs); both CLI and MCP now route through it. Defense-in-depth: `normalize_slashes` in [move_execution.rs](memory-api/crates/ticket-api/src/storage/move_execution.rs) also strips the prefix. Regression tests added in the workspace module.
+- **Validation error message made informative.** The post-move validation no longer returns the vague "source still owns ticket or destination missing"; it now reports which side failed, the resolved store roots, the ticket id, the expected folder path, and a hint about the verbatim-prefix cause.
+
+## Known gap — pending
+
+- **Sequential moves blocked by own pending rewrites.** Moving one ticket rewrites tracked path references (e.g. a shared spec body) and leaves them uncommitted; a subsequent move of a second ticket then fail-closes on `DirtyTrackedFiles` for that same file. Observed when moving `2b1279bd` then `671d4e47` (both reference shared spec bodies). Decide whether the move should tolerate its own uncommitted rewrites, batch-move a set, or document that each cross-worktree move must be committed before the next. This needs a contract decision and a test.
+
 ## Relationship / traceability
 
 - Extends `505b2cd4` ([ticket-api] Deliver safe cross-workspace ticket move for git-backed stores) — adds the cross-worktree topology the v1 contract deliberately excluded.
 - Feeds the generic entity move scheme `0a510279` ([memory-api] Generalize cross-workspace move into a domain-neutral kernel with per-domain trait specialization): the generic kernel must expose cross-worktree support through the same trait specialization points, so this capability is part of the generic featureset rather than a ticket-only extension.
+- E2E + benchmark coverage tracked by `026b2eb6` ([memory-api] E2E test workspace fixture repository) — the multi-submodule fixture would have caught the `\\?\` regression.

@@ -77,6 +77,8 @@ pub struct ValidationSpec {
     pub command: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slow_threshold_ms: Option<u64>,
     #[serde(default)]
     pub links: ValidationLinks,
 }
@@ -91,6 +93,7 @@ impl ValidationSpec {
             title: title.into(),
             command: None,
             detail: None,
+            slow_threshold_ms: None,
             links: ValidationLinks::default(),
         }
     }
@@ -101,6 +104,24 @@ impl ValidationSpec {
     ) -> bool {
         self.links.links_to_acceptance(acceptance_criterion_id)
     }
+
+    pub fn is_over_budget(
+        &self,
+        execution: &ValidationExecution,
+    ) -> bool {
+        match (self.slow_threshold_ms, execution.duration_ms) {
+            (Some(threshold), Some(duration)) => duration > threshold,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExecutionSort {
+    #[default]
+    NewestFirst,
+    SlowestFirst,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,12 +146,16 @@ impl ValidationOutcome {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ValidationExecution {
     pub id: String,
     pub validation_spec_id: String,
     pub outcome: ValidationOutcome,
     pub executed_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub throughput: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
     #[serde(default)]
@@ -149,6 +174,8 @@ impl ValidationExecution {
             validation_spec_id: validation_spec_id.into(),
             outcome,
             executed_at,
+            duration_ms: None,
+            throughput: None,
             detail: None,
             links: ValidationLinks::default(),
         }
@@ -199,6 +226,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::{
+        ExecutionSort,
         ValidationExecution,
         ValidationLinks,
         ValidationOutcome,
@@ -219,6 +247,7 @@ mod tests {
             title: "Spec health check".to_string(),
             command: Some("cargo test -p spec-api contract -- --nocapture".to_string()),
             detail: Some("Covers expectation-oriented contract health".to_string()),
+            slow_threshold_ms: Some(500),
             links: ValidationLinks {
                 spec_ids: vec!["spec-api/contract".to_string()],
                 acceptance_criterion_ids: vec!["criterion-contract-health".to_string()],
@@ -232,6 +261,8 @@ mod tests {
             validation_spec_id: spec.id.clone(),
             outcome: ValidationOutcome::Passed,
             executed_at: sample_time(),
+            duration_ms: Some(420),
+            throughput: Some(2.5),
             detail: Some("Contract tests passed against structured fields".to_string()),
             links: spec.links.clone(),
         };
@@ -271,6 +302,8 @@ mod tests {
             validation_spec_id: spec.id.clone(),
             outcome: ValidationOutcome::Blocked,
             executed_at: sample_time(),
+            duration_ms: Some(750),
+            throughput: None,
             detail: Some("Blocked by missing generated guidance output".to_string()),
             links: spec.links.clone(),
         };
@@ -281,5 +314,46 @@ mod tests {
         assert!(execution.references_doc_evidence("doc-guidance"));
         assert!(execution.references_log("log-guidance"));
         assert!(!execution.references_doc_evidence("doc-other"));
+    }
+
+    #[test]
+    fn over_budget_helper_uses_duration_against_threshold() {
+        let mut spec = ValidationSpec::new("validation-spec-1", "Budgeted validation");
+        spec.slow_threshold_ms = Some(100);
+
+        let mut execution = ValidationExecution::passed("exec-1", "validation-spec-1", sample_time());
+        execution.duration_ms = Some(150);
+
+        assert!(spec.is_over_budget(&execution));
+
+        execution.duration_ms = Some(100);
+        assert!(!spec.is_over_budget(&execution));
+
+        execution.duration_ms = None;
+        assert!(!spec.is_over_budget(&execution));
+    }
+
+    #[test]
+    fn deserializes_execution_without_timing_fields() {
+        let legacy = serde_json::json!({
+            "id": "exec-legacy",
+            "validation_spec_id": "validation-spec-1",
+            "outcome": "passed",
+            "executed_at": "2026-06-02T12:00:00Z",
+            "links": {
+                "ticket_ids": ["ticket-1"]
+            }
+        });
+
+        let execution: ValidationExecution = serde_json::from_value(legacy).unwrap();
+        assert_eq!(execution.duration_ms, None);
+        assert_eq!(execution.throughput, None);
+    }
+
+    #[test]
+    fn execution_sort_defaults_to_newest_first() {
+        let parsed: ExecutionSort = serde_json::from_str("\"newest-first\"").unwrap();
+        assert_eq!(parsed, ExecutionSort::NewestFirst);
+        assert_eq!(ExecutionSort::default(), ExecutionSort::NewestFirst);
     }
 }

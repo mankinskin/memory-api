@@ -316,9 +316,27 @@ impl TicketStore {
                 let source_seen = source_store.get_indexed(&journal.ticket_id)?;
                 let target_seen = target_store.get_indexed(&journal.ticket_id)?;
                 if source_seen.is_some() || target_seen.is_none() {
-                    return Err(StorageError::Other(
-                        "post-move validation failed: source still owns ticket or destination missing".to_string(),
-                    ));
+                    let mut problems = Vec::new();
+                    if source_seen.is_some() {
+                        problems.push(format!(
+                            "source store {} still indexes ticket {} after the move (source ticket folder {} should no longer exist)",
+                            Self::normalize_slashes(&journal.source_store_root),
+                            journal.ticket_id,
+                            Self::normalize_slashes(&journal.source_ticket_path),
+                        ));
+                    }
+                    if target_seen.is_none() {
+                        problems.push(format!(
+                            "destination store {} does not index ticket {} after the move (expected ticket folder {} — check that the destination store root resolved without a Windows verbatim `\\\\?\\` prefix)",
+                            Self::normalize_slashes(&journal.target_store_root),
+                            journal.ticket_id,
+                            Self::normalize_slashes(&journal.destination_ticket_path),
+                        ));
+                    }
+                    return Err(StorageError::Other(format!(
+                        "post-move validation failed: {}",
+                        problems.join("; ")
+                    )));
                 }
 
                 journal.phase = MoveExecutionPhase::Validated;
@@ -534,7 +552,8 @@ impl TicketStore {
     }
 
     fn normalize_slashes(path: &std::path::Path) -> String {
-        path.to_string_lossy().replace('\\', "/")
+        let raw = path.to_string_lossy().replace('\\', "/");
+        raw.strip_prefix("//?/").unwrap_or(&raw).to_string()
     }
 
     fn journal_path(

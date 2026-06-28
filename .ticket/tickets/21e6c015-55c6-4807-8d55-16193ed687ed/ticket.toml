@@ -4,6 +4,7 @@ title = "[memory-api] Support cross-git-worktree (submodule) entity moves"
 state = "in-review"
 component = "memory-api"
 depends_on = ["505b2cd4-f21d-4e8d-8e6a-ae06a5b69854"]
+linked = ["026b2eb6-17c6-4d02-b46b-79758f1237a1"]
 priority = "high"
 risk_level = "high"
 type = "tracker-improvement"

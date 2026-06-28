@@ -141,8 +141,8 @@ pub(crate) fn cmd_move(
     })?;
 
     let ticket_id = super::resolve_uuid_prefix(id, store)?;
-    let requested_workspace_root = std::fs::canonicalize(to_workspace_root)
-        .unwrap_or_else(|_| to_workspace_root.to_path_buf());
+    let requested_workspace_root =
+        workspace::canonicalize_workspace_root(to_workspace_root);
 
     let target_store_root = workspace::resolve_store_root_from(
         &requested_workspace_root,

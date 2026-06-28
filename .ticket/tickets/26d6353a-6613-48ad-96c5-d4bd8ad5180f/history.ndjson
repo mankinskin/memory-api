@@ -1,0 +1,2 @@
+{"rev":1,"ts":"2026-06-28T12:41:31.616925800+00:00","fields":{"component":"test-api","priority":"medium","risk_level":"low","state":"new","title":"[test-cli][log] test/log CLI + audit failed & slow query surface","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-06-28T12:43:18.940512+00:00","fields":{"component":"test-api","depends_on":["90de77b1-7784-4b26-81d1-9039277a9bec"],"priority":"medium","risk_level":"low","state":"new","title":"[test-cli][log] test/log CLI + audit failed & slow query surface","type":"tracker-improvement"}}

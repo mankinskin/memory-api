@@ -1,0 +1,4 @@
+{"rev":1,"ts":"2026-06-28T12:41:30.406482700+00:00","fields":{"component":"test-api","priority":"high","risk_level":"low","state":"new","title":"[test-api] Execution timing model + slow-test query","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-06-28T12:56:55.309344200+00:00","fields":{"component":"test-api","priority":"high","risk_level":"low","state":"ready","title":"[test-api] Execution timing model + slow-test query","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-06-28T12:56:55.722837+00:00","fields":{"component":"test-api","priority":"high","risk_level":"low","state":"in-implementation","title":"[test-api] Execution timing model + slow-test query","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-06-28T13:22:42.558516500+00:00","fields":{"component":"test-api","priority":"high","risk_level":"low","state":"in-review","title":"[test-api] Execution timing model + slow-test query","type":"tracker-improvement"}}

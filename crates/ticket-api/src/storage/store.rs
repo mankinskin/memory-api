@@ -200,6 +200,10 @@ impl TicketStore {
         path: &Path,
         marker_file: Option<&str>,
     ) -> PathBuf {
+        if path.is_absolute() && Self::resolved_candidate_matches(path, marker_file) {
+            return Self::normalize_path(path.to_path_buf());
+        }
+
         if Self::resolved_candidate_matches(path, marker_file) {
             return Self::normalize_existing_path(path);
         }

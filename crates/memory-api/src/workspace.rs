@@ -20,6 +20,30 @@ pub fn working_dir() -> Option<PathBuf> {
     )
 }
 
+/// Canonicalize a path for use as a workspace/store root, stripping the Windows
+/// `\\?\` verbatim prefix that [`std::fs::canonicalize`] emits.
+///
+/// The verbatim prefix must never reach stored move journals, rewritten path
+/// references, or post-move validation comparisons: it breaks string matching
+/// against clean paths and corrupts tracked files. Falls back to the input path
+/// when canonicalization fails (for example when the directory does not exist
+/// yet).
+pub fn canonicalize_workspace_root(path: &Path) -> PathBuf {
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    strip_verbatim_prefix(&canonical)
+}
+
+/// Remove the Windows `\\?\` (and slash-normalized `//?/`) verbatim prefix from
+/// a path and normalize separators, without touching the filesystem.
+pub fn strip_verbatim_prefix(path: &Path) -> PathBuf {
+    let raw = path.to_string_lossy();
+    let without_verbatim = raw
+        .strip_prefix(r"\\?\")
+        .or_else(|| raw.strip_prefix("//?/"))
+        .unwrap_or(&raw);
+    normalize_working_dir_path(Path::new(without_verbatim))
+}
+
 pub fn find_local_root(dir_name: &str) -> Option<PathBuf> {
     let cwd = working_dir()?;
     find_local_root_from(&cwd, dir_name)
@@ -683,5 +707,39 @@ mod tests {
             normalize_working_dir_path(Path::new("/c/repo/memory-api"));
 
         assert_eq!(normalized, PathBuf::from("C:/repo/memory-api"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn strip_verbatim_prefix_removes_windows_extended_length_prefix() {
+        let stripped = strip_verbatim_prefix(Path::new(r"\\?\C:\repo\memory-api\.ticket"));
+
+        assert_eq!(stripped, PathBuf::from("C:/repo/memory-api/.ticket"));
+    }
+
+    #[test]
+    fn strip_verbatim_prefix_removes_slash_normalized_prefix() {
+        let stripped = strip_verbatim_prefix(Path::new("//?/C:/repo/memory-api/.ticket"));
+
+        assert_eq!(stripped, PathBuf::from("C:/repo/memory-api/.ticket"));
+    }
+
+    #[test]
+    fn strip_verbatim_prefix_is_noop_for_clean_paths() {
+        let clean = Path::new("C:/repo/memory-api/.ticket");
+
+        assert_eq!(strip_verbatim_prefix(clean), PathBuf::from("C:/repo/memory-api/.ticket"));
+    }
+
+    #[test]
+    fn canonicalize_workspace_root_never_emits_verbatim_prefix() {
+        let dir = tempdir().unwrap();
+        let resolved = canonicalize_workspace_root(dir.path());
+
+        let rendered = resolved.to_string_lossy();
+        assert!(
+            !rendered.contains("//?/") && !rendered.contains(r"\\?\"),
+            "canonicalized workspace root leaked a verbatim prefix: {rendered}"
+        );
     }
 }

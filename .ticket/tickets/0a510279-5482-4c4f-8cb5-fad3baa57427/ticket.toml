@@ -1,0 +1,10 @@
+id = "0a510279-5482-4c4f-8cb5-fad3baa57427"
+created_at = "2026-06-27T23:37:57.758929400+00:00"
+title = "[memory-api] Generalize cross-workspace move into a domain-neutral kernel with per-domain trait specialization"
+state = "new"
+component = "memory-api"
+depends_on = ["21e6c015-55c6-4807-8d55-16193ed687ed", "505b2cd4-f21d-4e8d-8e6a-ae06a5b69854"]
+linked = ["026b2eb6-17c6-4d02-b46b-79758f1237a1"]
+priority = "high"
+risk_level = "high"
+type = "tracker-improvement"

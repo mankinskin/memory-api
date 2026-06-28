@@ -231,8 +231,7 @@ fn dispatch_store_backed(
 fn command_uses_descendant_scan_roots(command: &TicketCommandCli) -> bool {
     matches!(
         command,
-        TicketCommandCli::Get(_)
-            | TicketCommandCli::Describe(_)
+        TicketCommandCli::Describe(_)
             | TicketCommandCli::List(_)
             | TicketCommandCli::Scan(_)
             | TicketCommandCli::Leases

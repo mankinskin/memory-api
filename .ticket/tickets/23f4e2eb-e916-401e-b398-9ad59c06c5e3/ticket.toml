@@ -1,0 +1,9 @@
+id = "23f4e2eb-e916-401e-b398-9ad59c06c5e3"
+created_at = "2026-06-28T12:41:31.715946900+00:00"
+title = "[ticket-api][memory-api] Investigate & fix ~100s ticket get latency"
+state = "in-review"
+component = "ticket-api"
+depends_on = ["026b2eb6-17c6-4d02-b46b-79758f1237a1"]
+priority = "critical"
+risk_level = "high"
+type = "tracker-improvement"
