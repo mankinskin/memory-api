@@ -1,0 +1,13 @@
+{
+  "id": "exec-vt-test-store-index-20260628",
+  "validation_spec_id": "vt-test-store-index",
+  "outcome": "passed",
+  "executed_at": "2026-06-28T16:41:54.277991900Z",
+  "duration_ms": 70,
+  "detail": "test-api 23 tests pass; store-index generated over 10 executions, deterministic digest e8fddc8c4b041293, no-op re-run diff confirmed; markdown+toon written",
+  "links": {
+    "ticket_ids": [
+      "90de77b1-7784-4b26-81d1-9039277a9bec"
+    ]
+  }
+}

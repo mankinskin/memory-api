@@ -15,6 +15,15 @@ use crate::{
     ValidationExecution,
     ValidationOutcome,
     ValidationSpec,
+    benchmark::{
+        BenchmarkExecution,
+        BenchmarkQuery,
+    },
+    store_index::{
+        TestStoreIndexArtifacts,
+        TestStoreIndexInput,
+        generate_test_store_index,
+    },
 };
 
 /// Configuration describing where the test-result store lives.
@@ -171,6 +180,113 @@ impl TestStoreConfig {
         Ok(executions)
     }
 
+    // ── Benchmark persistence ───────────────────────────────────────────────
+
+    /// Persist (create or overwrite) a benchmark execution. Returns the path.
+    pub fn record_benchmark(
+        &self,
+        benchmark: &BenchmarkExecution,
+    ) -> Result<PathBuf, TestError> {
+        let path = self.benchmark_path(&benchmark.id)?;
+        write_json(&path, benchmark)?;
+        Ok(path)
+    }
+
+    /// Read a benchmark execution by id.
+    pub fn get_benchmark(
+        &self,
+        id: &str,
+    ) -> Result<BenchmarkExecution, TestError> {
+        let path = self.benchmark_path(id)?;
+        read_json_if_exists(&path)?.ok_or_else(|| TestError::BenchmarkNotFound(id.to_string()))
+    }
+
+    /// Query stored benchmarks, sorted by `executed_at` descending (newest first).
+    pub fn list_benchmarks(
+        &self,
+        query: &BenchmarkQuery,
+    ) -> Result<Vec<BenchmarkExecution>, TestError> {
+        let mut benchmarks: Vec<BenchmarkExecution> =
+            self.read_dir_json(&self.benchmarks_dir()?)?;
+
+        benchmarks.retain(|bench| {
+            if let Some(domain) = &query.domain {
+                if &bench.domain != domain {
+                    return false;
+                }
+            }
+            if let Some(operation) = &query.operation {
+                if &bench.operation != operation {
+                    return false;
+                }
+            }
+            if let Some(over_budget) = query.over_budget {
+                if bench.over_budget != over_budget {
+                    return false;
+                }
+            }
+            true
+        });
+
+        benchmarks.sort_by(|a, b| b.executed_at.cmp(&a.executed_at).then(a.id.cmp(&b.id)));
+
+        if let Some(limit) = query.limit {
+            benchmarks.truncate(limit);
+        }
+        Ok(benchmarks)
+    }
+
+    // ── Store-index generation ──────────────────────────────────────────────
+
+    /// Build the deterministic store-index artifacts from all recorded
+    /// executions, specs (for slow thresholds), and benchmarks.
+    pub fn generate_store_index(&self) -> Result<TestStoreIndexArtifacts, TestError> {
+        let executions = self.list_executions(&ExecutionQuery::default())?;
+        let specs = self.list_specs()?;
+        let benchmarks = self.list_benchmarks(&BenchmarkQuery::default())?;
+        let input = TestStoreIndexInput {
+            executions: &executions,
+            specs: &specs,
+            benchmarks: &benchmarks,
+        };
+        Ok(generate_test_store_index(&input))
+    }
+
+    /// Write the store-index artifacts to `index.toon` and `README.md` in the
+    /// workspace directory. Returns the two written paths.
+    pub fn write_store_index(
+        &self,
+        artifacts: &TestStoreIndexArtifacts,
+    ) -> Result<(PathBuf, PathBuf), TestError> {
+        let dir = self.workspace_dir()?;
+        fs::create_dir_all(&dir).map_err(|source| TestError::Io {
+            path: dir.clone(),
+            source,
+        })?;
+
+        let toon_path = dir.join("index.toon");
+        fs::write(&toon_path, &artifacts.toon_sidecar).map_err(|source| TestError::Io {
+            path: toon_path.clone(),
+            source,
+        })?;
+
+        let md_path = dir.join("README.md");
+        fs::write(&md_path, &artifacts.markdown).map_err(|source| TestError::Io {
+            path: md_path.clone(),
+            source,
+        })?;
+
+        Ok((toon_path, md_path))
+    }
+
+    /// Generate and write the store index in one step. Returns the digest and
+    /// the two written paths.
+    pub fn regenerate_store_index(&self) -> Result<(String, PathBuf, PathBuf), TestError> {
+        let artifacts = self.generate_store_index()?;
+        let (toon_path, md_path) = self.write_store_index(&artifacts)?;
+        Ok((artifacts.digest, toon_path, md_path))
+    }
+
     // ── Path helpers ────────────────────────────────────────────────────────
 
     fn workspace_dir(&self) -> Result<PathBuf, TestError> {
@@ -190,6 +306,10 @@ impl TestStoreConfig {
         Ok(self.workspace_dir()?.join("executions"))
     }
 
+    fn benchmarks_dir(&self) -> Result<PathBuf, TestError> {
+        Ok(self.workspace_dir()?.join("benchmarks"))
+    }
+
     fn spec_path(
         &self,
         id: &str,
@@ -204,6 +324,14 @@ impl TestStoreConfig {
     ) -> Result<PathBuf, TestError> {
         validate_segment(id).map_err(|_| TestError::InvalidId(id.to_string()))?;
         Ok(self.executions_dir()?.join(format!("{id}.json")))
+    }
+
+    fn benchmark_path(
+        &self,
+        id: &str,
+    ) -> Result<PathBuf, TestError> {
+        validate_segment(id).map_err(|_| TestError::InvalidId(id.to_string()))?;
+        Ok(self.benchmarks_dir()?.join(format!("{id}.json")))
     }
 
     fn read_dir_json<T: DeserializeOwned>(
@@ -453,5 +581,71 @@ mod tests {
         assert_eq!(specs.len(), 2);
         assert_eq!(specs[0].id, "vt-a");
         assert_eq!(specs[1].id, "vt-b");
+    }
+
+    #[test]
+    fn records_and_queries_benchmarks_by_domain_and_over_budget() {
+        use crate::benchmark::{
+            BenchmarkExecution,
+            BenchmarkQuery,
+        };
+
+        let dir = TempDir::new().unwrap();
+        let cfg = config(&dir);
+
+        let mut get = BenchmarkExecution::new("bench-get", "get_by_id", "get", "ticket", at(1));
+        get.mean_ns = 75_000_000;
+        get.apply_budget(Some(50_000_000));
+
+        let mut scan = BenchmarkExecution::new("bench-scan", "scan_root", "scan", "ticket", at(2));
+        scan.mean_ns = 400_000_000;
+        scan.apply_budget(Some(1_000_000_000));
+
+        let spec_search =
+            BenchmarkExecution::new("bench-search", "search_q", "search", "spec", at(3));
+
+        cfg.record_benchmark(&get).unwrap();
+        cfg.record_benchmark(&scan).unwrap();
+        cfg.record_benchmark(&spec_search).unwrap();
+
+        assert_eq!(cfg.get_benchmark("bench-get").unwrap(), get);
+
+        let ticket_benches = cfg
+            .list_benchmarks(&BenchmarkQuery {
+                domain: Some("ticket".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(ticket_benches.len(), 2);
+        // newest first
+        assert_eq!(ticket_benches[0].id, "bench-scan");
+
+        let over_budget = cfg
+            .list_benchmarks(&BenchmarkQuery {
+                over_budget: Some(true),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(over_budget.len(), 1);
+        assert_eq!(over_budget[0].id, "bench-get");
+
+        let by_op = cfg
+            .list_benchmarks(&BenchmarkQuery {
+                operation: Some("search".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(by_op.len(), 1);
+        assert_eq!(by_op[0].domain, "spec");
+    }
+
+    #[test]
+    fn missing_benchmark_reports_not_found() {
+        let dir = TempDir::new().unwrap();
+        let cfg = config(&dir);
+        assert!(matches!(
+            cfg.get_benchmark("nope"),
+            Err(TestError::BenchmarkNotFound(_))
+        ));
     }
 }

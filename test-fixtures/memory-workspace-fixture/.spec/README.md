@@ -1,0 +1,1 @@
+Root spec store fixture.

@@ -7,13 +7,32 @@ use serde::{
     Serialize,
 };
 
+mod benchmark;
 mod error;
 mod store;
+mod store_index;
 
+pub use benchmark::{
+    BenchmarkExecution,
+    BenchmarkQuery,
+    BudgetTable,
+    ingest_criterion_estimates,
+};
 pub use error::TestError;
 pub use store::{
     ExecutionQuery,
     TestStoreConfig,
+};
+pub use store_index::{
+    BenchmarkGroupSummary,
+    IssueEntry,
+    SlowEntry,
+    TEST_INDEX_FILE_COMMENT,
+    TestStoreIndexArtifacts,
+    TestStoreIndexInput,
+    TestStoreSummary,
+    ValidationGroupSummary,
+    generate_test_store_index,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]

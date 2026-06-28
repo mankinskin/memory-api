@@ -1,0 +1,13 @@
+{
+  "id": "exec-vt-benchmark-model-20260628",
+  "validation_spec_id": "vt-benchmark-model",
+  "outcome": "passed",
+  "executed_at": "2026-06-28T15:49:15.242875700Z",
+  "duration_ms": 60,
+  "detail": "test-api 19 tests pass: BenchmarkExecution round-trip+query(domain/operation/over_budget), Criterion estimates.json ingest(mean/median/stddev/min/max), budget table stamping+over_budget classification",
+  "links": {
+    "ticket_ids": [
+      "2b0f31e5-1067-45e9-93ff-ef273c26020e"
+    ]
+  }
+}

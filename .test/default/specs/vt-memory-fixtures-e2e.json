@@ -1,0 +1,10 @@
+{
+  "id": "vt-memory-fixtures-e2e",
+  "title": "memory-fixtures loader + ticket/spec E2E + scan bench",
+  "command": "cargo test -p memory-fixtures -p spec-api --test e2e_fixture_loader -p ticket-api --test e2e_fixture_loader; cargo bench -p ticket-api --bench fixture_scan -- --test",
+  "links": {
+    "ticket_ids": [
+      "026b2eb6-17c6-4d02-b46b-79758f1237a1"
+    ]
+  }
+}

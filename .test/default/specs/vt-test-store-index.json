@@ -1,0 +1,10 @@
+{
+  "id": "vt-test-store-index",
+  "title": "test-api store-index generator: summary aggregation + issues/slow + deterministic digest",
+  "command": "cargo test -p test-api; test store-index",
+  "links": {
+    "ticket_ids": [
+      "90de77b1-7784-4b26-81d1-9039277a9bec"
+    ]
+  }
+}

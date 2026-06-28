@@ -78,6 +78,8 @@ pub enum TestCommand {
     ListSpecs,
     /// List validation executions with optional filters.
     List(ListArgs),
+    /// Generate and write the deterministic test-store index (index.toon + README.md).
+    StoreIndex,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -327,6 +329,16 @@ fn dispatch(
             to_value(&json!({
                 "count": executions.len(),
                 "executions": executions,
+            }))
+        },
+        TestCommand::StoreIndex => {
+            let (digest, toon_path, readme_path) = config.regenerate_store_index()?;
+            to_value(&json!({
+                "status": "generated",
+                "kind": "test-store-index",
+                "digest": digest,
+                "toon_path": toon_path,
+                "readme_path": readme_path,
             }))
         },
     }

@@ -1,0 +1,15 @@
+[package]
+name = "memory-fixtures"
+version = "0.1.0"
+edition = "2024"
+description = "Shared E2E fixture loader for multi-store and multi-worktree memory tests"
+
+[lib]
+name = "memory_fixtures"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "2"
+tempfile = "3"

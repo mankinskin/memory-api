@@ -1,0 +1,16 @@
+# Per-operation maximum-latency budgets for benchmark ingest.
+#
+# Keys are "<domain>.<operation>" (falling back to bare "<operation>").
+# Values are milliseconds; ingest converts them to nanoseconds and stamps
+# `budget_ns` / `over_budget` on each BenchmarkExecution.
+#
+# Initial defaults — calibrate against the 026b2eb6 fixture.
+
+[budgets]
+"ticket.get" = 50
+"ticket.search" = 200
+"ticket.create" = 100
+"ticket.update" = 100
+"ticket.delete" = 100
+"ticket.move" = 250
+"ticket.scan" = 1000

@@ -1,0 +1,32 @@
+fixture_name = "memory-workspace-fixture"
+
+[[worktrees]]
+name = "root"
+relative_path = "."
+kind = "root"
+
+[[worktrees]]
+name = "submodule-a"
+relative_path = "submodule-a"
+kind = "submodule"
+
+[[worktrees]]
+name = "submodule-b"
+relative_path = "submodule-b"
+kind = "submodule"
+
+[[stores]]
+domain = "ticket-root"
+relative_path = ".ticket"
+
+[[stores]]
+domain = "spec-root"
+relative_path = ".spec"
+
+[[stores]]
+domain = "ticket-submodule-a"
+relative_path = "submodule-a/.ticket"
+
+[[stores]]
+domain = "spec-submodule-b"
+relative_path = "submodule-b/.spec"

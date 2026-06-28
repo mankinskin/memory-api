@@ -1,0 +1,10 @@
+{
+  "id": "vt-benchmark-model",
+  "title": "test-api benchmark model + Criterion ingest + budgets",
+  "command": "cargo test -p test-api",
+  "links": {
+    "ticket_ids": [
+      "2b0f31e5-1067-45e9-93ff-ef273c26020e"
+    ]
+  }
+}

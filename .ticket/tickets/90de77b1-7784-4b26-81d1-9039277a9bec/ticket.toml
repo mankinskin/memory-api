@@ -1,7 +1,7 @@
 id = "90de77b1-7784-4b26-81d1-9039277a9bec"
 created_at = "2026-06-28T12:41:31.241194+00:00"
 title = "[test-api] Store-index generator — run/status/issue/timing summary"
-state = "new"
+state = "in-review"
 component = "test-api"
 depends_on = ["124c6621-b39d-4009-b599-a3e5503d08f6", "2b0f31e5-1067-45e9-93ff-ef273c26020e"]
 priority = "high"

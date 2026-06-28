@@ -24,7 +24,12 @@ pretty_assertions = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3"
 chrono = { version = "0.4" }
+memory-fixtures = { path = "../memory-fixtures" }
 
 [[bench]]
 name = "graph_ops"
+harness = false
+
+[[bench]]
+name = "fixture_scan"
 harness = false

@@ -18,6 +18,15 @@ pub enum TestError {
     #[error("validation execution not found: {0}")]
     ExecutionNotFound(String),
 
+    #[error("benchmark execution not found: {0}")]
+    BenchmarkNotFound(String),
+
+    #[error("failed to parse budget table {path}: {detail}")]
+    BudgetParse { path: PathBuf, detail: String },
+
+    #[error("failed to ingest Criterion estimates {path}: {detail}")]
+    CriterionIngest { path: PathBuf, detail: String },
+
     #[error("failed to serialize test data for {path}: {source}")]
     Serialize {
         path: PathBuf,

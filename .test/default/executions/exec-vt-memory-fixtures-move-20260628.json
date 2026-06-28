@@ -1,0 +1,13 @@
+{
+  "id": "exec-vt-memory-fixtures-move-20260628",
+  "validation_spec_id": "vt-memory-fixtures-e2e",
+  "outcome": "passed",
+  "executed_at": "2026-06-28T14:09:31.444572100Z",
+  "duration_ms": 2930,
+  "detail": "Added git-backed fixture + cross-worktree move E2E: no verbatim prefix, phase=Validated, dest readable, rollback restores. memory-fixtures(3)+ticket loader(1)+ticket move(1)+spec loader(1) all green.",
+  "links": {
+    "ticket_ids": [
+      "026b2eb6-17c6-4d02-b46b-79758f1237a1"
+    ]
+  }
+}

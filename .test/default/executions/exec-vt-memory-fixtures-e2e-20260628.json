@@ -1,0 +1,13 @@
+{
+  "id": "exec-vt-memory-fixtures-e2e-20260628",
+  "validation_spec_id": "vt-memory-fixtures-e2e",
+  "outcome": "passed",
+  "executed_at": "2026-06-28T13:44:32.353559700Z",
+  "duration_ms": 4400,
+  "detail": "memory-fixtures(2) + spec-api e2e(1) + ticket-api e2e(1) passed; fixture_scan bench smoke-run Success",
+  "links": {
+    "ticket_ids": [
+      "026b2eb6-17c6-4d02-b46b-79758f1237a1"
+    ]
+  }
+}
