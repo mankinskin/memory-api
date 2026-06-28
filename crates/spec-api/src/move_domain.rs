@@ -1,0 +1,277 @@
+//! Spec-domain adapter onto the domain-neutral move kernel.
+//!
+//! This demonstrates that the generic cross-workspace move kernel in
+//! [`memory_api::storage::move_kernel`] is reusable by a second domain: the spec
+//! store implements [`MoveDomain`] and gains the same safe preflight/journaled
+//! move featureset as the ticket store, without copying any move logic.
+//!
+//! Specs have no board or lease model, so those hooks return empty values.
+
+use std::path::{
+    Path,
+    PathBuf,
+};
+
+use memory_api::storage::move_kernel::{
+    self,
+    MoveBoardState,
+    MoveDomain,
+    MoveError,
+    MoveLeaseBlock,
+    MoveOutcome,
+    MovePlan,
+    MoveReferences,
+    MoveResult,
+};
+use memory_api::{
+    error::StorageError,
+    storage::board::BoardEntry,
+};
+use uuid::Uuid;
+
+use crate::{
+    error::SpecError,
+    store::SpecStore,
+};
+
+const SPEC_INDEX_DIR: &str = ".spec";
+
+fn to_move_error(error: SpecError) -> MoveError {
+    match error {
+        SpecError::Storage(StorageError::Io(io)) => MoveError::Io(io),
+        other => MoveError::Domain(other.to_string()),
+    }
+}
+
+fn from_move_error(error: MoveError) -> SpecError {
+    match error {
+        MoveError::Io(io) => SpecError::Storage(StorageError::Io(io)),
+        MoveError::Domain(message) => SpecError::Storage(StorageError::Other(message)),
+    }
+}
+
+/// Spec-domain implementation of the move kernel's [`MoveDomain`] trait.
+pub struct SpecMoveDomain<'a> {
+    store: &'a SpecStore,
+}
+
+impl<'a> SpecMoveDomain<'a> {
+    pub fn new(store: &'a SpecStore) -> Self {
+        Self { store }
+    }
+}
+
+impl MoveDomain for SpecMoveDomain<'_> {
+    fn entity_subdir(&self) -> &str {
+        "specs"
+    }
+
+    fn store_index_dir(&self) -> &str {
+        SPEC_INDEX_DIR
+    }
+
+    fn source_store_root(&self) -> PathBuf {
+        self.store.entity_store().index_root.clone()
+    }
+
+    fn source_entity_path(
+        &self,
+        entity_id: &Uuid,
+    ) -> MoveResult<Option<PathBuf>> {
+        Ok(self
+            .store
+            .entity_store()
+            .get_indexed(entity_id)
+            .map_err(|error| to_move_error(error.into()))?
+            .map(|entity| entity.path))
+    }
+
+    fn related_entities(
+        &self,
+        entity_id: &Uuid,
+    ) -> MoveResult<MoveReferences> {
+        let mut references = MoveReferences::default();
+        for edge in self
+            .store
+            .entity_store()
+            .list_all_edges()
+            .map_err(|error| to_move_error(error.into()))?
+        {
+            if edge.from == *entity_id {
+                references.outbound.push(edge.to);
+            }
+            if edge.to == *entity_id {
+                references.inbound.push(edge.from);
+            }
+        }
+        Ok(references)
+    }
+
+    fn target_store_present(
+        &self,
+        target_store_root: &Path,
+    ) -> MoveResult<bool> {
+        match SpecStore::open(target_store_root) {
+            Ok(_) => Ok(true),
+            Err(SpecError::Storage(StorageError::WorkspaceNotFound { .. })) => Ok(false),
+            Err(error) => Err(to_move_error(error)),
+        }
+    }
+
+    fn entity_indexed_in(
+        &self,
+        store_root: &Path,
+        entity_id: &Uuid,
+    ) -> MoveResult<bool> {
+        let store = SpecStore::open(store_root).map_err(to_move_error)?;
+        Ok(store
+            .entity_store()
+            .get_indexed(entity_id)
+            .map_err(|error| to_move_error(error.into()))?
+            .is_some())
+    }
+
+    fn board_state(
+        &self,
+        _entity_id: &Uuid,
+    ) -> MoveResult<MoveBoardState> {
+        Ok(MoveBoardState::default())
+    }
+
+    fn active_leases(
+        &self,
+        _entity_id: &Uuid,
+    ) -> MoveResult<Vec<MoveLeaseBlock>> {
+        Ok(Vec::new())
+    }
+
+    fn migrate_board_history(
+        &self,
+        _target_store_root: &Path,
+        _entity_id: &Uuid,
+    ) -> MoveResult<Vec<BoardEntry>> {
+        Ok(Vec::new())
+    }
+
+    fn restore_board_history(
+        &self,
+        _target_store_root: &Path,
+        _entries: &[BoardEntry],
+    ) -> MoveResult<()> {
+        Ok(())
+    }
+
+    fn scan_store(
+        &self,
+        store_root: &Path,
+    ) -> MoveResult<()> {
+        let store = SpecStore::open(store_root).map_err(to_move_error)?;
+        store
+            .entity_store()
+            .scan(true)
+            .map_err(|error| to_move_error(error.into()))?;
+        Ok(())
+    }
+}
+
+impl SpecStore {
+    /// Build a read-only preflight plan for moving a spec to
+    /// `target_workspace_root`, reusing the domain-neutral move kernel.
+    pub fn plan_move_preflight(
+        &self,
+        spec_id: &Uuid,
+        target_workspace_root: &Path,
+    ) -> Result<MovePlan, SpecError> {
+        let domain = SpecMoveDomain::new(self);
+        move_kernel::plan_move(&domain, spec_id, target_workspace_root).map_err(from_move_error)
+    }
+
+    /// Execute a supported spec move with a fresh journal.
+    pub fn execute_move_with_journal(
+        &self,
+        plan: &MovePlan,
+    ) -> Result<MoveOutcome, SpecError> {
+        let domain = SpecMoveDomain::new(self);
+        move_kernel::execute_move(&domain, plan).map_err(from_move_error)
+    }
+
+    /// Resume an interrupted spec move from its journal id.
+    pub fn resume_move_with_journal(
+        &self,
+        journal_id: Uuid,
+    ) -> Result<MoveOutcome, SpecError> {
+        let domain = SpecMoveDomain::new(self);
+        move_kernel::resume_move(&domain, journal_id).map_err(from_move_error)
+    }
+
+    /// Roll back a spec move from its journal id.
+    pub fn rollback_move_with_journal(
+        &self,
+        journal_id: Uuid,
+    ) -> Result<MoveOutcome, SpecError> {
+        let domain = SpecMoveDomain::new(self);
+        move_kernel::rollback_move(&domain, journal_id).map_err(from_move_error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use memory_api::storage::move_kernel::{
+        MoveBlocker,
+        MoveExecutionPhase,
+    };
+    use std::process::Command;
+    use tempfile::tempdir;
+
+    fn run_git(
+        repo_root: &Path,
+        args: &[&str],
+    ) {
+        let status = Command::new("git")
+            .current_dir(repo_root)
+            .args(args)
+            .status()
+            .expect("git command");
+        assert!(status.success(), "git {args:?} failed: {status}");
+    }
+
+    #[test]
+    fn spec_store_reuses_move_kernel_between_stores() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        run_git(&repo, &["init"]);
+
+        let source_workspace = repo.join("source");
+        let target_workspace = repo.join("target");
+        std::fs::create_dir_all(&source_workspace).unwrap();
+        std::fs::create_dir_all(&target_workspace).unwrap();
+
+        let mut source_store = SpecStore::init(&source_workspace).unwrap();
+        let _target_store = SpecStore::init(&target_workspace).unwrap();
+
+        let spec = crate::manifest::SpecManifest::new("sample/spec", "Sample spec", "spec-api");
+        let spec_id: Uuid = source_store.create(&spec, "body", None).unwrap();
+        source_store.scan(true).unwrap();
+
+        let mut plan = source_store
+            .plan_move_preflight(&spec_id, &target_workspace)
+            .unwrap();
+        plan.blockers.retain(|blocker| {
+            !matches!(
+                blocker,
+                MoveBlocker::PathReferenceScanUnavailable { .. }
+                    | MoveBlocker::DirtyTrackedFiles { .. }
+            )
+        });
+
+        let outcome = source_store.execute_move_with_journal(&plan).unwrap();
+        assert_eq!(outcome.journal.phase, MoveExecutionPhase::Validated);
+
+        let src = SpecStore::open(&source_workspace).unwrap();
+        let dst = SpecStore::open(&target_workspace).unwrap();
+        assert!(src.entity_store().get_indexed(&spec_id).unwrap().is_none());
+        assert!(dst.entity_store().get_indexed(&spec_id).unwrap().is_some());
+    }
+}

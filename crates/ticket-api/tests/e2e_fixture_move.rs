@@ -77,14 +77,14 @@ fn cross_worktree_move_from_submodule_to_root_is_clean_and_reversible() {
     // The destination path must never carry a Windows verbatim prefix.
     let dest = outcome
         .journal
-        .destination_ticket_path
+        .destination_entity_path
         .to_string_lossy()
         .replace('\\', "/");
     assert!(!dest.contains("//?/"), "verbatim prefix leaked: {dest}");
     assert!(
         !outcome
             .journal
-            .destination_ticket_path
+            .destination_entity_path
             .to_string_lossy()
             .contains(r"\\?\"),
         "verbatim prefix leaked into destination path"

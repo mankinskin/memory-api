@@ -2,48 +2,35 @@
 
 ## Goal
 
-Promote the proven ticket-only cross-workspace move (delivered by `505b2cd4`) into a **domain-neutral generic move kernel** in `memory-api` that every domain store (ticket, spec, rule, audit, session, feedback) reuses. Domain-specific behavior is injected through traits implemented in each domain api crate, so all domains gain the same safe move featureset with **no duplicated move logic (DRY)**.
+Promote the proven ticket-only cross-workspace move (delivered by `505b2cd4`) into a **domain-neutral generic move kernel** in `memory-api` that every domain store reuses through a trait, with **no duplicated move logic (DRY)**.
 
-## Problem / current state
+## Implementation (delivered)
 
-The cross-workspace move contract is implemented directly against `TicketStore` and ticket-shaped types:
+Generic kernel extracted to `memory-api/crates/memory-api/src/storage/move_kernel.rs` (re-exported from `memory_api::storage`):
+- Neutral types: `MovePlan`, `MoveJournal`, `MoveOutcome`, `MoveBlocker`, `MoveReferenceVisibility`, `MoveReferenceDirection`, `GitWorktreeTopology`, `MoveExecutionPhase`, `MovePathRewrite`, `MoveManualFollowup`, `MoveLeaseBlock`, `MoveReferences`, `MoveBoardState`, `MoveError`. No ticket-specific types in any kernel signature; identities are bare `Uuid`s and board rows use the shared `BoardEntry`.
+- Generic functions `plan_move` / `execute_move` / `resume_move` / `rollback_move` own all git-topology classification, tracked-path-reference scan + rewrite, dirty-file detection, lock-set management, and journal persistence.
+- `MoveDomain` trait injection points: `entity_subdir` + `store_index_dir` (path resolution), `source_entity_path`, `related_entities` (edge enumeration), `target_store_present` + `entity_indexed_in` (destination visibility), `board_state` + `active_leases` + `migrate_board_history` + `restore_board_history` (board/lease detection + historical migration), `scan_store`. Blocker classification is owned by the kernel over the shared `MoveBlocker` enum.
 
-- `memory-api/crates/ticket-api/src/storage/move_planner.rs` — `impl TicketStore::plan_move_preflight`, `MovePreflightReport` (ticket-typed fields: `ticket_id`, `inbound_related_ticket_ids`, `outbound_related_ticket_ids`, `source_ticket`/`target_ticket: IndexedTicket`), `MovePreflightBlocker`.
-- `memory-api/crates/ticket-api/src/storage/move_execution.rs` — `impl TicketStore::{execute,resume,rollback}_move_with_journal`, `MoveJournal`, `MoveExecutionPhase`, board-row migration, path-reference rewrite, lock/journal handling.
+First adopter (`ticket-api`): `move_planner.rs` / `move_execution.rs` reduced to a `TicketMoveDomain` adapter + thin delegating methods that re-export the neutral kernel types under the established public paths. CLI/MCP/HTTP JSON keys preserved (only Rust field accessors updated to `source_entity_path` / `destination_entity_path` / `journal.entity_id`).
 
-The v1 ticket move ticket (`505b2cd4`) deliberately scoped this to **ticket-only** ("Do not generalize to arbitrary memory-api entities until the ticket move contract is proven"). That contract is now in review, so the generalization follow-up is warranted. No dedicated generic-move ticket exists yet.
-
-## Scope
-
-- Extract a generic move kernel (read-only preflight planner + journaled/resumable/rollbackable executor) into shared `memory-api` storage, parameterized over an entity-agnostic core.
-- Define trait injection / specialization points that each domain api crate implements to supply domain-specific behavior:
-  - entity identity + on-disk path resolution for source/target stores
-  - reference & edge enumeration (inbound/outbound) and destination visibility checks
-  - board entry / lease detection and historical-row migration (where the domain has a board)
-  - path-reference scan + rewrite policy for tracked text files
-  - blocker classification mapping onto a shared blocker enum
-- Migrate the existing ticket move onto the new kernel as the **first adopter**, preserving current behavior and tests.
-- Ensure all domains can opt into the generic store move featureset through the shared kernel without copying logic.
-
-## Non-goals
-
-- Implementing cross-git-worktree / submodule move itself — that capability is owned by `21e6c015`; this ticket only ensures the generic kernel exposes it through trait specialization rather than reimplementing it.
-- Changing the fail-closed board/lease policy or the journaled atomicity model.
-- Cross-store transactional move (still out of scope; journaled + resumable remains the model).
-- New surface (CLI/MCP/HTTP) behavior beyond exposing the generalized kernel; domain surfaces are wired in their own child tickets if needed.
+Second adopter (`spec-api`): `move_domain.rs` adds `SpecMoveDomain` + `SpecStore::{plan_move_preflight, execute/resume/rollback_move_with_journal}`, demonstrating reuse with empty board/lease hooks. Surface wiring (spec CLI/MCP/HTTP) left for a follow-up per scope.
 
 ## Acceptance criteria
 
-- [ ] A domain-neutral move planner + journaled executor lives in shared `memory-api`, with no ticket-specific types in the kernel signatures.
-- [ ] Trait specialization points are defined and documented for: entity/path resolution, reference & edge enumeration + visibility, board/lease checks + historical migration, path-reference rewrite, and blocker mapping.
-- [ ] `ticket-api` move (`move_planner.rs` / `move_execution.rs`) is reimplemented on top of the generic kernel via the trait impl, with existing move tests still passing (planner preflight, execute/resume/rollback, active-board-entry fail-closed, historical board migration, path-reference rewrite + rollback).
-- [ ] At least one additional domain (e.g. `spec-api` or `rule-api`) demonstrates the kernel is reusable by implementing the trait, even if surface wiring lands in a follow-up.
-- [ ] No move logic is duplicated across domain crates — domain crates contain only their trait impls and domain-specific helpers.
+- [x] Domain-neutral move planner + journaled executor in shared `memory-api`, no ticket-specific types in kernel signatures.
+- [x] Trait specialization points defined + documented for entity/path resolution, reference enumeration + visibility, board/lease checks + historical migration, path-reference rewrite, and blocker mapping.
+- [x] `ticket-api` move reimplemented on the kernel via the trait impl; existing move tests pass (planner preflight, execute/resume/rollback, active-board fail-closed, historical board migration, path-reference rewrite + rollback, cross-worktree e2e).
+- [x] Second domain (`spec-api`) implements the trait and moves an entity between stores via the shared kernel.
+- [x] No move logic duplicated across domain crates — domain crates contain only trait impls + domain helpers.
+
+## Validation
+
+- `cargo test -p ticket-api` move suites: `move_planner` (3) + `move_execution` (7) + `e2e_fixture_move` (1) pass.
+- `cargo test -p spec-api --lib move_domain` (1) passes.
+- `cargo test -p ticket-api -p spec-api -p memory-api` full suites pass; `ticket-cli`/`ticket-mcp`/`ticket-http` compile.
+- Evidence: test-api `vt-move-kernel` / `exec-vt-move-kernel-20260628` (passed).
 
 ## Relationship / traceability
 
-- Follows and depends on `505b2cd4` ([ticket-api] Deliver safe cross-workspace ticket move for git-backed stores) — the proven ticket-only contract this generalizes.
-- Planning lineage: `13e9ce28` (move planning).
-- Cross-store context (these live in the **default/context-engine `.ticket` store**, so they are referenced textually rather than via graph edges — edges cannot cross stores):
-  - `2b1279bd-c42f-4b0e-8835-d0d645a733ab` — Neutral storage kernel API migration (neutral shared storage/index/search symbols). The generic move kernel should build on the neutral kernel naming once available.
-  - `671d4e47-b53d-4a04-aa1d-30f2aa8a2bbe` — multi-store architecture tracker.
+- Follows `505b2cd4` (proven ticket-only contract) and `21e6c015` (cross-git-worktree topology, exposed through the kernel rather than reimplemented).
+- Cross-store context (default `.ticket` store, textual refs): `2b1279bd` neutral storage kernel; `671d4e47` multi-store architecture tracker.

@@ -2,6 +2,7 @@ pub mod code_ref;
 pub mod default_schema;
 pub mod error;
 pub mod manifest;
+pub mod move_domain;
 pub mod slug;
 pub mod store;
 pub mod store_index;

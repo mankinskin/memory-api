@@ -1,436 +1,272 @@
-use std::{
-    collections::BTreeSet,
-    path::{Path, PathBuf},
-    process::Command,
+//! Ticket-domain adapter onto the domain-neutral move kernel.
+//!
+//! The generic move machinery (preflight planning, journaled execution, git
+//! topology, path-reference rewriting) lives in
+//! [`memory_api::storage::move_kernel`]. This module supplies the ticket-domain
+//! specialization via [`TicketMoveDomain`] and re-exports the kernel types under
+//! the names the ticket surfaces (CLI/MCP/HTTP) consume.
+
+use std::path::{
+    Path,
+    PathBuf,
 };
 
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
+use memory_api::storage::move_kernel::{
+    self,
+    MoveBoardState,
+    MoveDomain,
+    MoveError,
+    MoveLeaseBlock,
+    MoveReferences,
+    MoveResult,
+};
 use uuid::Uuid;
 
 use crate::{
     error::StorageError,
     storage::{
-        indexed::{IndexedTicket, LeaseInfo},
         store::TicketStore,
         BoardEntry,
+        BoardEntryStatus,
     },
     workspace,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MoveReferenceVisibility {
-    pub related_ticket_id: Uuid,
-    pub direction: MoveReferenceDirection,
-    pub visible_from_destination: bool,
+// Re-export the neutral kernel types as the ticket move surface. The move
+// command is domain-neutral now; these aliases keep the existing public paths
+// (`ticket_api::storage::move_planner::MovePreflightReport`, etc.) stable.
+pub use memory_api::storage::move_kernel::{
+    GitWorktreeTopology,
+    MoveBlocker as MovePreflightBlocker,
+    MovePlan as MovePreflightReport,
+    MoveReferenceDirection,
+    MoveReferenceVisibility,
+};
+
+/// Map a ticket [`StorageError`] into a kernel [`MoveError`].
+fn to_move_error(error: StorageError) -> MoveError {
+    match error {
+        StorageError::Io(io) => MoveError::Io(io),
+        other => MoveError::Domain(other.to_string()),
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum MoveReferenceDirection {
-    Inbound,
-    Outbound,
+/// Map a kernel [`MoveError`] back into a ticket [`StorageError`].
+pub(crate) fn from_move_error(error: MoveError) -> StorageError {
+    match error {
+        MoveError::Io(io) => StorageError::Io(io),
+        MoveError::Domain(message) => StorageError::Other(message),
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum GitWorktreeTopology {
-    Same,
-    ParentToSubmodule,
-    SubmoduleToParent,
-    Unrelated,
+fn map_board_error(error: crate::storage::BoardError) -> MoveError {
+    match error {
+        crate::storage::BoardError::Storage(storage_error) => to_move_error(storage_error),
+        other => MoveError::Domain(other.to_string()),
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MovePreflightBlocker {
-    DifferentGitWorktree {
-        source_worktree_root: PathBuf,
-        target_worktree_root: PathBuf,
-    },
-    MissingSourceTicket {
-        ticket_id: Uuid,
-    },
-    MissingTargetStore {
-        target_store_root: PathBuf,
-    },
-    ActiveOrStaleBoardEntry {
-        entry_id: Uuid,
-        status: String,
-        agent_id: String,
-    },
-    ActiveLease {
-        ticket_id: Uuid,
-        working_by: String,
-    },
-    InvisibleTicketReference {
-        related_ticket_id: Uuid,
-        direction: MoveReferenceDirection,
-    },
-    DirtyTrackedFiles {
-        files: Vec<PathBuf>,
-    },
-    PathReferenceScanUnavailable {
-        reason: String,
-    },
+/// Ticket-domain implementation of the move kernel's [`MoveDomain`] trait.
+pub(crate) struct TicketMoveDomain<'a> {
+    store: &'a TicketStore,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MovePreflightReport {
-    pub ticket_id: Uuid,
-    pub source_workspace_root: PathBuf,
-    pub target_workspace_root: PathBuf,
-    pub source_store_root: PathBuf,
-    pub target_store_root: PathBuf,
-    pub source_git_worktree_root: PathBuf,
-    pub target_git_worktree_root: PathBuf,
-    pub git_worktree_topology: GitWorktreeTopology,
-    pub source_ticket_path: PathBuf,
-    pub destination_ticket_path: PathBuf,
-    pub source_ticket: Option<IndexedTicket>,
-    pub target_ticket: Option<IndexedTicket>,
-    pub inbound_related_ticket_ids: Vec<Uuid>,
-    pub outbound_related_ticket_ids: Vec<Uuid>,
-    pub reference_visibility: Vec<MoveReferenceVisibility>,
-    pub active_board_entries: Vec<BoardEntry>,
-    pub historical_board_entries: Vec<BoardEntry>,
-    pub active_leases: Vec<LeaseInfo>,
-    pub path_reference_files: Vec<PathBuf>,
-    pub blockers: Vec<MovePreflightBlocker>,
-    pub captured_at: chrono::DateTime<Utc>,
+impl<'a> TicketMoveDomain<'a> {
+    pub(crate) fn new(store: &'a TicketStore) -> Self {
+        Self { store }
+    }
+
+    fn open(
+        &self,
+        store_root: &Path,
+    ) -> MoveResult<TicketStore> {
+        TicketStore::open_with(store_root, self.store.schema_registry().clone()).map_err(to_move_error)
+    }
 }
 
-impl MovePreflightReport {
-    pub fn supported(&self) -> bool {
-        self.blockers.is_empty()
+impl MoveDomain for TicketMoveDomain<'_> {
+    fn entity_subdir(&self) -> &str {
+        "tickets"
+    }
+
+    fn store_index_dir(&self) -> &str {
+        workspace::TICKET_INDEX_DIR
+    }
+
+    fn source_store_root(&self) -> PathBuf {
+        self.store.index_root.clone()
+    }
+
+    fn source_entity_path(
+        &self,
+        entity_id: &Uuid,
+    ) -> MoveResult<Option<PathBuf>> {
+        Ok(self
+            .store
+            .get_indexed(entity_id)
+            .map_err(to_move_error)?
+            .map(|ticket| ticket.path))
+    }
+
+    fn related_entities(
+        &self,
+        entity_id: &Uuid,
+    ) -> MoveResult<MoveReferences> {
+        let mut references = MoveReferences::default();
+        for edge in self.store.list_all_edges().map_err(to_move_error)? {
+            if edge.from == *entity_id {
+                references.outbound.push(edge.to);
+            }
+            if edge.to == *entity_id {
+                references.inbound.push(edge.from);
+            }
+        }
+        Ok(references)
+    }
+
+    fn target_store_present(
+        &self,
+        target_store_root: &Path,
+    ) -> MoveResult<bool> {
+        match TicketStore::open_with(target_store_root, self.store.schema_registry().clone()) {
+            Ok(_) => Ok(true),
+            Err(StorageError::WorkspaceNotFound { .. }) => Ok(false),
+            Err(error) => Err(to_move_error(error)),
+        }
+    }
+
+    fn entity_indexed_in(
+        &self,
+        store_root: &Path,
+        entity_id: &Uuid,
+    ) -> MoveResult<bool> {
+        let store = self.open(store_root)?;
+        Ok(store.get_indexed(entity_id).map_err(to_move_error)?.is_some())
+    }
+
+    fn board_state(
+        &self,
+        entity_id: &Uuid,
+    ) -> MoveResult<MoveBoardState> {
+        let mut state = MoveBoardState::default();
+        let snapshot = self.store.board_show(None).map_err(map_board_error)?;
+        for entry in snapshot.entries {
+            if entry.ticket_id == *entity_id
+                && (entry.status == BoardEntryStatus::Active
+                    || entry.status == BoardEntryStatus::Stale)
+            {
+                state.active_entries.push(entry);
+            }
+        }
+        let history = self.store.board_history(None).map_err(map_board_error)?;
+        for entry in history.entries {
+            if entry.ticket_id == *entity_id {
+                state.historical_entries.push(entry);
+            }
+        }
+        Ok(state)
+    }
+
+    fn active_leases(
+        &self,
+        entity_id: &Uuid,
+    ) -> MoveResult<Vec<MoveLeaseBlock>> {
+        let mut leases = Vec::new();
+        for lease in self.store.list_leases().map_err(to_move_error)? {
+            if lease.ticket_id == *entity_id {
+                leases.push(MoveLeaseBlock {
+                    entity_id: lease.ticket_id,
+                    working_by: lease.working_by.clone(),
+                });
+            }
+        }
+        Ok(leases)
+    }
+
+    fn migrate_board_history(
+        &self,
+        target_store_root: &Path,
+        entity_id: &Uuid,
+    ) -> MoveResult<Vec<BoardEntry>> {
+        let target_store = self.open(target_store_root)?;
+        let entries = self
+            .store
+            .board_list_entries_for_ticket(entity_id)
+            .map_err(map_board_error)?;
+
+        let mut historical_entries = Vec::new();
+        for entry in entries {
+            if entry.status == BoardEntryStatus::Active || entry.status == BoardEntryStatus::Stale {
+                return Err(MoveError::Domain(format!(
+                    "cannot move entity {} while board entry {} is active/stale",
+                    entity_id, entry.entry_id
+                )));
+            }
+            historical_entries.push(entry);
+        }
+
+        if historical_entries.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        target_store
+            .board_import_entries(&historical_entries)
+            .map_err(map_board_error)?;
+        let ids: Vec<Uuid> = historical_entries.iter().map(|entry| entry.entry_id).collect();
+        self.store
+            .board_delete_entries(&ids)
+            .map_err(map_board_error)?;
+
+        Ok(historical_entries)
+    }
+
+    fn restore_board_history(
+        &self,
+        target_store_root: &Path,
+        entries: &[BoardEntry],
+    ) -> MoveResult<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let target_store = self.open(target_store_root)?;
+        self.store
+            .board_import_entries(entries)
+            .map_err(map_board_error)?;
+        let ids: Vec<Uuid> = entries.iter().map(|entry| entry.entry_id).collect();
+        target_store
+            .board_delete_entries(&ids)
+            .map_err(map_board_error)?;
+        Ok(())
+    }
+
+    fn scan_store(
+        &self,
+        store_root: &Path,
+    ) -> MoveResult<()> {
+        let store = self.open(store_root)?;
+        store.scan(true).map_err(to_move_error)?;
+        Ok(())
     }
 }
 
 impl TicketStore {
+    /// Build a read-only preflight plan for moving `ticket_id` to
+    /// `target_workspace_root`, delegating to the domain-neutral move kernel.
     pub fn plan_move_preflight(
         &self,
         ticket_id: &Uuid,
         target_workspace_root: &Path,
     ) -> Result<MovePreflightReport, StorageError> {
-        let source_workspace_root =
-            workspace::resolve_workspace_root_from_store_root(&self.index_root, workspace::TICKET_INDEX_DIR);
-        let source_store_root = self.index_root.clone();
-        let target_store_root = workspace::resolve_store_root_from(
-            target_workspace_root,
-            workspace::TICKET_INDEX_DIR,
-        );
-        let source_ticket = self.get_indexed(ticket_id)?;
-        let source_ticket_path = source_ticket
-            .as_ref()
-            .map(|ticket| ticket.path.clone())
-            .unwrap_or_else(|| source_store_root.join("tickets").join(ticket_id.to_string()));
-        let destination_ticket_path = target_store_root
-            .join("tickets")
-            .join(ticket_id.to_string());
-
-        let mut blockers = Vec::new();
-
-        let source_git_root = git_toplevel(&source_workspace_root)
-            .map_err(|reason| StorageError::Other(reason))?;
-        let target_git_root = match git_toplevel(target_workspace_root) {
-            Ok(root) => root,
-            Err(reason) => {
-                blockers.push(MovePreflightBlocker::PathReferenceScanUnavailable { reason });
-                source_git_root.clone()
-            },
-        };
-
-        let git_worktree_topology = classify_git_worktree_topology(&source_git_root, &target_git_root);
-        if git_worktree_topology == GitWorktreeTopology::Unrelated {
-            blockers.push(MovePreflightBlocker::DifferentGitWorktree {
-                source_worktree_root: source_git_root.clone(),
-                target_worktree_root: target_git_root.clone(),
-            });
-        }
-
-        let target_store = match TicketStore::open_with(
-            &target_store_root,
-            self.schema_registry().clone(),
-        ) {
-            Ok(store) => Some(store),
-            Err(StorageError::WorkspaceNotFound { path }) => {
-                blockers.push(MovePreflightBlocker::MissingTargetStore {
-                    target_store_root: path,
-                });
-                None
-            },
-            Err(error) => return Err(error),
-        };
-
-        if source_ticket.is_none() {
-            blockers.push(MovePreflightBlocker::MissingSourceTicket { ticket_id: *ticket_id });
-        }
-
-        let all_edges = self.list_all_edges()?;
-        let mut inbound_related_ticket_ids = BTreeSet::new();
-        let mut outbound_related_ticket_ids = BTreeSet::new();
-        for edge in &all_edges {
-            if edge.from == *ticket_id {
-                outbound_related_ticket_ids.insert(edge.to);
-            }
-            if edge.to == *ticket_id {
-                inbound_related_ticket_ids.insert(edge.from);
-            }
-        }
-
-        let mut reference_visibility = Vec::new();
-        if let Some(target_store) = target_store.as_ref() {
-            for related_ticket_id in inbound_related_ticket_ids
-                .iter()
-                .chain(outbound_related_ticket_ids.iter())
-                .copied()
-            {
-                let visible_from_destination = target_store.get_indexed(&related_ticket_id)?.is_some();
-                let direction = if outbound_related_ticket_ids.contains(&related_ticket_id) {
-                    MoveReferenceDirection::Outbound
-                } else {
-                    MoveReferenceDirection::Inbound
-                };
-                if !visible_from_destination {
-                    blockers.push(MovePreflightBlocker::InvisibleTicketReference {
-                        related_ticket_id,
-                        direction: direction.clone(),
-                    });
-                }
-                reference_visibility.push(MoveReferenceVisibility {
-                    related_ticket_id,
-                    direction,
-                    visible_from_destination,
-                });
-            }
-        }
-
-        let mut active_board_entries = Vec::new();
-        let mut historical_board_entries = Vec::new();
-        let mut active_leases = Vec::new();
-        let board_snapshot = self.board_show(None).map_err(|error| match error {
-            crate::storage::BoardError::Storage(storage_error) => storage_error,
-            other => StorageError::Other(other.to_string()),
-        })?;
-        for entry in board_snapshot.entries {
-            if entry.ticket_id == *ticket_id {
-                if entry.status == crate::storage::BoardEntryStatus::Active
-                    || entry.status == crate::storage::BoardEntryStatus::Stale
-                {
-                    blockers.push(MovePreflightBlocker::ActiveOrStaleBoardEntry {
-                        entry_id: entry.entry_id,
-                        status: format!("{:?}", entry.status),
-                        agent_id: entry.agent_id.clone(),
-                    });
-                }
-                active_board_entries.push(entry);
-            }
-        }
-        let history_snapshot = self.board_history(None).map_err(|error| match error {
-            crate::storage::BoardError::Storage(storage_error) => storage_error,
-            other => StorageError::Other(other.to_string()),
-        })?;
-        for entry in history_snapshot.entries {
-            if entry.ticket_id == *ticket_id {
-                historical_board_entries.push(entry);
-            }
-        }
-        for lease in self.list_leases()? {
-            if lease.ticket_id == *ticket_id {
-                blockers.push(MovePreflightBlocker::ActiveLease {
-                    ticket_id: lease.ticket_id,
-                    working_by: lease.working_by.clone(),
-                });
-                active_leases.push(lease);
-            }
-        }
-
-        let path_reference_files = if source_ticket.is_some() {
-            let mut files = BTreeSet::new();
-
-            match git_tracked_path_reference_files(&source_git_root, &source_ticket_path) {
-                Ok(found) => {
-                    for file in found {
-                        files.insert(source_git_root.join(file));
-                    }
-                }
-                Err(reason) => {
-                    blockers.push(MovePreflightBlocker::PathReferenceScanUnavailable { reason });
-                }
-            }
-
-            if source_git_root != target_git_root {
-                match git_tracked_path_reference_files(&target_git_root, &source_ticket_path) {
-                    Ok(found) => {
-                        for file in found {
-                            files.insert(target_git_root.join(file));
-                        }
-                    }
-                    Err(reason) => {
-                        blockers.push(MovePreflightBlocker::PathReferenceScanUnavailable { reason });
-                    }
-                }
-            }
-
-            files.into_iter().collect()
-        } else {
-            Vec::new()
-        };
-
-        if !path_reference_files.is_empty() {
-            let dirty_files = git_dirty_tracked_files(
-                &path_reference_files,
-                &source_git_root,
-                &target_git_root,
-            )
-                .unwrap_or_else(|reason| {
-                    blockers.push(MovePreflightBlocker::PathReferenceScanUnavailable { reason });
-                    Vec::new()
-                });
-            if !dirty_files.is_empty() {
-                blockers.push(MovePreflightBlocker::DirtyTrackedFiles { files: dirty_files });
-            }
-        }
-
-        Ok(MovePreflightReport {
-            ticket_id: *ticket_id,
-            source_workspace_root,
-            target_workspace_root: target_workspace_root.to_path_buf(),
-            source_store_root,
-            target_store_root,
-            source_git_worktree_root: source_git_root,
-            target_git_worktree_root: target_git_root,
-            git_worktree_topology,
-            source_ticket_path,
-            destination_ticket_path,
-            source_ticket,
-            target_ticket: target_store
-                .as_ref()
-                .and_then(|store| store.get_indexed(ticket_id).ok().flatten()),
-            inbound_related_ticket_ids: inbound_related_ticket_ids.into_iter().collect(),
-            outbound_related_ticket_ids: outbound_related_ticket_ids.into_iter().collect(),
-            reference_visibility,
-            active_board_entries,
-            historical_board_entries,
-            active_leases,
-            path_reference_files,
-            blockers,
-            captured_at: Utc::now(),
-        })
+        let domain = TicketMoveDomain::new(self);
+        move_kernel::plan_move(&domain, ticket_id, target_workspace_root).map_err(from_move_error)
     }
-}
-
-fn classify_git_worktree_topology(
-    source_git_root: &Path,
-    target_git_root: &Path,
-) -> GitWorktreeTopology {
-    if source_git_root == target_git_root {
-        return GitWorktreeTopology::Same;
-    }
-    if target_git_root.starts_with(source_git_root) {
-        return GitWorktreeTopology::ParentToSubmodule;
-    }
-    if source_git_root.starts_with(target_git_root) {
-        return GitWorktreeTopology::SubmoduleToParent;
-    }
-    GitWorktreeTopology::Unrelated
-}
-
-fn git_toplevel(path: &Path) -> Result<PathBuf, String> {
-    let output = Command::new("git")
-        .args(["-C", &path.to_string_lossy(), "rev-parse", "--show-toplevel"])
-        .output()
-        .map_err(|error| error.to_string())?;
-
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if stdout.is_empty() {
-        return Err("git rev-parse returned an empty worktree root".to_string());
-    }
-
-    Ok(PathBuf::from(stdout))
-}
-
-fn git_tracked_path_reference_files(
-    repo_root: &Path,
-    ticket_path: &Path,
-) -> Result<Vec<PathBuf>, String> {
-    let mut candidates = BTreeSet::new();
-    candidates.insert(ticket_path.to_string_lossy().replace('\\', "/"));
-    if let Ok(relative) = ticket_path.strip_prefix(repo_root) {
-        candidates.insert(relative.to_string_lossy().replace('\\', "/"));
-    }
-
-    let mut files = BTreeSet::new();
-    for candidate in candidates {
-        let output = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "grep", "-nF", "--full-name", &candidate])
-            .output()
-            .map_err(|error| error.to_string())?;
-
-        if !output.status.success() && output.status.code() != Some(1) {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
-
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            if let Some((file, _)) = line.split_once(':') {
-                files.insert(PathBuf::from(file));
-            }
-        }
-    }
-
-    Ok(files.into_iter().collect())
-}
-
-fn git_dirty_tracked_files(
-    files: &[PathBuf],
-    source_repo_root: &Path,
-    target_repo_root: &Path,
-) -> Result<Vec<PathBuf>, String> {
-    let mut dirty = Vec::new();
-    for file in files {
-        let repo_root = if file.starts_with(source_repo_root) {
-            source_repo_root
-        } else if file.starts_with(target_repo_root) {
-            target_repo_root
-        } else {
-            source_repo_root
-        };
-
-        let status_path = file
-            .strip_prefix(repo_root)
-            .unwrap_or(file)
-            .to_string_lossy()
-            .replace('\\', "/");
-
-        let output = Command::new("git")
-            .args([
-                "-C",
-                &repo_root.to_string_lossy(),
-                "status",
-                "--porcelain",
-                "--",
-                &status_path,
-            ])
-            .output()
-            .map_err(|error| error.to_string())?;
-
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
-
-        if !String::from_utf8_lossy(&output.stdout).trim().is_empty() {
-            dirty.push(file.clone());
-        }
-    }
-
-    Ok(dirty)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::edge::EdgeRecord;
+    use chrono::Utc;
     use std::{fs, process::Command};
     use tempfile::tempdir;
 
@@ -531,20 +367,20 @@ mod tests {
             .unwrap();
 
         assert!(!report.supported());
-        assert!(report.reference_visibility.iter().any(|entry|
-            entry.related_ticket_id == invisible_inbound
+        assert!(report.reference_visibility.iter().any(|entry| {
+            entry.related_entity_id == invisible_inbound
                 && entry.direction == MoveReferenceDirection::Inbound
                 && !entry.visible_from_destination
-        ));
+        }));
         assert!(report.path_reference_files.iter().any(|path| {
             path.ends_with("docs/move.md")
         }));
         assert!(report.blockers.iter().any(|blocker| matches!(
             blocker,
-            MovePreflightBlocker::InvisibleTicketReference {
-                related_ticket_id,
+            MovePreflightBlocker::InvisibleReference {
+                related_entity_id,
                 direction: MoveReferenceDirection::Inbound,
-            } if *related_ticket_id == invisible_inbound
+            } if *related_entity_id == invisible_inbound
         )));
     }
 
