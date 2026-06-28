@@ -11,6 +11,15 @@ use test_api::{
     ValidationLinks,
 };
 
+mod error;
+mod store;
+
+pub use error::LogError;
+pub use store::{
+    LogCaptureQuery,
+    LogStoreConfig,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ValidationLogLinks {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -16,9 +16,18 @@ use serde_json::{
 };
 
 use memory_api::workspace;
+use log_api::{
+    LogCaptureQuery,
+    LogError,
+    LogStoreConfig,
+    ValidationLogCapture,
+    ValidationLogKind,
+    ValidationLogLinks,
+};
 use test_api::{
     ExecutionSort,
     ExecutionQuery,
+    BenchmarkQuery,
     TestError,
     TestStoreConfig,
     ValidationExecution,
@@ -29,6 +38,8 @@ use test_api::{
 
 /// Directory name for the test-result store (sibling of `.ticket` / `.spec`).
 const TEST_STORE_DIR: &str = ".test";
+/// Directory name for the validation-log store (sibling of `.test`).
+const LOG_STORE_DIR: &str = ".log";
 
 // ── CLI root ────────────────────────────────────────────────────────────────
 
@@ -78,8 +89,18 @@ pub enum TestCommand {
     ListSpecs,
     /// List validation executions with optional filters.
     List(ListArgs),
+    /// List benchmark executions with domain/operation/over-budget filters.
+    Benchmarks(BenchmarkListArgs),
     /// Generate and write the deterministic test-store index (index.toon + README.md).
     StoreIndex,
+    /// Render the store-index summary (markdown + digest) without writing files.
+    Summary,
+    /// Surface failed, over-budget, and slow runs ordered by severity.
+    Audit,
+    /// Record a validation log capture for an execution.
+    LogRecord(LogRecordArgs),
+    /// List validation log captures, optionally filtered by execution id.
+    Logs(LogsArgs),
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -104,7 +125,6 @@ pub enum SortArg {
     NewestFirst,
     SlowestFirst,
 }
-
 impl From<SortArg> for ExecutionSort {
     fn from(value: SortArg) -> Self {
         match value {
@@ -208,6 +228,79 @@ pub struct ListArgs {
     pub limit: Option<usize>,
 }
 
+#[derive(Debug, Args)]
+pub struct BenchmarkListArgs {
+    /// Only benchmarks in this domain (e.g. `ticket`).
+    #[arg(long)]
+    pub domain: Option<String>,
+    /// Only benchmarks for this operation (e.g. `get`).
+    #[arg(long)]
+    pub operation: Option<String>,
+    /// Only benchmarks that exceeded their latency budget.
+    #[arg(long)]
+    pub over_budget: bool,
+    /// Maximum number of benchmarks to return.
+    #[arg(long)]
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum LogKindArg {
+    Stdout,
+    Stderr,
+    CombinedOutput,
+    StructuredSummary,
+}
+
+impl From<LogKindArg> for ValidationLogKind {
+    fn from(value: LogKindArg) -> Self {
+        match value {
+            LogKindArg::Stdout => ValidationLogKind::Stdout,
+            LogKindArg::Stderr => ValidationLogKind::Stderr,
+            LogKindArg::CombinedOutput => ValidationLogKind::CombinedOutput,
+            LogKindArg::StructuredSummary => ValidationLogKind::StructuredSummary,
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+pub struct LogRecordArgs {
+    /// Stable capture id (path-safe).
+    #[arg(long)]
+    pub id: String,
+    /// The validation execution id this capture belongs to.
+    #[arg(long = "execution")]
+    pub execution_id: String,
+    /// Kind of captured output.
+    #[arg(long, value_enum, default_value = "combined-output")]
+    pub kind: LogKindArg,
+    /// Media type of the captured artifact.
+    #[arg(long, default_value = "text/plain")]
+    pub media_type: String,
+    /// Locator (path/URL) of the captured artifact.
+    #[arg(long)]
+    pub locator: String,
+    /// Free-text detail.
+    #[arg(long)]
+    pub detail: Option<String>,
+    /// RFC3339 capture timestamp. Defaults to now (UTC).
+    #[arg(long)]
+    pub captured_at: Option<String>,
+    /// Linked ticket ids (repeatable).
+    #[arg(long = "ticket")]
+    pub ticket_ids: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct LogsArgs {
+    /// Only captures linked to this validation execution id.
+    #[arg(long = "execution")]
+    pub execution_id: Option<String>,
+    /// Maximum number of captures to return.
+    #[arg(long)]
+    pub limit: Option<usize>,
+}
+
 // ── output helpers ────────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -225,6 +318,8 @@ pub enum CliOutput {
 pub enum CliRunError {
     #[error("test error: {0}")]
     Test(#[from] TestError),
+    #[error("log error: {0}")]
+    Log(#[from] LogError),
     #[error("invalid timestamp '{0}': {1}")]
     Timestamp(String, String),
     #[error("serialization error: {0}")]
@@ -240,9 +335,21 @@ pub fn run(cli: TestCli) -> Result<CliOutput, CliRunError> {
         None,
         TEST_STORE_DIR,
     );
-    let config = TestStoreConfig::new(store_root, cli.workspace_slug.clone());
+    let config = TestStoreConfig::new(store_root.clone(), cli.workspace_slug.clone());
 
-    let payload = dispatch(&config, cli.command)?;
+    // The validation-log store is the `.log` sibling of the `.test` store.
+    let log_root = match store_root.parent() {
+        Some(parent) => parent.join(LOG_STORE_DIR),
+        None => workspace::resolve_requested_store_root(
+            None,
+            cli.workspace_root.as_deref(),
+            None,
+            LOG_STORE_DIR,
+        ),
+    };
+    let log_config = LogStoreConfig::new(log_root, cli.workspace_slug.clone());
+
+    let payload = dispatch(&config, &log_config, cli.command)?;
 
     match machine_output_format(cli.json, cli.toon) {
         Some(format) => Ok(CliOutput::Machine(payload, format)),
@@ -252,6 +359,7 @@ pub fn run(cli: TestCli) -> Result<CliOutput, CliRunError> {
 
 fn dispatch(
     config: &TestStoreConfig,
+    log_config: &LogStoreConfig,
     command: TestCommand,
 ) -> Result<Value, CliRunError> {
     match command {
@@ -339,6 +447,90 @@ fn dispatch(
                 "digest": digest,
                 "toon_path": toon_path,
                 "readme_path": readme_path,
+            }))
+        },
+        TestCommand::Benchmarks(args) => {
+            let query = BenchmarkQuery {
+                domain: args.domain,
+                operation: args.operation,
+                over_budget: if args.over_budget { Some(true) } else { None },
+                limit: args.limit,
+            };
+            let benchmarks = config.list_benchmarks(&query)?;
+            to_value(&json!({
+                "count": benchmarks.len(),
+                "benchmarks": benchmarks,
+            }))
+        },
+        TestCommand::Summary => {
+            let artifacts = config.generate_store_index()?;
+            to_value(&json!({
+                "kind": "test-store-summary",
+                "digest": artifacts.digest,
+                "summary": artifacts.summary,
+                "markdown": artifacts.markdown,
+            }))
+        },
+        TestCommand::Audit => {
+            let artifacts = config.generate_store_index()?;
+            let summary = &artifacts.summary;
+
+            let failed: Vec<&_> = summary
+                .issues
+                .iter()
+                .filter(|i| i.kind == "execution")
+                .collect();
+            let over_budget: Vec<&_> = summary
+                .issues
+                .iter()
+                .filter(|i| i.kind == "benchmark")
+                .collect();
+
+            to_value(&json!({
+                "kind": "test-audit",
+                "digest": artifacts.digest,
+                "failed_count": failed.len(),
+                "over_budget_count": over_budget.len(),
+                "slow_count": summary.slow.len(),
+                // severity order: failed executions, then over-budget benchmarks, then slow runs
+                "failed": failed,
+                "over_budget": over_budget,
+                "slow": summary.slow,
+            }))
+        },
+        TestCommand::LogRecord(args) => {
+            let captured_at = parse_timestamp(args.captured_at.as_deref())?;
+            let capture = ValidationLogCapture {
+                id: args.id,
+                validation_execution_id: args.execution_id.clone(),
+                kind: args.kind.into(),
+                captured_at,
+                media_type: args.media_type,
+                locator: args.locator,
+                detail: args.detail,
+                links: ValidationLogLinks {
+                    ticket_ids: args.ticket_ids,
+                    validation_execution_ids: vec![args.execution_id],
+                    ..Default::default()
+                },
+            };
+            let path = log_config.record_capture(&capture)?;
+            to_value(&json!({
+                "status": "recorded",
+                "kind": "validation-log-capture",
+                "id": capture.id,
+                "path": path,
+            }))
+        },
+        TestCommand::Logs(args) => {
+            let query = LogCaptureQuery {
+                execution_id: args.execution_id,
+                limit: args.limit,
+            };
+            let captures = log_config.list_captures(&query)?;
+            to_value(&json!({
+                "count": captures.len(),
+                "captures": captures,
             }))
         },
     }
@@ -491,6 +683,73 @@ mod tests {
                 assert_eq!(value["count"], 1);
                 assert_eq!(value["executions"][0]["id"], "exec-core");
                 assert_eq!(value["executions"][0]["outcome"], "passed");
+            },
+            other => panic!("unexpected output variant: {}", matches!(other, CliOutput::Text(_))),
+        }
+    }
+
+    #[test]
+    fn log_record_then_logs_round_trips_through_store() {
+        let dir = TempDir::new().unwrap();
+
+        let mut record_args = store_args(&dir);
+        record_args.extend(
+            [
+                "--json", "log-record", "--id", "cap-1", "--execution", "exec-1",
+                "--kind", "stderr", "--locator", "target/test-logs/x.log", "--ticket",
+                "ticket-1",
+            ]
+            .map(String::from),
+        );
+        run(parse_cli_from(record_args).unwrap()).expect("record log capture");
+
+        let mut logs_args = store_args(&dir);
+        logs_args.extend(["--json", "logs", "--execution", "exec-1"].map(String::from));
+        let output = run(parse_cli_from(logs_args).unwrap()).expect("list logs");
+
+        match output {
+            CliOutput::Machine(value, MachineOutputFormat::Json) => {
+                assert_eq!(value["count"], 1);
+                assert_eq!(value["captures"][0]["id"], "cap-1");
+                assert_eq!(value["captures"][0]["kind"], "stderr");
+            },
+            other => panic!("unexpected output variant: {}", matches!(other, CliOutput::Text(_))),
+        }
+    }
+
+    #[test]
+    fn audit_reports_failed_and_slow_counts() {
+        let dir = TempDir::new().unwrap();
+
+        // Spec with a slow threshold so a slow execution is surfaced.
+        let mut spec_args = store_args(&dir);
+        spec_args.extend(
+            [
+                "record-spec", "--id", "vt-a", "--title", "A", "--slow-threshold-ms", "10",
+            ]
+            .map(String::from),
+        );
+        run(parse_cli_from(spec_args).unwrap()).expect("record spec");
+
+        let mut fail_args = store_args(&dir);
+        fail_args.extend(
+            [
+                "record", "--id", "exec-fail", "--spec-id", "vt-a", "--outcome", "failed",
+                "--duration-ms", "50", "--executed-at", "2026-06-15T12:00:00Z",
+            ]
+            .map(String::from),
+        );
+        run(parse_cli_from(fail_args).unwrap()).expect("record failed execution");
+
+        let mut audit_args = store_args(&dir);
+        audit_args.extend(["--json", "audit"].map(String::from));
+        let output = run(parse_cli_from(audit_args).unwrap()).expect("audit");
+
+        match output {
+            CliOutput::Machine(value, MachineOutputFormat::Json) => {
+                assert_eq!(value["failed_count"], 1);
+                assert_eq!(value["slow_count"], 1);
+                assert_eq!(value["failed"][0]["id"], "exec-fail");
             },
             other => panic!("unexpected output variant: {}", matches!(other, CliOutput::Text(_))),
         }

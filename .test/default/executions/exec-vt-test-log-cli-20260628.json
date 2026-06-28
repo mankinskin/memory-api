@@ -1,0 +1,13 @@
+{
+  "id": "exec-vt-test-log-cli-20260628",
+  "validation_spec_id": "vt-test-log-cli",
+  "outcome": "passed",
+  "executed_at": "2026-06-28T17:12:32.438769200Z",
+  "duration_ms": 80,
+  "detail": "log-api 7 tests + test-cli 5 tests pass; benchmarks/summary/audit/log-record/logs commands validated end-to-end against live store",
+  "links": {
+    "ticket_ids": [
+      "26d6353a-6613-48ad-96c5-d4bd8ad5180f"
+    ]
+  }
+}

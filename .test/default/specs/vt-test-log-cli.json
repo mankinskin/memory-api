@@ -1,0 +1,10 @@
+{
+  "id": "vt-test-log-cli",
+  "title": "test/log CLI + audit surface",
+  "command": "cargo test -p test-cli -p log-api",
+  "links": {
+    "ticket_ids": [
+      "26d6353a-6613-48ad-96c5-d4bd8ad5180f"
+    ]
+  }
+}
