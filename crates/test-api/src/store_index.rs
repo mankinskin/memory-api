@@ -45,6 +45,12 @@ pub struct ValidationGroupSummary {
     pub failed: usize,
     pub blocked: usize,
     pub latest_outcome: String,
+    pub source_path: Option<String>,
+    pub test_id: Option<String>,
+    pub domain: Option<String>,
+    pub operation: Option<String>,
+    pub transport: Option<String>,
+    pub run_id: Option<String>,
     pub last_duration_ms: Option<u64>,
     pub min_duration_ms: Option<u64>,
     pub median_duration_ms: Option<u64>,
@@ -158,6 +164,12 @@ fn aggregate_summary(input: &TestStoreIndexInput<'_>) -> TestStoreSummary {
             failed,
             blocked,
             latest_outcome: outcome_label(&latest.outcome).to_string(),
+            source_path: latest.provenance.source_path.clone(),
+            test_id: latest.provenance.test_id.clone(),
+            domain: latest.provenance.domain.clone(),
+            operation: latest.provenance.operation.clone(),
+            transport: latest.provenance.transport.clone(),
+            run_id: latest.provenance.run_id.clone(),
             last_duration_ms: latest.duration_ms,
             min_duration_ms: durations.first().copied(),
             median_duration_ms: median(&durations),
@@ -293,17 +305,18 @@ fn render_markdown(
     if summary.validation_groups.is_empty() {
         out.push_str("_none_\n\n");
     } else {
-        out.push_str("| spec | total | pass | fail | blocked | latest | min/median/max ms |\n");
-        out.push_str("|---|---|---|---|---|---|---|\n");
+        out.push_str("| spec | total | pass | fail | blocked | latest | provenance | min/median/max ms |\n");
+        out.push_str("|---|---|---|---|---|---|---|---|\n");
         for g in &summary.validation_groups {
             out.push_str(&format!(
-                "| {} | {} | {} | {} | {} | {} | {}/{}/{} |\n",
+                "| {} | {} | {} | {} | {} | {} | {} | {}/{}/{} |\n",
                 g.validation_spec_id,
                 g.total,
                 g.passed,
                 g.failed,
                 g.blocked,
                 g.latest_outcome,
+                provenance_label(g),
                 opt(g.min_duration_ms),
                 opt(g.median_duration_ms),
                 opt(g.max_duration_ms),
@@ -364,6 +377,14 @@ fn render_markdown(
 
 fn opt(value: Option<u64>) -> String {
     value.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string())
+}
+
+fn provenance_label(group: &ValidationGroupSummary) -> String {
+    let domain = group.domain.as_deref().unwrap_or("-");
+    let operation = group.operation.as_deref().unwrap_or("-");
+    let transport = group.transport.as_deref().unwrap_or("-");
+    let run_id = group.run_id.as_deref().unwrap_or("-");
+    format!("{domain}.{operation}@{transport}#{run_id}")
 }
 
 fn outcome_label(outcome: &ValidationOutcome) -> &'static str {

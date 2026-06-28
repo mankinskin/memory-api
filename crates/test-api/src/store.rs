@@ -1,4 +1,8 @@
 use std::{
+    collections::{
+        BTreeMap,
+        HashSet,
+    },
     fs,
     io::ErrorKind,
     path::{
@@ -55,6 +59,14 @@ pub struct ExecutionQuery {
     pub min_duration_ms: Option<u64>,
     /// Only return executions with duration <= this value.
     pub max_duration_ms: Option<u64>,
+    /// Only return executions with this provenance domain.
+    pub domain: Option<String>,
+    /// Only return executions with this provenance operation.
+    pub operation: Option<String>,
+    /// Only return executions with this provenance transport.
+    pub transport: Option<String>,
+    /// Only return executions with this provenance run id.
+    pub run_id: Option<String>,
     /// Sort order for returned executions.
     pub sort: ExecutionSort,
     /// Maximum number of executions to return (after sorting).
@@ -109,6 +121,7 @@ impl TestStoreConfig {
     ) -> Result<PathBuf, TestError> {
         let path = self.execution_path(&execution.id)?;
         write_json(&path, execution)?;
+        self.prune_execution_runs(2)?;
         Ok(path)
     }
 
@@ -155,6 +168,26 @@ impl TestStoreConfig {
                 match exec.duration_ms {
                     Some(duration) if duration <= max_duration_ms => {},
                     _ => return false,
+                }
+            }
+            if let Some(domain) = &query.domain {
+                if exec.provenance.domain.as_deref() != Some(domain.as_str()) {
+                    return false;
+                }
+            }
+            if let Some(operation) = &query.operation {
+                if exec.provenance.operation.as_deref() != Some(operation.as_str()) {
+                    return false;
+                }
+            }
+            if let Some(transport) = &query.transport {
+                if exec.provenance.transport.as_deref() != Some(transport.as_str()) {
+                    return false;
+                }
+            }
+            if let Some(run_id) = &query.run_id {
+                if exec.provenance.run_id.as_deref() != Some(run_id.as_str()) {
+                    return false;
                 }
             }
             true
@@ -365,6 +398,57 @@ impl TestStoreConfig {
         }
         Ok(items)
     }
+
+    fn prune_execution_runs(
+        &self,
+        keep_runs: usize,
+    ) -> Result<(), TestError> {
+        let executions: Vec<ValidationExecution> =
+            self.read_dir_json(&self.executions_dir()?)?;
+
+        let mut newest_by_run: BTreeMap<String, chrono::DateTime<chrono::Utc>> =
+            BTreeMap::new();
+        for execution in &executions {
+            let Some(run_id) = execution.provenance.run_id.as_ref() else {
+                continue;
+            };
+            match newest_by_run.get(run_id) {
+                Some(existing) if *existing >= execution.executed_at => {},
+                _ => {
+                    newest_by_run.insert(run_id.clone(), execution.executed_at);
+                },
+            }
+        }
+
+        if newest_by_run.len() <= keep_runs {
+            return Ok(());
+        }
+
+        let mut runs: Vec<(String, chrono::DateTime<chrono::Utc>)> =
+            newest_by_run.into_iter().collect();
+        runs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        let stale_runs: HashSet<String> =
+            runs.into_iter().skip(keep_runs).map(|(run, _)| run).collect();
+
+        for execution in executions {
+            let Some(run_id) = execution.provenance.run_id.as_ref() else {
+                continue;
+            };
+            if !stale_runs.contains(run_id) {
+                continue;
+            }
+            let path = self.execution_path(&execution.id)?;
+            match fs::remove_file(&path) {
+                Ok(()) => {},
+                Err(err) if err.kind() == ErrorKind::NotFound => {},
+                Err(source) => {
+                    return Err(TestError::Io { path, source });
+                },
+            }
+        }
+
+        Ok(())
+    }
 }
 
 // ── Free functions ──────────────────────────────────────────────────────────
@@ -433,7 +517,10 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::ValidationLinks;
+    use crate::{
+        ValidationLinks,
+        ValidationProvenance,
+    };
 
     fn at(secs: u32) -> chrono::DateTime<chrono::Utc> {
         chrono::Utc
@@ -497,14 +584,35 @@ mod tests {
             ticket_ids: vec!["ticket-x".to_string()],
             ..Default::default()
         };
+        passed.provenance = ValidationProvenance {
+            domain: Some("ticket".to_string()),
+            operation: Some("get".to_string()),
+            transport: Some("cli".to_string()),
+            run_id: Some("run-2".to_string()),
+            ..Default::default()
+        };
         let mut blocked = ValidationExecution::blocked("exec-blocked", "vt-b", at(2));
         blocked.duration_ms = Some(80);
         blocked.links = ValidationLinks {
             ticket_ids: vec!["ticket-x".to_string()],
             ..Default::default()
         };
+        blocked.provenance = ValidationProvenance {
+            domain: Some("spec".to_string()),
+            operation: Some("search".to_string()),
+            transport: Some("mcp".to_string()),
+            run_id: Some("run-2".to_string()),
+            ..Default::default()
+        };
         let mut other = ValidationExecution::passed("exec-other", "vt-a", at(3));
         other.duration_ms = Some(15);
+        other.provenance = ValidationProvenance {
+            domain: Some("ticket".to_string()),
+            operation: Some("search".to_string()),
+            transport: Some("http".to_string()),
+            run_id: Some("run-3".to_string()),
+            ..Default::default()
+        };
 
         cfg.record_execution(&passed).unwrap();
         cfg.record_execution(&blocked).unwrap();
@@ -547,6 +655,18 @@ mod tests {
         assert_eq!(by_duration.len(), 1);
         assert_eq!(by_duration[0].id, "exec-pass");
 
+        let by_provenance = cfg
+            .list_executions(&ExecutionQuery {
+                domain: Some("ticket".to_string()),
+                operation: Some("get".to_string()),
+                transport: Some("cli".to_string()),
+                run_id: Some("run-2".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(by_provenance.len(), 1);
+        assert_eq!(by_provenance[0].id, "exec-pass");
+
         let slowest = cfg
             .list_executions(&ExecutionQuery {
                 sort: ExecutionSort::SlowestFirst,
@@ -556,6 +676,31 @@ mod tests {
         assert_eq!(slowest[0].id, "exec-blocked");
         assert_eq!(slowest[1].id, "exec-pass");
         assert_eq!(slowest[2].id, "exec-other");
+    }
+
+    #[test]
+    fn record_execution_keeps_only_newest_two_runs() {
+        let dir = TempDir::new().unwrap();
+        let cfg = config(&dir);
+
+        let mut run1 = ValidationExecution::passed("exec-run1", "vt-a", at(1));
+        run1.provenance.run_id = Some("run-1".to_string());
+        cfg.record_execution(&run1).unwrap();
+
+        let mut run2 = ValidationExecution::passed("exec-run2", "vt-a", at(2));
+        run2.provenance.run_id = Some("run-2".to_string());
+        cfg.record_execution(&run2).unwrap();
+
+        let mut run3 = ValidationExecution::passed("exec-run3", "vt-a", at(3));
+        run3.provenance.run_id = Some("run-3".to_string());
+        cfg.record_execution(&run3).unwrap();
+
+        assert!(matches!(
+            cfg.get_execution("exec-run1"),
+            Err(TestError::ExecutionNotFound(_))
+        ));
+        assert_eq!(cfg.get_execution("exec-run2").unwrap().id, "exec-run2");
+        assert_eq!(cfg.get_execution("exec-run3").unwrap().id, "exec-run3");
     }
 
     #[test]

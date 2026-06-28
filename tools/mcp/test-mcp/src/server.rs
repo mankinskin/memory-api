@@ -34,6 +34,7 @@ use test_api::{
     ValidationExecution,
     ValidationLinks,
     ValidationOutcome,
+    ValidationProvenance,
     ValidationSpec,
 };
 
@@ -100,6 +101,24 @@ pub struct RecordExecutionInput {
     /// Log ids linked to this execution.
     #[serde(default)]
     pub log_ids: Vec<String>,
+    /// Source file path that produced this execution.
+    #[serde(default)]
+    pub source_path: Option<String>,
+    /// Stable test/cell id inside source_path.
+    #[serde(default)]
+    pub test_id: Option<String>,
+    /// Domain under test.
+    #[serde(default)]
+    pub domain: Option<String>,
+    /// Operation under test.
+    #[serde(default)]
+    pub operation: Option<String>,
+    /// Transport used (`cli`, `mcp`, `http`, `in-process`, ...).
+    #[serde(default)]
+    pub transport: Option<String>,
+    /// Run id grouping executions from one harness invocation.
+    #[serde(default)]
+    pub run_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -131,6 +150,18 @@ pub struct ListExecutionsInput {
     /// Only return executions with duration <= this threshold.
     #[serde(default)]
     pub max_duration_ms: Option<u64>,
+    /// Only return executions in this provenance domain.
+    #[serde(default)]
+    pub domain: Option<String>,
+    /// Only return executions for this provenance operation.
+    #[serde(default)]
+    pub operation: Option<String>,
+    /// Only return executions for this transport.
+    #[serde(default)]
+    pub transport: Option<String>,
+    /// Only return executions for this run id.
+    #[serde(default)]
+    pub run_id: Option<String>,
     /// Sort order (`newest-first` or `slowest-first`).
     #[serde(default)]
     pub sort: Option<String>,
@@ -255,6 +286,7 @@ impl TestServer {
                 doc_evidence_ids: Vec::new(),
                 log_ids: Vec::new(),
             },
+            provenance: ValidationProvenance::default(),
         };
         let path = self.config().record_spec(&spec).map_err(Self::test_err)?;
         Self::json_result(&serde_json::json!({
@@ -289,6 +321,14 @@ impl TestServer {
                 ticket_ids: input.ticket_ids,
                 doc_evidence_ids: input.doc_evidence_ids,
                 log_ids: input.log_ids,
+            },
+            provenance: ValidationProvenance {
+                source_path: input.source_path,
+                test_id: input.test_id,
+                domain: input.domain,
+                operation: input.operation,
+                transport: input.transport,
+                run_id: input.run_id,
             },
         };
         let path = self
@@ -362,6 +402,10 @@ impl TestServer {
             outcome,
             min_duration_ms: input.min_duration_ms,
             max_duration_ms: input.max_duration_ms,
+            domain: input.domain,
+            operation: input.operation,
+            transport: input.transport,
+            run_id: input.run_id,
             sort,
             limit: input.limit,
         };
@@ -454,6 +498,12 @@ mod tests {
                 acceptance_criterion_ids: vec![],
                 doc_evidence_ids: vec![],
                 log_ids: vec![],
+                source_path: Some("crates/memory-matrix/tests/matrix.rs".to_string()),
+                test_id: Some("ticket.get".to_string()),
+                domain: Some("ticket".to_string()),
+                operation: Some("get".to_string()),
+                transport: Some("in-process".to_string()),
+                run_id: Some("run-1".to_string()),
             }))
             .await
             .expect("record execution");
@@ -466,6 +516,10 @@ mod tests {
                 outcome: None,
                 min_duration_ms: None,
                 max_duration_ms: None,
+                domain: Some("ticket".to_string()),
+                operation: Some("get".to_string()),
+                transport: Some("in-process".to_string()),
+                run_id: Some("run-1".to_string()),
                 sort: Some("slowest-first".to_string()),
                 limit: None,
             }))
@@ -497,6 +551,12 @@ mod tests {
                 acceptance_criterion_ids: vec![],
                 doc_evidence_ids: vec![],
                 log_ids: vec![],
+                source_path: None,
+                test_id: None,
+                domain: None,
+                operation: None,
+                transport: None,
+                run_id: None,
             }))
             .await;
         assert!(result.is_err());

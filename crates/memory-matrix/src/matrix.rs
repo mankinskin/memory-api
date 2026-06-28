@@ -5,7 +5,8 @@ use chrono::Utc;
 
 use memory_fixtures::{materialize_fixture, FixtureError, LoadedFixture};
 use test_api::{
-    TestStoreConfig, ValidationExecution, ValidationOutcome, ValidationSpec,
+    TestStoreConfig, ValidationExecution, ValidationOutcome, ValidationProvenance,
+    ValidationSpec,
 };
 
 use crate::domains::{
@@ -190,12 +191,13 @@ pub fn run_matrix() -> Result<MatrixRun, FixtureError> {
 
     let test_store_root = workspace_root.join(".test");
     let test_store = TestStoreConfig::new(test_store_root.clone(), "default");
+    let run_id = format!("matrix-{}", Utc::now().format("%Y%m%dT%H%M%SZ"));
 
     let mut records = Vec::new();
 
     for domain in domains() {
         for &operation in OPERATIONS {
-            let record = run_cell(&test_store, &*domain, operation, &ctx);
+            let record = run_cell(&test_store, &*domain, operation, &ctx, &run_id);
             records.push(record);
         }
     }
@@ -215,9 +217,10 @@ fn run_cell(
     domain: &dyn DomainOps,
     operation: &str,
     ctx: &MatrixCtx,
+    run_id: &str,
 ) -> CellRecord {
     let spec_id = format!("vt-matrix-{}-{}", domain.domain(), operation);
-    let execution_id = format!("exec-{spec_id}");
+    let execution_id = format!("exec-{run_id}-{spec_id}");
 
     let mut spec = ValidationSpec::new(
         spec_id.clone(),
@@ -229,6 +232,14 @@ fn run_cell(
         operation
     ));
     spec.links.ticket_ids = vec![MATRIX_TICKET_ID.to_string()];
+    spec.provenance = ValidationProvenance {
+        source_path: Some(file!().to_string()),
+        test_id: Some(format!("{}.{}", domain.domain(), operation)),
+        domain: Some(domain.domain().to_string()),
+        operation: Some(operation.to_string()),
+        transport: Some("in-process".to_string()),
+        run_id: Some(run_id.to_string()),
+    };
     // Best-effort: spec recording failure should not abort the whole matrix.
     let _ = test_store.record_spec(&spec);
 
@@ -255,6 +266,14 @@ fn run_cell(
     execution.detail = Some(detail.clone());
     execution.links.spec_ids = vec![spec_id.clone()];
     execution.links.ticket_ids = vec![MATRIX_TICKET_ID.to_string()];
+    execution.provenance = ValidationProvenance {
+        source_path: Some(file!().to_string()),
+        test_id: Some(format!("{}.{}", domain.domain(), operation)),
+        domain: Some(domain.domain().to_string()),
+        operation: Some(operation.to_string()),
+        transport: Some("in-process".to_string()),
+        run_id: Some(run_id.to_string()),
+    };
     let _ = test_store.record_execution(&execution);
 
     CellRecord {

@@ -88,6 +88,33 @@ impl ValidationLinks {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ValidationProvenance {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub test_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+}
+
+impl ValidationProvenance {
+    pub fn is_empty(&self) -> bool {
+        self.source_path.is_none()
+            && self.test_id.is_none()
+            && self.domain.is_none()
+            && self.operation.is_none()
+            && self.transport.is_none()
+            && self.run_id.is_none()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValidationSpec {
     pub id: String,
@@ -100,6 +127,8 @@ pub struct ValidationSpec {
     pub slow_threshold_ms: Option<u64>,
     #[serde(default)]
     pub links: ValidationLinks,
+    #[serde(default, skip_serializing_if = "ValidationProvenance::is_empty")]
+    pub provenance: ValidationProvenance,
 }
 
 impl ValidationSpec {
@@ -114,6 +143,7 @@ impl ValidationSpec {
             detail: None,
             slow_threshold_ms: None,
             links: ValidationLinks::default(),
+            provenance: ValidationProvenance::default(),
         }
     }
 
@@ -179,6 +209,8 @@ pub struct ValidationExecution {
     pub detail: Option<String>,
     #[serde(default)]
     pub links: ValidationLinks,
+    #[serde(default, skip_serializing_if = "ValidationProvenance::is_empty")]
+    pub provenance: ValidationProvenance,
 }
 
 impl ValidationExecution {
@@ -197,6 +229,7 @@ impl ValidationExecution {
             throughput: None,
             detail: None,
             links: ValidationLinks::default(),
+            provenance: ValidationProvenance::default(),
         }
     }
 
@@ -249,6 +282,7 @@ mod tests {
         ValidationExecution,
         ValidationLinks,
         ValidationOutcome,
+        ValidationProvenance,
         ValidationSpec,
     };
 
@@ -274,6 +308,14 @@ mod tests {
                 doc_evidence_ids: vec!["doc-evidence-1".to_string()],
                 log_ids: vec!["log-1".to_string()],
             },
+            provenance: ValidationProvenance {
+                source_path: Some("crates/test-api/tests/contracts.rs".to_string()),
+                test_id: Some("contract_health".to_string()),
+                domain: Some("spec".to_string()),
+                operation: Some("health".to_string()),
+                transport: Some("in-process".to_string()),
+                run_id: Some("run-20260628".to_string()),
+            },
         };
         let execution = ValidationExecution {
             id: "validation-exec-1".to_string(),
@@ -284,6 +326,7 @@ mod tests {
             throughput: Some(2.5),
             detail: Some("Contract tests passed against structured fields".to_string()),
             links: spec.links.clone(),
+            provenance: spec.provenance.clone(),
         };
 
         let json = serde_json::to_string_pretty(&(spec.clone(), execution.clone())).unwrap();
@@ -325,6 +368,7 @@ mod tests {
             throughput: None,
             detail: Some("Blocked by missing generated guidance output".to_string()),
             links: spec.links.clone(),
+            provenance: ValidationProvenance::default(),
         };
 
         assert!(spec.targets_acceptance("criterion-guidance"));
@@ -367,6 +411,7 @@ mod tests {
         let execution: ValidationExecution = serde_json::from_value(legacy).unwrap();
         assert_eq!(execution.duration_ms, None);
         assert_eq!(execution.throughput, None);
+        assert!(execution.provenance.is_empty());
     }
 
     #[test]

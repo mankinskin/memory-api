@@ -33,6 +33,7 @@ use test_api::{
     ValidationExecution,
     ValidationLinks,
     ValidationOutcome,
+    ValidationProvenance,
     ValidationSpec,
 };
 
@@ -196,6 +197,24 @@ pub struct RecordArgs {
     /// Linked log ids (repeatable).
     #[arg(long = "log")]
     pub log_ids: Vec<String>,
+    /// Source file path that produced the execution.
+    #[arg(long)]
+    pub source_path: Option<String>,
+    /// Stable test/cell identifier inside source_path.
+    #[arg(long)]
+    pub test_id: Option<String>,
+    /// Domain under test (e.g. `ticket`).
+    #[arg(long)]
+    pub domain: Option<String>,
+    /// Operation under test (e.g. `get`).
+    #[arg(long)]
+    pub operation: Option<String>,
+    /// Transport used to execute the check (e.g. `cli`, `mcp`, `http`, `in-process`).
+    #[arg(long)]
+    pub transport: Option<String>,
+    /// Run id grouping executions from one harness invocation.
+    #[arg(long)]
+    pub run_id: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -222,6 +241,18 @@ pub struct ListArgs {
     /// Only executions with duration <= this threshold.
     #[arg(long)]
     pub max_duration_ms: Option<u64>,
+    /// Only executions in this provenance domain.
+    #[arg(long)]
+    pub domain: Option<String>,
+    /// Only executions for this provenance operation.
+    #[arg(long)]
+    pub operation: Option<String>,
+    /// Only executions recorded for this transport.
+    #[arg(long)]
+    pub transport: Option<String>,
+    /// Only executions with this run id.
+    #[arg(long)]
+    pub run_id: Option<String>,
     /// Sort executions by newest-first or slowest-first.
     #[arg(long, value_enum)]
     pub sort: Option<SortArg>,
@@ -330,6 +361,21 @@ pub struct RunArgs {
     /// Linked ticket ids (repeatable).
     #[arg(long = "ticket")]
     pub ticket_ids: Vec<String>,
+    /// Source file path that produced this run.
+    #[arg(long)]
+    pub source_path: Option<String>,
+    /// Stable test/case id for this run.
+    #[arg(long)]
+    pub test_id: Option<String>,
+    /// Domain under test (e.g. `ticket`).
+    #[arg(long)]
+    pub domain: Option<String>,
+    /// Operation under test (e.g. `get`).
+    #[arg(long)]
+    pub operation: Option<String>,
+    /// Transport used by this run (e.g. `cli`, `mcp`, `http`, `in-process`).
+    #[arg(long)]
+    pub transport: Option<String>,
 }
 
 // ── output helpers ────────────────────────────────────────────────────────────
@@ -434,6 +480,14 @@ fn dispatch(
                 log_ids: args.log_ids,
                 ..Default::default()
             };
+            execution.provenance = ValidationProvenance {
+                source_path: args.source_path,
+                test_id: args.test_id,
+                domain: args.domain,
+                operation: args.operation,
+                transport: args.transport,
+                run_id: args.run_id,
+            };
             let path = config.record_execution(&execution)?;
             to_value(&json!({
                 "status": "recorded",
@@ -465,6 +519,10 @@ fn dispatch(
                 outcome: args.outcome.map(Into::into),
                 min_duration_ms: args.min_duration_ms,
                 max_duration_ms: args.max_duration_ms,
+                domain: args.domain,
+                operation: args.operation,
+                transport: args.transport,
+                run_id: args.run_id,
                 sort: args.sort.map(Into::into).unwrap_or_default(),
                 limit: args.limit,
             };
@@ -670,6 +728,14 @@ fn run_harness(
         log_ids: vec![capture_id.clone()],
         ..Default::default()
     };
+    execution.provenance = ValidationProvenance {
+        source_path: args.source_path.clone(),
+        test_id: args.test_id.clone(),
+        domain: args.domain.clone(),
+        operation: args.operation.clone(),
+        transport: args.transport.clone(),
+        run_id: args.run_id.clone(),
+    };
     let execution_path = config.record_execution(&execution)?;
 
     // Record the linked log capture.
@@ -695,6 +761,11 @@ fn run_harness(
         "execution_id": execution_id,
         "run_id": args.run_id,
         "spec_id": args.spec_id,
+        "source_path": args.source_path,
+        "test_id": args.test_id,
+        "domain": args.domain,
+        "operation": args.operation,
+        "transport": args.transport,
         "outcome": outcome,
         "exit_code": exit_code,
         "duration_ms": duration_ms,
