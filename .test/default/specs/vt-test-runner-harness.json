@@ -1,0 +1,11 @@
+{
+  "id": "vt-test-runner-harness",
+  "title": "Validation runner harness: test run wraps cargo test/bench into executions + log captures",
+  "command": "cargo test -p test-cli harness_tests",
+  "slow_threshold_ms": 60000,
+  "links": {
+    "ticket_ids": [
+      "7a524627"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "exec-vt-test-runner-harness-20260628",
+  "validation_spec_id": "vt-test-runner-harness",
+  "outcome": "passed",
+  "executed_at": "2026-06-28T17:30:05.942099100Z",
+  "duration_ms": 30,
+  "detail": "test-cli 8 passed (3 harness_tests), test-api 23 passed, log-api 7 passed; harness records execution + linked combined-output capture, maps exit status to outcome, flags over-budget vs spec threshold",
+  "links": {
+    "ticket_ids": [
+      "7a524627"
+    ]
+  }
+}

@@ -1,11 +1,11 @@
 <!-- test-index:file generated=true -->
-<!-- test-index:digest 095e30c4544b61fa -->
+<!-- test-index:digest 34b927cfafd2f8da -->
 
 # Test Store Index
 
-- total executions: 12
+- total executions: 13
 - total benchmarks: 0
-- last run: 2026-06-28T17:12:32.438769200+00:00
+- last run: 2026-06-28T17:30:05.942099100+00:00
 
 ## Validation groups
 
@@ -21,6 +21,7 @@
 | vt-memory-fixtures-e2e | 2 | 2 | 0 | 0 | passed | 2930/2930/4400 |
 | vt-remote | 1 | 0 | 0 | 1 | blocked | -/-/- |
 | vt-test-log-cli | 1 | 1 | 0 | 0 | passed | 80/80/80 |
+| vt-test-runner-harness | 1 | 1 | 0 | 0 | passed | 30/30/30 |
 | vt-test-store-index | 1 | 1 | 0 | 0 | passed | 70/70/70 |
 
 ## Benchmark groups
