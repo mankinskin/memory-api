@@ -1,0 +1,26 @@
+[package]
+name = "memory-matrix"
+version = "0.1.0"
+edition = "2024"
+description = "Data-driven cross-domain operation test matrix (get/search/CRUD/move/scan x all memory domains) recording test-api validation executions"
+
+[lib]
+name = "memory_matrix"
+path = "src/lib.rs"
+
+[dependencies]
+memory-fixtures = { path = "../memory-fixtures" }
+ticket-api = { path = "../ticket-api" }
+spec-api = { path = "../spec-api" }
+rule-api = { path = "../rule-api" }
+audit-api = { path = "../audit-api" }
+session-api = { path = "../session-api" }
+test-api = { path = "../test-api" }
+log-api = { path = "../log-api" }
+
+chrono = { version = "0.4", features = ["serde"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+pretty_assertions = "1"

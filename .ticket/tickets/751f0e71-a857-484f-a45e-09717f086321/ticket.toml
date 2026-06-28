@@ -1,7 +1,7 @@
 id = "751f0e71-a857-484f-a45e-09717f086321"
 created_at = "2026-06-28T12:41:30.686058200+00:00"
 title = "[test] Cross-domain operation test matrix — get/search/CRUD/move/scan x all domains"
-state = "new"
+state = "in-review"
 component = "test-api"
 depends_on = ["026b2eb6-17c6-4d02-b46b-79758f1237a1", "124c6621-b39d-4009-b599-a3e5503d08f6"]
 priority = "high"

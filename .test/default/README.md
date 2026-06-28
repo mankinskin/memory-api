@@ -1,11 +1,11 @@
 <!-- test-index:file generated=true -->
-<!-- test-index:digest 34b927cfafd2f8da -->
+<!-- test-index:digest cb6efab1cdf5d469 -->
 
 # Test Store Index
 
-- total executions: 13
+- total executions: 14
 - total benchmarks: 0
-- last run: 2026-06-28T17:30:05.942099100+00:00
+- last run: 2026-06-28T17:50:28.924114100+00:00
 
 ## Validation groups
 
@@ -15,6 +15,7 @@
 | vt-browser-web | 1 | 0 | 0 | 1 | blocked | -/-/- |
 | vt-core-tests | 1 | 1 | 0 | 0 | passed | -/-/- |
 | vt-core-wasm-check | 1 | 1 | 0 | 0 | passed | -/-/- |
+| vt-cross-domain-matrix | 1 | 1 | 0 | 0 | passed | 8483/8483/8483 |
 | vt-ext-build | 1 | 1 | 0 | 0 | passed | -/-/- |
 | vt-ext-package | 1 | 1 | 0 | 0 | passed | -/-/- |
 | vt-ext-unit | 1 | 1 | 0 | 0 | passed | -/-/- |

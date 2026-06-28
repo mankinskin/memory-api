@@ -1,0 +1,19 @@
+{
+  "id": "exec-vt-cross-domain-matrix-20260628",
+  "validation_spec_id": "vt-cross-domain-matrix",
+  "outcome": "passed",
+  "executed_at": "2026-06-28T17:50:28.924114100Z",
+  "duration_ms": 8483,
+  "detail": "command `cargo test -p memory-matrix` exited with 0 in 8483ms",
+  "links": {
+    "spec_ids": [
+      "vt-cross-domain-matrix"
+    ],
+    "ticket_ids": [
+      "751f0e71"
+    ],
+    "log_ids": [
+      "exec-vt-cross-domain-matrix-20260628-log"
+    ]
+  }
+}

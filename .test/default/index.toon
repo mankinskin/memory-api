@@ -1,11 +1,12 @@
-total_executions: 13
+total_executions: 14
 total_benchmarks: 0
-last_run: "2026-06-28T17:30:05.942099100Z"
-validation_groups[12]{validation_spec_id,total,passed,failed,blocked,latest_outcome,last_duration_ms,min_duration_ms,median_duration_ms,max_duration_ms}:
+last_run: "2026-06-28T17:50:28.924114100Z"
+validation_groups[13]{validation_spec_id,total,passed,failed,blocked,latest_outcome,last_duration_ms,min_duration_ms,median_duration_ms,max_duration_ms}:
   "vt-benchmark-model",1,1,0,0,passed,60,60,60,60
   "vt-browser-web",1,0,0,1,blocked,null,null,null,null
   "vt-core-tests",1,1,0,0,passed,null,null,null,null
   "vt-core-wasm-check",1,1,0,0,passed,null,null,null,null
+  "vt-cross-domain-matrix",1,1,0,0,passed,8483,8483,8483,8483
   "vt-ext-build",1,1,0,0,passed,null,null,null,null
   "vt-ext-package",1,1,0,0,passed,null,null,null,null
   "vt-ext-unit",1,1,0,0,passed,null,null,null,null

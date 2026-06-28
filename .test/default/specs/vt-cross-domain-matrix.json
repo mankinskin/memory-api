@@ -1,0 +1,11 @@
+{
+  "id": "vt-cross-domain-matrix",
+  "title": "Cross-domain operation test matrix (get/search/CRUD/move/scan x 8 domains)",
+  "command": "cargo test -p memory-matrix",
+  "detail": "Data-driven memory-matrix harness; per-cell ValidationExecutions recorded into the fixture .test store",
+  "links": {
+    "ticket_ids": [
+      "751f0e71"
+    ]
+  }
+}
