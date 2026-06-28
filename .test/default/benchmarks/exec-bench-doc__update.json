@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-doc__update",
+  "benchmark_name": "doc__update",
+  "operation": "update",
+  "domain": "doc",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 2212000,
+  "median_ns": 2201650,
+  "std_dev_ns": 123190,
+  "min_ns": 2152820,
+  "max_ns": 2292847,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

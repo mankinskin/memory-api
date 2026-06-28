@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-audit__move",
+  "benchmark_name": "audit__move",
+  "operation": "move",
+  "domain": "audit",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 2175107,
+  "median_ns": 2177533,
+  "std_dev_ns": 52602,
+  "min_ns": 2144833,
+  "max_ns": 2206053,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

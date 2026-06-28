@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-log__update",
+  "benchmark_name": "log__update",
+  "operation": "update",
+  "domain": "log",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 11133420,
+  "median_ns": 10323250,
+  "std_dev_ns": 2315958,
+  "min_ns": 9972250,
+  "max_ns": 12647279,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

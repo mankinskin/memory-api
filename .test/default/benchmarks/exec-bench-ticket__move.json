@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-ticket__move",
+  "benchmark_name": "ticket__move",
+  "operation": "move",
+  "domain": "ticket",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 2556450,
+  "median_ns": 2457333,
+  "std_dev_ns": 228520,
+  "min_ns": 2436003,
+  "max_ns": 2704167,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

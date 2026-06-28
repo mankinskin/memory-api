@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-log__create",
+  "benchmark_name": "log__create",
+  "operation": "create",
+  "domain": "log",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 7454460,
+  "median_ns": 7498300,
+  "std_dev_ns": 440424,
+  "min_ns": 7205570,
+  "max_ns": 7722240,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

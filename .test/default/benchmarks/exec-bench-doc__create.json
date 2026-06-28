@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-doc__create",
+  "benchmark_name": "doc__create",
+  "operation": "create",
+  "domain": "doc",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 2246353,
+  "median_ns": 2228433,
+  "std_dev_ns": 78641,
+  "min_ns": 2203823,
+  "max_ns": 2295777,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

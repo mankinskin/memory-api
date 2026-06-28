@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-rule__create",
+  "benchmark_name": "rule__create",
+  "operation": "create",
+  "domain": "rule",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 108508170,
+  "median_ns": 103931600,
+  "std_dev_ns": 14021520,
+  "min_ns": 102976380,
+  "max_ns": 117763350,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

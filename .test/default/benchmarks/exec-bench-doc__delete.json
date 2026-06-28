@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-doc__delete",
+  "benchmark_name": "doc__delete",
+  "operation": "delete",
+  "domain": "doc",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 2215680,
+  "median_ns": 2232917,
+  "std_dev_ns": 96651,
+  "min_ns": 2159570,
+  "max_ns": 2273557,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-doc__scan",
+  "benchmark_name": "doc__scan",
+  "operation": "scan",
+  "domain": "doc",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 2612280,
+  "median_ns": 2595067,
+  "std_dev_ns": 396688,
+  "min_ns": 2388683,
+  "max_ns": 2853294,
+  "budget_ns": 3000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

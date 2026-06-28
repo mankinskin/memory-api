@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-audit__delete",
+  "benchmark_name": "audit__delete",
+  "operation": "delete",
+  "domain": "audit",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 2206400,
+  "median_ns": 2191467,
+  "std_dev_ns": 156216,
+  "min_ns": 2121497,
+  "max_ns": 2304091,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

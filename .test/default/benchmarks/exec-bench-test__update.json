@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-test__update",
+  "benchmark_name": "test__update",
+  "operation": "update",
+  "domain": "test",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 8140980,
+  "median_ns": 8257875,
+  "std_dev_ns": 792661,
+  "min_ns": 7667153,
+  "max_ns": 8588261,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

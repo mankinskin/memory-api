@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-spec__get",
+  "benchmark_name": "spec__get",
+  "operation": "get",
+  "domain": "spec",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 284083740,
+  "median_ns": 273153800,
+  "std_dev_ns": 32194559,
+  "min_ns": 272289164,
+  "max_ns": 305199740,
+  "budget_ns": 2000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

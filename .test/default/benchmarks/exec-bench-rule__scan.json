@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-rule__scan",
+  "benchmark_name": "rule__scan",
+  "operation": "scan",
+  "domain": "rule",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 61681030,
+  "median_ns": 60171200,
+  "std_dev_ns": 3498810,
+  "min_ns": 59889216,
+  "max_ns": 64036840,
+  "budget_ns": 3000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

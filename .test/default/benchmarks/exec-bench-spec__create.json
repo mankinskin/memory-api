@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-spec__create",
+  "benchmark_name": "spec__create",
+  "operation": "create",
+  "domain": "spec",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 149272050,
+  "median_ns": 148414900,
+  "std_dev_ns": 2938777,
+  "min_ns": 147795637,
+  "max_ns": 151193610,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

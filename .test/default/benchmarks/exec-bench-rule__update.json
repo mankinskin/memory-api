@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-rule__update",
+  "benchmark_name": "rule__update",
+  "operation": "update",
+  "domain": "rule",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 162047360,
+  "median_ns": 162283200,
+  "std_dev_ns": 699934,
+  "min_ns": 161595687,
+  "max_ns": 162409630,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-doc__get",
+  "benchmark_name": "doc__get",
+  "operation": "get",
+  "domain": "doc",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 2224340,
+  "median_ns": 2207317,
+  "std_dev_ns": 105434,
+  "min_ns": 2165200,
+  "max_ns": 2289051,
+  "budget_ns": 2000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

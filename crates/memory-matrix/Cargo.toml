@@ -8,6 +8,14 @@ description = "Data-driven cross-domain operation test matrix (get/search/CRUD/m
 name = "memory_matrix"
 path = "src/lib.rs"
 
+[[bin]]
+name = "bench-matrix"
+path = "src/bin/bench-matrix.rs"
+
+[[bench]]
+name = "operation_matrix"
+harness = false
+
 [dependencies]
 memory-fixtures = { path = "../memory-fixtures" }
 ticket-api = { path = "../ticket-api" }
@@ -24,3 +32,6 @@ uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 pretty_assertions = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3"
+

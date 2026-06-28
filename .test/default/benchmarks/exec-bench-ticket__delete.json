@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-ticket__delete",
+  "benchmark_name": "ticket__delete",
+  "operation": "delete",
+  "domain": "ticket",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 349567760,
+  "median_ns": 350259750,
+  "std_dev_ns": 4005463,
+  "min_ns": 347190689,
+  "max_ns": 351871240,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

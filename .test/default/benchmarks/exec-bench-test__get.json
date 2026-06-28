@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-test__get",
+  "benchmark_name": "test__get",
+  "operation": "get",
+  "domain": "test",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 6601900,
+  "median_ns": 6641075,
+  "std_dev_ns": 215301,
+  "min_ns": 6478410,
+  "max_ns": 6729701,
+  "budget_ns": 2000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+# Per-operation maximum-latency budgets (milliseconds) for the cross-domain
+# benchmark matrix (`benches/operation_matrix.rs`).
+#
+# Keys resolve as `domain.operation` first, then fall back to bare `operation`,
+# so a single bare key covers every domain unless a domain-specific override is
+# added (e.g. `ticket.get`).
+#
+# Values are END-TO-END cell budgets: the benchmark measures one full matrix
+# cell (the operation plus its minimal in-cell setup against a freshly
+# materialized fixture), so budgets are sized as gross regression tripwires
+# rather than precision micro-budgets. Their purpose is to catch the class of
+# regression that motivated this surface (a ~100s `ticket get`), not to police
+# sub-millisecond drift.
+
+[budgets]
+get = 2000
+search = 2000
+create = 1000
+update = 1000
+delete = 1000
+move = 1000
+scan = 3000

@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-audit__get",
+  "benchmark_name": "audit__get",
+  "operation": "get",
+  "domain": "audit",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 2264980,
+  "median_ns": 2186583,
+  "std_dev_ns": 318464,
+  "min_ns": 2133567,
+  "max_ns": 2475860,
+  "budget_ns": 2000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

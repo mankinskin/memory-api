@@ -1,0 +1,13 @@
+{
+  "id": "exec-vt-bench-matrix-20260628",
+  "validation_spec_id": "vt-bench-matrix",
+  "outcome": "passed",
+  "executed_at": "2026-06-28T18:13:17.044510300Z",
+  "duration_ms": 95000,
+  "detail": "bench-matrix: 56 cells ingested, 0 missing, all within budget (exit 0). Means: ticket get 347ms / search 510ms / create 323ms within 1-2s budgets; blocked cells ~2ms. test-store-index digest 5e966d8fb0a74aef.",
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-log__delete",
+  "benchmark_name": "log__delete",
+  "operation": "delete",
+  "domain": "log",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 2433367,
+  "median_ns": 2412017,
+  "std_dev_ns": 148038,
+  "min_ns": 2350713,
+  "max_ns": 2523543,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

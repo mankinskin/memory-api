@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-session__search",
+  "benchmark_name": "session__search",
+  "operation": "search",
+  "domain": "session",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 7269670,
+  "median_ns": 7109150,
+  "std_dev_ns": 509563,
+  "min_ns": 7054440,
+  "max_ns": 7609125,
+  "budget_ns": 2000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

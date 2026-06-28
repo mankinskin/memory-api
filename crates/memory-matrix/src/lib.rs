@@ -45,6 +45,11 @@ use test_api::{
     TestStoreConfig, ValidationExecution, ValidationOutcome, ValidationSpec,
 };
 
+pub use memory_fixtures::{
+    materialize_fixture as materialize, FixtureError as FixtureLoadError,
+    LoadedFixture as Fixture,
+};
+
 /// The ticket this matrix provides evidence for.
 const MATRIX_TICKET_ID: &str = "751f0e71";
 
@@ -81,6 +86,13 @@ pub struct MatrixCtx {
 }
 
 impl MatrixCtx {
+    /// Build a context rooted at a materialized fixture workspace.
+    pub fn new(workspace_root: impl Into<PathBuf>) -> Self {
+        Self {
+            workspace_root: workspace_root.into(),
+        }
+    }
+
     /// Resolve a hidden store directory under the materialized workspace.
     fn store_root(&self, dir: &str) -> PathBuf {
         self.workspace_root.join(dir)
@@ -131,6 +143,36 @@ fn dispatch(ops: &dyn DomainOps, operation: &str, ctx: &MatrixCtx) -> CellResult
         "scan" => ops.scan(ctx),
         other => Err(format!("unknown operation `{other}`")),
     }
+}
+
+/// All `(domain, operation)` cells of the matrix, in registration order.
+pub fn cells() -> Vec<(&'static str, &'static str)> {
+    let mut out = Vec::new();
+    for domain in domains() {
+        for &operation in OPERATIONS {
+            out.push((domain.domain(), operation));
+        }
+    }
+    out
+}
+
+/// Stable, path-safe Criterion benchmark id for a `domain x operation` cell.
+///
+/// Both the bench harness and the ingest runner derive the Criterion output
+/// directory from this id, so they must agree on its form.
+pub fn bench_id(domain: &str, operation: &str) -> String {
+    format!("{domain}__{operation}")
+}
+
+/// Run a single matrix cell, selected by domain + operation name, against
+/// `ctx`. This is the per-cell entry point reused by the benchmark harness.
+pub fn run_one(domain: &str, operation: &str, ctx: &MatrixCtx) -> CellResult {
+    for candidate in domains() {
+        if candidate.domain() == domain {
+            return dispatch(&*candidate, operation, ctx);
+        }
+    }
+    Err(format!("unknown domain `{domain}`"))
 }
 
 /// The registered domain rows of the matrix.
@@ -947,5 +989,104 @@ impl DomainOps for LogDomain {
             "log-api has no scan/index reconcile; captures are listed directly \
              from disk",
         )
+    }
+}
+
+// ── benchmark ingest + budget enforcement ─────────────────────────────────────
+
+/// Ingest Criterion estimates for the benchmark matrix and enforce per-operation
+/// latency budgets.
+///
+/// The companion `bench-matrix` binary runs the Criterion bench
+/// (`benches/operation_matrix.rs`), then calls [`ingest_bench_results`] to read
+/// each cell's `estimates.json`, compare its mean against the budget table, and
+/// record a `test-api` [`test_api::BenchmarkExecution`].
+pub mod bench_runner {
+    use std::path::Path;
+
+    use chrono::Utc;
+    use test_api::{
+        ingest_criterion_estimates, BudgetTable, TestStoreConfig, ValidationLinks,
+    };
+
+    use crate::{bench_id, cells};
+
+    /// The ingested result for one benchmark cell.
+    #[derive(Debug, Clone)]
+    pub struct BenchCellResult {
+        pub domain: String,
+        pub operation: String,
+        pub mean_ns: u64,
+        pub budget_ns: Option<u64>,
+        pub over_budget: bool,
+    }
+
+    /// Summary of a benchmark-matrix ingest pass.
+    #[derive(Debug, Default)]
+    pub struct BenchReport {
+        pub results: Vec<BenchCellResult>,
+        pub missing: Vec<String>,
+    }
+
+    impl BenchReport {
+        /// Cells whose mean latency exceeded the configured budget.
+        pub fn over_budget(&self) -> Vec<&BenchCellResult> {
+            self.results.iter().filter(|cell| cell.over_budget).collect()
+        }
+    }
+
+    /// Read every cell's Criterion `estimates.json` under `criterion_root`,
+    /// apply the budget table at `budgets_path`, record each as a
+    /// `BenchmarkExecution` in `store`, and return a [`BenchReport`].
+    ///
+    /// Cells without an `estimates.json` (e.g. a bench run never produced them)
+    /// are reported under [`BenchReport::missing`] rather than silently dropped.
+    pub fn ingest_bench_results(
+        criterion_root: &Path,
+        budgets_path: &Path,
+        store: &TestStoreConfig,
+        ticket_id: &str,
+    ) -> Result<BenchReport, String> {
+        let table = BudgetTable::load(budgets_path).map_err(|err| err.to_string())?;
+        let now = Utc::now();
+        let mut report = BenchReport::default();
+
+        for (domain, operation) in cells() {
+            let id = bench_id(domain, operation);
+            let estimates =
+                criterion_root.join(&id).join("new").join("estimates.json");
+            if !estimates.is_file() {
+                report.missing.push(id);
+                continue;
+            }
+
+            let mut execution = ingest_criterion_estimates(
+                &estimates,
+                format!("exec-bench-{id}"),
+                &id,
+                operation,
+                domain,
+                now,
+            )
+            .map_err(|err| err.to_string())?;
+            execution.apply_budget(table.budget_ns(domain, operation));
+            execution.links = ValidationLinks {
+                ticket_ids: vec![ticket_id.to_string()],
+                ..Default::default()
+            };
+            store
+                .record_benchmark(&execution)
+                .map_err(|err| err.to_string())?;
+
+            report.results.push(BenchCellResult {
+                domain: domain.to_string(),
+                operation: operation.to_string(),
+                mean_ns: execution.mean_ns,
+                budget_ns: execution.budget_ns,
+                over_budget: execution.over_budget,
+            });
+        }
+
+        Ok(report)
     }
 }

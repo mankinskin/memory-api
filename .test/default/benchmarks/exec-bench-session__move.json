@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-session__move",
+  "benchmark_name": "session__move",
+  "operation": "move",
+  "domain": "session",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 2235233,
+  "median_ns": 2217700,
+  "std_dev_ns": 105800,
+  "min_ns": 2173663,
+  "max_ns": 2297877,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

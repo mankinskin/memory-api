@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-spec__scan",
+  "benchmark_name": "spec__scan",
+  "operation": "scan",
+  "domain": "spec",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 158841460,
+  "median_ns": 158641600,
+  "std_dev_ns": 3963205,
+  "min_ns": 156473604,
+  "max_ns": 161135330,
+  "budget_ns": 3000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

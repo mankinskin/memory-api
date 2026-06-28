@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-doc__move",
+  "benchmark_name": "doc__move",
+  "operation": "move",
+  "domain": "doc",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 2160297,
+  "median_ns": 2156433,
+  "std_dev_ns": 69718,
+  "min_ns": 2122193,
+  "max_ns": 2203780,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

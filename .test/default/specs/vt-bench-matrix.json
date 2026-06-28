@@ -1,0 +1,11 @@
+{
+  "id": "vt-bench-matrix",
+  "title": "Cross-domain benchmark matrix with per-operation latency budgets",
+  "command": "cargo run -p memory-matrix --bin bench-matrix",
+  "detail": "Criterion operation_matrix bench over fixture + test-api BenchmarkExecution ingest + budget enforcement (bench-matrix runner exits non-zero on over-budget)",
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}

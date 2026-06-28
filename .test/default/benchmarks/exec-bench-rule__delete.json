@@ -1,0 +1,19 @@
+{
+  "id": "exec-bench-rule__delete",
+  "benchmark_name": "rule__delete",
+  "operation": "delete",
+  "domain": "rule",
+  "executed_at": "2026-06-28T18:12:30.862755800Z",
+  "mean_ns": 129770660,
+  "median_ns": 128557800,
+  "std_dev_ns": 2609815,
+  "min_ns": 128332100,
+  "max_ns": 131398231,
+  "budget_ns": 1000000000,
+  "over_budget": false,
+  "links": {
+    "ticket_ids": [
+      "03ed4121"
+    ]
+  }
+}
