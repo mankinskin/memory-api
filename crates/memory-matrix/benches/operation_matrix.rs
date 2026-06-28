@@ -12,10 +12,19 @@
 use std::time::Duration;
 
 use criterion::{
-    criterion_group, criterion_main, BatchSize, Criterion,
+    BatchSize,
+    Criterion,
+    criterion_group,
+    criterion_main,
 };
 
-use memory_matrix::{bench_id, cells, materialize, run_one, MatrixCtx};
+use memory_matrix::{
+    MatrixCtx,
+    bench_id,
+    cells,
+    materialize,
+    run_one,
+};
 
 fn bench_operation_matrix(c: &mut Criterion) {
     for (domain, operation) in cells() {
@@ -23,7 +32,8 @@ fn bench_operation_matrix(c: &mut Criterion) {
         c.bench_function(&id, |b| {
             b.iter_batched(
                 || {
-                    let fixture = materialize().expect("fixture should materialize");
+                    let fixture =
+                        materialize().expect("fixture should materialize");
                     let ctx = MatrixCtx::new(fixture.workspace_root.clone());
                     (fixture, ctx)
                 },

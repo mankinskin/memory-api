@@ -1,25 +1,41 @@
-use std::path::PathBuf;
-use std::time::Instant;
+use std::{
+    path::PathBuf,
+    time::Instant,
+};
 
 use chrono::Utc;
 
-use memory_fixtures::{materialize_fixture, FixtureError, LoadedFixture};
+use memory_fixtures::{
+    FixtureError,
+    LoadedFixture,
+    materialize_fixture,
+};
 use test_api::{
-    TestStoreConfig, ValidationExecution, ValidationOutcome, ValidationProvenance,
+    TestStoreConfig,
+    ValidationExecution,
+    ValidationOutcome,
+    ValidationProvenance,
     ValidationSpec,
 };
 
 use crate::domains::{
-    AuditDomain, DocDomain, LogDomain, RuleDomain, SessionDomain, SpecDomain,
-    TestDomain, TicketDomain,
+    AuditDomain,
+    DocDomain,
+    LogDomain,
+    RuleDomain,
+    SessionDomain,
+    SpecDomain,
+    TestDomain,
+    TicketDomain,
 };
 
 /// The ticket this matrix provides evidence for.
 pub(crate) const MATRIX_TICKET_ID: &str = "751f0e71";
 
 /// Operation columns exercised for every domain row.
-pub const OPERATIONS: &[&str] =
-    &["get", "search", "create", "update", "delete", "move", "scan"];
+pub const OPERATIONS: &[&str] = &[
+    "get", "search", "create", "update", "delete", "move", "scan",
+];
 
 /// Outcome of a single matrix cell that ran without an internal error.
 pub enum Cell {
@@ -40,7 +56,10 @@ pub(crate) fn blocked(reason: impl Into<String>) -> CellResult {
     Ok(Cell::Blocked(reason.into()))
 }
 
-pub(crate) fn unsupported(operation: &str, domain: &str) -> String {
+pub(crate) fn unsupported(
+    operation: &str,
+    domain: &str,
+) -> String {
     format!("{domain}-api storage surface exposes no `{operation}` operation")
 }
 
@@ -58,7 +77,10 @@ impl MatrixCtx {
     }
 
     /// Resolve a hidden store directory under the materialized workspace.
-    pub(crate) fn store_root(&self, dir: &str) -> PathBuf {
+    pub(crate) fn store_root(
+        &self,
+        dir: &str,
+    ) -> PathBuf {
         self.workspace_root.join(dir)
     }
 }
@@ -70,33 +92,58 @@ impl MatrixCtx {
 pub(crate) trait DomainOps {
     fn domain(&self) -> &'static str;
 
-    fn get(&self, _ctx: &MatrixCtx) -> CellResult {
+    fn get(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
         blocked(unsupported("get", self.domain()))
     }
-    fn search(&self, _ctx: &MatrixCtx) -> CellResult {
+    fn search(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
         blocked(unsupported("search", self.domain()))
     }
-    fn create(&self, _ctx: &MatrixCtx) -> CellResult {
+    fn create(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
         blocked(unsupported("create", self.domain()))
     }
-    fn update(&self, _ctx: &MatrixCtx) -> CellResult {
+    fn update(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
         blocked(unsupported("update", self.domain()))
     }
-    fn delete(&self, _ctx: &MatrixCtx) -> CellResult {
+    fn delete(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
         blocked(unsupported("delete", self.domain()))
     }
-    fn move_op(&self, _ctx: &MatrixCtx) -> CellResult {
+    fn move_op(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
         blocked(
             "generic move kernel (ticket 0a510279) not yet landed; \
              cross-worktree move is blocked-with-reason until it lands",
         )
     }
-    fn scan(&self, _ctx: &MatrixCtx) -> CellResult {
+    fn scan(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
         blocked(unsupported("scan", self.domain()))
     }
 }
 
-fn dispatch(ops: &dyn DomainOps, operation: &str, ctx: &MatrixCtx) -> CellResult {
+fn dispatch(
+    ops: &dyn DomainOps,
+    operation: &str,
+    ctx: &MatrixCtx,
+) -> CellResult {
     match operation {
         "get" => ops.get(ctx),
         "search" => ops.search(ctx),
@@ -124,13 +171,20 @@ pub fn cells() -> Vec<(&'static str, &'static str)> {
 ///
 /// Both the bench harness and the ingest runner derive the Criterion output
 /// directory from this id, so they must agree on its form.
-pub fn bench_id(domain: &str, operation: &str) -> String {
+pub fn bench_id(
+    domain: &str,
+    operation: &str,
+) -> String {
     format!("{domain}__{operation}")
 }
 
 /// Run a single matrix cell, selected by domain + operation name, against
 /// `ctx`. This is the per-cell entry point reused by the benchmark harness.
-pub fn run_one(domain: &str, operation: &str, ctx: &MatrixCtx) -> CellResult {
+pub fn run_one(
+    domain: &str,
+    operation: &str,
+    ctx: &MatrixCtx,
+) -> CellResult {
     for candidate in domains() {
         if candidate.domain() == domain {
             return dispatch(&*candidate, operation, ctx);
@@ -197,7 +251,8 @@ pub fn run_matrix() -> Result<MatrixRun, FixtureError> {
 
     for domain in domains() {
         for &operation in OPERATIONS {
-            let record = run_cell(&test_store, &*domain, operation, &ctx, &run_id);
+            let record =
+                run_cell(&test_store, &*domain, operation, &ctx, &run_id);
             records.push(record);
         }
     }

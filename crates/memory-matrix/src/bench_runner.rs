@@ -2,10 +2,16 @@ use std::path::Path;
 
 use chrono::Utc;
 use test_api::{
-    ingest_criterion_estimates, BudgetTable, TestStoreConfig, ValidationLinks,
+    BudgetTable,
+    TestStoreConfig,
+    ValidationLinks,
+    ingest_criterion_estimates,
 };
 
-use crate::{bench_id, cells};
+use crate::{
+    bench_id,
+    cells,
+};
 
 /// The ingested result for one benchmark cell.
 #[derive(Debug, Clone)]
@@ -27,7 +33,10 @@ pub struct BenchReport {
 impl BenchReport {
     /// Cells whose mean latency exceeded the configured budget.
     pub fn over_budget(&self) -> Vec<&BenchCellResult> {
-        self.results.iter().filter(|cell| cell.over_budget).collect()
+        self.results
+            .iter()
+            .filter(|cell| cell.over_budget)
+            .collect()
     }
 }
 
@@ -43,13 +52,15 @@ pub fn ingest_bench_results(
     store: &TestStoreConfig,
     ticket_id: &str,
 ) -> Result<BenchReport, String> {
-    let table = BudgetTable::load(budgets_path).map_err(|err| err.to_string())?;
+    let table =
+        BudgetTable::load(budgets_path).map_err(|err| err.to_string())?;
     let now = Utc::now();
     let mut report = BenchReport::default();
 
     for (domain, operation) in cells() {
         let id = bench_id(domain, operation);
-        let estimates = criterion_root.join(&id).join("new").join("estimates.json");
+        let estimates =
+            criterion_root.join(&id).join("new").join("estimates.json");
         if !estimates.is_file() {
             report.missing.push(id);
             continue;

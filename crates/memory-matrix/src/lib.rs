@@ -10,11 +10,20 @@ mod matrix;
 pub mod bench_runner;
 
 pub use matrix::{
-    bench_id, cells, run_matrix, run_one, Cell, CellRecord, CellResult,
-    MatrixCtx, MatrixRun, OPERATIONS,
+    Cell,
+    CellRecord,
+    CellResult,
+    MatrixCtx,
+    MatrixRun,
+    OPERATIONS,
+    bench_id,
+    cells,
+    run_matrix,
+    run_one,
 };
 
 pub use memory_fixtures::{
-    materialize_fixture as materialize, FixtureError as FixtureLoadError,
+    FixtureError as FixtureLoadError,
     LoadedFixture as Fixture,
+    materialize_fixture as materialize,
 };

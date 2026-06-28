@@ -14,8 +14,13 @@
 //!   --criterion-root <path>   Criterion output root. Default: $CARGO_TARGET_DIR/criterion or target/criterion
 //!   --budgets <path>          Budget table TOML. Default: this crate's budgets.toml
 
-use std::path::PathBuf;
-use std::process::{exit, Command};
+use std::{
+    path::PathBuf,
+    process::{
+        Command,
+        exit,
+    },
+};
 
 use memory_matrix::bench_runner::ingest_bench_results;
 use test_api::TestStoreConfig;
@@ -28,18 +33,28 @@ fn main() {
 
     let store_root = flag(&args, "--store-root")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("memory-api/.test"));
+        .unwrap_or_else(default_store_root);
     let criterion_root = flag(&args, "--criterion-root")
         .map(PathBuf::from)
         .unwrap_or_else(default_criterion_root);
-    let budgets_path = flag(&args, "--budgets").map(PathBuf::from).unwrap_or_else(
-        || PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/budgets.toml")),
-    );
+    let budgets_path = flag(&args, "--budgets")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/budgets.toml"))
+        });
 
     if !skip_bench {
-        eprintln!("running: cargo bench -p memory-matrix --bench operation_matrix");
+        eprintln!(
+            "running: cargo bench -p memory-matrix --bench operation_matrix"
+        );
         let status = Command::new("cargo")
-            .args(["bench", "-p", "memory-matrix", "--bench", "operation_matrix"])
+            .args([
+                "bench",
+                "-p",
+                "memory-matrix",
+                "--bench",
+                "operation_matrix",
+            ])
             .status()
             .unwrap_or_else(|err| {
                 eprintln!("failed to launch cargo bench: {err}");
@@ -104,7 +119,10 @@ fn main() {
     println!("all operations within budget");
 }
 
-fn flag(args: &[String], name: &str) -> Option<String> {
+fn flag(
+    args: &[String],
+    name: &str,
+) -> Option<String> {
     args.iter()
         .position(|arg| arg == name)
         .and_then(|index| args.get(index + 1))
@@ -112,8 +130,23 @@ fn flag(args: &[String], name: &str) -> Option<String> {
 }
 
 fn default_criterion_root() -> PathBuf {
-    std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("target"))
-        .join("criterion")
+    if let Some(target_dir) = std::env::var_os("CARGO_TARGET_DIR") {
+        return PathBuf::from(target_dir).join("criterion");
+    }
+
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    for ancestor in cwd.ancestors() {
+        let candidate = ancestor.join("target");
+        if candidate.is_dir() {
+            return candidate.join("criterion");
+        }
+    }
+
+    PathBuf::from("target").join("criterion")
+}
+
+fn default_store_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(".test")
 }

@@ -6,11 +6,20 @@
 
 use std::fs;
 
-use memory_matrix::bench_id;
-use memory_matrix::bench_runner::ingest_bench_results;
-use test_api::{BenchmarkQuery, TestStoreConfig};
+use memory_matrix::{
+    bench_id,
+    bench_runner::ingest_bench_results,
+};
+use test_api::{
+    BenchmarkQuery,
+    TestStoreConfig,
+};
 
-fn write_estimates(criterion_root: &std::path::Path, id: &str, mean_ns: f64) {
+fn write_estimates(
+    criterion_root: &std::path::Path,
+    id: &str,
+    mean_ns: f64,
+) {
     let dir = criterion_root.join(id).join("new");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -39,13 +48,20 @@ fn ingest_flags_over_budget_and_records_benchmarks() {
     write_estimates(&criterion_root, &bench_id("ticket", "scan"), 10_000_000.0);
 
     let store = TestStoreConfig::new(&store_root, "default");
-    let report =
-        ingest_bench_results(&criterion_root, &budgets_path, &store, "03ed4121")
-            .expect("ingest should succeed");
+    let report = ingest_bench_results(
+        &criterion_root,
+        &budgets_path,
+        &store,
+        "03ed4121",
+    )
+    .expect("ingest should succeed");
 
     // Two cells had estimates; the rest of the matrix is reported missing.
     assert_eq!(report.results.len(), 2);
-    assert!(!report.missing.is_empty(), "uncovered cells should be missing");
+    assert!(
+        !report.missing.is_empty(),
+        "uncovered cells should be missing"
+    );
 
     let over = report.over_budget();
     assert_eq!(over.len(), 1, "exactly the get cell is over budget");

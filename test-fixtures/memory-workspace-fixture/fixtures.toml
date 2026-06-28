@@ -24,6 +24,30 @@ domain = "spec-root"
 relative_path = ".spec"
 
 [[stores]]
+domain = "rule-root"
+relative_path = ".rule"
+
+[[stores]]
+domain = "session-root"
+relative_path = ".session"
+
+[[stores]]
+domain = "test-domain-root"
+relative_path = ".test-domain"
+
+[[stores]]
+domain = "log-root"
+relative_path = ".log"
+
+[[stores]]
+domain = "doc-inputs-root"
+relative_path = "docs"
+
+[[stores]]
+domain = "audit-inputs-root"
+relative_path = "src"
+
+[[stores]]
 domain = "ticket-submodule-a"
 relative_path = "submodule-a/.ticket"
 

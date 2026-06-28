@@ -7,8 +7,14 @@
 
 use std::collections::BTreeSet;
 
-use memory_matrix::{run_matrix, OPERATIONS};
-use test_api::{ExecutionQuery, ValidationOutcome};
+use memory_matrix::{
+    OPERATIONS,
+    run_matrix,
+};
+use test_api::{
+    ExecutionQuery,
+    ValidationOutcome,
+};
 
 const DOMAINS: &[&str] = &[
     "ticket", "spec", "rule", "audit", "session", "test", "doc", "log",
@@ -120,9 +126,9 @@ fn executions_are_persisted_in_the_workspace_test_store() {
     let run = run_matrix().expect("matrix should run against the fixture");
 
     let store = run.test_store();
-    let executions = store
-        .list_executions(&ExecutionQuery::default())
-        .expect("executions should be queryable from the workspace .test store");
+    let executions = store.list_executions(&ExecutionQuery::default()).expect(
+        "executions should be queryable from the workspace .test store",
+    );
 
     assert_eq!(
         executions.len(),

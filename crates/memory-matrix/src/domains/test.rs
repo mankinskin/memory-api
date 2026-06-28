@@ -1,8 +1,18 @@
 use chrono::Utc;
 
-use test_api::{TestStoreConfig, ValidationExecution, ValidationOutcome};
+use test_api::{
+    TestStoreConfig,
+    ValidationExecution,
+    ValidationOutcome,
+};
 
-use crate::matrix::{blocked, pass, CellResult, DomainOps, MatrixCtx};
+use crate::matrix::{
+    CellResult,
+    DomainOps,
+    MatrixCtx,
+    blocked,
+    pass,
+};
 
 pub(crate) struct TestDomain;
 
@@ -12,7 +22,10 @@ impl TestDomain {
         TestStoreConfig::new(ctx.store_root(".test-domain"), "default")
     }
 
-    fn execution(id: &str, outcome: ValidationOutcome) -> ValidationExecution {
+    fn execution(
+        id: &str,
+        outcome: ValidationOutcome,
+    ) -> ValidationExecution {
         let mut execution =
             ValidationExecution::new(id, "vt-test-domain", outcome, Utc::now());
         execution.duration_ms = Some(1);
@@ -25,7 +38,10 @@ impl DomainOps for TestDomain {
         "test"
     }
 
-    fn create(&self, ctx: &MatrixCtx) -> CellResult {
+    fn create(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let config = Self::config(ctx);
         config
             .record_execution(&Self::execution(
@@ -39,34 +55,32 @@ impl DomainOps for TestDomain {
         pass()
     }
 
-    fn get(&self, ctx: &MatrixCtx) -> CellResult {
+    fn get(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let config = Self::config(ctx);
-        config
-            .record_execution(&Self::execution(
-                "matrix-get",
-                ValidationOutcome::Passed,
-            ))
-            .map_err(|err| err.to_string())?;
         let fetched = config
-            .get_execution("matrix-get")
+            .get_execution("fixture-execution")
             .map_err(|err| err.to_string())?;
-        if fetched.id == "matrix-get" {
+        if fetched.id == "fixture-execution" {
             pass()
         } else {
             Err(format!("unexpected execution id: {}", fetched.id))
         }
     }
 
-    fn search(&self, ctx: &MatrixCtx) -> CellResult {
+    fn search(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let config = Self::config(ctx);
-        config
-            .record_execution(&Self::execution(
-                "matrix-search",
-                ValidationOutcome::Passed,
-            ))
-            .map_err(|err| err.to_string())?;
         let executions = config
-            .list_executions(&test_api::ExecutionQuery::default())
+            .list_executions(&test_api::ExecutionQuery {
+                domain: Some("test".to_string()),
+                operation: Some("get".to_string()),
+                ..Default::default()
+            })
             .map_err(|err| err.to_string())?;
         if executions.is_empty() {
             return Err("execution query returned no records".to_string());
@@ -74,7 +88,10 @@ impl DomainOps for TestDomain {
         pass()
     }
 
-    fn update(&self, ctx: &MatrixCtx) -> CellResult {
+    fn update(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let config = Self::config(ctx);
         config
             .record_execution(&Self::execution(
@@ -98,11 +115,17 @@ impl DomainOps for TestDomain {
         }
     }
 
-    fn delete(&self, _ctx: &MatrixCtx) -> CellResult {
+    fn delete(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
         blocked("test-api exposes no delete operation for executions")
     }
 
-    fn scan(&self, _ctx: &MatrixCtx) -> CellResult {
+    fn scan(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
         blocked(
             "test-api has no scan/index reconcile; the store index is generated \
              (ticket 90de77b1), not scanned from disk",

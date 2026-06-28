@@ -10,7 +10,9 @@ The `fixtures.toml` manifest is the source of truth used by the `memory-fixtures
 ```
 memory-workspace-fixture/
 ├── fixtures.toml            # manifest: worktrees + store inventory
-├── .ticket/ .spec/          # root-level stores (seeded)
+├── .ticket/ .spec/          # root-level checked-in stores (seeded)
+├── .rule/ .session/ .test-domain/ .log/  # generated representative stores
+├── docs/ src/               # generated doc and audit inputs
 ├── submodule-a/.ticket/     # emulated submodule worktree A
 └── submodule-b/.spec/       # emulated submodule worktree B
 ```
@@ -27,6 +29,10 @@ let ticket_root = fixture.store_root("ticket-root");   // resolved per-domain pa
 ```
 
 `materialize_fixture` copies the fixture into an isolated tempdir so tests can mutate it freely.
+During materialization, the loader deterministically adds representative root-domain data:
+generated tickets with state/history variation, a searchable rule, a linked session transcript,
+a validation execution, a log capture, and doc/audit input files. These generated seeds keep the
+checked-in fixture small while giving matrix and benchmark consumers realistic cross-store data.
 `materialize_fixture_with_generated_tickets(n)` additionally seeds `n` generated tickets in the
 root ticket store for the benchmark-scale variant.
 
@@ -37,6 +43,9 @@ root ticket store for the benchmark-scale variant.
 2. Register the store in `fixtures.toml` under a new `[[stores]]` entry with a unique
    `domain` and the `relative_path` to its hidden store directory.
 3. Reference the new domain from tests via `fixture.store_root("<domain>")`.
+
+If the store data should be generated rather than committed, add the deterministic seeding logic
+to `crates/memory-fixtures/src/lib.rs` and register the generated store path in `fixtures.toml`.
 
 ## Regenerating the large benchmark variant
 

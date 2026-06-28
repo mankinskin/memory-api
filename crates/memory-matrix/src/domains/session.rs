@@ -1,15 +1,26 @@
 use chrono::Utc;
 
-use crate::matrix::{pass, CellResult, DomainOps, MatrixCtx};
+use crate::matrix::{
+    CellResult,
+    DomainOps,
+    MatrixCtx,
+    pass,
+};
 
 pub(crate) struct SessionDomain;
 
 impl SessionDomain {
     fn config(ctx: &MatrixCtx) -> session_api::SessionStoreConfig {
-        session_api::SessionStoreConfig::new(ctx.store_root(".session"), "default")
+        session_api::SessionStoreConfig::new(
+            ctx.store_root(".session"),
+            "default",
+        )
     }
 
-    fn payload(session_id: &str, content: &str) -> session_api::CopilotHookPayload {
+    fn payload(
+        session_id: &str,
+        content: &str,
+    ) -> session_api::CopilotHookPayload {
         Self::payload_multi(session_id, &[content])
     }
 
@@ -43,7 +54,10 @@ impl DomainOps for SessionDomain {
         "session"
     }
 
-    fn create(&self, ctx: &MatrixCtx) -> CellResult {
+    fn create(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let config = Self::config(ctx);
         config
             .capture_copilot_hook(Self::payload("matrix-create", "hello"))
@@ -54,28 +68,31 @@ impl DomainOps for SessionDomain {
         pass()
     }
 
-    fn get(&self, ctx: &MatrixCtx) -> CellResult {
+    fn get(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let config = Self::config(ctx);
-        config
-            .capture_copilot_hook(Self::payload("matrix-get", "hello"))
-            .map_err(|err| err.to_string())?;
         let record = config
-            .read_session("matrix-get")
+            .read_session("fixture-session")
             .map_err(|err| err.to_string())?;
-        if record.session_id == "matrix-get" {
+        if record.session_id == "fixture-session" && record.has_turns() {
             pass()
         } else {
             Err(format!("unexpected session id: {}", record.session_id))
         }
     }
 
-    fn search(&self, ctx: &MatrixCtx) -> CellResult {
+    fn search(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let config = Self::config(ctx);
-        config
-            .capture_copilot_hook(Self::payload("matrix-search", "hello"))
-            .map_err(|err| err.to_string())?;
         let records = config
-            .query_sessions(&session_api::SessionQuery::default())
+            .query_sessions(&session_api::SessionQuery {
+                text: Some("seeded turn".to_string()),
+                ..Default::default()
+            })
             .map_err(|err| err.to_string())?;
         if records.is_empty() {
             return Err("session query returned no records".to_string());
@@ -83,7 +100,10 @@ impl DomainOps for SessionDomain {
         pass()
     }
 
-    fn update(&self, ctx: &MatrixCtx) -> CellResult {
+    fn update(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let config = Self::config(ctx);
         config
             .capture_copilot_hook(Self::payload("matrix-update", "first"))
@@ -103,7 +123,8 @@ impl DomainOps for SessionDomain {
         if after.turns.len() > before.turns.len() {
             pass()
         } else {
-            Err("append capture did not grow the session transcript".to_string())
+            Err("append capture did not grow the session transcript"
+                .to_string())
         }
     }
 }

@@ -2,7 +2,12 @@ use std::collections::BTreeMap;
 
 use serde_json::json;
 
-use crate::matrix::{pass, CellResult, DomainOps, MatrixCtx};
+use crate::matrix::{
+    CellResult,
+    DomainOps,
+    MatrixCtx,
+    pass,
+};
 
 pub(crate) struct SpecDomain;
 
@@ -12,7 +17,10 @@ impl SpecDomain {
             .map_err(|err| err.to_string())
     }
 
-    fn new_manifest(slug: &str, title: &str) -> spec_api::SpecManifest {
+    fn new_manifest(
+        slug: &str,
+        title: &str,
+    ) -> spec_api::SpecManifest {
         spec_api::SpecManifest::new(slug, title, "matrix")
     }
 }
@@ -22,7 +30,10 @@ impl DomainOps for SpecDomain {
         "spec"
     }
 
-    fn create(&self, ctx: &MatrixCtx) -> CellResult {
+    fn create(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let mut store = Self::open(ctx)?;
         let manifest = Self::new_manifest("matrix/create", "Matrix Create");
         store
@@ -34,38 +45,42 @@ impl DomainOps for SpecDomain {
         pass()
     }
 
-    fn get(&self, ctx: &MatrixCtx) -> CellResult {
+    fn get(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let mut store = Self::open(ctx)?;
-        let manifest = Self::new_manifest("matrix/get", "Matrix Get");
-        store
-            .create(&manifest, "matrix body", None)
-            .map_err(|err| err.to_string())?;
         store.scan(true).map_err(|err| err.to_string())?;
-        let fetched = store.get("matrix/get").map_err(|err| err.to_string())?;
+        let fetched =
+            store.get("fixture/root").map_err(|err| err.to_string())?;
         match fetched.title() {
-            Some("Matrix Get") => pass(),
+            Some("Root fixture spec") => pass(),
             other => Err(format!("unexpected spec title: {other:?}")),
         }
     }
 
-    fn search(&self, ctx: &MatrixCtx) -> CellResult {
+    fn search(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let mut store = Self::open(ctx)?;
-        let manifest = Self::new_manifest("matrix/search", "Matrixspectoken Spec");
-        store
-            .create(&manifest, "matrix body", None)
-            .map_err(|err| err.to_string())?;
         store.scan(true).map_err(|err| err.to_string())?;
         let results = store
             .entity_store()
-            .search("Matrixspectoken", 10)
+            .search("Root fixture", 10)
             .map_err(|err| err.to_string())?;
         if results.is_empty() {
-            return Err("spec search returned no hit for indexed token".to_string());
+            return Err(
+                "spec search returned no hit for indexed token".to_string()
+            );
         }
         pass()
     }
 
-    fn update(&self, ctx: &MatrixCtx) -> CellResult {
+    fn update(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let mut store = Self::open(ctx)?;
         let manifest = Self::new_manifest("matrix/update", "Matrix Update");
         store
@@ -82,22 +97,31 @@ impl DomainOps for SpecDomain {
         }
     }
 
-    fn delete(&self, ctx: &MatrixCtx) -> CellResult {
+    fn delete(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let mut store = Self::open(ctx)?;
         let manifest = Self::new_manifest("matrix/delete", "Matrix Delete");
         store
             .create(&manifest, "matrix body", None)
             .map_err(|err| err.to_string())?;
-        store.delete("matrix/delete").map_err(|err| err.to_string())?;
+        store
+            .delete("matrix/delete")
+            .map_err(|err| err.to_string())?;
         if store.get("matrix/delete").is_ok() {
             return Err("spec still readable after delete".to_string());
         }
         pass()
     }
 
-    fn scan(&self, ctx: &MatrixCtx) -> CellResult {
+    fn scan(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let mut store = Self::open(ctx)?;
         store.scan(true).map_err(|err| err.to_string())?;
+        store.get("fixture/root").map_err(|err| err.to_string())?;
         pass()
     }
 }

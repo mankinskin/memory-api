@@ -1,7 +1,12 @@
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
+    process::Command,
+};
 
 use serde::Deserialize;
 use tempfile::TempDir;
@@ -9,9 +14,15 @@ use tempfile::TempDir;
 #[derive(Debug, thiserror::Error)]
 pub enum FixtureError {
     #[error("io error at {path}: {source}")]
-    Io { path: PathBuf, source: std::io::Error },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("manifest parse error in {path}: {source}")]
-    ManifestParse { path: PathBuf, source: toml::de::Error },
+    ManifestParse {
+        path: PathBuf,
+        source: toml::de::Error,
+    },
     #[error("fixture root not found: {0}")]
     MissingFixtureRoot(PathBuf),
     #[error("git command {args:?} failed in {dir}: {detail}")]
@@ -51,7 +62,10 @@ pub struct LoadedFixture {
 }
 
 impl LoadedFixture {
-    pub fn store_root(&self, domain: &str) -> Option<&Path> {
+    pub fn store_root(
+        &self,
+        domain: &str,
+    ) -> Option<&Path> {
         self.store_roots.get(domain).map(PathBuf::as_path)
     }
 }
@@ -73,6 +87,7 @@ pub fn materialize_fixture() -> Result<LoadedFixture, FixtureError> {
     })?;
     let workspace_root = tempdir.path().join("memory-workspace-fixture");
     copy_dir_recursive(&source_root, &workspace_root)?;
+    seed_representative_data(&workspace_root)?;
 
     let manifest_path = workspace_root.join("fixtures.toml");
     let manifest = read_manifest(&manifest_path)?;
@@ -96,7 +111,7 @@ pub fn materialize_fixture() -> Result<LoadedFixture, FixtureError> {
 }
 
 pub fn materialize_fixture_with_generated_tickets(
-    generated_ticket_count: usize,
+    generated_ticket_count: usize
 ) -> Result<LoadedFixture, FixtureError> {
     let fixture = materialize_fixture()?;
     let ticket_root = fixture.workspace_root.join(".ticket/tickets");
@@ -152,7 +167,10 @@ fn git_init_worktree(dir: &Path) -> Result<(), FixtureError> {
     Ok(())
 }
 
-fn run_git(dir: &Path, args: &[&str]) -> Result<(), FixtureError> {
+fn run_git(
+    dir: &Path,
+    args: &[&str],
+) -> Result<(), FixtureError> {
     let output = Command::new("git")
         .args(args)
         .current_dir(dir)
@@ -185,7 +203,230 @@ fn read_manifest(path: &Path) -> Result<FixtureManifest, FixtureError> {
     })
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), FixtureError> {
+fn seed_representative_data(workspace_root: &Path) -> Result<(), FixtureError> {
+    seed_generated_tickets(workspace_root, 24)?;
+    seed_rule_store(workspace_root)?;
+    seed_session_store(workspace_root)?;
+    seed_test_store(workspace_root)?;
+    seed_log_store(workspace_root)?;
+    seed_audit_inputs(workspace_root)?;
+    Ok(())
+}
+
+fn seed_generated_tickets(
+    workspace_root: &Path,
+    count: usize,
+) -> Result<(), FixtureError> {
+    let ticket_root = workspace_root.join(".ticket/tickets");
+    for index in 0..count {
+        let id = format!("00000000-0000-0000-0000-100000000{index:03x}");
+        let ticket_dir = ticket_root.join(&id);
+        fs::create_dir_all(&ticket_dir).map_err(|source| FixtureError::Io {
+            path: ticket_dir.clone(),
+            source,
+        })?;
+
+        let state = match index % 4 {
+            0 => "new",
+            1 => "ready",
+            2 => "in-implementation",
+            _ => "in-review",
+        };
+        let title = if index == 0 {
+            "Matrixsearchtoken seeded ticket".to_string()
+        } else {
+            format!("Representative fixture ticket {index:02}")
+        };
+        let body = format!(
+            "id = \"{id}\"\ncreated_at = \"2026-06-28T00:00:00Z\"\ntitle = \"{title}\"\nstate = \"{state}\"\ntype = \"tracker-improvement\"\ncomponent = \"fixture\"\nspec_ids = [\"00000000-0000-0000-0000-0000000000b1\"]\n"
+        );
+        write_text(&ticket_dir.join("ticket.toml"), &body)?;
+        write_text(
+            &ticket_dir.join("history.ndjson"),
+            &format!(
+                "{{\"rev\":1,\"ts\":\"2026-06-28T00:00:00Z\",\"fields\":{{\"state\":\"{state}\",\"title\":\"{title}\"}}}}\n"
+            ),
+        )?;
+    }
+    Ok(())
+}
+
+fn seed_rule_store(workspace_root: &Path) -> Result<(), FixtureError> {
+    let rule_dir =
+        workspace_root.join(".rule/rules/00000000-0000-0000-0000-0000000000c1");
+    fs::create_dir_all(&rule_dir).map_err(|source| FixtureError::Io {
+        path: rule_dir.clone(),
+        source,
+    })?;
+    write_text(
+        &rule_dir.join("rule.toml"),
+        "id = \"00000000-0000-0000-0000-0000000000c1\"\ncreated_at = \"2026-06-28T00:00:00Z\"\nslug = \"fixture/rule-search\"\ntitle = \"Matrixruletoken Rule\"\ntype = \"rule-entry\"\nstate = \"draft\"\nfile_kind = \"markdown\"\nsection = \"fixture\"\norder_key = 0\nrepo_scopes = []\npath_scopes = []\nsentence_anchors = []\nfeedback_helpful_count = 0\nfeedback_mixed_count = 0\nfeedback_not_helpful_count = 0\nfeedback_note_count = 0\nfeedback_unresolved_count = 0\n",
+    )?;
+    write_text(
+        &rule_dir.join("body.md"),
+        "Seeded representative rule body linked from fixture tickets and specs.\n",
+    )?;
+    Ok(())
+}
+
+fn seed_session_store(workspace_root: &Path) -> Result<(), FixtureError> {
+    let session_dir =
+        workspace_root.join(".session/sessions/default/fixture-session");
+    fs::create_dir_all(&session_dir).map_err(|source| FixtureError::Io {
+        path: session_dir.clone(),
+        source,
+    })?;
+    write_text(
+        &session_dir.join("session.json"),
+        r#"{
+  "session_id": "fixture-session",
+  "source": "fixture-generator",
+  "started_at": "2026-06-28T00:00:00Z",
+  "captured_at": "2026-06-28T00:00:01Z",
+  "metadata": {
+    "workspace_slug": "default",
+    "agent_id": "fixture",
+    "ticket_id": "00000000-0000-0000-0000-100000000000",
+    "trigger": "representative-fixture"
+  },
+  "links": {
+    "ticket_ids": ["00000000-0000-0000-0000-100000000000"],
+    "spec_ids": ["00000000-0000-0000-0000-0000000000b1"],
+    "log_ids": ["fixture-log-capture"]
+  }
+}
+"#,
+    )?;
+    write_text(
+        &session_dir.join("transcript.json"),
+        r#"{
+  "session_id": "fixture-session",
+  "captured_at": "2026-06-28T00:00:01Z",
+  "turns": [
+    {
+      "sequence": 1,
+      "role": "user",
+      "content": "fixture session seeded turn",
+      "captured_at": "2026-06-28T00:00:01Z"
+    }
+  ]
+}
+"#,
+    )?;
+    Ok(())
+}
+
+fn seed_test_store(workspace_root: &Path) -> Result<(), FixtureError> {
+    let specs_dir = workspace_root.join(".test-domain/default/specs");
+    let executions_dir = workspace_root.join(".test-domain/default/executions");
+    fs::create_dir_all(&specs_dir).map_err(|source| FixtureError::Io {
+        path: specs_dir.clone(),
+        source,
+    })?;
+    fs::create_dir_all(&executions_dir).map_err(|source| FixtureError::Io {
+        path: executions_dir.clone(),
+        source,
+    })?;
+    write_text(
+        &specs_dir.join("vt-fixture-domain.json"),
+        r#"{
+  "id": "vt-fixture-domain",
+  "title": "Fixture domain validation",
+  "slow_threshold_ms": 2000,
+  "links": {
+    "ticket_ids": ["00000000-0000-0000-0000-100000000000"],
+    "spec_ids": ["00000000-0000-0000-0000-0000000000b1"]
+  }
+}
+"#,
+    )?;
+    write_text(
+        &executions_dir.join("fixture-execution.json"),
+        r#"{
+  "id": "fixture-execution",
+  "validation_spec_id": "vt-fixture-domain",
+  "outcome": "passed",
+  "executed_at": "2026-06-28T00:00:02Z",
+  "duration_ms": 12,
+  "detail": "seeded representative validation execution",
+  "links": {
+    "ticket_ids": ["00000000-0000-0000-0000-100000000000"],
+    "spec_ids": ["00000000-0000-0000-0000-0000000000b1"],
+    "log_ids": ["fixture-log-capture"]
+  },
+  "provenance": {
+    "source_path": "test-fixtures/memory-workspace-fixture",
+    "test_id": "fixture.validation",
+    "domain": "test",
+    "operation": "get",
+    "transport": "fixture",
+    "run_id": "fixture-seed"
+  }
+}
+"#,
+    )?;
+    Ok(())
+}
+
+fn seed_log_store(workspace_root: &Path) -> Result<(), FixtureError> {
+    let captures_dir = workspace_root.join(".log/default/captures");
+    fs::create_dir_all(&captures_dir).map_err(|source| FixtureError::Io {
+        path: captures_dir.clone(),
+        source,
+    })?;
+    write_text(
+        &captures_dir.join("fixture-log-capture.json"),
+        r#"{
+  "id": "fixture-log-capture",
+  "validation_execution_id": "fixture-execution",
+  "kind": "combined-output",
+  "captured_at": "2026-06-28T00:00:03Z",
+  "media_type": "text/plain",
+  "locator": "test-fixtures/memory-workspace-fixture/logs/fixture.log",
+  "detail": "seeded representative log capture",
+  "links": {
+    "ticket_ids": ["00000000-0000-0000-0000-100000000000"],
+    "spec_ids": ["00000000-0000-0000-0000-0000000000b1"],
+    "validation_execution_ids": ["fixture-execution"]
+  }
+}
+"#,
+    )?;
+    Ok(())
+}
+
+fn seed_audit_inputs(workspace_root: &Path) -> Result<(), FixtureError> {
+    write_text(
+        &workspace_root.join("src/fixture_module.rs"),
+        "pub fn fixture_indexed_symbol() -> &'static str { \"fixture\" }\n",
+    )?;
+    write_text(
+        &workspace_root.join("docs/fixture.md"),
+        "# Fixture Doc\n\nReferences ticket 00000000-0000-0000-0000-100000000000 and spec fixture/root.\n",
+    )?;
+    Ok(())
+}
+
+fn write_text(
+    path: &Path,
+    content: &str,
+) -> Result<(), FixtureError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|source| FixtureError::Io {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+    fs::write(path, content).map_err(|source| FixtureError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+fn copy_dir_recursive(
+    src: &Path,
+    dst: &Path,
+) -> Result<(), FixtureError> {
     fs::create_dir_all(dst).map_err(|source| FixtureError::Io {
         path: dst.to_path_buf(),
         source,
@@ -221,10 +462,8 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), FixtureError> {
         if ty.is_dir() {
             copy_dir_recursive(&from, &to)?;
         } else if ty.is_file() {
-            fs::copy(&from, &to).map_err(|source| FixtureError::Io {
-                path: to,
-                source,
-            })?;
+            fs::copy(&from, &to)
+                .map_err(|source| FixtureError::Io { path: to, source })?;
         }
     }
 
@@ -256,32 +495,85 @@ mod tests {
         assert!(fixture.store_root("ticket-root").is_some());
         assert!(fixture.store_root("ticket-submodule-a").is_some());
         assert!(fixture.store_root("spec-submodule-b").is_some());
+        assert!(fixture.store_root("rule-root").is_some());
+        assert!(fixture.store_root("session-root").is_some());
+        assert!(fixture.store_root("test-domain-root").is_some());
+        assert!(fixture.store_root("log-root").is_some());
 
         for path in fixture.store_roots.values() {
-            assert!(path.exists(), "expected fixture path to exist: {}", path.display());
+            assert!(
+                path.exists(),
+                "expected fixture path to exist: {}",
+                path.display()
+            );
         }
     }
 
     #[test]
+    fn materializes_representative_domain_seeds() {
+        let fixture = materialize_fixture().expect("fixture should load");
+
+        assert!(
+            fixture
+                .workspace_root
+                .join(
+                    ".rule/rules/00000000-0000-0000-0000-0000000000c1/rule.toml"
+                )
+                .is_file()
+        );
+        assert!(
+            fixture
+                .workspace_root
+                .join(".session/sessions/default/fixture-session/session.json")
+                .is_file()
+        );
+        assert!(
+            fixture
+                .workspace_root
+                .join(".test-domain/default/executions/fixture-execution.json")
+                .is_file()
+        );
+        assert!(
+            fixture
+                .workspace_root
+                .join(".log/default/captures/fixture-log-capture.json")
+                .is_file()
+        );
+        assert!(
+            fixture
+                .workspace_root
+                .join("src/fixture_module.rs")
+                .is_file()
+        );
+        assert!(fixture.workspace_root.join("docs/fixture.md").is_file());
+    }
+
+    #[test]
     fn generates_benchmark_scale_ticket_variant() {
-        let fixture = materialize_fixture_with_generated_tickets(50).expect("fixture should load");
+        let fixture = materialize_fixture_with_generated_tickets(50)
+            .expect("fixture should load");
         let generated_dir = fixture.workspace_root.join(".ticket/tickets");
         let entries = fs::read_dir(&generated_dir)
             .unwrap()
             .filter_map(Result::ok)
             .count();
 
-        assert!(entries >= 50, "expected generated tickets to be materialized");
+        assert!(
+            entries >= 50,
+            "expected generated tickets to be materialized"
+        );
     }
 
     #[test]
     fn git_fixture_initializes_root_and_submodule_worktrees() {
         let fixture = match materialize_git_fixture() {
             Ok(fixture) => fixture,
-            Err(FixtureError::Git { detail, .. }) if detail.contains("os error 2") => {
+            Err(FixtureError::Git { detail, .. })
+                if detail.contains("os error 2") =>
+            {
                 // git not installed in this environment; skip.
                 return;
-            }
+            },
             Err(err) => panic!("git fixture should materialize: {err}"),
         };
 

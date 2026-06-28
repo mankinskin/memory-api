@@ -2,14 +2,23 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use crate::matrix::{pass, CellResult, DomainOps, MatrixCtx};
+use crate::matrix::{
+    CellResult,
+    DomainOps,
+    MatrixCtx,
+    pass,
+};
 
 pub(crate) struct TicketDomain;
 
 impl TicketDomain {
-    fn open(ctx: &MatrixCtx) -> Result<ticket_api::storage::TicketStore, String> {
-        ticket_api::storage::TicketStore::open_or_init(&ctx.store_root(".ticket"))
-            .map_err(|err| err.to_string())
+    fn open(
+        ctx: &MatrixCtx
+    ) -> Result<ticket_api::storage::TicketStore, String> {
+        ticket_api::storage::TicketStore::open_or_init(
+            &ctx.store_root(".ticket"),
+        )
+        .map_err(|err| err.to_string())
     }
 }
 
@@ -18,7 +27,10 @@ impl DomainOps for TicketDomain {
         "ticket"
     }
 
-    fn create(&self, ctx: &MatrixCtx) -> CellResult {
+    fn create(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let store = Self::open(ctx)?;
         let id = store
             .create(
@@ -35,11 +47,15 @@ impl DomainOps for TicketDomain {
         pass()
     }
 
-    fn get(&self, ctx: &MatrixCtx) -> CellResult {
+    fn get(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let store = Self::open(ctx)?;
         store.scan(true).map_err(|err| err.to_string())?;
         let seeded =
-            uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
+            uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001")
+                .unwrap();
         let manifest = store.get(&seeded).map_err(|err| err.to_string())?;
         match manifest.extra.get("title").and_then(Value::as_str) {
             Some("Root fixture ticket") => pass(),
@@ -47,19 +63,11 @@ impl DomainOps for TicketDomain {
         }
     }
 
-    fn search(&self, ctx: &MatrixCtx) -> CellResult {
+    fn search(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let store = Self::open(ctx)?;
-        store
-            .create(
-                None,
-                "tracker-improvement",
-                Some("matrixsearchtoken ticket"),
-                Some("new"),
-                BTreeMap::new(),
-                None,
-                None,
-            )
-            .map_err(|err| err.to_string())?;
         store.scan(true).map_err(|err| err.to_string())?;
         let results = store
             .search_tickets("matrixsearchtoken", 10)
@@ -70,7 +78,10 @@ impl DomainOps for TicketDomain {
         pass()
     }
 
-    fn update(&self, ctx: &MatrixCtx) -> CellResult {
+    fn update(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let store = Self::open(ctx)?;
         let id = store
             .create(
@@ -92,7 +103,10 @@ impl DomainOps for TicketDomain {
         }
     }
 
-    fn delete(&self, ctx: &MatrixCtx) -> CellResult {
+    fn delete(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let store = Self::open(ctx)?;
         let id = store
             .create(
@@ -112,9 +126,21 @@ impl DomainOps for TicketDomain {
         pass()
     }
 
-    fn scan(&self, ctx: &MatrixCtx) -> CellResult {
+    fn scan(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let store = Self::open(ctx)?;
         store.scan(true).map_err(|err| err.to_string())?;
+        let results = store
+            .search_tickets("Representative fixture ticket", 50)
+            .map_err(|err| err.to_string())?;
+        if results.len() < 10 {
+            return Err(format!(
+                "ticket scan indexed too few representative tickets: {}",
+                results.len()
+            ));
+        }
         pass()
     }
 }

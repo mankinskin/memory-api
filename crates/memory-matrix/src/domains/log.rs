@@ -1,6 +1,12 @@
 use chrono::Utc;
 
-use crate::matrix::{blocked, pass, CellResult, DomainOps, MatrixCtx};
+use crate::matrix::{
+    CellResult,
+    DomainOps,
+    MatrixCtx,
+    blocked,
+    pass,
+};
 
 pub(crate) struct LogDomain;
 
@@ -9,7 +15,10 @@ impl LogDomain {
         log_api::LogStoreConfig::new(ctx.store_root(".log"), "default")
     }
 
-    fn capture(id: &str, detail: &str) -> log_api::ValidationLogCapture {
+    fn capture(
+        id: &str,
+        detail: &str,
+    ) -> log_api::ValidationLogCapture {
         log_api::ValidationLogCapture {
             id: id.to_string(),
             validation_execution_id: "vt-log-domain".to_string(),
@@ -28,7 +37,10 @@ impl DomainOps for LogDomain {
         "log"
     }
 
-    fn create(&self, ctx: &MatrixCtx) -> CellResult {
+    fn create(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let config = Self::config(ctx);
         config
             .record_capture(&Self::capture("matrix-create", "first"))
@@ -39,28 +51,31 @@ impl DomainOps for LogDomain {
         pass()
     }
 
-    fn get(&self, ctx: &MatrixCtx) -> CellResult {
+    fn get(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let config = Self::config(ctx);
-        config
-            .record_capture(&Self::capture("matrix-get", "first"))
-            .map_err(|err| err.to_string())?;
         let fetched = config
-            .get_capture("matrix-get")
+            .get_capture("fixture-log-capture")
             .map_err(|err| err.to_string())?;
-        if fetched.id == "matrix-get" {
+        if fetched.id == "fixture-log-capture" {
             pass()
         } else {
             Err(format!("unexpected capture id: {}", fetched.id))
         }
     }
 
-    fn search(&self, ctx: &MatrixCtx) -> CellResult {
+    fn search(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let config = Self::config(ctx);
-        config
-            .record_capture(&Self::capture("matrix-search", "first"))
-            .map_err(|err| err.to_string())?;
         let captures = config
-            .list_captures(&log_api::LogCaptureQuery::default())
+            .list_captures(&log_api::LogCaptureQuery {
+                execution_id: Some("fixture-execution".to_string()),
+                ..Default::default()
+            })
             .map_err(|err| err.to_string())?;
         if captures.is_empty() {
             return Err("capture query returned no records".to_string());
@@ -68,7 +83,10 @@ impl DomainOps for LogDomain {
         pass()
     }
 
-    fn update(&self, ctx: &MatrixCtx) -> CellResult {
+    fn update(
+        &self,
+        ctx: &MatrixCtx,
+    ) -> CellResult {
         let config = Self::config(ctx);
         config
             .record_capture(&Self::capture("matrix-update", "first"))
@@ -86,11 +104,17 @@ impl DomainOps for LogDomain {
         }
     }
 
-    fn delete(&self, _ctx: &MatrixCtx) -> CellResult {
+    fn delete(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
         blocked("log-api exposes no delete operation for captures")
     }
 
-    fn scan(&self, _ctx: &MatrixCtx) -> CellResult {
+    fn scan(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
         blocked(
             "log-api has no scan/index reconcile; captures are listed directly \
              from disk",
