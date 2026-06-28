@@ -459,33 +459,38 @@ impl TicketStore {
     fn rewrite_path_references(
         plan: &MovePreflightReport,
     ) -> Result<(Vec<MovePathRewrite>, Vec<MoveManualFollowup>), StorageError> {
-        let source_workspace_root = workspace::resolve_workspace_root_from_store_root(
-            &plan.source_store_root,
-            workspace::TICKET_INDEX_DIR,
-        );
-        let git_root = Self::git_toplevel(&source_workspace_root)?;
-
         let old_abs = Self::normalize_slashes(&plan.source_ticket_path);
         let new_abs = Self::normalize_slashes(&plan.destination_ticket_path);
 
-        let old_repo_rel = plan
-            .source_ticket_path
-            .strip_prefix(&git_root)
-            .ok()
-            .map(Self::normalize_slashes)
-            .unwrap_or_default();
-        let new_repo_rel = plan
-            .destination_ticket_path
-            .strip_prefix(&git_root)
-            .ok()
-            .map(Self::normalize_slashes)
-            .unwrap_or_default();
+        let mut relative_pairs = Vec::new();
+        if let (Ok(old_rel), Ok(new_rel)) = (
+            plan.source_ticket_path
+                .strip_prefix(&plan.source_git_worktree_root),
+            plan.destination_ticket_path
+                .strip_prefix(&plan.source_git_worktree_root),
+        ) {
+            relative_pairs.push((
+                Self::normalize_slashes(old_rel),
+                Self::normalize_slashes(new_rel),
+            ));
+        }
+        if let (Ok(old_rel), Ok(new_rel)) = (
+            plan.source_ticket_path
+                .strip_prefix(&plan.target_git_worktree_root),
+            plan.destination_ticket_path
+                .strip_prefix(&plan.target_git_worktree_root),
+        ) {
+            relative_pairs.push((
+                Self::normalize_slashes(old_rel),
+                Self::normalize_slashes(new_rel),
+            ));
+        }
 
         let mut rewritten = Vec::new();
         let mut followups = Vec::new();
 
         for file in &plan.path_reference_files {
-            let file_path = git_root.join(file);
+            let file_path = file.clone();
             if !file_path.exists() {
                 followups.push(MoveManualFollowup {
                     path: file_path,
@@ -504,8 +509,10 @@ impl TicketStore {
             };
 
             let mut replaced = previous_content.replace(&old_abs, &new_abs);
-            if !old_repo_rel.is_empty() {
-                replaced = replaced.replace(&old_repo_rel, &new_repo_rel);
+            for (old_rel, new_rel) in &relative_pairs {
+                if !old_rel.is_empty() {
+                    replaced = replaced.replace(old_rel, new_rel);
+                }
             }
 
             if replaced == previous_content {
@@ -524,28 +531,6 @@ impl TicketStore {
         }
 
         Ok((rewritten, followups))
-    }
-
-    fn git_toplevel(path: &std::path::Path) -> Result<PathBuf, StorageError> {
-        let output = std::process::Command::new("git")
-            .args(["-C", &path.to_string_lossy(), "rev-parse", "--show-toplevel"])
-            .output()
-            .map_err(StorageError::Io)?;
-
-        if !output.status.success() {
-            return Err(StorageError::Other(
-                String::from_utf8_lossy(&output.stderr).trim().to_string(),
-            ));
-        }
-
-        let root = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if root.is_empty() {
-            return Err(StorageError::Other(
-                "git rev-parse returned an empty worktree root".to_string(),
-            ));
-        }
-
-        Ok(PathBuf::from(root))
     }
 
     fn normalize_slashes(path: &std::path::Path) -> String {
@@ -866,6 +851,71 @@ mod tests {
             .unwrap();
         let restored_doc = std::fs::read_to_string(&doc_path).unwrap();
         assert!(restored_doc.contains(&source_rel));
+    }
+
+    #[test]
+    fn execute_move_with_journal_rewrites_parent_repo_refs_for_submodule_source() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let nested_repo = repo.join("nested-repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&nested_repo).unwrap();
+        run_git(&repo, &["init"]);
+        run_git(&nested_repo, &["init"]);
+
+        let source_store = TicketStore::init(&nested_repo).unwrap();
+        let _target_store = TicketStore::init(&repo).unwrap();
+
+        let id = source_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("move me"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let mut plan = source_store.plan_move_preflight(&id, &repo).unwrap();
+        let source_rel_from_parent = plan
+            .source_ticket_path
+            .strip_prefix(&repo)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let destination_rel_from_parent = plan
+            .destination_ticket_path
+            .strip_prefix(&repo)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        let doc_path = repo.join("docs").join("submodule-ticket-path.md");
+        std::fs::create_dir_all(doc_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &doc_path,
+            format!("ticket path from parent repo: {}\n", source_rel_from_parent),
+        )
+        .unwrap();
+        run_git(&repo, &["add", "docs/submodule-ticket-path.md"]);
+
+        plan = source_store.plan_move_preflight(&id, &repo).unwrap();
+        plan.blockers.retain(|blocker| {
+            !matches!(
+                blocker,
+                MovePreflightBlocker::PathReferenceScanUnavailable { .. }
+                    | MovePreflightBlocker::DirtyTrackedFiles { .. }
+            )
+        });
+
+        let outcome = source_store.execute_move_with_journal(&plan).unwrap();
+        assert!(!outcome.journal.rewritten_path_files.is_empty());
+
+        let rewritten_doc = std::fs::read_to_string(&doc_path).unwrap();
+        assert!(rewritten_doc.contains(&destination_rel_from_parent));
+        assert!(!rewritten_doc.contains(&source_rel_from_parent));
     }
 
     #[test]

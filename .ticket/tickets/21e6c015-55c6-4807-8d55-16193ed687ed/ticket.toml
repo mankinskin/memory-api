@@ -1,0 +1,9 @@
+id = "21e6c015-55c6-4807-8d55-16193ed687ed"
+created_at = "2026-06-28T00:10:48.332856+00:00"
+title = "[memory-api] Support cross-git-worktree (submodule) entity moves"
+state = "in-review"
+component = "memory-api"
+depends_on = ["505b2cd4-f21d-4e8d-8e6a-ae06a5b69854"]
+priority = "high"
+risk_level = "high"
+type = "tracker-improvement"

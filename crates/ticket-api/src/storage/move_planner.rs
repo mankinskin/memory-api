@@ -31,6 +31,14 @@ pub enum MoveReferenceDirection {
     Outbound,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum GitWorktreeTopology {
+    Same,
+    ParentToSubmodule,
+    SubmoduleToParent,
+    Unrelated,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MovePreflightBlocker {
     DifferentGitWorktree {
@@ -71,6 +79,9 @@ pub struct MovePreflightReport {
     pub target_workspace_root: PathBuf,
     pub source_store_root: PathBuf,
     pub target_store_root: PathBuf,
+    pub source_git_worktree_root: PathBuf,
+    pub target_git_worktree_root: PathBuf,
+    pub git_worktree_topology: GitWorktreeTopology,
     pub source_ticket_path: PathBuf,
     pub destination_ticket_path: PathBuf,
     pub source_ticket: Option<IndexedTicket>,
@@ -126,7 +137,8 @@ impl TicketStore {
             },
         };
 
-        if source_git_root != target_git_root {
+        let git_worktree_topology = classify_git_worktree_topology(&source_git_root, &target_git_root);
+        if git_worktree_topology == GitWorktreeTopology::Unrelated {
             blockers.push(MovePreflightBlocker::DifferentGitWorktree {
                 source_worktree_root: source_git_root.clone(),
                 target_worktree_root: target_git_root.clone(),
@@ -231,22 +243,43 @@ impl TicketStore {
         }
 
         let path_reference_files = if source_ticket.is_some() {
-            match git_tracked_path_reference_files(
-                &source_git_root,
-                &source_ticket_path,
-            ) {
-                Ok(files) => files,
+            let mut files = BTreeSet::new();
+
+            match git_tracked_path_reference_files(&source_git_root, &source_ticket_path) {
+                Ok(found) => {
+                    for file in found {
+                        files.insert(source_git_root.join(file));
+                    }
+                }
                 Err(reason) => {
                     blockers.push(MovePreflightBlocker::PathReferenceScanUnavailable { reason });
-                    Vec::new()
-                },
+                }
             }
+
+            if source_git_root != target_git_root {
+                match git_tracked_path_reference_files(&target_git_root, &source_ticket_path) {
+                    Ok(found) => {
+                        for file in found {
+                            files.insert(target_git_root.join(file));
+                        }
+                    }
+                    Err(reason) => {
+                        blockers.push(MovePreflightBlocker::PathReferenceScanUnavailable { reason });
+                    }
+                }
+            }
+
+            files.into_iter().collect()
         } else {
             Vec::new()
         };
 
         if !path_reference_files.is_empty() {
-            let dirty_files = git_dirty_tracked_files(&source_git_root, &path_reference_files)
+            let dirty_files = git_dirty_tracked_files(
+                &path_reference_files,
+                &source_git_root,
+                &target_git_root,
+            )
                 .unwrap_or_else(|reason| {
                     blockers.push(MovePreflightBlocker::PathReferenceScanUnavailable { reason });
                     Vec::new()
@@ -262,6 +295,9 @@ impl TicketStore {
             target_workspace_root: target_workspace_root.to_path_buf(),
             source_store_root,
             target_store_root,
+            source_git_worktree_root: source_git_root,
+            target_git_worktree_root: target_git_root,
+            git_worktree_topology,
             source_ticket_path,
             destination_ticket_path,
             source_ticket,
@@ -279,6 +315,22 @@ impl TicketStore {
             captured_at: Utc::now(),
         })
     }
+}
+
+fn classify_git_worktree_topology(
+    source_git_root: &Path,
+    target_git_root: &Path,
+) -> GitWorktreeTopology {
+    if source_git_root == target_git_root {
+        return GitWorktreeTopology::Same;
+    }
+    if target_git_root.starts_with(source_git_root) {
+        return GitWorktreeTopology::ParentToSubmodule;
+    }
+    if source_git_root.starts_with(target_git_root) {
+        return GitWorktreeTopology::SubmoduleToParent;
+    }
+    GitWorktreeTopology::Unrelated
 }
 
 fn git_toplevel(path: &Path) -> Result<PathBuf, String> {
@@ -331,11 +383,26 @@ fn git_tracked_path_reference_files(
 }
 
 fn git_dirty_tracked_files(
-    repo_root: &Path,
     files: &[PathBuf],
+    source_repo_root: &Path,
+    target_repo_root: &Path,
 ) -> Result<Vec<PathBuf>, String> {
     let mut dirty = Vec::new();
     for file in files {
+        let repo_root = if file.starts_with(source_repo_root) {
+            source_repo_root
+        } else if file.starts_with(target_repo_root) {
+            target_repo_root
+        } else {
+            source_repo_root
+        };
+
+        let status_path = file
+            .strip_prefix(repo_root)
+            .unwrap_or(file)
+            .to_string_lossy()
+            .replace('\\', "/");
+
         let output = Command::new("git")
             .args([
                 "-C",
@@ -343,7 +410,7 @@ fn git_dirty_tracked_files(
                 "status",
                 "--porcelain",
                 "--",
-                &file.to_string_lossy(),
+                &status_path,
             ])
             .output()
             .map_err(|error| error.to_string())?;
@@ -478,6 +545,79 @@ mod tests {
                 related_ticket_id,
                 direction: MoveReferenceDirection::Inbound,
             } if *related_ticket_id == invisible_inbound
+        )));
+    }
+
+    #[test]
+    fn preflight_allows_parent_submodule_worktree_topology() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        fs::create_dir_all(&repo).unwrap();
+        run_git(&repo, &["init"]);
+
+        let nested_repo = repo.join("nested-repo");
+        fs::create_dir_all(&nested_repo).unwrap();
+        run_git(&nested_repo, &["init"]);
+
+        let source_store = TicketStore::init(&repo).unwrap();
+        let _target_store = TicketStore::init(&nested_repo).unwrap();
+
+        let source_ticket = source_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("source ticket"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let report = source_store
+            .plan_move_preflight(&source_ticket, &nested_repo)
+            .unwrap();
+
+        assert_eq!(report.git_worktree_topology, GitWorktreeTopology::ParentToSubmodule);
+        assert!(!report.blockers.iter().any(|blocker| matches!(
+            blocker,
+            MovePreflightBlocker::DifferentGitWorktree { .. }
+        )));
+    }
+
+    #[test]
+    fn preflight_blocks_unrelated_git_worktrees() {
+        let temp = tempdir().unwrap();
+        let source_repo = temp.path().join("source-repo");
+        let target_repo = temp.path().join("target-repo");
+        fs::create_dir_all(&source_repo).unwrap();
+        fs::create_dir_all(&target_repo).unwrap();
+        run_git(&source_repo, &["init"]);
+        run_git(&target_repo, &["init"]);
+
+        let source_store = TicketStore::init(&source_repo).unwrap();
+        let _target_store = TicketStore::init(&target_repo).unwrap();
+
+        let source_ticket = source_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("source ticket"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let report = source_store
+            .plan_move_preflight(&source_ticket, &target_repo)
+            .unwrap();
+
+        assert_eq!(report.git_worktree_topology, GitWorktreeTopology::Unrelated);
+        assert!(report.blockers.iter().any(|blocker| matches!(
+            blocker,
+            MovePreflightBlocker::DifferentGitWorktree { .. }
         )));
     }
 }
