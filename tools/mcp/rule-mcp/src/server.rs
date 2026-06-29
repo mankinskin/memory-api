@@ -233,6 +233,64 @@ impl RuleServer {
     ) -> Result<CallToolResult, McpError> {
         self.rule_add_root_tool(input).await
     }
+
+    #[tool(name = "rule_move_preflight", description = "Read-only preflight plan for moving a rule to another workspace store.")]
+    pub async fn rule_move_preflight(
+        &self,
+        Parameters(input): Parameters<RuleMoveInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let to = PathBuf::from(&input.to_workspace_root);
+        self.with_store(move |store| {
+            let id = store.resolve_id(&input.id).map_err(Self::rule_err)?;
+            let report = store.plan_move_preflight(&id, &to).map_err(Self::rule_err)?;
+            Self::json_result(&serde_json::json!({"status":"ok","mode":"preflight","id":id.to_string(),"supported":report.supported(),"blockers":report.blockers}))
+        })
+        .await
+    }
+
+    #[tool(name = "rule_move_apply", description = "Execute a supported rule move to another workspace store.")]
+    pub async fn rule_move_apply(
+        &self,
+        Parameters(input): Parameters<RuleMoveInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let to = PathBuf::from(&input.to_workspace_root);
+        self.with_store(move |store| {
+            let id = store.resolve_id(&input.id).map_err(Self::rule_err)?;
+            let report = store.plan_move_preflight(&id, &to).map_err(Self::rule_err)?;
+            if !report.supported() {
+                return Err(McpError::invalid_params("move preflight blocked; run rule_move_preflight".to_string(), None));
+            }
+            let outcome = store.execute_move_with_journal(&report).map_err(Self::rule_err)?;
+            Self::json_result(&serde_json::json!({"status":"ok","mode":"apply","id":id.to_string(),"journal_id":outcome.journal.id,"phase":outcome.journal.phase}))
+        })
+        .await
+    }
+
+    #[tool(name = "rule_move_resume", description = "Resume an interrupted rule move from a journal id.")]
+    pub async fn rule_move_resume(
+        &self,
+        Parameters(input): Parameters<RuleMoveJournalInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let journal = input.id.parse::<uuid::Uuid>().map_err(|e| McpError::invalid_params(format!("invalid journal id: {e}"), None))?;
+        self.with_store(move |store| {
+            let outcome = store.resume_move_with_journal(journal).map_err(Self::rule_err)?;
+            Self::json_result(&serde_json::json!({"status":"ok","mode":"resume","journal_id":outcome.journal.id,"phase":outcome.journal.phase}))
+        })
+        .await
+    }
+
+    #[tool(name = "rule_move_rollback", description = "Roll back a rule move from a journal id.")]
+    pub async fn rule_move_rollback(
+        &self,
+        Parameters(input): Parameters<RuleMoveJournalInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let journal = input.id.parse::<uuid::Uuid>().map_err(|e| McpError::invalid_params(format!("invalid journal id: {e}"), None))?;
+        self.with_store(move |store| {
+            let outcome = store.rollback_move_with_journal(journal).map_err(Self::rule_err)?;
+            Self::json_result(&serde_json::json!({"status":"ok","mode":"rollback","journal_id":outcome.journal.id,"phase":outcome.journal.phase}))
+        })
+        .await
+    }
 }
 
 #[tool_handler]

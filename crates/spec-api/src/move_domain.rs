@@ -14,19 +14,14 @@ use std::path::{
 
 use memory_api::storage::move_kernel::{
     self,
-    MoveBoardState,
     MoveDomain,
     MoveError,
-    MoveLeaseBlock,
     MoveOutcome,
     MovePlan,
     MoveReferences,
     MoveResult,
 };
-use memory_api::{
-    error::StorageError,
-    storage::board::BoardEntry,
-};
+use memory_api::error::StorageError;
 use uuid::Uuid;
 
 use crate::{
@@ -129,36 +124,6 @@ impl MoveDomain for SpecMoveDomain<'_> {
             .get_indexed(entity_id)
             .map_err(|error| to_move_error(error.into()))?
             .is_some())
-    }
-
-    fn board_state(
-        &self,
-        _entity_id: &Uuid,
-    ) -> MoveResult<MoveBoardState> {
-        Ok(MoveBoardState::default())
-    }
-
-    fn active_leases(
-        &self,
-        _entity_id: &Uuid,
-    ) -> MoveResult<Vec<MoveLeaseBlock>> {
-        Ok(Vec::new())
-    }
-
-    fn migrate_board_history(
-        &self,
-        _target_store_root: &Path,
-        _entity_id: &Uuid,
-    ) -> MoveResult<Vec<BoardEntry>> {
-        Ok(Vec::new())
-    }
-
-    fn restore_board_history(
-        &self,
-        _target_store_root: &Path,
-        _entries: &[BoardEntry],
-    ) -> MoveResult<()> {
-        Ok(())
     }
 
     fn scan_store(
@@ -273,5 +238,70 @@ mod tests {
         let dst = SpecStore::open(&target_workspace).unwrap();
         assert!(src.entity_store().get_indexed(&spec_id).unwrap().is_none());
         assert!(dst.entity_store().get_indexed(&spec_id).unwrap().is_some());
+    }
+
+    /// Spec hierarchy is slug-based and code refs are repo-relative, so a move
+    /// rewrites neither: after relocation the parent link still resolves and the
+    /// destination slug index reindexes the spec. This documents (per ticket
+    /// 94a51f30 AC2) why those reference classes need no rewrite — the kernel's
+    /// `scan_store(true)` rebuild of the destination slug index is sufficient.
+    #[test]
+    fn moved_spec_keeps_slug_hierarchy_and_code_refs() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        run_git(&repo, &["init"]);
+
+        let source_workspace = repo.join("source");
+        let target_workspace = repo.join("target");
+        std::fs::create_dir_all(&source_workspace).unwrap();
+        std::fs::create_dir_all(&target_workspace).unwrap();
+
+        let mut source_store = SpecStore::init(&source_workspace).unwrap();
+        let _target_store = SpecStore::init(&target_workspace).unwrap();
+
+        let parent = crate::manifest::SpecManifest::new("track/parent", "Parent", "spec-api");
+        let _parent_id = source_store.create(&parent, "parent body", None).unwrap();
+
+        let mut child = crate::manifest::SpecManifest::new("track/child", "Child", "spec-api");
+        child.extra.insert(
+            "parent".to_string(),
+            serde_json::Value::String("track/parent".into()),
+        );
+        child.code_refs.push(crate::code_ref::CodeRef {
+            file: "crates/spec-api/src/move_domain.rs".into(),
+            symbol: "SpecMoveDomain".into(),
+            kind: crate::code_ref::SymbolKind::Struct,
+            line_start: 1,
+            line_end: 2,
+            description: None,
+        });
+        let child_id: Uuid = source_store.create(&child, "child body", None).unwrap();
+        source_store.scan(true).unwrap();
+
+        let mut plan = source_store
+            .plan_move_preflight(&child_id, &target_workspace)
+            .unwrap();
+        plan.blockers.retain(|blocker| {
+            !matches!(
+                blocker,
+                MoveBlocker::PathReferenceScanUnavailable { .. }
+                    | MoveBlocker::DirtyTrackedFiles { .. }
+            )
+        });
+        source_store.execute_move_with_journal(&plan).unwrap();
+
+        let dst = SpecStore::open(&target_workspace).unwrap();
+        let moved = dst.get(&child_id.to_string()).unwrap();
+        // Hierarchy: parent slug pointer is preserved unchanged.
+        assert_eq!(moved.parent(), Some("track/parent"));
+        // Code refs: repo-relative paths are preserved verbatim.
+        assert_eq!(moved.code_refs.len(), 1);
+        assert_eq!(moved.code_refs[0].file, "crates/spec-api/src/move_domain.rs");
+        // Slug index: destination resolves the moved spec's slug to its id
+        // after a scan rebuilds the in-memory slug index.
+        let mut dst_scanned = SpecStore::open(&target_workspace).unwrap();
+        dst_scanned.scan(true).unwrap();
+        assert_eq!(dst_scanned.resolve_id("track/child").unwrap(), child_id);
     }
 }

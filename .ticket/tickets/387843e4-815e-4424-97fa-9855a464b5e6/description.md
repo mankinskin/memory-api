@@ -36,3 +36,18 @@ Validate each basic operation (`get`/`search`/CRUD/`move`/`scan`) through the **
 - Depends on provenance (`a03d8a97`), representative fixture (`9138f4e7`).
 - TS/subprocess large-test path informed by design session `93b8a331`.
 - Reuses the `DomainOps`/`cells` shape from `751f0e71`.
+
+## Progress update (2026-06-29)
+
+- Implemented transport-axis execution recording in `memory-matrix` harness with transport-tagged provenance and per-cell IDs/specs.
+  - Current matrix transport set: `in-process`, `cli`, `mcp`, `http`.
+  - Non-implemented real transports are recorded as explicit `Blocked` with transport+operation reason (no silent skips).
+- Expanded matrix integration tests to assert transport-axis coverage and explicit blocked reasons for non-implemented transport cells.
+- Preserved strict missing-store policy: read/search/scan paths for ticket/spec/rule do not recreate missing store roots; only `create` initializes roots.
+- Added bootstrap in `run_matrix` that initializes core roots once for matrix runs so strict read cells can execute in the fixture workflow.
+
+## Validation evidence
+
+- `cargo test -p memory-matrix` (pass)
+  - transport-axis tests: pass
+  - strict missing-store policy test: pass

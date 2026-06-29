@@ -63,7 +63,8 @@ pub fn build_router(state: SpecAppState) -> Router {
             delete(handlers::sections::delete_section),
         )
         .route("/api/specs/scan", post(handlers::health::scan))
-        .route("/api/specs/add-root", post(handlers::health::add_root));
+        .route("/api/specs/add-root", post(handlers::health::add_root))
+        .route("/api/specs/{id}/move", post(handlers::specs::move_spec));
 
     let cors = CorsLayer::new()
         .allow_origin(Any)

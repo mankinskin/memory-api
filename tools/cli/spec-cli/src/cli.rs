@@ -91,6 +91,8 @@ pub enum SpecCommandCli {
     StoreIndex(StoreIndexArgs),
     /// Bootstrap specs from a Rust crate's public API.
     Bootstrap(BootstrapArgs),
+    /// Move a spec to another workspace store (dry-run/resume/rollback).
+    Move(MoveArgs),
 }
 
 // ── error type ────────────────────────────────────────────────────────────────

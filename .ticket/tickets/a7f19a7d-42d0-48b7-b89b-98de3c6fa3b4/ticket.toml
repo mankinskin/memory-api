@@ -4,6 +4,7 @@ title = "[memory-api][test] Refresh cross-domain move matrix + add move benchmar
 state = "new"
 component = "memory-api"
 depends_on = ["505b2cd4-f21d-4e8d-8e6a-ae06a5b69854", "da27c074-8c9e-4613-b8b9-bf02c72b50f7"]
+effort = "2500"
 linked = ["751f0e71-a857-484f-a45e-09717f086321"]
 priority = "medium"
 risk_level = "medium"

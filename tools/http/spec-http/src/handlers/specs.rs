@@ -316,6 +316,53 @@ pub async fn create_spec(
     }
 }
 
+/// POST /api/specs/:id/move — move a spec to another workspace store.
+#[derive(Deserialize)]
+pub struct MoveSpecRequest {
+    pub to_workspace_root: String,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+pub async fn move_spec(
+    State(state): State<SpecAppState>,
+    Extension(rid): Extension<RequestIdExt>,
+    Path(id): Path<String>,
+    Json(req): Json<MoveSpecRequest>,
+) -> Response {
+    let store = state.store.lock().await;
+    let spec_id = match store.resolve_id(&id) {
+        Ok(uid) => uid,
+        Err(e) => return spec_err(e, &rid.0),
+    };
+    let to = std::path::PathBuf::from(&req.to_workspace_root);
+    let report = match store.plan_move_preflight(&spec_id, &to) {
+        Ok(r) => r,
+        Err(e) => return spec_err(e, &rid.0),
+    };
+    if req.dry_run || !report.supported() {
+        return Json(serde_json::json!({
+            "request_id": rid.0,
+            "status": if report.supported() { "ok" } else { "blocked" },
+            "mode": "plan",
+            "supported": report.supported(),
+            "blockers": report.blockers,
+        }))
+        .into_response();
+    }
+    match store.execute_move_with_journal(&report) {
+        Ok(outcome) => Json(serde_json::json!({
+            "request_id": rid.0,
+            "status": "ok",
+            "mode": "execute",
+            "journal_id": outcome.journal.id,
+            "phase": outcome.journal.phase,
+        }))
+        .into_response(),
+        Err(e) => spec_err(e, &rid.0),
+    }
+}
+
 /// PATCH /api/specs/:id — update fields, state, and/or body.
 pub async fn update_spec(
     State(state): State<SpecAppState>,

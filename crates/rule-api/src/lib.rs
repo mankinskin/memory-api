@@ -3,6 +3,7 @@ pub mod error;
 pub mod feedback;
 pub mod import;
 pub mod manifest;
+pub mod move_domain;
 pub mod render;
 pub mod store;
 pub mod store_index;

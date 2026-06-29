@@ -328,6 +328,83 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_add_root_tool(input).await
     }
+
+    #[tool(
+        name = "spec_move_preflight",
+        description = "Read-only preflight plan for moving a spec to another workspace store."
+    )]
+    pub async fn spec_move_preflight(
+        &self,
+        Parameters(input): Parameters<SpecMoveInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let to = PathBuf::from(&input.to_workspace_root);
+        self.with_store(input.workspace.as_deref(), move |store, _| {
+            let id = store.resolve_id(&input.id).map_err(Self::spec_err)?;
+            let report = store.plan_move_preflight(&id, &to).map_err(Self::spec_err)?;
+            Self::json_result(&json!({
+                "status": "ok", "mode": "preflight", "id": id.to_string(),
+                "supported": report.supported(), "blockers": report.blockers,
+            }))
+        })
+        .await
+    }
+
+    #[tool(
+        name = "spec_move_apply",
+        description = "Execute a supported spec move to another workspace store."
+    )]
+    pub async fn spec_move_apply(
+        &self,
+        Parameters(input): Parameters<SpecMoveInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let to = PathBuf::from(&input.to_workspace_root);
+        self.with_store(input.workspace.as_deref(), move |store, _| {
+            let id = store.resolve_id(&input.id).map_err(Self::spec_err)?;
+            let report = store.plan_move_preflight(&id, &to).map_err(Self::spec_err)?;
+            if !report.supported() {
+                return Err(McpError::invalid_params(
+                    "move preflight blocked; run spec_move_preflight for details".to_string(),
+                    None,
+                ));
+            }
+            let outcome = store.execute_move_with_journal(&report).map_err(Self::spec_err)?;
+            Self::json_result(&json!({
+                "status": "ok", "mode": "apply", "id": id.to_string(),
+                "journal_id": outcome.journal.id, "phase": outcome.journal.phase,
+            }))
+        })
+        .await
+    }
+
+    #[tool(name = "spec_move_resume", description = "Resume an interrupted spec move from a journal id.")]
+    pub async fn spec_move_resume(
+        &self,
+        Parameters(input): Parameters<SpecMoveJournalInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let journal = input.id.parse::<uuid::Uuid>().map_err(|e| {
+            McpError::invalid_params(format!("invalid journal id: {e}"), None)
+        })?;
+        self.with_store(input.workspace.as_deref(), move |store, _| {
+            let outcome = store.resume_move_with_journal(journal).map_err(Self::spec_err)?;
+            Self::json_result(&json!({"status":"ok","mode":"resume","journal_id":outcome.journal.id,"phase":outcome.journal.phase}))
+        })
+        .await
+    }
+
+    #[tool(name = "spec_move_rollback", description = "Roll back a spec move from a journal id.")]
+    pub async fn spec_move_rollback(
+        &self,
+        Parameters(input): Parameters<SpecMoveJournalInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let journal = input.id.parse::<uuid::Uuid>().map_err(|e| {
+            McpError::invalid_params(format!("invalid journal id: {e}"), None)
+        })?;
+        self.with_store(input.workspace.as_deref(), move |store, _| {
+            let outcome = store.rollback_move_with_journal(journal).map_err(Self::spec_err)?;
+            Self::json_result(&json!({"status":"ok","mode":"rollback","journal_id":outcome.journal.id,"phase":outcome.journal.phase}))
+        })
+        .await
+    }
 }
 
 // ── MCP handler trait ─────────────────────────────────────────────────────────

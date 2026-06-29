@@ -174,3 +174,17 @@ pub struct AddRootInput {
 fn default_search_limit() -> usize {
     20
 }
+
+#[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
+pub struct RuleMoveInput {
+    /// Rule UUID, prefix, or slug to move.
+    pub id: String,
+    /// Destination workspace root.
+    pub to_workspace_root: String,
+}
+
+#[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
+pub struct RuleMoveJournalInput {
+    /// Move journal UUID.
+    pub id: String,
+}

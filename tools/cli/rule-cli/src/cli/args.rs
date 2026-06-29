@@ -59,6 +59,27 @@ pub enum RuleCommandCli {
     StoreIndex(StoreIndexArgs),
     #[command(name = "add-root")]
     AddRoot(AddRootArgs),
+    /// Move a rule to another workspace store (dry-run/resume/rollback).
+    Move(MoveArgs),
+}
+
+/// Move a rule to another workspace store, reusing the safe move kernel.
+#[derive(Debug, Args)]
+pub struct MoveArgs {
+    /// Rule UUID, prefix, or slug to move (required unless --resume/--rollback).
+    pub id: Option<String>,
+    /// Destination workspace root (required in plan/execute mode).
+    #[arg(long = "to-workspace-root")]
+    pub to_workspace_root: Option<PathBuf>,
+    /// Plan only; do not execute the move.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+    /// Resume an interrupted move from a journal UUID.
+    #[arg(long)]
+    pub resume: Option<String>,
+    /// Roll back a move from a journal UUID.
+    #[arg(long)]
+    pub rollback: Option<String>,
 }
 
 #[derive(Debug, Args)]

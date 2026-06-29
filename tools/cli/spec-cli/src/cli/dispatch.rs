@@ -128,6 +128,7 @@ fn dispatch_read_only(
         SpecCommandCli::Refs(args) =>
             commands::cmd_refs(args, store, default_workspace_root),
         SpecCommandCli::Health(args) => commands::cmd_health(args, store),
+        SpecCommandCli::Move(args) => commands::cmd_move(args, store),
         SpecCommandCli::StoreIndex(args) =>
             commands::cmd_store_index(args, store, default_workspace_root),
         SpecCommandCli::Init => unreachable!("Init handled before store open"),

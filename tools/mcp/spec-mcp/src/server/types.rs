@@ -187,3 +187,23 @@ pub struct AddRootInput {
     #[serde(default)]
     pub label: Option<String>,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SpecMoveInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
+    /// Spec UUID, prefix, or slug to move.
+    pub id: String,
+    /// Destination workspace root.
+    pub to_workspace_root: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SpecMoveJournalInput {
+    /// Optional workspace selector (`default`, workspace root, or .spec store path).
+    #[serde(default)]
+    pub workspace: Option<String>,
+    /// Move journal UUID.
+    pub id: String,
+}

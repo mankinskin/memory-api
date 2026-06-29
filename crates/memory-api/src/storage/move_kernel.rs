@@ -208,34 +208,44 @@ pub trait MoveDomain {
     ) -> MoveResult<bool>;
 
     /// Board rows for the entity. Domains without a board return
-    /// [`MoveBoardState::default`].
+    /// [`MoveBoardState::default`] (the default implementation).
     fn board_state(
         &self,
-        entity_id: &Uuid,
-    ) -> MoveResult<MoveBoardState>;
+        _entity_id: &Uuid,
+    ) -> MoveResult<MoveBoardState> {
+        Ok(MoveBoardState::default())
+    }
 
-    /// Active leases for the entity. Domains without leases return an empty vec.
+    /// Active leases for the entity. Domains without leases return an empty vec
+    /// (the default implementation).
     fn active_leases(
         &self,
-        entity_id: &Uuid,
-    ) -> MoveResult<Vec<MoveLeaseBlock>>;
+        _entity_id: &Uuid,
+    ) -> MoveResult<Vec<MoveLeaseBlock>> {
+        Ok(Vec::new())
+    }
 
     /// Migrate historical board rows from the source store to the target store,
-    /// returning the migrated rows. Domains without a board return an empty vec.
+    /// returning the migrated rows. Domains without a board return an empty vec
+    /// (the default implementation).
     ///
     /// Implementations must fail if any active/stale row is encountered.
     fn migrate_board_history(
         &self,
-        target_store_root: &Path,
-        entity_id: &Uuid,
-    ) -> MoveResult<Vec<BoardEntry>>;
+        _target_store_root: &Path,
+        _entity_id: &Uuid,
+    ) -> MoveResult<Vec<BoardEntry>> {
+        Ok(Vec::new())
+    }
 
     /// Restore previously migrated board rows back to the source store (rollback).
     fn restore_board_history(
         &self,
-        target_store_root: &Path,
-        entries: &[BoardEntry],
-    ) -> MoveResult<()>;
+        _target_store_root: &Path,
+        _entries: &[BoardEntry],
+    ) -> MoveResult<()> {
+        Ok(())
+    }
 
     /// Force a full rescan of the store rooted at `store_root`.
     fn scan_store(

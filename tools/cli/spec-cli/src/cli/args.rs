@@ -104,6 +104,25 @@ pub struct AddRootArgs {
     pub label: Option<String>,
 }
 
+/// Move a spec to another workspace store, reusing the safe move kernel.
+#[derive(Debug, Args)]
+pub struct MoveArgs {
+    /// Spec UUID, prefix, or slug to move (required unless --resume/--rollback).
+    pub id: Option<String>,
+    /// Destination workspace root (required in plan/execute mode).
+    #[arg(long = "to-workspace-root")]
+    pub to_workspace_root: Option<PathBuf>,
+    /// Plan only; do not execute the move.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+    /// Resume an interrupted move from a journal UUID.
+    #[arg(long)]
+    pub resume: Option<String>,
+    /// Roll back a move from a journal UUID.
+    #[arg(long)]
+    pub rollback: Option<String>,
+}
+
 /// Generate (or check) the committed spec catalog artifacts:
 /// `.spec/README.md`, `.spec/index.toon`, and `.agents/spec-catalog.md`.
 #[derive(Debug, Args)]

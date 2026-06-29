@@ -1,8 +1,21 @@
 use std::{
+    collections::BTreeMap,
     path::PathBuf,
+    sync::Arc,
     time::Instant,
 };
 
+use axum::{
+    body::{
+        Body,
+        to_bytes,
+    },
+    http::{
+        Method,
+        Request,
+        StatusCode,
+    },
+};
 use chrono::Utc;
 
 use memory_fixtures::{
@@ -17,6 +30,17 @@ use test_api::{
     ValidationProvenance,
     ValidationSpec,
 };
+use ticket_api::{
+    model::filesystem::ScanRoot,
+    storage::store::TicketStore,
+};
+use ticket_http::{
+    AppState,
+    WorkspaceRegistry,
+    build_router,
+    serve::StreamBroker,
+};
+use tower::ServiceExt;
 
 use crate::domains::{
     AuditDomain,
@@ -148,6 +172,14 @@ fn dispatch(
     operation: &str,
     ctx: &MatrixCtx,
 ) -> CellResult {
+    if transport == "cli" {
+        return dispatch_cli(ops.domain(), operation, ctx);
+    }
+
+    if transport == "http" {
+        return dispatch_http(ops.domain(), operation, ctx);
+    }
+
     if transport != "in-process" {
         return blocked(format!(
             "transport `{transport}` for domain `{}` operation `{operation}` is not wired in the matrix harness yet; \
@@ -166,6 +198,655 @@ fn dispatch(
         "scan" => ops.scan(ctx),
         other => Err(format!("unknown operation `{other}`")),
     }
+}
+
+fn dispatch_http(
+    domain: &str,
+    operation: &str,
+    ctx: &MatrixCtx,
+) -> CellResult {
+    match domain {
+        "ticket" => dispatch_ticket_http(operation, ctx),
+        _ => blocked(format!(
+            "http transport for domain `{domain}` operation `{operation}` is not wired yet"
+        )),
+    }
+}
+
+fn dispatch_ticket_http(
+    operation: &str,
+    ctx: &MatrixCtx,
+) -> CellResult {
+    match operation {
+        "get" => run_ticket_http_get(ctx),
+        "search" => run_ticket_http_search(ctx),
+        _ => blocked(format!(
+            "http transport for domain `ticket` operation `{operation}` is not wired yet; \
+             currently only `ticket.get@http` and `ticket.search@http` are exercised through the ticket-http router surface"
+        )),
+    }
+}
+
+fn run_ticket_http_get(ctx: &MatrixCtx) -> CellResult {
+    let (id, workspace, app) = build_ticket_http_fixture(ctx)?;
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("build tokio runtime for http matrix cell: {err}"))?;
+
+    runtime
+        .block_on(async move {
+            let request = Request::builder()
+                .method(Method::GET)
+                .uri(format!("/api/tickets/{id}?workspace={workspace}"))
+                .body(Body::empty())
+                .map_err(|err| format!("build ticket get request: {err}"))?;
+
+            let response = app
+                .oneshot(request)
+                .await
+                .map_err(|err| format!("dispatch ticket get request: {err}"))?;
+
+            if response.status() != StatusCode::OK {
+                return Err(format!(
+                    "ticket-http get returned unexpected status {}",
+                    response.status()
+                ));
+            }
+
+            let bytes = to_bytes(response.into_body(), 1024 * 1024)
+                .await
+                .map_err(|err| format!("read ticket get response body: {err}"))?;
+            let payload: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|err| format!("parse ticket get response body: {err}"))?;
+
+            let returned_id = payload["ticket"]["ticket_ref"]["id"]
+                .as_str()
+                .ok_or_else(|| {
+                    "ticket get payload missing ticket.ticket_ref.id".to_string()
+                })?;
+            if returned_id != id.to_string() {
+                return Err(format!(
+                    "ticket-http get returned mismatched id: expected {id}, got {returned_id}"
+                ));
+            }
+
+            Ok(Cell::Passed)
+        })
+}
+
+fn run_ticket_http_search(ctx: &MatrixCtx) -> CellResult {
+    let (id, workspace, app) = build_ticket_http_fixture(ctx)?;
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("build tokio runtime for http matrix cell: {err}"))?;
+
+    runtime
+        .block_on(async move {
+            let request = Request::builder()
+                .method(Method::GET)
+                .uri(format!(
+                    "/api/tickets?workspace={workspace}&query=matrix-http-ticket"
+                ))
+                .body(Body::empty())
+                .map_err(|err| format!("build ticket search request: {err}"))?;
+
+            let response = app
+                .oneshot(request)
+                .await
+                .map_err(|err| format!("dispatch ticket search request: {err}"))?;
+
+            if response.status() != StatusCode::OK {
+                return Err(format!(
+                    "ticket-http search returned unexpected status {}",
+                    response.status()
+                ));
+            }
+
+            let bytes = to_bytes(response.into_body(), 1024 * 1024)
+                .await
+                .map_err(|err| format!("read ticket search response body: {err}"))?;
+            let payload: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|err| format!("parse ticket search response body: {err}"))?;
+
+            let items = payload["items"]
+                .as_array()
+                .ok_or_else(|| "ticket search payload missing items array".to_string())?;
+            let expected_id = id.to_string();
+            let found = items.iter().any(|item| {
+                item["ticket_ref"]["id"]
+                    .as_str()
+                    .map(|candidate| candidate == expected_id)
+                    .unwrap_or(false)
+            });
+            if !found {
+                return Err(format!(
+                    "ticket-http search did not return seeded ticket id {expected_id}"
+                ));
+            }
+
+            Ok(Cell::Passed)
+        })
+}
+
+fn build_ticket_http_fixture(
+    ctx: &MatrixCtx,
+) -> Result<(uuid::Uuid, String, axum::Router), String> {
+    let ticket_store_root = ctx.store_root(".ticket");
+    let tickets_scan_root = ctx.workspace_root.join("tickets");
+
+    std::fs::create_dir_all(&tickets_scan_root).map_err(|err| {
+        format!(
+            "failed to create ticket scan root `{}`: {err}",
+            tickets_scan_root.display()
+        )
+    })?;
+
+    let store = Arc::new(
+        TicketStore::open_or_init(&ticket_store_root)
+            .map_err(|err| format!("open ticket store: {err}"))?,
+    );
+
+    let has_scan_root = store
+        .list_scan_roots()
+        .map_err(|err| format!("list scan roots: {err}"))?
+        .into_iter()
+        .any(|root| root.path == tickets_scan_root);
+    if !has_scan_root {
+        store
+            .add_scan_root(ScanRoot {
+                path: tickets_scan_root,
+                label: "default".into(),
+            })
+            .map_err(|err| format!("add ticket scan root: {err}"))?;
+    }
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("matrix-http-ticket-get"),
+            None,
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .map_err(|err| format!("seed ticket for http get: {err}"))?;
+
+    let state = AppState::new(
+        Arc::new(WorkspaceRegistry::single_opened(Arc::clone(&store))),
+        Arc::new(StreamBroker::new()),
+    );
+    let workspace = state.registry.primary_workspace_name().to_string();
+    let app = build_router(state);
+
+    Ok((id, workspace, app))
+}
+
+fn dispatch_cli(
+    domain: &str,
+    operation: &str,
+    ctx: &MatrixCtx,
+) -> CellResult {
+    if operation == "move" {
+        return blocked(
+            "generic move kernel (ticket 0a510279) not yet landed; \
+             CLI move stays blocked-with-reason until it lands",
+        );
+    }
+
+    match domain {
+        "ticket" => dispatch_ticket_cli(operation, ctx),
+        "spec" => dispatch_spec_cli(operation, ctx),
+        "rule" => dispatch_rule_cli(operation, ctx),
+        _ => blocked(format!(
+            "cli transport for domain `{domain}` operation `{operation}` is not wired yet"
+        )),
+    }
+}
+
+fn run_ticket_cli(args: Vec<String>) -> Result<(), String> {
+    let cli = ticket_cli::cli::parse_cli_from(args)
+        .map_err(|err| err.to_string())?;
+    ticket_cli::cli::run(cli).map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn dispatch_ticket_cli(
+    operation: &str,
+    ctx: &MatrixCtx,
+) -> CellResult {
+    let root = ctx.workspace_root.to_string_lossy().to_string();
+    let id = uuid::Uuid::new_v4().to_string();
+    let token = format!("matrix-cli-ticket-{}", uuid::Uuid::new_v4().simple());
+
+    match operation {
+        "create" => run_ticket_cli(vec![
+            "ticket".into(),
+            "--json".into(),
+            "--workspace-root".into(),
+            root,
+            "create".into(),
+            "--id".into(),
+            id,
+            "--type".into(),
+            "tracker-improvement".into(),
+            "--title".into(),
+            token,
+            "--state".into(),
+            "new".into(),
+        ]),
+        "get" => {
+            run_ticket_cli(vec![
+                "ticket".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root.clone(),
+                "create".into(),
+                "--id".into(),
+                id.clone(),
+                "--type".into(),
+                "tracker-improvement".into(),
+                "--title".into(),
+                token,
+                "--state".into(),
+                "new".into(),
+            ])?;
+            run_ticket_cli(vec![
+                "ticket".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root,
+                "get".into(),
+                id,
+            ])
+        },
+        "search" => {
+            run_ticket_cli(vec![
+                "ticket".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root.clone(),
+                "create".into(),
+                "--id".into(),
+                id,
+                "--type".into(),
+                "tracker-improvement".into(),
+                "--title".into(),
+                token.clone(),
+                "--state".into(),
+                "new".into(),
+            ])?;
+            run_ticket_cli(vec![
+                "ticket".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root,
+                "search".into(),
+                token,
+                "--limit".into(),
+                "10".into(),
+            ])
+        },
+        "update" => {
+            run_ticket_cli(vec![
+                "ticket".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root.clone(),
+                "create".into(),
+                "--id".into(),
+                id.clone(),
+                "--type".into(),
+                "tracker-improvement".into(),
+                "--title".into(),
+                token,
+                "--state".into(),
+                "new".into(),
+            ])?;
+            run_ticket_cli(vec![
+                "ticket".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root,
+                "update".into(),
+                id,
+                "--to-state".into(),
+                "ready".into(),
+            ])
+        },
+        "delete" => {
+            run_ticket_cli(vec![
+                "ticket".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root.clone(),
+                "create".into(),
+                "--id".into(),
+                id.clone(),
+                "--type".into(),
+                "tracker-improvement".into(),
+                "--title".into(),
+                token,
+                "--state".into(),
+                "new".into(),
+            ])?;
+            run_ticket_cli(vec![
+                "ticket".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root,
+                "delete".into(),
+                id,
+            ])
+        },
+        "scan" => run_ticket_cli(vec![
+            "ticket".into(),
+            "--json".into(),
+            "--workspace-root".into(),
+            root,
+            "scan".into(),
+        ]),
+        other => Err(format!("unknown operation `{other}`")),
+    }
+    .map(|_| Cell::Passed)
+}
+
+fn run_spec_cli(args: Vec<String>) -> Result<(), String> {
+    let cli = spec_cli::cli::parse_cli_from(args).map_err(|err| err.to_string())?;
+    spec_cli::cli::run(cli).map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn dispatch_spec_cli(
+    operation: &str,
+    ctx: &MatrixCtx,
+) -> CellResult {
+    let root = ctx.workspace_root.to_string_lossy().to_string();
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    let slug = format!("matrix/cli/{suffix}");
+    let token = format!("Matrix CLI Spec {suffix}");
+
+    match operation {
+        "create" => run_spec_cli(vec![
+            "spec".into(),
+            "--json".into(),
+            "--workspace-root".into(),
+            root,
+            "create".into(),
+            "--title".into(),
+            token,
+            "--slug".into(),
+            slug,
+            "--component".into(),
+            "matrix".into(),
+        ]),
+        "get" => {
+            run_spec_cli(vec![
+                "spec".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root.clone(),
+                "create".into(),
+                "--title".into(),
+                token,
+                "--slug".into(),
+                slug.clone(),
+                "--component".into(),
+                "matrix".into(),
+            ])?;
+            run_spec_cli(vec![
+                "spec".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root,
+                "get".into(),
+                slug,
+            ])
+        },
+        "search" => {
+            run_spec_cli(vec![
+                "spec".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root.clone(),
+                "create".into(),
+                "--title".into(),
+                token.clone(),
+                "--slug".into(),
+                slug,
+                "--component".into(),
+                "matrix".into(),
+            ])?;
+            run_spec_cli(vec![
+                "spec".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root,
+                "search".into(),
+                token,
+                "--limit".into(),
+                "10".into(),
+            ])
+        },
+        "update" => {
+            run_spec_cli(vec![
+                "spec".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root.clone(),
+                "create".into(),
+                "--title".into(),
+                token,
+                "--slug".into(),
+                slug.clone(),
+                "--component".into(),
+                "matrix".into(),
+            ])?;
+            run_spec_cli(vec![
+                "spec".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root,
+                "update".into(),
+                slug,
+                "--field".into(),
+                "scope=internal".into(),
+            ])
+        },
+        "delete" => {
+            run_spec_cli(vec![
+                "spec".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root.clone(),
+                "create".into(),
+                "--title".into(),
+                token,
+                "--slug".into(),
+                slug.clone(),
+                "--component".into(),
+                "matrix".into(),
+            ])?;
+            run_spec_cli(vec![
+                "spec".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root,
+                "delete".into(),
+                slug,
+            ])
+        },
+        "scan" => run_spec_cli(vec![
+            "spec".into(),
+            "--json".into(),
+            "--workspace-root".into(),
+            root,
+            "scan".into(),
+        ]),
+        other => Err(format!("unknown operation `{other}`")),
+    }
+    .map(|_| Cell::Passed)
+}
+
+fn run_rule_cli(args: Vec<String>) -> Result<(), String> {
+    let cli = rule_cli::cli::parse_cli_from(args).map_err(|err| err.to_string())?;
+    rule_cli::cli::run(cli).map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn dispatch_rule_cli(
+    operation: &str,
+    ctx: &MatrixCtx,
+) -> CellResult {
+    let root = ctx.workspace_root.to_string_lossy().to_string();
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    let slug = format!("matrix/cli/{suffix}");
+    let token = format!("Matrix CLI Rule {suffix}");
+
+    match operation {
+        "create" => run_rule_cli(vec![
+            "rule".into(),
+            "--json".into(),
+            "--workspace-root".into(),
+            root,
+            "create".into(),
+            "--title".into(),
+            token,
+            "--slug".into(),
+            slug,
+            "--file-kind".into(),
+            "markdown".into(),
+            "--section".into(),
+            "matrix".into(),
+            "--body".into(),
+            "matrix body".into(),
+        ]),
+        "get" => {
+            run_rule_cli(vec![
+                "rule".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root.clone(),
+                "create".into(),
+                "--title".into(),
+                token,
+                "--slug".into(),
+                slug.clone(),
+                "--file-kind".into(),
+                "markdown".into(),
+                "--section".into(),
+                "matrix".into(),
+                "--body".into(),
+                "matrix body".into(),
+            ])?;
+            run_rule_cli(vec![
+                "rule".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root,
+                "get".into(),
+                slug,
+            ])
+        },
+        "search" => {
+            run_rule_cli(vec![
+                "rule".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root.clone(),
+                "create".into(),
+                "--title".into(),
+                token.clone(),
+                "--slug".into(),
+                slug,
+                "--file-kind".into(),
+                "markdown".into(),
+                "--section".into(),
+                "matrix".into(),
+                "--body".into(),
+                "matrix body".into(),
+            ])?;
+            run_rule_cli(vec![
+                "rule".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root,
+                "search".into(),
+                token,
+                "--limit".into(),
+                "10".into(),
+            ])
+        },
+        "update" => {
+            run_rule_cli(vec![
+                "rule".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root.clone(),
+                "create".into(),
+                "--title".into(),
+                token,
+                "--slug".into(),
+                slug.clone(),
+                "--file-kind".into(),
+                "markdown".into(),
+                "--section".into(),
+                "matrix".into(),
+                "--body".into(),
+                "matrix body".into(),
+            ])?;
+            run_rule_cli(vec![
+                "rule".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root,
+                "update".into(),
+                slug,
+                "--body".into(),
+                "updated body".into(),
+            ])
+        },
+        "delete" => {
+            run_rule_cli(vec![
+                "rule".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root.clone(),
+                "create".into(),
+                "--title".into(),
+                token,
+                "--slug".into(),
+                slug.clone(),
+                "--file-kind".into(),
+                "markdown".into(),
+                "--section".into(),
+                "matrix".into(),
+                "--body".into(),
+                "matrix body".into(),
+            ])?;
+            run_rule_cli(vec![
+                "rule".into(),
+                "--json".into(),
+                "--workspace-root".into(),
+                root,
+                "delete".into(),
+                slug,
+            ])
+        },
+        "scan" => run_rule_cli(vec![
+            "rule".into(),
+            "--json".into(),
+            "--workspace-root".into(),
+            root,
+            "scan".into(),
+        ]),
+        other => Err(format!("unknown operation `{other}`")),
+    }
+    .map(|_| Cell::Passed)
 }
 
 /// All `(domain, operation)` cells of the matrix, in registration order.

@@ -59,7 +59,15 @@ fn every_cell_records_an_execution_with_duration() {
         "no cell should fail; failures: {:?}",
         failed
             .iter()
-            .map(|r| format!("{}.{}: {}", r.domain, r.operation, r.detail))
+            .map(|r| {
+                format!(
+                    "{}.{}@{}: {}",
+                    r.domain,
+                    r.operation,
+                    r.transport,
+                    r.detail
+                )
+            })
             .collect::<Vec<_>>()
     );
 
@@ -83,22 +91,24 @@ fn core_crud_domains_pass_get_search_crud_and_scan() {
     // Domains backed by a full entity store must pass get/search/CRUD/scan.
     let crud_ops = ["get", "search", "create", "update", "delete", "scan"];
     for domain in ["ticket", "spec", "rule"] {
-        for op in crud_ops {
-            let record = run
-                .records
-                .iter()
-                .find(|r| {
-                    r.domain == domain
-                        && r.transport == "in-process"
-                        && r.operation == op
-                })
-                .unwrap_or_else(|| panic!("missing cell {domain}.{op}"));
-            assert_eq!(
-                record.outcome,
-                ValidationOutcome::Passed,
-                "{domain}.{op} should pass: {}",
-                record.detail
-            );
+        for transport in ["in-process", "cli"] {
+            for op in crud_ops {
+                let record = run
+                    .records
+                    .iter()
+                    .find(|r| {
+                        r.domain == domain
+                            && r.transport == transport
+                            && r.operation == op
+                    })
+                    .unwrap_or_else(|| panic!("missing cell {domain}.{op}@{transport}"));
+                assert_eq!(
+                    record.outcome,
+                    ValidationOutcome::Passed,
+                    "{domain}.{op}@{transport} should pass: {}",
+                    record.detail
+                );
+            }
         }
     }
 }
@@ -133,24 +143,35 @@ fn move_cells_are_blocked_with_a_reason() {
 }
 
 #[test]
-fn non_in_process_transports_are_explicitly_blocked_with_reason() {
+fn unwired_transports_are_explicitly_blocked_with_reason() {
     let run = run_matrix().expect("matrix should run against the fixture");
 
     for record in &run.records {
-        if record.transport == "in-process" {
+        if record.transport == "in-process"
+            || (record.transport == "cli"
+                && ["ticket", "spec", "rule"].contains(&record.domain.as_str())
+                && record.operation != "move")
+            || (record.transport == "http"
+                && record.domain == "ticket"
+                && ["get", "search"].contains(&record.operation.as_str()))
+        {
             continue;
         }
 
         assert_eq!(
             record.outcome,
             ValidationOutcome::Blocked,
-            "{}.{}@{} should be blocked until real transport wiring lands",
+            "{}.{}@{} should be blocked until this transport wiring lands",
             record.domain,
             record.operation,
             record.transport
         );
+        let has_explicit_reason = record.detail.contains("transport")
+            || (record.transport == "cli"
+                && record.operation == "move"
+                && record.detail.to_lowercase().contains("move"));
         assert!(
-            record.detail.contains("transport"),
+            has_explicit_reason,
             "{}.{}@{} should carry an explicit transport reason: {}",
             record.domain,
             record.operation,
@@ -158,6 +179,48 @@ fn non_in_process_transports_are_explicitly_blocked_with_reason() {
             record.detail
         );
     }
+}
+
+#[test]
+fn ticket_get_http_cell_is_wired_and_passes() {
+    let run = run_matrix().expect("matrix should run against the fixture");
+
+    let record = run
+        .records
+        .iter()
+        .find(|r| {
+            r.domain == "ticket"
+                && r.transport == "http"
+                && r.operation == "get"
+        })
+        .expect("missing ticket.get@http cell");
+    assert_eq!(
+        record.outcome,
+        ValidationOutcome::Passed,
+        "ticket.get@http should pass via ticket-http router: {}",
+        record.detail
+    );
+}
+
+#[test]
+fn ticket_search_http_cell_is_wired_and_passes() {
+    let run = run_matrix().expect("matrix should run against the fixture");
+
+    let record = run
+        .records
+        .iter()
+        .find(|r| {
+            r.domain == "ticket"
+                && r.transport == "http"
+                && r.operation == "search"
+        })
+        .expect("missing ticket.search@http cell");
+    assert_eq!(
+        record.outcome,
+        ValidationOutcome::Passed,
+        "ticket.search@http should pass via ticket-http router: {}",
+        record.detail
+    );
 }
 
 #[test]

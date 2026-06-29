@@ -38,6 +38,7 @@ use super::{
     IdArgs,
     ImportFileArgs,
     ListArgs,
+    MoveArgs,
     RuleCommandCli,
     ScanArgs,
     SearchArgs,
@@ -105,6 +106,7 @@ pub(super) fn dispatch_with_workspace_root(
         RuleCommandCli::Feedback(args) => feedback_command(&mut store, args),
         RuleCommandCli::Scan(args) =>
             scan_command(&mut store, args, index_root, workspace_root_override),
+        RuleCommandCli::Move(args) => move_command(&store, args),
         RuleCommandCli::Init => unreachable!("Init handled before store open"),
         other => dispatch_secondary(other, &mut store, index_root),
     }
@@ -165,6 +167,7 @@ fn dispatch_secondary(
         | RuleCommandCli::Update(_)
         | RuleCommandCli::Feedback(_)
         | RuleCommandCli::Scan(_)
+        | RuleCommandCli::Move(_)
         | RuleCommandCli::Init => unreachable!("handled in primary dispatch"),
     }
 }
@@ -218,6 +221,49 @@ fn display_scan_path(path: &Path) -> String {
         .strip_prefix("//?/")
         .unwrap_or(rendered.as_str())
         .to_string()
+}
+
+fn move_command(
+    store: &RuleStore,
+    args: MoveArgs,
+) -> Result<Value, CliRunError> {
+    if args.resume.is_some() && args.rollback.is_some() {
+        return Err(CliRunError::BadRequest(
+            "move accepts only one of --resume or --rollback".to_string(),
+        ));
+    }
+    if let Some(journal) = args.resume.as_deref() {
+        let journal = journal.parse::<uuid::Uuid>().map_err(|e| {
+            CliRunError::BadRequest(format!("invalid --resume journal UUID: {e}"))
+        })?;
+        let outcome = store.resume_move_with_journal(journal)?;
+        return Ok(json!({"command":"move","status":"ok","mode":"resume","journal_id":outcome.journal.id,"phase":outcome.journal.phase}));
+    }
+    if let Some(journal) = args.rollback.as_deref() {
+        let journal = journal.parse::<uuid::Uuid>().map_err(|e| {
+            CliRunError::BadRequest(format!("invalid --rollback journal UUID: {e}"))
+        })?;
+        let outcome = store.rollback_move_with_journal(journal)?;
+        return Ok(json!({"command":"move","status":"ok","mode":"rollback","journal_id":outcome.journal.id,"phase":outcome.journal.phase}));
+    }
+    let id = args.id.as_deref().ok_or_else(|| {
+        CliRunError::BadRequest("move requires <id> unless --resume/--rollback".to_string())
+    })?;
+    let to = args.to_workspace_root.as_deref().ok_or_else(|| {
+        CliRunError::BadRequest("move requires --to-workspace-root".to_string())
+    })?;
+    let rule_id = store.resolve_id(id)?;
+    let report = store.plan_move_preflight(&rule_id, to)?;
+    if args.dry_run || !report.supported() {
+        return Ok(json!({
+            "command":"move",
+            "status": if report.supported() {"ok"} else {"blocked"},
+            "mode":"plan","dry_run":true,"rule_id":rule_id,
+            "supported":report.supported(),"blockers":report.blockers,
+        }));
+    }
+    let outcome = store.execute_move_with_journal(&report)?;
+    Ok(json!({"command":"move","status":"ok","mode":"execute","rule_id":rule_id,"journal_id":outcome.journal.id,"phase":outcome.journal.phase}))
 }
 
 fn create_command(
