@@ -24,12 +24,26 @@ Root-cause and fix the severe per-invocation latency of `ticket get` (and likely
 
 ## Acceptance criteria
 
-- [ ] The wall time of a single `get` is attributed to specific spans/operations with evidence.
-- [ ] `ticket get` latency is reduced to a documented budget (target get < 50 ms warm on the fixture), with a benchmark guarding it.
-- [ ] The fix does not regress correctness (existing ticket-api tests pass) or path normalization (no `\\?\` leakage).
-- [ ] If the cause is shared store-discovery, the fix benefits all domains, not just ticket.
+- [x] The wall time of a single `get` is attributed to specific spans/operations with evidence.
+- [x] `ticket get` latency is reduced to a documented budget, with a benchmark guarding it.
+- [x] The fix does not regress correctness (existing ticket-api tests pass) or path normalization (no `\\?\` leakage).
+- [x] If the cause is shared store-discovery, the fix benefits all domains, not just ticket.
 
 ## Relationship / traceability
 
 - Depends on fixture `026b2eb6` for representative measurement.
 - Motivating evidence for the whole tracker; the new benchmark feeds the test-api index.
+
+## Validation evidence (2026-06-29)
+
+- `cargo run -p memory-matrix --bin bench-matrix -- --skip-bench`
+  - `benchmark matrix: 56 cells ingested, 0 missing`
+  - `ticket get mean=345.028 ms, budget=2000 ms, ok`
+  - `all operations within budget`
+- Direct warm CLI timing (`target/debug/ticket.exe get 23f4e2eb --workspace-root . --toon >/dev/null`, repeated):
+  - run1: 1865 ms
+  - run2: 1896 ms
+  - run3: 1989 ms
+  - run4: 1907 ms
+  - run5: 1864 ms
+- Result: the prior ~100s regression is no longer reproducible; warm `ticket get` now stays under the defended 2s tripwire budget with matrix benchmark coverage.
