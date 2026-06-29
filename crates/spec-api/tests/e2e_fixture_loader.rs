@@ -8,7 +8,8 @@ fn spec_store_reads_seeded_specs_from_root_and_submodule_worktrees() {
     let root_store_root = fixture
         .store_root("spec-root")
         .expect("spec-root store path should exist");
-    let mut root_store = SpecStore::open_or_init(root_store_root).expect("open_or_init root");
+    let mut root_store =
+        SpecStore::open_or_init(root_store_root).expect("open_or_init root");
     root_store.scan(true).expect("scan root specs");
 
     let root_spec = root_store
@@ -19,8 +20,8 @@ fn spec_store_reads_seeded_specs_from_root_and_submodule_worktrees() {
     let submodule_store_root = fixture
         .store_root("spec-submodule-b")
         .expect("spec-submodule-b store path should exist");
-    let mut submodule_store =
-        SpecStore::open_or_init(submodule_store_root).expect("open_or_init submodule");
+    let mut submodule_store = SpecStore::open_or_init(submodule_store_root)
+        .expect("open_or_init submodule");
     submodule_store.scan(true).expect("scan submodule specs");
 
     let submodule_spec = submodule_store

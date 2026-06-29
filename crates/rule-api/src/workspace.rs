@@ -10,10 +10,11 @@ use memory_api::model::filesystem::ScanRoot;
 
 pub fn workspace_root_for_index_root(index_root: &Path) -> Option<PathBuf> {
     if index_root.file_name() == Some(OsStr::new(".rule")) {
-        Some(memory_api::workspace::resolve_workspace_root_from_store_root(
-            index_root,
-            ".rule",
-        ))
+        Some(
+            memory_api::workspace::resolve_workspace_root_from_store_root(
+                index_root, ".rule",
+            ),
+        )
     } else {
         None
     }

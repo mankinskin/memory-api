@@ -14,4 +14,6 @@ pub enum AuditError {
     SerdeJson(#[from] serde_json::Error),
     #[error("command `{command}` failed: {details}")]
     CommandFailed { command: String, details: String },
+    #[error("audit move failed: {0}")]
+    Move(String),
 }

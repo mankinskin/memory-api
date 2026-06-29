@@ -69,8 +69,7 @@ impl SpecStore {
             .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
         let existing = read_section(&indexed.path, name);
         let rendered = render_generated_document(snippets);
-        let prepared =
-            prepare_generated_output(&rendered, Some(&existing));
+        let prepared = prepare_generated_output(&rendered, Some(&existing));
 
         write_section(&indexed.path, name, &prepared)?;
         Ok(())

@@ -111,8 +111,8 @@ impl RuleStore {
             };
             self.inner.index.insert_ticket(&refreshed)?;
             let created_at_str = indexed.created_at.to_rfc3339();
-            let effort_str = updated.extra.get("effort")
-                .and_then(|v| match v {
+            let effort_str =
+                updated.extra.get("effort").and_then(|v| match v {
                     serde_json::Value::String(s) => Some(s.clone()),
                     serde_json::Value::Number(n) => Some(n.to_string()),
                     _ => None,
@@ -172,12 +172,11 @@ impl RuleStore {
         };
         self.inner.index.insert_ticket(&indexed)?;
         let created_at_str = entity.created_at.to_rfc3339();
-        let effort_str = entity.extra.get("effort")
-            .and_then(|v| match v {
-                serde_json::Value::String(s) => Some(s.clone()),
-                serde_json::Value::Number(n) => Some(n.to_string()),
-                _ => None,
-            });
+        let effort_str = entity.extra.get("effort").and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        });
         self.inner.search.upsert(
             &id,
             Some(target_name),

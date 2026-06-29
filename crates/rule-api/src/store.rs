@@ -38,8 +38,10 @@ use uuid::Uuid;
 
 use memory_api::{
     error::StorageError,
-    model::entity::EntityManifest,
-    model::filesystem::EntityFolderConfig,
+    model::{
+        entity::EntityManifest,
+        filesystem::EntityFolderConfig,
+    },
     storage::{
         ensure_gitignore_entries,
         entity_fs::EntityFs,
@@ -111,11 +113,13 @@ impl RuleStore {
     pub fn open_or_init(index_root: &Path) -> Result<Self, RuleError> {
         match Self::open(index_root) {
             Ok(store) => Ok(store),
-            Err(RuleError::Storage(StorageError::WorkspaceNotFound { .. })) => {
+            Err(RuleError::Storage(StorageError::WorkspaceNotFound {
+                ..
+            })) => {
                 let mut store = Self::init(index_root)?;
                 store.scan(true)?;
                 Ok(store)
-            }
+            },
             Err(error) => Err(error),
         }
     }
@@ -168,12 +172,11 @@ impl RuleStore {
             let state = entity.extra.get("state").and_then(Value::as_str);
             let body = self.read_rule_body(&indexed.path, Some(&entity));
             let created_at_str = indexed.created_at.to_rfc3339();
-            let effort_str = entity.extra.get("effort")
-                .and_then(|v| match v {
-                    serde_json::Value::String(s) => Some(s.clone()),
-                    serde_json::Value::Number(n) => Some(n.to_string()),
-                    _ => None,
-                });
+            let effort_str = entity.extra.get("effort").and_then(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            });
 
             self.inner.search.upsert(
                 &indexed.id,
@@ -284,7 +287,7 @@ impl RuleStore {
                     // fall back to the canonical location under index_root.
                     self.inner.index_root.join("rules")
                 }
-            }
+            },
             None => self.inner.index_root.join("rules"),
         };
         fs::create_dir_all(&root).map_err(StorageError::Io)?;
@@ -311,12 +314,11 @@ impl RuleStore {
         };
         self.inner.index.insert_ticket(&indexed)?;
         let created_at_str = manifest.created_at.to_rfc3339();
-        let effort_str = entity.extra.get("effort")
-            .and_then(|v| match v {
-                serde_json::Value::String(s) => Some(s.clone()),
-                serde_json::Value::Number(n) => Some(n.to_string()),
-                _ => None,
-            });
+        let effort_str = entity.extra.get("effort").and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        });
         self.inner.search.upsert(
             &manifest.id,
             manifest.title(),
@@ -454,8 +456,8 @@ impl RuleStore {
 
         let body = self.read_rule_body(&indexed.path, Some(&updated_entity));
         let created_at_str = indexed.created_at.to_rfc3339();
-        let effort_str = updated_entity.extra.get("effort")
-            .and_then(|v| match v {
+        let effort_str =
+            updated_entity.extra.get("effort").and_then(|v| match v {
                 serde_json::Value::String(s) => Some(s.clone()),
                 serde_json::Value::Number(n) => Some(n.to_string()),
                 _ => None,
@@ -497,8 +499,8 @@ impl RuleStore {
         let updated_entity = self.inner.fs.read(&indexed.path)?;
         self.inner.fs.write_description(&indexed.path, body)?;
         let created_at_str = indexed.created_at.to_rfc3339();
-        let effort_str = updated_entity.extra.get("effort")
-            .and_then(|v| match v {
+        let effort_str =
+            updated_entity.extra.get("effort").and_then(|v| match v {
                 serde_json::Value::String(s) => Some(s.clone()),
                 serde_json::Value::Number(n) => Some(n.to_string()),
                 _ => None,

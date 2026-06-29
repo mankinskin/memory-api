@@ -286,8 +286,8 @@ fn load_render_target_config_imports_child_targets_with_source_config_paths() {
     let config = load_render_target_config(&root_path).unwrap();
     assert_eq!(config.targets.len(), 2);
 
-    let imported = render_target_by_name(&config, "memory-viewers-agents")
-        .unwrap();
+    let imported =
+        render_target_by_name(&config, "memory-viewers-agents").unwrap();
     assert_eq!(
         imported.source_config_path.as_deref(),
         Some(child_path.as_path())
@@ -301,8 +301,8 @@ fn load_render_target_config_imports_child_targets_with_source_config_paths() {
         child_dir.join("AGENTS.md")
     );
 
-    let local = render_target_by_name(&config, "context-engine-agents")
-        .unwrap();
+    let local =
+        render_target_by_name(&config, "context-engine-agents").unwrap();
     assert_eq!(
         local.source_config_path.as_deref(),
         Some(root_path.as_path())
@@ -380,8 +380,8 @@ fn load_render_target_config_imports_directory_fragments_in_sorted_order() {
         ]
     );
 
-    let readme = render_target_by_name(&config, "memory-viewers-readme")
-        .unwrap();
+    let readme =
+        render_target_by_name(&config, "memory-viewers-readme").unwrap();
     assert_eq!(
         readme.source_config_path.as_deref(),
         Some(child_targets_dir.join("10-readme.yaml").as_path())
@@ -395,8 +395,8 @@ fn load_render_target_config_imports_directory_fragments_in_sorted_order() {
         child_dir.join("README.md")
     );
 
-    let agents = render_target_by_name(&config, "memory-viewers-agents")
-        .unwrap();
+    let agents =
+        render_target_by_name(&config, "memory-viewers-agents").unwrap();
     assert_eq!(
         agents.source_config_path.as_deref(),
         Some(child_targets_dir.join("20-agents.yaml").as_path())
@@ -454,8 +454,8 @@ fn load_render_target_config_accepts_top_level_directory_configs() {
         vec!["context-engine-readme", "context-engine-agents",]
     );
 
-    let readme = render_target_by_name(&config, "context-engine-readme")
-        .unwrap();
+    let readme =
+        render_target_by_name(&config, "context-engine-readme").unwrap();
     assert_eq!(
         readme.source_config_path.as_deref(),
         Some(targets_dir.join("10-readme.yaml").as_path())
@@ -469,8 +469,8 @@ fn load_render_target_config_accepts_top_level_directory_configs() {
         repo_root.join("README.md")
     );
 
-    let agents = render_target_by_name(&config, "context-engine-agents")
-        .unwrap();
+    let agents =
+        render_target_by_name(&config, "context-engine-agents").unwrap();
     assert_eq!(
         agents.source_config_path.as_deref(),
         Some(targets_dir.join("20-agents.yaml").as_path())
@@ -536,18 +536,12 @@ fn load_render_target_config_rejects_import_cycles() {
     let child_path = child_dir.join("rule-targets.yaml");
     fs::write(
         &root_path,
-        concat!(
-            "imports:\n",
-            "  - memory-viewers/rule-targets.yaml\n",
-        ),
+        concat!("imports:\n", "  - memory-viewers/rule-targets.yaml\n",),
     )
     .unwrap();
     fs::write(
         &child_path,
-        concat!(
-            "imports:\n",
-            "  - ../rule-targets.yaml\n",
-        ),
+        concat!("imports:\n", "  - ../rule-targets.yaml\n",),
     )
     .unwrap();
 
@@ -690,8 +684,10 @@ fn readme_schema_inherits_shared_outline_for_multiple_targets() {
     .unwrap();
 
     let config = load_render_target_config(&path).unwrap();
-    let memory_api = render_target_by_name(&config, "memory-api-readme").unwrap();
-    let viewer_api = render_target_by_name(&config, "viewer-api-readme").unwrap();
+    let memory_api =
+        render_target_by_name(&config, "memory-api-readme").unwrap();
+    let viewer_api =
+        render_target_by_name(&config, "viewer-api-readme").unwrap();
     let expected = vec![
         "summary".to_string(),
         "installable-content".to_string(),
@@ -736,7 +732,8 @@ fn readme_schema_appends_explicit_nodes_without_redeclaring_outline() {
     .unwrap();
 
     let config = load_render_target_config(&path).unwrap();
-    let target = render_target_by_name(&config, "memory-viewers-readme").unwrap();
+    let target =
+        render_target_by_name(&config, "memory-viewers-readme").unwrap();
 
     assert_eq!(
         target_node_names(target),
@@ -785,7 +782,8 @@ fn readme_schema_rejects_child_targets_missing_required_parent_block() {
 }
 
 #[test]
-fn load_render_target_config_allows_identical_schema_imports_across_fragments() {
+fn load_render_target_config_allows_identical_schema_imports_across_fragments()
+{
     let tmp = tempdir().unwrap();
     let shared = tmp.path().join("shared-schema.yaml");
     fs::write(
@@ -876,7 +874,10 @@ fn resolve_render_target_output_uses_rule_targets_directory_parent() {
     };
 
     assert_eq!(
-        resolve_render_target_output(PathBuf::from("repo/rule-targets.yaml").as_path(), &target),
+        resolve_render_target_output(
+            PathBuf::from("repo/rule-targets.yaml").as_path(),
+            &target
+        ),
         repo_root.join("AGENTS.md")
     );
 }
@@ -1118,13 +1119,22 @@ fn infer_file_kind_recognises_well_known_filenames() {
         infer_file_kind("copilot-instructions.md"),
         Some("copilot-instructions")
     );
-    assert_eq!(infer_file_kind(".agents/agents/interview.agent.md"), Some(".agent"));
-    assert_eq!(infer_file_kind(".agents/prompts/spec.prompt.md"), Some(".prompt"));
+    assert_eq!(
+        infer_file_kind(".agents/agents/interview.agent.md"),
+        Some(".agent")
+    );
+    assert_eq!(
+        infer_file_kind(".agents/prompts/spec.prompt.md"),
+        Some(".prompt")
+    );
     assert_eq!(
         infer_file_kind(".agents/instructions/audit.instructions.md"),
         Some(".instructions")
     );
-    assert_eq!(infer_file_kind(".spec/specs/uuid/body.md"), Some("spec-doc"));
+    assert_eq!(
+        infer_file_kind(".spec/specs/uuid/body.md"),
+        Some("spec-doc")
+    );
     assert_eq!(infer_file_kind("some/unknown/file.md"), None);
 }
 
@@ -1132,8 +1142,7 @@ fn infer_file_kind_recognises_well_known_filenames() {
 
 #[test]
 fn parse_scope_splits_repo_and_path() {
-    let (repo, path) =
-        parse_scope("t", "context-engine:AGENTS.md").unwrap();
+    let (repo, path) = parse_scope("t", "context-engine:AGENTS.md").unwrap();
     assert_eq!(repo, "context-engine");
     assert_eq!(path, "AGENTS.md");
 }
@@ -1342,10 +1351,7 @@ fn scope_plus_defaults_compose_correctly() {
         t.path_scope.as_deref(),
         Some(".agents/instructions/audit.instructions.md")
     );
-    assert_eq!(
-        t.output_path,
-        ".agents/instructions/audit.instructions.md"
-    );
+    assert_eq!(t.output_path, ".agents/instructions/audit.instructions.md");
 }
 
 #[test]

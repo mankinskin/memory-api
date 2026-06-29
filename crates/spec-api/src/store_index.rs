@@ -48,7 +48,8 @@ use crate::manifest::SpecManifest;
 /// Uses an `-index` suffixed prefix so index/catalog files are never confused
 /// with spec *content* files (which carry `spec-api:*` provenance) — decision
 /// Q2.1 of the `rendering-pipeline-integration` spec.
-pub const SPEC_INDEX_FILE_COMMENT: &str = "<!-- spec-index:file generated=true -->";
+pub const SPEC_INDEX_FILE_COMMENT: &str =
+    "<!-- spec-index:file generated=true -->";
 
 /// Per-entry provenance prefix (Q2.1). Each entry marker also carries a digest
 /// prefix (Q4.1): `<!-- spec-index:entry id=<uuid> slug=<slug> digest=<hex12> -->`.
@@ -131,9 +132,7 @@ pub fn generate_spec_catalog(
 
     let mut entries: Vec<IndexEntry> = sources
         .iter()
-        .map(|s| {
-            make_entry(s, generated_at, &path_by_id, &children_by_parent)
-        })
+        .map(|s| make_entry(s, generated_at, &path_by_id, &children_by_parent))
         .collect();
     for e in &mut entries {
         e.seal();
@@ -298,7 +297,8 @@ fn normalize_summary(body: &str) -> String {
         if stripped.is_empty() {
             continue;
         }
-        let collapsed = stripped.split_whitespace().collect::<Vec<_>>().join(" ");
+        let collapsed =
+            stripped.split_whitespace().collect::<Vec<_>>().join(" ");
         return truncate_chars(&collapsed, 200);
     }
     String::new()
@@ -412,10 +412,8 @@ fn render_catalog_markdown(
     extras: &BTreeMap<Uuid, SpecDisplayExtra>,
 ) -> String {
     // slug lookup by id (for parent/child slug rendering).
-    let slug_by_id: HashMap<Uuid, String> = extras
-        .iter()
-        .map(|(id, e)| (*id, e.slug.clone()))
-        .collect();
+    let slug_by_id: HashMap<Uuid, String> =
+        extras.iter().map(|(id, e)| (*id, e.slug.clone())).collect();
 
     // Group entries by component, preserving id-sorted order within group.
     let mut groups: BTreeMap<String, Vec<&IndexEntry>> = BTreeMap::new();
@@ -598,8 +596,14 @@ mod tests {
     #[test]
     fn extract_section_reads_named_section() {
         let body = "# Goal\n\nDo X.\n\n## Scope\n\nThe API surface.\n\n## Non-goals\n\nNot the UI.\n";
-        assert_eq!(extract_section(body, "Scope").as_deref(), Some("The API surface."));
-        assert_eq!(extract_section(body, "Non-goals").as_deref(), Some("Not the UI."));
+        assert_eq!(
+            extract_section(body, "Scope").as_deref(),
+            Some("The API surface.")
+        );
+        assert_eq!(
+            extract_section(body, "Non-goals").as_deref(),
+            Some("Not the UI.")
+        );
         assert_eq!(extract_section(body, "Missing"), None);
     }
 
@@ -629,7 +633,10 @@ mod tests {
         // Parent has one child ref; child has a parent ref.
         assert_eq!(parent_entry.relations.children.len(), 1);
         assert_eq!(parent_entry.relations.children[0].entry_id, child.id);
-        assert_eq!(parent_entry.relations.children[0].relation_kind, RelationKind::Child);
+        assert_eq!(
+            parent_entry.relations.children[0].relation_kind,
+            RelationKind::Child
+        );
         assert!(parent_entry.tags.iter().any(|t| t == "root"));
 
         let parent_ref = child_entry.relations.parent.as_ref().unwrap();
@@ -667,7 +674,8 @@ mod tests {
     #[test]
     fn regeneration_is_byte_stable() {
         let parent = spec("root", "Root", "comp-a");
-        let sources = vec![source(&parent, ".spec/specs/root/spec.toml", "Body.")];
+        let sources =
+            vec![source(&parent, ".spec/specs/root/spec.toml", "Body.")];
 
         let a = generate_spec_catalog(&sources, ".spec");
         let b = generate_spec_catalog(&sources, ".spec");

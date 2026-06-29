@@ -93,4 +93,7 @@ pub enum SessionError {
         #[source]
         source: std::io::Error,
     },
+
+    #[error("session move failed: {0}")]
+    Move(String),
 }

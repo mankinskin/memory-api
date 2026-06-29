@@ -1,6 +1,7 @@
 pub mod error;
 pub mod hook;
 pub mod model;
+pub mod move_domain;
 pub mod peek;
 pub mod store;
 
@@ -34,9 +35,9 @@ pub use store::{
     PersistedSessionManifest,
     PersistedSessionTranscript,
     SessionQuery,
-    SessionWorktreeCheckInReceipt,
-    SessionWorktreeCheckInRequest,
     SessionStoreConfig,
     SessionStorePaths,
     SessionStorePlan,
+    SessionWorktreeCheckInReceipt,
+    SessionWorktreeCheckInRequest,
 };

@@ -50,7 +50,8 @@ fn epoch() -> DateTime<Utc> {
 /// Uses a `-catalog` suffixed prefix so index/catalog files are never confused
 /// with rule *content* files (which carry `rule-api:*` provenance) — decision
 /// Q2.1 of the `rendering-pipeline-integration` spec.
-pub const RULE_CATALOG_FILE_COMMENT: &str = "<!-- rule-catalog:file generated=true -->";
+pub const RULE_CATALOG_FILE_COMMENT: &str =
+    "<!-- rule-catalog:file generated=true -->";
 
 /// Per-entry provenance prefix (Q2.1). Each entry marker also carries a digest
 /// prefix (Q4.1): `<!-- rule-catalog:entry id=<uuid> slug=<slug> digest=<hex12> -->`.
@@ -226,7 +227,8 @@ fn make_entry(
 /// (every segment except the leaf). Used as filtering tags; the markdown group
 /// header uses [`group_key`].
 fn group_segments(slug: &str) -> Vec<String> {
-    let segments: Vec<&str> = slug.split('/').filter(|s| !s.is_empty()).collect();
+    let segments: Vec<&str> =
+        slug.split('/').filter(|s| !s.is_empty()).collect();
     if segments.len() <= 1 {
         return Vec::new();
     }
@@ -241,7 +243,8 @@ fn group_segments(slug: &str) -> Vec<String> {
 /// `shared/agent-rules/operating-principles/l5` → `shared/agent-rules`.
 /// A slug with no `/` groups under `ungrouped`.
 fn group_key(slug: &str) -> String {
-    let segments: Vec<&str> = slug.split('/').filter(|s| !s.is_empty()).collect();
+    let segments: Vec<&str> =
+        slug.split('/').filter(|s| !s.is_empty()).collect();
     match segments.len() {
         0 => "ungrouped".to_string(),
         1 => segments[0].to_string(),
@@ -263,7 +266,8 @@ fn normalize_summary(body: &str) -> String {
         if stripped.is_empty() {
             continue;
         }
-        let collapsed = stripped.split_whitespace().collect::<Vec<_>>().join(" ");
+        let collapsed =
+            stripped.split_whitespace().collect::<Vec<_>>().join(" ");
         return truncate_chars(&collapsed, 200);
     }
     String::new()
@@ -440,7 +444,9 @@ fn render_agent_hook(
     if !group_list.is_empty() {
         out.push_str(&format!("- Groups: {group_list}\n"));
     }
-    out.push_str(&format!("- Low-rated rules needing attention: {low_rated}\n"));
+    out.push_str(&format!(
+        "- Low-rated rules needing attention: {low_rated}\n"
+    ));
 
     out
 }
@@ -470,7 +476,10 @@ mod tests {
 
     #[test]
     fn groups_by_slug_prefix() {
-        assert_eq!(group_key("shared/agent-rules/operating/l5"), "shared/agent-rules");
+        assert_eq!(
+            group_key("shared/agent-rules/operating/l5"),
+            "shared/agent-rules"
+        );
         assert_eq!(group_key("solo"), "solo");
         assert_eq!(group_key(""), "ungrouped");
         assert_eq!(
@@ -498,11 +507,17 @@ mod tests {
         ];
 
         let artifacts = generate_rule_catalog(&sources, ".rule");
-        assert!(artifacts.readme_markdown.starts_with(RULE_CATALOG_FILE_COMMENT));
+        assert!(
+            artifacts
+                .readme_markdown
+                .starts_with(RULE_CATALOG_FILE_COMMENT)
+        );
         assert!(artifacts.readme_markdown.contains("## shared/agent-rules"));
-        assert!(artifacts
-            .readme_markdown
-            .contains("<!-- rule-catalog:entry id="));
+        assert!(
+            artifacts
+                .readme_markdown
+                .contains("<!-- rule-catalog:entry id=")
+        );
         assert!(artifacts.readme_markdown.contains("digest="));
         // Every entry sealed and digest-valid.
         for e in &artifacts.sidecar.entries {
@@ -541,13 +556,21 @@ mod tests {
         let artifacts = generate_rule_catalog(&sources, ".rule");
         assert!(artifacts.readme_markdown.contains("**[low-rated]**"));
         assert!(artifacts.readme_markdown.contains("- section: `section`"));
-        assert!(artifacts
-            .readme_markdown
-            .contains("- feedback: helpful 0 / mixed 0 / not-helpful 3"));
-        assert!(artifacts.sidecar.entries[0]
-            .tags
-            .iter()
-            .any(|t| t == "low-rated"));
-        assert!(artifacts.agent_hook_markdown.contains("Low-rated rules needing attention: 1"));
+        assert!(
+            artifacts
+                .readme_markdown
+                .contains("- feedback: helpful 0 / mixed 0 / not-helpful 3")
+        );
+        assert!(
+            artifacts.sidecar.entries[0]
+                .tags
+                .iter()
+                .any(|t| t == "low-rated")
+        );
+        assert!(
+            artifacts
+                .agent_hook_markdown
+                .contains("Low-rated rules needing attention: 1")
+        );
     }
 }

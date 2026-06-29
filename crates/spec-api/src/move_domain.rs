@@ -12,16 +12,18 @@ use std::path::{
     PathBuf,
 };
 
-use memory_api::storage::move_kernel::{
-    self,
-    MoveDomain,
-    MoveError,
-    MoveOutcome,
-    MovePlan,
-    MoveReferences,
-    MoveResult,
+use memory_api::{
+    error::StorageError,
+    storage::move_kernel::{
+        self,
+        MoveDomain,
+        MoveError,
+        MoveOutcome,
+        MovePlan,
+        MoveReferences,
+        MoveResult,
+    },
 };
-use memory_api::error::StorageError;
 use uuid::Uuid;
 
 use crate::{
@@ -41,7 +43,8 @@ fn to_move_error(error: SpecError) -> MoveError {
 fn from_move_error(error: MoveError) -> SpecError {
     match error {
         MoveError::Io(io) => SpecError::Storage(StorageError::Io(io)),
-        MoveError::Domain(message) => SpecError::Storage(StorageError::Other(message)),
+        MoveError::Domain(message) =>
+            SpecError::Storage(StorageError::Other(message)),
     }
 }
 
@@ -108,7 +111,9 @@ impl MoveDomain for SpecMoveDomain<'_> {
     ) -> MoveResult<bool> {
         match SpecStore::open(target_store_root) {
             Ok(_) => Ok(true),
-            Err(SpecError::Storage(StorageError::WorkspaceNotFound { .. })) => Ok(false),
+            Err(SpecError::Storage(StorageError::WorkspaceNotFound {
+                ..
+            })) => Ok(false),
             Err(error) => Err(to_move_error(error)),
         }
     }
@@ -148,7 +153,8 @@ impl SpecStore {
         target_workspace_root: &Path,
     ) -> Result<MovePlan, SpecError> {
         let domain = SpecMoveDomain::new(self);
-        move_kernel::plan_move(&domain, spec_id, target_workspace_root).map_err(from_move_error)
+        move_kernel::plan_move(&domain, spec_id, target_workspace_root)
+            .map_err(from_move_error)
     }
 
     /// Execute a supported spec move with a fresh journal.
@@ -182,9 +188,13 @@ impl SpecStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use memory_api::storage::move_kernel::{
-        MoveBlocker,
-        MoveExecutionPhase,
+    use memory_api::{
+        model::edge::EdgeRecord,
+        storage::move_kernel::{
+            MoveBlocker,
+            MoveExecutionPhase,
+            MoveReferenceDirection,
+        },
     };
     use std::process::Command;
     use tempfile::tempdir;
@@ -216,7 +226,11 @@ mod tests {
         let mut source_store = SpecStore::init(&source_workspace).unwrap();
         let _target_store = SpecStore::init(&target_workspace).unwrap();
 
-        let spec = crate::manifest::SpecManifest::new("sample/spec", "Sample spec", "spec-api");
+        let spec = crate::manifest::SpecManifest::new(
+            "sample/spec",
+            "Sample spec",
+            "spec-api",
+        );
         let spec_id: Uuid = source_store.create(&spec, "body", None).unwrap();
         source_store.scan(true).unwrap();
 
@@ -260,10 +274,19 @@ mod tests {
         let mut source_store = SpecStore::init(&source_workspace).unwrap();
         let _target_store = SpecStore::init(&target_workspace).unwrap();
 
-        let parent = crate::manifest::SpecManifest::new("track/parent", "Parent", "spec-api");
-        let _parent_id = source_store.create(&parent, "parent body", None).unwrap();
+        let parent = crate::manifest::SpecManifest::new(
+            "track/parent",
+            "Parent",
+            "spec-api",
+        );
+        let _parent_id =
+            source_store.create(&parent, "parent body", None).unwrap();
 
-        let mut child = crate::manifest::SpecManifest::new("track/child", "Child", "spec-api");
+        let mut child = crate::manifest::SpecManifest::new(
+            "track/child",
+            "Child",
+            "spec-api",
+        );
         child.extra.insert(
             "parent".to_string(),
             serde_json::Value::String("track/parent".into()),
@@ -276,7 +299,8 @@ mod tests {
             line_end: 2,
             description: None,
         });
-        let child_id: Uuid = source_store.create(&child, "child body", None).unwrap();
+        let child_id: Uuid =
+            source_store.create(&child, "child body", None).unwrap();
         source_store.scan(true).unwrap();
 
         let mut plan = source_store
@@ -297,11 +321,71 @@ mod tests {
         assert_eq!(moved.parent(), Some("track/parent"));
         // Code refs: repo-relative paths are preserved verbatim.
         assert_eq!(moved.code_refs.len(), 1);
-        assert_eq!(moved.code_refs[0].file, "crates/spec-api/src/move_domain.rs");
+        assert_eq!(
+            moved.code_refs[0].file,
+            "crates/spec-api/src/move_domain.rs"
+        );
         // Slug index: destination resolves the moved spec's slug to its id
         // after a scan rebuilds the in-memory slug index.
         let mut dst_scanned = SpecStore::open(&target_workspace).unwrap();
         dst_scanned.scan(true).unwrap();
         assert_eq!(dst_scanned.resolve_id("track/child").unwrap(), child_id);
+    }
+
+    #[test]
+    fn spec_move_blocks_when_related_spec_is_not_visible_from_destination() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        run_git(&repo, &["init"]);
+
+        let source_workspace = repo.join("source");
+        let target_workspace = repo.join("target");
+        std::fs::create_dir_all(&source_workspace).unwrap();
+        std::fs::create_dir_all(&target_workspace).unwrap();
+
+        let mut source_store = SpecStore::init(&source_workspace).unwrap();
+        let _target_store = SpecStore::init(&target_workspace).unwrap();
+
+        let moving = crate::manifest::SpecManifest::new(
+            "track/moving",
+            "Moving",
+            "spec-api",
+        );
+        let related = crate::manifest::SpecManifest::new(
+            "track/related",
+            "Related",
+            "spec-api",
+        );
+        let moving_id =
+            source_store.create(&moving, "moving body", None).unwrap();
+        let related_id =
+            source_store.create(&related, "related body", None).unwrap();
+        source_store
+            .entity_store()
+            .add_edge(EdgeRecord {
+                from: moving_id,
+                to: related_id,
+                kind: "related".to_string(),
+                created_at: chrono::Utc::now(),
+            })
+            .unwrap();
+        source_store.scan(true).unwrap();
+
+        let plan = source_store
+            .plan_move_preflight(&moving_id, &target_workspace)
+            .unwrap();
+
+        assert!(
+            plan.blockers.iter().any(|blocker| matches!(
+                blocker,
+                MoveBlocker::InvisibleReference {
+                    related_entity_id,
+                    direction: MoveReferenceDirection::Outbound,
+                } if *related_entity_id == related_id
+            )),
+            "expected invisible outbound reference blocker: {:?}",
+            plan.blockers
+        );
     }
 }

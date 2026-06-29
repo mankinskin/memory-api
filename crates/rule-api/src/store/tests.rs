@@ -39,7 +39,8 @@ fn create_writes_body_md_without_manifest_body_field() {
 
     let id = store.create(&manifest, None).unwrap();
     let indexed = store.entity_store().get_indexed(&id).unwrap().unwrap();
-    let manifest_text = fs::read_to_string(indexed.path.join("rule.toml")).unwrap();
+    let manifest_text =
+        fs::read_to_string(indexed.path.join("rule.toml")).unwrap();
 
     assert!(indexed.path.join("body.md").is_file());
     assert!(!indexed.path.join("description.md").exists());
@@ -74,13 +75,11 @@ fn open_or_init_reindexes_legacy_description_body_content() {
     let _ = fs::remove_dir_all(index_root.join("search_index"));
 
     let reopened = RuleStore::open_or_init(dir.path()).unwrap();
-    let fetched = reopened.get("shared/agents/legacy-description-fallback").unwrap();
+    let fetched = reopened
+        .get("shared/agents/legacy-description-fallback")
+        .unwrap();
     let matches = reopened
-        .search(
-            "Legacy description body text",
-            &RuleFilter::default(),
-            5,
-        )
+        .search("Legacy description body text", &RuleFilter::default(), 5)
         .unwrap();
 
     assert_eq!(fetched.body(), Some("Legacy description body text."));

@@ -4,8 +4,10 @@ use std::{
     path::PathBuf,
 };
 
-use memory_api::generated_markdown::GeneratedMarkdownSnippet;
-use memory_api::model::filesystem::ScanRoot;
+use memory_api::{
+    generated_markdown::GeneratedMarkdownSnippet,
+    model::filesystem::ScanRoot,
+};
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -310,10 +312,9 @@ fn update_generated_section_creates_and_renders_named_section() {
 fn update_generated_section_preserves_existing_crlf_style() {
     let (_tmp, mut store) = setup();
 
-    let spec = make_spec("root/generated-section-crlf", "Generated Section CRLF");
-    let id = store
-        .create(&spec, "body v1", None)
-        .unwrap();
+    let spec =
+        make_spec("root/generated-section-crlf", "Generated Section CRLF");
+    let id = store.create(&spec, "body v1", None).unwrap();
     store
         .add_section(
             "root/generated-section-crlf",
@@ -415,7 +416,8 @@ fn update_generated_artifacts_round_trips_body_and_sections() {
     );
 
     let indexed = store.entity_store().get_indexed(&id).unwrap().unwrap();
-    let generated = fs::read_to_string(indexed.path.join("generated.toml")).unwrap();
+    let generated =
+        fs::read_to_string(indexed.path.join("generated.toml")).unwrap();
     assert!(generated.contains("[body]"));
     assert!(generated.contains("[sections.design]"));
     assert!(generated.contains("[sections.requirements]"));
@@ -425,7 +427,10 @@ fn update_generated_artifacts_round_trips_body_and_sections() {
 fn update_generated_artifacts_rejects_duplicate_section_aliases() {
     let (_tmp, mut store) = setup();
 
-    let spec = make_spec("root/generated-artifact-duplicates", "Generated Artifact Duplicates");
+    let spec = make_spec(
+        "root/generated-artifact-duplicates",
+        "Generated Artifact Duplicates",
+    );
     store.create(&spec, "body v1", None).unwrap();
 
     let mut sections = BTreeMap::new();
@@ -465,7 +470,10 @@ fn update_generated_artifacts_rejects_duplicate_section_aliases() {
 fn update_generated_artifacts_rejects_invalid_targets_and_paths() {
     let (_tmp, mut store) = setup();
 
-    let spec = make_spec("root/generated-artifact-invalid", "Generated Artifact Invalid");
+    let spec = make_spec(
+        "root/generated-artifact-invalid",
+        "Generated Artifact Invalid",
+    );
     store.create(&spec, "body v1", None).unwrap();
 
     let blank_target = store
@@ -511,7 +519,8 @@ fn update_generated_artifacts_rejects_invalid_targets_and_paths() {
 fn update_generated_artifacts_deletes_empty_descriptor_file() {
     let (_tmp, mut store) = setup();
 
-    let spec = make_spec("root/generated-artifact-clear", "Generated Artifact Clear");
+    let spec =
+        make_spec("root/generated-artifact-clear", "Generated Artifact Clear");
     let id = store.create(&spec, "body v1", None).unwrap();
 
     store

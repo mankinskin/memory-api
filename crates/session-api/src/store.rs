@@ -377,7 +377,7 @@ impl SessionStoreConfig {
         Ok(peek_skeleton(&record, preview_chars))
     }
 
-    fn paths_for_session_id(
+    pub(crate) fn paths_for_session_id(
         &self,
         session_id: &str,
     ) -> Result<SessionStorePaths, SessionError> {

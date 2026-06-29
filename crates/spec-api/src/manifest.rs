@@ -5,9 +5,9 @@ use chrono::{
     Utc,
 };
 use serde::{
-    de::DeserializeOwned,
     Deserialize,
     Serialize,
+    de::DeserializeOwned,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -374,7 +374,8 @@ impl SpecManifest {
         match self.parse_field::<SpecContractMode>("contract_mode") {
             Ok(Some(_)) => {},
             Ok(None) => issues.push("missing contract mode".to_string()),
-            Err(error) => issues.push(format!("invalid contract mode: {error}")),
+            Err(error) =>
+                issues.push(format!("invalid contract mode: {error}")),
         }
 
         let expected_properties = match self
@@ -430,9 +431,9 @@ impl SpecManifest {
 
         let expected_property_ids = collect_unique_ids(
             &mut issues,
-            expected_properties.iter().map(|property| {
-                ("expected property", property.id.as_str())
-            }),
+            expected_properties
+                .iter()
+                .map(|property| ("expected property", property.id.as_str())),
         );
         let acceptance_criterion_ids = collect_unique_ids(
             &mut issues,
@@ -442,15 +443,15 @@ impl SpecManifest {
         );
         let evidence_requirement_ids = collect_unique_ids(
             &mut issues,
-            evidence_requirements.iter().map(|evidence| {
-                ("evidence requirement", evidence.id.as_str())
-            }),
+            evidence_requirements
+                .iter()
+                .map(|evidence| ("evidence requirement", evidence.id.as_str())),
         );
         let _ = collect_unique_ids(
             &mut issues,
-            fulfillment_summaries.iter().map(|summary| {
-                ("fulfillment summary", summary.id.as_str())
-            }),
+            fulfillment_summaries
+                .iter()
+                .map(|summary| ("fulfillment summary", summary.id.as_str())),
         );
 
         for criterion in &acceptance_criteria {
@@ -486,12 +487,10 @@ impl SpecManifest {
 
         for summary in &fulfillment_summaries {
             let target_exists = match summary.subject_kind {
-                FulfillmentSubjectKind::AcceptanceCriterion => {
-                    acceptance_criterion_ids.contains(&summary.subject_id)
-                },
-                FulfillmentSubjectKind::EvidenceRequirement => {
-                    evidence_requirement_ids.contains(&summary.subject_id)
-                },
+                FulfillmentSubjectKind::AcceptanceCriterion =>
+                    acceptance_criterion_ids.contains(&summary.subject_id),
+                FulfillmentSubjectKind::EvidenceRequirement =>
+                    evidence_requirement_ids.contains(&summary.subject_id),
             };
 
             if !target_exists {
@@ -512,7 +511,8 @@ impl SpecManifest {
             let summaries: Vec<&FulfillmentSummary> = fulfillment_summaries
                 .iter()
                 .filter(|summary| {
-                    summary.subject_kind == FulfillmentSubjectKind::EvidenceRequirement
+                    summary.subject_kind
+                        == FulfillmentSubjectKind::EvidenceRequirement
                         && summary.subject_id == evidence.id
                 })
                 .collect();
@@ -525,7 +525,10 @@ impl SpecManifest {
                 continue;
             }
 
-            if summaries.iter().all(|summary| !summary.status.is_satisfied()) {
+            if summaries
+                .iter()
+                .all(|summary| !summary.status.is_satisfied())
+            {
                 issues.push(format!(
                     "unsatisfied evidence requirement '{}'",
                     evidence.id
@@ -536,7 +539,10 @@ impl SpecManifest {
         issues
     }
 
-    fn parse_field<T>(&self, key: &str) -> Result<Option<T>, String>
+    fn parse_field<T>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>, String>
     where
         T: DeserializeOwned,
     {
@@ -549,7 +555,10 @@ impl SpecManifest {
             .transpose()
     }
 
-    fn parse_vec_field<T>(&self, key: &str) -> Vec<T>
+    fn parse_vec_field<T>(
+        &self,
+        key: &str,
+    ) -> Vec<T>
     where
         T: DeserializeOwned,
     {
@@ -646,11 +655,8 @@ mod tests {
 
     #[test]
     fn test_contract_fields_round_trip_through_toml() {
-        let mut manifest = SpecManifest::new(
-            "spec-api/contract",
-            "Contract",
-            "spec-api",
-        );
+        let mut manifest =
+            SpecManifest::new("spec-api/contract", "Contract", "spec-api");
         manifest.set_contract_mode(Some(SpecContractMode::ExpectationOriented));
         manifest.set_expected_properties(vec![ExpectedProperty {
             id: "prop-visible".to_string(),
@@ -658,7 +664,8 @@ mod tests {
         }]);
         manifest.set_acceptance_criteria(vec![AcceptanceCriterion {
             id: "criterion-visible".to_string(),
-            statement: "The property is observable in store output.".to_string(),
+            statement: "The property is observable in store output."
+                .to_string(),
             expected_property_ids: vec!["prop-visible".to_string()],
             required_evidence_ids: vec!["evidence-doc".to_string()],
         }]);
@@ -691,17 +698,15 @@ mod tests {
 
     #[test]
     fn test_health_issues_ignore_legacy_specs_without_structured_contract() {
-        let manifest = SpecManifest::new(
-            "spec-api/legacy",
-            "Legacy",
-            "spec-api",
-        );
+        let manifest =
+            SpecManifest::new("spec-api/legacy", "Legacy", "spec-api");
 
         assert!(manifest.health_issues().is_empty());
     }
 
     #[test]
-    fn test_health_issues_surface_missing_and_unsatisfied_contract_requirements() {
+    fn test_health_issues_surface_missing_and_unsatisfied_contract_requirements()
+     {
         let mut manifest = SpecManifest::new(
             "spec-api/contract-health",
             "Contract Health",
@@ -714,7 +719,8 @@ mod tests {
         }]);
         manifest.set_acceptance_criteria(vec![AcceptanceCriterion {
             id: "criterion-visible".to_string(),
-            statement: "The property is observable in store output.".to_string(),
+            statement: "The property is observable in store output."
+                .to_string(),
             expected_property_ids: vec!["prop-visible".to_string()],
             required_evidence_ids: vec!["evidence-doc".to_string()],
         }]);

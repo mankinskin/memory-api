@@ -10,16 +10,18 @@ use std::path::{
     PathBuf,
 };
 
-use memory_api::storage::move_kernel::{
-    self,
-    MoveDomain,
-    MoveError,
-    MoveOutcome,
-    MovePlan,
-    MoveReferences,
-    MoveResult,
+use memory_api::{
+    error::StorageError,
+    storage::move_kernel::{
+        self,
+        MoveDomain,
+        MoveError,
+        MoveOutcome,
+        MovePlan,
+        MoveReferences,
+        MoveResult,
+    },
 };
-use memory_api::error::StorageError;
 use uuid::Uuid;
 
 use crate::{
@@ -39,7 +41,8 @@ fn to_move_error(error: RuleError) -> MoveError {
 fn from_move_error(error: MoveError) -> RuleError {
     match error {
         MoveError::Io(io) => RuleError::Storage(StorageError::Io(io)),
-        MoveError::Domain(message) => RuleError::Storage(StorageError::Other(message)),
+        MoveError::Domain(message) =>
+            RuleError::Storage(StorageError::Other(message)),
     }
 }
 
@@ -106,7 +109,9 @@ impl MoveDomain for RuleMoveDomain<'_> {
     ) -> MoveResult<bool> {
         match RuleStore::open(target_store_root) {
             Ok(_) => Ok(true),
-            Err(RuleError::Storage(StorageError::WorkspaceNotFound { .. })) => Ok(false),
+            Err(RuleError::Storage(StorageError::WorkspaceNotFound {
+                ..
+            })) => Ok(false),
             Err(error) => Err(to_move_error(error)),
         }
     }
@@ -129,9 +134,7 @@ impl MoveDomain for RuleMoveDomain<'_> {
         store_root: &Path,
     ) -> MoveResult<()> {
         let mut store = RuleStore::open(store_root).map_err(to_move_error)?;
-        store
-            .scan(true)
-            .map_err(to_move_error)?;
+        store.scan(true).map_err(to_move_error)?;
         Ok(())
     }
 }
@@ -145,7 +148,8 @@ impl RuleStore {
         target_workspace_root: &Path,
     ) -> Result<MovePlan, RuleError> {
         let domain = RuleMoveDomain::new(self);
-        move_kernel::plan_move(&domain, rule_id, target_workspace_root).map_err(from_move_error)
+        move_kernel::plan_move(&domain, rule_id, target_workspace_root)
+            .map_err(from_move_error)
     }
 
     /// Execute a supported rule move with a fresh journal.
@@ -179,9 +183,13 @@ impl RuleStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use memory_api::storage::move_kernel::{
-        MoveBlocker,
-        MoveExecutionPhase,
+    use memory_api::{
+        model::edge::EdgeRecord,
+        storage::move_kernel::{
+            MoveBlocker,
+            MoveExecutionPhase,
+            MoveReferenceDirection,
+        },
     };
     use std::process::Command;
     use tempfile::tempdir;
@@ -241,5 +249,64 @@ mod tests {
         let dst = RuleStore::open(&target_workspace).unwrap();
         assert!(src.entity_store().get_indexed(&rule_id).unwrap().is_none());
         assert!(dst.entity_store().get_indexed(&rule_id).unwrap().is_some());
+    }
+
+    #[test]
+    fn rule_move_blocks_when_related_rule_is_not_visible_from_destination() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        run_git(&repo, &["init"]);
+
+        let source_workspace = repo.join("source");
+        let target_workspace = repo.join("target");
+        std::fs::create_dir_all(&source_workspace).unwrap();
+        std::fs::create_dir_all(&target_workspace).unwrap();
+
+        let mut source_store = RuleStore::init(&source_workspace).unwrap();
+        let _target_store = RuleStore::init(&target_workspace).unwrap();
+
+        let moving = crate::manifest::RuleManifest::new(
+            "sample/moving",
+            "Moving rule",
+            "agents",
+            "main",
+            "moving body",
+        );
+        let related = crate::manifest::RuleManifest::new(
+            "sample/related",
+            "Related rule",
+            "agents",
+            "main",
+            "related body",
+        );
+        let moving_id = source_store.create(&moving, None).unwrap();
+        let related_id = source_store.create(&related, None).unwrap();
+        source_store
+            .entity_store()
+            .add_edge(EdgeRecord {
+                from: moving_id,
+                to: related_id,
+                kind: "related".to_string(),
+                created_at: chrono::Utc::now(),
+            })
+            .unwrap();
+        source_store.scan(true).unwrap();
+
+        let plan = source_store
+            .plan_move_preflight(&moving_id, &target_workspace)
+            .unwrap();
+
+        assert!(
+            plan.blockers.iter().any(|blocker| matches!(
+                blocker,
+                MoveBlocker::InvisibleReference {
+                    related_entity_id,
+                    direction: MoveReferenceDirection::Outbound,
+                } if *related_entity_id == related_id
+            )),
+            "expected invisible outbound reference blocker: {:?}",
+            plan.blockers
+        );
     }
 }

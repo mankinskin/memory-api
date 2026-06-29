@@ -3,6 +3,7 @@ pub mod config;
 pub mod error;
 pub mod index;
 pub mod models;
+pub mod move_domain;
 pub mod store_index;
 pub mod summary;
 pub mod trials;

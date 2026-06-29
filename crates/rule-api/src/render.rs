@@ -12,8 +12,10 @@ pub const GENERATED_FILE_COMMENT: &str =
 const GENERATED_ENTRY_PREFIX: &str = "rule-api:entry";
 
 pub fn render_markdown_file(rules: &[RuleManifest]) -> String {
-    let config =
-        GeneratedMarkdownConfig::new(GENERATED_FILE_COMMENT, GENERATED_ENTRY_PREFIX);
+    let config = GeneratedMarkdownConfig::new(
+        GENERATED_FILE_COMMENT,
+        GENERATED_ENTRY_PREFIX,
+    );
     let snippets = rules
         .iter()
         .map(rule_to_generated_snippet)

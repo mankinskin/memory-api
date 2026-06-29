@@ -205,16 +205,13 @@ fn invalid_generated_artifact_path(
 }
 
 fn parse_generated_artifact_location(
-    artifact_path: &Path,
+    artifact_path: &Path
 ) -> Result<GeneratedSpecArtifactLocation, SpecError> {
     let file_name = artifact_path
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| {
-            invalid_generated_artifact_path(
-                artifact_path,
-                "missing file name",
-            )
+            invalid_generated_artifact_path(artifact_path, "missing file name")
         })?;
 
     if file_name == "body.md" {
@@ -237,8 +234,7 @@ fn parse_generated_artifact_location(
             )
         })?;
 
-        if specs_dir.file_name().and_then(|name| name.to_str())
-            != Some("specs")
+        if specs_dir.file_name().and_then(|name| name.to_str()) != Some("specs")
             || store_dir.file_name().and_then(|name| name.to_str())
                 != Some(SPEC_INDEX_DIR)
         {
@@ -285,10 +281,7 @@ fn parse_generated_artifact_location(
     }
 
     let spec_dir = sections_dir.parent().ok_or_else(|| {
-        invalid_generated_artifact_path(
-            artifact_path,
-            "missing spec directory",
-        )
+        invalid_generated_artifact_path(artifact_path, "missing spec directory")
     })?;
     let specs_dir = spec_dir.parent().ok_or_else(|| {
         invalid_generated_artifact_path(
@@ -304,8 +297,7 @@ fn parse_generated_artifact_location(
     })?;
 
     if !file_name.ends_with(".md")
-        || specs_dir.file_name().and_then(|name| name.to_str())
-            != Some("specs")
+        || specs_dir.file_name().and_then(|name| name.to_str()) != Some("specs")
         || store_dir.file_name().and_then(|name| name.to_str())
             != Some(SPEC_INDEX_DIR)
     {
@@ -401,11 +393,13 @@ impl SpecStore {
     pub fn open_or_init(index_root: &Path) -> Result<Self, SpecError> {
         match Self::open(index_root) {
             Ok(store) => Ok(store),
-            Err(SpecError::Storage(StorageError::WorkspaceNotFound { .. })) => {
+            Err(SpecError::Storage(StorageError::WorkspaceNotFound {
+                ..
+            })) => {
                 let mut store = Self::init(index_root)?;
                 store.scan(true)?;
                 Ok(store)
-            }
+            },
             Err(error) => Err(error),
         }
     }
@@ -534,12 +528,11 @@ impl SpecStore {
         self.inner.index.insert_ticket(&indexed)?;
         let search_content = build_search_content(manifest, body);
         let created_at_str = manifest.created_at.to_rfc3339();
-        let effort_str = entity.extra.get("effort")
-            .and_then(|v| match v {
-                serde_json::Value::String(s) => Some(s.clone()),
-                serde_json::Value::Number(n) => Some(n.to_string()),
-                _ => None,
-            });
+        let effort_str = entity.extra.get("effort").and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        });
         self.inner.search.upsert(
             &manifest.id,
             title.as_deref(),
@@ -646,16 +639,15 @@ impl SpecStore {
     }
 
     fn build_health_report(
-        specs: impl IntoIterator<Item = SpecManifest>,
+        specs: impl IntoIterator<Item = SpecManifest>
     ) -> SpecHealthReport {
         let specs = specs.into_iter().collect::<Vec<_>>();
         let issues = specs
             .iter()
             .flat_map(|spec| {
-                spec.health_issues().into_iter().map(|issue| SpecHealthFinding {
-                    id: spec.id,
-                    issue,
-                })
+                spec.health_issues()
+                    .into_iter()
+                    .map(|issue| SpecHealthFinding { id: spec.id, issue })
             })
             .collect();
 
@@ -734,8 +726,8 @@ impl SpecStore {
         let body = read_body(&indexed.path);
         let search_content = build_search_content(&spec, &body);
         let created_at_str = indexed.created_at.to_rfc3339();
-        let effort_str = updated_entity.extra.get("effort")
-            .and_then(|v| match v {
+        let effort_str =
+            updated_entity.extra.get("effort").and_then(|v| match v {
                 serde_json::Value::String(s) => Some(s.clone()),
                 serde_json::Value::Number(n) => Some(n.to_string()),
                 _ => None,
@@ -882,8 +874,9 @@ impl SpecStore {
 
         if normalized.is_empty() {
             if path.exists() {
-                fs::remove_file(&path)
-                    .map_err(|error| SpecError::Storage(StorageError::Io(error)))?;
+                fs::remove_file(&path).map_err(|error| {
+                    SpecError::Storage(StorageError::Io(error))
+                })?;
             }
             return Ok(());
         }

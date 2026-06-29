@@ -377,7 +377,9 @@ impl RawRenderTargetConfig {
         let mut targets = self
             .targets
             .into_iter()
-            .map(|target| target.into_render_target(config_path, schemas, defaults))
+            .map(|target| {
+                target.into_render_target(config_path, schemas, defaults)
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let root = PathBuf::new();
 
@@ -485,7 +487,14 @@ impl RenderTargetFolder {
     ) -> Result<(), TargetConfigError> {
         let prefix = parent.join(self.name);
 
-        push_tree_files(&prefix, self.files, config_path, schemas, defaults, targets)?;
+        push_tree_files(
+            &prefix,
+            self.files,
+            config_path,
+            schemas,
+            defaults,
+            targets,
+        )?;
         for folder in self.folders {
             folder.collect_targets(
                 &prefix,
@@ -566,7 +575,12 @@ fn push_tree_files(
     targets: &mut Vec<RenderTarget>,
 ) -> Result<(), TargetConfigError> {
     for file in files {
-        targets.push(file.into_render_target(parent, config_path, schemas, defaults)?);
+        targets.push(file.into_render_target(
+            parent,
+            config_path,
+            schemas,
+            defaults,
+        )?);
     }
 
     Ok(())
@@ -725,7 +739,7 @@ fn resolve_scope_fields(
 }
 
 fn parse_render_target_config(
-    path: &Path,
+    path: &Path
 ) -> Result<RawRenderTargetConfig, TargetConfigError> {
     let content =
         fs::read_to_string(path).map_err(|source| TargetConfigError::Io {
@@ -734,38 +748,34 @@ fn parse_render_target_config(
         })?;
 
     match path.extension().and_then(|extension| extension.to_str()) {
-        Some("yaml" | "yml") =>
-            serde_yaml::from_str::<RawRenderTargetConfig>(&content)
-                .map_err(|source| TargetConfigError::ParseYaml {
-                    path: path.to_path_buf(),
-                    source,
-                }),
-        _ => toml::from_str::<RawRenderTargetConfig>(&content)
-            .map_err(|source| TargetConfigError::ParseToml {
+        Some("yaml" | "yml") => serde_yaml::from_str::<RawRenderTargetConfig>(
+            &content,
+        )
+        .map_err(|source| TargetConfigError::ParseYaml {
+            path: path.to_path_buf(),
+            source,
+        }),
+        _ => toml::from_str::<RawRenderTargetConfig>(&content).map_err(
+            |source| TargetConfigError::ParseToml {
                 path: path.to_path_buf(),
                 source,
-            }),
+            },
+        ),
     }
 }
 
-fn is_supported_render_target_config(
-    path: &Path,
-) -> bool {
+fn is_supported_render_target_config(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|extension| extension.to_str()),
         Some("yaml" | "yml" | "toml")
     )
 }
 
-fn resolve_config_output_root(
-    config_path: &Path,
-) -> PathBuf {
+fn resolve_config_output_root(config_path: &Path) -> PathBuf {
     let config_dir = config_path.parent().unwrap_or_else(|| Path::new("."));
 
     for ancestor in config_dir.ancestors() {
-        if ancestor
-            .file_name()
-            .and_then(|name| name.to_str())
+        if ancestor.file_name().and_then(|name| name.to_str())
             == Some("rule-targets")
         {
             return ancestor
@@ -796,24 +806,23 @@ fn load_import_targets(
     import_path: &Path,
     ctx: &mut LoadCtx,
 ) -> Result<LoadedRenderTargets, TargetConfigError> {
-    let metadata = fs::metadata(import_path).map_err(|source| {
-        TargetConfigError::Io {
+    let metadata =
+        fs::metadata(import_path).map_err(|source| TargetConfigError::Io {
             path: import_path.to_path_buf(),
             source,
-        }
-    })?;
+        })?;
 
     if !metadata.is_dir() {
         return load_render_target_config_inner(import_path, ctx);
     }
 
     let mut fragment_paths = Vec::new();
-    for entry in fs::read_dir(import_path).map_err(|source| {
-        TargetConfigError::Io {
+    for entry in
+        fs::read_dir(import_path).map_err(|source| TargetConfigError::Io {
             path: import_path.to_path_buf(),
             source,
-        }
-    })? {
+        })?
+    {
         let entry = entry.map_err(|source| TargetConfigError::Io {
             path: import_path.to_path_buf(),
             source,
@@ -1049,10 +1058,7 @@ pub enum TargetConfigError {
     #[error(
         "render target config must be a file, not a directory: {path}. Did you mean {suggested}?"
     )]
-    DirectoryPathWithSuggestion {
-        path: PathBuf,
-        suggested: PathBuf,
-    },
+    DirectoryPathWithSuggestion { path: PathBuf, suggested: PathBuf },
     #[error("render target config must be a file, not a directory: {path}")]
     DirectoryPath { path: PathBuf },
     #[error("parse render target config {path} as TOML: {source}")]
@@ -1067,11 +1073,10 @@ pub enum TargetConfigError {
     },
     #[error("render target not found: {0}")]
     NotFound(String),
-    #[error("render target selector {selector} matches multiple targets: {matches}")]
-    AmbiguousSelector {
-        selector: String,
-        matches: String,
-    },
+    #[error(
+        "render target selector {selector} matches multiple targets: {matches}"
+    )]
+    AmbiguousSelector { selector: String, matches: String },
     #[error("duplicate render target name: {0}")]
     DuplicateName(String),
     #[error("duplicate render target schema name: {0}")]
@@ -1079,10 +1084,7 @@ pub enum TargetConfigError {
     #[error("render target config import cycle detected at {path}")]
     ImportCycle { path: PathBuf },
     #[error("render target {target} references unknown schema {schema}")]
-    UnknownSchema {
-        target: String,
-        schema: String,
-    },
+    UnknownSchema { target: String, schema: String },
     #[error(
         "render target {target} missing required {target_kind} README block {block} from schema {schema}"
     )]
@@ -1115,9 +1117,7 @@ pub enum TargetConfigError {
     MissingOutputPath { target: String },
 }
 
-fn directory_target_config_error(
-    path: &Path,
-) -> TargetConfigError {
+fn directory_target_config_error(path: &Path) -> TargetConfigError {
     if let Some(suggested) = suggested_render_target_config_path(path) {
         TargetConfigError::DirectoryPathWithSuggestion {
             path: path.to_path_buf(),
@@ -1130,9 +1130,7 @@ fn directory_target_config_error(
     }
 }
 
-fn suggested_render_target_config_path(
-    path: &Path,
-) -> Option<PathBuf> {
+fn suggested_render_target_config_path(path: &Path) -> Option<PathBuf> {
     let parent = path.parent()?;
     let stem = path.file_name()?.to_str()?;
 
@@ -1142,9 +1140,7 @@ fn suggested_render_target_config_path(
         .find(|candidate| candidate.is_file())
 }
 
-fn normalize_render_target_selector(
-    selector: &str,
-) -> String {
+fn normalize_render_target_selector(selector: &str) -> String {
     selector.replace('\\', "/")
 }
 
@@ -1197,12 +1193,11 @@ pub fn render_target_by_selector<'a>(
         .iter()
         .filter(|target| {
             normalize_render_target_selector(&target.output_path) == selector
-                ||
-            normalize_render_target_selector(
-                resolve_render_target_output(config_path, target)
-                    .to_string_lossy()
-                    .as_ref(),
-            ) == selector
+                || normalize_render_target_selector(
+                    resolve_render_target_output(config_path, target)
+                        .to_string_lossy()
+                        .as_ref(),
+                ) == selector
         })
         .collect::<Vec<_>>();
 
