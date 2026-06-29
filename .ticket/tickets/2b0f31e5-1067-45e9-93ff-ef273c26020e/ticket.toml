@@ -1,9 +1,10 @@
 id = "2b0f31e5-1067-45e9-93ff-ef273c26020e"
 created_at = "2026-06-28T12:41:30.525866900+00:00"
 title = "[test-api] Benchmark result model + Criterion ingest + latency budgets"
-state = "in-review"
+state = "done"
 component = "test-api"
 depends_on = ["124c6621-b39d-4009-b599-a3e5503d08f6"]
+effort = "~100k tokens"
 priority = "high"
 risk_level = "medium"
 type = "tracker-improvement"
