@@ -37,3 +37,9 @@ pub use model::index_entry::{
     IndexRelations,
     RelationKind,
 };
+pub use model::urn::{
+    URN_SCHEME,
+    Urn,
+    UrnError,
+    UrnResolver,
+};
