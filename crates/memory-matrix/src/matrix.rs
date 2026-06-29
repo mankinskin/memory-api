@@ -37,6 +37,9 @@ pub const OPERATIONS: &[&str] = &[
     "get", "search", "create", "update", "delete", "move", "scan",
 ];
 
+/// Transport axis exercised by the matrix.
+pub const TRANSPORTS: &[&str] = &["in-process", "cli", "mcp", "http"];
+
 /// Outcome of a single matrix cell that ran without an internal error.
 pub enum Cell {
     /// The operation ran and its correctness assertions held.
@@ -141,9 +144,18 @@ pub(crate) trait DomainOps {
 
 fn dispatch(
     ops: &dyn DomainOps,
+    transport: &str,
     operation: &str,
     ctx: &MatrixCtx,
 ) -> CellResult {
+    if transport != "in-process" {
+        return blocked(format!(
+            "transport `{transport}` for domain `{}` operation `{operation}` is not wired in the matrix harness yet; \
+             recorded as blocked-with-reason per real-transport rollout",
+            ops.domain()
+        ));
+    }
+
     match operation {
         "get" => ops.get(ctx),
         "search" => ops.search(ctx),
@@ -187,7 +199,7 @@ pub fn run_one(
 ) -> CellResult {
     for candidate in domains() {
         if candidate.domain() == domain {
-            return dispatch(&*candidate, operation, ctx);
+            return dispatch(&*candidate, "in-process", operation, ctx);
         }
     }
     Err(format!("unknown domain `{domain}`"))
@@ -211,6 +223,7 @@ fn domains() -> Vec<Box<dyn DomainOps>> {
 #[derive(Debug, Clone)]
 pub struct CellRecord {
     pub domain: String,
+    pub transport: String,
     pub operation: String,
     pub spec_id: String,
     pub execution_id: String,
@@ -247,13 +260,24 @@ pub fn run_matrix() -> Result<MatrixRun, FixtureError> {
     let test_store = TestStoreConfig::new(test_store_root.clone(), "default");
     let run_id = format!("matrix-{}", Utc::now().format("%Y%m%dT%H%M%SZ"));
 
+    // Keep run_one strict: only create paths initialize missing roots.
+    bootstrap_core_store_roots(&ctx);
+
     let mut records = Vec::new();
 
     for domain in domains() {
-        for &operation in OPERATIONS {
-            let record =
-                run_cell(&test_store, &*domain, operation, &ctx, &run_id);
-            records.push(record);
+        for &transport in TRANSPORTS {
+            for &operation in OPERATIONS {
+                let record = run_cell(
+                    &test_store,
+                    &*domain,
+                    transport,
+                    operation,
+                    &ctx,
+                    &run_id,
+                );
+                records.push(record);
+            }
         }
     }
 
@@ -264,42 +288,57 @@ pub fn run_matrix() -> Result<MatrixRun, FixtureError> {
     })
 }
 
+fn bootstrap_core_store_roots(ctx: &MatrixCtx) {
+    let _ = ticket_api::storage::TicketStore::open_or_init(
+        &ctx.store_root(".ticket"),
+    );
+    let _ = spec_api::SpecStore::open_or_init(&ctx.store_root(".spec"));
+    let _ = rule_api::RuleStore::open_or_init(&ctx.store_root(".rule"));
+}
+
 /// Record the per-cell validation spec, run the cell, time it, and record the
 /// execution. This is the fixed harness machinery - it never changes when a
 /// domain or operation is added.
 fn run_cell(
     test_store: &TestStoreConfig,
     domain: &dyn DomainOps,
+    transport: &str,
     operation: &str,
     ctx: &MatrixCtx,
     run_id: &str,
 ) -> CellRecord {
-    let spec_id = format!("vt-matrix-{}-{}", domain.domain(), operation);
+    let spec_id = format!(
+        "vt-matrix-{}-{}-{}",
+        domain.domain(),
+        transport,
+        operation
+    );
     let execution_id = format!("exec-{run_id}-{spec_id}");
 
     let mut spec = ValidationSpec::new(
         spec_id.clone(),
-        format!("matrix: {} {}", domain.domain(), operation),
+        format!("matrix: {} {} {}", domain.domain(), transport, operation),
     );
     spec.detail = Some(format!(
-        "Cross-domain operation matrix cell `{}.{}`",
+        "Cross-domain operation matrix cell `{}.{}@{}`",
         domain.domain(),
-        operation
+        operation,
+        transport
     ));
     spec.links.ticket_ids = vec![MATRIX_TICKET_ID.to_string()];
     spec.provenance = ValidationProvenance {
         source_path: Some(file!().to_string()),
-        test_id: Some(format!("{}.{}", domain.domain(), operation)),
+        test_id: Some(format!("{}.{}@{}", domain.domain(), operation, transport)),
         domain: Some(domain.domain().to_string()),
         operation: Some(operation.to_string()),
-        transport: Some("in-process".to_string()),
+        transport: Some(transport.to_string()),
         run_id: Some(run_id.to_string()),
     };
     // Best-effort: spec recording failure should not abort the whole matrix.
     let _ = test_store.record_spec(&spec);
 
     let started = Instant::now();
-    let result = dispatch(domain, operation, ctx);
+    let result = dispatch(domain, transport, operation, ctx);
     let duration_ms = started.elapsed().as_millis() as u64;
 
     let (outcome, detail) = match result {
@@ -323,16 +362,17 @@ fn run_cell(
     execution.links.ticket_ids = vec![MATRIX_TICKET_ID.to_string()];
     execution.provenance = ValidationProvenance {
         source_path: Some(file!().to_string()),
-        test_id: Some(format!("{}.{}", domain.domain(), operation)),
+        test_id: Some(format!("{}.{}@{}", domain.domain(), operation, transport)),
         domain: Some(domain.domain().to_string()),
         operation: Some(operation.to_string()),
-        transport: Some("in-process".to_string()),
+        transport: Some(transport.to_string()),
         run_id: Some(run_id.to_string()),
     };
     let _ = test_store.record_execution(&execution);
 
     CellRecord {
         domain: domain.domain().to_string(),
+        transport: transport.to_string(),
         operation: operation.to_string(),
         spec_id,
         execution_id,

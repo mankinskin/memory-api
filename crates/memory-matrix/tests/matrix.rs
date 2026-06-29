@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 
 use memory_matrix::{
     OPERATIONS,
+    TRANSPORTS,
     run_matrix,
 };
 use test_api::{
@@ -24,7 +25,7 @@ const DOMAINS: &[&str] = &[
 fn every_cell_records_an_execution_with_duration() {
     let run = run_matrix().expect("matrix should run against the fixture");
 
-    let expected_cells = DOMAINS.len() * OPERATIONS.len();
+    let expected_cells = DOMAINS.len() * TRANSPORTS.len() * OPERATIONS.len();
     assert_eq!(
         run.records.len(),
         expected_cells,
@@ -86,7 +87,11 @@ fn core_crud_domains_pass_get_search_crud_and_scan() {
             let record = run
                 .records
                 .iter()
-                .find(|r| r.domain == domain && r.operation == op)
+                .find(|r| {
+                    r.domain == domain
+                        && r.transport == "in-process"
+                        && r.operation == op
+                })
                 .unwrap_or_else(|| panic!("missing cell {domain}.{op}"));
             assert_eq!(
                 record.outcome,
@@ -103,19 +108,53 @@ fn move_cells_are_blocked_with_a_reason() {
     let run = run_matrix().expect("matrix should run against the fixture");
 
     for domain in DOMAINS {
-        let record = run
-            .records
-            .iter()
-            .find(|r| &r.domain == domain && r.operation == "move")
-            .unwrap_or_else(|| panic!("missing move cell for {domain}"));
+        for transport in TRANSPORTS {
+            let record = run
+                .records
+                .iter()
+                .find(|r| {
+                    &r.domain == domain
+                        && r.transport == *transport
+                        && r.operation == "move"
+                })
+                .unwrap_or_else(|| panic!("missing move cell for {domain}@{transport}"));
+            assert_eq!(
+                record.outcome,
+                ValidationOutcome::Blocked,
+                "{domain}.move@{transport} should be blocked until the move kernel lands"
+            );
+            assert!(
+                record.detail.to_lowercase().contains("move"),
+                "{domain}.move@{transport} reason should mention move: {}",
+                record.detail
+            );
+        }
+    }
+}
+
+#[test]
+fn non_in_process_transports_are_explicitly_blocked_with_reason() {
+    let run = run_matrix().expect("matrix should run against the fixture");
+
+    for record in &run.records {
+        if record.transport == "in-process" {
+            continue;
+        }
+
         assert_eq!(
             record.outcome,
             ValidationOutcome::Blocked,
-            "{domain}.move should be blocked until the move kernel lands"
+            "{}.{}@{} should be blocked until real transport wiring lands",
+            record.domain,
+            record.operation,
+            record.transport
         );
         assert!(
-            record.detail.to_lowercase().contains("move"),
-            "{domain}.move reason should mention move: {}",
+            record.detail.contains("transport"),
+            "{}.{}@{} should carry an explicit transport reason: {}",
+            record.domain,
+            record.operation,
+            record.transport,
             record.detail
         );
     }

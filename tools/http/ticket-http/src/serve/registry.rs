@@ -324,7 +324,7 @@ impl WorkspaceRegistry {
         }
 
         // Lazy open outside mutexes to avoid blocking unrelated requests.
-        let opened = match TicketStore::open_or_init(&path) {
+        let opened = match TicketStore::open(&path) {
             Ok(store) => Some(Arc::new(store)),
             Err(e) => {
                 tracing::warn!(workspace, error = %e, "failed to open workspace store");

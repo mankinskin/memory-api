@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { EventEmitter } from 'node:events';
 import * as vscode from 'vscode';
 
 jest.mock('node:child_process', () => {
@@ -7,6 +8,7 @@ jest.mock('node:child_process', () => {
   return {
     ...actual,
     execFile: jest.fn(),
+    spawn: jest.fn(),
   };
 });
 
@@ -26,15 +28,17 @@ import {
   parseListeningPorts,
   resolveActiveWorkspace,
   resolveServerLaunch,
+  startServerTask,
   resolveTicketsDir,
   type TicketViewerConfig,
 } from '../../src/extensionSupport';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 
 const mockFs = fs as jest.Mocked<typeof fs>;
 const mockWorkspace = vscode.workspace as any;
 const mockFetchWorkspaces = fetchWorkspaces as jest.MockedFunction<typeof fetchWorkspaces>;
 const mockExecFile = execFile as jest.MockedFunction<typeof execFile>;
+const mockSpawn = spawn as jest.MockedFunction<typeof spawn>;
 
 function makeConfig(overrides: Partial<TicketViewerConfig> = {}): TicketViewerConfig {
   return {
@@ -80,6 +84,7 @@ describe('resolveServerLaunch', () => {
   beforeEach(() => {
     mockFetchWorkspaces.mockReset();
     mockExecFile.mockReset();
+    mockSpawn.mockReset();
     mockFs.existsSync.mockReset();
     mockFs.statSync.mockReset();
     mockWorkspace.workspaceFolders = [
@@ -155,6 +160,66 @@ describe('resolveServerLaunch', () => {
     expect(resolved.cmd).toBe(debugBinary);
     expect(resolved.args).toEqual(['--index-root', ticketDir]);
     expect(resolved.cwd).toBe(workspaceRoot);
+  });
+
+  test('uses workspace-root cwd and omits --index-root when no .ticket workspace is detected', () => {
+    process.env.PATH = '';
+    mockFs.statSync.mockImplementation(candidate => {
+      const candidatePath = candidate.toString();
+      if (candidatePath === ticketDir) {
+        throw new Error(`ENOENT: ${candidatePath}`);
+      }
+      throw new Error(`ENOENT: ${candidatePath}`);
+    });
+    mockFs.existsSync.mockReturnValue(false);
+
+    const resolved = resolveServerLaunch(makeConfig());
+
+    expect(resolved.args).toEqual([]);
+    expect(resolved.cwd).toBe(workspaceRoot);
+    expect(resolved.args).not.toContain('--index-root');
+    expect(mockFs.statSync).toHaveBeenCalledWith(ticketDir);
+
+    const inspectedPaths = mockFs.statSync.mock.calls.map(call => call[0].toString());
+    expect(inspectedPaths.some(p => p.endsWith(`${path.sep}.spec`))).toBe(false);
+    expect(inspectedPaths.some(p => p.endsWith(`${path.sep}.rule`))).toBe(false);
+  });
+
+  test('startServerTask reports controlled startup failure without --index-root when no .ticket is detected', async () => {
+    process.env.PATH = '';
+    mockFs.statSync.mockImplementation(candidate => {
+      const candidatePath = candidate.toString();
+      throw new Error(`ENOENT: ${candidatePath}`);
+    });
+    mockFs.existsSync.mockReturnValue(false);
+
+    const proc = new EventEmitter() as any;
+    proc.stdout = new EventEmitter();
+    proc.stderr = new EventEmitter();
+    proc.killed = false;
+    mockSpawn.mockImplementation((() => proc) as unknown as typeof spawn);
+
+    const setTimeoutSpy = jest
+      .spyOn(global, 'setTimeout')
+      .mockImplementation((() => 0) as unknown as typeof setTimeout);
+
+    const outputChannel = {
+      appendLine: jest.fn(),
+      append: jest.fn(),
+    } as unknown as vscode.OutputChannel;
+
+    const startup = startServerTask(outputChannel, makeConfig());
+    proc.emit('error', new Error('spawn ENOENT'));
+    await expect(startup).rejects.toThrow('spawn ENOENT');
+
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    expect(spawnArgs).toEqual(expect.arrayContaining(['--port', '0']));
+    expect(spawnArgs).not.toContain('--index-root');
+    expect(outputChannel.appendLine).toHaveBeenCalledWith(
+      `[ticket-viewer] Working directory: ${workspaceRoot}`,
+    );
+
+    setTimeoutSpy.mockRestore();
   });
 
   test('prefers the label-matched canonical workspace id over the first server workspace', async () => {

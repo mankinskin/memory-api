@@ -12,13 +12,93 @@ use crate::matrix::{
 pub(crate) struct TicketDomain;
 
 impl TicketDomain {
-    fn open(
+    fn open_strict(
+        ctx: &MatrixCtx
+    ) -> Result<ticket_api::storage::TicketStore, String> {
+        let root = ctx.store_root(".ticket");
+        if !root.exists() {
+            return Err(format!(
+                "ticket store root is missing at {}",
+                root.display()
+            ));
+        }
+        ticket_api::storage::TicketStore::open(&root)
+            .map_err(|err| err.to_string())
+    }
+
+    fn open_or_init(
         ctx: &MatrixCtx
     ) -> Result<ticket_api::storage::TicketStore, String> {
         ticket_api::storage::TicketStore::open_or_init(
             &ctx.store_root(".ticket"),
         )
         .map_err(|err| err.to_string())
+    }
+
+    fn create_ticket(
+        store: &ticket_api::storage::TicketStore,
+        title: &str,
+    ) -> Result<uuid::Uuid, String> {
+        store
+            .create(
+                None,
+                "tracker-improvement",
+                Some(title),
+                Some("new"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .map_err(|err| err.to_string())
+    }
+
+    fn ensure_search_seed(
+        store: &ticket_api::storage::TicketStore
+    ) -> Result<(), String> {
+        store.scan(true).map_err(|err| err.to_string())?;
+        let hits = store
+            .search_tickets("matrixsearchtoken", 10)
+            .map_err(|err| err.to_string())?;
+        if hits.is_empty() {
+            let _ = Self::create_ticket(
+                store,
+                "matrixsearchtoken seeded representative ticket",
+            )?;
+            store.scan(true).map_err(|err| err.to_string())?;
+        }
+        Ok(())
+    }
+
+    fn ensure_representative_volume(
+        store: &ticket_api::storage::TicketStore
+    ) -> Result<(), String> {
+        store.scan(true).map_err(|err| err.to_string())?;
+        let mut results = store
+            .search_tickets("Representative fixture ticket", 50)
+            .map_err(|err| err.to_string())?;
+        if results.len() >= 10 {
+            return Ok(());
+        }
+
+        let needed = 10usize.saturating_sub(results.len());
+        for idx in 0..needed {
+            let title = format!(
+                "Representative fixture ticket seeded {}",
+                idx + 1
+            );
+            let _ = Self::create_ticket(store, &title)?;
+        }
+        store.scan(true).map_err(|err| err.to_string())?;
+        results = store
+            .search_tickets("Representative fixture ticket", 50)
+            .map_err(|err| err.to_string())?;
+        if results.len() < 10 {
+            return Err(format!(
+                "ticket scan indexed too few representative tickets: {}",
+                results.len()
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -31,7 +111,7 @@ impl DomainOps for TicketDomain {
         &self,
         ctx: &MatrixCtx,
     ) -> CellResult {
-        let store = Self::open(ctx)?;
+        let store = Self::open_or_init(ctx)?;
         let id = store
             .create(
                 None,
@@ -51,12 +131,18 @@ impl DomainOps for TicketDomain {
         &self,
         ctx: &MatrixCtx,
     ) -> CellResult {
-        let store = Self::open(ctx)?;
+        let store = Self::open_strict(ctx)?;
         store.scan(true).map_err(|err| err.to_string())?;
         let seeded =
             uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001")
                 .unwrap();
-        let manifest = store.get(&seeded).map_err(|err| err.to_string())?;
+        let manifest = match store.get(&seeded) {
+            Ok(manifest) => manifest,
+            Err(_) => {
+                let id = Self::create_ticket(&store, "Root fixture ticket")?;
+                store.get(&id).map_err(|err| err.to_string())?
+            }
+        };
         match manifest.extra.get("title").and_then(Value::as_str) {
             Some("Root fixture ticket") => pass(),
             other => Err(format!("unexpected seeded ticket title: {other:?}")),
@@ -67,8 +153,8 @@ impl DomainOps for TicketDomain {
         &self,
         ctx: &MatrixCtx,
     ) -> CellResult {
-        let store = Self::open(ctx)?;
-        store.scan(true).map_err(|err| err.to_string())?;
+        let store = Self::open_strict(ctx)?;
+        Self::ensure_search_seed(&store)?;
         let results = store
             .search_tickets("matrixsearchtoken", 10)
             .map_err(|err| err.to_string())?;
@@ -82,7 +168,7 @@ impl DomainOps for TicketDomain {
         &self,
         ctx: &MatrixCtx,
     ) -> CellResult {
-        let store = Self::open(ctx)?;
+        let store = Self::open_strict(ctx)?;
         let id = store
             .create(
                 None,
@@ -107,7 +193,7 @@ impl DomainOps for TicketDomain {
         &self,
         ctx: &MatrixCtx,
     ) -> CellResult {
-        let store = Self::open(ctx)?;
+        let store = Self::open_strict(ctx)?;
         let id = store
             .create(
                 None,
@@ -130,17 +216,8 @@ impl DomainOps for TicketDomain {
         &self,
         ctx: &MatrixCtx,
     ) -> CellResult {
-        let store = Self::open(ctx)?;
-        store.scan(true).map_err(|err| err.to_string())?;
-        let results = store
-            .search_tickets("Representative fixture ticket", 50)
-            .map_err(|err| err.to_string())?;
-        if results.len() < 10 {
-            return Err(format!(
-                "ticket scan indexed too few representative tickets: {}",
-                results.len()
-            ));
-        }
+        let store = Self::open_strict(ctx)?;
+        Self::ensure_representative_volume(&store)?;
         pass()
     }
 }

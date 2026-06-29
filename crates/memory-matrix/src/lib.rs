@@ -16,6 +16,7 @@ pub use matrix::{
     MatrixCtx,
     MatrixRun,
     OPERATIONS,
+    TRANSPORTS,
     bench_id,
     cells,
     run_matrix,
