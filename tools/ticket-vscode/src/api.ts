@@ -55,6 +55,28 @@ export class ApiRequestError extends Error {
   }
 }
 
+const API_FETCH_TIMEOUT_MS = 20_000;
+const API_FETCH_MAX_ATTEMPTS = 2;
+
+function isAbortLikeError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const candidate = error as { name?: unknown; message?: unknown };
+  const name = typeof candidate.name === 'string' ? candidate.name : '';
+  if (name === 'AbortError' || name === 'TimeoutError') {
+    return true;
+  }
+
+  const message = typeof candidate.message === 'string' ? candidate.message.toLowerCase() : '';
+  return message.includes('aborted') || message.includes('timeout');
+}
+
+function isRetryableFetchError(error: unknown): boolean {
+  return isAbortLikeError(error) || error instanceof TypeError;
+}
+
 function buildRequestError(
   context: ApiRequestContext,
   url: string,
@@ -75,23 +97,33 @@ function buildRequestError(
 }
 
 async function apiFetch<T>(url: string, context: ApiRequestContext): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 6000);
-  try {
-    const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) {
-      const body = await res.text().catch(() => res.statusText);
-      throw buildRequestError(context, url, res.status, body);
+  for (let attempt = 1; attempt <= API_FETCH_MAX_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutMs = API_FETCH_TIMEOUT_MS * attempt;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) {
+        const body = await res.text().catch(() => res.statusText);
+        throw buildRequestError(context, url, res.status, body);
+      }
+      return res.json() as Promise<T>;
+    } catch (err) {
+      if (err instanceof ApiRequestError) {
+        throw err;
+      }
+
+      const canRetry = attempt < API_FETCH_MAX_ATTEMPTS && isRetryableFetchError(err);
+      if (!canRetry) {
+        throw buildRequestError(context, url, undefined, undefined, err);
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
-    return res.json() as Promise<T>;
-  } catch (err) {
-    if (err instanceof ApiRequestError) {
-      throw err;
-    }
-    throw buildRequestError(context, url, undefined, undefined, err);
-  } finally {
-    clearTimeout(timeoutId);
   }
+
+  throw buildRequestError(context, url, undefined, undefined, new Error('request retry attempts exhausted'));
 }
 
 export async function fetchWorkspaces(baseUrl: string): Promise<WorkspacesResponse> {
