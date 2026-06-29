@@ -486,4 +486,125 @@ mod tests {
         assert!(src.get_indexed(&id).unwrap().is_none());
         assert!(dst.get_indexed(&id).unwrap().is_some());
     }
+
+    #[test]
+    fn resume_move_with_journal_recovers_after_injected_file_move_failure() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        run_git(&repo, &["init"]);
+
+        let source_workspace = repo.join("source");
+        let target_workspace = repo.join("target");
+        std::fs::create_dir_all(&source_workspace).unwrap();
+        std::fs::create_dir_all(&target_workspace).unwrap();
+
+        let source_store = TicketStore::init(&source_workspace).unwrap();
+        let _target_store = TicketStore::init(&target_workspace).unwrap();
+
+        let id = source_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("move me"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let mut plan = source_store
+            .plan_move_preflight(&id, &target_workspace)
+            .unwrap();
+        plan.blockers.retain(|blocker| {
+            !matches!(
+                blocker,
+                MovePreflightBlocker::PathReferenceScanUnavailable { .. }
+                    | MovePreflightBlocker::DirtyTrackedFiles { .. }
+            )
+        });
+
+        let executed = source_store.execute_move_with_journal(&plan).unwrap();
+        let journal_id = Uuid::new_v4();
+        let mut journal = executed.journal.clone();
+        journal.id = journal_id;
+        journal.phase = MoveExecutionPhase::Moved;
+        journal.failure = Some("injected failure after file movement".to_string());
+        journal.next_recovery_step = Some("resume or rollback".to_string());
+        journal.updated_at = Utc::now();
+        journal
+            .steps
+            .push("injected failure after file move".to_string());
+        move_kernel::persist_journal(&plan.source_store_root, &journal).unwrap();
+
+        let outcome = source_store.resume_move_with_journal(journal_id).unwrap();
+        assert!(outcome.resumed);
+        assert_eq!(outcome.journal.phase, MoveExecutionPhase::Validated);
+
+        let src = TicketStore::open(&source_workspace).unwrap();
+        let dst = TicketStore::open(&target_workspace).unwrap();
+        assert!(src.get_indexed(&id).unwrap().is_none());
+        assert!(dst.get_indexed(&id).unwrap().is_some());
+    }
+
+    #[test]
+    fn rollback_move_with_journal_recovers_after_injected_file_move_failure() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        run_git(&repo, &["init"]);
+
+        let source_workspace = repo.join("source");
+        let target_workspace = repo.join("target");
+        std::fs::create_dir_all(&source_workspace).unwrap();
+        std::fs::create_dir_all(&target_workspace).unwrap();
+
+        let source_store = TicketStore::init(&source_workspace).unwrap();
+        let _target_store = TicketStore::init(&target_workspace).unwrap();
+
+        let id = source_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("move me"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let mut plan = source_store
+            .plan_move_preflight(&id, &target_workspace)
+            .unwrap();
+        plan.blockers.retain(|blocker| {
+            !matches!(
+                blocker,
+                MovePreflightBlocker::PathReferenceScanUnavailable { .. }
+                    | MovePreflightBlocker::DirtyTrackedFiles { .. }
+            )
+        });
+
+        let executed = source_store.execute_move_with_journal(&plan).unwrap();
+        let journal_id = Uuid::new_v4();
+        let mut journal = executed.journal.clone();
+        journal.id = journal_id;
+        journal.phase = MoveExecutionPhase::Moved;
+        journal.failure = Some("injected failure after file movement".to_string());
+        journal.next_recovery_step = Some("resume or rollback".to_string());
+        journal.updated_at = Utc::now();
+        journal
+            .steps
+            .push("injected failure after file move".to_string());
+        move_kernel::persist_journal(&plan.source_store_root, &journal).unwrap();
+
+        let outcome = source_store.rollback_move_with_journal(journal_id).unwrap();
+        assert!(outcome.rolled_back);
+
+        let src = TicketStore::open(&source_workspace).unwrap();
+        let dst = TicketStore::open(&target_workspace).unwrap();
+        assert!(src.get_indexed(&id).unwrap().is_some());
+        assert!(dst.get_indexed(&id).unwrap().is_none());
+    }
 }
