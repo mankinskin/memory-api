@@ -3,7 +3,7 @@
   "benchmark_name": "spec__get",
   "operation": "get",
   "domain": "spec",
-  "executed_at": "2026-06-28T23:10:43.635458700Z",
+  "executed_at": "2026-06-29T01:07:48.581443900Z",
   "mean_ns": 313612850,
   "median_ns": 308453800,
   "std_dev_ns": 34329047,

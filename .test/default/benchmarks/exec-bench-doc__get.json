@@ -3,7 +3,7 @@
   "benchmark_name": "doc__get",
   "operation": "get",
   "domain": "doc",
-  "executed_at": "2026-06-28T23:10:43.635458700Z",
+  "executed_at": "2026-06-29T01:07:48.581443900Z",
   "mean_ns": 2772820,
   "median_ns": 2717850,
   "std_dev_ns": 274390,

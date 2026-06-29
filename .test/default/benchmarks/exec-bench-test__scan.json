@@ -3,7 +3,7 @@
   "benchmark_name": "test__scan",
   "operation": "scan",
   "domain": "test",
-  "executed_at": "2026-06-28T23:10:43.635458700Z",
+  "executed_at": "2026-06-29T01:07:48.581443900Z",
   "mean_ns": 2739845,
   "median_ns": 2691250,
   "std_dev_ns": 322132,

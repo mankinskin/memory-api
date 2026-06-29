@@ -3,7 +3,7 @@
   "benchmark_name": "log__delete",
   "operation": "delete",
   "domain": "log",
-  "executed_at": "2026-06-28T23:10:43.635458700Z",
+  "executed_at": "2026-06-29T01:07:48.581443900Z",
   "mean_ns": 2404767,
   "median_ns": 2376800,
   "std_dev_ns": 148101,

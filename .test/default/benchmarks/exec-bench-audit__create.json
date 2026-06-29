@@ -3,7 +3,7 @@
   "benchmark_name": "audit__create",
   "operation": "create",
   "domain": "audit",
-  "executed_at": "2026-06-28T23:10:43.635458700Z",
+  "executed_at": "2026-06-29T01:07:48.581443900Z",
   "mean_ns": 3011375,
   "median_ns": 3028400,
   "std_dev_ns": 222219,

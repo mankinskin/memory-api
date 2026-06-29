@@ -3,7 +3,7 @@
   "benchmark_name": "rule__scan",
   "operation": "scan",
   "domain": "rule",
-  "executed_at": "2026-06-28T23:10:43.635458700Z",
+  "executed_at": "2026-06-29T01:07:48.581443900Z",
   "mean_ns": 67008170,
   "median_ns": 66401300,
   "std_dev_ns": 1719649,

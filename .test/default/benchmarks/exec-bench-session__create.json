@@ -3,7 +3,7 @@
   "benchmark_name": "session__create",
   "operation": "create",
   "domain": "session",
-  "executed_at": "2026-06-28T23:10:43.635458700Z",
+  "executed_at": "2026-06-29T01:07:48.581443900Z",
   "mean_ns": 7502355,
   "median_ns": 7411150,
   "std_dev_ns": 450652,

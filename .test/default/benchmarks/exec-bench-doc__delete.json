@@ -3,7 +3,7 @@
   "benchmark_name": "doc__delete",
   "operation": "delete",
   "domain": "doc",
-  "executed_at": "2026-06-28T23:10:43.635458700Z",
+  "executed_at": "2026-06-29T01:07:48.581443900Z",
   "mean_ns": 2468257,
   "median_ns": 2435183,
   "std_dev_ns": 132329,

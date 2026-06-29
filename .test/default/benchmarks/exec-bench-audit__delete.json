@@ -3,7 +3,7 @@
   "benchmark_name": "audit__delete",
   "operation": "delete",
   "domain": "audit",
-  "executed_at": "2026-06-28T23:10:43.635458700Z",
+  "executed_at": "2026-06-29T01:07:48.581443900Z",
   "mean_ns": 3419145,
   "median_ns": 3315075,
   "std_dev_ns": 639617,

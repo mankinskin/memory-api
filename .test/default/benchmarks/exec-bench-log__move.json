@@ -3,7 +3,7 @@
   "benchmark_name": "log__move",
   "operation": "move",
   "domain": "log",
-  "executed_at": "2026-06-28T23:10:43.635458700Z",
+  "executed_at": "2026-06-29T01:07:48.581443900Z",
   "mean_ns": 2357810,
   "median_ns": 2330000,
   "std_dev_ns": 82028,

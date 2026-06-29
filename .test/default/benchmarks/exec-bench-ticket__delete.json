@@ -3,7 +3,7 @@
   "benchmark_name": "ticket__delete",
   "operation": "delete",
   "domain": "ticket",
-  "executed_at": "2026-06-28T23:10:43.635458700Z",
+  "executed_at": "2026-06-29T01:07:48.581443900Z",
   "mean_ns": 427953450,
   "median_ns": 425261500,
   "std_dev_ns": 77996381,

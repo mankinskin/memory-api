@@ -3,7 +3,7 @@
   "benchmark_name": "spec__create",
   "operation": "create",
   "domain": "spec",
-  "executed_at": "2026-06-28T23:10:43.635458700Z",
+  "executed_at": "2026-06-29T01:07:48.581443900Z",
   "mean_ns": 154703560,
   "median_ns": 155548200,
   "std_dev_ns": 3382851,
