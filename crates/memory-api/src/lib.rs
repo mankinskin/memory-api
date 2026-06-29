@@ -1,4 +1,5 @@
 pub mod error;
+pub mod discovery;
 pub mod generated_markdown;
 pub mod index_generator;
 pub mod model;
@@ -42,4 +43,14 @@ pub use model::urn::{
     Urn,
     UrnError,
     UrnResolver,
+};
+pub use discovery::{
+    DiscoveredStore,
+    IntegrationStatus,
+    ReconcileSummary,
+    STORE_MARKERS,
+    StoreReport,
+    discover_stores,
+    reconcile_stores,
+    summarize,
 };
