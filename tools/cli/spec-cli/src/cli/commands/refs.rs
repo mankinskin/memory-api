@@ -88,9 +88,33 @@ pub(crate) fn cmd_refs(
 }
 
 fn render_workspace_root_for_payload(path: &std::path::Path) -> String {
-    memory_api::workspace::strip_verbatim_prefix(path)
+    let raw = memory_api::workspace::strip_verbatim_prefix(path)
         .to_string_lossy()
-        .replace('\\', "/")
+        .replace('\\', "/");
+    let collapsed = collapse_separator_runs(&raw);
+    collapsed
+        .strip_prefix("/?/")
+        .unwrap_or(&collapsed)
+        .to_string()
+}
+
+fn collapse_separator_runs(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut prev_was_slash = false;
+
+    for ch in value.chars() {
+        if ch == '/' {
+            if !prev_was_slash {
+                out.push(ch);
+            }
+            prev_was_slash = true;
+        } else {
+            out.push(ch);
+            prev_was_slash = false;
+        }
+    }
+
+    out
 }
 
 fn inferred_workspace_root_for_spec(
