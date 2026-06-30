@@ -1,10 +1,12 @@
 id = "21e6c015-55c6-4807-8d55-16193ed687ed"
 created_at = "2026-06-28T00:10:48.332856+00:00"
 title = "[memory-api] Support cross-git-worktree (submodule) entity moves"
-state = "in-review"
+state = "done"
 component = "memory-api"
 depends_on = ["505b2cd4-f21d-4e8d-8e6a-ae06a5b69854"]
 linked = ["026b2eb6-17c6-4d02-b46b-79758f1237a1"]
 priority = "high"
 risk_level = "high"
 type = "tracker-improvement"
+validation_status = "passed"
+validation_summary = "Contract decision: sequential cross-worktree moves fail-close on DirtyTrackedFiles from prior move rewrites unless the prior move is committed or rolled back. Added focused ticket-api tests covering execute/resume/rollback behavior: sequential_move_requires_commit_or_rollback_between_executes; sequential_move_after_resumed_execution_is_blocked_until_clean; rollback_clears_rewrites_and_unblocks_next_sequential_move. Validation: rtk cargo test -p ticket-api sequential_move_requires_commit_or_rollback_between_executes -- --nocapture; rtk cargo test -p ticket-api sequential_move_after_resumed_execution_is_blocked_until_clean -- --nocapture; rtk cargo test -p ticket-api rollback_clears_rewrites_and_unblocks_next_sequential_move -- --nocapture."

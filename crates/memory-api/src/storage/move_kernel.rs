@@ -484,6 +484,9 @@ pub fn plan_move<D: MoveDomain + ?Sized>(
     };
 
     if !path_reference_files.is_empty() {
+        // Contract decision: fail-closed on any dirty tracked reference file,
+        // including files dirtied by a prior move's own rewrites. Callers must
+        // commit or rollback between sequential moves to keep provenance clear.
         let dirty_files =
             git_dirty_tracked_files(&path_reference_files, &source_git_root, &target_git_root)
                 .unwrap_or_else(|reason| {

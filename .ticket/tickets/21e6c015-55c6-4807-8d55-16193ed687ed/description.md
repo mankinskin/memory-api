@@ -50,4 +50,12 @@ Concrete failing case observed: moving trackers `2b1279bd` / `671d4e47` from the
 
 - Extends `505b2cd4` ([ticket-api] Deliver safe cross-workspace ticket move for git-backed stores) — adds the cross-worktree topology the v1 contract deliberately excluded.
 - Feeds the generic entity move scheme `0a510279` ([memory-api] Generalize cross-workspace move into a domain-neutral kernel with per-domain trait specialization): the generic kernel must expose cross-worktree support through the same trait specialization points, so this capability is part of the generic featureset rather than a ticket-only extension.
-- E2E + benchmark coverage tracked by `026b2eb6` ([memory-api] E2E test workspace fixture repository) — the multi-submodule fixture would have caught the `\\?\` regression.
+- E2E + benchmark coverage tracked by `026b2eb6` ([memory-api] E2E test workspace fixture repository — multi-store, multi-submodule) — the multi-submodule fixture would have caught the `\\?\` regression.
+
+## Session handoff findings — 2026-06-30
+
+- A focused retest attempt for the explicit workspace-root child-ticket path is currently blocked before the target test runs.
+- Command attempted from the `memory-api` workspace root: `cargo test -p ticket-cli dispatch_list_reads_child_ticket_from_explicit_workspace_root`.
+- Cargo compiled `ticket-http` through the `ticket-cli` dependency graph and failed in `memory-api/tools/http/ticket-http/src/middleware.rs` with `error[E0463]: can't find crate for axum`.
+- That means the next session should first restore the `ticket-http` dependency resolution or otherwise isolate the `ticket-cli` slice before using this regression as evidence.
+- After that compile blocker is cleared, re-run the focused child-ticket/root-targeting regression and then decide whether the remaining sequential-move dirty-reference gap belongs in this ticket or a follow-on contract ticket.

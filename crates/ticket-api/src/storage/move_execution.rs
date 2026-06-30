@@ -76,6 +76,17 @@ mod tests {
         assert!(status.success(), "git {args:?} failed: {status}");
     }
 
+    fn git_commit_path(
+        repo_root: &std::path::Path,
+        pathspec: &str,
+        message: &str,
+    ) {
+        run_git(repo_root, &["config", "user.name", "Move Test"]);
+        run_git(repo_root, &["config", "user.email", "move-test@example.com"]);
+        run_git(repo_root, &["add", "--", pathspec]);
+        run_git(repo_root, &["commit", "-m", message]);
+    }
+
     #[test]
     fn execute_move_with_journal_moves_ticket_between_stores() {
         let temp = tempdir().unwrap();
@@ -606,5 +617,292 @@ mod tests {
         let dst = TicketStore::open(&target_workspace).unwrap();
         assert!(src.get_indexed(&id).unwrap().is_some());
         assert!(dst.get_indexed(&id).unwrap().is_none());
+    }
+
+    #[test]
+    fn sequential_move_requires_commit_or_rollback_between_executes() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let nested_repo = repo.join("nested-repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&nested_repo).unwrap();
+        run_git(&repo, &["init"]);
+        run_git(&nested_repo, &["init"]);
+
+        let source_store = TicketStore::init(&repo).unwrap();
+        let _target_store = TicketStore::init(&nested_repo).unwrap();
+
+        let first = source_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("first move"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+        let second = source_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("second move"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let mut first_plan = source_store.plan_move_preflight(&first, &nested_repo).unwrap();
+        let second_plan = source_store.plan_move_preflight(&second, &nested_repo).unwrap();
+
+        let first_source_rel = first_plan
+            .source_entity_path
+            .strip_prefix(&repo)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let second_source_rel = second_plan
+            .source_entity_path
+            .strip_prefix(&repo)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        let doc_path = repo.join("docs").join("shared-spec.md");
+        std::fs::create_dir_all(doc_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &doc_path,
+            format!(
+                "first reference: {}\nsecond reference: {}\n",
+                first_source_rel, second_source_rel
+            ),
+        )
+        .unwrap();
+        git_commit_path(&repo, "docs/shared-spec.md", "seed shared refs");
+
+        first_plan = source_store.plan_move_preflight(&first, &nested_repo).unwrap();
+        first_plan.blockers.retain(|blocker| {
+            !matches!(
+                blocker,
+                MovePreflightBlocker::PathReferenceScanUnavailable { .. }
+                    | MovePreflightBlocker::DirtyTrackedFiles { .. }
+            )
+        });
+
+        let _first_outcome = source_store.execute_move_with_journal(&first_plan).unwrap();
+
+        let second_after_first = source_store.plan_move_preflight(&second, &nested_repo).unwrap();
+        assert!(second_after_first.blockers.iter().any(|blocker| matches!(
+            blocker,
+            MovePreflightBlocker::DirtyTrackedFiles { files }
+            if files.iter().any(|file| file.ends_with("docs/shared-spec.md"))
+        )));
+    }
+
+    #[test]
+    fn sequential_move_after_resumed_execution_is_blocked_until_clean() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let nested_repo = repo.join("nested-repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&nested_repo).unwrap();
+        run_git(&repo, &["init"]);
+        run_git(&nested_repo, &["init"]);
+
+        let source_store = TicketStore::init(&repo).unwrap();
+        let _target_store = TicketStore::init(&nested_repo).unwrap();
+
+        let first = source_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("first move"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+        let second = source_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("second move"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let mut first_plan = source_store.plan_move_preflight(&first, &nested_repo).unwrap();
+        let second_plan = source_store.plan_move_preflight(&second, &nested_repo).unwrap();
+
+        let first_source_rel = first_plan
+            .source_entity_path
+            .strip_prefix(&repo)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let second_source_rel = second_plan
+            .source_entity_path
+            .strip_prefix(&repo)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        let doc_path = repo.join("docs").join("shared-spec-resume.md");
+        std::fs::create_dir_all(doc_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &doc_path,
+            format!(
+                "first reference: {}\nsecond reference: {}\n",
+                first_source_rel, second_source_rel
+            ),
+        )
+        .unwrap();
+        git_commit_path(
+            &repo,
+            "docs/shared-spec-resume.md",
+            "seed shared refs for resume",
+        );
+
+        first_plan = source_store.plan_move_preflight(&first, &nested_repo).unwrap();
+        first_plan.blockers.retain(|blocker| {
+            !matches!(
+                blocker,
+                MovePreflightBlocker::PathReferenceScanUnavailable { .. }
+                    | MovePreflightBlocker::DirtyTrackedFiles { .. }
+            )
+        });
+
+        let journal_id = Uuid::new_v4();
+        let journal = MoveJournal {
+            id: journal_id,
+            entity_id: first,
+            source_store_root: first_plan.source_store_root.clone(),
+            target_store_root: first_plan.target_store_root.clone(),
+            source_entity_path: first_plan.source_entity_path.clone(),
+            destination_entity_path: first_plan.destination_entity_path.clone(),
+            phase: MoveExecutionPhase::Locked,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            steps: vec!["created move journal".to_string()],
+            rollback_steps: vec!["rename destination entity folder back to source path".to_string()],
+            lock_paths: move_kernel::collect_lock_paths(
+                first,
+                &first_plan.source_store_root,
+                &first_plan.target_store_root,
+            ),
+            migrated_board_entries: Vec::new(),
+            rewritten_path_files: Vec::new(),
+            manual_followups: Vec::new(),
+            failure: None,
+            next_recovery_step: None,
+        };
+        move_kernel::persist_journal(&first_plan.source_store_root, &journal).unwrap();
+
+        let resumed = source_store.resume_move_with_journal(journal_id).unwrap();
+        assert!(resumed.resumed);
+        assert_eq!(resumed.journal.phase, MoveExecutionPhase::Validated);
+
+        let second_after_resume = source_store.plan_move_preflight(&second, &nested_repo).unwrap();
+        assert!(second_after_resume.blockers.iter().any(|blocker| matches!(
+            blocker,
+            MovePreflightBlocker::DirtyTrackedFiles { files }
+            if files.iter().any(|file| file.ends_with("docs/shared-spec-resume.md"))
+        )));
+    }
+
+    #[test]
+    fn rollback_clears_rewrites_and_unblocks_next_sequential_move() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let nested_repo = repo.join("nested-repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&nested_repo).unwrap();
+        run_git(&repo, &["init"]);
+        run_git(&nested_repo, &["init"]);
+
+        let source_store = TicketStore::init(&repo).unwrap();
+        let _target_store = TicketStore::init(&nested_repo).unwrap();
+
+        let first = source_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("first move"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+        let second = source_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("second move"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let mut first_plan = source_store.plan_move_preflight(&first, &nested_repo).unwrap();
+        let second_plan = source_store.plan_move_preflight(&second, &nested_repo).unwrap();
+
+        let first_source_rel = first_plan
+            .source_entity_path
+            .strip_prefix(&repo)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let second_source_rel = second_plan
+            .source_entity_path
+            .strip_prefix(&repo)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        let doc_path = repo.join("docs").join("shared-spec-rollback.md");
+        std::fs::create_dir_all(doc_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &doc_path,
+            format!(
+                "first reference: {}\nsecond reference: {}\n",
+                first_source_rel, second_source_rel
+            ),
+        )
+        .unwrap();
+        git_commit_path(
+            &repo,
+            "docs/shared-spec-rollback.md",
+            "seed shared refs for rollback",
+        );
+
+        first_plan = source_store.plan_move_preflight(&first, &nested_repo).unwrap();
+        first_plan.blockers.retain(|blocker| {
+            !matches!(
+                blocker,
+                MovePreflightBlocker::PathReferenceScanUnavailable { .. }
+                    | MovePreflightBlocker::DirtyTrackedFiles { .. }
+            )
+        });
+
+        let first_outcome = source_store.execute_move_with_journal(&first_plan).unwrap();
+        let _rolled_back = source_store
+            .rollback_move_with_journal(first_outcome.journal.id)
+            .unwrap();
+
+        let second_after_rollback = source_store.plan_move_preflight(&second, &nested_repo).unwrap();
+        assert!(!second_after_rollback.blockers.iter().any(|blocker| matches!(
+            blocker,
+            MovePreflightBlocker::DirtyTrackedFiles { .. }
+        )));
     }
 }
