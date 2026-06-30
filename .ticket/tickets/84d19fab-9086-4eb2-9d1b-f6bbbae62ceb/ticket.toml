@@ -1,7 +1,7 @@
 id = "84d19fab-9086-4eb2-9d1b-f6bbbae62ceb"
 created_at = "2026-06-16T11:35:51.154388200+00:00"
 title = "[ticket-mcp] Expose ticket move planning and execution over MCP"
-state = "in-review"
+state = "done"
 component = "ticket-mcp"
 depends_on = ["13e9ce28-ff35-4898-8dda-6d333dc1f222", "22cd3001-0127-4a27-8834-721250ff39ff", "3a26572a-5e1a-4a57-aefa-9b342886a5ca", "bc691249-5a2d-409e-8e7b-2602d80cf61e", "eb6033a8-f15b-4024-952e-5c86dc108939"]
 effort = "700"
