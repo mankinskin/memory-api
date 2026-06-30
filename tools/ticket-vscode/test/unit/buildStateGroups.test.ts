@@ -15,6 +15,7 @@
 import { TicketTreeProvider, StateGroupItem, TicketItem } from '../../src/ticketProvider';
 import { FilterControlItem, InfoItem } from '../../src/ticketTreeItems';
 import type { TicketSummary, EdgeRecord } from '../../src/api';
+import type { CoreApi } from '../../src/coreLoader';
 
 // Mock the API module so we can inject controlled test data.
 jest.mock('../../src/api', () => ({
@@ -52,6 +53,100 @@ function makeEdge(from: string, to: string): EdgeRecord {
   return { from, to, kind: 'depends_on' };
 }
 
+function makeCoreMock(): CoreApi {
+  function matchesTicket(ticket: TicketSummary, stateFilter: string, query: string): boolean {
+    const state = stateFilter.trim();
+    if (state && ticket.state !== state) {
+      return false;
+    }
+
+    const needle = query.trim().toLowerCase();
+    if (!needle) {
+      return true;
+    }
+
+    return (ticket.title ?? '').toLowerCase().includes(needle)
+      || ticket.id.toLowerCase().includes(needle);
+  }
+
+  return {
+    core_version: () => 'test-core',
+    ticket_matches: matchesTicket,
+    build_dependency_maps(tickets, edges) {
+      const ticketIds = new Set(tickets.map(ticket => ticket.id));
+      const depsOf = new Map<string, string[]>();
+      const parentOf = new Map<string, string[]>();
+
+      for (const edge of edges) {
+        if (!ticketIds.has(edge.from) || !ticketIds.has(edge.to)) {
+          continue;
+        }
+
+        const deps = depsOf.get(edge.from) ?? [];
+        deps.push(edge.to);
+        depsOf.set(edge.from, deps);
+
+        const parents = parentOf.get(edge.to) ?? [];
+        parents.push(edge.from);
+        parentOf.set(edge.to, parents);
+      }
+
+      return { depsOf, parentOf };
+    },
+    build_state_groups(tickets, edges, stateOrder, query) {
+      const visibleTickets = tickets.filter(ticket => matchesTicket(ticket, '', query));
+      const ticketIds = new Set(visibleTickets.map(ticket => ticket.id));
+      const parentOf = new Map<string, string[]>();
+
+      for (const edge of edges) {
+        if (!ticketIds.has(edge.from) || !ticketIds.has(edge.to)) {
+          continue;
+        }
+
+        const parents = parentOf.get(edge.to) ?? [];
+        parents.push(edge.from);
+        parentOf.set(edge.to, parents);
+      }
+
+      const grouped = new Map<string, TicketSummary[]>();
+      for (const ticket of visibleTickets) {
+        const state = ticket.state ?? 'unknown';
+        const bucket = grouped.get(state) ?? [];
+        bucket.push(ticket);
+        grouped.set(state, bucket);
+      }
+
+      const makeGroup = (state: string, bucket: TicketSummary[]) => {
+        const stateIds = new Set(bucket.map(ticket => ticket.id));
+        const rootIds = bucket
+          .filter(ticket => !(parentOf.get(ticket.id) ?? []).some(parentId => stateIds.has(parentId)))
+          .map(ticket => ticket.id);
+        return { state, total: bucket.length, rootIds };
+      };
+
+      const result: Array<{ state: string; total: number; rootIds: string[] }> = [];
+      for (const state of stateOrder) {
+        const bucket = grouped.get(state);
+        if (bucket && bucket.length > 0) {
+          result.push(makeGroup(state, bucket));
+          grouped.delete(state);
+        }
+      }
+      for (const [state, bucket] of [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+        if (bucket.length > 0) {
+          result.push(makeGroup(state, bucket));
+        }
+      }
+      return result;
+    },
+    supports_server_control: () => true,
+    supports_browser_bridge: () => true,
+    supports_file_browsing: () => true,
+    ticket_viewer_url: (baseUrl, workspace, ticketId) => `${baseUrl}/workspace/${encodeURIComponent(workspace)}/ticket/${encodeURIComponent(ticketId)}`,
+    ticket_display_label: (id, title) => title ?? id,
+  };
+}
+
 /**
  * Create the provider and wait for the initial load to complete.
  * Injects controlled tickets, edges, and schema via API mocks.
@@ -73,10 +168,16 @@ async function buildProvider(
     },
   ]);
 
+  const core = makeCoreMock();
+
   const provider = new TicketTreeProvider(
     'http://localhost:3002',
     'default',
     0, // no auto-refresh
+    undefined,
+    undefined,
+    undefined,
+    core,
   );
 
   // Wait for the async load() to complete by polling the idle state.
@@ -239,7 +340,7 @@ describe('TicketTreeProvider — state folder grouping', () => {
     const recovery = jest.fn().mockResolvedValue({
       baseUrl: 'http://localhost:55838',
       workspace: 'shared--abc123',
-      ticketsDir: 'C:/tickets',
+      ticketsDirUri: { fsPath: 'C:/tickets' },
     });
 
     mockApi.fetchAllTickets
@@ -262,6 +363,8 @@ describe('TicketTreeProvider — state folder grouping', () => {
       0,
       undefined,
       recovery,
+      undefined,
+      makeCoreMock(),
     );
 
     await new Promise<void>(resolve => {
@@ -299,6 +402,10 @@ describe('TicketTreeProvider — state folder grouping', () => {
       'http://localhost:3002',
       'default',
       0,
+      undefined,
+      undefined,
+      undefined,
+      makeCoreMock(),
     );
 
     await waitForProviderReload(provider, () => {

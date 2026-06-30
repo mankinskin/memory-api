@@ -470,42 +470,16 @@ export async function resolveActiveWorkspace(
 }
 
 /**
- * Open the ticket-viewer URL in an external browser.
+ * Open the ticket-viewer URL in an external browser using VS Code's routing.
  *
  * Rule 4 (frozen, spec ticket-vscode/rust-wasm-port): viewer navigation routes
- * through ExternalUrlCapability using asExternalUri so it is remote/Codespaces-
- * safe by default.  Pass an ExternalUrlCapability from hostCapabilities.ts when
- * available.  Falls back to the legacy desktop-binary path for backwards
- * compatibility until bfafde19 is fully rolled out.
- *
- * @deprecated Pass an ExternalUrlCapability instead.  The capability-based
- *   path (`capability.openExternal(url)`) should be preferred for all new
- *   callers; this function retains the Node-specific browser-binary spawn path
- *   for the desktop host only, and is excluded from the browser bundle.
+ * through asExternalUri so it is remote/Codespaces-safe by default.
  */
 export function openTicketViewer(url: string): void {
-  const browserBinary = resolvePreferredBrowserBinary();
-  if (!browserBinary) {
-    // Route through asExternalUri for remote/Codespaces-safe navigation.
-    void (async () => {
-      const external = await vscode.env.asExternalUri(vscode.Uri.parse(url));
-      void vscode.env.openExternal(external);
-    })();
-    return;
-  }
-
-  const child = spawn(browserBinary, ['--new-window', '--start-fullscreen', url], {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-  });
-  child.on('error', () => {
-    void (async () => {
-      const external = await vscode.env.asExternalUri(vscode.Uri.parse(url));
-      void vscode.env.openExternal(external);
-    })();
-  });
-  child.unref();
+  void (async () => {
+    const external = await vscode.env.asExternalUri(vscode.Uri.parse(url));
+    void vscode.env.openExternal(external);
+  })();
 }
 
 export function resolveTicketsDir(workspaceName: string, displayName?: string): string | undefined {
