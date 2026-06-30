@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 
 use serde_json::{
     Value,
@@ -9,6 +10,7 @@ use serde_json::{
 use memory_api::generated_markdown::prepare_generated_output;
 use spec_api::{
     SPEC_INDEX_AGENT_HOOK_PATH,
+    SPEC_INDEX_TREE_DIR,
     SpecCatalogSource,
     SpecStore,
     generate_spec_catalog,
@@ -22,7 +24,8 @@ use crate::cli::{
 const STORE_DIR: &str = ".spec";
 
 /// Generate (or check) the committed spec catalog artifacts:
-/// `.spec/README.md`, `.spec/index.toon`, and `.agents/spec-catalog.md`.
+/// `.spec/README.md`, `.spec/index.toon`, `.agents/spec-catalog.md`, and the
+/// full-depth per-entry markdown tree under `.spec/tree/**/README.md`.
 pub(crate) fn cmd_store_index(
     args: StoreIndexArgs,
     store: &SpecStore,
@@ -76,11 +79,16 @@ pub(crate) fn cmd_store_index(
         read_existing(&sidecar_path).as_deref(),
     );
 
-    let planned = [
-        (&readme_path, &readme_out),
-        (&sidecar_path, &sidecar_out),
-        (&agent_hook_path, &agent_hook_out),
+    let mut planned: Vec<(PathBuf, String)> = vec![
+        (readme_path.clone(), readme_out),
+        (sidecar_path.clone(), sidecar_out),
+        (agent_hook_path.clone(), agent_hook_out),
     ];
+    for (rel_path, content) in &artifacts.tree_markdown {
+        planned.push((workspace_root.join(rel_path), content.clone()));
+    }
+
+    let tree_root = workspace_root.join(STORE_DIR).join(SPEC_INDEX_TREE_DIR);
 
     if args.check {
         let drifted: Vec<String> = planned
@@ -88,8 +96,24 @@ pub(crate) fn cmd_store_index(
             .filter(|(path, content)| {
                 read_existing(path).as_deref() != Some(content.as_str())
             })
-            .map(|(path, _)| display_path(path))
+            .map(|(path, _)| display_path(path.as_path()))
             .collect();
+
+        let expected_tree_paths: std::collections::HashSet<String> = planned
+            .iter()
+            .filter(|(path, _)| path.starts_with(&tree_root))
+            .map(|(path, _)| display_path(path.as_path()))
+            .collect();
+
+        let mut drifted = drifted;
+        for existing in collect_files_recursive(&tree_root) {
+            let rendered = display_path(&existing);
+            if !expected_tree_paths.contains(&rendered) {
+                drifted.push(rendered);
+            }
+        }
+        drifted.sort();
+        drifted.dedup();
 
         if !drifted.is_empty() {
             return Err(CliRunError::BadRequest(format!(
@@ -108,13 +132,18 @@ pub(crate) fn cmd_store_index(
     }
 
     let mut written = Vec::new();
+    if tree_root.exists() {
+        fs::remove_dir_all(&tree_root)
+            .map_err(memory_api::error::StorageError::Io)?;
+    }
+
     for (path, content) in planned {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
                 .map_err(memory_api::error::StorageError::Io)?;
         }
-        fs::write(path, content).map_err(memory_api::error::StorageError::Io)?;
-        written.push(display_path(path));
+        fs::write(&path, content).map_err(memory_api::error::StorageError::Io)?;
+        written.push(display_path(path.as_path()));
     }
 
     let root_count = artifacts
@@ -132,6 +161,32 @@ pub(crate) fn cmd_store_index(
         "roots": root_count,
         "written": written,
     }))
+}
+
+fn collect_files_recursive(root: &Path) -> Vec<PathBuf> {
+    if !root.is_dir() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    collect_files_into(root, &mut out);
+    out
+}
+
+fn collect_files_into(
+    dir: &Path,
+    out: &mut Vec<PathBuf>,
+) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files_into(&path, out);
+        } else {
+            out.push(path);
+        }
+    }
 }
 
 fn read_existing(path: &Path) -> Option<String> {

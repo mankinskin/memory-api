@@ -42,6 +42,7 @@ pub use store::{
 };
 pub use store_index::{
     SPEC_INDEX_AGENT_HOOK_PATH,
+    SPEC_INDEX_TREE_DIR,
     SpecCatalogArtifacts,
     SpecCatalogSource,
     generate_spec_catalog,

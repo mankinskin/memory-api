@@ -23,8 +23,10 @@
 
 use std::collections::{
     BTreeMap,
+    BTreeSet,
     HashMap,
 };
+use std::path::Path;
 
 use chrono::{
     DateTime,
@@ -62,6 +64,13 @@ pub const SPEC_INDEX_AGENT_HOOK_COMMENT: &str =
 /// Repository-relative path of the generated agent-hook file (D1).
 pub const SPEC_INDEX_AGENT_HOOK_PATH: &str = ".agents/spec-catalog.md";
 
+/// Root folder (under `.spec/`) that contains one markdown tree node per spec.
+pub const SPEC_INDEX_TREE_DIR: &str = "tree";
+
+/// Per-entry provenance comment written at the top of generated tree pages.
+pub const SPEC_INDEX_TREE_ENTRY_COMMENT: &str =
+    "<!-- spec-index:tree-entry generated=true -->";
+
 /// One joined spec source: the manifest, its resolved path, and its raw body.
 ///
 /// The generator is pure: callers (the `spec store-index` CLI) join the spec
@@ -85,6 +94,10 @@ pub struct SpecCatalogArtifacts {
     pub readme_markdown: String,
     /// Rendered `.agents/spec-catalog.md` agent-hook content.
     pub agent_hook_markdown: String,
+    /// Rendered per-entry markdown tree under `.spec/tree/**/README.md`.
+    ///
+    /// Keys are workspace-relative file paths with `/` separators.
+    pub tree_markdown: BTreeMap<String, String>,
 }
 
 /// Fixed, reproducible generation timestamp embedded in every artifact.
@@ -127,7 +140,7 @@ pub fn generate_spec_catalog(
     // Per-spec display extras not carried by the digest schema.
     let extras: BTreeMap<Uuid, SpecDisplayExtra> = sources
         .iter()
-        .map(|s| (s.manifest.id, SpecDisplayExtra::from_manifest(s.manifest)))
+        .map(|s| (s.manifest.id, SpecDisplayExtra::from_source(s)))
         .collect();
 
     let mut entries: Vec<IndexEntry> = sources
@@ -142,13 +155,16 @@ pub fn generate_spec_catalog(
     sidecar.generated_at = generated_at;
     sidecar.sort();
 
-    let readme_markdown = render_catalog_markdown(&sidecar, &extras);
+    let tree_paths = build_tree_paths(&sidecar, &extras, store_dir);
+    let tree_markdown = render_tree_markdown(&sidecar, &tree_paths, &extras);
+    let readme_markdown = render_catalog_markdown(&sidecar, &tree_paths, &extras);
     let agent_hook_markdown = render_agent_hook(&sidecar, store_dir, &extras);
 
     SpecCatalogArtifacts {
         sidecar,
         readme_markdown,
         agent_hook_markdown,
+        tree_markdown,
     }
 }
 
@@ -161,10 +177,12 @@ struct SpecDisplayExtra {
     component: Option<String>,
     /// Visibility scope of the spec (e.g. `internal`, `public`).
     visibility: Option<String>,
+    acceptance_criteria: Option<String>,
 }
 
 impl SpecDisplayExtra {
-    fn from_manifest(manifest: &SpecManifest) -> Self {
+    fn from_source(source: &SpecCatalogSource<'_>) -> Self {
+        let manifest = source.manifest;
         Self {
             slug: manifest.slug().unwrap_or_default().to_string(),
             component: manifest
@@ -175,6 +193,11 @@ impl SpecDisplayExtra {
                 .scope()
                 .map(str::to_string)
                 .filter(|s| !s.is_empty()),
+            acceptance_criteria: extract_section(
+                &source.body,
+                "Acceptance Criteria",
+            )
+            .or_else(|| extract_section(&source.body, "Acceptance criteria")),
         }
     }
 }
@@ -406,119 +429,487 @@ fn group_key(extra: Option<&SpecDisplayExtra>) -> String {
         .unwrap_or_else(|| "ungrouped".to_string())
 }
 
-/// Render `.spec/README.md`: a component-grouped catalog surfacing hierarchy.
+/// Render `.spec/README.md` as a table of contents linking into the tree pages.
 fn render_catalog_markdown(
     sidecar: &IndexSidecar,
+    tree_paths: &HashMap<Uuid, String>,
     extras: &BTreeMap<Uuid, SpecDisplayExtra>,
 ) -> String {
-    // slug lookup by id (for parent/child slug rendering).
-    let slug_by_id: HashMap<Uuid, String> =
-        extras.iter().map(|(id, e)| (*id, e.slug.clone())).collect();
-
-    // Group entries by component, preserving id-sorted order within group.
-    let mut groups: BTreeMap<String, Vec<&IndexEntry>> = BTreeMap::new();
-    for entry in &sidecar.entries {
-        let key = group_key(extras.get(&entry.id));
-        groups.entry(key).or_default().push(entry);
-    }
+    let by_id: HashMap<Uuid, &IndexEntry> =
+        sidecar.entries.iter().map(|e| (e.id, e)).collect();
+    let children_by_parent = children_from_sidecar(sidecar, extras);
+    let roots_by_group = roots_by_group(sidecar, extras);
 
     let mut out = String::new();
     out.push_str(SPEC_INDEX_FILE_COMMENT);
     out.push('\n');
 
-    for (group, group_entries) in &groups {
+    for (group, root_ids) in roots_by_group {
         out.push_str("\n## ");
-        out.push_str(group);
+        out.push_str(&group);
         out.push('\n');
-        for entry in group_entries {
-            out.push('\n');
-            out.push_str(&render_entry_block(
-                entry,
-                extras.get(&entry.id),
-                &slug_by_id,
-            ));
-        }
+
+        render_readme_tree_lines(
+            &mut out,
+            &root_ids,
+            0,
+            &by_id,
+            &children_by_parent,
+            tree_paths,
+            extras,
+        );
     }
 
     out
 }
 
-fn render_entry_block(
-    entry: &IndexEntry,
-    extra: Option<&SpecDisplayExtra>,
-    slug_by_id: &HashMap<Uuid, String>,
-) -> String {
-    let slug = extra.map(|e| e.slug.clone()).unwrap_or_default();
-    let is_root = entry.tags.iter().any(|t| t == "root");
+fn render_readme_tree_lines(
+    out: &mut String,
+    ids: &[Uuid],
+    depth: usize,
+    by_id: &HashMap<Uuid, &IndexEntry>,
+    children_by_parent: &HashMap<Uuid, Vec<Uuid>>,
+    tree_paths: &HashMap<Uuid, String>,
+    extras: &BTreeMap<Uuid, SpecDisplayExtra>,
+) {
+    for id in ids {
+        let Some(entry) = by_id.get(id) else {
+            continue;
+        };
+        let slug = extras
+            .get(id)
+            .map(|e| e.slug.clone())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| entry.title.clone());
+        let path = tree_paths
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| format!(".spec/{SPEC_INDEX_TREE_DIR}/README.md"));
+        let rel = rel_from_readme(&path);
+        out.push_str(&format!(
+            "{}- [{}]({})\n",
+            "  ".repeat(depth),
+            slug,
+            rel
+        ));
 
-    let mut block = String::new();
-    block.push_str(&format!(
-        "<!-- {prefix} id={id} slug={slug} digest={digest} -->\n",
-        prefix = SPEC_INDEX_ENTRY_PREFIX,
-        id = entry.id,
-        slug = slug,
-        digest = first12(&entry.digest),
-    ));
-
-    block.push_str("### ");
-    block.push_str(&entry.title);
-    if is_root {
-        block.push_str(" _(root)_");
+        if let Some(children) = children_by_parent.get(id) {
+            render_readme_tree_lines(
+                out,
+                children,
+                depth + 1,
+                by_id,
+                children_by_parent,
+                tree_paths,
+                extras,
+            );
+        }
     }
-    block.push('\n');
+}
+
+fn rel_from_readme(path: &str) -> String {
+    if let Some(stripped) = path.strip_prefix(".spec/") {
+        format!("./{stripped}")
+    } else {
+        format!("./{path}")
+    }
+}
+
+fn build_tree_paths(
+    sidecar: &IndexSidecar,
+    extras: &BTreeMap<Uuid, SpecDisplayExtra>,
+    store_dir: &str,
+) -> HashMap<Uuid, String> {
+    let children_by_parent = children_from_sidecar(sidecar, extras);
+    let by_id: HashMap<Uuid, &IndexEntry> =
+        sidecar.entries.iter().map(|e| (e.id, e)).collect();
+
+    let mut roots: Vec<Uuid> = sidecar
+        .entries
+        .iter()
+        .filter(|e| {
+            e.relations
+                .parent
+                .as_ref()
+                .map(|p| !by_id.contains_key(&p.entry_id))
+                .unwrap_or(true)
+        })
+        .map(|e| e.id)
+        .collect();
+    sort_ids_by_slug_then_id(&mut roots, extras);
+
+    let mut assigned = HashMap::new();
+    let mut visited = BTreeSet::new();
+
+    for root_id in &roots {
+        assign_tree_path(
+            *root_id,
+            None,
+            store_dir,
+            &children_by_parent,
+            extras,
+            &mut assigned,
+            &mut visited,
+        );
+    }
+
+    // Cycles or orphaned nodes still get deterministic paths.
+    let mut leftovers: Vec<Uuid> = sidecar
+        .entries
+        .iter()
+        .map(|e| e.id)
+        .filter(|id| !assigned.contains_key(id))
+        .collect();
+    sort_ids_by_slug_then_id(&mut leftovers, extras);
+    for id in leftovers {
+        assign_tree_path(
+            id,
+            None,
+            store_dir,
+            &children_by_parent,
+            extras,
+            &mut assigned,
+            &mut visited,
+        );
+    }
+
+    assigned
+}
+
+fn assign_tree_path(
+    id: Uuid,
+    parent_dir: Option<&str>,
+    store_dir: &str,
+    children_by_parent: &HashMap<Uuid, Vec<Uuid>>,
+    extras: &BTreeMap<Uuid, SpecDisplayExtra>,
+    assigned: &mut HashMap<Uuid, String>,
+    visiting: &mut BTreeSet<Uuid>,
+) {
+    if assigned.contains_key(&id) || visiting.contains(&id) {
+        return;
+    }
+    visiting.insert(id);
+
+    let segments = entry_dir_segments(id, extras);
+    let base_dir = match parent_dir {
+        Some(parent) => join_slash(parent, &segments.join("/")),
+        None => join_slash(
+            &join_slash(store_dir, SPEC_INDEX_TREE_DIR),
+            &segments.join("/"),
+        ),
+    };
+    let readme_path = join_slash(&base_dir, "README.md");
+    assigned.insert(id, readme_path);
+
+    if let Some(children) = children_by_parent.get(&id) {
+        for child_id in children {
+            assign_tree_path(
+                *child_id,
+                Some(&base_dir),
+                store_dir,
+                children_by_parent,
+                extras,
+                assigned,
+                visiting,
+            );
+        }
+    }
+    visiting.remove(&id);
+}
+
+fn entry_dir_segments(
+    id: Uuid,
+    extras: &BTreeMap<Uuid, SpecDisplayExtra>,
+) -> [String; 2] {
+    let leaf = extras
+        .get(&id)
+        .map(|e| e.slug.rsplit('/').next().unwrap_or(""))
+        .unwrap_or("");
+    let leaf = sanitize_path_segment(leaf);
+    let short_id = id.to_string().chars().take(8).collect::<String>();
+    [
+        if leaf.is_empty() {
+            "entry".to_string()
+        } else {
+            leaf
+        },
+        short_id,
+    ]
+}
+
+fn sanitize_path_segment(raw: &str) -> String {
+    let mut out = String::new();
+    let mut prev_dash = false;
+    for ch in raw.chars() {
+        let lower = ch.to_ascii_lowercase();
+        if lower.is_ascii_alphanumeric() {
+            out.push(lower);
+            prev_dash = false;
+        } else if !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+fn join_slash(
+    base: &str,
+    next: &str,
+) -> String {
+    let base = base.trim_end_matches('/');
+    let next = next.trim_start_matches('/');
+    if base.is_empty() {
+        next.to_string()
+    } else if next.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}/{next}")
+    }
+}
+
+fn children_from_sidecar(
+    sidecar: &IndexSidecar,
+    extras: &BTreeMap<Uuid, SpecDisplayExtra>,
+) -> HashMap<Uuid, Vec<Uuid>> {
+    let mut map: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+    for entry in &sidecar.entries {
+        let mut children: Vec<Uuid> =
+            entry.relations.children.iter().map(|c| c.entry_id).collect();
+        sort_ids_by_slug_then_id(&mut children, extras);
+        map.insert(entry.id, children);
+    }
+    map
+}
+
+fn roots_by_group(
+    sidecar: &IndexSidecar,
+    extras: &BTreeMap<Uuid, SpecDisplayExtra>,
+) -> BTreeMap<String, Vec<Uuid>> {
+    let ids: BTreeSet<Uuid> = sidecar.entries.iter().map(|e| e.id).collect();
+    let mut groups: BTreeMap<String, Vec<Uuid>> = BTreeMap::new();
+    for entry in &sidecar.entries {
+        let is_root = entry
+            .relations
+            .parent
+            .as_ref()
+            .map(|p| !ids.contains(&p.entry_id))
+            .unwrap_or(true);
+        if is_root {
+            let key = group_key(extras.get(&entry.id));
+            groups.entry(key).or_default().push(entry.id);
+        }
+    }
+    for root_ids in groups.values_mut() {
+        sort_ids_by_slug_then_id(root_ids, extras);
+    }
+    groups
+}
+
+fn sort_ids_by_slug_then_id(
+    ids: &mut Vec<Uuid>,
+    extras: &BTreeMap<Uuid, SpecDisplayExtra>,
+) {
+    ids.sort_by(|a, b| {
+        let sa = extras.get(a).map(|e| e.slug.as_str()).unwrap_or("");
+        let sb = extras.get(b).map(|e| e.slug.as_str()).unwrap_or("");
+        sa.cmp(sb).then_with(|| a.cmp(b))
+    });
+}
+
+fn render_tree_markdown(
+    sidecar: &IndexSidecar,
+    tree_paths: &HashMap<Uuid, String>,
+    extras: &BTreeMap<Uuid, SpecDisplayExtra>,
+) -> BTreeMap<String, String> {
+    let by_id: HashMap<Uuid, &IndexEntry> =
+        sidecar.entries.iter().map(|e| (e.id, e)).collect();
+    let children_by_parent = children_from_sidecar(sidecar, extras);
+
+    let mut files = BTreeMap::new();
+    for entry in &sidecar.entries {
+        let Some(path) = tree_paths.get(&entry.id) else {
+            continue;
+        };
+        let content = render_tree_entry_page(
+            entry,
+            path,
+            &by_id,
+            &children_by_parent,
+            tree_paths,
+            extras,
+        );
+        files.insert(path.clone(), content);
+    }
+    files
+}
+
+fn render_tree_entry_page(
+    entry: &IndexEntry,
+    current_path: &str,
+    by_id: &HashMap<Uuid, &IndexEntry>,
+    children_by_parent: &HashMap<Uuid, Vec<Uuid>>,
+    tree_paths: &HashMap<Uuid, String>,
+    extras: &BTreeMap<Uuid, SpecDisplayExtra>,
+) -> String {
+    let current_dir = Path::new(current_path)
+        .parent()
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_default();
+
+    let slug = extras
+        .get(&entry.id)
+        .map(|e| e.slug.clone())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| entry.id.to_string());
+    let component = extras
+        .get(&entry.id)
+        .and_then(|e| e.component.clone())
+        .unwrap_or_else(|| "ungrouped".to_string());
+    let visibility = extras
+        .get(&entry.id)
+        .and_then(|e| e.visibility.clone());
+    let state = entry
+        .tags
+        .iter()
+        .find(|t| t.as_str() != "root" && !t.starts_with("scope:"))
+        .cloned()
+        .unwrap_or_default();
+
+    let parent_and_siblings = entry.relations.parent.as_ref().and_then(|p| {
+        let parent_entry = by_id.get(&p.entry_id)?;
+        let siblings = children_by_parent
+            .get(&parent_entry.id)
+            .cloned()
+            .unwrap_or_default();
+        Some((parent_entry.id, siblings))
+    });
+
+    let mut out = String::new();
+    out.push_str(SPEC_INDEX_TREE_ENTRY_COMMENT);
+    out.push('\n');
+    out.push_str(&format!(
+        "<!-- {} id={} slug={} digest={} -->\n\n",
+        SPEC_INDEX_ENTRY_PREFIX,
+        entry.id,
+        slug,
+        first12(&entry.digest),
+    ));
+    out.push_str(&format!("# {}\n\n", entry.title));
+    out.push_str(&format!("- slug: `{slug}`\n"));
+    out.push_str(&format!("- component: {component}\n"));
+    if let Some(scope) = visibility {
+        out.push_str(&format!("- scope: {scope}\n"));
+    }
+    if !state.is_empty() {
+        out.push_str(&format!("- state: {state}\n"));
+    }
+    out.push_str(&format!("- index_ref: `{}`\n\n", entry.source_path));
 
     if !entry.summary.is_empty() {
-        block.push('\n');
-        block.push_str(&entry.summary);
-        block.push('\n');
+        out.push_str("## Summary\n\n");
+        out.push_str(&entry.summary);
+        out.push_str("\n\n");
     }
 
-    // Bullet metadata (Q2.2 skeleton: heading, summary, then bullets).
-    block.push('\n');
-    if !slug.is_empty() {
-        block.push_str(&format!("- slug: `{slug}`\n"));
+    if let Some(acceptance) = extras
+        .get(&entry.id)
+        .and_then(|e| e.acceptance_criteria.as_deref())
+    {
+        out.push_str("## Acceptance Criteria Excerpt\n\n");
+        out.push_str(acceptance);
+        out.push_str("\n\n");
     }
-    if let Some(visibility) = extra.and_then(|e| e.visibility.as_deref()) {
-        block.push_str(&format!("- scope: {visibility}\n"));
+
+    out.push_str("## Navigation\n\n");
+    if let Some((parent_id, siblings)) = parent_and_siblings {
+        if let Some(parent_path) = tree_paths.get(&parent_id) {
+            let rel = relative_link(&current_dir, parent_path);
+            let parent_slug = extras
+                .get(&parent_id)
+                .map(|e| e.slug.clone())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| parent_id.to_string());
+            out.push_str(&format!("- Parent: [{parent_slug}]({rel})\n"));
+        }
+
+        let mut sibling_lines = Vec::new();
+        for sibling_id in siblings {
+            if sibling_id == entry.id {
+                continue;
+            }
+            let Some(path) = tree_paths.get(&sibling_id) else {
+                continue;
+            };
+            let rel = relative_link(&current_dir, path);
+            let label = extras
+                .get(&sibling_id)
+                .map(|e| e.slug.clone())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| sibling_id.to_string());
+            sibling_lines.push(format!("[{label}]({rel})"));
+        }
+        if !sibling_lines.is_empty() {
+            out.push_str(&format!("- Siblings: {}\n", sibling_lines.join(", ")));
+        }
+    } else {
+        out.push_str("- Parent: _(root)_\n");
     }
-    // Hierarchy bullets — the headline feature.
-    if let Some(parent_ref) = &entry.relations.parent {
-        let parent_slug = slug_by_id
-            .get(&parent_ref.entry_id)
-            .filter(|s| !s.is_empty())
-            .cloned()
-            .unwrap_or_else(|| parent_ref.entry_id.to_string());
-        block.push_str(&format!("- parent: `{parent_slug}`\n"));
-    }
-    if !entry.relations.children.is_empty() {
-        let child_slugs: Vec<String> = entry
-            .relations
-            .children
-            .iter()
-            .map(|c| {
-                slug_by_id
-                    .get(&c.entry_id)
-                    .filter(|s| !s.is_empty())
-                    .cloned()
-                    .unwrap_or_else(|| c.entry_id.to_string())
-            })
-            .collect();
-        block.push_str(&format!(
-            "- children ({}): {}\n",
-            child_slugs.len(),
-            child_slugs
+
+    if let Some(children) = children_by_parent.get(&entry.id) {
+        if children.is_empty() {
+            out.push_str("- Children: _(none)_\n");
+        } else {
+            let links = children
                 .iter()
-                .map(|s| format!("`{s}`"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
+                .filter_map(|child_id| {
+                    let path = tree_paths.get(child_id)?;
+                    let rel = relative_link(&current_dir, path);
+                    let label = extras
+                        .get(child_id)
+                        .map(|e| e.slug.clone())
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| child_id.to_string());
+                    Some(format!("[{label}]({rel})"))
+                })
+                .collect::<Vec<_>>();
+            out.push_str(&format!("- Children: {}\n", links.join(", ")));
+        }
+    } else {
+        out.push_str("- Children: _(none)_\n");
     }
-    if !entry.tags.is_empty() {
-        block.push_str(&format!("- tags: {}\n", entry.tags.join(", ")));
-    }
-    block.push_str(&format!("- ref: `{}`\n", entry.source_path));
 
-    block
+    out
+}
+
+fn relative_link(
+    from_dir: &str,
+    to_path: &str,
+) -> String {
+    let from_parts: Vec<&str> = from_dir.split('/').filter(|s| !s.is_empty()).collect();
+    let to_parts: Vec<&str> = to_path.split('/').filter(|s| !s.is_empty()).collect();
+
+    let mut common = 0usize;
+    while common < from_parts.len()
+        && common < to_parts.len()
+        && from_parts[common] == to_parts[common]
+    {
+        common += 1;
+    }
+
+    let mut rel = Vec::new();
+    for _ in common..from_parts.len() {
+        rel.push("..");
+    }
+    for part in &to_parts[common..] {
+        rel.push(part);
+    }
+
+    if rel.is_empty() {
+        "./README.md".to_string()
+    } else {
+        rel.join("/")
+    }
 }
 
 /// Render the `.agents/spec-catalog.md` agent-hook pointer (D1).
@@ -661,11 +1052,19 @@ mod tests {
         let md = &artifacts.readme_markdown;
         assert!(md.starts_with(SPEC_INDEX_FILE_COMMENT));
         assert!(md.contains("## comp-a"));
-        assert!(md.contains("<!-- spec-index:entry id="));
-        assert!(md.contains("digest="));
-        assert!(md.contains("_(root)_"));
-        assert!(md.contains("- parent: `root`"));
-        assert!(md.contains("- children (1): `root/child`"));
+        assert!(md.contains("- [root](./tree/root/"));
+        assert!(md.contains("- [root/child](./tree/root/"));
+
+        assert_eq!(artifacts.tree_markdown.len(), 2);
+        let parent_tree = artifacts
+            .tree_markdown
+            .iter()
+            .find(|(k, _)| k.contains("/root/"))
+            .map(|(_, v)| v)
+            .unwrap();
+        assert!(parent_tree.contains(SPEC_INDEX_TREE_ENTRY_COMMENT));
+        assert!(parent_tree.contains("## Navigation"));
+        assert!(parent_tree.contains("Children:"));
         for e in &artifacts.sidecar.entries {
             assert!(e.is_digest_valid());
         }

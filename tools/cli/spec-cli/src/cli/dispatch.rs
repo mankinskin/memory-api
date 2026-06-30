@@ -922,18 +922,27 @@ mod tests {
         let readme = repo.join(".spec/README.md");
         let sidecar = repo.join(".spec/index.toon");
         let agent_hook = repo.join(".agents/spec-catalog.md");
+        let tree_root = repo.join(".spec/tree");
         assert!(readme.is_file());
         assert!(sidecar.is_file());
         assert!(agent_hook.is_file());
+        assert!(tree_root.is_dir());
+
+        let tree_files = collect_files_recursive(&tree_root);
+        assert_eq!(tree_files.len(), 2);
+        let child_tree = tree_files
+            .iter()
+            .find(|p| p.to_string_lossy().contains("child"))
+            .unwrap();
+        let child_tree_text = fs::read_to_string(child_tree).unwrap();
+        assert!(child_tree_text.contains("## Navigation"));
+        assert!(child_tree_text.contains("Parent:"));
 
         let readme_text = fs::read_to_string(&readme).unwrap();
         assert!(readme_text.starts_with("<!-- spec-index:file generated=true -->"));
         assert!(readme_text.contains("## comp-a"));
-        assert!(readme_text.contains("<!-- spec-index:entry id="));
-        assert!(readme_text.contains("digest="));
-        assert!(readme_text.contains("_(root)_"));
-        assert!(readme_text.contains("- parent: `root`"));
-        assert!(readme_text.contains("- children (1): `root/child`"));
+        assert!(readme_text.contains("- [root](./tree/root/"));
+        assert!(readme_text.contains("- [root/child](./tree/root/"));
 
         // --check is clean immediately after a write (idempotent).
         let check = dispatch(
@@ -959,5 +968,31 @@ mod tests {
         );
         assert!(drift.is_err(), "check must fail on drift");
         assert!(drift.unwrap_err().to_string().contains("out of date"));
+    }
+
+    fn collect_files_recursive(root: &Path) -> Vec<PathBuf> {
+        if !root.is_dir() {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        collect_files_into(root, &mut out);
+        out
+    }
+
+    fn collect_files_into(
+        dir: &Path,
+        out: &mut Vec<PathBuf>,
+    ) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_files_into(&path, out);
+            } else {
+                out.push(path);
+            }
+        }
     }
 }
