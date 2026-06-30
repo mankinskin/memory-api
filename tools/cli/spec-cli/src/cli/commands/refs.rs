@@ -214,6 +214,28 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
+    #[ignore = "Enable after path normalization kernel handles UNC roots"]
+    fn render_workspace_root_for_payload_preserves_unc_root() {
+        let rendered = render_workspace_root_for_payload(std::path::Path::new(
+            r"\\server\share\memory-api",
+        ));
+
+        assert_eq!(rendered, "//server/share/memory-api");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    #[ignore = "Enable after path normalization kernel handles verbatim UNC roots"]
+    fn render_workspace_root_for_payload_normalizes_verbatim_unc_root() {
+        let rendered = render_workspace_root_for_payload(std::path::Path::new(
+            r"\\?\UNC\server\share\memory-api",
+        ));
+
+        assert_eq!(rendered, "//server/share/memory-api");
+    }
+
+    #[test]
     fn refs_validate_uses_default_workspace_root() {
         let dir = tempdir().unwrap();
         let workspace_root = dir.path().join("repo");

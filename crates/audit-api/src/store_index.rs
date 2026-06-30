@@ -103,12 +103,24 @@ fn epoch() -> DateTime<Utc> {
     DateTime::from_timestamp(0, 0).expect("epoch is valid")
 }
 
-fn severity_str(s: &Severity) -> &'static str {
+fn severity_rank(s: &Severity) -> u8 {
     match s {
-        Severity::Low => "low",
-        Severity::Medium => "medium",
-        Severity::High => "high",
+        Severity::High => 0,
+        Severity::Medium => 1,
+        Severity::Low => 2,
     }
+}
+
+fn stable_finding_key(
+    f: &AuditFinding,
+) -> (u8, &str, &str, Option<&str>, Option<usize>) {
+    (
+        severity_rank(&f.severity),
+        f.id.as_str(),
+        f.summary.as_str(),
+        f.path.as_deref(),
+        f.line,
+    )
 }
 
 /// Generate the full audit status catalog from the most recent audit run.
@@ -180,6 +192,9 @@ fn generate_from_report(
     let mut by_category: BTreeMap<String, Vec<&AuditFinding>> = BTreeMap::new();
     for f in &report.findings {
         by_category.entry(f.category.clone()).or_default().push(f);
+    }
+    for findings in by_category.values_mut() {
+        findings.sort_by_key(|f| stable_finding_key(f));
     }
 
     let total_findings = report.findings.len();
@@ -308,14 +323,18 @@ fn make_category_entry(
         if count == 1 { "" } else { "s" }
     );
     let summary = format!("{high} high, {medium} medium, {low} low");
+    let worst_rank = if high > 0 {
+        severity_rank(&Severity::High)
+    } else if medium > 0 {
+        severity_rank(&Severity::Medium)
+    } else {
+        severity_rank(&Severity::Low)
+    };
 
-    let worst_severity_findings: Vec<&AuditFinding> = findings
+    let scope_text = findings
         .iter()
-        .filter(|f| severity_str(&f.severity) == worst)
-        .copied()
-        .collect();
-    let scope_text = worst_severity_findings
-        .first()
+        .filter(|f| severity_rank(&f.severity) == worst_rank)
+        .min_by_key(|f| stable_finding_key(f))
         .map(|f| f.summary.as_str())
         .unwrap_or(category);
 
@@ -433,11 +452,11 @@ fn render_readme(
         out.push_str("\n## Findings by Category\n");
 
         for (category, findings) in by_category {
-            let category_entry = sidecar.entries.iter().find(|e| {
-                e.kind == ContentKind::AuditFinding
-                    && e.scope.as_deref() == Some(findings[0].summary.as_str())
-                    && e.title.contains(category.as_str())
-            });
+            let category_id = deterministic_uuid(
+                AUDIT_NS,
+                &format!("audit-category:{store_dir}:{category}"),
+            );
+            let category_entry = sidecar.entries.iter().find(|e| e.id == category_id);
 
             let high = findings
                 .iter()
@@ -690,6 +709,39 @@ mod tests {
         };
         let a = generate_audit_catalog(&source);
         let b = generate_audit_catalog(&source);
+        assert_eq!(a.readme_markdown, b.readme_markdown);
+        assert_eq!(a.agent_hook_markdown, b.agent_hook_markdown);
+        assert_eq!(
+            a.sidecar.encode_toon().unwrap(),
+            b.sidecar.encode_toon().unwrap()
+        );
+    }
+
+    #[test]
+    fn catalog_is_stable_for_permuted_finding_order() {
+        let report_a = minimal_report(vec![
+            finding("f1", "file_length", Severity::High),
+            finding("f2", "file_length", Severity::High),
+            finding("f3", "static_metrics", Severity::Medium),
+        ]);
+        let report_b = minimal_report(vec![
+            finding("f2", "file_length", Severity::High),
+            finding("f1", "file_length", Severity::High),
+            finding("f3", "static_metrics", Severity::Medium),
+        ]);
+
+        let source_a = AuditCatalogSource {
+            report: Some(&report_a),
+            store_dir: ".audit",
+        };
+        let source_b = AuditCatalogSource {
+            report: Some(&report_b),
+            store_dir: ".audit",
+        };
+
+        let a = generate_audit_catalog(&source_a);
+        let b = generate_audit_catalog(&source_b);
+
         assert_eq!(a.readme_markdown, b.readme_markdown);
         assert_eq!(a.agent_hook_markdown, b.agent_hook_markdown);
         assert_eq!(

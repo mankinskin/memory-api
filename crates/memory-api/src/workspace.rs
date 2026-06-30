@@ -717,6 +717,26 @@ mod tests {
         assert_eq!(stripped, PathBuf::from("C:/repo/memory-api/.ticket"));
     }
 
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "Enable after path normalization kernel handles verbatim UNC prefixes"]
+    fn strip_verbatim_prefix_normalizes_verbatim_unc_prefix() {
+        let stripped =
+            strip_verbatim_prefix(Path::new(r"\\?\UNC\server\share\memory-api\.ticket"));
+
+        assert_eq!(stripped, PathBuf::from("//server/share/memory-api/.ticket"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "Enable after path normalization kernel preserves UNC roots"]
+    fn strip_verbatim_prefix_preserves_unc_root() {
+        let stripped =
+            strip_verbatim_prefix(Path::new(r"\\server\share\memory-api\.ticket"));
+
+        assert_eq!(stripped, PathBuf::from("//server/share/memory-api/.ticket"));
+    }
+
     #[test]
     fn strip_verbatim_prefix_removes_slash_normalized_prefix() {
         let stripped = strip_verbatim_prefix(Path::new("//?/C:/repo/memory-api/.ticket"));
