@@ -46,7 +46,7 @@ pub struct SessionCli {
 
     /// Workspace/repo root to normalize to the canonical `.memory-api` store.
     /// Lets a tool run from an ancestor checkout target a nested workspace.
-    #[arg(long, global = true)]
+    #[arg(long = "workspace", alias = "workspace-root", global = true)]
     pub workspace_root: Option<PathBuf>,
 
     /// Workspace slug that scopes session storage.
@@ -189,6 +189,15 @@ pub enum CliRunError {
 // ── entry point ───────────────────────────────────────────────────────────────
 
 pub fn run(cli: SessionCli) -> Result<CliOutput, CliRunError> {
+    if matches!(cli.command, SessionCommand::CheckIn(_))
+        && cli.store_root.is_none()
+        && cli.workspace_root.is_none()
+    {
+        return Err(CliRunError::BadRequest(
+            "entity creation requires explicit --workspace <path> or --store-root <path>".to_string(),
+        ));
+    }
+
     let store_root = workspace::resolve_requested_store_root(
         cli.store_root.as_deref(),
         cli.workspace_root.as_deref(),

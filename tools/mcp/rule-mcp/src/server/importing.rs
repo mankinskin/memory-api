@@ -33,7 +33,7 @@ impl RuleServer {
         &self,
         input: ImportRuleFileInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        self.with_store_for_workspace(&input.workspace, |store| {
             let items = import_file(store, &input)?;
             Self::json_result(&json!({
                 "status": "ok",

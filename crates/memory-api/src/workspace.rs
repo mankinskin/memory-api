@@ -13,6 +13,49 @@ use crate::model::filesystem::ScanRoot;
 
 pub const TICKET_INDEX_DIR: &str = ".ticket";
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidWorkspaceSelector {
+    value: String,
+}
+
+impl InvalidWorkspaceSelector {
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+impl std::fmt::Display for InvalidWorkspaceSelector {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid workspace selector '{}': entity creation requires an explicit workspace path; do not use omitted, empty, 'default', '.', or '..'",
+            self.value
+        )
+    }
+}
+
+impl std::error::Error for InvalidWorkspaceSelector {}
+
+pub fn validate_explicit_workspace_selector(
+    workspace: Option<&str>
+) -> Result<&str, InvalidWorkspaceSelector> {
+    let Some(workspace) = workspace else {
+        return Err(InvalidWorkspaceSelector {
+            value: "<omitted>".to_string(),
+        });
+    };
+    let trimmed = workspace.trim();
+    if matches!(trimmed, "" | "default" | "." | "..") {
+        return Err(InvalidWorkspaceSelector {
+            value: trimmed.to_string(),
+        });
+    }
+    Ok(trimmed)
+}
+
 #[derive(Debug)]
 pub enum WorkspacePathError {
     CanonicalizeFailed {
@@ -612,6 +655,18 @@ mod tests {
         let found = find_local_root_from(&nested, ".ticket").unwrap();
 
         assert_eq!(found, repo.join(".ticket"));
+    }
+
+    #[test]
+    fn explicit_workspace_selector_rejects_ambient_aliases() {
+        for value in [None, Some(""), Some("  "), Some("default"), Some("."), Some("..")] {
+            assert!(validate_explicit_workspace_selector(value).is_err());
+        }
+
+        assert_eq!(
+            validate_explicit_workspace_selector(Some("memory-api")).unwrap(),
+            "memory-api"
+        );
     }
 
     #[test]

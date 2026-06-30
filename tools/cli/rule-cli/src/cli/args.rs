@@ -23,7 +23,7 @@ pub struct RuleCli {
     #[arg(long, global = true)]
     pub index_root: Option<PathBuf>,
 
-    #[arg(long, global = true)]
+    #[arg(long = "workspace", alias = "workspace-root", global = true)]
     pub workspace_root: Option<PathBuf>,
 
     #[command(subcommand)]

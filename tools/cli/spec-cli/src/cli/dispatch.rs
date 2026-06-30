@@ -25,6 +25,12 @@ pub(super) fn dispatch(
     workspace_root_override: Option<&Path>,
     _as_json: bool,
 ) -> Result<Value, CliRunError> {
+    require_explicit_workspace_for_create(
+        &command,
+        index_root_override,
+        workspace_root_override,
+    )?;
+
     let index_root =
         resolve_index_root(index_root_override, workspace_root_override);
     let default_workspace_root = resolve_workspace_root(
@@ -63,6 +69,22 @@ pub(super) fn dispatch(
             &default_workspace_root,
         )
     }
+}
+
+fn require_explicit_workspace_for_create(
+    command: &SpecCommandCli,
+    index_root_override: Option<&Path>,
+    workspace_root_override: Option<&Path>,
+) -> Result<(), CliRunError> {
+    if matches!(command, SpecCommandCli::Create(_) | SpecCommandCli::Bootstrap(_))
+        && index_root_override.is_none()
+        && workspace_root_override.is_none()
+    {
+        return Err(CliRunError::BadRequest(
+            "entity creation requires explicit --workspace <path> or --index-root <path>".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn command_uses_descendant_scan_roots(command: &SpecCommandCli) -> bool {

@@ -12,7 +12,7 @@ fn command_schema_export_is_stable() {
 
     assert_eq!(schema.version, COMMAND_SCHEMA_VERSION);
     assert_eq!(schema.command_namespace, "ticket");
-    assert_eq!(schema.commands.len(), 40);
+    assert_eq!(schema.commands.len(), 41);
     assert_eq!(schema.commands[0], "create");
     assert!(schema.commands.contains(&"batch".to_string()));
     assert!(schema.commands.contains(&"unblocked_by".to_string()));
@@ -24,6 +24,7 @@ fn command_schema_export_is_stable() {
             .contains(&"task_release_promote".to_string())
     );
     assert!(schema.commands.contains(&"ready_overview".to_string()));
+    assert!(schema.commands.contains(&"status".to_string()));
     assert!(schema.commands.contains(&"link".to_string()));
     assert!(schema.commands.contains(&"links".to_string()));
     assert!(schema.commands.contains(&"workspace_remove".to_string()));

@@ -9,6 +9,7 @@ use ticket_mcp::server::TicketServer;
 
 pub(super) fn make_sandbox() -> (TempDir, TicketServer) {
     let tmp = TempDir::new().expect("tempdir");
+    TicketStore::init(tmp.path()).expect("init ticket store");
     let server = TicketServer::new(tmp.path().to_path_buf());
     (tmp, server)
 }

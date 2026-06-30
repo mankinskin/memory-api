@@ -28,7 +28,7 @@ impl RuleServer {
         &self,
         input: CreateRuleInput,
     ) -> Result<CallToolResult, McpError> {
-        self.with_store(|store| {
+        self.with_store_for_workspace(&input.workspace, |store| {
             let mut manifest = RuleManifest::new(
                 &input.slug,
                 &input.title,

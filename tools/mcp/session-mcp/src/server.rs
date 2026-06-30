@@ -37,6 +37,8 @@ use session_api::{
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CheckInInput {
+    /// Concrete workspace path, repo root, .memory-api store path, or path inside that store.
+    pub workspace: String,
     /// Session id to check in.
     pub session_id: String,
     /// Owner (agent) identity claiming the worktree.
@@ -137,6 +139,21 @@ impl SessionServer {
         SessionStoreConfig::new(self.store_root.clone(), self.workspace_slug.clone())
     }
 
+    fn config_for_workspace(
+        &self,
+        workspace_selector: &str,
+    ) -> Result<SessionStoreConfig, McpError> {
+        let workspace_selector = workspace::validate_explicit_workspace_selector(
+            Some(workspace_selector),
+        )
+        .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
+        let store_root = workspace::resolve_store_root_from(
+            std::path::Path::new(workspace_selector),
+            ".memory-api",
+        );
+        Ok(SessionStoreConfig::new(store_root, self.workspace_slug.clone()))
+    }
+
     fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
         let text = serde_json::to_string(value).map_err(|err| {
             McpError::internal_error(format!("serialization: {err}"), None)
@@ -234,7 +251,7 @@ impl SessionServer {
         Parameters(input): Parameters<CheckInInput>,
     ) -> Result<CallToolResult, McpError> {
         let receipt = self
-            .config()
+            .config_for_workspace(&input.workspace)?
             .check_in_worktree(SessionWorktreeCheckInRequest {
                 session_id: input.session_id,
                 owner_id: input.owner_id,
@@ -536,10 +553,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let store_root = dir.path().join(".memory-api");
         let worktree = dir.path().join("wt");
-        let server = SessionServer::new(store_root, "default".to_string());
+        let server = SessionServer::new(store_root.clone(), "default".to_string());
 
         let receipt = server
             .session_check_in(Parameters(CheckInInput {
+                workspace: store_root.display().to_string(),
                 session_id: "s1".to_string(),
                 owner_id: "agent".to_string(),
                 ticket_id: "t1".to_string(),

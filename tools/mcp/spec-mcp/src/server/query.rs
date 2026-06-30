@@ -32,8 +32,12 @@ impl SpecServer {
         &self,
         input: CreateSpecInput,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace.clone();
-        self.with_store(workspace.as_deref(), |store, index_root| {
+        let workspace = memory_api::workspace::validate_explicit_workspace_selector(
+            Some(&input.workspace),
+        )
+        .map_err(|err| McpError::invalid_params(err.to_string(), None))?
+        .to_string();
+        self.with_store(Some(&workspace), |store, index_root| {
             let mut manifest =
                 SpecManifest::new(&input.slug, &input.title, &input.component);
             manifest.extra.extend(input.fields.clone());
@@ -59,7 +63,7 @@ impl SpecServer {
                 "title": input.title,
                 "component": input.component,
                 "state": "draft",
-            }), index_root, workspace.as_deref())
+            }), index_root, Some(&workspace))
         })
         .await
     }
@@ -421,13 +425,13 @@ mod tests {
         let dir = tempdir().unwrap();
         let index_root = dir.path().join(".spec");
         SpecStore::init(&index_root).unwrap();
-        let server = SpecServer::new(index_root);
+        let server = SpecServer::new(index_root.clone());
         let fixture = load_contract_parity_fixture();
 
         let created = parse_tool_payload(
             server
                 .spec_create_tool(CreateSpecInput {
-                    workspace: None,
+                    workspace: index_root.display().to_string(),
                     title: "Structured contract parity spec".to_string(),
                     slug: "contract/structured-parity".to_string(),
                     component: "context-engine".to_string(),

@@ -27,7 +27,7 @@ async fn spec_crud_lifecycle() {
     // 1. Create a spec
     let result = server
         .spec_create(Parameters(CreateSpecInput {
-            workspace: None,
+            workspace: _tmp.path().display().to_string(),
             title: "Test Spec".to_string(),
             slug: "test-component/test-spec".to_string(),
             component: "test-component".to_string(),
@@ -147,7 +147,7 @@ async fn spec_update_accepts_sparse_payload_and_returns_minimal_response() {
     let created = extract_json(
         server
             .spec_create(Parameters(CreateSpecInput {
-            workspace: None,
+                workspace: _tmp.path().display().to_string(),
                 title: "Sparse Update".to_string(),
                 slug: "tests/sparse-update".to_string(),
                 component: "tests".to_string(),
@@ -188,7 +188,7 @@ async fn spec_section_lifecycle() {
     // Create a spec first
     let result = server
         .spec_create(Parameters(CreateSpecInput {
-            workspace: None,
+            workspace: _tmp.path().display().to_string(),
             title: "Section Test".to_string(),
             slug: "sections/test".to_string(),
             component: "sections".to_string(),
@@ -282,7 +282,7 @@ async fn spec_tree_and_health() {
     // Create parent
     let result = server
         .spec_create(Parameters(CreateSpecInput {
-            workspace: None,
+            workspace: _tmp.path().display().to_string(),
             title: "Parent Spec".to_string(),
             slug: "tree/parent".to_string(),
             component: "tree".to_string(),
@@ -298,7 +298,7 @@ async fn spec_tree_and_health() {
     // Create child
     let result = server
         .spec_create(Parameters(CreateSpecInput {
-            workspace: None,
+            workspace: _tmp.path().display().to_string(),
             title: "Child Spec".to_string(),
             slug: "tree/parent/child".to_string(),
             component: "tree".to_string(),
@@ -396,7 +396,7 @@ async fn spec_refs_validate_empty() {
 
     let result = server
         .spec_create(Parameters(CreateSpecInput {
-            workspace: None,
+            workspace: _tmp.path().display().to_string(),
             title: "Ref Test".to_string(),
             slug: "refs/test".to_string(),
             component: "refs".to_string(),
@@ -431,7 +431,7 @@ async fn spec_search_tool() {
     // Create a spec with searchable content
     server
         .spec_create(Parameters(CreateSpecInput {
-            workspace: None,
+            workspace: _tmp.path().display().to_string(),
             title: "Searchable Alpha".to_string(),
             slug: "search/alpha".to_string(),
             component: "search".to_string(),

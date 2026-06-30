@@ -62,17 +62,26 @@ Resolve the active `.ticket` store from an explicit starting path.
 - Public transport layers built on top of workspace resolution must expose concrete workspace folder names rather than internal aliases such as `default` or relative placeholders such as `..`.
 - Explicit non-workspace paths remain valid direct fallbacks for tests and isolated stores; normalization must not invent a hidden store that does not exist on disk.
 - Ticket/spec cross-links and code-reference validation must resolve against the intended nested workspace when callers start from an ancestor repo and explicitly target the child workspace root.
-- Shared CLI option naming must reserve one global spelling for workspace/store selection across ticket, spec, and rule commands; command-local path-resolution inputs must use distinct names when they serve different purposes.
+- Shared CLI option naming must reserve `--workspace` as the global spelling for workspace/store selection across ticket, spec, rule, audit, session, and test commands; command-local path-resolution inputs must use distinct names when they serve different purposes.
+- Public create-style surfaces must require an explicit concrete workspace path before writing a new entity. Omitted workspace selectors, empty strings, `default`, `.`/`..`, and other transport aliases are invalid for entity creation even when read-only commands still support ambient discovery.
 
 ## Downstream CLI contract
 
-- Global CLI `--workspace-root` selects the target nested workspace and is normalized through the shared memory-api workspace resolver before store access.
-- Global CLI `--index-root` remains the explicit hidden-store override and takes precedence over global `--workspace-root` when both are supplied.
-- Command-local options that control code-reference validation roots or source-path relativization must not reuse the same `--workspace-root` spelling as the global store-selection option.
+- Global CLI `--workspace` selects the target nested workspace and is normalized through the shared memory-api workspace resolver before store access.
+- Global CLI `--index-root` remains the explicit hidden-store override and takes precedence over global `--workspace` when both are supplied.
+- Command-local options that control code-reference validation roots or source-path relativization must not reuse the same `--workspace` spelling as the global store-selection option.
+- Entity-creation CLI commands must fail before opening the ambient store when neither `--workspace` nor `--index-root` is supplied.
 - Ancestor-repo callers must be able to run nested-workspace ticket/spec/rule commands without spelling the hidden `.ticket`, `.spec`, or `.rule` directories directly.
 - Read/query command paths may register descendant scan roots derived from the shared memory-api workspace helper so ancestor-repo callers can resolve nested child entities through one traversal and skip policy across ticket, spec, and rule stores.
 - Root-level `spec refs <id> validate` against a nested workspace must work with one global workspace-selection option and, when needed, a separately named file-resolution root option.
 - When `spec refs <id> validate` resolves a nested spec through descendant scan roots, the default code workspace root must be derived from the owning spec workspace rather than the ancestor repo root so validation still points at the correct files without a command-specific fallback path.
+
+## Public creation contract
+
+- MCP create/import/record tools for store-backed domains must model `workspace` as a required concrete path argument and reject omitted, blank, `default`, `.` and `..` values before calling the domain store.
+- CLI create/import/record commands for store-backed domains must accept the same concrete path through global `--workspace` and reject ambient creation when the global workspace selector and hidden-store override are both absent.
+- Validation must include end-to-end MCP transport tests and CLI process tests that create entities in two sibling workspaces and assert no entity appears in the parent context-engine workspace by accident.
+- Tracking ticket: `memory-api/.ticket/tickets/0fdce225-9cef-46ed-92d9-83c852c2d084/ticket.toml`.
 
 ## Workspace fixture strategy
 

@@ -42,6 +42,8 @@ use test_api::{
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RecordSpecInput {
+    /// Concrete workspace path, repo root, .test store path, or path inside that store.
+    pub workspace: String,
     /// Stable validation spec id (e.g. `vt-core-tests`). Used as the file name.
     pub id: String,
     /// Human-readable title of the validation check.
@@ -68,6 +70,8 @@ pub struct RecordSpecInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RecordExecutionInput {
+    /// Concrete workspace path, repo root, .test store path, or path inside that store.
+    pub workspace: String,
     /// Stable execution id (e.g. `exec-vt-core-tests-20260615`). Used as file name.
     pub id: String,
     /// The validation spec id this execution is an outcome of.
@@ -195,6 +199,21 @@ impl TestServer {
         TestStoreConfig::new(self.store_root.clone(), self.workspace_slug.clone())
     }
 
+    fn config_for_workspace(
+        &self,
+        workspace_selector: &str,
+    ) -> Result<TestStoreConfig, McpError> {
+        let workspace_selector = memory_api::workspace::validate_explicit_workspace_selector(
+            Some(workspace_selector),
+        )
+        .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
+        let store_root = memory_api::workspace::resolve_store_root_from(
+            std::path::Path::new(workspace_selector),
+            ".test",
+        );
+        Ok(TestStoreConfig::new(store_root, self.workspace_slug.clone()))
+    }
+
     fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
         let text = serde_json::to_string(value)
             .map_err(|err| McpError::internal_error(format!("serialization: {err}"), None))?;
@@ -288,7 +307,10 @@ impl TestServer {
             },
             provenance: ValidationProvenance::default(),
         };
-        let path = self.config().record_spec(&spec).map_err(Self::test_err)?;
+        let path = self
+            .config_for_workspace(&input.workspace)?
+            .record_spec(&spec)
+            .map_err(Self::test_err)?;
         Self::json_result(&serde_json::json!({
             "status": "recorded",
             "kind": "validation-spec",
@@ -332,7 +354,7 @@ impl TestServer {
             },
         };
         let path = self
-            .config()
+            .config_for_workspace(&input.workspace)?
             .record_execution(&execution)
             .map_err(Self::test_err)?;
         Self::json_result(&serde_json::json!({
@@ -467,10 +489,11 @@ mod tests {
     async fn record_spec_then_execution_and_query() {
         let dir = tempdir().unwrap();
         let store_root = dir.path().join(".test");
-        let server = TestServer::new(store_root, "default".to_string());
+        let server = TestServer::new(store_root.clone(), "default".to_string());
 
         let spec = server
             .test_record_spec(Parameters(RecordSpecInput {
+                workspace: store_root.display().to_string(),
                 id: "vt-core-tests".to_string(),
                 title: "Core unit tests".to_string(),
                 command: Some("cargo test -p ticket-vscode-core".to_string()),
@@ -486,6 +509,7 @@ mod tests {
 
         let exec = server
             .test_record_execution(Parameters(RecordExecutionInput {
+                workspace: store_root.display().to_string(),
                 id: "exec-1".to_string(),
                 validation_spec_id: "vt-core-tests".to_string(),
                 outcome: "passed".to_string(),
@@ -535,10 +559,11 @@ mod tests {
     async fn invalid_outcome_is_rejected() {
         let dir = tempdir().unwrap();
         let store_root = dir.path().join(".test");
-        let server = TestServer::new(store_root, "default".to_string());
+        let server = TestServer::new(store_root.clone(), "default".to_string());
 
         let result = server
             .test_record_execution(Parameters(RecordExecutionInput {
+                workspace: store_root.display().to_string(),
                 id: "exec-bad".to_string(),
                 validation_spec_id: "vt-core-tests".to_string(),
                 outcome: "nope".to_string(),

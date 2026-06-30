@@ -209,6 +209,12 @@ fn dispatch_store_backed(
         }
     }
 
+    require_explicit_workspace_for_create(
+        &command,
+        index_root_override,
+        workspace_root_override,
+    )?;
+
     let index_root = resolve_index_root(
         index_root_override,
         workspace_root_override,
@@ -226,6 +232,22 @@ fn dispatch_store_backed(
     }
 
     dispatch_store_command(command, store, dry_run)
+}
+
+fn require_explicit_workspace_for_create(
+    command: &TicketCommandCli,
+    index_root_override: Option<&Path>,
+    workspace_root_override: Option<&Path>,
+) -> Result<(), CliRunError> {
+    if matches!(command, TicketCommandCli::Create(_) | TicketCommandCli::Batch(_))
+        && index_root_override.is_none()
+        && workspace_root_override.is_none()
+    {
+        return Err(CliRunError::BadRequest(
+            "entity creation requires explicit --workspace <path> or --index-root <path>".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn command_uses_descendant_scan_roots(command: &TicketCommandCli) -> bool {

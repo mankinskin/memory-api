@@ -41,6 +41,8 @@ pub struct RecordFeedbackInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ImportRuleFileInput {
+    /// Concrete workspace path, repo root, .rule store path, or path inside that store.
+    pub workspace: String,
     pub path: String,
     pub file_kind: String,
     pub repo_scope: Vec<String>,
@@ -57,6 +59,8 @@ pub struct ImportRuleFileInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateRuleInput {
+    /// Concrete workspace path, repo root, .rule store path, or path inside that store.
+    pub workspace: String,
     pub title: String,
     pub slug: String,
     pub file_kind: String,

@@ -65,7 +65,7 @@ pub struct TestCli {
     pub store_root: Option<PathBuf>,
 
     /// Workspace/repo root to normalize to the canonical `.test` store.
-    #[arg(long, global = true)]
+    #[arg(long = "workspace", alias = "workspace-root", global = true)]
     pub workspace_root: Option<PathBuf>,
 
     /// Workspace slug that scopes test storage.
@@ -401,6 +401,8 @@ pub enum CliRunError {
     Timestamp(String, String),
     #[error("serialization error: {0}")]
     Serialization(String),
+    #[error("bad request: {0}")]
+    BadRequest(String),
     #[error("io error at {0}: {1}")]
     Io(String, String),
     #[error("failed to launch command '{0}': {1}")]
@@ -410,6 +412,20 @@ pub enum CliRunError {
 // ── entry point ───────────────────────────────────────────────────────────────
 
 pub fn run(cli: TestCli) -> Result<CliOutput, CliRunError> {
+    if matches!(
+        cli.command,
+        TestCommand::RecordSpec(_)
+            | TestCommand::Record(_)
+            | TestCommand::LogRecord(_)
+            | TestCommand::Run(_)
+    ) && cli.store_root.is_none()
+        && cli.workspace_root.is_none()
+    {
+        return Err(CliRunError::BadRequest(
+            "entity creation requires explicit --workspace <path> or --store-root <path>".to_string(),
+        ));
+    }
+
     let store_root = workspace::resolve_requested_store_root(
         cli.store_root.as_deref(),
         cli.workspace_root.as_deref(),

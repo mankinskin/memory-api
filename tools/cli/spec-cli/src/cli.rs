@@ -44,7 +44,7 @@ pub struct SpecCli {
 
     /// Workspace/repo root to normalize to the canonical `.spec` store.
     /// Useful for targeting a nested workspace from an ancestor checkout.
-    #[arg(long, global = true)]
+    #[arg(long = "workspace", alias = "workspace-root", global = true)]
     pub workspace_root: Option<PathBuf>,
 
     #[command(subcommand)]

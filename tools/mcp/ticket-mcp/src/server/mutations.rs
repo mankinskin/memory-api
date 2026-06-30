@@ -137,7 +137,11 @@ impl TicketServer {
         input: CreateTicketInput,
     ) -> Result<CallToolResult, McpError> {
         let extra = parse_field_patch(Some(input.fields.clone()), None)?;
-        let workspace = input.workspace;
+        let workspace = ticket_api::workspace::validate_explicit_workspace_selector(
+            Some(&input.workspace),
+        )
+        .map_err(|err| McpError::invalid_params(err.to_string(), None))?
+        .to_string();
         let type_id = input.type_id;
         let title = input.title;
         let state = input.state;
@@ -435,6 +439,30 @@ impl TicketServer {
             "new_rev": new_rev,
             "ticket": detail_from_manifest(updated, path),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn create_ticket_tool_rejects_default_workspace_alias() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let server = TicketServer::new(tmp.path().to_path_buf());
+
+        let result = server
+            .create_ticket_tool(CreateTicketInput {
+                workspace: "default".to_string(),
+                type_id: "tracker-improvement".to_string(),
+                title: Some("Wrong workspace".to_string()),
+                state: None,
+                fields: vec![],
+                description: None,
+            })
+            .await;
+
+        assert!(result.is_err());
     }
 }
 

@@ -40,6 +40,8 @@ pub enum MachineOutputFormat {
 }
 
 pub fn run(cli: RuleCli) -> Result<CliOutput, CliRunError> {
+    require_explicit_workspace_for_create(&cli)?;
+
     let index_root = helpers::resolve_index_root(
         cli.index_root.as_deref(),
         cli.workspace_root.as_deref(),
@@ -57,6 +59,18 @@ pub fn run(cli: RuleCli) -> Result<CliOutput, CliRunError> {
                 .unwrap_or_else(|_| format!("{payload:?}")),
         ))
     }
+}
+
+fn require_explicit_workspace_for_create(cli: &RuleCli) -> Result<(), CliRunError> {
+    if matches!(cli.command, RuleCommandCli::Create(_) | RuleCommandCli::ImportFile(_))
+        && cli.index_root.is_none()
+        && cli.workspace_root.is_none()
+    {
+        return Err(CliRunError::BadRequest(
+            "entity creation requires explicit --workspace <path> or --index-root <path>".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 pub fn error_output(

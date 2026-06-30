@@ -1,5 +1,8 @@
 use std::{
-    path::PathBuf,
+    path::{
+        Path,
+        PathBuf,
+    },
     sync::Arc,
 };
 
@@ -79,15 +82,63 @@ impl RuleServer {
         McpError::invalid_params(err.to_string(), None)
     }
 
+    fn is_rule_store_root(path: &Path) -> bool {
+        path.join("rules").is_dir()
+            || path.join("entities.db").is_file()
+            || path.join("search_index").is_dir()
+    }
+
+    fn resolve_workspace_root(
+        &self,
+        workspace: &str,
+    ) -> Result<PathBuf, McpError> {
+        let workspace = memory_api::workspace::validate_explicit_workspace_selector(
+            Some(workspace),
+        )
+        .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
+        let resolved = memory_api::workspace::resolve_store_root_from(
+            Path::new(workspace),
+            ".rule",
+        );
+        if resolved.file_name().and_then(|name| name.to_str()) == Some(".rule")
+            || Self::is_rule_store_root(&resolved)
+        {
+            return Ok(resolved);
+        }
+
+        Err(McpError::invalid_params(
+            format!(
+                "invalid workspace '{workspace}': expected a repo root containing .rule, the .rule store itself, a path inside that store, or an existing rule store root"
+            ),
+            None,
+        ))
+    }
+
     async fn with_store<T>(
         &self,
         f: impl FnOnce(&mut RuleStore) -> Result<T, McpError>,
     ) -> Result<T, McpError> {
+        self.with_store_at(self.index_root.clone(), f).await
+    }
+
+    async fn with_store_for_workspace<T>(
+        &self,
+        workspace: &str,
+        f: impl FnOnce(&mut RuleStore) -> Result<T, McpError>,
+    ) -> Result<T, McpError> {
+        let index_root = self.resolve_workspace_root(workspace)?;
+        self.with_store_at(index_root, f).await
+    }
+
+    async fn with_store_at<T>(
+        &self,
+        index_root: PathBuf,
+        f: impl FnOnce(&mut RuleStore) -> Result<T, McpError>,
+    ) -> Result<T, McpError> {
         let _guard = self.store_lock.lock().await;
-        let mut store =
-            RuleStore::open(&self.index_root).map_err(Self::rule_err)?;
+        let mut store = RuleStore::open(&index_root).map_err(Self::rule_err)?;
         if let Some(workspace_root) =
-            workspace_root_for_index_root(&self.index_root)
+            workspace_root_for_index_root(&index_root)
         {
             for root in discover_workspace_scan_roots(&workspace_root) {
                 store

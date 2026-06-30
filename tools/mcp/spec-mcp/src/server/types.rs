@@ -18,9 +18,8 @@ pub struct SpecRefInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateSpecInput {
-    /// Optional workspace selector (`default`, workspace root, or .spec store path).
-    #[serde(default)]
-    pub workspace: Option<String>,
+    /// Concrete workspace path, repo root, .spec store path, or path inside that store.
+    pub workspace: String,
     /// Spec title.
     pub title: String,
     /// Hierarchical slug (e.g. "ticket-api/storage/store").

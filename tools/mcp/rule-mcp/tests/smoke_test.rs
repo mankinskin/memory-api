@@ -37,6 +37,7 @@ async fn rule_update_accepts_sparse_payload_and_returns_minimal_response() {
     let created = extract_json(
         server
             .rule_create(Parameters(CreateRuleInput {
+                workspace: _tmp.path().display().to_string(),
                 title: "Sparse Rule".to_string(),
                 slug: "shared/tests/sparse-rule".to_string(),
                 file_kind: "AGENTS".to_string(),
