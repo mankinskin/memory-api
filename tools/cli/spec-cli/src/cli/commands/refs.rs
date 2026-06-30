@@ -33,7 +33,17 @@ pub(crate) fn cmd_refs(
                         default_workspace_root,
                     )
                 });
-            let results = validate_refs(&spec.code_refs, &workspace_root);
+            let canonical_workspace_root =
+                memory_api::workspace::canonicalize_workspace_root_strict(
+                    &workspace_root,
+                )
+                .map_err(|error| {
+                    CliRunError::BadRequest(format!(
+                        "workspace root canonicalization failed for '{}': {error}",
+                        workspace_root.display()
+                    ))
+                })?;
+            let results = validate_refs(&spec.code_refs, &canonical_workspace_root);
             let items: Vec<Value> = results
                 .iter()
                 .map(|r| {
@@ -54,8 +64,8 @@ pub(crate) fn cmd_refs(
                 "status": "ok",
                 "id": spec.id,
                 "workspace_root": render_workspace_root_for_payload(
-                    &workspace_root,
-                ),
+                    &canonical_workspace_root,
+                )?,
                 "valid": all_valid,
                 "count": items.len(),
                 "results": items,
@@ -87,34 +97,17 @@ pub(crate) fn cmd_refs(
     }
 }
 
-fn render_workspace_root_for_payload(path: &std::path::Path) -> String {
-    let raw = memory_api::workspace::strip_verbatim_prefix(path)
-        .to_string_lossy()
-        .replace('\\', "/");
-    let collapsed = collapse_separator_runs(&raw);
-    collapsed
-        .strip_prefix("/?/")
-        .unwrap_or(&collapsed)
-        .to_string()
-}
-
-fn collapse_separator_runs(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    let mut prev_was_slash = false;
-
-    for ch in value.chars() {
-        if ch == '/' {
-            if !prev_was_slash {
-                out.push(ch);
-            }
-            prev_was_slash = true;
-        } else {
-            out.push(ch);
-            prev_was_slash = false;
-        }
-    }
-
-    out
+fn render_workspace_root_for_payload(
+    path: &std::path::Path,
+) -> Result<String, CliRunError> {
+    memory_api::workspace::normalize_path_for_display_strict(path).map_err(
+        |error| {
+            CliRunError::BadRequest(format!(
+                "workspace root payload normalization failed for '{}': {error}",
+                path.display()
+            ))
+        },
+    )
 }
 
 fn inferred_workspace_root_for_spec(
@@ -190,7 +183,9 @@ mod tests {
         assert_eq!(payload["count"], 1);
         assert_eq!(
             payload["workspace_root"],
-            Value::String(render_workspace_root_for_payload(expected_root))
+            Value::String(
+                render_workspace_root_for_payload(expected_root).unwrap(),
+            )
         );
     }
 
@@ -198,39 +193,41 @@ mod tests {
     fn render_workspace_root_for_payload_normalizes_separators() {
         let rendered = render_workspace_root_for_payload(std::path::Path::new(
             r"C:\\repo\\memory-api",
-        ));
+        ))
+        .unwrap();
 
-        assert_eq!(rendered, "C:/repo/memory-api");
+        assert_eq!(rendered, "/c/repo/memory-api");
     }
 
     #[test]
     #[cfg(windows)]
     fn render_workspace_root_for_payload_strips_verbatim_prefix() {
         let rendered = render_workspace_root_for_payload(std::path::Path::new(
-            r"\\\\?\\C:\\repo\\memory-api",
-        ));
+            r"\\?\C:\repo\memory-api",
+        ))
+        .unwrap();
 
-        assert_eq!(rendered, "C:/repo/memory-api");
+        assert_eq!(rendered, "/c/repo/memory-api");
     }
 
     #[test]
     #[cfg(windows)]
-    #[ignore = "Enable after path normalization kernel handles UNC roots"]
     fn render_workspace_root_for_payload_preserves_unc_root() {
         let rendered = render_workspace_root_for_payload(std::path::Path::new(
             r"\\server\share\memory-api",
-        ));
+        ))
+        .unwrap();
 
         assert_eq!(rendered, "//server/share/memory-api");
     }
 
     #[test]
     #[cfg(windows)]
-    #[ignore = "Enable after path normalization kernel handles verbatim UNC roots"]
     fn render_workspace_root_for_payload_normalizes_verbatim_unc_root() {
         let rendered = render_workspace_root_for_payload(std::path::Path::new(
             r"\\?\UNC\server\share\memory-api",
-        ));
+        ))
+        .unwrap();
 
         assert_eq!(rendered, "//server/share/memory-api");
     }

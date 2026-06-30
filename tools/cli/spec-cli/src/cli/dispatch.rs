@@ -445,7 +445,7 @@ mod tests {
         assert_eq!(payload["valid"], true);
         assert_eq!(
             payload["workspace_root"],
-            child.to_string_lossy().replace('\\', "/")
+            memory_api::workspace::normalize_path_for_display(&child)
         );
     }
 
