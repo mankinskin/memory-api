@@ -742,14 +742,24 @@ impl TicketStore {
 
         let mut path = Vec::new();
         let mut from = current_state.to_string();
-        for state in transition_states {
-            schema.ensure_transition(&from, state)?;
-            path.push(state.clone());
-            from = state.clone();
-        }
+        let mut checkpoints: Vec<String> = transition_states.to_vec();
+        checkpoints.push(target_state.to_string());
 
-        schema.ensure_transition(&from, target_state)?;
-        path.push(target_state.to_string());
+        for checkpoint in checkpoints {
+            if checkpoint == from {
+                continue;
+            }
+
+            let segment = schema.find_path(&from, &checkpoint).ok_or_else(|| {
+                StorageError::Other(format!(
+                    "no path from '{}' to '{}'",
+                    from, checkpoint
+                ))
+            })?;
+
+            path.extend(segment);
+            from = checkpoint;
+        }
 
         if !schema.required_states.is_empty()
             && schema.terminal_states.contains(&target_state.to_string())

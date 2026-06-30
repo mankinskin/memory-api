@@ -1531,3 +1531,67 @@ fn bug_7f4aaa05_transition_states_multi_step_path() {
         "transition_states should apply the final state from the path"
     );
 }
+
+#[test]
+fn update_allows_reachable_multi_step_without_transition_states() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Reachable multi-step forward"),
+            Some("new"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    store
+        .update(
+            &id,
+            BTreeMap::new(),
+            None,
+            Some("in-implementation"),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let indexed = store.get_indexed(&id).unwrap().unwrap();
+    assert_eq!(indexed.state.as_deref(), Some("in-implementation"));
+}
+
+#[test]
+fn update_allows_reachable_reverse_multi_step_without_transition_states() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Reachable multi-step reverse"),
+            Some("in-implementation"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    store
+        .update(
+            &id,
+            BTreeMap::new(),
+            None,
+            Some("new"),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let indexed = store.get_indexed(&id).unwrap().unwrap();
+    assert_eq!(indexed.state.as_deref(), Some("new"));
+}
