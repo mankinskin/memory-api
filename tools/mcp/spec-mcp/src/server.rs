@@ -60,7 +60,7 @@ impl SpecServer {
     fn json_result<T: Serialize>(
         value: &T
     ) -> Result<CallToolResult, McpError> {
-        let text = serde_json::to_string_pretty(value).map_err(|e| {
+        let text = serde_json::to_string(value).map_err(|e| {
             McpError::internal_error(format!("serialization: {e}"), None)
         })?;
         Ok(CallToolResult::success(vec![Content::text(text)]))
