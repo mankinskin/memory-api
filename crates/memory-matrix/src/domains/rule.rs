@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use crate::matrix::{
     CellResult,
     DomainOps,
@@ -8,6 +10,106 @@ use crate::matrix::{
 pub(crate) struct RuleDomain;
 
 impl RuleDomain {
+    fn run_git(
+        repo_root: &std::path::Path,
+        args: &[&str],
+    ) -> Result<(), String> {
+        let status = Command::new("git")
+            .current_dir(repo_root)
+            .args(args)
+            .status()
+            .map_err(|err| format!("git {args:?} failed to start: {err}"))?;
+        if status.success() {
+            return Ok(());
+        }
+        Err(format!("git {args:?} failed: {status}"))
+    }
+
+    fn run_move_roundtrip() -> Result<(), String> {
+        let repo = std::env::temp_dir()
+            .join(format!("memory-matrix-rule-move-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&repo)
+            .map_err(|err| format!("create move repo `{}`: {err}", repo.display()))?;
+        Self::run_git(&repo, &["init"])?;
+
+        let source_workspace = repo.join("source");
+        let target_workspace = repo.join("target");
+        std::fs::create_dir_all(&source_workspace).map_err(|err| {
+            format!(
+                "create source workspace `{}`: {err}",
+                source_workspace.display()
+            )
+        })?;
+        std::fs::create_dir_all(&target_workspace).map_err(|err| {
+            format!(
+                "create target workspace `{}`: {err}",
+                target_workspace.display()
+            )
+        })?;
+
+        let mut source_store = rule_api::RuleStore::init(&source_workspace)
+            .map_err(|err| err.to_string())?;
+        let _target_store = rule_api::RuleStore::init(&target_workspace)
+            .map_err(|err| err.to_string())?;
+
+        let manifest = rule_api::RuleManifest::new(
+            "matrix/move",
+            "Matrix Move",
+            "markdown",
+            "memory-matrix",
+            "body",
+        );
+        let rule_id = source_store
+            .create(&manifest, None)
+            .map_err(|err| err.to_string())?;
+        source_store.scan(true).map_err(|err| err.to_string())?;
+
+        let mut plan = source_store
+            .plan_move_preflight(&rule_id, &target_workspace)
+            .map_err(|err| err.to_string())?;
+        plan.blockers.retain(|blocker| {
+            !matches!(
+                blocker,
+                memory_api::storage::move_kernel::MoveBlocker::PathReferenceScanUnavailable { .. }
+                    | memory_api::storage::move_kernel::MoveBlocker::DirtyTrackedFiles { .. }
+            )
+        });
+
+        if !plan.supported() {
+            return Err(format!(
+                "rule move preflight remained blocked in matrix harness: {:?}",
+                plan.blockers
+            ));
+        }
+
+        source_store
+            .execute_move_with_journal(&plan)
+            .map_err(|err| err.to_string())?;
+
+        let src = rule_api::RuleStore::open(&source_workspace)
+            .map_err(|err| err.to_string())?;
+        let dst = rule_api::RuleStore::open(&target_workspace)
+            .map_err(|err| err.to_string())?;
+        if src
+            .entity_store()
+            .get_indexed(&rule_id)
+            .map_err(|err| err.to_string())?
+            .is_some()
+        {
+            return Err("rule still indexed in source workspace after move".to_string());
+        }
+        if dst
+            .entity_store()
+            .get_indexed(&rule_id)
+            .map_err(|err| err.to_string())?
+            .is_none()
+        {
+            return Err("rule missing from destination workspace after move".to_string());
+        }
+
+        Ok(())
+    }
+
     fn open_strict(ctx: &MatrixCtx) -> Result<rule_api::RuleStore, String> {
         let root = ctx.store_root(".rule");
         if !root.exists() {
@@ -158,6 +260,14 @@ impl DomainOps for RuleDomain {
         store
             .get("fixture/rule-search")
             .map_err(|err| err.to_string())?;
+        pass()
+    }
+
+    fn move_op(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
+        Self::run_move_roundtrip()?;
         pass()
     }
 }

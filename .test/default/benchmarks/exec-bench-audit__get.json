@@ -3,7 +3,7 @@
   "benchmark_name": "audit__get",
   "operation": "get",
   "domain": "audit",
-  "executed_at": "2026-06-29T01:07:48.581443900Z",
+  "executed_at": "2026-06-30T12:33:53.731597700Z",
   "mean_ns": 2685280,
   "median_ns": 2627150,
   "std_dev_ns": 203790,

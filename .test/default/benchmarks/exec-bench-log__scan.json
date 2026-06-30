@@ -3,7 +3,7 @@
   "benchmark_name": "log__scan",
   "operation": "scan",
   "domain": "log",
-  "executed_at": "2026-06-29T01:07:48.581443900Z",
+  "executed_at": "2026-06-30T12:33:53.731597700Z",
   "mean_ns": 2419480,
   "median_ns": 2414000,
   "std_dev_ns": 107382,

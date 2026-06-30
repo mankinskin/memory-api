@@ -9,6 +9,7 @@ use serde_json::{
     json,
     Value,
 };
+use uuid::Uuid;
 
 use memory_api::workspace;
 use session_api::{
@@ -64,6 +65,8 @@ pub enum SessionCommand {
     Lookup(LookupArgs),
     /// Query stored sessions with optional filters.
     Query(QueryArgs),
+    /// Move a UUID-addressed session to another workspace store.
+    Move(MoveArgs),
     /// Peek a bounded window of transcript turns for a session.
     PeekRange(PeekRangeArgs),
     /// Peek a body-stripped skeleton of a session transcript.
@@ -141,6 +144,24 @@ pub struct PeekSkeletonArgs {
     pub preview_chars: usize,
 }
 
+#[derive(Debug, Args)]
+pub struct MoveArgs {
+    /// Session UUID to move (required unless --resume/--rollback is used).
+    pub id: Option<String>,
+    /// Destination workspace root.
+    #[arg(long = "to-workspace-root")]
+    pub to_workspace_root: Option<PathBuf>,
+    /// Plan only; do not execute the move.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+    /// Resume an interrupted move from a journal UUID.
+    #[arg(long)]
+    pub resume: Option<String>,
+    /// Roll back a move from a journal UUID.
+    #[arg(long)]
+    pub rollback: Option<String>,
+}
+
 // ── output helpers ──────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -149,6 +170,7 @@ pub enum MachineOutputFormat {
     Toon,
 }
 
+#[derive(Debug)]
 pub enum CliOutput {
     Machine(Value, MachineOutputFormat),
     Text(String),
@@ -158,6 +180,8 @@ pub enum CliOutput {
 pub enum CliRunError {
     #[error("session error: {0}")]
     Session(#[from] SessionError),
+    #[error("bad request: {0}")]
+    BadRequest(String),
     #[error("serialization error: {0}")]
     Serialization(String),
 }
@@ -215,6 +239,7 @@ fn dispatch(
                 "sessions": sessions,
             }))
         },
+        SessionCommand::Move(args) => move_command(config, args),
         SessionCommand::PeekRange(args) => {
             let range = config.peek_range(&args.session_id, args.start, args.end)?;
             to_value(&range)
@@ -224,6 +249,149 @@ fn dispatch(
             to_value(&skeleton)
         },
     }
+}
+
+fn move_command(
+    config: &SessionStoreConfig,
+    args: MoveArgs,
+) -> Result<Value, CliRunError> {
+    if args.resume.is_some() && args.rollback.is_some() {
+        return Err(CliRunError::BadRequest(
+            "move accepts only one of --resume or --rollback".to_string(),
+        ));
+    }
+
+    if let Some(journal_id) = args.resume.as_deref() {
+        let journal_id = journal_id.parse::<Uuid>().map_err(|error| {
+            CliRunError::BadRequest(format!("invalid --resume journal UUID: {error}"))
+        })?;
+        let outcome = config.resume_move_with_journal(journal_id)?;
+        return to_value(&json!({
+            "command": "move",
+            "status": "ok",
+            "mode": "resume",
+            "journal_id": outcome.journal.id,
+            "phase": outcome.journal.phase,
+            "recovery": recovery_hint(),
+        }));
+    }
+
+    if let Some(journal_id) = args.rollback.as_deref() {
+        let journal_id = journal_id.parse::<Uuid>().map_err(|error| {
+            CliRunError::BadRequest(format!("invalid --rollback journal UUID: {error}"))
+        })?;
+        let outcome = config.rollback_move_with_journal(journal_id)?;
+        return to_value(&json!({
+            "command": "move",
+            "status": "ok",
+            "mode": "rollback",
+            "journal_id": outcome.journal.id,
+            "phase": outcome.journal.phase,
+            "recovery": recovery_hint(),
+        }));
+    }
+
+    let id = args.id.as_deref().ok_or_else(|| {
+        CliRunError::BadRequest(
+            "move requires <id> unless --resume/--rollback is used".to_string(),
+        )
+    })?;
+    let to_workspace_root = args.to_workspace_root.as_deref().ok_or_else(|| {
+        CliRunError::BadRequest(
+            "move requires --to-workspace-root in plan/execute mode".to_string(),
+        )
+    })?;
+
+    let session_id = id.parse::<Uuid>().map_err(|error| {
+        CliRunError::BadRequest(format!("invalid session UUID: {error}"))
+    })?;
+    let target_workspace_root = workspace::canonicalize_workspace_root(to_workspace_root);
+    let report = config.plan_move_preflight(&session_id, &target_workspace_root)?;
+
+    if args.dry_run || !report.supported() {
+        return to_value(&json!({
+            "command": "move",
+            "status": if report.supported() { "ok" } else { "blocked" },
+            "mode": "plan",
+            "dry_run": true,
+            "session_id": session_id,
+            "plan": move_plan_json(&report),
+            "recovery": recovery_hint(),
+        }));
+    }
+
+    let outcome = config.execute_move_with_journal(&report)?;
+    to_value(&json!({
+        "command": "move",
+        "status": "ok",
+        "mode": "execute",
+        "session_id": session_id,
+        "plan": move_plan_json(&report),
+        "outcome": move_outcome_json(&outcome),
+        "recovery": recovery_hint(),
+    }))
+}
+
+fn move_plan_json(report: &memory_api::storage::move_kernel::MovePlan) -> Value {
+    json!({
+        "supported": report.supported(),
+        "entity_id": report.entity_id,
+        "source_workspace_root": path_display(&report.source_workspace_root),
+        "target_workspace_root": path_display(&report.target_workspace_root),
+        "source_store_root": path_display(&report.source_store_root),
+        "target_store_root": path_display(&report.target_store_root),
+        "source_git_worktree_root": path_display(&report.source_git_worktree_root),
+        "target_git_worktree_root": path_display(&report.target_git_worktree_root),
+        "git_worktree_topology": report.git_worktree_topology,
+        "source_entity_path": path_display(&report.source_entity_path),
+        "destination_entity_path": path_display(&report.destination_entity_path),
+        "inbound_related_entity_ids": report.inbound_related_entity_ids,
+        "outbound_related_entity_ids": report.outbound_related_entity_ids,
+        "reference_visibility": report.reference_visibility,
+        "active_board_entries": report.active_board_entries,
+        "historical_board_entries": report.historical_board_entries,
+        "active_leases": report.active_leases,
+        "path_reference_files": report.path_reference_files,
+        "blockers": report.blockers,
+        "captured_at": report.captured_at,
+    })
+}
+
+fn move_outcome_json(outcome: &memory_api::storage::move_kernel::MoveOutcome) -> Value {
+    json!({
+        "resumed": outcome.resumed,
+        "rolled_back": outcome.rolled_back,
+        "journal": {
+            "id": outcome.journal.id,
+            "entity_id": outcome.journal.entity_id,
+            "source_store_root": path_display(&outcome.journal.source_store_root),
+            "target_store_root": path_display(&outcome.journal.target_store_root),
+            "source_entity_path": path_display(&outcome.journal.source_entity_path),
+            "destination_entity_path": path_display(&outcome.journal.destination_entity_path),
+            "phase": outcome.journal.phase,
+            "created_at": outcome.journal.created_at,
+            "updated_at": outcome.journal.updated_at,
+            "steps": outcome.journal.steps,
+            "rollback_steps": outcome.journal.rollback_steps,
+            "lock_paths": outcome.journal.lock_paths,
+            "migrated_board_entries": outcome.journal.migrated_board_entries,
+            "rewritten_path_files": outcome.journal.rewritten_path_files,
+            "manual_followups": outcome.journal.manual_followups,
+            "failure": outcome.journal.failure,
+            "next_recovery_step": outcome.journal.next_recovery_step,
+        },
+    })
+}
+
+fn recovery_hint() -> Value {
+    json!({
+        "resume": "session move --resume <journal-uuid>",
+        "rollback": "session move --rollback <journal-uuid>",
+    })
+}
+
+fn path_display(path: &std::path::Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn to_value<T: serde::Serialize>(value: &T) -> Result<Value, CliRunError> {
@@ -292,6 +460,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
+    use std::process::Command;
+    use tempfile::tempdir;
+    use session_api::{
+        CopilotHookMessage,
+        CopilotHookPayload,
+        SessionCaptureRequest,
+        SessionRole,
+    };
 
     #[test]
     fn parses_check_in_command() {
@@ -352,5 +529,100 @@ mod tests {
             "sess-1",
         ]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parses_move_command() {
+        let cli = parse_cli_from([
+            "session",
+            "move",
+            "7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71",
+            "--to-workspace-root",
+            "/repo/target",
+        ])
+        .expect("parse move");
+
+        match cli.command {
+            SessionCommand::Move(args) => {
+                assert_eq!(args.id.as_deref(), Some("7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71"));
+                assert_eq!(args.to_workspace_root, Some(PathBuf::from("/repo/target")));
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn move_roundtrip_executes_against_target_workspace() {
+        let temp = tempdir().unwrap();
+        let repo_root = temp.path().join("repo");
+        std::fs::create_dir_all(&repo_root).unwrap();
+        Command::new("git")
+            .current_dir(&repo_root)
+            .args(["init"])
+            .status()
+            .expect("git init")
+            .success()
+            .then_some(())
+            .expect("git init failed");
+
+        let source_store_root = repo_root.join(".memory-api");
+        std::fs::create_dir_all(&source_store_root).unwrap();
+        let target_workspace_root = repo_root.join("target-workspace");
+        std::fs::create_dir_all(target_workspace_root.join(".session")).unwrap();
+
+        let session_id = "7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71";
+        let config = SessionStoreConfig::new(source_store_root.clone(), "default".to_string());
+        let payload = CopilotHookPayload {
+            session_id: session_id.to_string(),
+            workspace_slug: "default".to_string(),
+            captured_at: Utc::now(),
+            conversation_id: Some("conv-1".to_string()),
+            agent_id: Some("agent-1".to_string()),
+            model: None,
+            trigger: None,
+            messages: vec![CopilotHookMessage {
+                role: SessionRole::User,
+                content: "move me".to_string(),
+                tool_name: None,
+                captured_at: None,
+            }],
+        };
+        config
+            .persist_capture(SessionCaptureRequest::copilot(payload))
+            .expect("seed session");
+
+        let cli = parse_cli_from([
+            "session",
+            "--json",
+            "--store-root",
+            source_store_root.to_string_lossy().as_ref(),
+            "move",
+            session_id,
+            "--to-workspace-root",
+            target_workspace_root.to_string_lossy().as_ref(),
+        ])
+        .expect("parse move");
+
+        match run(cli).expect("run move") {
+            CliOutput::Machine(value, _) => {
+                assert_eq!(value["status"], "ok");
+                assert_eq!(value["mode"], "execute");
+                assert!(value["outcome"]["journal"]["id"].is_string());
+            },
+            other => panic!("unexpected output: {other:?}"),
+        }
+
+        let target_config = SessionStoreConfig::new(
+            target_workspace_root.join(".session"),
+            "default".to_string(),
+        );
+        assert!(matches!(
+            config.read_session(session_id),
+            Err(SessionError::NotFound { .. })
+        ));
+        assert_eq!(
+            target_config.read_session(session_id).unwrap().session_id,
+            session_id
+        );
     }
 }

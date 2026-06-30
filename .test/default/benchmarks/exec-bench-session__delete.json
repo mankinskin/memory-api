@@ -3,7 +3,7 @@
   "benchmark_name": "session__delete",
   "operation": "delete",
   "domain": "session",
-  "executed_at": "2026-06-29T01:07:48.581443900Z",
+  "executed_at": "2026-06-30T12:33:53.731597700Z",
   "mean_ns": 2521590,
   "median_ns": 2542750,
   "std_dev_ns": 140947,

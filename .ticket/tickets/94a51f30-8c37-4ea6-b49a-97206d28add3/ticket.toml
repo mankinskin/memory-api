@@ -1,10 +1,12 @@
 id = "94a51f30-8c37-4ea6-b49a-97206d28add3"
 created_at = "2026-06-28T19:35:26.062036+00:00"
 title = "[memory-api][spec-api][rule-api][audit-api] Adopt generic move kernel across domains and expose move on all transports"
-state = "in-implementation"
+state = "in-review"
 component = "memory-api"
 depends_on = ["505b2cd4-f21d-4e8d-8e6a-ae06a5b69854", "da27c074-8c9e-4613-b8b9-bf02c72b50f7"]
 effort = "8000"
 priority = "high"
 risk_level = "high"
 type = "tracker-improvement"
+validation_status = "in-review"
+validation_summary = "Resumed domain-adoption track; added audit/session CLI and MCP move parity with tests. Validation: cargo test -p audit-cli move -- --nocapture; cargo test -p session-cli move -- --nocapture; cargo test -p audit-mcp move_preflight_is_blocked_for_repository_level_audit_storage -- --nocapture; cargo test -p session-mcp move_preflight_and_apply_roundtrip -- --nocapture; cargo run -p memory-matrix --bin bench-matrix -- --skip-bench."

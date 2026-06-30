@@ -3,7 +3,7 @@
   "benchmark_name": "spec__move",
   "operation": "move",
   "domain": "spec",
-  "executed_at": "2026-06-29T01:07:48.581443900Z",
+  "executed_at": "2026-06-30T12:33:53.731597700Z",
   "mean_ns": 2605513,
   "median_ns": 2623967,
   "std_dev_ns": 183903,

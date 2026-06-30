@@ -21,6 +21,7 @@ use serde_json::{
 use audit_api::{
     audit::audit,
     error::AuditError,
+    index::RepositoryIndex,
     models::{
         AuditConfig,
         AuditReport,
@@ -38,6 +39,7 @@ use audit_api::{
     },
 };
 use memory_api::generated_markdown::prepare_generated_output;
+use uuid::Uuid;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -61,6 +63,9 @@ pub struct AuditCli {
 pub enum AuditCommand {
     /// Run an audit for a repository.
     Run(AuditArgs),
+
+    /// Move an audit repository root to another workspace store.
+    Move(MoveArgs),
 
     /// Generate (or check) the committed audit status catalog artifacts:
     /// `.audit/README.md`, `.audit/index.toon`, and `.agents/audit-catalog.md`.
@@ -111,6 +116,32 @@ pub struct AuditSummaryArgs {
     pub args: AuditArgs,
 }
 
+#[derive(Debug, Args)]
+pub struct MoveArgs {
+    /// Audit entity UUID to move (required unless --resume/--rollback is used).
+    pub id: Option<String>,
+
+    /// Repository root for the audit store.
+    #[arg(long = "repo-root", default_value = ".")]
+    pub repo_root: PathBuf,
+
+    /// Destination workspace root.
+    #[arg(long = "to-workspace-root")]
+    pub to_workspace_root: Option<PathBuf>,
+
+    /// Plan only; do not execute the move.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+
+    /// Resume an interrupted move from a journal UUID.
+    #[arg(long)]
+    pub resume: Option<String>,
+
+    /// Roll back a move from a journal UUID.
+    #[arg(long)]
+    pub rollback: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SummaryByArg {
     Crate,
@@ -139,10 +170,14 @@ pub enum CliRunError {
     #[error("audit error: {0}")]
     Audit(#[from] AuditError),
 
+    #[error("bad request: {0}")]
+    BadRequest(String),
+
     #[error("store-index error: {0}")]
     StoreIndex(String),
 }
 
+#[derive(Debug)]
 pub enum CliOutput {
     Machine(Value, MachineOutputFormat),
     Text(String),
@@ -189,7 +224,158 @@ pub fn run(cli: AuditCli) -> Result<CliOutput, CliRunError> {
                 Ok(CliOutput::Text(render_summary_human(&summary)))
             }
         },
+        AuditCommand::Move(args) => {
+            let result = cmd_move(args)?;
+            if let Some(format) = machine_output_format(cli.json, cli.toon) {
+                Ok(CliOutput::Machine(result, format))
+            } else {
+                Ok(CliOutput::Text(serde_json::to_string_pretty(&result).unwrap_or_else(|_| format!("{result:?}"))))
+            }
+        },
     }
+}
+
+fn cmd_move(args: MoveArgs) -> Result<Value, CliRunError> {
+    if args.resume.is_some() && args.rollback.is_some() {
+        return Err(CliRunError::BadRequest(
+            "move accepts only one of --resume or --rollback".to_string(),
+        ));
+    }
+
+    let index = RepositoryIndex::open(&args.repo_root)?;
+
+    if let Some(journal_id) = args.resume.as_deref() {
+        let journal_id = journal_id
+            .parse::<Uuid>()
+            .map_err(|error| CliRunError::BadRequest(format!("invalid --resume journal UUID: {error}")))?;
+        let outcome = index.resume_move_with_journal(journal_id)?;
+        return Ok(json!({
+            "command": "move",
+            "status": "ok",
+            "mode": "resume",
+            "journal_id": outcome.journal.id,
+            "phase": outcome.journal.phase,
+            "recovery": recovery_hint(),
+        }));
+    }
+
+    if let Some(journal_id) = args.rollback.as_deref() {
+        let journal_id = journal_id
+            .parse::<Uuid>()
+            .map_err(|error| CliRunError::BadRequest(format!("invalid --rollback journal UUID: {error}")))?;
+        let outcome = index.rollback_move_with_journal(journal_id)?;
+        return Ok(json!({
+            "command": "move",
+            "status": "ok",
+            "mode": "rollback",
+            "journal_id": outcome.journal.id,
+            "phase": outcome.journal.phase,
+            "recovery": recovery_hint(),
+        }));
+    }
+
+    let id = args.id.as_deref().ok_or_else(|| {
+        CliRunError::BadRequest(
+            "move requires <id> unless --resume/--rollback is used".to_string(),
+        )
+    })?;
+    let to_workspace_root = args.to_workspace_root.as_deref().ok_or_else(|| {
+        CliRunError::BadRequest(
+            "move requires --to-workspace-root in plan/execute mode".to_string(),
+        )
+    })?;
+
+    let audit_id = id
+        .parse::<Uuid>()
+        .map_err(|error| CliRunError::BadRequest(format!("invalid audit UUID: {error}")))?;
+    let report = index.plan_move_preflight(&audit_id, to_workspace_root)?;
+
+    if args.dry_run || !report.supported() {
+        return Ok(json!({
+            "command": "move",
+            "status": if report.supported() { "ok" } else { "blocked" },
+            "mode": "plan",
+            "dry_run": true,
+            "repo_root": path_display(&args.repo_root),
+            "audit_id": audit_id,
+            "plan": move_plan_json(&report),
+            "recovery": recovery_hint(),
+        }));
+    }
+
+    let outcome = index.execute_move_with_journal(&report)?;
+    Ok(json!({
+        "command": "move",
+        "status": "ok",
+        "mode": "execute",
+        "repo_root": path_display(&args.repo_root),
+        "audit_id": audit_id,
+        "plan": move_plan_json(&report),
+        "outcome": move_outcome_json(&outcome),
+        "recovery": recovery_hint(),
+    }))
+}
+
+fn move_plan_json(report: &memory_api::storage::move_kernel::MovePlan) -> Value {
+    json!({
+        "supported": report.supported(),
+        "entity_id": report.entity_id,
+        "source_workspace_root": path_display(&report.source_workspace_root),
+        "target_workspace_root": path_display(&report.target_workspace_root),
+        "source_store_root": path_display(&report.source_store_root),
+        "target_store_root": path_display(&report.target_store_root),
+        "source_git_worktree_root": path_display(&report.source_git_worktree_root),
+        "target_git_worktree_root": path_display(&report.target_git_worktree_root),
+        "git_worktree_topology": report.git_worktree_topology,
+        "source_entity_path": path_display(&report.source_entity_path),
+        "destination_entity_path": path_display(&report.destination_entity_path),
+        "inbound_related_entity_ids": report.inbound_related_entity_ids,
+        "outbound_related_entity_ids": report.outbound_related_entity_ids,
+        "reference_visibility": report.reference_visibility,
+        "active_board_entries": report.active_board_entries,
+        "historical_board_entries": report.historical_board_entries,
+        "active_leases": report.active_leases,
+        "path_reference_files": report.path_reference_files,
+        "blockers": report.blockers,
+        "captured_at": report.captured_at,
+    })
+}
+
+fn move_outcome_json(outcome: &memory_api::storage::move_kernel::MoveOutcome) -> Value {
+    json!({
+        "resumed": outcome.resumed,
+        "rolled_back": outcome.rolled_back,
+        "journal": {
+            "id": outcome.journal.id,
+            "entity_id": outcome.journal.entity_id,
+            "source_store_root": path_display(&outcome.journal.source_store_root),
+            "target_store_root": path_display(&outcome.journal.target_store_root),
+            "source_entity_path": path_display(&outcome.journal.source_entity_path),
+            "destination_entity_path": path_display(&outcome.journal.destination_entity_path),
+            "phase": outcome.journal.phase,
+            "created_at": outcome.journal.created_at,
+            "updated_at": outcome.journal.updated_at,
+            "steps": outcome.journal.steps,
+            "rollback_steps": outcome.journal.rollback_steps,
+            "lock_paths": outcome.journal.lock_paths,
+            "migrated_board_entries": outcome.journal.migrated_board_entries,
+            "rewritten_path_files": outcome.journal.rewritten_path_files,
+            "manual_followups": outcome.journal.manual_followups,
+            "failure": outcome.journal.failure,
+            "next_recovery_step": outcome.journal.next_recovery_step,
+        },
+    })
+}
+
+fn recovery_hint() -> Value {
+    json!({
+        "resume": "audit move --resume <journal-uuid>",
+        "rollback": "audit move --rollback <journal-uuid>",
+    })
+}
+
+fn path_display(path: &std::path::Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn run_audit(args: &AuditArgs) -> Result<AuditReport, CliRunError> {
@@ -261,6 +447,74 @@ pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat
         std::env::args().any(|arg| arg == "--json"),
         std::env::args().any(|arg| arg == "--toon"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn parses_move_command() {
+        let cli = parse_cli_from([
+            "audit",
+            "move",
+            "7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71",
+            "--repo-root",
+            "/repo",
+            "--to-workspace-root",
+            "/target",
+        ])
+        .expect("parse move");
+
+        match cli.command {
+            AuditCommand::Move(args) => {
+                assert_eq!(args.id.as_deref(), Some("7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71"));
+                assert_eq!(args.repo_root, PathBuf::from("/repo"));
+                assert_eq!(args.to_workspace_root, Some(PathBuf::from("/target")));
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn move_plans_blocked_when_audit_entity_has_no_folder() {
+        let temp = tempdir().unwrap();
+        let repo_root = temp.path().join("repo");
+        std::fs::create_dir_all(&repo_root).unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo_root)
+            .args(["init"])
+            .status()
+            .expect("git init")
+            .success()
+            .then_some(())
+            .expect("git init failed");
+
+        let target_workspace = repo_root.join("target-workspace");
+        std::fs::create_dir_all(target_workspace.join(".audit")).unwrap();
+
+        let cli = parse_cli_from([
+            "audit",
+            "--json",
+            "move",
+            "7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71",
+            "--repo-root",
+            repo_root.to_string_lossy().as_ref(),
+            "--to-workspace-root",
+            target_workspace.to_string_lossy().as_ref(),
+        ])
+        .expect("parse move");
+
+        match run(cli).expect("run move") {
+            CliOutput::Machine(value, _) => {
+                assert_eq!(value["status"], "blocked");
+                assert_eq!(value["mode"], "plan");
+                assert!(value["plan"]["blockers"].as_array().unwrap().len() > 0);
+            },
+            other => panic!("unexpected output: {other:?}"),
+        }
+    }
 }
 
 fn render_human(report: &AuditReport) -> String {

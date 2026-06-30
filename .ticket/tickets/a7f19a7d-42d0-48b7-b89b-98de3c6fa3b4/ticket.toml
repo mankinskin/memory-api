@@ -1,7 +1,7 @@
 id = "a7f19a7d-42d0-48b7-b89b-98de3c6fa3b4"
 created_at = "2026-06-28T19:35:42.040326400+00:00"
 title = "[memory-api][test] Refresh cross-domain move matrix + add move benchmark now that the kernel landed"
-state = "new"
+state = "done"
 component = "memory-api"
 depends_on = ["505b2cd4-f21d-4e8d-8e6a-ae06a5b69854", "da27c074-8c9e-4613-b8b9-bf02c72b50f7"]
 effort = "2500"
@@ -9,3 +9,5 @@ linked = ["751f0e71-a857-484f-a45e-09717f086321"]
 priority = "medium"
 risk_level = "medium"
 type = "tracker-improvement"
+validation_status = "passed"
+validation_summary = "Matrix refresh already landed; reran benchmark ingestion with cargo run -p memory-matrix --bin bench-matrix -- --skip-bench, which ingested 56 cells, 0 missing, and all operations were within budget, including move for ticket/spec/rule/audit/session/test/doc/log domains."

@@ -53,9 +53,9 @@ pub(crate) fn cmd_refs(
                 "command": "refs_validate",
                 "status": "ok",
                 "id": spec.id,
-                "workspace_root": workspace_root
-                    .to_string_lossy()
-                    .replace('\\', "/"),
+                "workspace_root": render_workspace_root_for_payload(
+                    &workspace_root,
+                ),
                 "valid": all_valid,
                 "count": items.len(),
                 "results": items,
@@ -85,6 +85,12 @@ pub(crate) fn cmd_refs(
             }))
         },
     }
+}
+
+fn render_workspace_root_for_payload(path: &std::path::Path) -> String {
+    memory_api::workspace::strip_verbatim_prefix(path)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 fn inferred_workspace_root_for_spec(
@@ -160,12 +166,27 @@ mod tests {
         assert_eq!(payload["count"], 1);
         assert_eq!(
             payload["workspace_root"],
-            Value::String(
-                expected_root
-                    .to_string_lossy()
-                    .replace('\\', "/")
-            )
+            Value::String(render_workspace_root_for_payload(expected_root))
         );
+    }
+
+    #[test]
+    fn render_workspace_root_for_payload_normalizes_separators() {
+        let rendered = render_workspace_root_for_payload(std::path::Path::new(
+            r"C:\\repo\\memory-api",
+        ));
+
+        assert_eq!(rendered, "C:/repo/memory-api");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn render_workspace_root_for_payload_strips_verbatim_prefix() {
+        let rendered = render_workspace_root_for_payload(std::path::Path::new(
+            r"\\\\?\\C:\\repo\\memory-api",
+        ));
+
+        assert_eq!(rendered, "C:/repo/memory-api");
     }
 
     #[test]

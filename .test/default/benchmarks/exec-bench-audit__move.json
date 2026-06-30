@@ -3,7 +3,7 @@
   "benchmark_name": "audit__move",
   "operation": "move",
   "domain": "audit",
-  "executed_at": "2026-06-29T01:07:48.581443900Z",
+  "executed_at": "2026-06-30T12:33:53.731597700Z",
   "mean_ns": 3270235,
   "median_ns": 3198175,
   "std_dev_ns": 402495,

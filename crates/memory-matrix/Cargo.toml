@@ -18,6 +18,7 @@ harness = false
 
 [dependencies]
 memory-fixtures = { path = "../memory-fixtures" }
+memory-api = { path = "../memory-api" }
 ticket-api = { path = "../ticket-api" }
 spec-api = { path = "../spec-api" }
 rule-api = { path = "../rule-api" }

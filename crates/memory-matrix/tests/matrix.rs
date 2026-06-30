@@ -114,7 +114,7 @@ fn core_crud_domains_pass_get_search_crud_and_scan() {
 }
 
 #[test]
-fn move_cells_are_blocked_with_a_reason() {
+fn move_cells_reflect_adapter_backing_by_domain_and_transport() {
     let run = run_matrix().expect("matrix should run against the fixture");
 
     for domain in DOMAINS {
@@ -128,14 +128,28 @@ fn move_cells_are_blocked_with_a_reason() {
                         && r.operation == "move"
                 })
                 .unwrap_or_else(|| panic!("missing move cell for {domain}@{transport}"));
+
+            let adapter_backed = ["ticket", "spec", "rule"].contains(domain);
+            let should_pass = adapter_backed && *transport == "in-process";
+
+            if should_pass {
+                assert_eq!(
+                    record.outcome,
+                    ValidationOutcome::Passed,
+                    "{domain}.move@{transport} should pass via adapter-backed move kernel"
+                );
+                continue;
+            }
+
             assert_eq!(
                 record.outcome,
                 ValidationOutcome::Blocked,
-                "{domain}.move@{transport} should be blocked until the move kernel lands"
+                "{domain}.move@{transport} should be blocked when transport/domain move wiring is absent"
             );
             assert!(
-                record.detail.to_lowercase().contains("move"),
-                "{domain}.move@{transport} reason should mention move: {}",
+                record.detail.to_lowercase().contains("move")
+                    || record.detail.to_lowercase().contains("transport"),
+                "{domain}.move@{transport} reason should mention move/transport: {}",
                 record.detail
             );
         }

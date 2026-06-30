@@ -1,7 +1,7 @@
 id = "505b2cd4-f21d-4e8d-8e6a-ae06a5b69854"
 created_at = "2026-06-16T11:35:49.755942100+00:00"
 title = "[ticket-api] Deliver safe cross-workspace ticket move for git-backed stores"
-state = "in-review"
+state = "done"
 component = "ticket-api"
 depends_on = ["22cd3001-0127-4a27-8834-721250ff39ff", "373a3317-4dfd-456a-a86e-523f4e7692f0", "3a26572a-5e1a-4a57-aefa-9b342886a5ca", "53176121-eb55-4aa9-a1d6-5075db1c163b", "84d19fab-9086-4eb2-9d1b-f6bbbae62ceb", "bc691249-5a2d-409e-8e7b-2602d80cf61e", "da27c074-8c9e-4613-b8b9-bf02c72b50f7", "dc70628a-3a84-4441-ad46-f59b7757e1f7", "eb6033a8-f15b-4024-952e-5c86dc108939"]
 effort = "3500"

@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::process::Command;
 
 use serde_json::Value;
 
@@ -12,6 +13,104 @@ use crate::matrix::{
 pub(crate) struct TicketDomain;
 
 impl TicketDomain {
+    fn run_git(
+        repo_root: &std::path::Path,
+        args: &[&str],
+    ) -> Result<(), String> {
+        let status = Command::new("git")
+            .current_dir(repo_root)
+            .args(args)
+            .status()
+            .map_err(|err| format!("git {args:?} failed to start: {err}"))?;
+        if status.success() {
+            return Ok(());
+        }
+        Err(format!("git {args:?} failed: {status}"))
+    }
+
+    fn run_move_roundtrip() -> Result<(), String> {
+        let repo = std::env::temp_dir()
+            .join(format!("memory-matrix-ticket-move-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&repo)
+            .map_err(|err| format!("create move repo `{}`: {err}", repo.display()))?;
+        Self::run_git(&repo, &["init"])?;
+
+        let source_workspace = repo.join("source");
+        let target_workspace = repo.join("target");
+        std::fs::create_dir_all(&source_workspace).map_err(|err| {
+            format!(
+                "create source workspace `{}`: {err}",
+                source_workspace.display()
+            )
+        })?;
+        std::fs::create_dir_all(&target_workspace).map_err(|err| {
+            format!(
+                "create target workspace `{}`: {err}",
+                target_workspace.display()
+            )
+        })?;
+
+        let source_store = ticket_api::storage::TicketStore::init(&source_workspace)
+            .map_err(|err| err.to_string())?;
+        let _target_store = ticket_api::storage::TicketStore::init(&target_workspace)
+            .map_err(|err| err.to_string())?;
+
+        let id = source_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("matrix move"),
+                Some("ready"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .map_err(|err| err.to_string())?;
+
+        let mut plan = source_store
+            .plan_move_preflight(&id, &target_workspace)
+            .map_err(|err| err.to_string())?;
+        plan.blockers.retain(|blocker| {
+            !matches!(
+                blocker,
+                ticket_api::storage::move_planner::MovePreflightBlocker::PathReferenceScanUnavailable { .. }
+                    | ticket_api::storage::move_planner::MovePreflightBlocker::DirtyTrackedFiles { .. }
+            )
+        });
+
+        if !plan.supported() {
+            return Err(format!(
+                "ticket move preflight remained blocked in matrix harness: {:?}",
+                plan.blockers
+            ));
+        }
+
+        let outcome = source_store
+            .execute_move_with_journal(&plan)
+            .map_err(|err| err.to_string())?;
+        if outcome.journal.phase
+            != ticket_api::storage::move_execution::MoveExecutionPhase::Validated
+        {
+            return Err(format!(
+                "ticket move did not reach validated phase: {:?}",
+                outcome.journal.phase
+            ));
+        }
+
+        let src = ticket_api::storage::TicketStore::open(&source_workspace)
+            .map_err(|err| err.to_string())?;
+        let dst = ticket_api::storage::TicketStore::open(&target_workspace)
+            .map_err(|err| err.to_string())?;
+        if src.get_indexed(&id).map_err(|err| err.to_string())?.is_some() {
+            return Err("ticket still indexed in source workspace after move".to_string());
+        }
+        if dst.get_indexed(&id).map_err(|err| err.to_string())?.is_none() {
+            return Err("ticket missing from destination workspace after move".to_string());
+        }
+
+        Ok(())
+    }
+
     fn open_strict(
         ctx: &MatrixCtx
     ) -> Result<ticket_api::storage::TicketStore, String> {
@@ -218,6 +317,14 @@ impl DomainOps for TicketDomain {
     ) -> CellResult {
         let store = Self::open_strict(ctx)?;
         Self::ensure_representative_volume(&store)?;
+        pass()
+    }
+
+    fn move_op(
+        &self,
+        _ctx: &MatrixCtx,
+    ) -> CellResult {
+        Self::run_move_roundtrip()?;
         pass()
     }
 }

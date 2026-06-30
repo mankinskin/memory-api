@@ -153,10 +153,10 @@ pub(crate) trait DomainOps {
         &self,
         _ctx: &MatrixCtx,
     ) -> CellResult {
-        blocked(
-            "generic move kernel (ticket 0a510279) not yet landed; \
-             cross-worktree move is blocked-with-reason until it lands",
-        )
+        blocked(format!(
+            "{} move surface is not adapter-backed in memory-matrix yet",
+            self.domain()
+        ))
     }
     fn scan(
         &self,
@@ -392,10 +392,9 @@ fn dispatch_cli(
     ctx: &MatrixCtx,
 ) -> CellResult {
     if operation == "move" {
-        return blocked(
-            "generic move kernel (ticket 0a510279) not yet landed; \
-             CLI move stays blocked-with-reason until it lands",
-        );
+        return blocked(format!(
+            "cli transport for domain `{domain}` operation `move` is not wired in memory-matrix yet; in-process move cells exercise the adapter-backed move kernel"
+        ));
     }
 
     match domain {

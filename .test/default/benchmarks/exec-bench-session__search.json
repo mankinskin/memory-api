@@ -3,7 +3,7 @@
   "benchmark_name": "session__search",
   "operation": "search",
   "domain": "session",
-  "executed_at": "2026-06-29T01:07:48.581443900Z",
+  "executed_at": "2026-06-30T12:33:53.731597700Z",
   "mean_ns": 8255165,
   "median_ns": 7851400,
   "std_dev_ns": 1003346,
