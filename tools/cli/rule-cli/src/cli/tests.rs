@@ -997,13 +997,18 @@ fn generate_target_supports_dot_prefixed_prompt_tree_output() {
 
 #[test]
 fn repo_spec_prompt_target_matches_expectation_oriented_contract() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let prompt_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(5)
+        .find_map(|path| {
+            let candidate = path.join(".agents/prompts/spec.prompt.md");
+            candidate.is_file().then_some(candidate)
+        })
+        .expect("context-engine prompt target path");
+    let repo_root = prompt_path
+        .ancestors()
+        .nth(3)
         .expect("context-engine repo root")
         .to_path_buf();
-
-    let prompt_path = repo_root.join(".agents/prompts/spec.prompt.md");
     let rendered = fs::read_to_string(&prompt_path).unwrap();
 
     assert!(rendered.contains("intended system properties"));
