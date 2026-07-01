@@ -99,7 +99,7 @@ pub enum TicketCommandCli {
     Repro(ReproArgs),
     /// List tickets with optional state/type filtering.
     List(ListArgs),
-    /// Soft-delete a ticket.
+    /// Permanently delete a ticket.
     Delete(IdArgs),
     /// Run full scan/reindex over registered scan roots.
     Scan(ScanArgs),

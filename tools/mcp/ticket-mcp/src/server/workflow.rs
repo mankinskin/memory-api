@@ -114,7 +114,7 @@ impl TicketServer {
                     "optional": ["title", "state", "fields", "description"],
                 },
                 "delete_ticket": {
-                    "description": "Soft-delete a ticket",
+                    "description": "Permanently delete a ticket",
                     "required": ["workspace", "id"],
                 },
                 "list_edges": {

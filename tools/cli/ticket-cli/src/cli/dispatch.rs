@@ -91,7 +91,7 @@ fn dry_run_payload_core(command: &TicketCommandCli) -> Option<Value> {
         TicketCommandCli::Repro(_) =>
             Some(dry_run_payload("repro", "record repro metadata")),
         TicketCommandCli::Delete(_) =>
-            Some(dry_run_payload("delete", "soft-delete ticket")),
+            Some(dry_run_payload("delete", "permanently delete ticket")),
         TicketCommandCli::Scan(_) =>
             Some(dry_run_payload("scan", "scan/reindex ticket roots")),
         TicketCommandCli::Claim(_) =>

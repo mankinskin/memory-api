@@ -389,7 +389,7 @@ pub async fn update_spec(
     }
 }
 
-/// DELETE /api/specs/:id — soft-delete.
+/// DELETE /api/specs/:id — permanently delete.
 pub async fn delete_spec(
     State(state): State<SpecAppState>,
     Extension(rid): Extension<RequestIdExt>,

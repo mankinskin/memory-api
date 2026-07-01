@@ -206,7 +206,7 @@ impl SpecServer {
         self.spec_update_tool(input).await
     }
 
-    #[tool(name = "spec_delete", description = "Soft-delete a spec.")]
+    #[tool(name = "spec_delete", description = "Permanently delete a spec.")]
     pub async fn spec_delete(
         &self,
         Parameters(input): Parameters<SpecRefInput>,

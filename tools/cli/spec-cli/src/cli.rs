@@ -64,7 +64,7 @@ pub enum SpecCommandCli {
     Get(GetArgs),
     /// Update a spec's fields or state.
     Update(UpdateArgs),
-    /// Soft-delete a spec.
+    /// Permanently delete a spec.
     Delete(IdArgs),
     /// List specs with optional filtering.
     List(ListArgs),

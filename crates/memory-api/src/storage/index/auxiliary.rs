@@ -23,11 +23,7 @@ use crate::storage::{
 };
 
 impl RedbIndexStore {
-    /// Returns the number of non-deleted tickets without deserializing rows.
-    ///
-    /// Note: deleted tickets are stored as BLOBs with a flag inside, so we
-    /// can only do an approximate count via `COUNT(*)` (includes soft-deleted).
-    /// For the SSE snapshot baseline this is accurate enough.
+    /// Returns the number of indexed tickets without deserializing rows.
     pub fn count_tickets(&self) -> Result<usize, StorageError> {
         let conn = self.read_conn()?;
         let count: i64 = conn.query_row(
