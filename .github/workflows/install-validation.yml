@@ -11,17 +11,6 @@ on:
       - 'crates/**'
       - 'tools/**'
       - 'README.md'
-  push:
-    branches: [main, master]
-    paths:
-      - '.github/workflows/install-validation.yml'
-      - '.dockerignore'
-      - '.rule/**'
-      - '.spec/**'
-      - 'rule-targets.yaml'
-      - 'crates/**'
-      - 'tools/**'
-      - 'README.md'
   workflow_dispatch:
 
 concurrency:
