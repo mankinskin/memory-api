@@ -98,6 +98,14 @@ fn every_cell_records_an_execution_with_duration() {
             record.domain,
             record.operation
         );
+        if matches!(record.expected_outcome, ExpectedOutcome::Passed) {
+            assert_eq!(
+                record.outcome,
+                ValidationOutcome::Passed,
+                "expected-passed cell should pass for {}",
+                record.cell_id
+            );
+        }
     }
 
     // No cell may hard-fail: each is either Passed or Blocked-with-reason.
@@ -226,6 +234,16 @@ fn unwired_transports_are_explicitly_blocked_with_reason() {
             || (record.transport == "cli"
                 && ["ticket", "spec", "rule"].contains(&record.domain.as_str())
                 && record.operation != "move")
+            || (record.transport == "mcp"
+                && ((record.domain == "ticket"
+                    && ["create", "get", "search", "update", "delete"]
+                        .contains(&record.operation.as_str()))
+                    || (record.domain == "spec"
+                        && ["create", "get", "search", "update", "delete", "scan"]
+                            .contains(&record.operation.as_str()))
+                    || (record.domain == "rule"
+                        && ["create", "get", "search", "update", "scan"]
+                            .contains(&record.operation.as_str()))))
             || (record.transport == "http"
                 && record.domain == "ticket"
                 && ["get", "search"].contains(&record.operation.as_str()))
@@ -254,6 +272,153 @@ fn unwired_transports_are_explicitly_blocked_with_reason() {
             record.detail
         );
     }
+}
+
+#[test]
+fn ticket_create_mcp_cell_is_wired_and_passes() {
+    let run = run_matrix().expect("matrix should run against the fixture");
+
+    let record = run
+        .records
+        .iter()
+        .find(|r| {
+            r.domain == "ticket"
+                && r.transport == "mcp"
+                && r.operation == "create"
+        })
+        .expect("missing ticket.create@mcp cell");
+    assert_eq!(
+        record.outcome,
+        ValidationOutcome::Passed,
+        "ticket.create@mcp should pass via ticket-mcp server: {}",
+        record.detail
+    );
+}
+
+#[test]
+fn ticket_get_mcp_cell_is_wired_and_passes() {
+    let run = run_matrix().expect("matrix should run against the fixture");
+
+    let record = run
+        .records
+        .iter()
+        .find(|r| {
+            r.domain == "ticket"
+                && r.transport == "mcp"
+                && r.operation == "get"
+        })
+        .expect("missing ticket.get@mcp cell");
+    assert_eq!(
+        record.outcome,
+        ValidationOutcome::Passed,
+        "ticket.get@mcp should pass via ticket-mcp server: {}",
+        record.detail
+    );
+}
+
+#[test]
+fn ticket_search_mcp_cell_is_wired_and_passes() {
+    let run = run_matrix().expect("matrix should run against the fixture");
+
+    let record = run
+        .records
+        .iter()
+        .find(|r| {
+            r.domain == "ticket"
+                && r.transport == "mcp"
+                && r.operation == "search"
+        })
+        .expect("missing ticket.search@mcp cell");
+    assert_eq!(
+        record.outcome,
+        ValidationOutcome::Passed,
+        "ticket.search@mcp should pass via ticket-mcp server: {}",
+        record.detail
+    );
+}
+
+#[test]
+fn ticket_update_mcp_cell_is_wired_and_passes() {
+    let run = run_matrix().expect("matrix should run against the fixture");
+
+    let record = run
+        .records
+        .iter()
+        .find(|r| {
+            r.domain == "ticket"
+                && r.transport == "mcp"
+                && r.operation == "update"
+        })
+        .expect("missing ticket.update@mcp cell");
+    assert_eq!(
+        record.outcome,
+        ValidationOutcome::Passed,
+        "ticket.update@mcp should pass via ticket-mcp server: {}",
+        record.detail
+    );
+}
+
+#[test]
+fn ticket_delete_mcp_cell_is_wired_and_passes() {
+    let run = run_matrix().expect("matrix should run against the fixture");
+
+    let record = run
+        .records
+        .iter()
+        .find(|r| {
+            r.domain == "ticket"
+                && r.transport == "mcp"
+                && r.operation == "delete"
+        })
+        .expect("missing ticket.delete@mcp cell");
+    assert_eq!(
+        record.outcome,
+        ValidationOutcome::Passed,
+        "ticket.delete@mcp should pass via ticket-mcp server: {}",
+        record.detail
+    );
+}
+
+#[test]
+fn spec_scan_mcp_cell_is_wired_and_passes() {
+    let run = run_matrix().expect("matrix should run against the fixture");
+
+    let record = run
+        .records
+        .iter()
+        .find(|r| {
+            r.domain == "spec"
+                && r.transport == "mcp"
+                && r.operation == "scan"
+        })
+        .expect("missing spec.scan@mcp cell");
+    assert_eq!(
+        record.outcome,
+        ValidationOutcome::Passed,
+        "spec.scan@mcp should pass via spec-mcp server: {}",
+        record.detail
+    );
+}
+
+#[test]
+fn rule_scan_mcp_cell_is_wired_and_passes() {
+    let run = run_matrix().expect("matrix should run against the fixture");
+
+    let record = run
+        .records
+        .iter()
+        .find(|r| {
+            r.domain == "rule"
+                && r.transport == "mcp"
+                && r.operation == "scan"
+        })
+        .expect("missing rule.scan@mcp cell");
+    assert_eq!(
+        record.outcome,
+        ValidationOutcome::Passed,
+        "rule.scan@mcp should pass via rule-mcp server: {}",
+        record.detail
+    );
 }
 
 #[test]

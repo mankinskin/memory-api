@@ -207,7 +207,7 @@ impl TicketServer {
         name = "list_tickets",
         description = "List tickets with optional state/query/limit filters."
     )]
-    async fn list_tickets(
+    pub async fn list_tickets(
         &self,
         Parameters(input): Parameters<ListTicketsInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -215,7 +215,7 @@ impl TicketServer {
     }
 
     #[tool(name = "get_ticket", description = "Get one ticket by id.")]
-    async fn get_ticket(
+    pub async fn get_ticket(
         &self,
         Parameters(input): Parameters<TicketRefInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -351,7 +351,7 @@ impl TicketServer {
         name = "create_ticket",
         description = "Create a new ticket with the given type, optional title, state, fields, and description."
     )]
-    async fn create_ticket(
+    pub async fn create_ticket(
         &self,
         Parameters(input): Parameters<CreateTicketInput>,
     ) -> Result<CallToolResult, McpError> {
@@ -362,7 +362,7 @@ impl TicketServer {
         name = "delete_ticket",
         description = "Delete a ticket permanently, removing its folder from disk."
     )]
-    async fn delete_ticket(
+    pub async fn delete_ticket(
         &self,
         Parameters(input): Parameters<DeleteTicketInput>,
     ) -> Result<CallToolResult, McpError> {

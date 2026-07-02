@@ -5,7 +5,7 @@ state = "in-implementation"
 component = "test-api"
 depends_on = ["9138f4e7-2757-4d23-9676-3306608a429e", "a03d8a97-2b31-4f1a-a2cb-b33848af2f2a"]
 effort = "~200k tokens"
-implementation_summary = "Phase 1 landed in memory-matrix: added canonical transport registry entries with cell_id=<domain>.<operation>.<transport>, fixture_profile, expected_outcome, and blocked_reason metadata; matrix recordings now carry cell_id-keyed spec/execution ids and provenance; added registry/record assertions in matrix tests; validated with cargo test -p memory-matrix (11 passed)."
+implementation_summary = "Extended MCP matrix coverage (step 1) in memory-matrix: added ticket.update/delete cells, spec.update/delete/scan cells, and rule.update/scan cells; expanded transport support map and blocked-reason model accordingly; added focused assertions for new MCP cells and updated unwired transport expectations. Validation: cargo test -p memory-matrix (18 passed). ticket-mcp integration_update_mcp remains blocked on this Windows environment with OS error 740 (elevated rights required)."
 priority = "high"
 risk_level = "high"
 type = "tracker-improvement"
