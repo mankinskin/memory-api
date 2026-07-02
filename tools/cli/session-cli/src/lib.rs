@@ -314,7 +314,15 @@ fn move_command(
     let session_id = id.parse::<Uuid>().map_err(|error| {
         CliRunError::BadRequest(format!("invalid session UUID: {error}"))
     })?;
-    let target_workspace_root = workspace::canonicalize_workspace_root(to_workspace_root);
+    let target_workspace_root = workspace::canonicalize_workspace_root_strict(
+        to_workspace_root,
+    )
+    .map_err(|error| {
+        CliRunError::BadRequest(format!(
+            "workspace root canonicalization failed for '{}': {error}",
+            to_workspace_root.display()
+        ))
+    })?;
     let report = config.plan_move_preflight(&session_id, &target_workspace_root)?;
 
     if args.dry_run || !report.supported() {
@@ -324,7 +332,7 @@ fn move_command(
             "mode": "plan",
             "dry_run": true,
             "session_id": session_id,
-            "plan": move_plan_json(&report),
+            "plan": move_plan_json(&report)?,
             "recovery": recovery_hint(),
         }));
     }
@@ -335,25 +343,27 @@ fn move_command(
         "status": "ok",
         "mode": "execute",
         "session_id": session_id,
-        "plan": move_plan_json(&report),
-        "outcome": move_outcome_json(&outcome),
+        "plan": move_plan_json(&report)?,
+        "outcome": move_outcome_json(&outcome)?,
         "recovery": recovery_hint(),
     }))
 }
 
-fn move_plan_json(report: &memory_api::storage::move_kernel::MovePlan) -> Value {
-    json!({
+fn move_plan_json(
+    report: &memory_api::storage::move_kernel::MovePlan,
+) -> Result<Value, CliRunError> {
+    Ok(json!({
         "supported": report.supported(),
         "entity_id": report.entity_id,
-        "source_workspace_root": path_display(&report.source_workspace_root),
-        "target_workspace_root": path_display(&report.target_workspace_root),
-        "source_store_root": path_display(&report.source_store_root),
-        "target_store_root": path_display(&report.target_store_root),
-        "source_git_worktree_root": path_display(&report.source_git_worktree_root),
-        "target_git_worktree_root": path_display(&report.target_git_worktree_root),
+        "source_workspace_root": path_display(&report.source_workspace_root)?,
+        "target_workspace_root": path_display(&report.target_workspace_root)?,
+        "source_store_root": path_display(&report.source_store_root)?,
+        "target_store_root": path_display(&report.target_store_root)?,
+        "source_git_worktree_root": path_display(&report.source_git_worktree_root)?,
+        "target_git_worktree_root": path_display(&report.target_git_worktree_root)?,
         "git_worktree_topology": report.git_worktree_topology,
-        "source_entity_path": path_display(&report.source_entity_path),
-        "destination_entity_path": path_display(&report.destination_entity_path),
+        "source_entity_path": path_display(&report.source_entity_path)?,
+        "destination_entity_path": path_display(&report.destination_entity_path)?,
         "inbound_related_entity_ids": report.inbound_related_entity_ids,
         "outbound_related_entity_ids": report.outbound_related_entity_ids,
         "reference_visibility": report.reference_visibility,
@@ -363,20 +373,22 @@ fn move_plan_json(report: &memory_api::storage::move_kernel::MovePlan) -> Value 
         "path_reference_files": report.path_reference_files,
         "blockers": report.blockers,
         "captured_at": report.captured_at,
-    })
+    }))
 }
 
-fn move_outcome_json(outcome: &memory_api::storage::move_kernel::MoveOutcome) -> Value {
-    json!({
+fn move_outcome_json(
+    outcome: &memory_api::storage::move_kernel::MoveOutcome,
+) -> Result<Value, CliRunError> {
+    Ok(json!({
         "resumed": outcome.resumed,
         "rolled_back": outcome.rolled_back,
         "journal": {
             "id": outcome.journal.id,
             "entity_id": outcome.journal.entity_id,
-            "source_store_root": path_display(&outcome.journal.source_store_root),
-            "target_store_root": path_display(&outcome.journal.target_store_root),
-            "source_entity_path": path_display(&outcome.journal.source_entity_path),
-            "destination_entity_path": path_display(&outcome.journal.destination_entity_path),
+            "source_store_root": path_display(&outcome.journal.source_store_root)?,
+            "target_store_root": path_display(&outcome.journal.target_store_root)?,
+            "source_entity_path": path_display(&outcome.journal.source_entity_path)?,
+            "destination_entity_path": path_display(&outcome.journal.destination_entity_path)?,
             "phase": outcome.journal.phase,
             "created_at": outcome.journal.created_at,
             "updated_at": outcome.journal.updated_at,
@@ -389,7 +401,7 @@ fn move_outcome_json(outcome: &memory_api::storage::move_kernel::MoveOutcome) ->
             "failure": outcome.journal.failure,
             "next_recovery_step": outcome.journal.next_recovery_step,
         },
-    })
+    }))
 }
 
 fn recovery_hint() -> Value {
@@ -399,8 +411,13 @@ fn recovery_hint() -> Value {
     })
 }
 
-fn path_display(path: &std::path::Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+fn path_display(path: &std::path::Path) -> Result<String, CliRunError> {
+    workspace::normalize_path_for_display_strict(path).map_err(|error| {
+        CliRunError::BadRequest(format!(
+            "path payload normalization failed for '{}': {error}",
+            path.display()
+        ))
+    })
 }
 
 fn to_value<T: serde::Serialize>(value: &T) -> Result<Value, CliRunError> {

@@ -264,7 +264,8 @@ impl TicketServer {
     ) -> Result<CallToolResult, McpError> {
         let workspace = input.workspace;
         let id_str = input.id;
-        let target_workspace = normalize_workspace_root(&input.to_workspace_root);
+        let target_workspace =
+            normalize_workspace_root(&input.to_workspace_root)?;
         let plan = self
             .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
@@ -280,7 +281,7 @@ impl TicketServer {
             "status": "ok",
             "mode": "preflight",
             "id": plan.0.to_string(),
-            "plan": move_plan_json(&plan.1),
+            "plan": move_plan_json(&plan.1)?,
             "recovery": move_recovery_json(),
         }))
     }
@@ -291,7 +292,8 @@ impl TicketServer {
     ) -> Result<CallToolResult, McpError> {
         let workspace = input.workspace;
         let id_str = input.id;
-        let target_workspace = normalize_workspace_root(&input.to_workspace_root);
+        let target_workspace =
+            normalize_workspace_root(&input.to_workspace_root)?;
         let (id, report, outcome) = self
             .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
@@ -320,7 +322,7 @@ impl TicketServer {
             "status": "ok",
             "mode": "apply",
             "id": id.to_string(),
-            "plan": move_plan_json(&report),
+            "plan": move_plan_json(&report)?,
             "outcome": move_outcome_json(&outcome),
             "recovery": move_recovery_json(),
         }))
@@ -466,15 +468,17 @@ mod tests {
     }
 }
 
-fn move_plan_json(report: &ticket_api::storage::move_planner::MovePreflightReport) -> Value {
-    serde_json::json!({
+fn move_plan_json(
+    report: &ticket_api::storage::move_planner::MovePreflightReport,
+) -> Result<Value, McpError> {
+    Ok(serde_json::json!({
         "supported": report.supported(),
-        "source_workspace_root": normalize_display_path(&report.source_workspace_root),
-        "target_workspace_root": normalize_display_path(&report.target_workspace_root),
-        "source_store_root": normalize_display_path(&report.source_store_root),
-        "target_store_root": normalize_display_path(&report.target_store_root),
-        "source_ticket_path": normalize_display_path(&report.source_entity_path),
-        "destination_ticket_path": normalize_display_path(&report.destination_entity_path),
+        "source_workspace_root": normalize_display_path(&report.source_workspace_root)?,
+        "target_workspace_root": normalize_display_path(&report.target_workspace_root)?,
+        "source_store_root": normalize_display_path(&report.source_store_root)?,
+        "target_store_root": normalize_display_path(&report.target_store_root)?,
+        "source_ticket_path": normalize_display_path(&report.source_entity_path)?,
+        "destination_ticket_path": normalize_display_path(&report.destination_entity_path)?,
         "path_reference_files": report.path_reference_files,
         "reference_visibility": report.reference_visibility,
         "active_board_entries": report.active_board_entries,
@@ -482,7 +486,7 @@ fn move_plan_json(report: &ticket_api::storage::move_planner::MovePreflightRepor
         "active_leases": report.active_leases,
         "blockers": report.blockers,
         "captured_at": report.captured_at,
-    })
+    }))
 }
 
 fn move_outcome_json(outcome: &ticket_api::storage::move_execution::MoveExecutionOutcome) -> Value {
@@ -513,13 +517,31 @@ fn move_recovery_json() -> Value {
     })
 }
 
-fn normalize_workspace_root(value: &str) -> PathBuf {
-    ticket_api::workspace::canonicalize_workspace_root(&PathBuf::from(value))
+fn normalize_workspace_root(value: &str) -> Result<PathBuf, McpError> {
+    ticket_api::workspace::canonicalize_workspace_root_strict(std::path::Path::new(value))
+        .map_err(|error| {
+            McpError::invalid_params(
+                format!(
+                    "workspace root canonicalization failed for '{}': {error}",
+                    value
+                ),
+                None,
+            )
+        })
 }
 
-fn normalize_display_path(path: &std::path::Path) -> String {
-    let raw = path.to_string_lossy().replace('\\', "/");
-    raw.strip_prefix("//?/").unwrap_or(&raw).to_string()
+fn normalize_display_path(path: &std::path::Path) -> Result<String, McpError> {
+    ticket_api::workspace::normalize_path_for_display_strict(path).map_err(
+        |error| {
+            McpError::invalid_params(
+                format!(
+                    "path payload normalization failed for '{}': {error}",
+                    path.display()
+                ),
+                None,
+            )
+        },
+    )
 }
 
 fn parse_field_patch(

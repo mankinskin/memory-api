@@ -64,6 +64,28 @@ pub const OPERATIONS: &[&str] = &[
 /// Transport axis exercised by the matrix.
 pub const TRANSPORTS: &[&str] = &["in-process", "cli", "mcp", "http"];
 
+/// Fixture profile name emitted for every matrix cell execution.
+pub const FIXTURE_PROFILE_DEFAULT: &str = "memory-fixtures/default";
+
+/// Expected status declared by the matrix registry for a given cell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExpectedOutcome {
+    Passed,
+    Blocked,
+}
+
+/// Canonical transport-matrix registry entry.
+#[derive(Debug, Clone)]
+pub struct CellSpec {
+    pub cell_id: String,
+    pub domain: String,
+    pub operation: String,
+    pub transport: String,
+    pub fixture_profile: String,
+    pub expected_outcome: ExpectedOutcome,
+    pub blocked_reason: Option<String>,
+}
+
 /// Outcome of a single matrix cell that ran without an internal error.
 pub enum Cell {
     /// The operation ran and its correctness assertions held.
@@ -198,6 +220,134 @@ fn dispatch(
         "scan" => ops.scan(ctx),
         other => Err(format!("unknown operation `{other}`")),
     }
+}
+
+fn domain_names() -> Vec<&'static str> {
+    domains().into_iter().map(|d| d.domain()).collect()
+}
+
+fn in_process_supported(
+    domain: &str,
+    operation: &str,
+) -> bool {
+    match domain {
+        "ticket" | "spec" | "rule" => OPERATIONS.contains(&operation),
+        "audit" => ["search", "scan"].contains(&operation),
+        "session" => ["create", "get", "search", "update"].contains(&operation),
+        "test" => ["create", "get", "search", "update"].contains(&operation),
+        "log" => ["create", "get", "search", "update"].contains(&operation),
+        "doc" => false,
+        _ => false,
+    }
+}
+
+fn cli_supported(
+    domain: &str,
+    operation: &str,
+) -> bool {
+    ["ticket", "spec", "rule"].contains(&domain) && operation != "move"
+}
+
+fn http_supported(
+    domain: &str,
+    operation: &str,
+) -> bool {
+    domain == "ticket" && ["get", "search"].contains(&operation)
+}
+
+fn is_supported(
+    domain: &str,
+    transport: &str,
+    operation: &str,
+) -> bool {
+    match transport {
+        "in-process" => in_process_supported(domain, operation),
+        "cli" => cli_supported(domain, operation),
+        "http" => http_supported(domain, operation),
+        "mcp" => false,
+        _ => false,
+    }
+}
+
+fn expected_blocked_reason(
+    domain: &str,
+    transport: &str,
+    operation: &str,
+) -> String {
+    match transport {
+        "in-process" => {
+            if operation == "move" {
+                format!(
+                    "{domain} move surface is not adapter-backed in memory-matrix yet"
+                )
+            } else {
+                unsupported(operation, domain)
+            }
+        },
+        "cli" => {
+            if operation == "move" {
+                format!(
+                    "cli transport for domain `{domain}` operation `move` is not wired in memory-matrix yet; in-process move cells exercise the adapter-backed move kernel"
+                )
+            } else {
+                format!(
+                    "cli transport for domain `{domain}` operation `{operation}` is not wired yet"
+                )
+            }
+        },
+        "http" => {
+            if domain == "ticket" {
+                format!(
+                    "http transport for domain `ticket` operation `{operation}` is not wired yet; currently only `ticket.get@http` and `ticket.search@http` are exercised through the ticket-http router surface"
+                )
+            } else {
+                format!(
+                    "http transport for domain `{domain}` operation `{operation}` is not wired yet"
+                )
+            }
+        },
+        _ => format!(
+            "transport `{transport}` for domain `{domain}` operation `{operation}` is not wired in the matrix harness yet; recorded as blocked-with-reason per real-transport rollout"
+        ),
+    }
+}
+
+fn expected_outcome_for_cell(
+    domain: &str,
+    transport: &str,
+    operation: &str,
+) -> (ExpectedOutcome, Option<String>) {
+    if is_supported(domain, transport, operation) {
+        (ExpectedOutcome::Passed, None)
+    } else {
+        (
+            ExpectedOutcome::Blocked,
+            Some(expected_blocked_reason(domain, transport, operation)),
+        )
+    }
+}
+
+/// Canonical transport-cell registry for `domain x operation x transport`.
+pub fn transport_cells() -> Vec<CellSpec> {
+    let mut out = Vec::new();
+    for domain in domain_names() {
+        for &operation in OPERATIONS {
+            for &transport in TRANSPORTS {
+                let (expected_outcome, blocked_reason) =
+                    expected_outcome_for_cell(domain, transport, operation);
+                out.push(CellSpec {
+                    cell_id: format!("{domain}.{operation}.{transport}"),
+                    domain: domain.to_string(),
+                    operation: operation.to_string(),
+                    transport: transport.to_string(),
+                    fixture_profile: FIXTURE_PROFILE_DEFAULT.to_string(),
+                    expected_outcome,
+                    blocked_reason,
+                });
+            }
+        }
+    }
+    out
 }
 
 fn dispatch_http(
@@ -851,9 +1001,9 @@ fn dispatch_rule_cli(
 /// All `(domain, operation)` cells of the matrix, in registration order.
 pub fn cells() -> Vec<(&'static str, &'static str)> {
     let mut out = Vec::new();
-    for domain in domains() {
+    for domain in domain_names() {
         for &operation in OPERATIONS {
-            out.push((domain.domain(), operation));
+            out.push((domain, operation));
         }
     }
     out
@@ -902,9 +1052,13 @@ fn domains() -> Vec<Box<dyn DomainOps>> {
 /// Recorded result for one matrix cell.
 #[derive(Debug, Clone)]
 pub struct CellRecord {
+    pub cell_id: String,
     pub domain: String,
     pub transport: String,
     pub operation: String,
+    pub fixture_profile: String,
+    pub expected_outcome: ExpectedOutcome,
+    pub expected_blocked_reason: Option<String>,
     pub spec_id: String,
     pub execution_id: String,
     pub outcome: ValidationOutcome,
@@ -944,20 +1098,47 @@ pub fn run_matrix() -> Result<MatrixRun, FixtureError> {
     bootstrap_core_store_roots(&ctx);
 
     let mut records = Vec::new();
+    let domain_ops = domains();
 
-    for domain in domains() {
-        for &transport in TRANSPORTS {
-            for &operation in OPERATIONS {
-                let record = run_cell(
-                    &test_store,
-                    &*domain,
-                    transport,
-                    operation,
-                    &ctx,
-                    &run_id,
-                );
-                records.push(record);
-            }
+    for cell in transport_cells() {
+        if let Some(domain) = domain_ops
+            .iter()
+            .find(|candidate| candidate.domain() == cell.domain)
+        {
+            let record = run_cell(
+                &test_store,
+                &**domain,
+                &cell,
+                &ctx,
+                &run_id,
+            );
+            records.push(record);
+        } else {
+            let detail = format!(
+                "unknown domain `{}` for cell `{}`",
+                cell.domain, cell.cell_id
+            );
+            let spec_id = format!(
+                "vt-matrix-{}",
+                cell.cell_id.replace('.', "-")
+            );
+            records.push(CellRecord {
+                cell_id: cell.cell_id.clone(),
+                domain: cell.domain.clone(),
+                transport: cell.transport.clone(),
+                operation: cell.operation.clone(),
+                fixture_profile: cell.fixture_profile.clone(),
+                expected_outcome: cell.expected_outcome.clone(),
+                expected_blocked_reason: cell.blocked_reason.clone(),
+                spec_id,
+                execution_id: format!(
+                    "exec-{run_id}-{}",
+                    cell.cell_id.replace('.', "-")
+                ),
+                outcome: ValidationOutcome::Failed,
+                duration_ms: 0,
+                detail,
+            });
         }
     }
 
@@ -982,49 +1163,45 @@ fn bootstrap_core_store_roots(ctx: &MatrixCtx) {
 fn run_cell(
     test_store: &TestStoreConfig,
     domain: &dyn DomainOps,
-    transport: &str,
-    operation: &str,
+    cell: &CellSpec,
     ctx: &MatrixCtx,
     run_id: &str,
 ) -> CellRecord {
-    let spec_id = format!(
-        "vt-matrix-{}-{}-{}",
-        domain.domain(),
-        transport,
-        operation
-    );
-    let execution_id = format!("exec-{run_id}-{spec_id}");
+    let cell_slug = cell.cell_id.replace('.', "-");
+    let spec_id = format!("vt-matrix-{cell_slug}");
+    let execution_id = format!("exec-{run_id}-{cell_slug}");
 
     let mut spec = ValidationSpec::new(
         spec_id.clone(),
-        format!("matrix: {} {} {}", domain.domain(), transport, operation),
+        format!(
+            "matrix: {} {} {}",
+            cell.domain, cell.transport, cell.operation
+        ),
     );
     spec.detail = Some(format!(
-        "Cross-domain operation matrix cell `{}.{}@{}`",
-        domain.domain(),
-        operation,
-        transport
+        "Cross-domain operation matrix cell `{}`",
+        cell.cell_id
     ));
     spec.links.ticket_ids = vec![MATRIX_TICKET_ID.to_string()];
     spec.provenance = ValidationProvenance {
         source_path: Some(file!().to_string()),
-        test_id: Some(format!("{}.{}@{}", domain.domain(), operation, transport)),
-        domain: Some(domain.domain().to_string()),
-        operation: Some(operation.to_string()),
-        transport: Some(transport.to_string()),
+        test_id: Some(cell.cell_id.clone()),
+        domain: Some(cell.domain.clone()),
+        operation: Some(cell.operation.clone()),
+        transport: Some(cell.transport.clone()),
         run_id: Some(run_id.to_string()),
     };
     // Best-effort: spec recording failure should not abort the whole matrix.
     let _ = test_store.record_spec(&spec);
 
     let started = Instant::now();
-    let result = dispatch(domain, transport, operation, ctx);
+    let result = dispatch(domain, &cell.transport, &cell.operation, ctx);
     let duration_ms = started.elapsed().as_millis() as u64;
 
     let (outcome, detail) = match result {
         Ok(Cell::Passed) => (
             ValidationOutcome::Passed,
-            format!("{}.{} passed", domain.domain(), operation),
+            format!("{} passed", cell.cell_id),
         ),
         Ok(Cell::Blocked(reason)) => (ValidationOutcome::Blocked, reason),
         Err(reason) => (ValidationOutcome::Failed, reason),
@@ -1042,18 +1219,22 @@ fn run_cell(
     execution.links.ticket_ids = vec![MATRIX_TICKET_ID.to_string()];
     execution.provenance = ValidationProvenance {
         source_path: Some(file!().to_string()),
-        test_id: Some(format!("{}.{}@{}", domain.domain(), operation, transport)),
-        domain: Some(domain.domain().to_string()),
-        operation: Some(operation.to_string()),
-        transport: Some(transport.to_string()),
+        test_id: Some(cell.cell_id.clone()),
+        domain: Some(cell.domain.clone()),
+        operation: Some(cell.operation.clone()),
+        transport: Some(cell.transport.clone()),
         run_id: Some(run_id.to_string()),
     };
     let _ = test_store.record_execution(&execution);
 
     CellRecord {
-        domain: domain.domain().to_string(),
-        transport: transport.to_string(),
-        operation: operation.to_string(),
+        cell_id: cell.cell_id.clone(),
+        domain: cell.domain.clone(),
+        transport: cell.transport.clone(),
+        operation: cell.operation.clone(),
+        fixture_profile: cell.fixture_profile.clone(),
+        expected_outcome: cell.expected_outcome.clone(),
+        expected_blocked_reason: cell.blocked_reason.clone(),
         spec_id,
         execution_id,
         outcome,

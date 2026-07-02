@@ -8,9 +8,12 @@
 use std::collections::BTreeSet;
 
 use memory_matrix::{
+    ExpectedOutcome,
+    FIXTURE_PROFILE_DEFAULT,
     OPERATIONS,
     TRANSPORTS,
     run_matrix,
+    transport_cells,
 };
 use test_api::{
     ExecutionQuery,
@@ -20,6 +23,45 @@ use test_api::{
 const DOMAINS: &[&str] = &[
     "ticket", "spec", "rule", "audit", "session", "test", "doc", "log",
 ];
+
+#[test]
+fn transport_registry_has_canonical_cell_ids_and_blocked_reasons() {
+    let cells = transport_cells();
+    let expected_cells = DOMAINS.len() * TRANSPORTS.len() * OPERATIONS.len();
+    assert_eq!(cells.len(), expected_cells, "registry should cover full matrix");
+
+    for cell in cells {
+        assert_eq!(
+            cell.cell_id,
+            format!("{}.{}.{}", cell.domain, cell.operation, cell.transport),
+            "cell_id should be <domain>.<operation>.<transport>"
+        );
+        assert_eq!(
+            cell.fixture_profile,
+            FIXTURE_PROFILE_DEFAULT,
+            "every cell should carry a fixture profile"
+        );
+
+        match cell.expected_outcome {
+            ExpectedOutcome::Passed => {
+                assert!(
+                    cell.blocked_reason.is_none(),
+                    "pass cells should not carry blocked reasons"
+                );
+            },
+            ExpectedOutcome::Blocked => {
+                let reason = cell
+                    .blocked_reason
+                    .as_ref()
+                    .expect("blocked cells must declare a reason");
+                assert!(
+                    !reason.trim().is_empty(),
+                    "blocked reason should be non-empty"
+                );
+            },
+        }
+    }
+}
 
 #[test]
 fn every_cell_records_an_execution_with_duration() {
@@ -34,6 +76,16 @@ fn every_cell_records_an_execution_with_duration() {
 
     // Every cell has a recorded duration and a non-empty detail.
     for record in &run.records {
+        assert_eq!(
+            record.cell_id,
+            format!("{}.{}.{}", record.domain, record.operation, record.transport),
+            "record cell_id should remain canonical"
+        );
+        assert_eq!(
+            record.fixture_profile,
+            FIXTURE_PROFILE_DEFAULT,
+            "record should include fixture profile"
+        );
         assert!(
             record.duration_ms < u64::MAX,
             "{}.{} should carry a duration",
@@ -74,6 +126,15 @@ fn every_cell_records_an_execution_with_duration() {
     // Blocked cells must always carry a concrete reason (never silent skips).
     for record in &run.records {
         if record.outcome == ValidationOutcome::Blocked {
+            assert!(
+                matches!(record.expected_outcome, ExpectedOutcome::Blocked),
+                "blocked execution should match registry expectation for {}",
+                record.cell_id
+            );
+            assert!(
+                record.expected_blocked_reason.is_some(),
+                "blocked execution should carry a registry blocked reason"
+            );
             assert!(
                 record.detail.len() > 10,
                 "blocked cell {}.{} must explain why",

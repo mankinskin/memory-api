@@ -13,6 +13,9 @@ pub use matrix::{
     Cell,
     CellRecord,
     CellResult,
+    CellSpec,
+    ExpectedOutcome,
+    FIXTURE_PROFILE_DEFAULT,
     MatrixCtx,
     MatrixRun,
     OPERATIONS,
@@ -21,6 +24,7 @@ pub use matrix::{
     cells,
     run_matrix,
     run_one,
+    transport_cells,
 };
 
 pub use memory_fixtures::{

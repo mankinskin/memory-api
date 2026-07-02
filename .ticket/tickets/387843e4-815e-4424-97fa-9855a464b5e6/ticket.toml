@@ -5,7 +5,7 @@ state = "in-implementation"
 component = "test-api"
 depends_on = ["9138f4e7-2757-4d23-9676-3306608a429e", "a03d8a97-2b31-4f1a-a2cb-b33848af2f2a"]
 effort = "~200k tokens"
-implementation_summary = "Expanded spec 76da5f2d with concrete phased execution plan, per-domain transport matrix, benchmark protocol commands, CI lane design, and implementation order for MCP/CLI/HTTP transport e2e normalization and benchmark coupling."
+implementation_summary = "Phase 1 landed in memory-matrix: added canonical transport registry entries with cell_id=<domain>.<operation>.<transport>, fixture_profile, expected_outcome, and blocked_reason metadata; matrix recordings now carry cell_id-keyed spec/execution ids and provenance; added registry/record assertions in matrix tests; validated with cargo test -p memory-matrix (11 passed)."
 priority = "high"
 risk_level = "high"
 type = "tracker-improvement"

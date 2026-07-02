@@ -141,8 +141,15 @@ pub(crate) fn cmd_move(
     })?;
 
     let ticket_id = super::resolve_uuid_prefix(id, store)?;
-    let requested_workspace_root =
-        workspace::canonicalize_workspace_root(to_workspace_root);
+    let requested_workspace_root = workspace::canonicalize_workspace_root_strict(
+        std::path::Path::new(to_workspace_root),
+    )
+    .map_err(|error| {
+        CliRunError::BadRequest(format!(
+            "workspace root canonicalization failed for '{}': {error}",
+            to_workspace_root.display()
+        ))
+    })?;
 
     let target_store_root = workspace::resolve_store_root_from(
         &requested_workspace_root,
@@ -163,7 +170,7 @@ pub(crate) fn cmd_move(
             "mode": "plan",
             "dry_run": true,
             "ticket_id": ticket_id,
-            "plan": move_plan_json(&report),
+            "plan": move_plan_json(&report)?,
             "recovery": recovery_hint(),
         }));
     }
@@ -174,21 +181,23 @@ pub(crate) fn cmd_move(
         "status": "ok",
         "mode": "execute",
         "ticket_id": ticket_id,
-        "plan": move_plan_json(&report),
+        "plan": move_plan_json(&report)?,
         "outcome": move_outcome_json(&outcome),
         "recovery": recovery_hint(),
     }))
 }
 
-fn move_plan_json(report: &ticket_api::storage::move_planner::MovePreflightReport) -> Value {
-    json!({
+fn move_plan_json(
+    report: &ticket_api::storage::move_planner::MovePreflightReport,
+) -> Result<Value, CliRunError> {
+    Ok(json!({
         "supported": report.supported(),
-        "source_workspace_root": normalize_display_path(&report.source_workspace_root),
-        "target_workspace_root": normalize_display_path(&report.target_workspace_root),
-        "source_store_root": normalize_display_path(&report.source_store_root),
-        "target_store_root": normalize_display_path(&report.target_store_root),
-        "source_ticket_path": normalize_display_path(&report.source_entity_path),
-        "destination_ticket_path": normalize_display_path(&report.destination_entity_path),
+        "source_workspace_root": normalize_display_path(&report.source_workspace_root)?,
+        "target_workspace_root": normalize_display_path(&report.target_workspace_root)?,
+        "source_store_root": normalize_display_path(&report.source_store_root)?,
+        "target_store_root": normalize_display_path(&report.target_store_root)?,
+        "source_ticket_path": normalize_display_path(&report.source_entity_path)?,
+        "destination_ticket_path": normalize_display_path(&report.destination_entity_path)?,
         "path_reference_files": report.path_reference_files,
         "reference_visibility": report.reference_visibility,
         "active_board_entries": report.active_board_entries,
@@ -196,7 +205,7 @@ fn move_plan_json(report: &ticket_api::storage::move_planner::MovePreflightRepor
         "active_leases": report.active_leases,
         "blockers": report.blockers,
         "captured_at": report.captured_at,
-    })
+    }))
 }
 
 fn move_outcome_json(outcome: &ticket_api::storage::move_execution::MoveExecutionOutcome) -> Value {
@@ -229,9 +238,15 @@ fn recovery_hint() -> Value {
     })
 }
 
-fn normalize_display_path(path: &std::path::Path) -> String {
-    let raw = path.to_string_lossy().replace('\\', "/");
-    raw.strip_prefix("//?/").unwrap_or(&raw).to_string()
+fn normalize_display_path(path: &std::path::Path) -> Result<String, CliRunError> {
+    memory_api::workspace::normalize_path_for_display_strict(path).map_err(
+        |error| {
+            CliRunError::BadRequest(format!(
+                "path payload normalization failed for '{}': {error}",
+                path.display()
+            ))
+        },
+    )
 }
 
 pub(crate) fn cmd_claim(
