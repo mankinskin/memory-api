@@ -59,9 +59,13 @@ impl TicketStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{
-        move_planner::MovePreflightBlocker,
-        BoardEntryStatus,
+    use crate::{
+        model::filesystem::ScanRoot,
+        storage::{
+            index::RedbIndexStore,
+            move_planner::MovePreflightBlocker,
+            BoardEntryStatus,
+        },
     };
     use chrono::Utc;
     use std::process::Command;
@@ -331,7 +335,7 @@ mod tests {
         let doc_path = repo.join("docs").join("ticket-path.md");
         std::fs::create_dir_all(doc_path.parent().unwrap()).unwrap();
         std::fs::write(&doc_path, format!("ticket path: {}\n", source_rel)).unwrap();
-        run_git(&repo, &["add", "docs/ticket-path.md"]);
+        git_commit_path(&repo, "docs/ticket-path.md", "seed tracked ticket path ref");
 
         plan = source_store
             .plan_move_preflight(&id, &target_workspace)
@@ -346,8 +350,21 @@ mod tests {
 
         let outcome = source_store.execute_move_with_journal(&plan).unwrap();
         assert!(!outcome.journal.rewritten_path_files.is_empty());
+        assert!(outcome
+            .journal
+            .rewritten_path_files
+            .iter()
+            .all(|rewrite| rewrite.previous_content.is_none()));
         let rewritten_doc = std::fs::read_to_string(&doc_path).unwrap();
         assert!(rewritten_doc.contains(&destination_rel));
+
+        let journal_path = plan
+            .source_store_root
+            .join("move-journals")
+            .join(format!("{}.json", outcome.journal.id));
+        let journal_text = std::fs::read_to_string(journal_path).unwrap();
+        assert!(!journal_text.contains("previous_content"));
+        assert!(!journal_text.contains(r#"\\"#));
 
         let _rollback = source_store
             .rollback_move_with_journal(outcome.journal.id)
@@ -700,6 +717,48 @@ mod tests {
             MovePreflightBlocker::DirtyTrackedFiles { files }
             if files.iter().any(|file| file.ends_with("docs/shared-spec.md"))
         )));
+    }
+
+    #[test]
+    fn entity_indexed_in_requires_path_ownership_not_aggregate_visibility() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let nested_repo = repo.join("nested-repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&nested_repo).unwrap();
+        run_git(&repo, &["init"]);
+        run_git(&nested_repo, &["init"]);
+
+        let source_store = TicketStore::init(&repo).unwrap();
+        let target_store = TicketStore::init(&nested_repo).unwrap();
+        source_store
+            .add_scan_root(ScanRoot {
+                path: nested_repo.join(".ticket").join("tickets"),
+                label: "nested-tickets".to_string(),
+            })
+            .unwrap();
+
+        let id = target_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("nested visibility ticket"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let target_indexed = target_store.get_indexed(&id).unwrap().unwrap();
+
+        let poisoned_index = RedbIndexStore::open(&source_store.index_root.join("tickets.db"))
+            .unwrap();
+        poisoned_index.insert_ticket(&target_indexed).unwrap();
+
+        let domain = TicketMoveDomain::new(&source_store);
+        assert!(!move_kernel::MoveDomain::entity_indexed_in(&domain, &repo, &id).unwrap());
+        assert!(move_kernel::MoveDomain::entity_indexed_in(&domain, &nested_repo, &id).unwrap());
     }
 
     #[test]

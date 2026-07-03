@@ -285,16 +285,84 @@ impl MovePlan {
     }
 }
 
-/// A tracked text file whose previous content is captured for rollback.
+fn serialize_normalized_path<S>(
+    path: &PathBuf,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&normalize_slashes(path))
+}
+
+fn deserialize_pathbuf<'de, D>(deserializer: D) -> Result<PathBuf, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(PathBuf::from(String::deserialize(deserializer)?))
+}
+
+fn serialize_normalized_path_vec<S>(
+    paths: &[PathBuf],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let normalized: Vec<String> = paths.iter().map(|path| normalize_slashes(path)).collect();
+    normalized.serialize(serializer)
+}
+
+fn deserialize_pathbuf_vec<'de, D>(deserializer: D) -> Result<Vec<PathBuf>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Vec::<String>::deserialize(deserializer)?
+        .into_iter()
+        .map(PathBuf::from)
+        .collect())
+}
+
+fn path_buf_is_empty(path: &PathBuf) -> bool {
+    path.as_os_str().is_empty()
+}
+
+/// A tracked text file rewritten during move execution.
+///
+/// Rollback prefers git-backed restore metadata and falls back to the legacy
+/// inline snapshot form when resuming older journals.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MovePathRewrite {
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub path: PathBuf,
-    pub previous_content: String,
+    #[serde(
+        default,
+        skip_serializing_if = "path_buf_is_empty",
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
+    pub repo_root: PathBuf,
+    #[serde(
+        default,
+        skip_serializing_if = "path_buf_is_empty",
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
+    pub repo_relative_path: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_content: Option<String>,
 }
 
 /// A tracked reference that requires manual follow-up (binary content, no match).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoveManualFollowup {
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub path: PathBuf,
     pub reason: String,
 }
@@ -319,21 +387,41 @@ pub struct MoveJournal {
     /// journals written before the kernel generalization.
     #[serde(alias = "ticket_id")]
     pub entity_id: Uuid,
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub source_store_root: PathBuf,
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub target_store_root: PathBuf,
     /// Source on-disk entity path. Accepts the legacy `source_ticket_path` key.
     #[serde(alias = "source_ticket_path")]
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub source_entity_path: PathBuf,
     /// Destination on-disk entity path. Accepts the legacy
     /// `destination_ticket_path` key.
     #[serde(alias = "destination_ticket_path")]
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub destination_entity_path: PathBuf,
     pub phase: MoveExecutionPhase,
     pub created_at: chrono::DateTime<Utc>,
     pub updated_at: chrono::DateTime<Utc>,
     pub steps: Vec<String>,
     pub rollback_steps: Vec<String>,
-    #[serde(default)]
+    #[serde(
+        default,
+        serialize_with = "serialize_normalized_path_vec",
+        deserialize_with = "deserialize_pathbuf_vec"
+    )]
     pub lock_paths: Vec<PathBuf>,
     #[serde(default)]
     pub migrated_board_entries: Vec<BoardEntry>,
@@ -572,7 +660,7 @@ pub fn rollback_move<D: MoveDomain + ?Sized>(
     }
 
     for rewrite in &journal.rewritten_path_files {
-        fs::write(&rewrite.path, rewrite.previous_content.as_bytes())?;
+        restore_rewritten_path(rewrite)?;
     }
 
     if !journal.migrated_board_entries.is_empty() {
@@ -809,6 +897,22 @@ fn release_lock_set(lock_paths: &[PathBuf]) {
     }
 }
 
+fn restore_rewritten_path(rewrite: &MovePathRewrite) -> MoveResult<()> {
+    if let Some(previous_content) = &rewrite.previous_content {
+        fs::write(&rewrite.path, previous_content.as_bytes())?;
+        return Ok(());
+    }
+
+    if path_buf_is_empty(&rewrite.repo_root) || path_buf_is_empty(&rewrite.repo_relative_path) {
+        return Err(MoveError::Domain(format!(
+            "journal rewrite record for {} is missing rollback metadata",
+            normalize_slashes(&rewrite.path)
+        )));
+    }
+
+    git_restore_tracked_path(&rewrite.repo_root, &rewrite.repo_relative_path)
+}
+
 fn recovery_hint_for_phase(phase: &MoveExecutionPhase) -> &'static str {
     match phase {
         MoveExecutionPhase::Planned | MoveExecutionPhase::Locked => {
@@ -884,10 +988,25 @@ fn rewrite_path_references(
             continue;
         }
 
+        let Some((repo_root, repo_relative_path)) = tracked_repo_for_file(
+            &file_path,
+            &plan.source_git_worktree_root,
+            &plan.target_git_worktree_root,
+        ) else {
+            followups.push(MoveManualFollowup {
+                path: file_path,
+                reason: "tracked rewrite file did not resolve under source or target git root"
+                    .to_string(),
+            });
+            continue;
+        };
+
         fs::write(&file_path, replaced.as_bytes())?;
         rewritten.push(MovePathRewrite {
             path: file_path,
-            previous_content,
+            repo_root: repo_root.to_path_buf(),
+            repo_relative_path,
+            previous_content: None,
         });
     }
 
@@ -1001,19 +1120,14 @@ fn git_dirty_tracked_files(
 ) -> Result<Vec<PathBuf>, String> {
     let mut dirty = Vec::new();
     for file in files {
-        let repo_root = if file.starts_with(source_repo_root) {
-            source_repo_root
-        } else if file.starts_with(target_repo_root) {
-            target_repo_root
-        } else {
-            source_repo_root
-        };
-
-        let status_path = file
-            .strip_prefix(repo_root)
-            .unwrap_or(file)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let (repo_root, status_path) = tracked_repo_for_file(file, source_repo_root, target_repo_root)
+            .map(|(repo_root, repo_relative_path)| {
+                (
+                    repo_root,
+                    repo_relative_path.to_string_lossy().replace('\\', "/"),
+                )
+            })
+            .unwrap_or((source_repo_root, file.to_string_lossy().replace('\\', "/")));
 
         let output = Command::new("git")
             .args([
@@ -1037,4 +1151,51 @@ fn git_dirty_tracked_files(
     }
 
     Ok(dirty)
+}
+
+fn tracked_repo_for_file<'a>(
+    file: &Path,
+    source_repo_root: &'a Path,
+    target_repo_root: &'a Path,
+) -> Option<(&'a Path, PathBuf)> {
+    let mut candidates = Vec::new();
+    if let Ok(relative) = file.strip_prefix(source_repo_root) {
+        candidates.push((source_repo_root, relative.to_path_buf()));
+    }
+    if let Ok(relative) = file.strip_prefix(target_repo_root) {
+        candidates.push((target_repo_root, relative.to_path_buf()));
+    }
+
+    candidates.sort_by_key(|(_, relative)| std::cmp::Reverse(relative.components().count()));
+    candidates.into_iter().next()
+}
+
+fn git_restore_tracked_path(
+    repo_root: &Path,
+    repo_relative_path: &Path,
+) -> MoveResult<()> {
+    let relative = repo_relative_path.to_string_lossy().replace('\\', "/");
+    let output = Command::new("git")
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "restore",
+            "--worktree",
+            "--source=HEAD",
+            "--",
+            &relative,
+        ])
+        .output()
+        .map_err(|error| MoveError::Domain(error.to_string()))?;
+
+    if !output.status.success() {
+        return Err(MoveError::Domain(format!(
+            "git restore failed for {} in {}: {}",
+            relative,
+            normalize_slashes(repo_root),
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+
+    Ok(())
 }

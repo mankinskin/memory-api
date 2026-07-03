@@ -66,6 +66,10 @@ fn map_board_error(error: crate::storage::BoardError) -> MoveError {
     }
 }
 
+fn ticket_entity_root(store_root: &Path) -> PathBuf {
+    workspace::resolve_store_root_from(store_root, workspace::TICKET_INDEX_DIR).join("tickets")
+}
+
 /// Ticket-domain implementation of the move kernel's [`MoveDomain`] trait.
 pub(crate) struct TicketMoveDomain<'a> {
     store: &'a TicketStore,
@@ -141,7 +145,12 @@ impl MoveDomain for TicketMoveDomain<'_> {
         entity_id: &Uuid,
     ) -> MoveResult<bool> {
         let store = self.open(store_root)?;
-        Ok(store.get_indexed(entity_id).map_err(to_move_error)?.is_some())
+        let entity_root = ticket_entity_root(store_root);
+        Ok(store
+            .get_indexed(entity_id)
+            .map_err(to_move_error)?
+            .map(|ticket| ticket.path.starts_with(&entity_root))
+            .unwrap_or(false))
     }
 
     fn board_state(

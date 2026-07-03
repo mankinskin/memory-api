@@ -40,6 +40,10 @@ fn to_move_error(error: SpecError) -> MoveError {
     }
 }
 
+fn spec_entity_root(store_root: &Path) -> PathBuf {
+    memory_api::workspace::resolve_store_root_from(store_root, SPEC_INDEX_DIR).join("specs")
+}
+
 fn from_move_error(error: MoveError) -> SpecError {
     match error {
         MoveError::Io(io) => SpecError::Storage(StorageError::Io(io)),
@@ -124,11 +128,13 @@ impl MoveDomain for SpecMoveDomain<'_> {
         entity_id: &Uuid,
     ) -> MoveResult<bool> {
         let store = SpecStore::open(store_root).map_err(to_move_error)?;
+        let entity_root = spec_entity_root(store_root);
         Ok(store
             .entity_store()
             .get_indexed(entity_id)
             .map_err(|error| to_move_error(error.into()))?
-            .is_some())
+            .map(|entity| entity.path.starts_with(&entity_root))
+            .unwrap_or(false))
     }
 
     fn scan_store(
