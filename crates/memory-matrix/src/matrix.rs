@@ -1,6 +1,14 @@
 use std::{
     collections::BTreeMap,
+    io::{
+        Read,
+        Write,
+    },
     path::PathBuf,
+    process::{
+        Command,
+        Stdio,
+    },
     sync::Arc,
     time::Instant,
 };
@@ -292,6 +300,10 @@ fn dispatch_ticket_mcp(
     operation: &str,
     ctx: &MatrixCtx,
 ) -> CellResult {
+    if operation == "get" {
+        return dispatch_ticket_mcp_stdio_sentinel_get(ctx);
+    }
+
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -487,6 +499,231 @@ fn dispatch_ticket_mcp(
             )),
         }
     })
+}
+
+struct StdioMcpClient {
+    child: std::process::Child,
+    next_id: u64,
+}
+
+impl StdioMcpClient {
+    fn spawn_ticket_mcp(store_root: &std::path::Path) -> Result<Self, String> {
+        let mcp_workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..");
+        let mut cmd = Command::new("cargo");
+        cmd.args(["run", "-p", "ticket-mcp", "--quiet"])
+            .current_dir(mcp_workspace_root)
+            .env("TICKET_INDEX_ROOT", store_root)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let child = cmd
+            .spawn()
+            .map_err(|err| format!("spawn ticket-mcp stdio sentinel process: {err}"))?;
+
+        Ok(Self { child, next_id: 1 })
+    }
+
+    fn initialize(&mut self) -> Result<(), String> {
+        let _ = self.request(
+            "initialize",
+            serde_json::json!({
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "memory-matrix-sentinel",
+                    "version": "0.1.0"
+                }
+            }),
+        )?;
+
+        self.send_message(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {}
+        }))
+    }
+
+    fn request(
+        &mut self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let id = self.next_id;
+        self.next_id += 1;
+
+        self.send_message(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params,
+        }))?;
+
+        loop {
+            let message = self.read_message()?;
+            if message["id"].as_u64() != Some(id) {
+                continue;
+            }
+
+            if message.get("error").is_some() {
+                return Err(format!(
+                    "mcp `{method}` returned error: {}",
+                    message["error"]
+                ));
+            }
+            return Ok(message["result"].clone());
+        }
+    }
+
+    fn send_message(&mut self, message: &serde_json::Value) -> Result<(), String> {
+        let mut payload = serde_json::to_vec(message)
+            .map_err(|err| format!("serialize mcp message: {err}"))?;
+        payload.push(b'\n');
+        let stdin = self
+            .child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| "ticket-mcp stdin not available".to_string())?;
+        stdin
+            .write_all(&payload)
+            .map_err(|err| format!("write mcp payload: {err}"))?;
+        stdin
+            .flush()
+            .map_err(|err| format!("flush mcp payload: {err}"))
+    }
+
+    fn read_message(&mut self) -> Result<serde_json::Value, String> {
+        let stdout = self
+            .child
+            .stdout
+            .as_mut()
+            .ok_or_else(|| "ticket-mcp stdout not available".to_string())?;
+
+        let mut payload = Vec::new();
+        loop {
+            let mut byte = [0u8; 1];
+            if let Err(err) = stdout.read_exact(&mut byte) {
+                let mut stderr_tail = String::new();
+                let status = self.child.wait().ok();
+                if let Some(stderr) = self.child.stderr.as_mut() {
+                    let _ = stderr.read_to_string(&mut stderr_tail);
+                }
+                let status_note = status
+                    .map(|value| format!("; child status: {value}"))
+                    .unwrap_or_default();
+                let stderr_note = if stderr_tail.trim().is_empty() {
+                    "".to_string()
+                } else {
+                    format!("; child stderr: {}", stderr_tail.trim())
+                };
+                return Err(format!(
+                    "read mcp message: {err}{status_note}{stderr_note}"
+                ));
+            }
+
+            if byte[0] == b'\n' {
+                break;
+            }
+            payload.push(byte[0]);
+        }
+
+        if payload.is_empty() {
+            return self.read_message();
+        }
+
+        serde_json::from_slice(&payload)
+            .map_err(|err| format!("parse mcp json line: {err}"))
+    }
+}
+
+impl Drop for StdioMcpClient {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+fn extract_stdio_tool_json(
+    result: &serde_json::Value
+) -> Result<serde_json::Value, String> {
+    let text = result["content"]
+        .as_array()
+        .and_then(|content| {
+            content.iter().find_map(|entry| {
+                let is_text = entry["type"].as_str() == Some("text");
+                if is_text {
+                    entry["text"].as_str().map(ToString::to_string)
+                } else {
+                    None
+                }
+            })
+        })
+        .ok_or_else(|| "mcp tools/call result missing text content".to_string())?;
+
+    serde_json::from_str(&text)
+        .map_err(|err| format!("parse mcp tools/call text payload: {err}"))
+}
+
+fn dispatch_ticket_mcp_stdio_sentinel_get(ctx: &MatrixCtx) -> CellResult {
+    let mut client =
+        StdioMcpClient::spawn_ticket_mcp(&ctx.store_root(".ticket"))?;
+    client.initialize()?;
+
+    let workspace_root = ctx.workspace_root.to_string_lossy().to_string();
+    let title = format!(
+        "matrix-mcp-stdio-ticket-{}",
+        uuid::Uuid::new_v4().simple()
+    );
+
+    let create_result = client.request(
+        "tools/call",
+        serde_json::json!({
+            "name": "create_ticket",
+            "arguments": {
+                "workspace": workspace_root,
+                "type": "tracker-improvement",
+                "title": title,
+                "state": "new",
+                "fields": []
+            }
+        }),
+    )?;
+    let create_json = extract_stdio_tool_json(&create_result)?;
+    if create_json["status"].as_str().unwrap_or_default() != "ok" {
+        return Err(format!(
+            "mcp stdio sentinel create_ticket returned non-ok status: {}",
+            create_json
+        ));
+    }
+    let created_id = create_json["id"]
+        .as_str()
+        .ok_or_else(|| "mcp stdio sentinel create_ticket missing id".to_string())?
+        .to_string();
+
+    let get_result = client.request(
+        "tools/call",
+        serde_json::json!({
+            "name": "get_ticket",
+            "arguments": {
+                "workspace": workspace_root,
+                "id": created_id
+            }
+        }),
+    )?;
+    let get_json = extract_stdio_tool_json(&get_result)?;
+    let returned_id = get_json["ticket"]["id"]
+        .as_str()
+        .ok_or_else(|| {
+            "mcp stdio sentinel get_ticket missing ticket.id".to_string()
+        })?;
+    if returned_id != created_id {
+        return Err(format!(
+            "mcp stdio sentinel get_ticket returned mismatched id: expected {created_id}, got {returned_id}"
+        ));
+    }
+
+    Ok(Cell::Passed)
 }
 
 fn dispatch_spec_mcp(
