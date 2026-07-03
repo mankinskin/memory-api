@@ -1,7 +1,7 @@
 id = "260e37d7-ae90-43e4-871b-3c18937189ca"
 created_at = "2026-06-28T19:01:51.874322+00:00"
 title = "[test] Audit hygiene for memory-matrix — split lib.rs, fix llvm-cov"
-state = "in-review"
+state = "done"
 component = "test-api"
 effort = "~60k tokens"
 priority = "medium"
