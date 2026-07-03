@@ -6,6 +6,8 @@
 //! Windows verbatim prefix, the journal reaches the validated phase, the moved
 //! ticket is readable from the destination store, and rollback restores it.
 
+use std::fs;
+
 use memory_fixtures::{FixtureError, materialize_git_fixture};
 use ticket_api::storage::move_execution::MoveExecutionPhase;
 use ticket_api::storage::move_planner::MovePreflightBlocker;
@@ -38,17 +40,9 @@ fn cross_worktree_move_from_submodule_to_root_is_clean_and_reversible() {
     let target_store = TicketStore::open_or_init(&target_workspace).expect("open target store");
     target_store.scan(true).expect("scan target");
 
-    let id = source_store
-        .create(
-            None,
-            "tracker-improvement",
-            Some("move me across worktrees"),
-            Some("ready"),
-            Default::default(),
-            None,
-            None,
-        )
-        .expect("create source ticket");
+    let id = "00000000-0000-0000-0000-00000000000a"
+        .parse()
+        .expect("seeded submodule ticket id");
 
     let mut plan = source_store
         .plan_move_preflight(&id, &target_workspace)
@@ -69,6 +63,12 @@ fn cross_worktree_move_from_submodule_to_root_is_clean_and_reversible() {
         plan.source_git_worktree_root, plan.target_git_worktree_root,
         "expected distinct git worktrees for parent↔submodule move"
     );
+    let reference_file = fixture.workspace_root.join("submodule-a/README.md");
+    assert!(
+        plan.path_reference_files.iter().any(|path| path == &reference_file),
+        "expected tracked submodule README path reference in preflight plan"
+    );
+    fs::remove_file(&reference_file).expect("remove tracked reference file");
 
     let outcome = source_store
         .execute_move_with_journal(&plan)
@@ -91,6 +91,14 @@ fn cross_worktree_move_from_submodule_to_root_is_clean_and_reversible() {
     );
 
     assert_eq!(outcome.journal.phase, MoveExecutionPhase::Validated);
+    assert!(
+        outcome
+            .journal
+            .manual_followups
+            .iter()
+            .any(|followup| followup.path == reference_file),
+        "missing tracked reference file should be recorded for manual follow-up"
+    );
 
     // Destination store can read the moved ticket.
     let target_store = TicketStore::open_or_init(&target_workspace).expect("reopen target");

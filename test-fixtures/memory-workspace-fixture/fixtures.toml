@@ -52,5 +52,13 @@ domain = "ticket-submodule-a"
 relative_path = "submodule-a/.ticket"
 
 [[stores]]
+domain = "spec-submodule-a"
+relative_path = "submodule-a/.spec"
+
+[[stores]]
+domain = "ticket-submodule-b"
+relative_path = "submodule-b/.ticket"
+
+[[stores]]
 domain = "spec-submodule-b"
 relative_path = "submodule-b/.spec"

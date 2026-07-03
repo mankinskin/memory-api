@@ -1,5 +1,7 @@
-use std::collections::BTreeMap;
-use std::process::Command;
+use std::{
+    collections::BTreeMap,
+    process::Command,
+};
 
 use serde_json::Value;
 
@@ -29,10 +31,13 @@ impl TicketDomain {
     }
 
     fn run_move_roundtrip() -> Result<(), String> {
-        let repo = std::env::temp_dir()
-            .join(format!("memory-matrix-ticket-move-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&repo)
-            .map_err(|err| format!("create move repo `{}`: {err}", repo.display()))?;
+        let repo = std::env::temp_dir().join(format!(
+            "memory-matrix-ticket-move-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&repo).map_err(|err| {
+            format!("create move repo `{}`: {err}", repo.display())
+        })?;
         Self::run_git(&repo, &["init"])?;
 
         let source_workspace = repo.join("source");
@@ -50,10 +55,12 @@ impl TicketDomain {
             )
         })?;
 
-        let source_store = ticket_api::storage::TicketStore::init(&source_workspace)
-            .map_err(|err| err.to_string())?;
-        let _target_store = ticket_api::storage::TicketStore::init(&target_workspace)
-            .map_err(|err| err.to_string())?;
+        let source_store =
+            ticket_api::storage::TicketStore::init(&source_workspace)
+                .map_err(|err| err.to_string())?;
+        let _target_store =
+            ticket_api::storage::TicketStore::init(&target_workspace)
+                .map_err(|err| err.to_string())?;
 
         let id = source_store
             .create(
@@ -101,11 +108,21 @@ impl TicketDomain {
             .map_err(|err| err.to_string())?;
         let dst = ticket_api::storage::TicketStore::open(&target_workspace)
             .map_err(|err| err.to_string())?;
-        if src.get_indexed(&id).map_err(|err| err.to_string())?.is_some() {
-            return Err("ticket still indexed in source workspace after move".to_string());
+        if src
+            .get_indexed(&id)
+            .map_err(|err| err.to_string())?
+            .is_some()
+        {
+            return Err("ticket still indexed in source workspace after move"
+                .to_string());
         }
-        if dst.get_indexed(&id).map_err(|err| err.to_string())?.is_none() {
-            return Err("ticket missing from destination workspace after move".to_string());
+        if dst
+            .get_indexed(&id)
+            .map_err(|err| err.to_string())?
+            .is_none()
+        {
+            return Err("ticket missing from destination workspace after move"
+                .to_string());
         }
 
         Ok(())
@@ -181,10 +198,8 @@ impl TicketDomain {
 
         let needed = 10usize.saturating_sub(results.len());
         for idx in 0..needed {
-            let title = format!(
-                "Representative fixture ticket seeded {}",
-                idx + 1
-            );
+            let title =
+                format!("Representative fixture ticket seeded {}", idx + 1);
             let _ = Self::create_ticket(store, &title)?;
         }
         store.scan(true).map_err(|err| err.to_string())?;
@@ -240,7 +255,7 @@ impl DomainOps for TicketDomain {
             Err(_) => {
                 let id = Self::create_ticket(&store, "Root fixture ticket")?;
                 store.get(&id).map_err(|err| err.to_string())?
-            }
+            },
         };
         match manifest.extra.get("title").and_then(Value::as_str) {
             Some("Root fixture ticket") => pass(),

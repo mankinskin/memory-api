@@ -303,6 +303,18 @@ mod tests {
         (dir, repo)
     }
 
+    fn run_git(
+        repo_root: &Path,
+        args: &[&str],
+    ) {
+        let status = std::process::Command::new("git")
+            .current_dir(repo_root)
+            .args(args)
+            .status()
+            .expect("git command");
+        assert!(status.success(), "git {args:?} failed: {status}");
+    }
+
     fn load_contract_parity_fixture() -> ContractParityFixture {
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../../test-fixtures/spec-contract-parity.json");
@@ -411,6 +423,44 @@ mod tests {
         assert_eq!(payload["command"], "search");
         assert_eq!(payload["count"], 1);
         assert_eq!(payload["items"][0]["id"], spec_id);
+    }
+
+    #[test]
+    fn dispatch_move_dry_run_returns_supported_preflight_plan() {
+        let (_dir, repo) = create_cli_spec_fixture();
+        run_git(&repo, &["init"]);
+
+        let target_workspace = repo.join("target");
+        std::fs::create_dir_all(target_workspace.join(".spec")).unwrap();
+        SpecStore::init(&target_workspace.join(".spec")).unwrap();
+
+        let mut store = SpecStore::open(&repo.join(".spec")).unwrap();
+        let manifest = spec_api::SpecManifest::new(
+            "sample/spec",
+            "Sample spec",
+            "spec-cli",
+        );
+        let spec_id = store.create(&manifest, "body", None).unwrap();
+        store.scan(true).unwrap();
+
+        let payload = dispatch(
+            SpecCommandCli::Move(crate::cli::MoveArgs {
+                id: Some(spec_id.to_string()),
+                to_workspace_root: Some(target_workspace),
+                dry_run: true,
+                resume: None,
+                rollback: None,
+            }),
+            Some(&repo.join(".spec")),
+            Some(&repo),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(payload["command"], "move");
+        assert_eq!(payload["status"], "ok");
+        assert_eq!(payload["mode"], "plan");
+        assert_eq!(payload["plan"]["supported"], true);
     }
 
     #[test]

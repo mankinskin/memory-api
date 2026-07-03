@@ -28,7 +28,11 @@ const DOMAINS: &[&str] = &[
 fn transport_registry_has_canonical_cell_ids_and_blocked_reasons() {
     let cells = transport_cells();
     let expected_cells = DOMAINS.len() * TRANSPORTS.len() * OPERATIONS.len();
-    assert_eq!(cells.len(), expected_cells, "registry should cover full matrix");
+    assert_eq!(
+        cells.len(),
+        expected_cells,
+        "registry should cover full matrix"
+    );
 
     for cell in cells {
         assert_eq!(
@@ -37,8 +41,7 @@ fn transport_registry_has_canonical_cell_ids_and_blocked_reasons() {
             "cell_id should be <domain>.<operation>.<transport>"
         );
         assert_eq!(
-            cell.fixture_profile,
-            FIXTURE_PROFILE_DEFAULT,
+            cell.fixture_profile, FIXTURE_PROFILE_DEFAULT,
             "every cell should carry a fixture profile"
         );
 
@@ -78,12 +81,14 @@ fn every_cell_records_an_execution_with_duration() {
     for record in &run.records {
         assert_eq!(
             record.cell_id,
-            format!("{}.{}.{}", record.domain, record.operation, record.transport),
+            format!(
+                "{}.{}.{}",
+                record.domain, record.operation, record.transport
+            ),
             "record cell_id should remain canonical"
         );
         assert_eq!(
-            record.fixture_profile,
-            FIXTURE_PROFILE_DEFAULT,
+            record.fixture_profile, FIXTURE_PROFILE_DEFAULT,
             "record should include fixture profile"
         );
         assert!(
@@ -122,10 +127,7 @@ fn every_cell_records_an_execution_with_duration() {
             .map(|r| {
                 format!(
                     "{}.{}@{}: {}",
-                    r.domain,
-                    r.operation,
-                    r.transport,
-                    r.detail
+                    r.domain, r.operation, r.transport, r.detail
                 )
             })
             .collect::<Vec<_>>()
@@ -170,7 +172,9 @@ fn core_crud_domains_pass_get_search_crud_and_scan() {
                             && r.transport == transport
                             && r.operation == op
                     })
-                    .unwrap_or_else(|| panic!("missing cell {domain}.{op}@{transport}"));
+                    .unwrap_or_else(|| {
+                        panic!("missing cell {domain}.{op}@{transport}")
+                    });
                 assert_eq!(
                     record.outcome,
                     ValidationOutcome::Passed,
@@ -196,7 +200,9 @@ fn move_cells_reflect_adapter_backing_by_domain_and_transport() {
                         && r.transport == *transport
                         && r.operation == "move"
                 })
-                .unwrap_or_else(|| panic!("missing move cell for {domain}@{transport}"));
+                .unwrap_or_else(|| {
+                    panic!("missing move cell for {domain}@{transport}")
+                });
 
             let adapter_backed = ["ticket", "spec", "rule"].contains(domain);
             let should_pass = adapter_backed && *transport == "in-process";
@@ -239,8 +245,11 @@ fn unwired_transports_are_explicitly_blocked_with_reason() {
                     && ["create", "get", "search", "update", "delete"]
                         .contains(&record.operation.as_str()))
                     || (record.domain == "spec"
-                        && ["create", "get", "search", "update", "delete", "scan"]
-                            .contains(&record.operation.as_str()))
+                        && [
+                            "create", "get", "search", "update", "delete",
+                            "scan",
+                        ]
+                        .contains(&record.operation.as_str()))
                     || (record.domain == "rule"
                         && ["create", "get", "search", "update", "scan"]
                             .contains(&record.operation.as_str()))))
@@ -266,10 +275,7 @@ fn unwired_transports_are_explicitly_blocked_with_reason() {
         assert!(
             has_explicit_reason,
             "{}.{}@{} should carry an explicit transport reason: {}",
-            record.domain,
-            record.operation,
-            record.transport,
-            record.detail
+            record.domain, record.operation, record.transport, record.detail
         );
     }
 }
@@ -303,9 +309,7 @@ fn ticket_get_mcp_cell_is_wired_and_passes() {
         .records
         .iter()
         .find(|r| {
-            r.domain == "ticket"
-                && r.transport == "mcp"
-                && r.operation == "get"
+            r.domain == "ticket" && r.transport == "mcp" && r.operation == "get"
         })
         .expect("missing ticket.get@mcp cell");
     assert_eq!(
@@ -387,9 +391,7 @@ fn spec_scan_mcp_cell_is_wired_and_passes() {
         .records
         .iter()
         .find(|r| {
-            r.domain == "spec"
-                && r.transport == "mcp"
-                && r.operation == "scan"
+            r.domain == "spec" && r.transport == "mcp" && r.operation == "scan"
         })
         .expect("missing spec.scan@mcp cell");
     assert_eq!(
@@ -408,9 +410,7 @@ fn rule_scan_mcp_cell_is_wired_and_passes() {
         .records
         .iter()
         .find(|r| {
-            r.domain == "rule"
-                && r.transport == "mcp"
-                && r.operation == "scan"
+            r.domain == "rule" && r.transport == "mcp" && r.operation == "scan"
         })
         .expect("missing rule.scan@mcp cell");
     assert_eq!(

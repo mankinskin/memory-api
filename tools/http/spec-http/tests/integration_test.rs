@@ -15,6 +15,7 @@ use axum::{
         header,
     },
 };
+use spec_api::SpecStore;
 use tower::ServiceExt;
 
 #[path = "integration_test/sections.rs"]
@@ -280,6 +281,50 @@ async fn delete_spec_returns_200_then_404_on_get() {
         .await
         .unwrap();
     assert_eq!(get_resp.status(), StatusCode::NOT_FOUND);
+}
+
+// ── POST /api/specs/:id/move ─────────────────────────────────────────────────
+
+#[tokio::test]
+async fn move_spec_dry_run_returns_supported_plan() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path();
+    let status = std::process::Command::new("git")
+        .current_dir(repo)
+        .arg("init")
+        .status()
+        .expect("git init");
+    assert!(status.success(), "git init failed: {status}");
+
+    let id = seed_spec(repo, "move-me", "Move Target");
+    let target_workspace = repo.join("target");
+    std::fs::create_dir_all(target_workspace.join(".spec")).unwrap();
+    SpecStore::init(&target_workspace.join(".spec")).unwrap();
+
+    let body = serde_json::json!({
+        "to_workspace_root": target_workspace,
+        "dry_run": true,
+    })
+    .to_string();
+
+    let resp = make_app(repo)
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(format!("/api/specs/{id}/move"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = to_bytes(resp.into_body(), 4096).await.unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(payload["status"], "ok");
+    assert_eq!(payload["mode"], "plan");
+    assert_eq!(payload["supported"], true);
 }
 
 // ── GET /api/specs/search ─────────────────────────────────────────────────────

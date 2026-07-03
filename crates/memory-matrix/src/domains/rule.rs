@@ -28,8 +28,9 @@ impl RuleDomain {
     fn run_move_roundtrip() -> Result<(), String> {
         let repo = std::env::temp_dir()
             .join(format!("memory-matrix-rule-move-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&repo)
-            .map_err(|err| format!("create move repo `{}`: {err}", repo.display()))?;
+        std::fs::create_dir_all(&repo).map_err(|err| {
+            format!("create move repo `{}`: {err}", repo.display())
+        })?;
         Self::run_git(&repo, &["init"])?;
 
         let source_workspace = repo.join("source");
@@ -96,7 +97,9 @@ impl RuleDomain {
             .map_err(|err| err.to_string())?
             .is_some()
         {
-            return Err("rule still indexed in source workspace after move".to_string());
+            return Err(
+                "rule still indexed in source workspace after move".to_string()
+            );
         }
         if dst
             .entity_store()
@@ -104,7 +107,8 @@ impl RuleDomain {
             .map_err(|err| err.to_string())?
             .is_none()
         {
-            return Err("rule missing from destination workspace after move".to_string());
+            return Err("rule missing from destination workspace after move"
+                .to_string());
         }
 
         Ok(())
@@ -118,8 +122,7 @@ impl RuleDomain {
                 root.display()
             ));
         }
-        rule_api::RuleStore::open(&root)
-            .map_err(|err| err.to_string())
+        rule_api::RuleStore::open(&root).map_err(|err| err.to_string())
     }
 
     fn open_or_init(ctx: &MatrixCtx) -> Result<rule_api::RuleStore, String> {
@@ -142,7 +145,9 @@ impl RuleDomain {
         }
         let manifest =
             Self::new_manifest("fixture/rule-search", "Matrixruletoken Rule");
-        store.create(&manifest, None).map_err(|err| err.to_string())?;
+        store
+            .create(&manifest, None)
+            .map_err(|err| err.to_string())?;
         Ok(())
     }
 }
@@ -196,16 +201,11 @@ impl DomainOps for RuleDomain {
             Self::ensure_fixture_rule(&mut store)?;
             store.scan(true).map_err(|err| err.to_string())?;
             let retry = store
-                .search(
-                    "Matrixruletoken",
-                    &rule_api::RuleFilter::default(),
-                    10,
-                )
+                .search("Matrixruletoken", &rule_api::RuleFilter::default(), 10)
                 .map_err(|err| err.to_string())?;
             if retry.is_empty() {
                 return Err(
-                    "rule search returned no hit for indexed token"
-                        .to_string()
+                    "rule search returned no hit for indexed token".to_string()
                 );
             }
         }

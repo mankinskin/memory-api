@@ -32,6 +32,18 @@ fn sample_rule(
     manifest
 }
 
+fn run_git(
+    repo_root: &Path,
+    args: &[&str],
+) {
+    let status = std::process::Command::new("git")
+        .current_dir(repo_root)
+        .args(args)
+        .status()
+        .expect("git command");
+    assert!(status.success(), "git {args:?} failed: {status}");
+}
+
 fn empty_filter_args() -> FilterArgs {
     FilterArgs {
         state: None,
@@ -1004,11 +1016,11 @@ fn repo_spec_prompt_target_matches_expectation_oriented_contract() {
             candidate.is_file().then_some(candidate)
         })
         .expect("context-engine prompt target path");
-    let repo_root = prompt_path
-        .ancestors()
-        .nth(3)
-        .expect("context-engine repo root")
-        .to_path_buf();
+    let prompts_dir = prompt_path.parent().expect("prompt directory");
+    assert_eq!(prompts_dir.file_name().and_then(|name| name.to_str()), Some("prompts"));
+    let agents_dir = prompts_dir.parent().expect(".agents directory");
+    assert_eq!(agents_dir.file_name().and_then(|name| name.to_str()), Some(".agents"));
+    let repo_root = agents_dir.parent().expect("context-engine repo root").to_path_buf();
     let rendered = fs::read_to_string(&prompt_path).unwrap();
 
     assert!(rendered.contains("intended system properties"));
@@ -1106,6 +1118,47 @@ fn feedback_command_self_heals_after_missing_rule_folder() {
             .unwrap()
             .is_none()
     );
+}
+
+#[test]
+fn move_command_dry_run_returns_supported_preflight_plan() {
+    let dir = tempdir().unwrap();
+    let repo_root = dir.path().join("repo");
+    let source_index_root = repo_root.join(".rule");
+    let target_workspace = repo_root.join("target");
+    let target_index_root = target_workspace.join(".rule");
+    fs::create_dir_all(&source_index_root).unwrap();
+    fs::create_dir_all(&target_index_root).unwrap();
+    run_git(&repo_root, &["init"]);
+
+    let mut source_store = RuleStore::init(&source_index_root).unwrap();
+    RuleStore::init(&target_index_root).unwrap();
+    let manifest = sample_rule(
+        "shared/tests/movable-rule",
+        "Movable Rule",
+        "tests",
+        "body",
+        10,
+    );
+    let rule_id = source_store.create(&manifest, None).unwrap();
+    source_store.scan(true).unwrap();
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::Move(MoveArgs {
+            id: Some(rule_id.to_string()),
+            to_workspace_root: Some(target_workspace),
+            dry_run: true,
+            resume: None,
+            rollback: None,
+        }),
+        &source_index_root,
+    )
+    .unwrap();
+
+    assert_eq!(payload["command"], "move");
+    assert_eq!(payload["status"], "ok");
+    assert_eq!(payload["mode"], "plan");
+    assert_eq!(payload["supported"], true);
 }
 
 #[test]

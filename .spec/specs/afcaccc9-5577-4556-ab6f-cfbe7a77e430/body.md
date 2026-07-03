@@ -9,7 +9,7 @@ Move behavior existed in implementation and tickets but lacked a single owning s
 - Preflight visibility checks for inbound and outbound references.
 - Journaled execution, resume, and rollback semantics.
 - Fail-closed board policy for active and stale claims.
-- Surface parity expectations for CLI, MCP, and HTTP.
+- Surface parity expectations for CLI, MCP, and implemented HTTP transports.
 
 # Non-goals
 - Cross-worktree moves.
@@ -21,8 +21,9 @@ Move behavior existed in implementation and tickets but lacked a single owning s
 2. Dirty tracked files block move execution before file mutation.
 3. Active and stale board claims block execution; historical board rows migrate when move executes.
 4. Resume and rollback recover from an injected failure after file movement begins.
-5. CLI, MCP, and HTTP all expose move preflight, apply, resume, and rollback over the same kernel contract.
-6. Destination visibility remains valid for all references involving the moved ticket.
+5. CLI and MCP expose move preflight, apply, resume, and rollback over the same kernel contract for supported move domains.
+6. HTTP exposes move over the same kernel contract for domains that ship an HTTP crate; domains without an HTTP crate are not required to create one solely for move parity.
+7. Destination visibility remains valid for all references involving the moved ticket.
 
 # Traceability
 - [0a510279 Generalize cross-workspace move into a domain-neutral kernel](memory-api/.ticket/tickets/0a510279-5482-4c4f-8cb5-fad3baa57427/ticket.toml)
@@ -37,6 +38,11 @@ Move behavior existed in implementation and tickets but lacked a single owning s
 - rtk cargo test -p ticket-mcp --test integration_move_mcp -- --nocapture
 - rtk cargo test -p ticket-cli cmd_move_dry_run_returns_preflight_plan -- --nocapture
 - rtk cargo test -p ticket-http move_ticket_ -- --nocapture
+- rtk cargo test -p spec-cli dispatch_move_dry_run_returns_supported_preflight_plan -- --nocapture
+- rtk cargo test -p spec-mcp spec_move_preflight_returns_supported_plan -- --nocapture
+- rtk cargo test -p spec-http move_spec_dry_run_returns_supported_plan -- --nocapture
+- rtk cargo test -p rule-cli move_command_dry_run_returns_supported_preflight_plan -- --nocapture
+- rtk cargo test -p rule-mcp rule_move_preflight_returns_supported_plan -- --nocapture
 
 # Follow-up
-Cross-domain adapter parity and matrix/benchmark expansion remain tracked in the linked follow-up tickets above.
+Cross-domain adapter parity and matrix/benchmark expansion remain tracked in the linked follow-up tickets above. Future HTTP parity for `rule-api`, `audit-api`, or `session-api` requires a separate transport-creation ticket because those HTTP crates do not exist today.

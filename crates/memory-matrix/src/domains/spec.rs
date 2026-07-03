@@ -1,5 +1,7 @@
-use std::collections::BTreeMap;
-use std::process::Command;
+use std::{
+    collections::BTreeMap,
+    process::Command,
+};
 
 use serde_json::json;
 
@@ -31,8 +33,9 @@ impl SpecDomain {
     fn run_move_roundtrip() -> Result<(), String> {
         let repo = std::env::temp_dir()
             .join(format!("memory-matrix-spec-move-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&repo)
-            .map_err(|err| format!("create move repo `{}`: {err}", repo.display()))?;
+        std::fs::create_dir_all(&repo).map_err(|err| {
+            format!("create move repo `{}`: {err}", repo.display())
+        })?;
         Self::run_git(&repo, &["init"])?;
 
         let source_workspace = repo.join("source");
@@ -97,7 +100,9 @@ impl SpecDomain {
             .map_err(|err| err.to_string())?
             .is_some()
         {
-            return Err("spec still indexed in source workspace after move".to_string());
+            return Err(
+                "spec still indexed in source workspace after move".to_string()
+            );
         }
         if dst
             .entity_store()
@@ -105,7 +110,8 @@ impl SpecDomain {
             .map_err(|err| err.to_string())?
             .is_none()
         {
-            return Err("spec missing from destination workspace after move".to_string());
+            return Err("spec missing from destination workspace after move"
+                .to_string());
         }
 
         Ok(())
@@ -119,8 +125,7 @@ impl SpecDomain {
                 root.display()
             ));
         }
-        spec_api::SpecStore::open(&root)
-            .map_err(|err| err.to_string())
+        spec_api::SpecStore::open(&root).map_err(|err| err.to_string())
     }
 
     fn open_or_init(ctx: &MatrixCtx) -> Result<spec_api::SpecStore, String> {
@@ -203,8 +208,7 @@ impl DomainOps for SpecDomain {
                 .map_err(|err| err.to_string())?;
             if retry.is_empty() {
                 return Err(
-                    "spec search returned no hit for indexed token"
-                        .to_string()
+                    "spec search returned no hit for indexed token".to_string()
                 );
             }
         }

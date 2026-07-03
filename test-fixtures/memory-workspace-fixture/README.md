@@ -13,8 +13,8 @@ memory-workspace-fixture/
 ├── .ticket/ .spec/          # root-level checked-in stores (seeded)
 ├── .rule/ .session/ .test-domain/ .log/  # generated representative stores
 ├── docs/ src/               # generated doc and audit inputs
-├── submodule-a/.ticket/     # emulated submodule worktree A
-└── submodule-b/.spec/       # emulated submodule worktree B
+├── submodule-a/.ticket/ .spec/  # emulated submodule worktree A
+└── submodule-b/.ticket/ .spec/  # emulated submodule worktree B
 ```
 
 ## Consuming the fixture

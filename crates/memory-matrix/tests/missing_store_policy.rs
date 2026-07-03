@@ -6,8 +6,12 @@ use memory_matrix::{
 };
 
 fn fresh_ctx_without_store(
-    store_dir: &str,
-) -> (memory_fixtures::LoadedFixture, MatrixCtx, std::path::PathBuf) {
+    store_dir: &str
+) -> (
+    memory_fixtures::LoadedFixture,
+    MatrixCtx,
+    std::path::PathBuf,
+) {
     let fixture = materialize_fixture().expect("fixture should materialize");
     let ctx = MatrixCtx::new(fixture.workspace_root.clone());
     let store_root = fixture.workspace_root.join(store_dir);
@@ -25,13 +29,12 @@ fn fresh_ctx_without_store(
 
 #[test]
 fn strict_read_ops_with_missing_roots_do_not_succeed_or_recreate_store() {
-    for (domain, store_dir) in [
-        ("ticket", ".ticket"),
-        ("spec", ".spec"),
-        ("rule", ".rule"),
-    ] {
+    for (domain, store_dir) in
+        [("ticket", ".ticket"), ("spec", ".spec"), ("rule", ".rule")]
+    {
         for op in ["get", "search", "scan"] {
-            let (_fixture, ctx, store_root) = fresh_ctx_without_store(store_dir);
+            let (_fixture, ctx, store_root) =
+                fresh_ctx_without_store(store_dir);
             let result = run_one(domain, op, &ctx);
             assert!(
                 !matches!(result, Ok(Cell::Passed)),
@@ -47,11 +50,9 @@ fn strict_read_ops_with_missing_roots_do_not_succeed_or_recreate_store() {
 
 #[test]
 fn explicit_create_controls_are_the_only_root_creating_path() {
-    for (domain, store_dir) in [
-        ("ticket", ".ticket"),
-        ("spec", ".spec"),
-        ("rule", ".rule"),
-    ] {
+    for (domain, store_dir) in
+        [("ticket", ".ticket"), ("spec", ".spec"), ("rule", ".rule")]
+    {
         let (_fixture, ctx, store_root) = fresh_ctx_without_store(store_dir);
         let result = run_one(domain, "create", &ctx);
         assert!(

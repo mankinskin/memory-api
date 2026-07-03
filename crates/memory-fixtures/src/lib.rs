@@ -145,26 +145,60 @@ pub fn materialize_fixture_with_generated_tickets(
 pub fn materialize_git_fixture() -> Result<LoadedFixture, FixtureError> {
     let fixture = materialize_fixture()?;
 
-    git_init_worktree(&fixture.workspace_root)?;
-    for worktree in &fixture.manifest.worktrees {
-        if worktree.kind == "submodule" {
-            let path = fixture
-                .workspace_root
-                .join(worktree.relative_path.replace('\\', "/"));
-            git_init_worktree(&path)?;
-        }
+    let submodules: Vec<(String, PathBuf)> = fixture
+        .manifest
+        .worktrees
+        .iter()
+        .filter(|worktree| worktree.kind == "submodule")
+        .map(|worktree| {
+            let relative_path = worktree.relative_path.replace('\\', "/");
+            let path = fixture.workspace_root.join(&relative_path);
+            (relative_path, path)
+        })
+        .collect();
+
+    for (_, path) in &submodules {
+        git_init_worktree(path)?;
     }
+
+    git_init_repo(&fixture.workspace_root)?;
+    for (relative_path, _) in &submodules {
+        let local_url = format!("./{relative_path}");
+        run_git(
+            &fixture.workspace_root,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "--force",
+                &local_url,
+                relative_path,
+            ],
+        )?;
+    }
+    git_commit_all(&fixture.workspace_root, "fixture baseline")?;
 
     Ok(fixture)
 }
 
 fn git_init_worktree(dir: &Path) -> Result<(), FixtureError> {
+    git_init_repo(dir)?;
+    git_commit_all(dir, "fixture baseline")
+}
+
+fn git_init_repo(dir: &Path) -> Result<(), FixtureError> {
     run_git(dir, &["init"])?;
     run_git(dir, &["config", "user.email", "fixture@example.com"])?;
-    run_git(dir, &["config", "user.name", "Fixture"])?;
+    run_git(dir, &["config", "user.name", "Fixture"])
+}
+
+fn git_commit_all(
+    dir: &Path,
+    message: &str,
+) -> Result<(), FixtureError> {
     run_git(dir, &["add", "-A"])?;
-    run_git(dir, &["commit", "--no-gpg-sign", "-m", "fixture baseline"])?;
-    Ok(())
+    run_git(dir, &["commit", "--no-gpg-sign", "-m", message])
 }
 
 fn run_git(
@@ -580,5 +614,19 @@ mod tests {
         assert!(fixture.workspace_root.join(".git").exists());
         assert!(fixture.workspace_root.join("submodule-a/.git").exists());
         assert!(fixture.workspace_root.join("submodule-b/.git").exists());
+
+        let modules = fs::read_to_string(fixture.workspace_root.join(".gitmodules"))
+            .expect("read .gitmodules");
+        assert!(modules.contains("path = submodule-a"));
+        assert!(modules.contains("path = submodule-b"));
+
+        let output = Command::new("git")
+            .current_dir(&fixture.workspace_root)
+            .args(["ls-files", "-s", "submodule-a", "submodule-b"])
+            .output()
+            .expect("git ls-files");
+        assert!(output.status.success());
+        let index = String::from_utf8_lossy(&output.stdout);
+        assert!(index.contains("160000"));
     }
 }

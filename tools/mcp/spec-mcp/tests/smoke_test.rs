@@ -4,7 +4,10 @@
 //! sections → tree → health → refs_validate → delete) via `SpecServer`
 //! methods directly, without going through the JSON-RPC transport.
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    process::Command,
+};
 
 use rmcp::handler::server::wrapper::Parameters;
 use spec_mcp::server::*;
@@ -16,6 +19,18 @@ use support::{
     extract_json,
     make_sandbox,
 };
+
+fn run_git(
+    repo_root: &std::path::Path,
+    args: &[&str],
+) {
+    let status = Command::new("git")
+        .current_dir(repo_root)
+        .args(args)
+        .status()
+        .expect("git command");
+    assert!(status.success(), "git {args:?} failed: {status}");
+}
 
 // ── tests ────────────────────────────────────────────────────────────────────
 
@@ -178,6 +193,46 @@ async fn spec_update_accepts_sparse_payload_and_returns_minimal_response() {
     assert_eq!(json["state_transition"]["to"], "reviewed");
     assert!(json.get("changed_fields").is_none());
     assert!(json.get("fields").is_none());
+}
+
+#[tokio::test]
+async fn spec_move_preflight_returns_supported_plan() {
+    let (_tmp, server) = make_sandbox();
+    run_git(_tmp.path(), &["init"]);
+    let target_workspace = _tmp.path().join("target");
+    std::fs::create_dir_all(&target_workspace).unwrap();
+    spec_api::SpecStore::init(&target_workspace).unwrap();
+
+    let created = extract_json(
+        server
+            .spec_create(Parameters(CreateSpecInput {
+                workspace: _tmp.path().display().to_string(),
+                title: "Movable Spec".to_string(),
+                slug: "tests/movable-spec".to_string(),
+                component: "tests".to_string(),
+                parent: None,
+                scope: None,
+                body: Some("body".to_string()),
+                fields: BTreeMap::new(),
+            }))
+            .await
+            .expect("create"),
+    );
+    let spec_id = created["id"].as_str().unwrap().to_string();
+
+    let result = server
+        .spec_move_preflight(Parameters(SpecMoveInput {
+            workspace: Some(_tmp.path().display().to_string()),
+            id: spec_id,
+            to_workspace_root: target_workspace.display().to_string(),
+        }))
+        .await
+        .expect("move preflight");
+    let json = extract_json(result);
+
+    assert_eq!(json["status"], "ok");
+    assert_eq!(json["mode"], "preflight");
+    assert_eq!(json["supported"], true);
 }
 
 /// Section operations: add → list → get → delete.
