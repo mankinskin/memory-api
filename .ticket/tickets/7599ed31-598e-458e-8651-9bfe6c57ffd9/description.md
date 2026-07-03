@@ -22,15 +22,24 @@ It is acceptable to move tickets that are currently `in-implementation`. The age
 ### MOVE to the memory-api store (single memory-api domain)
 - session-bootstrap cluster: `effba966` (epic), `412964a3` (runtime), `6b2dc497` (cli/mcp), `b4a8dc5e` (rules), `d8f76965` (cascade), `afa00b5c` (design).
 - feedback-api program (memory-api crates): `b1e9e744` (tracker), `c7542933` (core gate), `9c95c1e4`, `3a1ec9f8`, `4f86d3d2`, `b7b84c10`, `c2d6a14a`.
-- workspace-resolution: `ef0ebf38` (tracker) + `07836f41`, `59d96577`.
+- workspace-resolution: `ef0ebf38` (tracker) + `07836f41`, `59d96577`, `27558fde`, `1fd0c182`, `5318aedd`, `632974d1`, `39239e48`.
 - state-machine: `185419e0` (bidirectional transitions, in-review).
-- transport parity: `39239e48`.
-- audit-api tickets (audit single memory-api domain) — audit each before moving.
+- explicit-init policy cluster: `a9514081`, `23f1c81b`, `e6bdafbe`, `50307cce`, `e83264db`, `51e2210c`.
+- path normalization cluster: `e3961a54`, `e8e3ef17`.
+- transport diagnostics / journaling coverage in memory-matrix: `cc78d33d`.
+- audit-api tickets listed above are single-domain move candidates once ownership is confirmed in the destination store.
 
 ### STAY in context-engine (genuinely cross-workspace)
 - `671d4e47` multi-store architecture tracker (spans memory-api, viewer-api, context-stack).
 - `82d6ada4` URN cross-store reference model, `6bd67a7a` multi-store discovery — cross-store by definition.
 - `8a90a63c` multi-store store-expansion / operational-health program.
+- observability/logging LCA tickets: `73b2cd22` runtime diagnostics tracker, `84673399` architecture-boundary decision ticket, `bce26d30` docs/validation matrix, and `ff6637f5` benchmark/profiling evidence. These coordinate `memory-api`, `log-api`, and `context-stack` specialized work and should remain in the parent workspace.
+- `1dffcf23` graph-operation replay format for log-viewer — keep in the parent workspace because it links `context-stack` replay semantics to shared log/journal metadata used outside a single child crate.
+
+### Link lower-crate specialized work from the LCA tickets
+- memory-api specialized tickets: `756fed27`, `3041d7e3`, `6c859ac3`, `2e41c96d`, `35cd05c1`.
+- log-api specialized tickets: `d3349747`, `aa94d02e`.
+- context-stack specialized ticket: `1dffcf23`.
 
 > Audit each candidate's owning store before moving; do not move blindly. An entity that touches more than one workspace's code stays in the lowest common ancestor workspace.
 
