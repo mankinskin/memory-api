@@ -117,6 +117,38 @@ impl RedbIndexStore {
         })
     }
 
+    pub fn upsert_tickets_batch(
+        &self,
+        entities: &[IndexedEntity],
+    ) -> Result<(), StorageError> {
+        if entities.is_empty() {
+            return Ok(());
+        }
+
+        self.with_write(|conn| {
+            conn.execute_batch("BEGIN IMMEDIATE;")?;
+            for entity in entities {
+                let bytes = bincode::serialize(entity)
+                    .map_err(|e| StorageError::Serialization(e.to_string()));
+                let result = bytes.and_then(|bytes| {
+                    conn.execute(
+                        &format!(
+                            "INSERT OR REPLACE INTO {TABLE_TICKETS} (id, data) VALUES (?1, ?2)"
+                        ),
+                        params![entity.id.to_string(), bytes],
+                    )?;
+                    Ok(())
+                });
+                if let Err(error) = result {
+                    let _ = conn.execute_batch("ROLLBACK;");
+                    return Err(error);
+                }
+            }
+            conn.execute_batch("COMMIT;")?;
+            Ok(())
+        })
+    }
+
     pub fn get_ticket(
         &self,
         id: &Uuid,
@@ -196,6 +228,30 @@ impl RedbIndexStore {
                 &format!("DELETE FROM {TABLE_TICKETS} WHERE id = ?1"),
                 params![key],
             )?;
+            Ok(())
+        })
+    }
+
+    pub fn remove_tickets_batch(
+        &self,
+        ids: &[Uuid],
+    ) -> Result<(), StorageError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        self.with_write(|conn| {
+            conn.execute_batch("BEGIN IMMEDIATE;")?;
+            for id in ids {
+                if let Err(error) = conn.execute(
+                    &format!("DELETE FROM {TABLE_TICKETS} WHERE id = ?1"),
+                    params![id.to_string()],
+                ) {
+                    let _ = conn.execute_batch("ROLLBACK;");
+                    return Err(error.into());
+                }
+            }
+            conn.execute_batch("COMMIT;")?;
             Ok(())
         })
     }
@@ -316,6 +372,38 @@ impl RedbIndexStore {
                 ),
                 params![from, to, edge.kind, created_at],
             )?;
+            Ok(())
+        })
+    }
+
+    pub fn insert_edges_batch(
+        &self,
+        edges: &[EdgeRecord],
+    ) -> Result<(), StorageError> {
+        if edges.is_empty() {
+            return Ok(());
+        }
+
+        self.with_write(|conn| {
+            conn.execute_batch("BEGIN IMMEDIATE;")?;
+            for edge in edges {
+                if let Err(error) = conn.execute(
+                    &format!(
+                        "INSERT OR IGNORE INTO {TABLE_EDGES} \
+                         (from_id, to_id, kind, created_at) VALUES (?1, ?2, ?3, ?4)"
+                    ),
+                    params![
+                        edge.from.to_string(),
+                        edge.to.to_string(),
+                        edge.kind,
+                        edge.created_at.to_rfc3339()
+                    ],
+                ) {
+                    let _ = conn.execute_batch("ROLLBACK;");
+                    return Err(error.into());
+                }
+            }
+            conn.execute_batch("COMMIT;")?;
             Ok(())
         })
     }

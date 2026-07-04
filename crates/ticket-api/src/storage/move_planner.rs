@@ -256,6 +256,18 @@ impl MoveDomain for TicketMoveDomain<'_> {
         store.scan(false).map_err(to_move_error)?;
         Ok(())
     }
+
+    fn reconcile_store_touched(
+        &self,
+        store_root: &Path,
+        touched_entity_ids: &[Uuid],
+    ) -> MoveResult<()> {
+        let store = self.open(store_root)?;
+        store
+            .reconcile_known_tickets(touched_entity_ids)
+            .map_err(to_move_error)?;
+        Ok(())
+    }
 }
 
 impl TicketStore {

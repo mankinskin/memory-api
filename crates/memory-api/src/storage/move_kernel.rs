@@ -255,6 +255,18 @@ pub trait MoveDomain {
         &self,
         store_root: &Path,
     ) -> MoveResult<()>;
+
+    /// Reconcile only a known touched subset when the caller already knows the
+    /// affected ids (for example move execution for a single entity). Domains
+    /// that do not support targeted reconciliation can fall back to `scan_store`.
+    fn reconcile_store_touched(
+        &self,
+        store_root: &Path,
+        touched_entity_ids: &[Uuid],
+    ) -> MoveResult<()> {
+        let _ = touched_entity_ids;
+        self.scan_store(store_root)
+    }
 }
 
 /// Read-only preflight plan for a move.
@@ -692,11 +704,17 @@ pub fn rollback_move<D: MoveDomain + ?Sized>(
     }
 
     let source_scan_started = Instant::now();
-    domain.scan_store(&journal.source_store_root)?;
+    domain.reconcile_store_touched(
+        &journal.source_store_root,
+        &[journal.entity_id],
+    )?;
     record_phase_timing(&mut journal, "rollback_scan_source_ms", source_scan_started.elapsed());
 
     let target_scan_started = Instant::now();
-    domain.scan_store(&journal.target_store_root)?;
+    domain.reconcile_store_touched(
+        &journal.target_store_root,
+        &[journal.entity_id],
+    )?;
     record_phase_timing(&mut journal, "rollback_scan_target_ms", target_scan_started.elapsed());
 
     journal.phase = MoveExecutionPhase::RolledBack;
@@ -862,7 +880,10 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
             }
 
             let started = Instant::now();
-            domain.scan_store(&journal.source_store_root)?;
+            domain.reconcile_store_touched(
+                &journal.source_store_root,
+                &[journal.entity_id],
+            )?;
             record_phase_timing(&mut journal, "scan_source_ms", started.elapsed());
             journal.phase = MoveExecutionPhase::SourceScanned;
             span.record("phase", phase_name(&journal.phase));
@@ -881,7 +902,10 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
 
         if journal.phase == MoveExecutionPhase::SourceScanned {
             let started = Instant::now();
-            domain.scan_store(&journal.target_store_root)?;
+            domain.reconcile_store_touched(
+                &journal.target_store_root,
+                &[journal.entity_id],
+            )?;
             record_phase_timing(&mut journal, "scan_target_ms", started.elapsed());
             journal.phase = MoveExecutionPhase::TargetScanned;
             span.record("phase", phase_name(&journal.phase));

@@ -1275,6 +1275,129 @@ fn scan_without_reindex_recomputes_workflow_facts_for_changed_ticket_slice() {
 }
 
 #[test]
+fn reconcile_known_tickets_is_noop_for_unchanged_ticket_and_unaffected_rows() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let touched = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Known reconcile touched"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let unaffected = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Known reconcile unaffected"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    store.scan(true).unwrap();
+    let before_touched = store.get_indexed(&touched).unwrap().unwrap().updated_at;
+    let before_unaffected = store
+        .get_indexed(&unaffected)
+        .unwrap()
+        .unwrap()
+        .updated_at;
+
+    let report = store.reconcile_known_tickets(&[touched]).unwrap();
+
+    assert_eq!(report.integrated, 1);
+    assert_eq!(report.pruned, 0);
+    assert_eq!(
+        report
+            .phase_timings_ms
+            .get("targeted_reconcile_known_count"),
+        Some(&1)
+    );
+    assert_eq!(
+        store.get_indexed(&touched).unwrap().unwrap().updated_at,
+        before_touched
+    );
+    assert_eq!(
+        store.get_indexed(&unaffected).unwrap().unwrap().updated_at,
+        before_unaffected
+    );
+}
+
+#[test]
+fn reconcile_known_tickets_handles_move_and_updates_affected_dependents() {
+    let dir = tempdir().unwrap();
+    let source_workspace = dir.path().join("source");
+    let target_workspace = dir.path().join("target");
+    fs::create_dir_all(&source_workspace).unwrap();
+    fs::create_dir_all(&target_workspace).unwrap();
+
+    let source_store = TicketStore::init(&source_workspace).unwrap();
+    let target_store = TicketStore::init(&target_workspace).unwrap();
+
+    let blocker = source_store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Moved blocker"),
+            Some("done"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let dependent = source_store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Dependent in source"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    source_store
+        .add_edge(EdgeRecord {
+            from: dependent,
+            to: blocker,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap();
+
+    source_store.scan(true).unwrap();
+    let initial = source_store.get_workflow_facts(&dependent).unwrap().unwrap();
+    assert_eq!(initial.unresolved_dependency_count, 0);
+
+    let source_path = source_store.get_indexed(&blocker).unwrap().unwrap().path;
+    fs::create_dir_all(target_store.index_root.join("tickets")).unwrap();
+    let target_path = target_store
+        .index_root
+        .join("tickets")
+        .join(blocker.to_string());
+    fs::rename(&source_path, &target_path).unwrap();
+
+    let source_report = source_store.reconcile_known_tickets(&[blocker]).unwrap();
+    let target_report = target_store.reconcile_known_tickets(&[blocker]).unwrap();
+
+    assert_eq!(source_report.pruned, 1);
+    assert_eq!(source_report.integrated, 0);
+    assert_eq!(target_report.integrated, 1);
+    assert!(source_store.get_indexed(&blocker).unwrap().is_none());
+    assert!(target_store.get_indexed(&blocker).unwrap().is_some());
+
+    let updated = source_store.get_workflow_facts(&dependent).unwrap().unwrap();
+    assert_eq!(updated.unresolved_dependency_count, 1);
+}
+
+#[test]
 fn scan_force_skips_stale_db_edges_for_missing_ticket_folders() {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();

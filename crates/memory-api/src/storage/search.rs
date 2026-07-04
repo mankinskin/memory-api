@@ -505,13 +505,26 @@ impl TantivySearchIndex {
         &self,
         id: &Uuid,
     ) -> Result<(), StorageError> {
+        self.remove_batch(&[*id])
+    }
+
+    pub fn remove_batch(
+        &self,
+        ids: &[Uuid],
+    ) -> Result<(), StorageError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+
         Self::with_retry(|| {
             let index = self.open_index()?;
             let mut writer = Self::make_writer(&index)?;
-            writer.delete_term(Term::from_field_text(
-                self.fields.id,
-                &id.to_string(),
-            ));
+            for id in ids {
+                writer.delete_term(Term::from_field_text(
+                    self.fields.id,
+                    &id.to_string(),
+                ));
+            }
             writer.commit().map_err(|e: TantivyError| {
                 StorageError::SearchIndex(e.to_string())
             })?;
