@@ -1081,6 +1081,33 @@ fn scan_report_includes_phase_timings_and_root_counts() {
     assert!(report.phase_timings_ms.contains_key("rebuild_workflow_facts_ms"));
     assert!(report
         .phase_timings_ms
+        .contains_key("integration.manifest_parse_ms"));
+    assert!(report
+        .phase_timings_ms
+        .contains_key("integration.index_upsert_ms"));
+    assert!(report
+        .phase_timings_ms
+        .contains_key("integration.edge_write_ms"));
+    assert!(report
+        .phase_timings_ms
+        .contains_key("integration.description_read_ms"));
+    assert!(report
+        .phase_timings_ms
+        .contains_key("integration.search_upsert_ms"));
+    assert!(report
+        .phase_timings_ms
+        .contains_key("workflow.fetch_dependency_edges_ms"));
+    assert!(report
+        .phase_timings_ms
+        .contains_key("workflow.fetch_dependency_tickets_ms"));
+    assert!(report
+        .phase_timings_ms
+        .contains_key("workflow.compute_unresolved_ms"));
+    assert!(report
+        .phase_timings_ms
+        .contains_key("workflow.write_facts_ms"));
+    assert!(report
+        .phase_timings_ms
         .keys()
         .any(|key| key.starts_with("scan_root_")));
     assert!(!report.root_entry_counts.is_empty());

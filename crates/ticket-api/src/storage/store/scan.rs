@@ -192,6 +192,11 @@ impl TicketStore {
                 format!("scan_root_{root_label}_ms"),
                 scan_root_started,
             );
+            record_named_phase_timing(
+                &mut phase_timings_ms,
+                "integration.manifest_parse_ms".to_string(),
+                scan_root_started,
+            );
             root_entry_counts.insert(root_label.clone(), entries.len());
             tracing::debug!(
                 target: STORE_TRACE_TARGET,
@@ -204,7 +209,13 @@ impl TicketStore {
             let integrate_root_started = Instant::now();
             for entry in entries {
                 disk_ids.insert(entry.id);
-                integrate_entry(&self.index, &self.search, entry, reindex)?;
+                integrate_entry(
+                    &self.index,
+                    &self.search,
+                    entry,
+                    reindex,
+                    &mut phase_timings_ms,
+                )?;
                 integrated += 1;
             }
             record_named_phase_timing(
@@ -239,7 +250,11 @@ impl TicketStore {
         );
 
         let workflow_started = Instant::now();
-        self.rebuild_workflow_facts()?;
+        let workflow_timings = self.rebuild_workflow_facts()?;
+        merge_phase_totals(
+            &mut phase_timings_ms,
+            workflow_timings,
+        );
         record_phase_timing(
             &mut phase_timings_ms,
             "rebuild_workflow_facts_ms",
@@ -312,7 +327,14 @@ impl TicketStore {
             path: path.to_path_buf(),
             manifest,
         };
-        integrate_entry(&self.index, &self.search, entry, true)?;
+        let mut phase_timings_ms = std::collections::BTreeMap::new();
+        integrate_entry(
+            &self.index,
+            &self.search,
+            entry,
+            true,
+            &mut phase_timings_ms,
+        )?;
         self.refresh_workflow_facts_for_roots(&[id], false, Utc::now())?;
         Ok(true)
     }
@@ -394,6 +416,7 @@ fn integrate_entry(
     search: &TantivySearchIndex,
     entry: TicketScanEntry,
     _reindex: bool,
+    phase_timings_ms: &mut std::collections::BTreeMap<String, u64>,
 ) -> Result<(), StorageError> {
     let type_id = entry
         .manifest
@@ -436,12 +459,32 @@ fn integrate_entry(
             updated_at: now,
         },
     };
+    let index_upsert_started = Instant::now();
     index.insert_ticket(&indexed)?;
+    add_phase_elapsed(
+        phase_timings_ms,
+        "integration.index_upsert_ms",
+        index_upsert_started,
+    );
+
+    let edge_write_started = Instant::now();
     for edge in manifest_edges(&entry) {
         index.insert_edge(&edge)?;
     }
+    add_phase_elapsed(
+        phase_timings_ms,
+        "integration.edge_write_ms",
+        edge_write_started,
+    );
 
+    let description_read_started = Instant::now();
     let body = TicketFs::read_description(&entry.path);
+    add_phase_elapsed(
+        phase_timings_ms,
+        "integration.description_read_ms",
+        description_read_started,
+    );
+
     let created_at_str = indexed.created_at.to_rfc3339();
     let effort_str = entry
         .manifest
@@ -452,6 +495,7 @@ fn integrate_entry(
             serde_json::Value::Number(n) => Some(n.to_string()),
             _ => None,
         });
+    let search_upsert_started = Instant::now();
     search.upsert(
         &entry.id,
         title.as_deref(),
@@ -461,8 +505,37 @@ fn integrate_entry(
         Some(&created_at_str),
         effort_str.as_deref(),
     )?;
+    add_phase_elapsed(
+        phase_timings_ms,
+        "integration.search_upsert_ms",
+        search_upsert_started,
+    );
 
     Ok(())
+}
+
+fn add_phase_elapsed(
+    timings: &mut std::collections::BTreeMap<String, u64>,
+    key: &str,
+    started: Instant,
+) {
+    let elapsed = elapsed_ms(started);
+    *timings.entry(key.to_string()).or_insert(0) += elapsed;
+    tracing::debug!(
+        target: STORE_TRACE_TARGET,
+        phase = key,
+        elapsed_ms = elapsed,
+        "ticket_store_phase_complete"
+    );
+}
+
+fn merge_phase_totals(
+    timings: &mut std::collections::BTreeMap<String, u64>,
+    phase_totals: std::collections::BTreeMap<String, u64>,
+) {
+    for (phase, elapsed) in phase_totals {
+        *timings.entry(phase).or_insert(0) += elapsed;
+    }
 }
 
 fn manifest_edges(

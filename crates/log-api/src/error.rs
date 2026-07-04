@@ -15,6 +15,9 @@ pub enum LogError {
     #[error("log capture not found: {0}")]
     CaptureNotFound(String),
 
+    #[error("runtime log session not found: {0}")]
+    RuntimeSessionNotFound(String),
+
     #[error("failed to serialize log data for {path}: {source}")]
     Serialize {
         path: PathBuf,

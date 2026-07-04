@@ -11,6 +11,9 @@ use serde::de::DeserializeOwned;
 
 use crate::{
     LogError,
+    RuntimeLogSession,
+    RuntimeLogStatus,
+    RuntimeLogTransport,
     ValidationLogCapture,
 };
 
@@ -34,6 +37,23 @@ pub struct LogCaptureQuery {
     /// Only return captures linked to this validation execution id.
     pub execution_id: Option<String>,
     /// Maximum number of captures to return (after sorting).
+    pub limit: Option<usize>,
+}
+
+/// Filter for querying runtime log sessions.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RuntimeLogSessionQuery {
+    pub status: Option<RuntimeLogStatus>,
+    pub transport: Option<RuntimeLogTransport>,
+    pub component: Option<String>,
+    pub run_id: Option<String>,
+    pub ticket_id: Option<String>,
+    pub spec_id: Option<String>,
+    pub validation_execution_id: Option<String>,
+    pub journal_id: Option<String>,
+    pub graph_operation_id: Option<String>,
+    pub benchmark_id: Option<String>,
+    pub agent_session_id: Option<String>,
     pub limit: Option<usize>,
 }
 
@@ -94,6 +114,101 @@ impl LogStoreConfig {
         Ok(captures)
     }
 
+    /// Persist (create or overwrite) a runtime log session. Returns the file path.
+    pub fn record_runtime_session(
+        &self,
+        session: &RuntimeLogSession,
+    ) -> Result<PathBuf, LogError> {
+        let path = self.runtime_session_path(&session.id)?;
+        write_json(&path, session)?;
+        Ok(path)
+    }
+
+    /// Read a runtime log session by id.
+    pub fn get_runtime_session(
+        &self,
+        id: &str,
+    ) -> Result<RuntimeLogSession, LogError> {
+        let path = self.runtime_session_path(id)?;
+        read_json_if_exists(&path)?.ok_or_else(|| LogError::RuntimeSessionNotFound(id.to_string()))
+    }
+
+    /// Query runtime log sessions, sorted by `started_at` descending (newest first).
+    pub fn list_runtime_sessions(
+        &self,
+        query: &RuntimeLogSessionQuery,
+    ) -> Result<Vec<RuntimeLogSession>, LogError> {
+        let mut sessions: Vec<RuntimeLogSession> =
+            self.read_dir_json(&self.runtime_sessions_dir()?)?;
+
+        sessions.retain(|session| {
+            if let Some(status) = &query.status {
+                if &session.status != status {
+                    return false;
+                }
+            }
+            if let Some(transport) = &query.transport {
+                if &session.transport != transport {
+                    return false;
+                }
+            }
+            if let Some(component) = &query.component {
+                if &session.component != component {
+                    return false;
+                }
+            }
+            if let Some(run_id) = &query.run_id {
+                if session.run_id.as_deref() != Some(run_id.as_str()) {
+                    return false;
+                }
+            }
+            if let Some(ticket_id) = &query.ticket_id {
+                if !session.links.links_to_ticket(ticket_id) {
+                    return false;
+                }
+            }
+            if let Some(spec_id) = &query.spec_id {
+                if !session.links.links_to_spec(spec_id) {
+                    return false;
+                }
+            }
+            if let Some(execution_id) = &query.validation_execution_id {
+                if !session.links.links_to_execution(execution_id) {
+                    return false;
+                }
+            }
+            if let Some(journal_id) = &query.journal_id {
+                if !session.links.links_to_journal(journal_id) {
+                    return false;
+                }
+            }
+            if let Some(graph_operation_id) = &query.graph_operation_id {
+                if !session.links.links_to_graph_operation(graph_operation_id) {
+                    return false;
+                }
+            }
+            if let Some(benchmark_id) = &query.benchmark_id {
+                if !session.links.links_to_benchmark(benchmark_id) {
+                    return false;
+                }
+            }
+            if let Some(agent_session_id) = &query.agent_session_id {
+                if !session.links.links_to_agent_session(agent_session_id) {
+                    return false;
+                }
+            }
+            true
+        });
+
+        sessions.sort_by(|a, b| b.started_at.cmp(&a.started_at).then(a.id.cmp(&b.id)));
+
+        if let Some(limit) = query.limit {
+            sessions.truncate(limit);
+        }
+
+        Ok(sessions)
+    }
+
     // ── Path helpers ────────────────────────────────────────────────────────
 
     fn workspace_dir(&self) -> Result<PathBuf, LogError> {
@@ -109,12 +224,24 @@ impl LogStoreConfig {
         Ok(self.workspace_dir()?.join("captures"))
     }
 
+    fn runtime_sessions_dir(&self) -> Result<PathBuf, LogError> {
+        Ok(self.workspace_dir()?.join("sessions"))
+    }
+
     fn capture_path(
         &self,
         id: &str,
     ) -> Result<PathBuf, LogError> {
         validate_segment(id).map_err(|_| LogError::InvalidId(id.to_string()))?;
         Ok(self.captures_dir()?.join(format!("{id}.json")))
+    }
+
+    fn runtime_session_path(
+        &self,
+        id: &str,
+    ) -> Result<PathBuf, LogError> {
+        validate_segment(id).map_err(|_| LogError::InvalidId(id.to_string()))?;
+        Ok(self.runtime_sessions_dir()?.join(format!("{id}.json")))
     }
 
     fn read_dir_json<T: DeserializeOwned>(
@@ -216,6 +343,11 @@ mod tests {
 
     use super::*;
     use crate::{
+        RuntimeLogFormat,
+        RuntimeLogLinks,
+        RuntimeLogSession,
+        RuntimeLogStatus,
+        RuntimeLogTransport,
         ValidationLogCapture,
         ValidationLogKind,
     };
@@ -241,6 +373,35 @@ mod tests {
             "text/plain",
             format!("target/test-logs/{id}.log"),
         )
+    }
+
+    fn runtime_session(
+        id: &str,
+        secs: u32,
+    ) -> RuntimeLogSession {
+        let mut session = RuntimeLogSession::new(
+            id,
+            at(secs),
+            RuntimeLogStatus::Active,
+            "ticket-api",
+            RuntimeLogTransport::Mcp,
+            format!("target/test-logs/{id}.jsonl"),
+            "application/json",
+            RuntimeLogFormat::JsonLines,
+        );
+        session.operation = Some("scan".to_string());
+        session.run_id = Some("run-1".to_string());
+        session.links = RuntimeLogLinks {
+            spec_ids: vec!["spec-1".to_string()],
+            ticket_ids: vec!["ticket-1".to_string()],
+            doc_evidence_ids: vec!["doc-1".to_string()],
+            validation_execution_ids: vec!["exec-1".to_string()],
+            benchmark_ids: vec!["bench-1".to_string()],
+            agent_session_ids: vec!["agent-1".to_string()],
+            journal_ids: vec!["journal-1".to_string()],
+            graph_operation_ids: vec!["graph-op-1".to_string()],
+        };
+        session
     }
 
     #[test]
@@ -296,5 +457,79 @@ mod tests {
             cfg.record_capture(&cap),
             Err(LogError::InvalidId(_))
         ));
+    }
+
+    #[test]
+    fn records_and_reads_runtime_session() {
+        let dir = TempDir::new().unwrap();
+        let cfg = config(&dir);
+        let session = runtime_session("session-1", 1);
+
+        let path = cfg.record_runtime_session(&session).unwrap();
+        assert!(path.exists());
+        assert_eq!(cfg.get_runtime_session("session-1").unwrap(), session);
+    }
+
+    #[test]
+    fn missing_runtime_session_reports_not_found() {
+        let dir = TempDir::new().unwrap();
+        let cfg = config(&dir);
+        assert!(matches!(
+            cfg.get_runtime_session("nope"),
+            Err(LogError::RuntimeSessionNotFound(_))
+        ));
+    }
+
+    #[test]
+    fn lists_runtime_sessions_with_filters() {
+        let dir = TempDir::new().unwrap();
+        let cfg = config(&dir);
+
+        let mut a = runtime_session("session-a", 1);
+        a.run_id = Some("run-a".to_string());
+        let mut b = runtime_session("session-b", 2);
+        b.transport = RuntimeLogTransport::Http;
+        b.status = RuntimeLogStatus::Completed;
+        b.run_id = Some("run-b".to_string());
+        b.links.ticket_ids = vec!["ticket-2".to_string()];
+        let c = runtime_session("session-c", 3);
+
+        cfg.record_runtime_session(&a).unwrap();
+        cfg.record_runtime_session(&b).unwrap();
+        cfg.record_runtime_session(&c).unwrap();
+
+        let all = cfg
+            .list_runtime_sessions(&RuntimeLogSessionQuery::default())
+            .unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0].id, "session-c");
+
+        let only_http_completed = cfg
+            .list_runtime_sessions(&RuntimeLogSessionQuery {
+                transport: Some(RuntimeLogTransport::Http),
+                status: Some(RuntimeLogStatus::Completed),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(only_http_completed.len(), 1);
+        assert_eq!(only_http_completed[0].id, "session-b");
+
+        let ticket_2 = cfg
+            .list_runtime_sessions(&RuntimeLogSessionQuery {
+                ticket_id: Some("ticket-2".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(ticket_2.len(), 1);
+        assert_eq!(ticket_2[0].id, "session-b");
+
+        let run_a = cfg
+            .list_runtime_sessions(&RuntimeLogSessionQuery {
+                run_id: Some("run-a".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(run_a.len(), 1);
+        assert_eq!(run_a[0].id, "session-a");
     }
 }

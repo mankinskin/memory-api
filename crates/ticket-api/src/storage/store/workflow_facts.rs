@@ -1,4 +1,5 @@
 use std::collections::{
+    BTreeMap,
     HashSet,
     VecDeque,
 };
@@ -8,6 +9,7 @@ use chrono::{
     Utc,
 };
 use uuid::Uuid;
+use std::time::Instant;
 
 use crate::{
     error::StorageError,
@@ -17,14 +19,45 @@ use crate::{
 use super::TicketStore;
 
 impl TicketStore {
-    pub(super) fn rebuild_workflow_facts(&self) -> Result<(), StorageError> {
+    pub(super) fn rebuild_workflow_facts(
+        &self,
+    ) -> Result<BTreeMap<String, u64>, StorageError> {
+        let overall_started = Instant::now();
+        let mut timings = BTreeMap::new();
+        let clear_started = Instant::now();
         self.index.clear_workflow_facts()?;
+        add_timing(
+            &mut timings,
+            "workflow.clear_existing_facts_ms",
+            clear_started,
+        );
+
+        let list_started = Instant::now();
         let all_ticket_ids = self
             .normalize_indexed_tickets(self.index.list_tickets()?)
             .into_iter()
             .map(|ticket| ticket.id)
             .collect::<Vec<_>>();
-        self.recompute_workflow_facts_for_ids(&all_ticket_ids, None)
+
+        add_timing(
+            &mut timings,
+            "workflow.list_all_tickets_ms",
+            list_started,
+        );
+
+        self.recompute_workflow_facts_for_ids_with_timings(
+            &all_ticket_ids,
+            None,
+            Some(&mut timings),
+        )?;
+
+        add_timing(
+            &mut timings,
+            "workflow.recompute_total_ms",
+            overall_started,
+        );
+
+        Ok(timings)
     }
 
     pub(super) fn refresh_workflow_facts_for_roots(
@@ -34,9 +67,10 @@ impl TicketStore {
         changed_at: DateTime<Utc>,
     ) -> Result<(), StorageError> {
         let affected_ids = self.affected_workflow_slice(root_ids)?;
-        self.recompute_workflow_facts_for_ids(
+        self.recompute_workflow_facts_for_ids_with_timings(
             &affected_ids.into_iter().collect::<Vec<_>>(),
             progress.then_some(changed_at),
+            None,
         )
     }
 
@@ -85,6 +119,15 @@ impl TicketStore {
         ticket_ids: &[Uuid],
         progress_at: Option<DateTime<Utc>>,
     ) -> Result<(), StorageError> {
+        self.recompute_workflow_facts_for_ids_with_timings(ticket_ids, progress_at, None)
+    }
+
+    fn recompute_workflow_facts_for_ids_with_timings(
+        &self,
+        ticket_ids: &[Uuid],
+        progress_at: Option<DateTime<Utc>>,
+        mut timings: Option<&mut BTreeMap<String, u64>>,
+    ) -> Result<(), StorageError> {
         let existing = self.index.get_workflow_facts_many(ticket_ids)?;
 
         for ticket_id in ticket_ids {
@@ -93,6 +136,7 @@ impl TicketStore {
                 continue;
             };
 
+            let dependency_edges_started = Instant::now();
             let dependency_ids = self
                 .index
                 .edges_from(ticket_id)?
@@ -100,7 +144,26 @@ impl TicketStore {
                 .filter(|edge| edge.kind == "depends_on")
                 .map(|edge| edge.to)
                 .collect::<Vec<_>>();
+
+            if let Some(map) = timings.as_deref_mut() {
+                add_timing(
+                    map,
+                    "workflow.fetch_dependency_edges_ms",
+                    dependency_edges_started,
+                );
+            }
+
+            let dependency_fetch_started = Instant::now();
             let dependencies = self.get_indexed_many(&dependency_ids)?;
+            if let Some(map) = timings.as_deref_mut() {
+                add_timing(
+                    map,
+                    "workflow.fetch_dependency_tickets_ms",
+                    dependency_fetch_started,
+                );
+            }
+
+            let unresolved_started = Instant::now();
             let unresolved_dependency_count = dependency_ids
                 .iter()
                 .filter(|dependency_id| {
@@ -110,6 +173,14 @@ impl TicketStore {
                         .unwrap_or(true)
                 })
                 .count();
+
+            if let Some(map) = timings.as_deref_mut() {
+                add_timing(
+                    map,
+                    "workflow.compute_unresolved_ms",
+                    unresolved_started,
+                );
+            }
 
             let old_facts = existing.get(ticket_id);
             let became_actionable_at = if unresolved_dependency_count == 0 {
@@ -131,6 +202,7 @@ impl TicketStore {
                 })
             };
 
+            let write_started = Instant::now();
             self.index.insert_workflow_facts(
                 ticket_id,
                 &WorkflowFacts {
@@ -139,10 +211,27 @@ impl TicketStore {
                     last_blocker_progress_at,
                 },
             )?;
+
+            if let Some(map) = timings.as_deref_mut() {
+                add_timing(
+                    map,
+                    "workflow.write_facts_ms",
+                    write_started,
+                );
+            }
         }
 
         Ok(())
     }
+}
+
+fn add_timing(
+    timings: &mut BTreeMap<String, u64>,
+    key: &str,
+    started: Instant,
+) {
+    let elapsed = started.elapsed().as_millis() as u64;
+    *timings.entry(key.to_string()).or_insert(0) += elapsed;
 }
 
 fn is_done_state(state: Option<&str>) -> bool {

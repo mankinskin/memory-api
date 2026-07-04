@@ -102,6 +102,33 @@ fn append_incremental_fixture_tickets(
     }
 }
 
+fn percentile_nearest_rank(
+    sorted: &[u64],
+    percentile: u32,
+) -> u64 {
+    assert!(!sorted.is_empty(), "percentile input must not be empty");
+    assert!(percentile <= 100, "percentile must be <= 100");
+
+    if sorted.len() == 1 {
+        return sorted[0];
+    }
+
+    // Nearest-rank method with 1-based rank, then mapped back to 0-based index.
+    let rank = ((percentile as f64 / 100.0) * sorted.len() as f64).ceil() as usize;
+    let idx = rank.saturating_sub(1).min(sorted.len() - 1);
+    sorted[idx]
+}
+
+fn percentile_summary(samples: &[u64]) -> (u64, u64, u64) {
+    let mut sorted = samples.to_vec();
+    sorted.sort_unstable();
+    (
+        percentile_nearest_rank(&sorted, 50),
+        percentile_nearest_rank(&sorted, 95),
+        percentile_nearest_rank(&sorted, 99),
+    )
+}
+
 #[test]
 fn reference_heavy_move_e2e_reports_timings() {
     init_perf_test_tracing();
@@ -265,6 +292,12 @@ fn health_all_e2e_reports_timings_on_large_fixture() {
     })
     .expect("perf fixture should materialize");
 
+    let run_id = format!("perf-run-{}", Uuid::new_v4());
+    let fixture_profile = "root96_sub24_refs4x10";
+    let workspace_scope = "ticket-root";
+    let reindex_mode = "mixed";
+    let change_count = 1 + 10 + 100;
+
     let root_store = perf
         .fixture
         .store_root("ticket-root")
@@ -313,14 +346,72 @@ fn health_all_e2e_reports_timings_on_large_fixture() {
     assert!(scan_report.phase_timings_ms.contains_key("rebuild_workflow_facts_ms"));
     assert!(scan_report
         .phase_timings_ms
+        .contains_key("integration.manifest_parse_ms"));
+    assert!(scan_report
+        .phase_timings_ms
+        .contains_key("integration.index_upsert_ms"));
+    assert!(scan_report
+        .phase_timings_ms
+        .contains_key("integration.edge_write_ms"));
+    assert!(scan_report
+        .phase_timings_ms
+        .contains_key("integration.description_read_ms"));
+    assert!(scan_report
+        .phase_timings_ms
+        .contains_key("integration.search_upsert_ms"));
+    assert!(scan_report
+        .phase_timings_ms
+        .contains_key("workflow.fetch_dependency_edges_ms"));
+    assert!(scan_report
+        .phase_timings_ms
+        .contains_key("workflow.fetch_dependency_tickets_ms"));
+    assert!(scan_report
+        .phase_timings_ms
+        .contains_key("workflow.compute_unresolved_ms"));
+    assert!(scan_report
+        .phase_timings_ms
+        .contains_key("workflow.write_facts_ms"));
+    assert!(scan_report
+        .phase_timings_ms
         .keys()
         .any(|key| key.starts_with("scan_root_")));
     assert!(incremental_scan_1.phase_timings_ms.contains_key("scan_total_ms"));
     assert!(incremental_scan_10.phase_timings_ms.contains_key("scan_total_ms"));
     assert!(incremental_scan_100.phase_timings_ms.contains_key("scan_total_ms"));
 
+    let scan_total_samples_ms = vec![
+        *scan_report
+            .phase_timings_ms
+            .get("scan_total_ms")
+            .expect("scan_total_ms present for full scan"),
+        *incremental_scan_1
+            .phase_timings_ms
+            .get("scan_total_ms")
+            .expect("scan_total_ms present for incremental scan(1)"),
+        *incremental_scan_10
+            .phase_timings_ms
+            .get("scan_total_ms")
+            .expect("scan_total_ms present for incremental scan(10)"),
+        *incremental_scan_100
+            .phase_timings_ms
+            .get("scan_total_ms")
+            .expect("scan_total_ms present for incremental scan(100)"),
+    ];
+    let (scan_total_p50_ms, scan_total_p95_ms, scan_total_p99_ms) =
+        percentile_summary(&scan_total_samples_ms);
+    assert!(scan_total_p50_ms <= scan_total_p95_ms);
+    assert!(scan_total_p95_ms <= scan_total_p99_ms);
+
     eprintln!(
-        "health_perf open_phases={:?} bootstrap_scans={:?} scan_true_phases={:?} scan_false_1_phases={:?} scan_false_10_phases={:?} scan_false_100_phases={:?} list_ms={} workflow_ms={} collect_ms={} tickets={} edges={} findings={}",
+        "health_perf run_id={} fixture_profile={} workspace_scope={} change_count={} reindex_mode={} scan_total_p50_ms={} scan_total_p95_ms={} scan_total_p99_ms={} open_phases={:?} bootstrap_scans={:?} scan_true_phases={:?} scan_false_1_phases={:?} scan_false_10_phases={:?} scan_false_100_phases={:?} list_ms={} workflow_ms={} collect_ms={} tickets={} edges={} findings={}",
+        run_id,
+        fixture_profile,
+        workspace_scope,
+        change_count,
+        reindex_mode,
+        scan_total_p50_ms,
+        scan_total_p95_ms,
+        scan_total_p99_ms,
         open_report.phase_timings_ms,
         open_report
             .scan_reports
@@ -341,6 +432,14 @@ fn health_all_e2e_reports_timings_on_large_fixture() {
     tracing::info!(
         target: PERF_TRACE_TARGET,
         run = "health_all_e2e_reports_timings_on_large_fixture",
+        run_id = %run_id,
+        fixture_profile,
+        workspace_scope,
+        change_count,
+        reindex_mode,
+        scan_total_p50_ms,
+        scan_total_p95_ms,
+        scan_total_p99_ms,
         tickets = tickets.len(),
         edges = all_edges.len(),
         findings = report.findings.len(),

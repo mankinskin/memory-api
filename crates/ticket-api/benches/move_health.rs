@@ -96,6 +96,37 @@ fn append_incremental_fixture_tickets(
     }
 }
 
+fn percentile_nearest_rank(
+    sorted: &[u64],
+    percentile: u32,
+) -> u64 {
+    assert!(!sorted.is_empty(), "percentile input must not be empty");
+    assert!(percentile <= 100, "percentile must be <= 100");
+
+    if sorted.len() == 1 {
+        return sorted[0];
+    }
+
+    let rank = ((percentile as f64 / 100.0) * sorted.len() as f64).ceil() as usize;
+    let idx = rank.saturating_sub(1).min(sorted.len() - 1);
+    sorted[idx]
+}
+
+fn percentile_summary(samples: &[u64]) -> (u64, u64, u64) {
+    let mut sorted = samples.to_vec();
+    sorted.sort_unstable();
+    (
+        percentile_nearest_rank(&sorted, 50),
+        percentile_nearest_rank(&sorted, 95),
+        percentile_nearest_rank(&sorted, 99),
+    )
+}
+
+fn map_percentiles(values: &std::collections::BTreeMap<String, u64>) -> (u64, u64, u64) {
+    let samples = values.values().copied().collect::<Vec<_>>();
+    percentile_summary(&samples)
+}
+
 fn bench_move_preflight_reference_heavy(c: &mut Criterion) {
     init_perf_bench_tracing();
     c.bench_function("move_preflight_reference_heavy", |b| {
@@ -130,6 +161,14 @@ fn bench_move_preflight_reference_heavy(c: &mut Criterion) {
                 tracing::info!(
                     target: PERF_TRACE_TARGET,
                     benchmark = "move_preflight_reference_heavy",
+                    run_id = %Uuid::new_v4(),
+                    fixture_profile = "git_ref_heavy_48_24_8x18",
+                    workspace_scope = "ticket-submodule-a",
+                    change_count = 0,
+                    reindex_mode = "true",
+                    p50_ms = elapsed.as_millis() as u64,
+                    p95_ms = elapsed.as_millis() as u64,
+                    p99_ms = elapsed.as_millis() as u64,
                     tracked_reference_files = plan.path_reference_files.len(),
                     elapsed_ms = elapsed.as_millis() as u64,
                     "ticket_api_benchmark_iteration"
@@ -186,6 +225,14 @@ fn bench_move_execute_reference_heavy(c: &mut Criterion) {
                 tracing::info!(
                     target: PERF_TRACE_TARGET,
                     benchmark = "move_execute_reference_heavy",
+                    run_id = %Uuid::new_v4(),
+                    fixture_profile = "git_ref_heavy_48_24_8x18",
+                    workspace_scope = "ticket-submodule-a",
+                    change_count = 0,
+                    reindex_mode = "true",
+                    p50_ms = elapsed.as_millis() as u64,
+                    p95_ms = elapsed.as_millis() as u64,
+                    p99_ms = elapsed.as_millis() as u64,
                     rewritten_files = outcome.journal.rewritten_path_files.len(),
                     elapsed_ms = elapsed.as_millis() as u64,
                     "ticket_api_benchmark_iteration"
@@ -260,11 +307,20 @@ fn bench_open_or_init_root_perf_fixture(c: &mut Criterion) {
                 let elapsed = started.elapsed();
                 criterion::black_box(elapsed);
                 let phase_count = report.phase_timings_ms.len();
+                let (p50_ms, p95_ms, p99_ms) = map_percentiles(&report.phase_timings_ms);
                 criterion::black_box(report.phase_timings_ms);
                 criterion::black_box(store);
                 tracing::info!(
                     target: PERF_TRACE_TARGET,
                     benchmark = "open_or_init_root_perf_fixture",
+                    run_id = %Uuid::new_v4(),
+                    fixture_profile = "root_heavy",
+                    workspace_scope = "ticket-root",
+                    change_count = 0,
+                    reindex_mode = "true",
+                    p50_ms,
+                    p95_ms,
+                    p99_ms,
                     phase_count,
                     elapsed_ms = elapsed.as_millis() as u64,
                     "ticket_api_benchmark_iteration"
@@ -276,6 +332,7 @@ fn bench_open_or_init_root_perf_fixture(c: &mut Criterion) {
 }
 
 fn bench_scan_reindex_root_perf_fixture(c: &mut Criterion) {
+    init_perf_bench_tracing();
     c.bench_function("scan_reindex_root_perf_fixture", |b| {
         b.iter_batched(
             || {
@@ -292,8 +349,24 @@ fn bench_scan_reindex_root_perf_fixture(c: &mut Criterion) {
             |(_perf, store)| {
                 let started = Instant::now();
                 let report = store.scan(true).expect("scan(true)");
+                let elapsed = started.elapsed();
+                let (p50_ms, p95_ms, p99_ms) = map_percentiles(&report.phase_timings_ms);
                 criterion::black_box(started.elapsed());
                 criterion::black_box(report.phase_timings_ms);
+                tracing::info!(
+                    target: PERF_TRACE_TARGET,
+                    benchmark = "scan_reindex_root_perf_fixture",
+                    run_id = %Uuid::new_v4(),
+                    fixture_profile = "root_heavy",
+                    workspace_scope = "ticket-root",
+                    change_count = 0,
+                    reindex_mode = "true",
+                    p50_ms,
+                    p95_ms,
+                    p99_ms,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "ticket_api_benchmark_iteration"
+                );
             },
             criterion::BatchSize::SmallInput,
         );
@@ -305,6 +378,7 @@ fn bench_scan_incremental_root_perf_fixture(
     change_count: usize,
     label: &str,
 ) {
+    init_perf_bench_tracing();
     c.bench_function(label, |b| {
         b.iter_batched(
             || {
@@ -323,9 +397,25 @@ fn bench_scan_incremental_root_perf_fixture(
             |(_perf, store)| {
                 let started = Instant::now();
                 let report = store.scan(false).expect("scan(false)");
+                let elapsed = started.elapsed();
+                let (p50_ms, p95_ms, p99_ms) = map_percentiles(&report.phase_timings_ms);
                 criterion::black_box(started.elapsed());
                 criterion::black_box(report.phase_timings_ms);
                 criterion::black_box(report.root_entry_counts);
+                tracing::info!(
+                    target: PERF_TRACE_TARGET,
+                    benchmark = label,
+                    run_id = %Uuid::new_v4(),
+                    fixture_profile = "root_heavy_incremental",
+                    workspace_scope = "ticket-root",
+                    change_count,
+                    reindex_mode = "false",
+                    p50_ms,
+                    p95_ms,
+                    p99_ms,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "ticket_api_benchmark_iteration"
+                );
             },
             criterion::BatchSize::SmallInput,
         );
@@ -357,6 +447,7 @@ fn bench_scan_incremental_root_perf_fixture_100(c: &mut Criterion) {
 }
 
 fn bench_health_workflow_build_large_fixture(c: &mut Criterion) {
+    init_perf_bench_tracing();
     let options = TicketPerfFixtureOptions::heavy();
     c.bench_function("health_workflow_build_large_fixture", |b| {
         b.iter_batched(
@@ -380,8 +471,23 @@ fn bench_health_workflow_build_large_fixture(c: &mut Criterion) {
                 let started = Instant::now();
                 let workflow = WorkflowModel::build(&store, tickets, all_edges)
                     .expect("build workflow");
-                criterion::black_box(started.elapsed());
+                let elapsed = started.elapsed();
+                criterion::black_box(elapsed);
                 criterion::black_box(workflow);
+                tracing::info!(
+                    target: PERF_TRACE_TARGET,
+                    benchmark = "health_workflow_build_large_fixture",
+                    run_id = %Uuid::new_v4(),
+                    fixture_profile = "root_heavy",
+                    workspace_scope = "ticket-root",
+                    change_count = 0,
+                    reindex_mode = "true",
+                    p50_ms = elapsed.as_millis() as u64,
+                    p95_ms = elapsed.as_millis() as u64,
+                    p99_ms = elapsed.as_millis() as u64,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "ticket_api_benchmark_iteration"
+                );
             },
             criterion::BatchSize::SmallInput,
         );
@@ -389,6 +495,7 @@ fn bench_health_workflow_build_large_fixture(c: &mut Criterion) {
 }
 
 fn bench_health_collect_large_fixture(c: &mut Criterion) {
+    init_perf_bench_tracing();
     let options = TicketPerfFixtureOptions::heavy();
     c.bench_function("health_collect_large_fixture", |b| {
         b.iter_batched(
@@ -413,8 +520,24 @@ fn bench_health_collect_large_fixture(c: &mut Criterion) {
             |(_perf, store, tickets, all_edges, workflow)| {
                 let started = Instant::now();
                 let report = collect_findings(&store, &tickets, &all_edges, &workflow);
-                criterion::black_box(started.elapsed());
+                let elapsed = started.elapsed();
+                criterion::black_box(elapsed);
                 criterion::black_box(report.findings.len());
+                tracing::info!(
+                    target: PERF_TRACE_TARGET,
+                    benchmark = "health_collect_large_fixture",
+                    run_id = %Uuid::new_v4(),
+                    fixture_profile = "root_heavy",
+                    workspace_scope = "ticket-root",
+                    change_count = 0,
+                    reindex_mode = "true",
+                    p50_ms = elapsed.as_millis() as u64,
+                    p95_ms = elapsed.as_millis() as u64,
+                    p99_ms = elapsed.as_millis() as u64,
+                    findings = report.findings.len(),
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "ticket_api_benchmark_iteration"
+                );
             },
             criterion::BatchSize::SmallInput,
         );
@@ -422,6 +545,7 @@ fn bench_health_collect_large_fixture(c: &mut Criterion) {
 }
 
 fn bench_health_all_large_fixture(c: &mut Criterion) {
+    init_perf_bench_tracing();
     let options = TicketPerfFixtureOptions {
         root_generated_ticket_count: 240,
         submodule_generated_ticket_count: 64,
@@ -445,12 +569,29 @@ fn bench_health_all_large_fixture(c: &mut Criterion) {
                 (perf, store)
             },
             |(_perf, store)| {
+                let started = Instant::now();
                 let tickets = store.list(None, None, None).expect("list tickets");
                 let all_edges = store.list_all_edges().expect("list edges");
                 let workflow = WorkflowModel::build(&store, tickets.clone(), all_edges.clone())
                     .expect("build workflow");
                 let report = collect_findings(&store, &tickets, &all_edges, &workflow);
+                let elapsed = started.elapsed();
                 criterion::black_box(report.findings.len());
+                tracing::info!(
+                    target: PERF_TRACE_TARGET,
+                    benchmark = "health_all_large_fixture",
+                    run_id = %Uuid::new_v4(),
+                    fixture_profile = "root240_sub64_refs4x10",
+                    workspace_scope = "ticket-root",
+                    change_count = 0,
+                    reindex_mode = "true",
+                    p50_ms = elapsed.as_millis() as u64,
+                    p95_ms = elapsed.as_millis() as u64,
+                    p99_ms = elapsed.as_millis() as u64,
+                    findings = report.findings.len(),
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "ticket_api_benchmark_iteration"
+                );
             },
             criterion::BatchSize::SmallInput,
         );
