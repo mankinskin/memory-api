@@ -94,7 +94,7 @@ fn move_plan_json(report: &memory_api::storage::move_kernel::MovePlan) -> Value 
         "source_workspace_root": disp(&report.source_workspace_root),
         "target_workspace_root": disp(&report.target_workspace_root),
         "blockers": report.blockers,
-        "path_reference_files": report.path_reference_files,
+        "path_reference_files": report.path_reference_files.iter().map(|p| disp(p)).collect::<Vec<_>>(),
         "captured_at": report.captured_at,
     })
 }
@@ -116,5 +116,5 @@ fn recovery_hint() -> Value {
 }
 
 fn disp(path: &std::path::Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    memory_api::workspace::normalize_path_for_display(path)
 }

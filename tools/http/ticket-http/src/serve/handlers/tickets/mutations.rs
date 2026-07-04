@@ -638,7 +638,7 @@ fn move_plan_json(report: &ticket_api::storage::move_planner::MovePreflightRepor
         "target_store_root": normalize_display_path(&report.target_store_root),
         "source_ticket_path": normalize_display_path(&report.source_entity_path),
         "destination_ticket_path": normalize_display_path(&report.destination_entity_path),
-        "path_reference_files": report.path_reference_files,
+        "path_reference_files": report.path_reference_files.iter().map(|p| normalize_display_path(p)).collect::<Vec<_>>(),
         "reference_visibility": report.reference_visibility,
         "active_board_entries": report.active_board_entries,
         "historical_board_entries": report.historical_board_entries,
@@ -682,6 +682,5 @@ fn normalize_workspace_root(value: &str) -> std::path::PathBuf {
 }
 
 fn normalize_display_path(path: &std::path::Path) -> String {
-    let raw = path.to_string_lossy().replace('\\', "/");
-    raw.strip_prefix("//?/").unwrap_or(&raw).to_string()
+    ticket_api::workspace::normalize_path_for_display(path)
 }

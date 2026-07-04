@@ -335,7 +335,7 @@ fn move_plan_json(report: &memory_api::storage::move_kernel::MovePlan) -> Value 
         "active_board_entries": report.active_board_entries,
         "historical_board_entries": report.historical_board_entries,
         "active_leases": report.active_leases,
-        "path_reference_files": report.path_reference_files,
+        "path_reference_files": report.path_reference_files.iter().map(|p| path_display(p)).collect::<Vec<_>>(),
         "blockers": report.blockers,
         "captured_at": report.captured_at,
     })
@@ -375,7 +375,7 @@ fn recovery_hint() -> Value {
 }
 
 fn path_display(path: &std::path::Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    memory_api::workspace::normalize_path_for_display(path)
 }
 
 fn run_audit(args: &AuditArgs) -> Result<AuditReport, CliRunError> {

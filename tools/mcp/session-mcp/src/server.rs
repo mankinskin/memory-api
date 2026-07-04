@@ -203,7 +203,10 @@ impl SessionServer {
             "active_board_entries": report.active_board_entries,
             "historical_board_entries": report.historical_board_entries,
             "active_leases": report.active_leases,
-            "path_reference_files": report.path_reference_files,
+            "path_reference_files": report.path_reference_files
+                .iter()
+                .map(|p| path_display(p))
+                .collect::<Result<Vec<_>, _>>()?,
             "blockers": report.blockers,
             "captured_at": report.captured_at,
         }))

@@ -172,6 +172,14 @@ pub fn strip_verbatim_prefix(path: &Path) -> PathBuf {
     PathBuf::from(normalized)
 }
 
+/// Enforce consistent path separators by converting all backslashes to forward slashes,
+/// and strip any Windows verbatim (extended-path) prefixes.
+pub fn normalize_slashes(path: &Path) -> String {
+    let raw = path.to_string_lossy().replace('\\', "/");
+    let raw = raw.strip_prefix("//?/").unwrap_or(&raw);
+    raw.strip_prefix(r"\\?\").unwrap_or(raw).to_string()
+}
+
 fn normalize_path_for_display_impl(
     path: &Path,
 ) -> Result<String, WorkspacePathError> {

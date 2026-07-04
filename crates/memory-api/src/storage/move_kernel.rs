@@ -118,13 +118,25 @@ pub struct MoveLeaseBlock {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MoveBlocker {
     DifferentGitWorktree {
+        #[serde(
+            serialize_with = "serialize_normalized_path",
+            deserialize_with = "deserialize_pathbuf"
+        )]
         source_worktree_root: PathBuf,
+        #[serde(
+            serialize_with = "serialize_normalized_path",
+            deserialize_with = "deserialize_pathbuf"
+        )]
         target_worktree_root: PathBuf,
     },
     MissingSourceEntity {
         entity_id: Uuid,
     },
     MissingTargetStore {
+        #[serde(
+            serialize_with = "serialize_normalized_path",
+            deserialize_with = "deserialize_pathbuf"
+        )]
         target_store_root: PathBuf,
     },
     ActiveOrStaleBoardEntry {
@@ -141,6 +153,10 @@ pub enum MoveBlocker {
         direction: MoveReferenceDirection,
     },
     DirtyTrackedFiles {
+        #[serde(
+            serialize_with = "serialize_normalized_path_vec",
+            deserialize_with = "deserialize_pathbuf_vec"
+        )]
         files: Vec<PathBuf>,
     },
     PathReferenceScanUnavailable {
@@ -273,14 +289,46 @@ pub trait MoveDomain {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MovePlan {
     pub entity_id: Uuid,
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub source_workspace_root: PathBuf,
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub target_workspace_root: PathBuf,
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub source_store_root: PathBuf,
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub target_store_root: PathBuf,
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub source_git_worktree_root: PathBuf,
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub target_git_worktree_root: PathBuf,
     pub git_worktree_topology: GitWorktreeTopology,
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub source_entity_path: PathBuf,
+    #[serde(
+        serialize_with = "serialize_normalized_path",
+        deserialize_with = "deserialize_pathbuf"
+    )]
     pub destination_entity_path: PathBuf,
     pub inbound_related_entity_ids: Vec<Uuid>,
     pub outbound_related_entity_ids: Vec<Uuid>,
@@ -288,6 +336,10 @@ pub struct MovePlan {
     pub active_board_entries: Vec<BoardEntry>,
     pub historical_board_entries: Vec<BoardEntry>,
     pub active_leases: Vec<MoveLeaseBlock>,
+    #[serde(
+        serialize_with = "serialize_normalized_path_vec",
+        deserialize_with = "deserialize_pathbuf_vec"
+    )]
     pub path_reference_files: Vec<PathBuf>,
     pub blockers: Vec<MoveBlocker>,
     pub captured_at: chrono::DateTime<Utc>,
@@ -1176,20 +1228,16 @@ fn rewrite_path_references(
 
     let mut relative_pairs = Vec::new();
     if let (Ok(old_rel), Ok(new_rel)) = (
-        plan.source_entity_path
-            .strip_prefix(&plan.source_git_worktree_root),
-        plan.destination_entity_path
-            .strip_prefix(&plan.source_git_worktree_root),
+        safe_strip_prefix(&plan.source_entity_path, &plan.source_git_worktree_root),
+        safe_strip_prefix(&plan.destination_entity_path, &plan.source_git_worktree_root),
     ) {
-        relative_pairs.push((normalize_slashes(old_rel), normalize_slashes(new_rel)));
+        relative_pairs.push((normalize_slashes(&old_rel), normalize_slashes(&new_rel)));
     }
     if let (Ok(old_rel), Ok(new_rel)) = (
-        plan.source_entity_path
-            .strip_prefix(&plan.target_git_worktree_root),
-        plan.destination_entity_path
-            .strip_prefix(&plan.target_git_worktree_root),
+        safe_strip_prefix(&plan.source_entity_path, &plan.target_git_worktree_root),
+        safe_strip_prefix(&plan.destination_entity_path, &plan.target_git_worktree_root),
     ) {
-        relative_pairs.push((normalize_slashes(old_rel), normalize_slashes(new_rel)));
+        relative_pairs.push((normalize_slashes(&old_rel), normalize_slashes(&new_rel)));
     }
 
     let mut rewritten = Vec::new();
@@ -1268,8 +1316,7 @@ fn rewrite_path_references(
 }
 
 fn normalize_slashes(path: &Path) -> String {
-    let raw = path.to_string_lossy().replace('\\', "/");
-    raw.strip_prefix("//?/").unwrap_or(&raw).to_string()
+    crate::workspace::normalize_slashes(path)
 }
 
 fn normalize_journal_entity_paths<D: MoveDomain + ?Sized>(
@@ -1364,7 +1411,7 @@ fn git_tracked_path_reference_files(
 ) -> Result<Vec<PathBuf>, String> {
     let mut candidates = BTreeSet::new();
     candidates.insert(entity_path.to_string_lossy().replace('\\', "/"));
-    if let Ok(relative) = entity_path.strip_prefix(repo_root) {
+    if let Ok(relative) = safe_strip_prefix(entity_path, repo_root) {
         candidates.insert(relative.to_string_lossy().replace('\\', "/"));
     }
 
@@ -1397,8 +1444,14 @@ fn is_persistent_move_reference_file(
 ) -> bool {
     let entity_subdir = Path::new(entity_subdir);
     for store_root in [source_store_root, target_store_root] {
-        if let Ok(relative) = file.strip_prefix(store_root) {
-            return relative.starts_with(entity_subdir);
+        let is_hidden_store = store_root.components().any(|c| {
+            let s = c.as_os_str().to_string_lossy();
+            s.starts_with('.') && !s.starts_with(".tmp")
+        });
+        if is_hidden_store {
+            if let Ok(relative) = safe_strip_prefix(file, store_root) {
+                return relative.starts_with(entity_subdir);
+            }
         }
     }
 
@@ -1411,11 +1464,11 @@ fn tracked_repo_for_file<'a>(
     target_repo_root: &'a Path,
 ) -> Option<(&'a Path, PathBuf)> {
     let mut candidates = Vec::new();
-    if let Ok(relative) = file.strip_prefix(source_repo_root) {
-        candidates.push((source_repo_root, relative.to_path_buf()));
+    if let Ok(relative) = safe_strip_prefix(file, source_repo_root) {
+        candidates.push((source_repo_root, relative));
     }
-    if let Ok(relative) = file.strip_prefix(target_repo_root) {
-        candidates.push((target_repo_root, relative.to_path_buf()));
+    if let Ok(relative) = safe_strip_prefix(file, target_repo_root) {
+        candidates.push((target_repo_root, relative));
     }
 
     candidates.sort_by_key(|(_, relative)| std::cmp::Reverse(relative.components().count()));
@@ -1450,4 +1503,10 @@ fn git_restore_tracked_path(
     }
 
     Ok(())
+}
+
+fn safe_strip_prefix(path: &Path, prefix: &Path) -> Result<PathBuf, std::path::StripPrefixError> {
+    let p_norm = PathBuf::from(crate::workspace::normalize_slashes(path));
+    let s_norm = PathBuf::from(crate::workspace::normalize_slashes(prefix));
+    p_norm.strip_prefix(&s_norm).map(|p| p.to_path_buf())
 }

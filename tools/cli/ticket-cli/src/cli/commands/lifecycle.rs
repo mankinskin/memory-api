@@ -247,7 +247,10 @@ fn move_plan_json(
         "target_store_root": normalize_display_path(&report.target_store_root)?,
         "source_ticket_path": normalize_display_path(&report.source_entity_path)?,
         "destination_ticket_path": normalize_display_path(&report.destination_entity_path)?,
-        "path_reference_files": report.path_reference_files,
+        "path_reference_files": report.path_reference_files
+            .iter()
+            .map(|path| normalize_display_path(path))
+            .collect::<Result<Vec<_>, _>>()?,
         "reference_visibility": report.reference_visibility,
         "active_board_entries": report.active_board_entries,
         "historical_board_entries": report.historical_board_entries,
