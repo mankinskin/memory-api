@@ -61,6 +61,33 @@ pub struct LoadedFixture {
     pub store_roots: BTreeMap<String, PathBuf>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TicketPerfFixtureOptions {
+    pub root_generated_ticket_count: usize,
+    pub submodule_generated_ticket_count: usize,
+    pub tracked_reference_file_count: usize,
+    pub references_per_file: usize,
+}
+
+impl Default for TicketPerfFixtureOptions {
+    fn default() -> Self {
+        Self {
+            root_generated_ticket_count: 180,
+            submodule_generated_ticket_count: 96,
+            tracked_reference_file_count: 16,
+            references_per_file: 20,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TicketPerfFixture {
+    pub fixture: LoadedFixture,
+    pub root_ticket_ids: Vec<String>,
+    pub submodule_ticket_ids: Vec<String>,
+    pub tracked_reference_files: Vec<PathBuf>,
+}
+
 impl LoadedFixture {
     pub fn store_root(
         &self,
@@ -137,6 +164,20 @@ pub fn materialize_fixture_with_generated_tickets(
     Ok(fixture)
 }
 
+pub fn materialize_fixture_with_ticket_perf_load(
+    options: TicketPerfFixtureOptions,
+) -> Result<TicketPerfFixture, FixtureError> {
+    let fixture = materialize_fixture()?;
+    let (root_ticket_ids, submodule_ticket_ids, tracked_reference_files) =
+        seed_ticket_perf_scenario(&fixture, options)?;
+    Ok(TicketPerfFixture {
+        fixture,
+        root_ticket_ids,
+        submodule_ticket_ids,
+        tracked_reference_files,
+    })
+}
+
 /// Materialize the fixture and initialize a real git repository at the root and
 /// at each submodule worktree, so cross-worktree operations (notably ticket
 /// `move`) can be exercised end-to-end against genuine git topology.
@@ -180,6 +221,21 @@ pub fn materialize_git_fixture() -> Result<LoadedFixture, FixtureError> {
     git_commit_all(&fixture.workspace_root, "fixture baseline")?;
 
     Ok(fixture)
+}
+
+pub fn materialize_git_fixture_with_ticket_perf_load(
+    options: TicketPerfFixtureOptions,
+) -> Result<TicketPerfFixture, FixtureError> {
+    let fixture = materialize_git_fixture()?;
+    let (root_ticket_ids, submodule_ticket_ids, tracked_reference_files) =
+        seed_ticket_perf_scenario(&fixture, options)?;
+    commit_perf_fixture_changes(&fixture)?;
+    Ok(TicketPerfFixture {
+        fixture,
+        root_ticket_ids,
+        submodule_ticket_ids,
+        tracked_reference_files,
+    })
 }
 
 fn git_init_worktree(dir: &Path) -> Result<(), FixtureError> {
@@ -245,6 +301,178 @@ fn seed_representative_data(workspace_root: &Path) -> Result<(), FixtureError> {
     seed_log_store(workspace_root)?;
     seed_audit_inputs(workspace_root)?;
     Ok(())
+}
+
+fn seed_ticket_perf_scenario(
+    fixture: &LoadedFixture,
+    options: TicketPerfFixtureOptions,
+) -> Result<(Vec<String>, Vec<String>, Vec<PathBuf>), FixtureError> {
+    let root_store = fixture
+        .store_root("ticket-root")
+        .ok_or_else(|| FixtureError::MissingFixtureRoot(fixture.workspace_root.join(".ticket")))?;
+    let submodule_store = fixture
+        .store_root("ticket-submodule-a")
+        .ok_or_else(|| FixtureError::MissingFixtureRoot(fixture.workspace_root.join("submodule-a/.ticket")))?;
+
+    let root_ticket_ids = seed_perf_ticket_batch(
+        &root_store.join("tickets"),
+        options.root_generated_ticket_count,
+        0x2000,
+        "perf-root",
+    )?;
+    let submodule_ticket_ids = seed_perf_ticket_batch(
+        &submodule_store.join("tickets"),
+        options.submodule_generated_ticket_count,
+        0x3000,
+        "perf-submodule",
+    )?;
+    let tracked_reference_files = seed_tracked_reference_files(
+        &fixture.workspace_root,
+        &root_ticket_ids,
+        &submodule_ticket_ids,
+        options,
+    )?;
+
+    Ok((root_ticket_ids, submodule_ticket_ids, tracked_reference_files))
+}
+
+fn seed_perf_ticket_batch(
+    ticket_root: &Path,
+    count: usize,
+    group: u16,
+    label: &str,
+) -> Result<Vec<String>, FixtureError> {
+    let mut ids = Vec::with_capacity(count);
+    for index in 0..count {
+        let id = format!("00000000-0000-{group:04x}-0000-{index:012x}");
+        let ticket_dir = ticket_root.join(&id);
+        fs::create_dir_all(&ticket_dir).map_err(|source| FixtureError::Io {
+            path: ticket_dir.clone(),
+            source,
+        })?;
+
+        let state = match index % 4 {
+            0 => "new",
+            1 => "ready",
+            2 => "in-implementation",
+            _ => "in-review",
+        };
+        let title = format!("{label} ticket {index:03}");
+        write_text(
+            &ticket_dir.join("ticket.toml"),
+            &format!(
+                "id = \"{id}\"\ncreated_at = \"2026-06-28T00:00:00Z\"\ntitle = \"{title}\"\nstate = \"{state}\"\ntype = \"tracker-improvement\"\ncomponent = \"perf\"\n"
+            ),
+        )?;
+        write_text(
+            &ticket_dir.join("description.md"),
+            &format!(
+                "# {title}\n\nRepresentative performance fixture ticket used to exercise ticket move and health behavior over larger stores, repeated rewrites, and broad graph traversals.\n"
+            ),
+        )?;
+        write_text(
+            &ticket_dir.join("history.ndjson"),
+            &format!(
+                "{{\"rev\":1,\"ts\":\"2026-06-28T00:00:00Z\",\"fields\":{{\"state\":\"{state}\",\"title\":\"{title}\"}}}}\n"
+            ),
+        )?;
+        ids.push(id);
+    }
+
+    Ok(ids)
+}
+
+fn seed_tracked_reference_files(
+    workspace_root: &Path,
+    root_ticket_ids: &[String],
+    submodule_ticket_ids: &[String],
+    options: TicketPerfFixtureOptions,
+) -> Result<Vec<PathBuf>, FixtureError> {
+    let mut tracked_files = Vec::with_capacity(options.tracked_reference_file_count);
+
+    for index in 0..options.tracked_reference_file_count {
+        let (path, source_prefix, ids) = if index % 2 == 0 {
+            (
+                workspace_root.join("docs").join(format!("perf-move-root-{index:02}.md")),
+                "submodule-a/.ticket/tickets",
+                submodule_ticket_ids,
+            )
+        } else {
+            (
+                workspace_root
+                    .join("submodule-a")
+                    .join("docs")
+                    .join(format!("perf-move-submodule-{index:02}.md")),
+                ".ticket/tickets",
+                submodule_ticket_ids,
+            )
+        };
+
+        let mut body = format!("# Perf move refs {index:02}\n\n");
+        for ref_index in 0..options.references_per_file {
+            let ticket_id = &ids[(index + ref_index) % ids.len()];
+            body.push_str(&format!(
+                "- ref {ref_index:02}: {source_prefix}/{ticket_id}/ticket.toml\n"
+            ));
+        }
+        if !root_ticket_ids.is_empty() {
+            body.push_str("\n## Mixed root references\n");
+            for ref_index in 0..options.references_per_file.min(root_ticket_ids.len()) {
+                let ticket_id = &root_ticket_ids[(index + ref_index) % root_ticket_ids.len()];
+                body.push_str(&format!(
+                    "- root {ref_index:02}: .ticket/tickets/{ticket_id}/ticket.toml\n"
+                ));
+            }
+        }
+
+        write_text(&path, &body)?;
+        tracked_files.push(path);
+    }
+
+    Ok(tracked_files)
+}
+
+fn commit_perf_fixture_changes(fixture: &LoadedFixture) -> Result<(), FixtureError> {
+    for worktree in &fixture.manifest.worktrees {
+        if worktree.kind != "submodule" {
+            continue;
+        }
+        let path = fixture.workspace_root.join(worktree.relative_path.replace('\\', "/"));
+        git_commit_if_dirty(&path, "perf fixture load")?;
+    }
+    git_commit_if_dirty(&fixture.workspace_root, "perf fixture load")
+}
+
+fn git_commit_if_dirty(
+    dir: &Path,
+    message: &str,
+) -> Result<(), FixtureError> {
+    if !git_has_changes(dir)? {
+        return Ok(());
+    }
+    git_commit_all(dir, message)
+}
+
+fn git_has_changes(dir: &Path) -> Result<bool, FixtureError> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(dir)
+        .output()
+        .map_err(|source| FixtureError::Git {
+            dir: dir.to_path_buf(),
+            args: vec!["status".to_string(), "--porcelain".to_string()],
+            detail: source.to_string(),
+        })?;
+
+    if !output.status.success() {
+        return Err(FixtureError::Git {
+            dir: dir.to_path_buf(),
+            args: vec!["status".to_string(), "--porcelain".to_string()],
+            detail: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        });
+    }
+
+    Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty())
 }
 
 fn seed_generated_tickets(
@@ -628,5 +856,23 @@ mod tests {
         assert!(output.status.success());
         let index = String::from_utf8_lossy(&output.stdout);
         assert!(index.contains("160000"));
+    }
+
+    #[test]
+    fn materializes_ticket_perf_fixture_with_reference_heavy_files() {
+        let perf = materialize_fixture_with_ticket_perf_load(TicketPerfFixtureOptions {
+            root_generated_ticket_count: 24,
+            submodule_generated_ticket_count: 12,
+            tracked_reference_file_count: 6,
+            references_per_file: 8,
+        })
+        .expect("perf fixture should load");
+
+        assert_eq!(perf.root_ticket_ids.len(), 24);
+        assert_eq!(perf.submodule_ticket_ids.len(), 12);
+        assert_eq!(perf.tracked_reference_files.len(), 6);
+        for path in &perf.tracked_reference_files {
+            assert!(path.is_file(), "expected tracked reference file: {}", path.display());
+        }
     }
 }

@@ -1,0 +1,9 @@
+id = "f5dba169-b153-4d6a-ae1b-7620f317309e"
+created_at = "2026-07-04T01:24:27.019004300+00:00"
+title = "[ticket-api][perf] Provoke slow-path and failure-path behavior in move/health tests"
+state = "ready"
+component = "ticket-api"
+depends_on = ["f5875ff3-7c37-4ac2-8ae6-d68aff240bf4"]
+effort = "1600"
+priority = "high"
+type = "tracker-improvement"

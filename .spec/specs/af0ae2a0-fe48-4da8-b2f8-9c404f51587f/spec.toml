@@ -1,0 +1,8 @@
+id = "af0ae2a0-fe48-4da8-b2f8-9c404f51587f"
+created_at = "2026-07-04T01:24:46.577785400+00:00"
+title = "Ticket Move and Health Performance Characterization"
+state = "draft"
+component = "ticket-api"
+scope = "internal"
+slug = "ticket-api/performance/move-health-characterization"
+type = "specification"

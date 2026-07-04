@@ -33,3 +33,7 @@ harness = false
 [[bench]]
 name = "fixture_scan"
 harness = false
+
+[[bench]]
+name = "move_health"
+harness = false
