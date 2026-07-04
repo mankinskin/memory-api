@@ -34,6 +34,7 @@ use serde_json::{
     Number,
     Value,
 };
+use tracing::field::Empty;
 use uuid::Uuid;
 
 use memory_api::{
@@ -76,6 +77,7 @@ const GENERATED_TARGET_ROOT_DIR: &str = "entities";
 const RULE_BODY_FILE: &str = "body.md";
 const FEEDBACK_DIR: &str = "feedback";
 const FEEDBACK_EVENTS_FILE: &str = "events.ndjson";
+const RULE_STORE_TRACE_TARGET: &str = "rule_api::store";
 
 pub struct RuleStore {
     inner: EntityStore,
@@ -88,6 +90,12 @@ impl RuleStore {
     /// Returns [`StorageError::WorkspaceNotFound`] if the workspace has not been
     /// initialized. Run `rule init` first.
     pub fn open(index_root: &Path) -> Result<Self, RuleError> {
+        let _span_guard = tracing::info_span!(
+            target: RULE_STORE_TRACE_TARGET,
+            "rule_store_open",
+            requested_root = %index_root.display(),
+        )
+        .entered();
         let index_root =
             workspace::resolve_store_root_from(index_root, ".rule");
         if !index_root.join("entities.db").is_file() {
@@ -95,7 +103,13 @@ impl RuleStore {
                 StorageError::WorkspaceNotFound { path: index_root }.into()
             );
         }
-        Self::open_internal(&index_root)
+        let store = Self::open_internal(&index_root)?;
+        tracing::info!(
+            target: RULE_STORE_TRACE_TARGET,
+            resolved_root = %index_root.display(),
+            "rule_store_open_complete"
+        );
+        Ok(store)
     }
 
     /// Initialize a new rule store rooted at `index_root`.
@@ -103,21 +117,54 @@ impl RuleStore {
     /// Creates the workspace directory and all required index files. Idempotent:
     /// if the workspace already exists it is opened without error.
     pub fn init(index_root: &Path) -> Result<Self, RuleError> {
+        let _span_guard = tracing::info_span!(
+            target: RULE_STORE_TRACE_TARGET,
+            "rule_store_init",
+            requested_root = %index_root.display(),
+        )
+        .entered();
         let index_root =
             workspace::resolve_store_root_from(index_root, ".rule");
-        Self::open_internal(&index_root)
+        let store = Self::open_internal(&index_root)?;
+        tracing::info!(
+            target: RULE_STORE_TRACE_TARGET,
+            resolved_root = %index_root.display(),
+            "rule_store_init_complete"
+        );
+        Ok(store)
     }
 
     /// Open an existing rule store, or initialize and force-scan it when the
     /// local derived index artifacts do not exist yet.
     pub fn open_or_init(index_root: &Path) -> Result<Self, RuleError> {
+        let span = tracing::info_span!(
+            target: RULE_STORE_TRACE_TARGET,
+            "rule_store_open_or_init",
+            requested_root = %index_root.display(),
+            initialized_store = Empty,
+        );
+        let _span_guard = span.enter();
         match Self::open(index_root) {
-            Ok(store) => Ok(store),
+            Ok(store) => {
+                span.record("initialized_store", false);
+                tracing::info!(
+                    target: RULE_STORE_TRACE_TARGET,
+                    initialized_store = false,
+                    "rule_store_open_or_init_complete"
+                );
+                Ok(store)
+            },
             Err(RuleError::Storage(StorageError::WorkspaceNotFound {
                 ..
             })) => {
+                span.record("initialized_store", true);
                 let mut store = Self::init(index_root)?;
                 store.scan(true)?;
+                tracing::info!(
+                    target: RULE_STORE_TRACE_TARGET,
+                    initialized_store = true,
+                    "rule_store_open_or_init_complete"
+                );
                 Ok(store)
             },
             Err(error) => Err(error),
@@ -125,6 +172,12 @@ impl RuleStore {
     }
 
     fn open_internal(index_root: &Path) -> Result<Self, RuleError> {
+        let _span_guard = tracing::debug_span!(
+            target: RULE_STORE_TRACE_TARGET,
+            "rule_store_open_internal",
+            resolved_root = %index_root.display(),
+        )
+        .entered();
         let fs = EntityFs::with_config(
             EntityFolderConfig::new(RULE_MANIFEST_FILE, RULE_LOCK_FILE)
                 .with_body_file(RULE_BODY_FILE),
@@ -135,6 +188,11 @@ impl RuleStore {
             path: index_root.join("rules"),
             label: "rules".to_string(),
         })?;
+        tracing::debug!(
+            target: RULE_STORE_TRACE_TARGET,
+            scan_root = %index_root.join("rules").display(),
+            "rule_store_default_scan_root_registered"
+        );
         ensure_gitignore_entries(index_root, &["entities/"])?;
         let mut store = Self {
             inner,
@@ -153,16 +211,44 @@ impl RuleStore {
         &mut self,
         reindex: bool,
     ) -> Result<ScanReport, RuleError> {
+        let _span_guard = tracing::info_span!(
+            target: RULE_STORE_TRACE_TARGET,
+            "rule_store_scan",
+            reindex,
+            slug_entries = Empty,
+        )
+        .entered();
         let report = self.inner.scan(reindex)?;
         if reindex {
             self.reindex_rule_bodies()?;
         }
         self.rebuild_slug_index()?;
+        let slug_entries = self.slug_index.len();
+        tracing::Span::current().record("slug_entries", slug_entries);
+        tracing::info!(
+            target: RULE_STORE_TRACE_TARGET,
+            reindex,
+            integrated = report.integrated,
+            pruned = report.pruned,
+            diagnostics = report.diagnostics.len(),
+            slug_entries,
+            "rule_store_scan_complete"
+        );
         Ok(report)
     }
 
     fn reindex_rule_bodies(&self) -> Result<(), RuleError> {
-        for indexed in self.inner.list_indexed()? {
+        let _span_guard = tracing::debug_span!(
+            target: RULE_STORE_TRACE_TARGET,
+            "rule_store_reindex_rule_bodies",
+            indexed_entities = Empty,
+            reindexed_rules = Empty,
+        )
+        .entered();
+        let all = self.inner.list_indexed()?;
+        tracing::Span::current().record("indexed_entities", all.len());
+        let mut reindexed_rules = 0usize;
+        for indexed in all {
             if indexed.type_id != RULE_ENTRY_TYPE_ID {
                 continue;
             }
@@ -187,14 +273,31 @@ impl RuleStore {
                 Some(&created_at_str),
                 effort_str.as_deref(),
             )?;
+            reindexed_rules += 1;
         }
+
+        tracing::Span::current().record("reindexed_rules", reindexed_rules);
+        tracing::debug!(
+            target: RULE_STORE_TRACE_TARGET,
+            reindexed_rules,
+            "rule_store_reindex_rule_bodies_complete"
+        );
 
         Ok(())
     }
 
     pub fn rebuild_slug_index(&mut self) -> Result<(), RuleError> {
+        let _span_guard = tracing::debug_span!(
+            target: RULE_STORE_TRACE_TARGET,
+            "rule_store_rebuild_slug_index",
+            indexed_entities = Empty,
+            slug_entries = Empty,
+        )
+        .entered();
         let mut next = HashMap::new();
-        for indexed in self.inner.list_indexed()? {
+        let all = self.inner.list_indexed()?;
+        tracing::Span::current().record("indexed_entities", all.len());
+        for indexed in all {
             let manifest = self.read_indexed_manifest(&indexed)?;
             if let Some(slug) =
                 manifest.extra.get("slug").and_then(Value::as_str)
@@ -203,6 +306,13 @@ impl RuleStore {
             }
         }
         self.slug_index = next;
+        let slug_entries = self.slug_index.len();
+        tracing::Span::current().record("slug_entries", slug_entries);
+        tracing::debug!(
+            target: RULE_STORE_TRACE_TARGET,
+            slug_entries,
+            "rule_store_rebuild_slug_index_complete"
+        );
         Ok(())
     }
 
@@ -238,18 +348,44 @@ impl RuleStore {
         &self,
         id_or_slug: &str,
     ) -> Result<Uuid, RuleError> {
+        let _span_guard = tracing::debug_span!(
+            target: RULE_STORE_TRACE_TARGET,
+            "rule_store_resolve_id",
+            input = id_or_slug,
+        )
+        .entered();
         if let Ok(uuid) = id_or_slug.parse::<Uuid>() {
+            tracing::debug!(
+                target: RULE_STORE_TRACE_TARGET,
+                resolution = "uuid",
+                resolved_id = %uuid,
+                "rule_store_resolve_id_complete"
+            );
             return Ok(uuid);
         }
 
         if let Some(uuid) = self.resolve_prefix(id_or_slug)? {
+            tracing::debug!(
+                target: RULE_STORE_TRACE_TARGET,
+                resolution = "prefix",
+                resolved_id = %uuid,
+                "rule_store_resolve_id_complete"
+            );
             return Ok(uuid);
         }
 
-        self.slug_index
+        let resolved = self
+            .slug_index
             .get(id_or_slug)
             .copied()
-            .ok_or_else(|| RuleError::NotFound(id_or_slug.to_string()))
+            .ok_or_else(|| RuleError::NotFound(id_or_slug.to_string()))?;
+        tracing::debug!(
+            target: RULE_STORE_TRACE_TARGET,
+            resolution = "slug",
+            resolved_id = %resolved,
+            "rule_store_resolve_id_complete"
+        );
+        Ok(resolved)
     }
 
     pub fn create(

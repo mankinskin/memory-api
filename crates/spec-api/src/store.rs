@@ -13,6 +13,7 @@ use serde::{
     Serialize,
 };
 use serde_json::Value;
+use tracing::field::Empty;
 use uuid::Uuid;
 
 use memory_api::{
@@ -69,6 +70,7 @@ const SPEC_MANIFEST_FILE: &str = "spec.toml";
 const SPEC_LOCK_FILE: &str = ".spec-lock";
 const SPEC_INDEX_DIR: &str = ".spec";
 const GENERATED_SPEC_ARTIFACTS_FILE: &str = "generated.toml";
+const SPEC_STORE_TRACE_TARGET: &str = "spec_api::store";
 
 fn build_search_content(
     spec: &SpecManifest,
@@ -367,6 +369,12 @@ impl SpecStore {
     /// Returns [`memory_api::error::StorageError::WorkspaceNotFound`] if the
     /// workspace has not been initialized. Run `spec init` first.
     pub fn open(index_root: &Path) -> Result<Self, SpecError> {
+        let _span_guard = tracing::info_span!(
+            target: SPEC_STORE_TRACE_TARGET,
+            "spec_store_open",
+            requested_root = %index_root.display(),
+        )
+        .entered();
         let index_root =
             workspace::resolve_store_root_from(index_root, SPEC_INDEX_DIR);
         if !index_root.join("entities.db").is_file() {
@@ -375,7 +383,13 @@ impl SpecStore {
             }
             .into());
         }
-        Self::open_internal(&index_root)
+        let store = Self::open_internal(&index_root)?;
+        tracing::info!(
+            target: SPEC_STORE_TRACE_TARGET,
+            resolved_root = %index_root.display(),
+            "spec_store_open_complete"
+        );
+        Ok(store)
     }
 
     /// Initialize a new spec store rooted at `index_root`.
@@ -383,21 +397,54 @@ impl SpecStore {
     /// Creates the workspace directory and all required index files. Idempotent:
     /// if the workspace already exists it is opened without error.
     pub fn init(index_root: &Path) -> Result<Self, SpecError> {
+        let _span_guard = tracing::info_span!(
+            target: SPEC_STORE_TRACE_TARGET,
+            "spec_store_init",
+            requested_root = %index_root.display(),
+        )
+        .entered();
         let index_root =
             workspace::resolve_store_root_from(index_root, SPEC_INDEX_DIR);
-        Self::open_internal(&index_root)
+        let store = Self::open_internal(&index_root)?;
+        tracing::info!(
+            target: SPEC_STORE_TRACE_TARGET,
+            resolved_root = %index_root.display(),
+            "spec_store_init_complete"
+        );
+        Ok(store)
     }
 
     /// Open an existing spec store, or initialize and force-scan it when the
     /// local derived index artifacts do not exist yet.
     pub fn open_or_init(index_root: &Path) -> Result<Self, SpecError> {
+        let span = tracing::info_span!(
+            target: SPEC_STORE_TRACE_TARGET,
+            "spec_store_open_or_init",
+            requested_root = %index_root.display(),
+            initialized_store = Empty,
+        );
+        let _span_guard = span.enter();
         match Self::open(index_root) {
-            Ok(store) => Ok(store),
+            Ok(store) => {
+                span.record("initialized_store", false);
+                tracing::info!(
+                    target: SPEC_STORE_TRACE_TARGET,
+                    initialized_store = false,
+                    "spec_store_open_or_init_complete"
+                );
+                Ok(store)
+            },
             Err(SpecError::Storage(StorageError::WorkspaceNotFound {
                 ..
             })) => {
+                span.record("initialized_store", true);
                 let mut store = Self::init(index_root)?;
                 store.scan(true)?;
+                tracing::info!(
+                    target: SPEC_STORE_TRACE_TARGET,
+                    initialized_store = true,
+                    "spec_store_open_or_init_complete"
+                );
                 Ok(store)
             },
             Err(error) => Err(error),
@@ -405,6 +452,12 @@ impl SpecStore {
     }
 
     fn open_internal(index_root: &Path) -> Result<Self, SpecError> {
+        let _span_guard = tracing::debug_span!(
+            target: SPEC_STORE_TRACE_TARGET,
+            "spec_store_open_internal",
+            resolved_root = %index_root.display(),
+        )
+        .entered();
         let fs = EntityFs::with_config(
             EntityFolderConfig::new(SPEC_MANIFEST_FILE, SPEC_LOCK_FILE)
                 .with_body_file("body.md"),
@@ -415,6 +468,11 @@ impl SpecStore {
             path: index_root.join("specs"),
             label: "specs".to_string(),
         })?;
+        tracing::debug!(
+            target: SPEC_STORE_TRACE_TARGET,
+            scan_root = %index_root.join("specs").display(),
+            "spec_store_default_scan_root_registered"
+        );
         Ok(Self {
             inner,
             slug_index: SlugIndex::new(),
@@ -429,19 +487,53 @@ impl SpecStore {
         &mut self,
         reindex: bool,
     ) -> Result<ScanReport, SpecError> {
+        let _span_guard = tracing::info_span!(
+            target: SPEC_STORE_TRACE_TARGET,
+            "spec_store_scan",
+            reindex,
+            slug_entries = Empty,
+        )
+        .entered();
         let report = self.inner.scan(reindex)?;
         self.rebuild_slug_index()?;
+        let slug_entries = self.slug_index_len();
+        tracing::Span::current().record("slug_entries", slug_entries);
+        tracing::info!(
+            target: SPEC_STORE_TRACE_TARGET,
+            reindex,
+            integrated = report.integrated,
+            pruned = report.pruned,
+            diagnostics = report.diagnostics.len(),
+            slug_entries,
+            "spec_store_scan_complete"
+        );
         Ok(report)
     }
 
     fn rebuild_slug_index(&mut self) -> Result<(), SpecError> {
+        let _span_guard = tracing::debug_span!(
+            target: SPEC_STORE_TRACE_TARGET,
+            "spec_store_rebuild_slug_index",
+            indexed_entities = Empty,
+            slug_entries = Empty,
+        )
+        .entered();
         let all = self.inner.list_indexed()?;
+        tracing::Span::current().record("indexed_entities", all.len());
         let entries = all.iter().filter_map(|entry| {
             let manifest = self.inner.fs.read(&entry.path).ok()?;
             let slug = manifest.extra.get("slug")?.as_str()?.to_string();
             Some((slug, entry.id))
         });
         self.slug_index = SlugIndex::rebuild(entries)?;
+        let slug_entries = self.slug_index_len();
+        tracing::Span::current().record("slug_entries", slug_entries);
+        tracing::debug!(
+            target: SPEC_STORE_TRACE_TARGET,
+            indexed_entities = all.len(),
+            slug_entries,
+            "spec_store_rebuild_slug_index_complete"
+        );
         Ok(())
     }
 
@@ -449,15 +541,45 @@ impl SpecStore {
         &self,
         id_or_slug: &str,
     ) -> Result<Uuid, SpecError> {
+        let _span_guard = tracing::debug_span!(
+            target: SPEC_STORE_TRACE_TARGET,
+            "spec_store_resolve_id",
+            input = id_or_slug,
+        )
+        .entered();
         if let Ok(uuid) = id_or_slug.parse::<Uuid>() {
+            tracing::debug!(
+                target: SPEC_STORE_TRACE_TARGET,
+                resolution = "uuid",
+                resolved_id = %uuid,
+                "spec_store_resolve_id_complete"
+            );
             return Ok(uuid);
         }
         if let Some(uuid) = self.resolve_prefix(id_or_slug)? {
+            tracing::debug!(
+                target: SPEC_STORE_TRACE_TARGET,
+                resolution = "prefix",
+                resolved_id = %uuid,
+                "spec_store_resolve_id_complete"
+            );
             return Ok(uuid);
         }
-        self.slug_index
+        let resolved = self
+            .slug_index
             .resolve(id_or_slug)
-            .ok_or_else(|| SpecError::NotFound(id_or_slug.to_string()))
+            .ok_or_else(|| SpecError::NotFound(id_or_slug.to_string()))?;
+        tracing::debug!(
+            target: SPEC_STORE_TRACE_TARGET,
+            resolution = "slug",
+            resolved_id = %resolved,
+            "spec_store_resolve_id_complete"
+        );
+        Ok(resolved)
+    }
+
+    fn slug_index_len(&self) -> usize {
+        self.slug_index.len()
     }
 
     fn resolve_prefix(
