@@ -682,6 +682,7 @@ pub fn rollback_move<D: MoveDomain + ?Sized>(
 ) -> MoveResult<MoveOutcome> {
     let source_store_root = domain.source_store_root();
     let mut journal = load_journal(&source_store_root, journal_id)?;
+    normalize_journal_entity_paths(domain, &mut journal);
     let span = tracing::debug_span!(
         target: MOVE_TRACE_TARGET,
         "move_rollback",
@@ -796,6 +797,7 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
         failure: None,
         next_recovery_step: None,
     });
+    normalize_journal_entity_paths(domain, &mut journal);
     if journal.lock_paths.is_empty() {
         journal.lock_paths = collect_lock_paths(
             journal.entity_id,
@@ -1268,6 +1270,28 @@ fn rewrite_path_references(
 fn normalize_slashes(path: &Path) -> String {
     let raw = path.to_string_lossy().replace('\\', "/");
     raw.strip_prefix("//?/").unwrap_or(&raw).to_string()
+}
+
+fn normalize_journal_entity_paths<D: MoveDomain + ?Sized>(
+    domain: &D,
+    journal: &mut MoveJournal,
+) {
+    let subdir = domain.entity_subdir();
+    let expected_source = journal
+        .source_store_root
+        .join(subdir)
+        .join(journal.entity_id.to_string());
+    let expected_destination = journal
+        .target_store_root
+        .join(subdir)
+        .join(journal.entity_id.to_string());
+
+    if journal.source_entity_path != expected_source {
+        journal.source_entity_path = expected_source;
+    }
+    if journal.destination_entity_path != expected_destination {
+        journal.destination_entity_path = expected_destination;
+    }
 }
 
 fn journal_path(

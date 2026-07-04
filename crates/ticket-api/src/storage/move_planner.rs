@@ -105,11 +105,12 @@ impl MoveDomain for TicketMoveDomain<'_> {
         &self,
         entity_id: &Uuid,
     ) -> MoveResult<Option<PathBuf>> {
-        Ok(self
-            .store
-            .get_indexed(entity_id)
-            .map_err(to_move_error)?
-            .map(|ticket| ticket.path))
+            let entity_root = ticket_entity_root(&self.store.index_root);
+            Ok(self
+                .store
+                .get_indexed(entity_id)
+                .map_err(to_move_error)?
+                .and_then(|ticket| ticket.path.starts_with(&entity_root).then_some(ticket.path)))
     }
 
     fn related_entities(
@@ -286,7 +287,13 @@ impl TicketStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::edge::EdgeRecord;
+    use crate::{
+        model::{
+            edge::EdgeRecord,
+            filesystem::ScanRoot,
+        },
+        storage::index::RedbIndexStore,
+    };
     use chrono::Utc;
     use std::{fs, process::Command};
     use tempfile::tempdir;
@@ -473,5 +480,55 @@ mod tests {
             blocker,
             MovePreflightBlocker::DifferentGitWorktree { .. }
         )));
+    }
+
+    #[test]
+    fn source_entity_path_requires_path_ownership_not_aggregate_visibility() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let nested_repo = repo.join("nested-repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&nested_repo).unwrap();
+        run_git(&repo, &["init"]);
+        run_git(&nested_repo, &["init"]);
+
+        let source_store = TicketStore::init(&repo).unwrap();
+        let target_store = TicketStore::init(&nested_repo).unwrap();
+        source_store
+            .add_scan_root(ScanRoot {
+                path: nested_repo.join(".ticket").join("tickets"),
+                label: "nested-tickets".to_string(),
+            })
+            .unwrap();
+
+        let id = target_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("nested source path ticket"),
+                Some("ready"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let target_indexed = target_store.get_indexed(&id).unwrap().unwrap();
+
+        let poisoned_index = RedbIndexStore::open(&source_store.index_root.join("tickets.db"))
+            .unwrap();
+        poisoned_index.insert_ticket(&target_indexed).unwrap();
+
+        let source_domain = TicketMoveDomain::new(&source_store);
+        let target_domain = TicketMoveDomain::new(&target_store);
+        assert!(move_kernel::MoveDomain::source_entity_path(&source_domain, &id)
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            move_kernel::MoveDomain::source_entity_path(&target_domain, &id)
+                .unwrap()
+                .as_deref(),
+            Some(target_indexed.path.as_path())
+        );
     }
 }
