@@ -73,6 +73,15 @@ pub(crate) fn cmd_move(
     store: &TicketStore,
     global_dry_run: bool,
 ) -> Result<Value, CliRunError> {
+    let _span_guard = tracing::info_span!(
+        target: "ticket_cli::transport",
+        "ticket_cli_move",
+        mode = tracing::field::Empty,
+        ticket_id = tracing::field::Empty,
+        journal_id = tracing::field::Empty,
+        dry_run = global_dry_run || args.dry_run,
+    )
+    .entered();
     let mut mode_count = 0;
     if args.resume.is_some() {
         mode_count += 1;
@@ -90,6 +99,7 @@ pub(crate) fn cmd_move(
     }
 
     if let Some(journal_id) = resume {
+        tracing::Span::current().record("mode", "resume");
         if args.id.is_some() || args.to_workspace_root.is_some() {
             return Err(CliRunError::BadRequest(
                 "--resume cannot be combined with id or --to-workspace-root"
@@ -100,6 +110,14 @@ pub(crate) fn cmd_move(
             CliRunError::BadRequest(format!("invalid --resume journal UUID: {error}"))
         })?;
         let outcome = store.resume_move_with_journal(journal_id)?;
+        tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
+        tracing::info!(
+            target: "ticket_cli::transport",
+            journal_id = %outcome.journal.id,
+            phase = ?outcome.journal.phase,
+            resumed = outcome.resumed,
+            "ticket_cli_move_complete"
+        );
         return Ok(json!({
             "command": "move",
             "status": "ok",
@@ -110,6 +128,7 @@ pub(crate) fn cmd_move(
     }
 
     if let Some(journal_id) = rollback {
+        tracing::Span::current().record("mode", "rollback");
         if args.id.is_some() || args.to_workspace_root.is_some() {
             return Err(CliRunError::BadRequest(
                 "--rollback cannot be combined with id or --to-workspace-root"
@@ -120,6 +139,14 @@ pub(crate) fn cmd_move(
             CliRunError::BadRequest(format!("invalid --rollback journal UUID: {error}"))
         })?;
         let outcome = store.rollback_move_with_journal(journal_id)?;
+        tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
+        tracing::info!(
+            target: "ticket_cli::transport",
+            journal_id = %outcome.journal.id,
+            phase = ?outcome.journal.phase,
+            rolled_back = outcome.rolled_back,
+            "ticket_cli_move_complete"
+        );
         return Ok(json!({
             "command": "move",
             "status": "ok",
@@ -134,6 +161,10 @@ pub(crate) fn cmd_move(
             "move requires <id> unless --resume/--rollback is used".to_string(),
         )
     })?;
+    tracing::Span::current().record(
+        "mode",
+        if global_dry_run || args.dry_run { "plan" } else { "execute" },
+    );
     let to_workspace_root = args.to_workspace_root.as_deref().ok_or_else(|| {
         CliRunError::BadRequest(
             "move requires --to-workspace-root in plan/execute mode".to_string(),
@@ -141,6 +172,7 @@ pub(crate) fn cmd_move(
     })?;
 
     let ticket_id = super::resolve_uuid_prefix(id, store)?;
+    tracing::Span::current().record("ticket_id", ticket_id.to_string());
     let requested_workspace_root = workspace::canonicalize_workspace_root_strict(
         std::path::Path::new(to_workspace_root),
     )
@@ -164,6 +196,13 @@ pub(crate) fn cmd_move(
     let dry_run = global_dry_run || args.dry_run;
 
     if dry_run || !report.supported() {
+        tracing::info!(
+            target: "ticket_cli::transport",
+            ticket_id = %ticket_id,
+            supported = report.supported(),
+            blockers = report.blockers.len(),
+            "ticket_cli_move_complete"
+        );
         return Ok(json!({
             "command": "move",
             "status": if report.supported() { "ok" } else { "blocked" },
@@ -176,6 +215,16 @@ pub(crate) fn cmd_move(
     }
 
     let outcome = store.execute_move_with_journal(&report)?;
+    tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
+    tracing::info!(
+        target: "ticket_cli::transport",
+        ticket_id = %ticket_id,
+        journal_id = %outcome.journal.id,
+        phase = ?outcome.journal.phase,
+        resumed = outcome.resumed,
+        rolled_back = outcome.rolled_back,
+        "ticket_cli_move_complete"
+    );
     Ok(json!({
         "command": "move",
         "status": "ok",

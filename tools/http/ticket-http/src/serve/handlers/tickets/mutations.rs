@@ -308,6 +308,14 @@ pub async fn move_ticket(
     Query(params): Query<MutationWorkspaceParam>,
     Json(body): Json<MoveTicketBody>,
 ) -> Response {
+    let span = tracing::info_span!(
+        target: "ticket_http::transport",
+        "ticket_http_move_request",
+        request_id = %rid.0,
+        ticket_id = %id,
+        requested_workspace = %params.workspace,
+        dry_run = body.dry_run,
+    );
     let (workspace, store) =
         match state.resolve_public_workspace_request(&params.workspace, &rid.0)
         {
@@ -320,7 +328,25 @@ pub async fn move_ticket(
     let target_workspace = normalize_workspace_root(&body.to_workspace_root);
     let dry_run = body.dry_run;
 
+    tracing::debug!(
+        target: "ticket_http::transport",
+        parent: &span,
+        request_id = %request_id,
+        workspace = %workspace,
+        target_workspace_root = %target_workspace.display(),
+        "ticket_http_move_resolved"
+    );
+
     tokio::task::spawn_blocking(move || {
+        let span = tracing::info_span!(
+            target: "ticket_http::transport",
+            "ticket_http_move_execute",
+            request_id = %task_request_id,
+            ticket_id = %id,
+            workspace = %workspace,
+            dry_run,
+            journal_id = tracing::field::Empty,
+        );
         let request_id = task_request_id.clone();
         let plan = match store.plan_move_preflight(&id, &target_workspace) {
             Ok(report) => report,
@@ -328,6 +354,16 @@ pub async fn move_ticket(
         };
 
         if dry_run || !plan.supported() {
+            tracing::info!(
+                target: "ticket_http::transport",
+                parent: &span,
+                request_id = %request_id,
+                ticket_id = %id,
+                mode = "plan",
+                supported = plan.supported(),
+                blockers = plan.blockers.len(),
+                "ticket_http_move_complete"
+            );
             let status = if plan.supported() {
                 StatusCode::OK
             } else {
@@ -358,6 +394,19 @@ pub async fn move_ticket(
             Ok(outcome) => outcome,
             Err(error) => return storage_err(error, &request_id),
         };
+        span.record("journal_id", outcome.journal.id.to_string());
+        tracing::info!(
+            target: "ticket_http::transport",
+            parent: &span,
+            request_id = %request_id,
+            ticket_id = %id,
+            journal_id = %outcome.journal.id,
+            mode = "apply",
+            phase = ?outcome.journal.phase,
+            resumed = outcome.resumed,
+            rolled_back = outcome.rolled_back,
+            "ticket_http_move_complete"
+        );
 
         Json(MoveTicketResponse {
             request_id,

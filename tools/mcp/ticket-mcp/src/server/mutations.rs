@@ -6,6 +6,7 @@ use ticket_api::model::{
     edge::EdgeRecord,
     ticket::TicketManifest,
 };
+use uuid::Uuid;
 
 use super::{
     types::*,
@@ -262,10 +263,19 @@ impl TicketServer {
         &self,
         input: MovePreflightInput,
     ) -> Result<CallToolResult, McpError> {
+        let tool_request_id = Uuid::new_v4();
         let workspace = input.workspace;
         let id_str = input.id;
         let target_workspace =
             normalize_workspace_root(&input.to_workspace_root)?;
+        let span = tracing::info_span!(
+            target: "ticket_mcp::transport",
+            "ticket_mcp_move_preflight",
+            tool_request_id = %tool_request_id,
+            workspace = %workspace,
+            ticket_ref = %id_str,
+            target_workspace_root = %target_workspace.display(),
+        );
         let plan = self
             .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
@@ -275,6 +285,17 @@ impl TicketServer {
                 Ok((id, report))
             })
             .await?;
+
+        tracing::info!(
+            target: "ticket_mcp::transport",
+            parent: &span,
+            tool_request_id = %tool_request_id,
+            workspace = %workspace,
+            ticket_id = %plan.0,
+            supported = plan.1.supported(),
+            blockers = plan.1.blockers.len(),
+            "ticket_mcp_move_preflight_complete"
+        );
 
         Self::json_result(&serde_json::json!({
             "workspace": workspace,
@@ -290,10 +311,20 @@ impl TicketServer {
         &self,
         input: MoveApplyInput,
     ) -> Result<CallToolResult, McpError> {
+        let tool_request_id = Uuid::new_v4();
         let workspace = input.workspace;
         let id_str = input.id;
         let target_workspace =
             normalize_workspace_root(&input.to_workspace_root)?;
+        let span = tracing::info_span!(
+            target: "ticket_mcp::transport",
+            "ticket_mcp_move_apply",
+            tool_request_id = %tool_request_id,
+            workspace = %workspace,
+            ticket_ref = %id_str,
+            target_workspace_root = %target_workspace.display(),
+            journal_id = tracing::field::Empty,
+        );
         let (id, report, outcome) = self
             .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
@@ -317,6 +348,18 @@ impl TicketServer {
             })
             .await?;
 
+        span.record("journal_id", outcome.journal.id.to_string());
+        tracing::info!(
+            target: "ticket_mcp::transport",
+            parent: &span,
+            tool_request_id = %tool_request_id,
+            workspace = %workspace,
+            ticket_id = %id,
+            journal_id = %outcome.journal.id,
+            phase = ?outcome.journal.phase,
+            "ticket_mcp_move_apply_complete"
+        );
+
         Self::json_result(&serde_json::json!({
             "workspace": workspace,
             "status": "ok",
@@ -332,6 +375,7 @@ impl TicketServer {
         &self,
         input: MoveJournalInput,
     ) -> Result<CallToolResult, McpError> {
+        let tool_request_id = Uuid::new_v4();
         let workspace = input.workspace;
         let journal_id = input.id.parse::<uuid::Uuid>().map_err(|error| {
             McpError::invalid_params(
@@ -339,6 +383,13 @@ impl TicketServer {
                 None,
             )
         })?;
+        let span = tracing::info_span!(
+            target: "ticket_mcp::transport",
+            "ticket_mcp_move_resume",
+            tool_request_id = %tool_request_id,
+            workspace = %workspace,
+            journal_id = %journal_id,
+        );
 
         let outcome = self
             .with_store_ext(&workspace.clone(), move |store| {
@@ -347,6 +398,17 @@ impl TicketServer {
                     .map_err(Self::store_err)
             })
             .await?;
+
+        tracing::info!(
+            target: "ticket_mcp::transport",
+            parent: &span,
+            tool_request_id = %tool_request_id,
+            workspace = %workspace,
+            journal_id = %outcome.journal.id,
+            phase = ?outcome.journal.phase,
+            resumed = outcome.resumed,
+            "ticket_mcp_move_resume_complete"
+        );
 
         Self::json_result(&serde_json::json!({
             "workspace": workspace,
@@ -361,6 +423,7 @@ impl TicketServer {
         &self,
         input: MoveJournalInput,
     ) -> Result<CallToolResult, McpError> {
+        let tool_request_id = Uuid::new_v4();
         let workspace = input.workspace;
         let journal_id = input.id.parse::<uuid::Uuid>().map_err(|error| {
             McpError::invalid_params(
@@ -368,6 +431,13 @@ impl TicketServer {
                 None,
             )
         })?;
+        let span = tracing::info_span!(
+            target: "ticket_mcp::transport",
+            "ticket_mcp_move_rollback",
+            tool_request_id = %tool_request_id,
+            workspace = %workspace,
+            journal_id = %journal_id,
+        );
 
         let outcome = self
             .with_store_ext(&workspace.clone(), move |store| {
@@ -376,6 +446,17 @@ impl TicketServer {
                     .map_err(Self::store_err)
             })
             .await?;
+
+        tracing::info!(
+            target: "ticket_mcp::transport",
+            parent: &span,
+            tool_request_id = %tool_request_id,
+            workspace = %workspace,
+            journal_id = %outcome.journal.id,
+            phase = ?outcome.journal.phase,
+            rolled_back = outcome.rolled_back,
+            "ticket_mcp_move_rollback_complete"
+        );
 
         Self::json_result(&serde_json::json!({
             "workspace": workspace,

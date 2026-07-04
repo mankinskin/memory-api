@@ -214,6 +214,20 @@ pub enum MachineOutputFormat {
 // ── entry point ────────────────────────────────────────────────────────────────
 
 pub fn run(cli: TicketCli) -> Result<CliOutput, CliRunError> {
+    let request_id = cli
+        .request_id
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let _span_guard = tracing::info_span!(
+        target: "ticket_cli::transport",
+        "ticket_cli_run",
+        request_id = %request_id,
+        command = command_name(&cli.command),
+        machine_output = machine_output_format(cli.json, cli.toon).is_some(),
+        dry_run = cli.dry_run,
+    )
+    .entered();
+
     let mut payload = dispatch::dispatch(
         cli.command,
         cli.index_root.as_deref(),
@@ -224,8 +238,6 @@ pub fn run(cli: TicketCli) -> Result<CliOutput, CliRunError> {
     )?;
     ticket_api::output::strip_default_metadata(&mut payload);
     if let Some(format) = machine_output_format(cli.json, cli.toon) {
-        let request_id =
-            cli.request_id.unwrap_or_else(|| Uuid::new_v4().to_string());
         let envelope = CommandEnvelope {
             request_id,
             payload,
@@ -233,6 +245,54 @@ pub fn run(cli: TicketCli) -> Result<CliOutput, CliRunError> {
         Ok(CliOutput::Machine(json!(envelope), format))
     } else {
         Ok(CliOutput::Text(render_human(payload)))
+    }
+}
+
+fn command_name(command: &TicketCommandCli) -> &'static str {
+    match command {
+        TicketCommandCli::Init => "init",
+        TicketCommandCli::Create(_) => "create",
+        TicketCommandCli::Get(_) => "get",
+        TicketCommandCli::Describe(_) => "describe",
+        TicketCommandCli::Update(_) => "update",
+        TicketCommandCli::Repro(_) => "repro",
+        TicketCommandCli::List(_) => "list",
+        TicketCommandCli::Delete(_) => "delete",
+        TicketCommandCli::Scan(_) => "scan",
+        TicketCommandCli::Claim(_) => "claim",
+        TicketCommandCli::Unclaim(_) => "unclaim",
+        TicketCommandCli::Leases => "leases",
+        TicketCommandCli::Search(_) => "search",
+        TicketCommandCli::Query(_) => "query",
+        TicketCommandCli::AddRoot(_) => "add-root",
+        TicketCommandCli::History(_) => "history",
+        TicketCommandCli::Diff(_) => "diff",
+        TicketCommandCli::Revert(_) => "revert",
+        TicketCommandCli::FinalizeMerge(_) => "finalize-merge",
+        TicketCommandCli::Batch(_) => "batch",
+        TicketCommandCli::ExportCommandSchema => "export-command-schema",
+        TicketCommandCli::Link(_) => "link",
+        TicketCommandCli::Unlink(_) => "unlink",
+        TicketCommandCli::Links(_) => "links",
+        TicketCommandCli::Subgraph(_) => "subgraph",
+        TicketCommandCli::Topgraph(_) => "topgraph",
+        TicketCommandCli::Watch(_) => "watch",
+        TicketCommandCli::Status(_) => "status",
+        TicketCommandCli::ReadyOverview(_) => "ready-overview",
+        TicketCommandCli::Next(_) => "next",
+        TicketCommandCli::Blockers(_) => "blockers",
+        TicketCommandCli::UnblockedBy(_) => "unblocked-by",
+        TicketCommandCli::Serve(_) => "serve",
+        TicketCommandCli::Close(_) => "close",
+        TicketCommandCli::Cancel(_) => "cancel",
+        TicketCommandCli::Move(_) => "move",
+        TicketCommandCli::Attach(_) => "attach",
+        TicketCommandCli::Assets(_) => "assets",
+        TicketCommandCli::Health(_) => "health",
+        TicketCommandCli::StoreIndex(_) => "store-index",
+        TicketCommandCli::Audit => "audit",
+        TicketCommandCli::Fmt(_) => "fmt",
+        TicketCommandCli::Board(_) => "board",
     }
 }
 
