@@ -25,6 +25,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3"
 chrono = { version = "0.4" }
 memory-fixtures = { path = "../memory-fixtures" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [[bench]]
 name = "graph_ops"

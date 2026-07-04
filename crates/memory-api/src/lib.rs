@@ -3,6 +3,7 @@ pub mod discovery;
 pub mod generated_markdown;
 pub mod index_generator;
 pub mod model;
+pub mod runtime;
 pub mod storage;
 pub mod workspace;
 

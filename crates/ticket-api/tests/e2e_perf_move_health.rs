@@ -1,5 +1,6 @@
 use std::{
     path::Path,
+    sync::OnceLock,
     time::Instant,
 };
 
@@ -22,6 +23,20 @@ use ticket_api::{
     workflow::WorkflowModel,
 };
 use uuid::Uuid;
+
+const PERF_TRACE_TARGET: &str = "ticket_api::perf";
+static PERF_TRACING: OnceLock<()> = OnceLock::new();
+
+fn init_perf_test_tracing() {
+    PERF_TRACING.get_or_init(|| {
+        let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("off"));
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_test_writer()
+            .try_init();
+    });
+}
 
 fn git_available_or_skip(
     result: Result<memory_fixtures::TicketPerfFixture, FixtureError>,
@@ -89,6 +104,7 @@ fn append_incremental_fixture_tickets(
 
 #[test]
 fn reference_heavy_move_e2e_reports_timings() {
+    init_perf_test_tracing();
     let Some(perf) = git_available_or_skip(materialize_git_fixture_with_ticket_perf_load(
         TicketPerfFixtureOptions {
             root_generated_ticket_count: 64,
@@ -157,10 +173,21 @@ fn reference_heavy_move_e2e_reports_timings() {
         outcome.journal.rewritten_path_files.len(),
         outcome.journal.phase_timings_ms,
     );
+    tracing::info!(
+        target: PERF_TRACE_TARGET,
+        run = "reference_heavy_move_e2e_reports_timings",
+        tracked_reference_files = plan.path_reference_files.len(),
+        rewritten_files = outcome.journal.rewritten_path_files.len(),
+        preflight_ms = preflight_elapsed.as_millis() as u64,
+        execute_ms = execute_elapsed.as_millis() as u64,
+        rollback_ms = rollback_elapsed.as_millis() as u64,
+        "ticket_api_perf_test_complete"
+    );
 }
 
 #[test]
 fn reference_heavy_move_missing_tracked_file_records_followup_with_timing() {
+    init_perf_test_tracing();
     let Some(perf) = git_available_or_skip(materialize_git_fixture_with_ticket_perf_load(
         TicketPerfFixtureOptions {
             root_generated_ticket_count: 48,
@@ -217,10 +244,19 @@ fn reference_heavy_move_missing_tracked_file_records_followup_with_timing() {
         plan.path_reference_files.len(),
         outcome.journal.manual_followups.len(),
     );
+    tracing::info!(
+        target: PERF_TRACE_TARGET,
+        run = "reference_heavy_move_missing_tracked_file_records_followup_with_timing",
+        tracked_reference_files = plan.path_reference_files.len(),
+        manual_followups = outcome.journal.manual_followups.len(),
+        execute_ms = execute_elapsed.as_millis() as u64,
+        "ticket_api_perf_test_complete"
+    );
 }
 
 #[test]
 fn health_all_e2e_reports_timings_on_large_fixture() {
+    init_perf_test_tracing();
     let perf = materialize_fixture_with_ticket_perf_load(TicketPerfFixtureOptions {
         root_generated_ticket_count: 96,
         submodule_generated_ticket_count: 24,
@@ -302,10 +338,22 @@ fn health_all_e2e_reports_timings_on_large_fixture() {
         all_edges.len(),
         report.findings.len(),
     );
+    tracing::info!(
+        target: PERF_TRACE_TARGET,
+        run = "health_all_e2e_reports_timings_on_large_fixture",
+        tickets = tickets.len(),
+        edges = all_edges.len(),
+        findings = report.findings.len(),
+        list_ms = list_elapsed.as_millis() as u64,
+        workflow_ms = workflow_elapsed.as_millis() as u64,
+        collect_ms = health_elapsed.as_millis() as u64,
+        "ticket_api_perf_test_complete"
+    );
 }
 
 #[test]
 fn stress_reference_heavy_sequential_moves_report_timings() {
+    init_perf_test_tracing();
     let Some(perf) = git_available_or_skip(materialize_git_fixture_with_ticket_perf_load(
         TicketPerfFixtureOptions::heavy(),
     )) else {
@@ -365,5 +413,14 @@ fn stress_reference_heavy_sequential_moves_report_timings() {
         second_elapsed.as_millis(),
         first.journal.phase_timings_ms,
         second.journal.phase_timings_ms,
+    );
+    tracing::info!(
+        target: PERF_TRACE_TARGET,
+        run = "stress_reference_heavy_sequential_moves_report_timings",
+        first_ms = first_elapsed.as_millis() as u64,
+        second_ms = second_elapsed.as_millis() as u64,
+        first_rewrites = first.journal.rewritten_path_files.len(),
+        second_rewrites = second.journal.rewritten_path_files.len(),
+        "ticket_api_perf_test_complete"
     );
 }

@@ -1,4 +1,5 @@
 use clap::error::ErrorKind;
+use memory_api::runtime::init_transport_tracing;
 
 use ticket_cli::cli::{
     CliOutput,
@@ -10,6 +11,8 @@ use ticket_cli::cli::{
 };
 
 fn main() {
+    init_transport_tracing("ticket_cli=info", None, None, "info");
+
     let cli = match parse_cli_from(std::env::args_os()) {
         Ok(cli) => cli,
         Err(err) => {

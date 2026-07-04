@@ -2,17 +2,12 @@ use ticket_mcp::server;
 
 use std::path::PathBuf;
 
+use memory_api::runtime::init_transport_tracing;
 use ticket_api::storage::store::TicketStore;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("ticket_mcp=info".parse().unwrap()),
-        )
-        .with_writer(std::io::stderr)
-        .init();
+    init_transport_tracing("ticket_mcp=info", None, None, "info");
 
     let index_root = std::env::var("TICKET_INDEX_ROOT")
         .map(PathBuf::from)

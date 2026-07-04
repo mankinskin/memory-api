@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use memory_api::runtime::init_transport_tracing;
 use doc_http::{
     DocAppState,
     ServeConfig,
@@ -8,13 +9,7 @@ use doc_http::{
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("doc_http=info".parse().unwrap()),
-        )
-        .with_writer(std::io::stderr)
-        .init();
+    init_transport_tracing("doc_http=info", None, None, "info");
 
     let mut port: u16 = 4003;
     let mut host = "127.0.0.1".to_string();

@@ -24,6 +24,7 @@ use ticket_http::serve::{
     ServeConfig,
     WorkspaceRegistry,
 };
+use memory_api::runtime::init_transport_tracing;
 
 fn main() {
     let mut port: u16 = 4000;
@@ -56,7 +57,12 @@ fn main() {
         }
     }
 
-    init_tracing(log_level.as_deref(), log_file.as_deref());
+    init_transport_tracing(
+        "ticket_http=info",
+        log_level.as_deref(),
+        log_file.as_deref().map(std::path::Path::new),
+        default_log_level(),
+    );
 
     let root = index_root.map(std::path::PathBuf::from).unwrap_or_else(|| {
         let (path, _source) = ticket_api::workspace::resolve_workspace();
@@ -101,78 +107,13 @@ fn main() {
     });
 }
 
-/// Initialise the global tracing subscriber.
-///
-/// Level resolution order (first match wins):
-///   1. `--log-level` CLI argument (`log_level` parameter)
-///   2. `RUST_LOG` environment variable
-///   3. `debug` in debug builds, `info` in release builds
-///
-/// Output:
-///   - Always writes to stderr (human-readable, coloured when attached to a
-///     terminal).
-///   - When `log_file` is set, also appends to that file in a non-blocking
-///     writer (same format, no ANSI colours).
-fn init_tracing(log_level: Option<&str>, log_file: Option<&str>) {
-    use tracing_subscriber::{
-        EnvFilter,
-        fmt,
-        layer::SubscriberExt as _,
-        util::SubscriberInitExt as _,
-    };
-
-    // ── Level / filter ────────────────────────────────────────────────────────
+fn default_log_level() -> &'static str {
     #[cfg(debug_assertions)]
-    let default_level = "debug";
+    {
+        "debug"
+    }
     #[cfg(not(debug_assertions))]
-    let default_level = "info";
-
-    // CLI flag beats RUST_LOG; RUST_LOG beats the compiled default.
-    let filter = if let Some(level) = log_level {
-        EnvFilter::new(level)
-    } else {
-        EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new(default_level))
-    };
-
-    // ── Stderr layer (always active) ──────────────────────────────────────────
-    let stderr_layer = fmt::layer()
-        .with_writer(std::io::stderr)
-        .with_ansi(true)
-        .with_target(true)
-        .with_thread_ids(false);
-
-    // ── Optional file layer ───────────────────────────────────────────────────
-    if let Some(path) = log_file {
-        let log_path = std::path::Path::new(path);
-        let dir = log_path.parent().unwrap_or(std::path::Path::new("."));
-        let file_name = log_path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "ticket-http.log".to_string());
-
-        // Non-blocking writer with a background flush thread.
-        let file_appender = tracing_appender::rolling::never(dir, &file_name);
-        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-        // Leak the guard so the background flush thread stays alive for the
-        // duration of the process.
-        std::mem::forget(guard);
-
-        let file_layer = fmt::layer()
-            .with_writer(non_blocking)
-            .with_ansi(false)
-            .with_target(true)
-            .with_thread_ids(true);
-
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(stderr_layer)
-            .with(file_layer)
-            .init();
-    } else {
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(stderr_layer)
-            .init();
+    {
+        "info"
     }
 }

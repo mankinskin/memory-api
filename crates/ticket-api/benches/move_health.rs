@@ -1,5 +1,6 @@
 use std::{
     path::Path,
+    sync::OnceLock,
     time::Instant,
 };
 
@@ -27,6 +28,19 @@ use ticket_api::{
     workflow::WorkflowModel,
 };
 use uuid::Uuid;
+
+const PERF_TRACE_TARGET: &str = "ticket_api::perf";
+static PERF_TRACING: OnceLock<()> = OnceLock::new();
+
+fn init_perf_bench_tracing() {
+    PERF_TRACING.get_or_init(|| {
+        let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("off"));
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .try_init();
+    });
+}
 
 fn parse_ids(ids: &[String]) -> Vec<Uuid> {
     ids.iter().map(|id| id.parse().expect("valid fixture uuid")).collect()
@@ -83,6 +97,7 @@ fn append_incremental_fixture_tickets(
 }
 
 fn bench_move_preflight_reference_heavy(c: &mut Criterion) {
+    init_perf_bench_tracing();
     c.bench_function("move_preflight_reference_heavy", |b| {
         b.iter_batched(
             || {
@@ -109,8 +124,16 @@ fn bench_move_preflight_reference_heavy(c: &mut Criterion) {
                 let plan = store
                     .plan_move_preflight(&id, &target_workspace)
                     .expect("plan preflight");
-                criterion::black_box(started.elapsed());
+                let elapsed = started.elapsed();
+                criterion::black_box(elapsed);
                 criterion::black_box(plan.path_reference_files.len());
+                tracing::info!(
+                    target: PERF_TRACE_TARGET,
+                    benchmark = "move_preflight_reference_heavy",
+                    tracked_reference_files = plan.path_reference_files.len(),
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "ticket_api_benchmark_iteration"
+                );
             },
             criterion::BatchSize::SmallInput,
         );
@@ -118,6 +141,7 @@ fn bench_move_preflight_reference_heavy(c: &mut Criterion) {
 }
 
 fn bench_move_execute_reference_heavy(c: &mut Criterion) {
+    init_perf_bench_tracing();
     c.bench_function("move_execute_reference_heavy", |b| {
         b.iter_batched(
             || {
@@ -156,8 +180,16 @@ fn bench_move_execute_reference_heavy(c: &mut Criterion) {
                 let outcome = store
                     .execute_move_with_journal(&plan)
                     .expect("execute move");
-                criterion::black_box(started.elapsed());
+                let elapsed = started.elapsed();
+                criterion::black_box(elapsed);
                 assert_eq!(outcome.journal.phase, MoveExecutionPhase::Validated);
+                tracing::info!(
+                    target: PERF_TRACE_TARGET,
+                    benchmark = "move_execute_reference_heavy",
+                    rewritten_files = outcome.journal.rewritten_path_files.len(),
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "ticket_api_benchmark_iteration"
+                );
             },
             criterion::BatchSize::SmallInput,
         );
@@ -208,6 +240,7 @@ fn bench_move_rollback_reference_heavy(c: &mut Criterion) {
 }
 
 fn bench_open_or_init_root_perf_fixture(c: &mut Criterion) {
+    init_perf_bench_tracing();
     c.bench_function("open_or_init_root_perf_fixture", |b| {
         b.iter_batched(
             || {
@@ -224,9 +257,18 @@ fn bench_open_or_init_root_perf_fixture(c: &mut Criterion) {
                 let started = Instant::now();
                 let (store, report) =
                     TicketStore::open_or_init_profiled(&root_store).expect("open store");
-                criterion::black_box(started.elapsed());
+                let elapsed = started.elapsed();
+                criterion::black_box(elapsed);
+                let phase_count = report.phase_timings_ms.len();
                 criterion::black_box(report.phase_timings_ms);
                 criterion::black_box(store);
+                tracing::info!(
+                    target: PERF_TRACE_TARGET,
+                    benchmark = "open_or_init_root_perf_fixture",
+                    phase_count,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "ticket_api_benchmark_iteration"
+                );
             },
             criterion::BatchSize::SmallInput,
         );

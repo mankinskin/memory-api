@@ -14,6 +14,7 @@ path = "src/lib.rs"
 
 [dependencies]
 doc-api = { path = "../../../crates/doc-api" }
+memory-api = { path = "../../../crates/memory-api" }
 
 axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
@@ -21,7 +22,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tower-http = { version = "0.6", features = ["cors"] }
 
 [dev-dependencies]
