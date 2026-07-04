@@ -14,6 +14,7 @@ use memory_matrix::{
     TRANSPORTS,
     run_matrix,
     run_ticket_get_mcp_subprocess_failure_probe,
+    run_ticket_spawn_fail_mcp_subprocess_failure_probe,
     transport_cells,
 };
 use test_api::{
@@ -544,6 +545,13 @@ fn subprocess_probe_persists_full_failure_bundle_fields() {
             .unwrap_or(false),
         "bundle should include whitelisted env selector"
     );
+    assert_eq!(
+        bundle["invocation"]["env_selectors"]
+            .as_object()
+            .map(|selectors| selectors.len()),
+        Some(1),
+        "bundle should include only whitelisted env selector keys"
+    );
 
     assert_eq!(
         bundle["correlation"]["cell_id"].as_str(),
@@ -632,5 +640,55 @@ fn subprocess_probe_persists_full_failure_bundle_fields() {
         persisted_bundle["linkage"]["test_execution_id"].as_str(),
         Some(record.execution_id.as_str()),
         "persisted bundle should retain linkage id"
+    );
+
+    let persisted_run_id = persisted
+        .provenance
+        .run_id
+        .as_deref()
+        .expect("persisted execution should preserve provenance run_id");
+    assert_eq!(
+        persisted_run_id,
+        persisted_bundle["correlation"]["run_id"]
+            .as_str()
+            .expect("bundle should include correlation run_id"),
+        "bundle correlation run_id should match execution provenance run_id"
+    );
+}
+
+#[test]
+fn subprocess_spawn_probe_reports_spawn_failure_bundle() {
+    let run = run_ticket_spawn_fail_mcp_subprocess_failure_probe()
+        .expect("spawn probe run should execute");
+    assert_eq!(
+        run.records.len(),
+        1,
+        "spawn probe run should emit one record"
+    );
+
+    let record = &run.records[0];
+    assert_eq!(
+        record.outcome,
+        ValidationOutcome::Failed,
+        "spawn probe should deterministically fail"
+    );
+
+    let bundle: serde_json::Value = serde_json::from_str(&record.detail)
+        .expect("spawn probe failure detail should be structured json");
+    assert_eq!(bundle["error_class"].as_str(), Some("spawn_failure"));
+    assert_eq!(
+        bundle["invocation"]["executable"].as_str(),
+        Some("definitely-missing-ticket-mcp-binary")
+    );
+    assert_eq!(
+        bundle["linkage"]["test_execution_id"].as_str(),
+        Some(record.execution_id.as_str())
+    );
+    assert!(
+        bundle["message"]
+            .as_str()
+            .map(|msg| msg.contains("spawn ticket-mcp stdio sentinel process failed"))
+            .unwrap_or(false),
+        "spawn probe should preserve spawn failure message"
     );
 }

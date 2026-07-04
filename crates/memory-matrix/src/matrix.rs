@@ -78,6 +78,7 @@ pub use runner::{
     MatrixRun,
     run_matrix,
     run_ticket_get_mcp_subprocess_failure_probe,
+    run_ticket_spawn_fail_mcp_subprocess_failure_probe,
 };
 use support::{
     domain_names,

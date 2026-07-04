@@ -1,6 +1,47 @@
 use super::*;
 
 const STDIO_TAIL_BYTES: usize = 2048;
+const ALLOWED_ENV_SELECTOR_KEYS: &[&str] = &["TICKET_INDEX_ROOT"];
+
+fn filter_env_selectors(
+    env_selectors: &serde_json::Map<String, serde_json::Value>
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut filtered = serde_json::Map::new();
+    for key in ALLOWED_ENV_SELECTOR_KEYS {
+        if let Some(value) = env_selectors.get(*key) {
+            filtered.insert((*key).to_string(), value.clone());
+        }
+    }
+    filtered
+}
+
+fn classify_stdio_read_error(
+    status_code: Option<i32>,
+    err_kind: std::io::ErrorKind,
+) -> &'static str {
+    match status_code {
+        Some(code) if code != 0 => "non_zero_exit",
+        _ if err_kind == std::io::ErrorKind::UnexpectedEof => {
+            "unexpected_eof"
+        },
+        _ => "io_read_failure",
+    }
+}
+
+fn validate_sentinel_ticket_id(
+    created_id: &str,
+    get_json: &serde_json::Value,
+) -> Result<(), String> {
+    let returned_id = get_json["ticket"]["id"].as_str().ok_or_else(|| {
+        "mcp stdio sentinel get_ticket missing ticket.id".to_string()
+    })?;
+    if returned_id != created_id {
+        return Err(format!(
+            "mcp stdio sentinel get_ticket returned mismatched id: expected {created_id}, got {returned_id}"
+        ));
+    }
+    Ok(())
+}
 
 pub(super) fn dispatch_mcp_subprocess_failure_probe(
     domain: &str,
@@ -8,14 +49,26 @@ pub(super) fn dispatch_mcp_subprocess_failure_probe(
     ctx: &MatrixCtx,
     metadata: Option<&DispatchMetadata>,
 ) -> CellResult {
-    if domain != "ticket" || operation != "get" {
+    if domain != "ticket" {
         return blocked(format!(
-            "mcp subprocess failure probe supports only ticket.get, got {domain}.{operation}"
+            "mcp subprocess failure probe supports only ticket domain, got {domain}.{operation}"
         ));
     }
 
-    let mut client =
-        StdioMcpClient::spawn_ticket_mcp_nonzero_exit_probe(ctx, metadata)?;
+    let mut client = match operation {
+        "get" => {
+            StdioMcpClient::spawn_ticket_mcp_nonzero_exit_probe(ctx, metadata)?
+        },
+        "spawn_fail" => {
+            StdioMcpClient::spawn_ticket_mcp_spawn_failure_probe(ctx, metadata)?
+        },
+        _ => {
+            return blocked(format!(
+                "mcp subprocess failure probe supports only ticket.get and ticket.spawn_fail, got {domain}.{operation}"
+            ));
+        },
+    };
+
     match client.initialize() {
         Ok(()) => Err(
             "mcp subprocess failure probe unexpectedly initialized successfully"
@@ -343,6 +396,35 @@ impl StdioMcpClient {
         )
     }
 
+    fn spawn_ticket_mcp_spawn_failure_probe(
+        ctx: &MatrixCtx,
+        metadata: Option<&DispatchMetadata>,
+    ) -> Result<Self, String> {
+        let mcp_workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..");
+        let store_root = ctx.store_root(".ticket");
+
+        let executable = "definitely-missing-ticket-mcp-binary".to_string();
+        let args = vec!["--version".to_string()];
+
+        let mut env_selectors = serde_json::Map::new();
+        env_selectors.insert(
+            "TICKET_INDEX_ROOT".to_string(),
+            serde_json::Value::String(
+                store_root.to_string_lossy().to_string(),
+            ),
+        );
+
+        Self::spawn_with_config(
+            executable,
+            args,
+            mcp_workspace_root,
+            env_selectors,
+            metadata,
+        )
+    }
+
     fn spawn_with_config(
         executable: String,
         args: Vec<String>,
@@ -389,6 +471,28 @@ impl StdioMcpClient {
             invocation_env_selectors: env_selectors,
             metadata: metadata.cloned(),
         })
+    }
+
+    fn failure_bundle(
+        &self,
+        error_class: &str,
+        request_or_tool_id: &str,
+        message: &str,
+        stdout_tail: &str,
+        stderr_tail: &str,
+    ) -> String {
+        build_failure_bundle(
+            error_class,
+            &self.invocation_executable,
+            &self.invocation_args,
+            &PathBuf::from(&self.invocation_cwd),
+            &self.invocation_env_selectors,
+            request_or_tool_id,
+            self.metadata.as_ref(),
+            stdout_tail,
+            stderr_tail,
+            message,
+        )
     }
 
     fn initialize(&mut self) -> Result<(), String> {
@@ -488,16 +592,10 @@ impl StdioMcpClient {
 
                 let stderr_tail_text = tail_from_bytes(&stderr_tail);
 
-                let error_class = match status.and_then(|value| value.code()) {
-                    Some(code) if code != 0 => "non_zero_exit",
-                    _ => {
-                        if err.kind() == std::io::ErrorKind::UnexpectedEof {
-                            "unexpected_eof"
-                        } else {
-                            "io_read_failure"
-                        }
-                    },
-                };
+                let error_class = classify_stdio_read_error(
+                    status.and_then(|value| value.code()),
+                    err.kind(),
+                );
 
                 let message = format!(
                     "read mcp message failed: {err}; child_status={}",
@@ -530,8 +628,15 @@ impl StdioMcpClient {
             return self.read_message(request_id);
         }
 
-        serde_json::from_slice(&payload)
-            .map_err(|err| format!("parse mcp json line: {err}"))
+        serde_json::from_slice(&payload).map_err(|err| {
+            self.failure_bundle(
+                "parse_decode_error",
+                request_id,
+                &format!("parse mcp json line: {err}"),
+                &tail_from_bytes(&payload),
+                "",
+            )
+        })
     }
 }
 
@@ -589,17 +694,37 @@ fn dispatch_ticket_mcp_stdio_sentinel_get(
             }
         }),
     )?;
-    let create_json = extract_stdio_tool_json(&create_result)?;
+    let create_json = extract_stdio_tool_json(&create_result).map_err(|err| {
+        client.failure_bundle(
+            "parse_decode_error",
+            "tools/call#create_ticket",
+            &err,
+            "",
+            "",
+        )
+    })?;
     if create_json["status"].as_str().unwrap_or_default() != "ok" {
-        return Err(format!(
-            "mcp stdio sentinel create_ticket returned non-ok status: {}",
-            create_json
+        return Err(client.failure_bundle(
+            "protocol_sentinel_mismatch",
+            "tools/call#create_ticket",
+            &format!(
+                "mcp stdio sentinel create_ticket returned non-ok status: {}",
+                create_json
+            ),
+            "",
+            "",
         ));
     }
     let created_id = create_json["id"]
         .as_str()
         .ok_or_else(|| {
-            "mcp stdio sentinel create_ticket missing id".to_string()
+            client.failure_bundle(
+                "protocol_sentinel_mismatch",
+                "tools/call#create_ticket",
+                "mcp stdio sentinel create_ticket missing id",
+                "",
+                "",
+            )
         })?
         .to_string();
 
@@ -613,15 +738,24 @@ fn dispatch_ticket_mcp_stdio_sentinel_get(
             }
         }),
     )?;
-    let get_json = extract_stdio_tool_json(&get_result)?;
-    let returned_id = get_json["ticket"]["id"].as_str().ok_or_else(|| {
-        "mcp stdio sentinel get_ticket missing ticket.id".to_string()
+    let get_json = extract_stdio_tool_json(&get_result).map_err(|err| {
+        client.failure_bundle(
+            "parse_decode_error",
+            "tools/call#get_ticket",
+            &err,
+            "",
+            "",
+        )
     })?;
-    if returned_id != created_id {
-        return Err(format!(
-            "mcp stdio sentinel get_ticket returned mismatched id: expected {created_id}, got {returned_id}"
-        ));
-    }
+    validate_sentinel_ticket_id(&created_id, &get_json).map_err(|err| {
+        client.failure_bundle(
+            "protocol_sentinel_mismatch",
+            "tools/call#get_ticket",
+            &err,
+            "",
+            "",
+        )
+    })?;
 
     Ok(Cell::Passed)
 }
@@ -678,6 +812,8 @@ fn build_failure_bundle(
         })
     };
 
+    let filtered_env_selectors = filter_env_selectors(env_selectors);
+
     serde_json::json!({
         "error_class": error_class,
         "message": error_message,
@@ -686,7 +822,7 @@ fn build_failure_bundle(
             "args": args,
             "cwd": cwd.to_string_lossy().to_string(),
             "workspace_selector": "default",
-            "env_selectors": env_selectors,
+            "env_selectors": filtered_env_selectors,
         },
         "output_tails": {
             "stdout_tail": stdout_tail,
@@ -697,6 +833,104 @@ fn build_failure_bundle(
         "linkage": linkage,
     })
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_stdio_read_error_prefers_non_zero_exit() {
+        assert_eq!(
+            classify_stdio_read_error(
+                Some(2),
+                std::io::ErrorKind::UnexpectedEof,
+            ),
+            "non_zero_exit"
+        );
+    }
+
+    #[test]
+    fn classify_stdio_read_error_maps_unexpected_eof_without_status() {
+        assert_eq!(
+            classify_stdio_read_error(None, std::io::ErrorKind::UnexpectedEof),
+            "unexpected_eof"
+        );
+    }
+
+    #[test]
+    fn classify_stdio_read_error_maps_other_io_failures() {
+        assert_eq!(
+            classify_stdio_read_error(None, std::io::ErrorKind::BrokenPipe),
+            "io_read_failure"
+        );
+    }
+
+    #[test]
+    fn validate_sentinel_ticket_id_detects_mismatch() {
+        let get_json = serde_json::json!({
+            "ticket": {
+                "id": "returned-2"
+            }
+        });
+        let err = validate_sentinel_ticket_id("created-1", &get_json)
+            .expect_err("mismatched ids should fail");
+        assert!(err.contains("mismatched id"));
+    }
+
+    #[test]
+    fn extract_stdio_tool_json_reports_parse_decode_failure() {
+        let payload = serde_json::json!({
+            "content": [{
+                "type": "text",
+                "text": "{not valid json"
+            }]
+        });
+        let err = extract_stdio_tool_json(&payload)
+            .expect_err("invalid text payload should fail json decoding");
+        assert!(err.contains("parse mcp tools/call text payload"));
+    }
+
+    #[test]
+    fn build_failure_bundle_filters_non_whitelisted_env_selectors() {
+        let mut env_selectors = serde_json::Map::new();
+        env_selectors.insert(
+            "TICKET_INDEX_ROOT".to_string(),
+            serde_json::Value::String("C:/tmp/tickets".to_string()),
+        );
+        env_selectors.insert(
+            "UNSAFE_SECRET_KEY".to_string(),
+            serde_json::Value::String("top-secret".to_string()),
+        );
+
+        let bundle = build_failure_bundle(
+            "spawn_failure",
+            "cargo",
+            &["run".to_string()],
+            &PathBuf::from("C:/tmp"),
+            &env_selectors,
+            "spawn_ticket_mcp",
+            None,
+            "",
+            "",
+            "spawn failed",
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&bundle).expect("bundle should be valid json");
+        let selectors = json["invocation"]["env_selectors"]
+            .as_object()
+            .expect("env_selectors should be object");
+        assert!(selectors.contains_key("TICKET_INDEX_ROOT"));
+        assert!(!selectors.contains_key("UNSAFE_SECRET_KEY"));
+    }
+
+    #[test]
+    fn tail_from_bytes_returns_bounded_suffix() {
+        let content = "A".repeat(STDIO_TAIL_BYTES + 64);
+        let tail = tail_from_bytes(content.as_bytes());
+        assert_eq!(tail.len(), STDIO_TAIL_BYTES);
+        assert!(tail.chars().all(|ch| ch == 'A'));
+    }
 }
 
 fn dispatch_spec_mcp(
