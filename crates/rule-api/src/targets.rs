@@ -529,11 +529,12 @@ impl RenderTargetFile {
 impl RenderTargetDefinition {
     fn into_render_target(
         self,
-        output_path: String,
+        default_output_path: String,
         config_path: &Path,
         schemas: &HashMap<String, RenderTargetSchema>,
         defaults: &RawTargetDefaults,
     ) -> Result<RenderTarget, TargetConfigError> {
+        let explicit_path_like_output = self.path_scope.is_some() || self.scope.is_some();
         let (repo_scope, file_kind, path_scope) = resolve_scope_fields(
             &self.name,
             self.repo_scope,
@@ -544,6 +545,11 @@ impl RenderTargetDefinition {
         )?;
         let section = self.section.or_else(|| defaults.section.clone());
         let state = self.state.or_else(|| defaults.state.clone());
+        let output_path = if explicit_path_like_output {
+            path_scope.clone().unwrap_or(default_output_path)
+        } else {
+            default_output_path
+        };
         Ok(RenderTarget {
             name: self.name.clone(),
             repo_scope,
