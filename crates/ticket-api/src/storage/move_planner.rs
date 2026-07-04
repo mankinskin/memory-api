@@ -253,7 +253,7 @@ impl MoveDomain for TicketMoveDomain<'_> {
         store_root: &Path,
     ) -> MoveResult<()> {
         let store = self.open(store_root)?;
-        store.scan(true).map_err(to_move_error)?;
+        store.scan(false).map_err(to_move_error)?;
         Ok(())
     }
 }

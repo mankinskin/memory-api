@@ -55,6 +55,17 @@ pub struct SearchFields {
     pub effort: Field,
 }
 
+#[derive(Debug, Clone)]
+pub struct SearchDocumentInput {
+    pub id: Uuid,
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub state: Option<String>,
+    pub ticket_type: Option<String>,
+    pub created_at: Option<String>,
+    pub effort: Option<String>,
+}
+
 /// Tantivy-backed full-text search index.
 ///
 /// # Windows file-sharing note
@@ -138,6 +149,48 @@ impl TantivySearchIndex {
         index
             .writer(50_000_000)
             .map_err(|e| StorageError::SearchIndex(e.to_string()))
+    }
+
+    fn add_document(
+        &self,
+        writer: &mut IndexWriter,
+        doc: &SearchDocumentInput,
+    ) -> Result<(), StorageError> {
+        writer.delete_term(Term::from_field_text(
+            self.fields.id,
+            &doc.id.to_string(),
+        ));
+
+        let mut tantivy_doc = TantivyDocument::default();
+        tantivy_doc.add_text(self.fields.id, doc.id.to_string());
+        if let Some(title) = &doc.title {
+            tantivy_doc.add_text(self.fields.title, title);
+        }
+        if let Some(body) = &doc.body {
+            tantivy_doc.add_text(self.fields.body, body);
+        }
+        tantivy_doc.add_text(
+            self.fields.state,
+            doc.state.as_deref().unwrap_or(""),
+        );
+        tantivy_doc.add_text(
+            self.fields.ticket_type,
+            doc.ticket_type.as_deref().unwrap_or(""),
+        );
+        tantivy_doc.add_text(
+            self.fields.created_at,
+            doc.created_at.as_deref().unwrap_or(""),
+        );
+        let effort_value = doc
+            .effort
+            .as_deref()
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or(0);
+        tantivy_doc.add_i64(self.fields.effort, effort_value);
+        writer.add_document(tantivy_doc).map_err(|e: TantivyError| {
+            StorageError::SearchIndex(e.to_string())
+        })?;
+        Ok(())
     }
 
     fn is_retryable_search_error(error: &StorageError) -> bool {
@@ -408,32 +461,31 @@ impl TantivySearchIndex {
         created_at: Option<&str>,
         effort: Option<&str>,
     ) -> Result<(), StorageError> {
+        self.upsert_batch(&[SearchDocumentInput {
+            id: *id,
+            title: title.map(str::to_string),
+            body: body.map(str::to_string),
+            state: state.map(str::to_string),
+            ticket_type: entity_type.map(str::to_string),
+            created_at: created_at.map(str::to_string),
+            effort: effort.map(str::to_string),
+        }])
+    }
+
+    pub fn upsert_batch(
+        &self,
+        docs: &[SearchDocumentInput],
+    ) -> Result<(), StorageError> {
+        if docs.is_empty() {
+            return Ok(());
+        }
+
         Self::with_retry(|| {
             let index = self.open_index()?;
             let mut writer = Self::make_writer(&index)?;
-            writer.delete_term(Term::from_field_text(
-                self.fields.id,
-                &id.to_string(),
-            ));
-
-            let mut d = TantivyDocument::default();
-            d.add_text(self.fields.id, id.to_string());
-            if let Some(t) = title {
-                d.add_text(self.fields.title, t);
+            for doc in docs {
+                self.add_document(&mut writer, doc)?;
             }
-            if let Some(b) = body {
-                d.add_text(self.fields.body, b);
-            }
-            d.add_text(self.fields.state, state.unwrap_or(""));
-            d.add_text(self.fields.ticket_type, entity_type.unwrap_or(""));
-            d.add_text(self.fields.created_at, created_at.unwrap_or(""));
-            let eff_val = effort
-                .and_then(|eff_str| eff_str.parse::<i64>().ok())
-                .unwrap_or(0);
-            d.add_i64(self.fields.effort, eff_val);
-            writer.add_document(d).map_err(|e: TantivyError| {
-                StorageError::SearchIndex(e.to_string())
-            })?;
             writer
                 .commit()
                 .map_err(|e| StorageError::SearchIndex(e.to_string()))?;

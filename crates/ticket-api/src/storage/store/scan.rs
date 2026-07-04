@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    fs,
     path::Path,
     time::Instant,
 };
@@ -18,7 +19,7 @@ use crate::{
     storage::{
         index::RedbIndexStore,
         indexed::IndexedTicket,
-        search::TantivySearchIndex,
+        search::SearchDocumentInput,
         ticket_fs::{
             TicketFs,
             TicketScanEntry,
@@ -86,12 +87,12 @@ impl TicketStore {
         // an empty/partial/unreadable index; either forces a full rebuild so the
         // search index is reset and repopulated from the on-disk tickets.
         let force = reindex || self.search_needs_rebuild()?;
+        let search_rebuild_elapsed = elapsed_ms(search_rebuild_started);
         span.record("forced_reindex", force);
         let mut report = self.scan_once(force)?;
-        record_phase_timing(
-            &mut report.phase_timings_ms,
-            "search_rebuild_check_ms",
-            search_rebuild_started,
+        report.phase_timings_ms.insert(
+            "search_rebuild_check_ms".to_string(),
+            search_rebuild_elapsed,
         );
         record_phase_timing(
             &mut report.phase_timings_ms,
@@ -207,17 +208,26 @@ impl TicketStore {
             diagnostics.extend(diags);
 
             let integrate_root_started = Instant::now();
+            let mut search_documents = Vec::with_capacity(entries.len());
             for entry in entries {
                 disk_ids.insert(entry.id);
-                integrate_entry(
+                if let Some(search_document) = integrate_entry(
                     &self.index,
-                    &self.search,
                     entry,
                     reindex,
                     &mut phase_timings_ms,
-                )?;
+                )? {
+                    search_documents.push(search_document);
+                }
                 integrated += 1;
             }
+            let search_upsert_started = Instant::now();
+            self.search.upsert_batch(&search_documents)?;
+            add_phase_elapsed(
+                &mut phase_timings_ms,
+                "integration.search_upsert_ms",
+                search_upsert_started,
+            );
             record_named_phase_timing(
                 &mut phase_timings_ms,
                 format!("integrate_root_{root_label}_ms"),
@@ -328,13 +338,15 @@ impl TicketStore {
             manifest,
         };
         let mut phase_timings_ms = std::collections::BTreeMap::new();
-        integrate_entry(
+        let search_document = integrate_entry(
             &self.index,
-            &self.search,
             entry,
             true,
             &mut phase_timings_ms,
         )?;
+        if let Some(search_document) = search_document {
+            self.search.upsert_batch(&[search_document])?;
+        }
         self.refresh_workflow_facts_for_roots(&[id], false, Utc::now())?;
         Ok(true)
     }
@@ -413,11 +425,10 @@ fn stale_reconciliation_diagnostic(
 
 fn integrate_entry(
     index: &RedbIndexStore,
-    search: &TantivySearchIndex,
     entry: TicketScanEntry,
-    _reindex: bool,
+    reindex: bool,
     phase_timings_ms: &mut std::collections::BTreeMap<String, u64>,
-) -> Result<(), StorageError> {
+) -> Result<Option<SearchDocumentInput>, StorageError> {
     let type_id = entry
         .manifest
         .extra
@@ -441,6 +452,9 @@ fn integrate_entry(
 
     let indexed = match index.get_ticket(&entry.id)? {
         Some(mut existing) => {
+            if !reindex && entry_is_current(&entry, &existing)? {
+                return Ok(None);
+            }
             existing.path = entry.path.clone();
             existing.type_id = type_id.clone();
             existing.created_at = entry.manifest.created_at;
@@ -495,23 +509,15 @@ fn integrate_entry(
             serde_json::Value::Number(n) => Some(n.to_string()),
             _ => None,
         });
-    let search_upsert_started = Instant::now();
-    search.upsert(
-        &entry.id,
-        title.as_deref(),
-        body.as_deref(),
-        state.as_deref(),
-        Some(&type_id),
-        Some(&created_at_str),
-        effort_str.as_deref(),
-    )?;
-    add_phase_elapsed(
-        phase_timings_ms,
-        "integration.search_upsert_ms",
-        search_upsert_started,
-    );
-
-    Ok(())
+    Ok(Some(SearchDocumentInput {
+        id: entry.id,
+        title,
+        body,
+        state,
+        ticket_type: Some(type_id),
+        created_at: Some(created_at_str),
+        effort: effort_str,
+    }))
 }
 
 fn add_phase_elapsed(
@@ -527,6 +533,63 @@ fn add_phase_elapsed(
         elapsed_ms = elapsed,
         "ticket_store_phase_complete"
     );
+}
+
+fn entry_is_current(
+    entry: &TicketScanEntry,
+    existing: &IndexedTicket,
+) -> Result<bool, StorageError> {
+    if existing.path != entry.path
+        || existing.type_id
+            != entry
+                .manifest
+                .extra
+                .get("type")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unknown")
+        || existing.title
+            != entry
+                .manifest
+                .extra
+                .get("title")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        || existing.state
+            != entry
+                .manifest
+                .extra
+                .get("state")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        || existing.created_at != entry.manifest.created_at
+    {
+        return Ok(false);
+    }
+
+    let indexed_at = existing.updated_at;
+    if path_modified_after(&entry.path.join(TICKET_MANIFEST_FILE), indexed_at)? {
+        return Ok(false);
+    }
+
+    let description_path = entry.path.join("description.md");
+    if description_path.exists() {
+        if path_modified_after(&description_path, indexed_at)? {
+            return Ok(false);
+        }
+    } else if path_modified_after(&entry.path, indexed_at)? {
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
+fn path_modified_after(
+    path: &Path,
+    indexed_at: chrono::DateTime<Utc>,
+) -> Result<bool, StorageError> {
+    let modified = fs::metadata(path)?.modified()?;
+    let modified_at = chrono::DateTime::<Utc>::from(modified);
+    Ok(modified_at > indexed_at)
 }
 
 fn merge_phase_totals(
