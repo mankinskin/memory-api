@@ -77,6 +77,7 @@ pub use runner::{
     CellRecord,
     MatrixRun,
     run_matrix,
+    run_ticket_get_mcp_subprocess_failure_probe,
 };
 use support::{
     domain_names,
@@ -156,6 +157,15 @@ pub enum Cell {
 
 /// Result of a cell run. `Err` maps to a `Failed` execution.
 pub type CellResult = Result<Cell, String>;
+
+#[derive(Debug, Clone)]
+pub(crate) struct DispatchMetadata {
+    pub run_id: String,
+    pub cell_id: String,
+    pub transport: String,
+    pub operation: String,
+    pub execution_id: String,
+}
 
 pub(crate) fn pass() -> CellResult {
     Ok(Cell::Passed)
@@ -253,6 +263,7 @@ fn dispatch(
     transport: &str,
     operation: &str,
     ctx: &MatrixCtx,
+    metadata: Option<&DispatchMetadata>,
 ) -> CellResult {
     if transport == "cli" {
         return cli::dispatch_cli(ops.domain(), operation, ctx);
@@ -263,7 +274,16 @@ fn dispatch(
     }
 
     if transport == "mcp" {
-        return mcp::dispatch_mcp(ops.domain(), operation, ctx);
+        return mcp::dispatch_mcp(ops.domain(), operation, ctx, metadata);
+    }
+
+    if transport == "mcp-subprocess-fail" {
+        return mcp::dispatch_mcp_subprocess_failure_probe(
+            ops.domain(),
+            operation,
+            ctx,
+            metadata,
+        );
     }
 
     if transport != "in-process" {
@@ -355,7 +375,7 @@ pub fn run_one(
 ) -> CellResult {
     for candidate in domains() {
         if candidate.domain() == domain {
-            return dispatch(&*candidate, "in-process", operation, ctx);
+            return dispatch(&*candidate, "in-process", operation, ctx, None);
         }
     }
     Err(format!("unknown domain `{domain}`"))

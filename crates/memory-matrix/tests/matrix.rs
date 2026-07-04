@@ -13,6 +13,7 @@ use memory_matrix::{
     OPERATIONS,
     TRANSPORTS,
     run_matrix,
+    run_ticket_get_mcp_subprocess_failure_probe,
     transport_cells,
 };
 use test_api::{
@@ -492,5 +493,144 @@ fn executions_are_persisted_in_the_workspace_test_store() {
         spec_ids.len(),
         run.records.len(),
         "each cell should record under its own per-operation validation spec"
+    );
+}
+
+#[test]
+fn subprocess_probe_persists_full_failure_bundle_fields() {
+    let run = run_ticket_get_mcp_subprocess_failure_probe()
+        .expect("subprocess probe run should execute");
+    assert_eq!(
+        run.records.len(),
+        1,
+        "probe run should emit one record"
+    );
+
+    let record = &run.records[0];
+    assert_eq!(
+        record.outcome,
+        ValidationOutcome::Failed,
+        "probe should deterministically fail"
+    );
+
+    let bundle: serde_json::Value = serde_json::from_str(&record.detail)
+        .expect("probe failure detail should be structured json");
+
+    assert_eq!(
+        bundle["error_class"].as_str(),
+        Some("non_zero_exit"),
+        "probe should classify cargo invalid subcommand as non_zero_exit"
+    );
+
+    assert_eq!(
+        bundle["invocation"]["executable"].as_str(),
+        Some("cargo")
+    );
+    assert_eq!(
+        bundle["invocation"]["args"][0].as_str(),
+        Some("definitely-not-a-valid-subcommand")
+    );
+    assert!(
+        bundle["invocation"]["cwd"]
+            .as_str()
+            .map(|value| !value.is_empty())
+            .unwrap_or(false),
+        "bundle should include invocation cwd"
+    );
+    assert!(
+        bundle["invocation"]["env_selectors"]["TICKET_INDEX_ROOT"]
+            .as_str()
+            .map(|value| !value.is_empty())
+            .unwrap_or(false),
+        "bundle should include whitelisted env selector"
+    );
+
+    assert_eq!(
+        bundle["correlation"]["cell_id"].as_str(),
+        Some(record.cell_id.as_str())
+    );
+    assert_eq!(
+        bundle["correlation"]["transport"].as_str(),
+        Some(record.transport.as_str())
+    );
+    assert_eq!(
+        bundle["correlation"]["operation"].as_str(),
+        Some(record.operation.as_str())
+    );
+    assert!(
+        bundle["correlation"]["run_id"]
+            .as_str()
+            .map(|value| value.starts_with("matrix-probe-"))
+            .unwrap_or(false),
+        "bundle should include deterministic run_id prefix"
+    );
+    assert!(
+        bundle["correlation"]["request_or_tool_id"]
+            .as_str()
+            .map(|value| value.starts_with("initialize#"))
+            .unwrap_or(false),
+        "bundle should include request/tool identifier"
+    );
+
+    assert_eq!(
+        bundle["linkage"]["test_execution_id"].as_str(),
+        Some(record.execution_id.as_str())
+    );
+    assert!(
+        bundle["linkage"]["journal_id"].is_null(),
+        "probe has no journal id yet"
+    );
+    assert!(
+        bundle["linkage"]["log_session_ids"]
+            .as_array()
+            .map(|items| items.is_empty())
+            .unwrap_or(false),
+        "probe should emit empty log_session_ids when unavailable"
+    );
+
+    let max_bytes = bundle["output_tails"]["max_bytes"]
+        .as_u64()
+        .expect("bundle should include max tail bytes");
+    let stdout_tail = bundle["output_tails"]["stdout_tail"]
+        .as_str()
+        .unwrap_or_default();
+    let stderr_tail = bundle["output_tails"]["stderr_tail"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        (stdout_tail.len() as u64) <= max_bytes,
+        "stdout tail should be bounded"
+    );
+    assert!(
+        (stderr_tail.len() as u64) <= max_bytes,
+        "stderr tail should be bounded"
+    );
+    assert!(
+        !stderr_tail.trim().is_empty(),
+        "stderr tail should capture failing subprocess output"
+    );
+
+    let store = run.test_store();
+    let persisted = store
+        .list_executions(&ExecutionQuery::default())
+        .expect("probe execution should be queryable")
+        .into_iter()
+        .find(|execution| execution.id == record.execution_id)
+        .expect("probe execution should be persisted by execution id");
+    assert_eq!(
+        persisted.outcome,
+        ValidationOutcome::Failed,
+        "persisted execution should preserve failed outcome"
+    );
+
+    let persisted_detail = persisted
+        .detail
+        .expect("persisted execution should include detail bundle");
+    let persisted_bundle: serde_json::Value = serde_json::from_str(&persisted_detail)
+        .expect("persisted detail should remain parseable json bundle");
+    assert_eq!(
+        persisted_bundle["linkage"]["test_execution_id"].as_str(),
+        Some(record.execution_id.as_str()),
+        "persisted bundle should retain linkage id"
     );
 }

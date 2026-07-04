@@ -24,6 +24,7 @@ pub use matrix::{
     cells,
     run_matrix,
     run_one,
+    run_ticket_get_mcp_subprocess_failure_probe,
     transport_cells,
 };
 

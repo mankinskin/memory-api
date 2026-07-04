@@ -90,6 +90,50 @@ pub fn run_matrix() -> Result<MatrixRun, FixtureError> {
     })
 }
 
+/// Run a single deterministic failing subprocess transport probe and persist
+/// its execution detail in the same `.test` store format as full matrix runs.
+pub fn run_ticket_get_mcp_subprocess_failure_probe(
+) -> Result<MatrixRun, FixtureError> {
+    let fixture = materialize_fixture()?;
+    let workspace_root = fixture.workspace_root.clone();
+    let ctx = MatrixCtx {
+        workspace_root: workspace_root.clone(),
+    };
+
+    let test_store_root = workspace_root.join(".test");
+    let test_store = TestStoreConfig::new(test_store_root.clone(), "default");
+    let run_id = format!(
+        "matrix-probe-{}",
+        Utc::now().format("%Y%m%dT%H%M%SZ")
+    );
+
+    bootstrap_core_store_roots(&ctx);
+
+    let cell = CellSpec {
+        cell_id: "ticket.get.mcp_subprocess_failure".to_string(),
+        domain: "ticket".to_string(),
+        operation: "get".to_string(),
+        transport: "mcp-subprocess-fail".to_string(),
+        fixture_profile: FIXTURE_PROFILE_DEFAULT.to_string(),
+        expected_outcome: ExpectedOutcome::Passed,
+        blocked_reason: None,
+    };
+
+    let domain_ops = domains();
+    let domain = domain_ops
+        .iter()
+        .find(|candidate| candidate.domain() == cell.domain)
+        .expect("ticket domain should exist for subprocess failure probe");
+
+    let record = run_cell(&test_store, &**domain, &cell, &ctx, &run_id);
+
+    Ok(MatrixRun {
+        records: vec![record],
+        test_store_root,
+        _fixture: fixture,
+    })
+}
+
 fn bootstrap_core_store_roots(ctx: &MatrixCtx) {
     let _ = ticket_api::storage::TicketStore::open_or_init(
         &ctx.store_root(".ticket"),
@@ -136,7 +180,20 @@ fn run_cell(
     let _ = test_store.record_spec(&spec);
 
     let started = Instant::now();
-    let result = dispatch(domain, &cell.transport, &cell.operation, ctx);
+    let metadata = DispatchMetadata {
+        run_id: run_id.to_string(),
+        cell_id: cell.cell_id.clone(),
+        transport: cell.transport.clone(),
+        operation: cell.operation.clone(),
+        execution_id: execution_id.clone(),
+    };
+    let result = dispatch(
+        domain,
+        &cell.transport,
+        &cell.operation,
+        ctx,
+        Some(&metadata),
+    );
     let duration_ms = started.elapsed().as_millis() as u64;
 
     let (outcome, detail) = match result {

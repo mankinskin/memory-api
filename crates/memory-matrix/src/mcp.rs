@@ -1,12 +1,38 @@
 use super::*;
 
+const STDIO_TAIL_BYTES: usize = 2048;
+
+pub(super) fn dispatch_mcp_subprocess_failure_probe(
+    domain: &str,
+    operation: &str,
+    ctx: &MatrixCtx,
+    metadata: Option<&DispatchMetadata>,
+) -> CellResult {
+    if domain != "ticket" || operation != "get" {
+        return blocked(format!(
+            "mcp subprocess failure probe supports only ticket.get, got {domain}.{operation}"
+        ));
+    }
+
+    let mut client =
+        StdioMcpClient::spawn_ticket_mcp_nonzero_exit_probe(ctx, metadata)?;
+    match client.initialize() {
+        Ok(()) => Err(
+            "mcp subprocess failure probe unexpectedly initialized successfully"
+                .to_string(),
+        ),
+        Err(bundle) => Err(bundle),
+    }
+}
+
 pub(super) fn dispatch_mcp(
     domain: &str,
     operation: &str,
     ctx: &MatrixCtx,
+    metadata: Option<&DispatchMetadata>,
 ) -> CellResult {
     match domain {
-        "ticket" => dispatch_ticket_mcp(operation, ctx),
+        "ticket" => dispatch_ticket_mcp(operation, ctx, metadata),
         "spec" => dispatch_spec_mcp(operation, ctx),
         "rule" => dispatch_rule_mcp(operation, ctx),
         _ => blocked(format!(
@@ -36,9 +62,10 @@ fn extract_mcp_json(
 fn dispatch_ticket_mcp(
     operation: &str,
     ctx: &MatrixCtx,
+    metadata: Option<&DispatchMetadata>,
 ) -> CellResult {
     if operation == "get" {
-        return dispatch_ticket_mcp_stdio_sentinel_get(ctx);
+        return dispatch_ticket_mcp_stdio_sentinel_get(ctx, metadata);
     }
 
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -243,25 +270,125 @@ fn dispatch_ticket_mcp(
 struct StdioMcpClient {
     child: std::process::Child,
     next_id: u64,
+    invocation_executable: String,
+    invocation_args: Vec<String>,
+    invocation_cwd: String,
+    invocation_env_selectors: serde_json::Map<String, serde_json::Value>,
+    metadata: Option<DispatchMetadata>,
 }
 
 impl StdioMcpClient {
-    fn spawn_ticket_mcp(store_root: &std::path::Path) -> Result<Self, String> {
+    fn spawn_ticket_mcp(
+        ctx: &MatrixCtx,
+        metadata: Option<&DispatchMetadata>,
+    ) -> Result<Self, String> {
         let mcp_workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..");
-        let mut cmd = Command::new("cargo");
-        cmd.args(["run", "-p", "ticket-mcp", "--quiet"])
-            .current_dir(mcp_workspace_root)
-            .env("TICKET_INDEX_ROOT", store_root)
+        let store_root = ctx.store_root(".ticket");
+
+        let executable = "cargo".to_string();
+        let args = vec![
+            "run".to_string(),
+            "-p".to_string(),
+            "ticket-mcp".to_string(),
+            "--quiet".to_string(),
+        ];
+
+        let mut env_selectors = serde_json::Map::new();
+        env_selectors.insert(
+            "TICKET_INDEX_ROOT".to_string(),
+            serde_json::Value::String(
+                store_root.to_string_lossy().to_string(),
+            ),
+        );
+
+        Self::spawn_with_config(
+            executable,
+            args,
+            mcp_workspace_root,
+            env_selectors,
+            metadata,
+        )
+    }
+
+    fn spawn_ticket_mcp_nonzero_exit_probe(
+        ctx: &MatrixCtx,
+        metadata: Option<&DispatchMetadata>,
+    ) -> Result<Self, String> {
+        let mcp_workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..");
+        let store_root = ctx.store_root(".ticket");
+
+        let executable = "cargo".to_string();
+        let args = vec![
+            "definitely-not-a-valid-subcommand".to_string(),
+        ];
+
+        let mut env_selectors = serde_json::Map::new();
+        env_selectors.insert(
+            "TICKET_INDEX_ROOT".to_string(),
+            serde_json::Value::String(
+                store_root.to_string_lossy().to_string(),
+            ),
+        );
+
+        Self::spawn_with_config(
+            executable,
+            args,
+            mcp_workspace_root,
+            env_selectors,
+            metadata,
+        )
+    }
+
+    fn spawn_with_config(
+        executable: String,
+        args: Vec<String>,
+        cwd: PathBuf,
+        env_selectors: serde_json::Map<String, serde_json::Value>,
+        metadata: Option<&DispatchMetadata>,
+    ) -> Result<Self, String> {
+        let mut cmd = Command::new(&executable);
+        cmd.args(&args)
+            .current_dir(&cwd)
+            .env(
+                "TICKET_INDEX_ROOT",
+                env_selectors
+                    .get("TICKET_INDEX_ROOT")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default(),
+            )
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let child = cmd.spawn().map_err(|err| {
-            format!("spawn ticket-mcp stdio sentinel process: {err}")
+            build_failure_bundle(
+                "spawn_failure",
+                &executable,
+                &args,
+                &cwd,
+                &env_selectors,
+                "spawn_ticket_mcp",
+                metadata,
+                "",
+                "",
+                &format!(
+                    "spawn ticket-mcp stdio sentinel process failed: {err}"
+                ),
+            )
         })?;
 
-        Ok(Self { child, next_id: 1 })
+        Ok(Self {
+            child,
+            next_id: 1,
+            invocation_executable: executable,
+            invocation_args: args,
+            invocation_cwd: cwd.to_string_lossy().to_string(),
+            invocation_env_selectors: env_selectors,
+            metadata: metadata.cloned(),
+        })
     }
 
     fn initialize(&mut self) -> Result<(), String> {
@@ -300,7 +427,8 @@ impl StdioMcpClient {
         }))?;
 
         loop {
-            let message = self.read_message()?;
+            let request_id = format!("{method}#{id}");
+            let message = self.read_message(&request_id)?;
             if message["id"].as_u64() != Some(id) {
                 continue;
             }
@@ -335,7 +463,10 @@ impl StdioMcpClient {
             .map_err(|err| format!("flush mcp payload: {err}"))
     }
 
-    fn read_message(&mut self) -> Result<serde_json::Value, String> {
+    fn read_message(
+        &mut self,
+        request_id: &str,
+    ) -> Result<serde_json::Value, String> {
         let stdout = self
             .child
             .stdout
@@ -346,21 +477,46 @@ impl StdioMcpClient {
         loop {
             let mut byte = [0u8; 1];
             if let Err(err) = stdout.read_exact(&mut byte) {
-                let mut stderr_tail = String::new();
+                let mut stdout_tail = payload.clone();
+                let _ = stdout.read_to_end(&mut stdout_tail);
+
+                let mut stderr_tail = Vec::new();
                 let status = self.child.wait().ok();
                 if let Some(stderr) = self.child.stderr.as_mut() {
-                    let _ = stderr.read_to_string(&mut stderr_tail);
+                    let _ = stderr.read_to_end(&mut stderr_tail);
                 }
-                let status_note = status
-                    .map(|value| format!("; child status: {value}"))
-                    .unwrap_or_default();
-                let stderr_note = if stderr_tail.trim().is_empty() {
-                    "".to_string()
-                } else {
-                    format!("; child stderr: {}", stderr_tail.trim())
+
+                let stderr_tail_text = tail_from_bytes(&stderr_tail);
+
+                let error_class = match status.and_then(|value| value.code()) {
+                    Some(code) if code != 0 => "non_zero_exit",
+                    _ => {
+                        if err.kind() == std::io::ErrorKind::UnexpectedEof {
+                            "unexpected_eof"
+                        } else {
+                            "io_read_failure"
+                        }
+                    },
                 };
-                return Err(format!(
-                    "read mcp message: {err}{status_note}{stderr_note}"
+
+                let message = format!(
+                    "read mcp message failed: {err}; child_status={}",
+                    status
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "unknown".to_string())
+                );
+
+                return Err(build_failure_bundle(
+                    error_class,
+                    &self.invocation_executable,
+                    &self.invocation_args,
+                    &PathBuf::from(&self.invocation_cwd),
+                    &self.invocation_env_selectors,
+                    request_id,
+                    self.metadata.as_ref(),
+                    &tail_from_bytes(&stdout_tail),
+                    &stderr_tail_text,
+                    &message,
                 ));
             }
 
@@ -371,7 +527,7 @@ impl StdioMcpClient {
         }
 
         if payload.is_empty() {
-            return self.read_message();
+            return self.read_message(request_id);
         }
 
         serde_json::from_slice(&payload)
@@ -409,9 +565,11 @@ fn extract_stdio_tool_json(
         .map_err(|err| format!("parse mcp tools/call text payload: {err}"))
 }
 
-fn dispatch_ticket_mcp_stdio_sentinel_get(ctx: &MatrixCtx) -> CellResult {
-    let mut client =
-        StdioMcpClient::spawn_ticket_mcp(&ctx.store_root(".ticket"))?;
+fn dispatch_ticket_mcp_stdio_sentinel_get(
+    ctx: &MatrixCtx,
+    metadata: Option<&DispatchMetadata>,
+) -> CellResult {
+    let mut client = StdioMcpClient::spawn_ticket_mcp(ctx, metadata)?;
     client.initialize()?;
 
     let workspace_root = ctx.workspace_root.to_string_lossy().to_string();
@@ -466,6 +624,79 @@ fn dispatch_ticket_mcp_stdio_sentinel_get(ctx: &MatrixCtx) -> CellResult {
     }
 
     Ok(Cell::Passed)
+}
+
+fn tail_from_bytes(bytes: &[u8]) -> String {
+    if bytes.is_empty() {
+        return String::new();
+    }
+    let start = bytes.len().saturating_sub(STDIO_TAIL_BYTES);
+    String::from_utf8_lossy(&bytes[start..]).to_string()
+}
+
+fn build_failure_bundle(
+    error_class: &str,
+    executable: &str,
+    args: &[String],
+    cwd: &std::path::Path,
+    env_selectors: &serde_json::Map<String, serde_json::Value>,
+    request_or_tool_id: &str,
+    metadata: Option<&DispatchMetadata>,
+    stdout_tail: &str,
+    stderr_tail: &str,
+    error_message: &str,
+) -> String {
+    let correlation = if let Some(meta) = metadata {
+        serde_json::json!({
+            "run_id": meta.run_id,
+            "cell_id": meta.cell_id,
+            "transport": meta.transport,
+            "operation": meta.operation,
+            "request_or_tool_id": request_or_tool_id,
+        })
+    } else {
+        serde_json::json!({
+            "run_id": serde_json::Value::Null,
+            "cell_id": serde_json::Value::Null,
+            "transport": "mcp",
+            "operation": serde_json::Value::Null,
+            "request_or_tool_id": request_or_tool_id,
+        })
+    };
+
+    let linkage = if let Some(meta) = metadata {
+        serde_json::json!({
+            "test_execution_id": meta.execution_id,
+            "log_session_ids": [],
+            "journal_id": serde_json::Value::Null,
+        })
+    } else {
+        serde_json::json!({
+            "test_execution_id": serde_json::Value::Null,
+            "log_session_ids": [],
+            "journal_id": serde_json::Value::Null,
+        })
+    };
+
+    serde_json::json!({
+        "error_class": error_class,
+        "message": error_message,
+        "invocation": {
+            "executable": executable,
+            "args": args,
+            "cwd": cwd.to_string_lossy().to_string(),
+            "workspace_selector": "default",
+            "env_selectors": env_selectors,
+        },
+        "output_tails": {
+            "stdout_tail": stdout_tail,
+            "stderr_tail": stderr_tail,
+            "max_bytes": STDIO_TAIL_BYTES,
+        },
+        "correlation": correlation,
+        "linkage": linkage,
+    })
+    .to_string()
 }
 
 fn dispatch_spec_mcp(
