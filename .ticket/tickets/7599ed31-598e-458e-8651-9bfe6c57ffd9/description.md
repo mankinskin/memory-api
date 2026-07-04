@@ -101,3 +101,14 @@ Implication:
 - Current actionable blocker for next slice:
 	- clean/commit the dirty root tracked files (`.ticket/README.md`, `.ticket/index.toon`, `1acb4182-...`, `a1558e76-...`) and retry move apply for `40ba5a15`.
 - Spot health-check for migrated candidates (`40ba5a15`, `61cb6557`) in both `./` and `./memory-api` reports warning-only `missing_effort_estimation`; no dangling-edge finding was reported for these IDs.
+
+### Update (continued 2026-07-04, final pass)
+
+- Re-ran preflight for `40ba5a15` and executed move via CLI:
+	- `ticket.exe move 40ba5a15 --workspace ./ --to-workspace-root ./memory-api --toon`
+	- Journal: `05bd02bc-69de-47f7-a800-6fe2238eaec0`
+	- Outcome: `status=ok`, `phase=Validated`.
+- Verified both move-now candidates now resolve to `memory-api/.ticket` from both root and nested workspace lookups:
+	- `40ba5a15`
+	- `61cb6557`
+- Targeted health checks for these IDs in `./` and `./memory-api` are warning-only (`missing_effort_estimation`); no dangling-edge finding is present for the pair.
