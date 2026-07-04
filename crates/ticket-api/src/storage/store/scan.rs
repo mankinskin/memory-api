@@ -174,6 +174,7 @@ impl TicketStore {
         let mut integrated = 0usize;
         let mut diagnostics = Vec::new();
         let mut disk_ids = HashSet::new();
+        let mut workflow_root_ids = HashSet::new();
 
         for (index, root) in roots.iter().enumerate() {
             if !root.path.exists() {
@@ -210,7 +211,8 @@ impl TicketStore {
             let integrate_root_started = Instant::now();
             let mut search_documents = Vec::with_capacity(entries.len());
             for entry in entries {
-                disk_ids.insert(entry.id);
+                let entry_id = entry.id;
+                disk_ids.insert(entry_id);
                 if let Some(search_document) = integrate_entry(
                     &self.index,
                     entry,
@@ -218,6 +220,7 @@ impl TicketStore {
                     &mut phase_timings_ms,
                 )? {
                     search_documents.push(search_document);
+                    workflow_root_ids.insert(entry_id);
                 }
                 integrated += 1;
             }
@@ -250,6 +253,7 @@ impl TicketStore {
                 ));
                 self.index.remove_ticket(&ticket.id)?;
                 self.search.remove(&ticket.id)?;
+                workflow_root_ids.insert(ticket.id);
                 pruned += 1;
             }
         }
@@ -260,7 +264,17 @@ impl TicketStore {
         );
 
         let workflow_started = Instant::now();
-        let workflow_timings = self.rebuild_workflow_facts()?;
+        let workflow_timings = if reindex {
+            self.rebuild_workflow_facts()?
+        } else {
+            let mut roots = workflow_root_ids.into_iter().collect::<Vec<_>>();
+            roots.sort_unstable();
+            self.refresh_workflow_facts_for_roots_with_timings(
+                &roots,
+                false,
+                Utc::now(),
+            )?
+        };
         merge_phase_totals(
             &mut phase_timings_ms,
             workflow_timings,

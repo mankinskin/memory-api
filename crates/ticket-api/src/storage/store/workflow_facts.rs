@@ -66,12 +66,42 @@ impl TicketStore {
         progress: bool,
         changed_at: DateTime<Utc>,
     ) -> Result<(), StorageError> {
+        self.refresh_workflow_facts_for_roots_with_timings(
+            root_ids,
+            progress,
+            changed_at,
+        )?;
+        Ok(())
+    }
+
+    pub(super) fn refresh_workflow_facts_for_roots_with_timings(
+        &self,
+        root_ids: &[Uuid],
+        progress: bool,
+        changed_at: DateTime<Utc>,
+    ) -> Result<BTreeMap<String, u64>, StorageError> {
+        let mut timings = BTreeMap::new();
+        let affected_started = Instant::now();
         let affected_ids = self.affected_workflow_slice(root_ids)?;
+        add_timing(
+            &mut timings,
+            "workflow.compute_affected_slice_ms",
+            affected_started,
+        );
+        timings.insert(
+            "workflow.incremental_root_count".to_string(),
+            root_ids.len() as u64,
+        );
+        timings.insert(
+            "workflow.incremental_affected_count".to_string(),
+            affected_ids.len() as u64,
+        );
         self.recompute_workflow_facts_for_ids_with_timings(
             &affected_ids.into_iter().collect::<Vec<_>>(),
             progress.then_some(changed_at),
-            None,
-        )
+            Some(&mut timings),
+        )?;
+        Ok(timings)
     }
 
     pub(super) fn state_rank_for_type(
@@ -100,9 +130,9 @@ impl TicketStore {
             if !visited.insert(current) {
                 continue;
             }
-            if let Some(_ticket) = self.get_indexed(&current)? {
-                affected.insert(current);
-            }
+            // Always include the current id: recompute drops stale facts for
+            // missing tickets and refreshes dependents via reverse edges.
+            affected.insert(current);
 
             for edge in self.index.edges_to(&current)? {
                 if edge.kind == "depends_on" {
@@ -112,14 +142,6 @@ impl TicketStore {
         }
 
         Ok(affected)
-    }
-
-    fn recompute_workflow_facts_for_ids(
-        &self,
-        ticket_ids: &[Uuid],
-        progress_at: Option<DateTime<Utc>>,
-    ) -> Result<(), StorageError> {
-        self.recompute_workflow_facts_for_ids_with_timings(ticket_ids, progress_at, None)
     }
 
     fn recompute_workflow_facts_for_ids_with_timings(

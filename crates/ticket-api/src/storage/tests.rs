@@ -838,6 +838,25 @@ fn scan_without_reindex_repairs_moved_nested_ticket_path_and_search_doc() {
             None,
         )
         .unwrap();
+    let dependent_id = child_store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Dependent on moved nested workspace ticket"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    child_store
+        .add_edge(EdgeRecord {
+            from: dependent_id,
+            to: ticket_id,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap();
 
     root_store.scan(true).unwrap();
     let expected = child_store.get_indexed(&ticket_id).unwrap().unwrap();
@@ -856,7 +875,18 @@ fn scan_without_reindex_repairs_moved_nested_ticket_path_and_search_doc() {
     poisoned.created_at = expected.created_at - Duration::days(1);
     poisoned_index.insert_ticket(&poisoned).unwrap();
 
-    root_store.scan(false).unwrap();
+    let report = root_store.scan(false).unwrap();
+
+    assert_eq!(
+        report.phase_timings_ms.get("workflow.incremental_root_count"),
+        Some(&1)
+    );
+    assert_eq!(
+        report
+            .phase_timings_ms
+            .get("workflow.incremental_affected_count"),
+        Some(&2)
+    );
 
     let indexed = root_store.get_indexed(&ticket_id).unwrap().unwrap();
     assert_eq!(indexed.path, expected.path);
@@ -874,6 +904,14 @@ fn scan_without_reindex_repairs_moved_nested_ticket_path_and_search_doc() {
                 && result.title.as_deref() == Some("Nested workspace ticket")
                 && result.state.as_deref() == Some("in-implementation")
         }));
+    assert_eq!(
+        root_store
+            .get_workflow_facts(&dependent_id)
+            .unwrap()
+            .unwrap()
+            .unresolved_dependency_count,
+        1
+    );
 }
 
 #[test]
@@ -1111,6 +1149,129 @@ fn scan_report_includes_phase_timings_and_root_counts() {
         .keys()
         .any(|key| key.starts_with("scan_root_")));
     assert!(!report.root_entry_counts.is_empty());
+}
+
+#[test]
+fn scan_without_reindex_skips_workflow_recompute_when_nothing_changed() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let blocker = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Stable blocker"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let dependent = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Stable dependent"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    store
+        .add_edge(EdgeRecord {
+            from: dependent,
+            to: blocker,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap();
+
+    store.scan(true).unwrap();
+    let report = store.scan(false).unwrap();
+
+    assert_eq!(
+        report.phase_timings_ms.get("workflow.incremental_root_count"),
+        Some(&0)
+    );
+    assert_eq!(
+        report
+            .phase_timings_ms
+            .get("workflow.incremental_affected_count"),
+        Some(&0)
+    );
+    assert!(!report
+        .phase_timings_ms
+        .contains_key("workflow.fetch_dependency_edges_ms"));
+}
+
+#[test]
+fn scan_without_reindex_recomputes_workflow_facts_for_changed_ticket_slice() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let child_repo = repo.join("memory-viewers").join("memory-api");
+    fs::create_dir_all(&child_repo).unwrap();
+
+    let root_store = TicketStore::init(&repo).unwrap();
+    let child_store = TicketStore::init(&child_repo).unwrap();
+    root_store
+        .add_scan_root(ScanRoot {
+            path: child_store.index_root.join("tickets"),
+            label: "memory-api".to_string(),
+        })
+        .unwrap();
+
+    let blocker = child_store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Changed blocker"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let dependent = child_store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Changed dependent"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    child_store
+        .add_edge(EdgeRecord {
+            from: dependent,
+            to: blocker,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap();
+
+    root_store.scan(true).unwrap();
+    let initial = root_store.get_workflow_facts(&dependent).unwrap().unwrap();
+    assert_eq!(initial.unresolved_dependency_count, 1);
+
+    child_store.close(&blocker, "done", None).unwrap();
+
+    let report = root_store.scan(false).unwrap();
+    assert_eq!(
+        report.phase_timings_ms.get("workflow.incremental_root_count"),
+        Some(&1)
+    );
+    assert_eq!(
+        report
+            .phase_timings_ms
+            .get("workflow.incremental_affected_count"),
+        Some(&2)
+    );
+
+    let updated = root_store.get_workflow_facts(&dependent).unwrap().unwrap();
+    assert_eq!(updated.unresolved_dependency_count, 0);
+    assert!(updated.became_actionable_at.is_some());
 }
 
 #[test]
