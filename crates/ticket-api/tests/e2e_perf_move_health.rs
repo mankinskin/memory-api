@@ -4,6 +4,7 @@ use chrono::Utc;
 use memory_fixtures::{
     FixtureError,
     TicketPerfFixtureOptions,
+    append_fixture_ticket,
     materialize_fixture_with_ticket_perf_load,
     materialize_git_fixture_with_ticket_perf_load,
 };
@@ -111,6 +112,9 @@ fn reference_heavy_move_e2e_reports_timings() {
     let execute_elapsed = execute_started.elapsed();
     assert_eq!(outcome.journal.phase, MoveExecutionPhase::Validated);
     assert!(!outcome.journal.rewritten_path_files.is_empty());
+    assert!(outcome.journal.phase_timings_ms.contains_key("rewrite_path_refs_ms"));
+    assert!(outcome.journal.phase_timings_ms.contains_key("scan_source_ms"));
+    assert!(outcome.journal.phase_timings_ms.contains_key("scan_target_ms"));
 
     let rollback_started = Instant::now();
     let rolled_back = source_store
@@ -121,12 +125,13 @@ fn reference_heavy_move_e2e_reports_timings() {
     assert_eq!(rolled_back.journal.phase, MoveExecutionPhase::RolledBack);
 
     eprintln!(
-        "move_perf preflight_ms={} execute_ms={} rollback_ms={} refs={} rewrites={}",
+        "move_perf preflight_ms={} execute_ms={} rollback_ms={} refs={} rewrites={} phases={:?}",
         preflight_elapsed.as_millis(),
         execute_elapsed.as_millis(),
         rollback_elapsed.as_millis(),
         plan.path_reference_files.len(),
         outcome.journal.rewritten_path_files.len(),
+        outcome.journal.phase_timings_ms,
     );
 }
 
@@ -205,11 +210,26 @@ fn health_all_e2e_reports_timings_on_large_fixture() {
         .store_root("ticket-root")
         .expect("root ticket store path")
         .to_path_buf();
+
+    let open_started = Instant::now();
     let store = TicketStore::open_or_init(&root_store).expect("open root store");
+    let open_elapsed = open_started.elapsed();
 
     let scan_started = Instant::now();
     store.scan(true).expect("scan root store");
     let scan_elapsed = scan_started.elapsed();
+
+    append_fixture_ticket(
+        &root_store,
+        "00000000-0000-5000-0000-000000000001",
+        "incremental perf fixture ticket",
+        "ready",
+        "perf",
+    )
+    .expect("append incremental fixture ticket");
+    let incremental_scan_started = Instant::now();
+    store.scan(false).expect("incremental scan root store");
+    let incremental_scan_elapsed = incremental_scan_started.elapsed();
 
     let ids = parse_ids(&perf.root_ticket_ids);
     add_perf_edges(&store, &ids);
@@ -232,13 +252,79 @@ fn health_all_e2e_reports_timings_on_large_fixture() {
     assert!(report.summary.contains_key("graph_participation") || report.summary.contains_key("missing_effort_estimation"));
 
     eprintln!(
-        "health_perf scan_ms={} list_ms={} workflow_ms={} collect_ms={} tickets={} edges={} findings={}",
+        "health_perf open_ms={} scan_true_ms={} scan_false_ms={} list_ms={} workflow_ms={} collect_ms={} tickets={} edges={} findings={}",
+        open_elapsed.as_millis(),
         scan_elapsed.as_millis(),
+        incremental_scan_elapsed.as_millis(),
         list_elapsed.as_millis(),
         workflow_elapsed.as_millis(),
         health_elapsed.as_millis(),
         tickets.len(),
         all_edges.len(),
         report.findings.len(),
+    );
+}
+
+#[test]
+fn stress_reference_heavy_sequential_moves_report_timings() {
+    let Some(perf) = git_available_or_skip(materialize_git_fixture_with_ticket_perf_load(
+        TicketPerfFixtureOptions::heavy(),
+    )) else {
+        eprintln!("git not available; skipping sequential perf move E2E");
+        return;
+    };
+
+    let source_root = perf
+        .fixture
+        .store_root("ticket-submodule-a")
+        .expect("submodule ticket store path")
+        .to_path_buf();
+    let target_workspace = perf.fixture.workspace_root.clone();
+    let source_store = TicketStore::open_or_init(&source_root).expect("open source store");
+    source_store.scan(true).expect("scan source");
+    let target_store = TicketStore::open_or_init(&target_workspace).expect("open target store");
+    target_store.scan(true).expect("scan target");
+
+    let first_id: Uuid = perf.submodule_ticket_ids[0].parse().expect("first move id");
+    let second_id: Uuid = perf.submodule_ticket_ids[1].parse().expect("second move id");
+
+    let mut first_plan = source_store
+        .plan_move_preflight(&first_id, &target_workspace)
+        .expect("plan first move");
+    first_plan.blockers.retain(|blocker| {
+        !matches!(
+            blocker,
+            MovePreflightBlocker::PathReferenceScanUnavailable { .. }
+                | MovePreflightBlocker::DirtyTrackedFiles { .. }
+        )
+    });
+    let first_started = Instant::now();
+    let first = source_store
+        .execute_move_with_journal(&first_plan)
+        .expect("execute first move");
+    let first_elapsed = first_started.elapsed();
+
+    let mut second_plan = source_store
+        .plan_move_preflight(&second_id, &target_workspace)
+        .expect("plan second move");
+    second_plan.blockers.retain(|blocker| {
+        !matches!(
+            blocker,
+            MovePreflightBlocker::PathReferenceScanUnavailable { .. }
+                | MovePreflightBlocker::DirtyTrackedFiles { .. }
+        )
+    });
+    let second_started = Instant::now();
+    let second = source_store
+        .execute_move_with_journal(&second_plan)
+        .expect("execute second move");
+    let second_elapsed = second_started.elapsed();
+
+    eprintln!(
+        "move_seq_perf first_ms={} second_ms={} first_phases={:?} second_phases={:?}",
+        first_elapsed.as_millis(),
+        second_elapsed.as_millis(),
+        first.journal.phase_timings_ms,
+        second.journal.phase_timings_ms,
     );
 }

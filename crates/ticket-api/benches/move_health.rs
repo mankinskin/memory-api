@@ -9,6 +9,7 @@ use criterion::{
 };
 use memory_fixtures::{
     TicketPerfFixtureOptions,
+    append_fixture_ticket,
     materialize_fixture_with_ticket_perf_load,
     materialize_git_fixture_with_ticket_perf_load,
 };
@@ -139,6 +140,195 @@ fn bench_move_execute_reference_heavy(c: &mut Criterion) {
     });
 }
 
+fn bench_move_rollback_reference_heavy(c: &mut Criterion) {
+    c.bench_function("move_rollback_reference_heavy", |b| {
+        b.iter_batched(
+            || {
+                let perf = materialize_git_fixture_with_ticket_perf_load(TicketPerfFixtureOptions::heavy())
+                    .expect("perf fixture should materialize");
+                let source_root = perf
+                    .fixture
+                    .store_root("ticket-submodule-a")
+                    .expect("submodule store")
+                    .to_path_buf();
+                let target_workspace = perf.fixture.workspace_root.clone();
+                let store = TicketStore::open_or_init(&source_root).expect("open source store");
+                store.scan(true).expect("scan source store");
+                let target_store = TicketStore::open_or_init(&target_workspace).expect("open target store");
+                target_store.scan(true).expect("scan target store");
+                let id: Uuid = perf.submodule_ticket_ids[0].parse().expect("fixture move id");
+                let mut plan = store
+                    .plan_move_preflight(&id, &target_workspace)
+                    .expect("plan preflight");
+                plan.blockers.retain(|blocker| {
+                    !matches!(
+                        blocker,
+                        MovePreflightBlocker::PathReferenceScanUnavailable { .. }
+                            | MovePreflightBlocker::DirtyTrackedFiles { .. }
+                    )
+                });
+                let outcome = store.execute_move_with_journal(&plan).expect("execute move");
+                (perf, store, outcome.journal.id)
+            },
+            |(_perf, store, journal_id)| {
+                let started = Instant::now();
+                let outcome = store
+                    .rollback_move_with_journal(journal_id)
+                    .expect("rollback move");
+                criterion::black_box(started.elapsed());
+                assert!(outcome.rolled_back);
+            },
+            criterion::BatchSize::SmallInput,
+        );
+    });
+}
+
+fn bench_open_or_init_root_perf_fixture(c: &mut Criterion) {
+    c.bench_function("open_or_init_root_perf_fixture", |b| {
+        b.iter_batched(
+            || {
+                let perf = materialize_fixture_with_ticket_perf_load(TicketPerfFixtureOptions::heavy())
+                    .expect("perf fixture should materialize");
+                let root_store = perf
+                    .fixture
+                    .store_root("ticket-root")
+                    .expect("root store")
+                    .to_path_buf();
+                (perf, root_store)
+            },
+            |(_perf, root_store)| {
+                let started = Instant::now();
+                let store = TicketStore::open_or_init(&root_store).expect("open store");
+                criterion::black_box(started.elapsed());
+                criterion::black_box(store);
+            },
+            criterion::BatchSize::SmallInput,
+        );
+    });
+}
+
+fn bench_scan_reindex_root_perf_fixture(c: &mut Criterion) {
+    c.bench_function("scan_reindex_root_perf_fixture", |b| {
+        b.iter_batched(
+            || {
+                let perf = materialize_fixture_with_ticket_perf_load(TicketPerfFixtureOptions::heavy())
+                    .expect("perf fixture should materialize");
+                let root_store = perf
+                    .fixture
+                    .store_root("ticket-root")
+                    .expect("root store")
+                    .to_path_buf();
+                let store = TicketStore::open_or_init(&root_store).expect("open store");
+                (perf, store)
+            },
+            |(_perf, store)| {
+                let started = Instant::now();
+                store.scan(true).expect("scan(true)");
+                criterion::black_box(started.elapsed());
+            },
+            criterion::BatchSize::SmallInput,
+        );
+    });
+}
+
+fn bench_scan_incremental_root_perf_fixture(c: &mut Criterion) {
+    c.bench_function("scan_incremental_root_perf_fixture", |b| {
+        b.iter_batched(
+            || {
+                let perf = materialize_fixture_with_ticket_perf_load(TicketPerfFixtureOptions::heavy())
+                    .expect("perf fixture should materialize");
+                let root_store = perf
+                    .fixture
+                    .store_root("ticket-root")
+                    .expect("root store")
+                    .to_path_buf();
+                let store = TicketStore::open_or_init(&root_store).expect("open store");
+                store.scan(true).expect("initial scan");
+                append_fixture_ticket(
+                    &root_store,
+                    "00000000-0000-5000-0000-0000000000aa",
+                    "bench incremental perf ticket",
+                    "ready",
+                    "perf",
+                )
+                .expect("append fixture ticket");
+                (perf, store)
+            },
+            |(_perf, store)| {
+                let started = Instant::now();
+                store.scan(false).expect("scan(false)");
+                criterion::black_box(started.elapsed());
+            },
+            criterion::BatchSize::SmallInput,
+        );
+    });
+}
+
+fn bench_health_workflow_build_large_fixture(c: &mut Criterion) {
+    let options = TicketPerfFixtureOptions::heavy();
+    c.bench_function("health_workflow_build_large_fixture", |b| {
+        b.iter_batched(
+            || {
+                let perf = materialize_fixture_with_ticket_perf_load(options)
+                    .expect("perf fixture should materialize");
+                let root_store = perf
+                    .fixture
+                    .store_root("ticket-root")
+                    .expect("root store")
+                    .to_path_buf();
+                let store = TicketStore::open_or_init(&root_store).expect("open store");
+                store.scan(true).expect("scan store");
+                let ids = parse_ids(&perf.root_ticket_ids);
+                add_perf_edges(&store, &ids);
+                let tickets = store.list(None, None, None).expect("list tickets");
+                let all_edges = store.list_all_edges().expect("list edges");
+                (perf, store, tickets, all_edges)
+            },
+            |(_perf, store, tickets, all_edges)| {
+                let started = Instant::now();
+                let workflow = WorkflowModel::build(&store, tickets, all_edges)
+                    .expect("build workflow");
+                criterion::black_box(started.elapsed());
+                criterion::black_box(workflow);
+            },
+            criterion::BatchSize::SmallInput,
+        );
+    });
+}
+
+fn bench_health_collect_large_fixture(c: &mut Criterion) {
+    let options = TicketPerfFixtureOptions::heavy();
+    c.bench_function("health_collect_large_fixture", |b| {
+        b.iter_batched(
+            || {
+                let perf = materialize_fixture_with_ticket_perf_load(options)
+                    .expect("perf fixture should materialize");
+                let root_store = perf
+                    .fixture
+                    .store_root("ticket-root")
+                    .expect("root store")
+                    .to_path_buf();
+                let store = TicketStore::open_or_init(&root_store).expect("open store");
+                store.scan(true).expect("scan store");
+                let ids = parse_ids(&perf.root_ticket_ids);
+                add_perf_edges(&store, &ids);
+                let tickets = store.list(None, None, None).expect("list tickets");
+                let all_edges = store.list_all_edges().expect("list edges");
+                let workflow = WorkflowModel::build(&store, tickets.clone(), all_edges.clone())
+                    .expect("build workflow");
+                (perf, store, tickets, all_edges, workflow)
+            },
+            |(_perf, store, tickets, all_edges, workflow)| {
+                let started = Instant::now();
+                let report = collect_findings(&store, &tickets, &all_edges, &workflow);
+                criterion::black_box(started.elapsed());
+                criterion::black_box(report.findings.len());
+            },
+            criterion::BatchSize::SmallInput,
+        );
+    });
+}
+
 fn bench_health_all_large_fixture(c: &mut Criterion) {
     let options = TicketPerfFixtureOptions {
         root_generated_ticket_count: 240,
@@ -180,8 +370,14 @@ fn bench_health_all_large_fixture(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    bench_open_or_init_root_perf_fixture,
+    bench_scan_reindex_root_perf_fixture,
+    bench_scan_incremental_root_perf_fixture,
     bench_move_preflight_reference_heavy,
     bench_move_execute_reference_heavy,
+    bench_move_rollback_reference_heavy,
+    bench_health_workflow_build_large_fixture,
+    bench_health_collect_large_fixture,
     bench_health_all_large_fixture,
 );
 criterion_main!(benches);

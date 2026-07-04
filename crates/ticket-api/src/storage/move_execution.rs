@@ -500,6 +500,7 @@ mod tests {
             migrated_board_entries: Vec::new(),
             rewritten_path_files: Vec::new(),
             manual_followups: Vec::new(),
+            phase_timings_ms: Default::default(),
             failure: None,
             next_recovery_step: None,
         };
@@ -878,6 +879,7 @@ mod tests {
             migrated_board_entries: Vec::new(),
             rewritten_path_files: Vec::new(),
             manual_followups: Vec::new(),
+            phase_timings_ms: Default::default(),
             failure: None,
             next_recovery_step: None,
         };

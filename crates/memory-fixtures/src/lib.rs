@@ -80,12 +80,63 @@ impl Default for TicketPerfFixtureOptions {
     }
 }
 
+impl TicketPerfFixtureOptions {
+    pub fn heavy() -> Self {
+        Self {
+            root_generated_ticket_count: 240,
+            submodule_generated_ticket_count: 64,
+            tracked_reference_file_count: 18,
+            references_per_file: 28,
+        }
+    }
+
+    pub fn stress() -> Self {
+        Self {
+            root_generated_ticket_count: 480,
+            submodule_generated_ticket_count: 160,
+            tracked_reference_file_count: 36,
+            references_per_file: 48,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct TicketPerfFixture {
     pub fixture: LoadedFixture,
     pub root_ticket_ids: Vec<String>,
     pub submodule_ticket_ids: Vec<String>,
     pub tracked_reference_files: Vec<PathBuf>,
+}
+
+pub fn append_fixture_ticket(
+    store_root: &Path,
+    id: &str,
+    title: &str,
+    state: &str,
+    component: &str,
+) -> Result<PathBuf, FixtureError> {
+    let ticket_dir = store_root.join("tickets").join(id);
+    fs::create_dir_all(&ticket_dir).map_err(|source| FixtureError::Io {
+        path: ticket_dir.clone(),
+        source,
+    })?;
+    write_text(
+        &ticket_dir.join("ticket.toml"),
+        &format!(
+            "id = \"{id}\"\ncreated_at = \"2026-06-28T00:00:00Z\"\ntitle = \"{title}\"\nstate = \"{state}\"\ntype = \"tracker-improvement\"\ncomponent = \"{component}\"\n"
+        ),
+    )?;
+    write_text(
+        &ticket_dir.join("description.md"),
+        &format!("# {title}\n\nAppended representative fixture ticket for incremental scan and perf timing.\n"),
+    )?;
+    write_text(
+        &ticket_dir.join("history.ndjson"),
+        &format!(
+            "{{\"rev\":1,\"ts\":\"2026-06-28T00:00:00Z\",\"fields\":{{\"state\":\"{state}\",\"title\":\"{title}\"}}}}\n"
+        ),
+    )?;
+    Ok(ticket_dir)
 }
 
 impl LoadedFixture {

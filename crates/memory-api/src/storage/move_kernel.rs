@@ -28,6 +28,7 @@ use std::{
         PathBuf,
     },
     process::Command,
+    time::Instant,
 };
 
 use chrono::Utc;
@@ -437,6 +438,8 @@ pub struct MoveJournal {
     pub rewritten_path_files: Vec<MovePathRewrite>,
     #[serde(default)]
     pub manual_followups: Vec<MoveManualFollowup>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub phase_timings_ms: std::collections::BTreeMap<String, u64>,
     pub failure: Option<String>,
     #[serde(default)]
     pub next_recovery_step: Option<String>,
@@ -657,11 +660,18 @@ pub fn rollback_move<D: MoveDomain + ?Sized>(
     }
 
     if !journal.migrated_board_entries.is_empty() {
+        let started = Instant::now();
         domain.restore_board_history(&journal.target_store_root, &journal.migrated_board_entries)?;
+        record_phase_timing(&mut journal, "rollback_restore_board_history_ms", started.elapsed());
     }
 
+    let source_scan_started = Instant::now();
     domain.scan_store(&journal.source_store_root)?;
+    record_phase_timing(&mut journal, "rollback_scan_source_ms", source_scan_started.elapsed());
+
+    let target_scan_started = Instant::now();
     domain.scan_store(&journal.target_store_root)?;
+    record_phase_timing(&mut journal, "rollback_scan_target_ms", target_scan_started.elapsed());
 
     journal.phase = MoveExecutionPhase::RolledBack;
     journal.updated_at = Utc::now();
@@ -711,6 +721,7 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
         migrated_board_entries: Vec::new(),
         rewritten_path_files: Vec::new(),
         manual_followups: Vec::new(),
+        phase_timings_ms: std::collections::BTreeMap::new(),
         failure: None,
         next_recovery_step: None,
     });
@@ -725,7 +736,9 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
 
     let result: MoveResult<()> = (|| {
         if journal.phase == MoveExecutionPhase::Planned {
+            let started = Instant::now();
             acquire_lock_set(&journal.lock_paths)?;
+            record_phase_timing(&mut journal, "lock_acquisition_ms", started.elapsed());
             journal.phase = MoveExecutionPhase::Locked;
             journal.updated_at = Utc::now();
             journal
@@ -738,9 +751,11 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
             if let Some(parent) = journal.destination_entity_path.parent() {
                 fs::create_dir_all(parent)?;
             }
+            let started = Instant::now();
             if journal.source_entity_path.exists() {
                 fs::rename(&journal.source_entity_path, &journal.destination_entity_path)?;
             }
+            record_phase_timing(&mut journal, "rename_entity_ms", started.elapsed());
             journal.phase = MoveExecutionPhase::Moved;
             journal.updated_at = Utc::now();
             journal.steps.push("moved entity folder".to_string());
@@ -749,7 +764,9 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
 
         if journal.phase == MoveExecutionPhase::Moved {
             if journal.rewritten_path_files.is_empty() && journal.manual_followups.is_empty() {
+                let started = Instant::now();
                 let (rewritten, followups) = rewrite_path_references(plan)?;
+                record_phase_timing(&mut journal, "rewrite_path_refs_ms", started.elapsed());
                 if !rewritten.is_empty() {
                     journal
                         .steps
@@ -766,8 +783,10 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
             }
 
             if journal.migrated_board_entries.is_empty() {
+                let started = Instant::now();
                 journal.migrated_board_entries =
                     domain.migrate_board_history(&journal.target_store_root, &journal.entity_id)?;
+                record_phase_timing(&mut journal, "migrate_board_history_ms", started.elapsed());
                 if !journal.migrated_board_entries.is_empty() {
                     journal.steps.push(format!(
                         "migrated {} historical board rows",
@@ -776,7 +795,9 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
                 }
             }
 
+            let started = Instant::now();
             domain.scan_store(&journal.source_store_root)?;
+            record_phase_timing(&mut journal, "scan_source_ms", started.elapsed());
             journal.phase = MoveExecutionPhase::SourceScanned;
             journal.updated_at = Utc::now();
             journal.steps.push("scanned source store".to_string());
@@ -784,7 +805,9 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
         }
 
         if journal.phase == MoveExecutionPhase::SourceScanned {
+            let started = Instant::now();
             domain.scan_store(&journal.target_store_root)?;
+            record_phase_timing(&mut journal, "scan_target_ms", started.elapsed());
             journal.phase = MoveExecutionPhase::TargetScanned;
             journal.updated_at = Utc::now();
             journal.steps.push("scanned target store".to_string());
@@ -792,8 +815,10 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
         }
 
         if journal.phase == MoveExecutionPhase::TargetScanned {
+            let started = Instant::now();
             let source_seen = domain.entity_indexed_in(&journal.source_store_root, &journal.entity_id)?;
             let target_seen = domain.entity_indexed_in(&journal.target_store_root, &journal.entity_id)?;
+            record_phase_timing(&mut journal, "validate_move_ms", started.elapsed());
             if source_seen || !target_seen {
                 let mut problems = Vec::new();
                 if source_seen {
@@ -888,6 +913,15 @@ fn release_lock_set(lock_paths: &[PathBuf]) {
     for path in lock_paths {
         let _ = fs::remove_file(path);
     }
+}
+
+fn record_phase_timing(
+    journal: &mut MoveJournal,
+    key: &str,
+    elapsed: std::time::Duration,
+) {
+    let millis = elapsed.as_millis().min(u64::MAX as u128) as u64;
+    journal.phase_timings_ms.insert(key.to_string(), millis);
 }
 
 fn restore_rewritten_path(rewrite: &MovePathRewrite) -> MoveResult<()> {
