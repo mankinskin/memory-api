@@ -352,8 +352,16 @@ pub struct MovePathRewrite {
         deserialize_with = "deserialize_pathbuf"
     )]
     pub repo_relative_path: PathBuf,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replacements: Vec<MoveTextReplacement>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_content: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoveTextReplacement {
+    pub before: String,
+    pub after: String,
 }
 
 /// A tracked reference that requires manual follow-up (binary content, no match).
@@ -570,21 +578,6 @@ pub fn plan_move<D: MoveDomain + ?Sized>(
     } else {
         Vec::new()
     };
-
-    if !path_reference_files.is_empty() {
-        // Contract decision: fail-closed on any dirty tracked reference file,
-        // including files dirtied by a prior move's own rewrites. Callers must
-        // commit or rollback between sequential moves to keep provenance clear.
-        let dirty_files =
-            git_dirty_tracked_files(&path_reference_files, &source_git_root, &target_git_root)
-                .unwrap_or_else(|reason| {
-                    blockers.push(MoveBlocker::PathReferenceScanUnavailable { reason });
-                    Vec::new()
-                });
-        if !dirty_files.is_empty() {
-            blockers.push(MoveBlocker::DirtyTrackedFiles { files: dirty_files });
-        }
-    }
 
     Ok(MovePlan {
         entity_id: *entity_id,
@@ -903,6 +896,23 @@ fn restore_rewritten_path(rewrite: &MovePathRewrite) -> MoveResult<()> {
         return Ok(());
     }
 
+    if !rewrite.replacements.is_empty() {
+        let bytes = fs::read(&rewrite.path)?;
+        let current_content = String::from_utf8(bytes).map_err(|_| {
+            MoveError::Domain(format!(
+                "rewritten file {} is not valid utf-8 for rollback",
+                normalize_slashes(&rewrite.path)
+            ))
+        })?;
+
+        let mut restored = current_content.clone();
+        for replacement in rewrite.replacements.iter().rev() {
+            restored = restored.replace(&replacement.after, &replacement.before);
+        }
+        fs::write(&rewrite.path, restored.as_bytes())?;
+        return Ok(());
+    }
+
     if path_buf_is_empty(&rewrite.repo_root) || path_buf_is_empty(&rewrite.repo_relative_path) {
         return Err(MoveError::Domain(format!(
             "journal rewrite record for {} is missing rollback metadata",
@@ -973,10 +983,22 @@ fn rewrite_path_references(
             continue;
         };
 
-        let mut replaced = previous_content.replace(&old_abs, &new_abs);
+        let mut replacements = Vec::new();
+        let mut replaced = previous_content.clone();
+        if replaced.contains(&old_abs) {
+            replaced = replaced.replace(&old_abs, &new_abs);
+            replacements.push(MoveTextReplacement {
+                before: old_abs.clone(),
+                after: new_abs.clone(),
+            });
+        }
         for (old_rel, new_rel) in &relative_pairs {
-            if !old_rel.is_empty() {
+            if !old_rel.is_empty() && replaced.contains(old_rel) {
                 replaced = replaced.replace(old_rel, new_rel);
+                replacements.push(MoveTextReplacement {
+                    before: old_rel.clone(),
+                    after: new_rel.clone(),
+                });
             }
         }
 
@@ -1006,6 +1028,7 @@ fn rewrite_path_references(
             path: file_path,
             repo_root: repo_root.to_path_buf(),
             repo_relative_path,
+            replacements,
             previous_content: None,
         });
     }
@@ -1111,46 +1134,6 @@ fn git_tracked_path_reference_files(
     }
 
     Ok(files.into_iter().collect())
-}
-
-fn git_dirty_tracked_files(
-    files: &[PathBuf],
-    source_repo_root: &Path,
-    target_repo_root: &Path,
-) -> Result<Vec<PathBuf>, String> {
-    let mut dirty = Vec::new();
-    for file in files {
-        let (repo_root, status_path) = tracked_repo_for_file(file, source_repo_root, target_repo_root)
-            .map(|(repo_root, repo_relative_path)| {
-                (
-                    repo_root,
-                    repo_relative_path.to_string_lossy().replace('\\', "/"),
-                )
-            })
-            .unwrap_or((source_repo_root, file.to_string_lossy().replace('\\', "/")));
-
-        let output = Command::new("git")
-            .args([
-                "-C",
-                &repo_root.to_string_lossy(),
-                "status",
-                "--porcelain",
-                "--",
-                &status_path,
-            ])
-            .output()
-            .map_err(|error| error.to_string())?;
-
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
-
-        if !String::from_utf8_lossy(&output.stdout).trim().is_empty() {
-            dirty.push(file.clone());
-        }
-    }
-
-    Ok(dirty)
 }
 
 fn tracked_repo_for_file<'a>(
