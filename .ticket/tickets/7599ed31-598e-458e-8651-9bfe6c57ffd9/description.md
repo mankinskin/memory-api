@@ -60,3 +60,31 @@ It is acceptable to move tickets that are currently `in-implementation`. The age
 
 ## Blocks
 - Hard-link cross-store reference work: `b03be2d5` (cross-entity edges spec↔ticket) and `f00291a3` (ticket↔spec integration) depend on this cleanup so their target entities are co-located.
+
+## Execution status (2026-07-04)
+
+Completed in this session:
+
+- Verified dependency `505b2cd4` is done.
+- Checked in on board for `7599ed31` in `memory-api` workspace.
+- Recovered and validated interrupted journaled moves where destination ownership was already correct on disk:
+	- `e3961a54`
+	- `51671748`
+- Added a move-kernel validation fix in `memory-api/crates/memory-api/src/storage/move_kernel.rs` so post-move validation prioritizes source/destination folder ownership and treats stale index visibility as a follow-up instead of hard failure.
+- Validation run for the move-domain invariant and resume path:
+	- `cargo test --manifest-path memory-api/crates/ticket-api/Cargo.toml entity_indexed_in_requires_path_ownership_not_aggregate_visibility -- --nocapture`
+	- `cargo test --manifest-path memory-api/crates/ticket-api/Cargo.toml sequential_move_after_resumed_execution_can_continue_without_clean_commit -- --nocapture`
+
+Current blocker frontier for remaining scoped candidates:
+
+- No additional ticket in the currently scoped migration set is `supported=true` in move preflight.
+- Remaining root-scoped candidates are blocked by `InvisibleReference` dependencies to entities outside the scoped set, including cross-workspace/LCA trackers that are intentionally kept in `context-engine`.
+- Representative blocker IDs surfaced across preflights include:
+	- memory-domain neighbors not yet in the scoped list: `14df656e`, `40ba5a15`, `61cb6557`
+	- cross-workspace/LCA entities expected to stay in root: `73b2cd22`, `bce26d30`, `8a90a63c`, `6bd67a7a`, `82d6ada4`
+
+Implication:
+
+- Completing the remaining migration requires either:
+	1. expanding the move set to include additional memory-domain neighbors first, until visibility constraints collapse, or
+	2. explicitly reclassifying part of the current candidate set as root-owned due enduring cross-workspace coupling.

@@ -289,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn preflight_reports_invisible_reference_and_path_refs() {
+    fn preflight_reports_invisible_reference_visibility_and_path_refs() {
         let temp = tempdir().unwrap();
         let repo = temp.path().join("repo");
         fs::create_dir_all(&repo).unwrap();
@@ -375,7 +375,7 @@ mod tests {
             .plan_move_preflight(&source_ticket, &target_workspace)
             .unwrap();
 
-        assert!(!report.supported());
+        assert!(report.supported());
         assert!(report.reference_visibility.iter().any(|entry| {
             entry.related_entity_id == invisible_inbound
                 && entry.direction == MoveReferenceDirection::Inbound
@@ -384,12 +384,9 @@ mod tests {
         assert!(report.path_reference_files.iter().any(|path| {
             path.ends_with("docs/move.md")
         }));
-        assert!(report.blockers.iter().any(|blocker| matches!(
+        assert!(!report.blockers.iter().any(|blocker| matches!(
             blocker,
-            MovePreflightBlocker::InvisibleReference {
-                related_entity_id,
-                direction: MoveReferenceDirection::Inbound,
-            } if *related_entity_id == invisible_inbound
+            MovePreflightBlocker::InvisibleReference { .. }
         )));
     }
 

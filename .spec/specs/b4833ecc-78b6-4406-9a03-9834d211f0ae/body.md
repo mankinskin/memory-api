@@ -74,7 +74,7 @@ Executions:
 - `exec-spec-root-awareness-transport-20260630-blocked` (blocked by Windows App Control policy on spec-cli bin target)
 
 ## Ticket Traceability
-- Design + guard tests: `C:/Users/linus/git/graph_app/context-engine/.ticket/tickets/e3961a54-ea4c-4ce6-aee9-da67a15bf2c7`
+- Design + guard tests: `C:/Users/linus/git/graph_app/context-engine/memory-api/memory-api/.ticket/tickets/e3961a54-ea4c-4ce6-aee9-da67a15bf2c7`
 - Implementation (roadmap + migration map): `C:/Users/linus/git/graph_app/context-engine/.ticket/tickets/e8e3ef17-313f-4cb7-aa9c-6447a18d36a3`
 - Prior path fix (spec-cli root awareness): `C:/Users/linus/git/graph_app/context-engine/.ticket/tickets/59d96577-09a8-44a7-b0ea-3d51b3a6fb05`
 - Related cross-worktree move (surfaced verbatim-prefix bug): `C:/Users/linus/git/graph_app/context-engine/memory-api/.ticket/tickets/21e6c015-55c6-4807-8d55-16193ed687ed`

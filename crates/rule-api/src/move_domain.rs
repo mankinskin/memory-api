@@ -258,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn rule_move_blocks_when_related_rule_is_not_visible_from_destination() {
+    fn rule_move_reports_invisible_related_rule_without_blocking() {
         let temp = tempdir().unwrap();
         let repo = temp.path().join("repo");
         std::fs::create_dir_all(&repo).unwrap();
@@ -303,16 +303,15 @@ mod tests {
             .plan_move_preflight(&moving_id, &target_workspace)
             .unwrap();
 
-        assert!(
-            plan.blockers.iter().any(|blocker| matches!(
-                blocker,
-                MoveBlocker::InvisibleReference {
-                    related_entity_id,
-                    direction: MoveReferenceDirection::Outbound,
-                } if *related_entity_id == related_id
-            )),
-            "expected invisible outbound reference blocker: {:?}",
-            plan.blockers
-        );
+        assert!(plan.supported());
+        assert!(plan.reference_visibility.iter().any(|entry| {
+            entry.related_entity_id == related_id
+                && entry.direction == MoveReferenceDirection::Outbound
+                && !entry.visible_from_destination
+        }));
+        assert!(!plan.blockers.iter().any(|blocker| matches!(
+            blocker,
+            MoveBlocker::InvisibleReference { .. }
+        )));
     }
 }

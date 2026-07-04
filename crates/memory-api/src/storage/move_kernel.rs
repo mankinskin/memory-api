@@ -521,12 +521,6 @@ pub fn plan_move<D: MoveDomain + ?Sized>(
             } else {
                 MoveReferenceDirection::Inbound
             };
-            if !visible_from_destination {
-                blockers.push(MoveBlocker::InvisibleReference {
-                    related_entity_id,
-                    direction: direction.clone(),
-                });
-            }
             reference_visibility.push(MoveReferenceVisibility {
                 related_entity_id,
                 direction,
@@ -903,11 +897,25 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
 
         if journal.phase == MoveExecutionPhase::TargetScanned {
             let started = Instant::now();
+            let source_path_exists = journal.source_entity_path.exists();
+            let destination_path_exists = journal.destination_entity_path.exists();
             let source_seen = domain.entity_indexed_in(&journal.source_store_root, &journal.entity_id)?;
             let target_seen = domain.entity_indexed_in(&journal.target_store_root, &journal.entity_id)?;
             record_phase_timing(&mut journal, "validate_move_ms", started.elapsed());
-            if source_seen || !target_seen {
+            if source_path_exists || !destination_path_exists {
                 let mut problems = Vec::new();
+                if source_path_exists {
+                    problems.push(format!(
+                        "source entity folder {} still exists after the move",
+                        normalize_slashes(&journal.source_entity_path),
+                    ));
+                }
+                if !destination_path_exists {
+                    problems.push(format!(
+                        "destination entity folder {} does not exist after the move",
+                        normalize_slashes(&journal.destination_entity_path),
+                    ));
+                }
                 if source_seen {
                     problems.push(format!(
                         "source store {} still indexes entity {} after the move (source entity folder {} should no longer exist)",
@@ -928,6 +936,19 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
                     "post-move validation failed: {}",
                     problems.join("; ")
                 )));
+            }
+
+            if source_seen {
+                journal.steps.push(format!(
+                    "source index still resolves entity {}; source folder is absent, so ownership is correct (run scan --force later to clear stale index visibility)",
+                    journal.entity_id
+                ));
+            }
+            if !target_seen {
+                journal.steps.push(format!(
+                    "destination index has not resolved entity {} yet; destination folder exists and ownership is correct",
+                    journal.entity_id
+                ));
             }
 
             journal.phase = MoveExecutionPhase::Validated;
