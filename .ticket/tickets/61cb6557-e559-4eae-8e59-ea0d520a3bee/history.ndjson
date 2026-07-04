@@ -1,0 +1,2 @@
+{"rev":1,"ts":"2026-05-21T15:09:05.864417500+00:00","fields":{"state":"new","title":"[ticket-cli][ticket-mcp] Add consolidated ticket detail/context read surface","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-06-01T21:49:14.664945+00:00","fields":{"depends_on":["07836f41-7fa5-4e41-8411-1c7cf8aeee75"],"state":"new","title":"[ticket-cli][ticket-mcp] Add consolidated ticket detail/context read surface","type":"tracker-improvement"}}

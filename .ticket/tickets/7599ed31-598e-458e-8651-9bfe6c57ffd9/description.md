@@ -88,3 +88,16 @@ Implication:
 - Completing the remaining migration requires either:
 	1. expanding the move set to include additional memory-domain neighbors first, until visibility constraints collapse, or
 	2. explicitly reclassifying part of the current candidate set as root-owned due enduring cross-workspace coupling.
+
+### Update (continued 2026-07-04)
+
+- Re-ran focused classification preflights on the blocker frontier and confirmed split ownership:
+	- move-now: `40ba5a15`, `61cb6557`
+	- keep root/LCA: `73b2cd22`, `bce26d30`, `8a90a63c`, `6bd67a7a`, `82d6ada4`
+	- `14df656e` resolves to `memory-api/.ticket` ownership already.
+- Attempted move apply for move-now set:
+	- `61cb6557` moved to `memory-api/.ticket` on disk; apply initially reported post-move source-index visibility mismatch, then journal resume completed successfully via `f852c556-54ef-4581-a7fb-2bb19dbdb0d3`.
+	- `40ba5a15` remains blocked by `DirtyTrackedFiles` preflight guard in root store.
+- Current actionable blocker for next slice:
+	- clean/commit the dirty root tracked files (`.ticket/README.md`, `.ticket/index.toon`, `1acb4182-...`, `a1558e76-...`) and retry move apply for `40ba5a15`.
+- Spot health-check for migrated candidates (`40ba5a15`, `61cb6557`) in both `./` and `./memory-api` reports warning-only `missing_effort_estimation`; no dangling-edge finding was reported for these IDs.
