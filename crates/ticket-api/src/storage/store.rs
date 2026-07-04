@@ -285,7 +285,7 @@ impl TicketStore {
         index_root: &Path,
         schema_registry: SchemaRegistry,
     ) -> Result<(Self, StoreOpenReport), StorageError> {
-        let _span_guard = tracing::info_span!(
+        let _span_guard = tracing::debug_span!(
             target: STORE_TRACE_TARGET,
             "ticket_store_open_profiled"
         )
@@ -351,7 +351,7 @@ impl TicketStore {
         index_root: &Path,
         schema_registry: SchemaRegistry,
     ) -> Result<(Self, StoreOpenReport), StorageError> {
-        let _span_guard = tracing::info_span!(
+        let _span_guard = tracing::debug_span!(
             target: STORE_TRACE_TARGET,
             "ticket_store_init_profiled"
         )
@@ -416,7 +416,7 @@ impl TicketStore {
         index_root: &Path,
         schema_registry: SchemaRegistry,
     ) -> Result<(Self, StoreOpenReport), StorageError> {
-        let span = tracing::info_span!(
+        let span = tracing::debug_span!(
             target: STORE_TRACE_TARGET,
             "ticket_store_open_or_init",
             initialized_store = Empty,

@@ -218,7 +218,7 @@ pub fn run(cli: TicketCli) -> Result<CliOutput, CliRunError> {
         .request_id
         .clone()
         .unwrap_or_else(|| Uuid::new_v4().to_string());
-    let _span_guard = tracing::info_span!(
+    let _span_guard = tracing::debug_span!(
         target: "ticket_cli::transport",
         "ticket_cli_run",
         request_id = %request_id,

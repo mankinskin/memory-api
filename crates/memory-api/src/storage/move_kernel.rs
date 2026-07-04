@@ -564,7 +564,15 @@ pub fn plan_move<D: MoveDomain + ?Sized>(
         match git_tracked_path_reference_files(&source_git_root, &resolved_source_path) {
             Ok(found) => {
                 for file in found {
-                    files.insert(source_git_root.join(file));
+                    let candidate = source_git_root.join(file);
+                    if is_persistent_move_reference_file(
+                        &candidate,
+                        &source_store_root,
+                        &target_store_root,
+                        &subdir,
+                    ) {
+                        files.insert(candidate);
+                    }
                 }
             },
             Err(reason) => {
@@ -576,7 +584,15 @@ pub fn plan_move<D: MoveDomain + ?Sized>(
             match git_tracked_path_reference_files(&target_git_root, &resolved_source_path) {
                 Ok(found) => {
                     for file in found {
-                        files.insert(target_git_root.join(file));
+                        let candidate = target_git_root.join(file);
+                        if is_persistent_move_reference_file(
+                            &candidate,
+                            &source_store_root,
+                            &target_store_root,
+                            &subdir,
+                        ) {
+                            files.insert(candidate);
+                        }
                     }
                 },
                 Err(reason) => {
@@ -618,7 +634,7 @@ pub fn execute_move<D: MoveDomain + ?Sized>(
     domain: &D,
     plan: &MovePlan,
 ) -> MoveResult<MoveOutcome> {
-    let _span_guard = tracing::info_span!(
+    let _span_guard = tracing::debug_span!(
         target: MOVE_TRACE_TARGET,
         "move_execute",
         entity_id = %plan.entity_id,
@@ -638,7 +654,7 @@ pub fn resume_move<D: MoveDomain + ?Sized>(
     domain: &D,
     journal_id: Uuid,
 ) -> MoveResult<MoveOutcome> {
-    let _span_guard = tracing::info_span!(
+    let _span_guard = tracing::debug_span!(
         target: MOVE_TRACE_TARGET,
         "move_resume",
         journal_id = %journal_id,
@@ -666,7 +682,7 @@ pub fn rollback_move<D: MoveDomain + ?Sized>(
 ) -> MoveResult<MoveOutcome> {
     let source_store_root = domain.source_store_root();
     let mut journal = load_journal(&source_store_root, journal_id)?;
-    let span = tracing::info_span!(
+    let span = tracing::debug_span!(
         target: MOVE_TRACE_TARGET,
         "move_rollback",
         journal_id = %journal.id,
@@ -727,7 +743,7 @@ pub fn rollback_move<D: MoveDomain + ?Sized>(
     persist_journal(&source_store_root, &journal)?;
     release_lock_set(&journal.lock_paths);
 
-    tracing::info!(
+    tracing::debug!(
         target: MOVE_TRACE_TARGET,
         journal_id = %journal.id,
         entity_id = %journal.entity_id,
@@ -789,7 +805,7 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
     }
     persist_journal(&journal_root, &journal)?;
 
-    let span = tracing::info_span!(
+    let span = tracing::debug_span!(
         target: MOVE_TRACE_TARGET,
         "move_execute_or_resume",
         journal_id = %journal.id,
@@ -800,7 +816,7 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
     );
     let _span_guard = span.enter();
     span.record("phase", phase_name(&journal.phase));
-    tracing::info!(
+    tracing::debug!(
         target: MOVE_TRACE_TARGET,
         phase = phase_name(&journal.phase),
         "move_journal_ready"
@@ -995,7 +1011,7 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
     match result {
         Ok(()) => {
             release_lock_set(&journal.lock_paths);
-            tracing::info!(
+            tracing::debug!(
                 target: MOVE_TRACE_TARGET,
                 journal_id = %journal.id,
                 entity_id = %journal.entity_id,
@@ -1347,6 +1363,22 @@ fn git_tracked_path_reference_files(
     }
 
     Ok(files.into_iter().collect())
+}
+
+fn is_persistent_move_reference_file(
+    file: &Path,
+    source_store_root: &Path,
+    target_store_root: &Path,
+    entity_subdir: &str,
+) -> bool {
+    let entity_subdir = Path::new(entity_subdir);
+    for store_root in [source_store_root, target_store_root] {
+        if let Ok(relative) = file.strip_prefix(store_root) {
+            return relative.starts_with(entity_subdir);
+        }
+    }
+
+    true
 }
 
 fn tracked_repo_for_file<'a>(

@@ -73,7 +73,7 @@ pub(crate) fn cmd_move(
     store: &TicketStore,
     global_dry_run: bool,
 ) -> Result<Value, CliRunError> {
-    let _span_guard = tracing::info_span!(
+    let _span_guard = tracing::debug_span!(
         target: "ticket_cli::transport",
         "ticket_cli_move",
         mode = tracing::field::Empty,
@@ -111,7 +111,7 @@ pub(crate) fn cmd_move(
         })?;
         let outcome = store.resume_move_with_journal(journal_id)?;
         tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
-        tracing::info!(
+        tracing::debug!(
             target: "ticket_cli::transport",
             journal_id = %outcome.journal.id,
             phase = ?outcome.journal.phase,
@@ -140,7 +140,7 @@ pub(crate) fn cmd_move(
         })?;
         let outcome = store.rollback_move_with_journal(journal_id)?;
         tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
-        tracing::info!(
+        tracing::debug!(
             target: "ticket_cli::transport",
             journal_id = %outcome.journal.id,
             phase = ?outcome.journal.phase,
@@ -196,7 +196,7 @@ pub(crate) fn cmd_move(
     let dry_run = global_dry_run || args.dry_run;
 
     if dry_run || !report.supported() {
-        tracing::info!(
+        tracing::debug!(
             target: "ticket_cli::transport",
             ticket_id = %ticket_id,
             supported = report.supported(),
@@ -216,7 +216,7 @@ pub(crate) fn cmd_move(
 
     let outcome = store.execute_move_with_journal(&report)?;
     tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
-    tracing::info!(
+    tracing::debug!(
         target: "ticket_cli::transport",
         ticket_id = %ticket_id,
         journal_id = %outcome.journal.id,

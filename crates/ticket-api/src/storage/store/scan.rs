@@ -76,7 +76,7 @@ impl TicketStore {
         &self,
         reindex: bool,
     ) -> Result<ScanReport, StorageError> {
-        let span = tracing::info_span!(
+        let span = tracing::debug_span!(
             target: STORE_TRACE_TARGET,
             "ticket_store_scan",
             requested_reindex = reindex,
@@ -102,7 +102,7 @@ impl TicketStore {
             "scan_total_ms",
             overall_started,
         );
-        tracing::info!(
+        tracing::debug!(
             target: STORE_TRACE_TARGET,
             integrated = report.integrated,
             pruned = report.pruned,

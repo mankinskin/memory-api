@@ -7,7 +7,7 @@ use ticket_api::storage::store::TicketStore;
 
 #[tokio::main]
 async fn main() {
-    init_transport_tracing("ticket_mcp=info", None, None, "info");
+    init_transport_tracing("ticket_mcp=info", None, None, "warn");
 
     let index_root = std::env::var("TICKET_INDEX_ROOT")
         .map(PathBuf::from)
