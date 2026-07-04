@@ -1,4 +1,5 @@
 - Added structured profiling for `TicketStore::open_or_init` and `scan`, with per-phase timings and scan-root entry counts surfaced to tests and benches.
+- Added tracing spans/events for the same `TicketStore::open_or_init` and `scan` phase boundaries, so the profiling data is now visible both in deterministic reports and through the `tracing` pipeline used by transports and future log capture.
 - Focused validation passed: `storage::tests::open_or_init_profiled_reports_bootstrap_scan_timings`, `storage::tests::scan_report_includes_phase_timings_and_root_counts`, and `health_all_e2e_reports_timings_on_large_fixture`.
 - Large health fixture evidence:
   - `open_or_init_total_ms` was about `19535`.

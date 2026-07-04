@@ -18,6 +18,7 @@ use memory_api::{
     storage::ensure_sqlite_index_root,
 };
 use serde_json::Value;
+use tracing::field::Empty;
 use uuid::Uuid;
 
 use crate::{
@@ -55,6 +56,8 @@ pub use self::{
     },
     scan::ScanReport,
 };
+
+const STORE_TRACE_TARGET: &str = "ticket_api::storage::store";
 
 #[derive(Debug, Clone, Default)]
 pub struct StoreOpenReport {
@@ -282,6 +285,11 @@ impl TicketStore {
         index_root: &Path,
         schema_registry: SchemaRegistry,
     ) -> Result<(Self, StoreOpenReport), StorageError> {
+        let _span_guard = tracing::info_span!(
+            target: STORE_TRACE_TARGET,
+            "ticket_store_open_profiled"
+        )
+        .entered();
         let overall_started = Instant::now();
         let resolve_started = Instant::now();
         let index_root = workspace::resolve_store_root_from(
@@ -309,6 +317,7 @@ impl TicketStore {
             "open_total_ms".to_string(),
             elapsed_ms(overall_started),
         );
+        emit_store_open_report("ticket_store_open_profiled_complete", &report);
         Ok((store, report))
     }
 
@@ -342,6 +351,11 @@ impl TicketStore {
         index_root: &Path,
         schema_registry: SchemaRegistry,
     ) -> Result<(Self, StoreOpenReport), StorageError> {
+        let _span_guard = tracing::info_span!(
+            target: STORE_TRACE_TARGET,
+            "ticket_store_init_profiled"
+        )
+        .entered();
         let overall_started = Instant::now();
         let resolve_started = Instant::now();
         let index_root = workspace::resolve_store_root_from(
@@ -374,6 +388,7 @@ impl TicketStore {
             "init_total_ms".to_string(),
             elapsed_ms(overall_started),
         );
+        emit_store_open_report("ticket_store_init_profiled_complete", &report);
         Ok((store, report))
     }
 
@@ -401,16 +416,28 @@ impl TicketStore {
         index_root: &Path,
         schema_registry: SchemaRegistry,
     ) -> Result<(Self, StoreOpenReport), StorageError> {
+        let span = tracing::info_span!(
+            target: STORE_TRACE_TARGET,
+            "ticket_store_open_or_init",
+            initialized_store = Empty,
+        );
+        let _span_guard = span.enter();
         let overall_started = Instant::now();
         match Self::open_with_profiled(index_root, schema_registry.clone()) {
             Ok((store, mut report)) => {
+                span.record("initialized_store", false);
                 report.phase_timings_ms.insert(
                     "open_or_init_total_ms".to_string(),
                     elapsed_ms(overall_started),
                 );
+                emit_store_open_report(
+                    "ticket_store_open_or_init_complete",
+                    &report,
+                );
                 Ok((store, report))
             }
             Err(StorageError::WorkspaceNotFound { .. }) => {
+                span.record("initialized_store", true);
                 let (store, mut report) =
                     Self::init_with_profiled(index_root, schema_registry)?;
                 let initial_scan_started = Instant::now();
@@ -426,6 +453,10 @@ impl TicketStore {
                     "open_or_init_total_ms".to_string(),
                     elapsed_ms(overall_started),
                 );
+                emit_store_open_report(
+                    "ticket_store_open_or_init_complete",
+                    &report,
+                );
                 Ok((store, report))
             }
             Err(error) => Err(error),
@@ -436,6 +467,11 @@ impl TicketStore {
         index_root: std::path::PathBuf,
         schema_registry: SchemaRegistry,
     ) -> Result<(Self, StoreOpenReport), StorageError> {
+        let _span_guard = tracing::debug_span!(
+            target: STORE_TRACE_TARGET,
+            "ticket_store_open_internal"
+        )
+        .entered();
         let overall_started = Instant::now();
         let normalize_started = Instant::now();
         let index_root = Self::normalize_existing_path(&index_root);
@@ -498,12 +534,18 @@ impl TicketStore {
             "open_internal_total_ms".to_string(),
             elapsed_ms(overall_started),
         );
+        emit_store_open_report("ticket_store_open_internal_complete", &report);
         Ok((store, report))
     }
 
     fn bootstrap_empty_index_from_manifests_profiled(
         &self,
     ) -> Result<StoreOpenReport, StorageError> {
+        let _span_guard = tracing::debug_span!(
+            target: STORE_TRACE_TARGET,
+            "ticket_store_bootstrap_empty_index"
+        )
+        .entered();
         let mut report = StoreOpenReport::default();
         let count_started = Instant::now();
         if self.count_tickets()? > 0 {
@@ -979,6 +1021,19 @@ impl TicketStore {
 
         Ok(path)
     }
+}
+
+fn emit_store_open_report(
+    event_name: &'static str,
+    report: &StoreOpenReport,
+) {
+    tracing::debug!(
+        target: STORE_TRACE_TARGET,
+        initialized_store = report.initialized_store,
+        phase_count = report.phase_timings_ms.len(),
+        scan_report_count = report.scan_reports.len(),
+        "{event_name}"
+    );
 }
 
 fn elapsed_ms(started: Instant) -> u64 {

@@ -5,6 +5,7 @@ use std::{
 };
 
 use chrono::Utc;
+use tracing::field::Empty;
 use uuid::Uuid;
 
 use crate::{
@@ -28,6 +29,7 @@ use crate::{
 use super::TicketStore;
 
 const FILE_BACKED_EDGE_KINDS: &[&str] = &["depends_on", "linked"];
+const STORE_TRACE_TARGET: &str = "ticket_api::storage::store";
 
 #[derive(Debug, Clone, Default)]
 pub struct ScanReport {
@@ -70,6 +72,13 @@ impl TicketStore {
         &self,
         reindex: bool,
     ) -> Result<ScanReport, StorageError> {
+        let span = tracing::info_span!(
+            target: STORE_TRACE_TARGET,
+            "ticket_store_scan",
+            requested_reindex = reindex,
+            forced_reindex = Empty,
+        );
+        let _span_guard = span.enter();
         let overall_started = Instant::now();
         let search_rebuild_started = Instant::now();
         // Proactively enforce all search-index invariants before any write. The
@@ -77,14 +86,25 @@ impl TicketStore {
         // an empty/partial/unreadable index; either forces a full rebuild so the
         // search index is reset and repopulated from the on-disk tickets.
         let force = reindex || self.search_needs_rebuild()?;
+        span.record("forced_reindex", force);
         let mut report = self.scan_once(force)?;
-        report.phase_timings_ms.insert(
-            "search_rebuild_check_ms".to_string(),
-            elapsed_ms(search_rebuild_started),
+        record_phase_timing(
+            &mut report.phase_timings_ms,
+            "search_rebuild_check_ms",
+            search_rebuild_started,
         );
-        report.phase_timings_ms.insert(
-            "scan_total_ms".to_string(),
-            elapsed_ms(overall_started),
+        record_phase_timing(
+            &mut report.phase_timings_ms,
+            "scan_total_ms",
+            overall_started,
+        );
+        tracing::info!(
+            target: STORE_TRACE_TARGET,
+            integrated = report.integrated,
+            pruned = report.pruned,
+            diagnostics = report.diagnostics.len(),
+            scan_roots = report.root_entry_counts.len(),
+            "ticket_store_scan_complete"
         );
         Ok(report)
     }
@@ -93,14 +113,21 @@ impl TicketStore {
         &self,
         reindex: bool,
     ) -> Result<ScanReport, StorageError> {
+        let _span_guard = tracing::debug_span!(
+            target: STORE_TRACE_TARGET,
+            "ticket_store_scan_once",
+            reindex,
+        )
+        .entered();
         let mut phase_timings_ms = std::collections::BTreeMap::new();
         let mut root_entry_counts = std::collections::BTreeMap::new();
         if reindex {
             let backfill_started = Instant::now();
             self.backfill_file_backed_edges_from_index()?;
-            phase_timings_ms.insert(
-                "backfill_file_backed_edges_ms".to_string(),
-                elapsed_ms(backfill_started),
+            record_phase_timing(
+                &mut phase_timings_ms,
+                "backfill_file_backed_edges_ms",
+                backfill_started,
             );
             let reset_started = Instant::now();
             // Reset the directory instead of clearing documents: a forced
@@ -108,23 +135,26 @@ impl TicketStore {
             // index. The next upsert recreates a fresh index from the current
             // schema.
             self.search.reset_dir()?;
-            phase_timings_ms.insert(
-                "reset_search_index_ms".to_string(),
-                elapsed_ms(reset_started),
+            record_phase_timing(
+                &mut phase_timings_ms,
+                "reset_search_index_ms",
+                reset_started,
             );
             let clear_edges_started = Instant::now();
             self.index.clear_edges()?;
-            phase_timings_ms.insert(
-                "clear_index_edges_ms".to_string(),
-                elapsed_ms(clear_edges_started),
+            record_phase_timing(
+                &mut phase_timings_ms,
+                "clear_index_edges_ms",
+                clear_edges_started,
             );
         }
 
         let list_roots_started = Instant::now();
         let mut roots = self.list_scan_roots()?;
-        phase_timings_ms.insert(
-            "list_scan_roots_ms".to_string(),
-            elapsed_ms(list_roots_started),
+        record_phase_timing(
+            &mut phase_timings_ms,
+            "list_scan_roots_ms",
+            list_roots_started,
         );
         let default_root = ScanRoot {
             path: self.resolve_scan_root_path(&self.index_root.join("tickets")),
@@ -133,6 +163,12 @@ impl TicketStore {
         if !roots.iter().any(|root| root.path == default_root.path) {
             roots.insert(0, default_root);
         }
+        tracing::debug!(
+            target: STORE_TRACE_TARGET,
+            reindex,
+            configured_roots = roots.len(),
+            "ticket_store_scan_roots_loaded"
+        );
 
         let mut integrated = 0usize;
         let mut diagnostics = Vec::new();
@@ -143,13 +179,26 @@ impl TicketStore {
                 continue;
             }
             let root_label = metric_root_label(index, root);
+            let _root_span_guard = tracing::debug_span!(
+                target: STORE_TRACE_TARGET,
+                "ticket_store_scan_root",
+                root_label = %root_label,
+            )
+            .entered();
             let scan_root_started = Instant::now();
             let (entries, diags) = TicketFs::scan_root(&root.path)?;
-            phase_timings_ms.insert(
+            record_named_phase_timing(
+                &mut phase_timings_ms,
                 format!("scan_root_{root_label}_ms"),
-                elapsed_ms(scan_root_started),
+                scan_root_started,
             );
             root_entry_counts.insert(root_label.clone(), entries.len());
+            tracing::debug!(
+                target: STORE_TRACE_TARGET,
+                entries = entries.len(),
+                diagnostics = diags.len(),
+                "ticket_store_scan_root_discovered"
+            );
             diagnostics.extend(diags);
 
             let integrate_root_started = Instant::now();
@@ -158,9 +207,15 @@ impl TicketStore {
                 integrate_entry(&self.index, &self.search, entry, reindex)?;
                 integrated += 1;
             }
-            phase_timings_ms.insert(
+            record_named_phase_timing(
+                &mut phase_timings_ms,
                 format!("integrate_root_{root_label}_ms"),
-                elapsed_ms(integrate_root_started),
+                integrate_root_started,
+            );
+            tracing::debug!(
+                target: STORE_TRACE_TARGET,
+                integrated,
+                "ticket_store_scan_root_integrated"
             );
         }
 
@@ -177,16 +232,26 @@ impl TicketStore {
                 pruned += 1;
             }
         }
-        phase_timings_ms.insert(
-            "prune_stale_ms".to_string(),
-            elapsed_ms(prune_started),
+        record_phase_timing(
+            &mut phase_timings_ms,
+            "prune_stale_ms",
+            prune_started,
         );
 
         let workflow_started = Instant::now();
         self.rebuild_workflow_facts()?;
-        phase_timings_ms.insert(
-            "rebuild_workflow_facts_ms".to_string(),
-            elapsed_ms(workflow_started),
+        record_phase_timing(
+            &mut phase_timings_ms,
+            "rebuild_workflow_facts_ms",
+            workflow_started,
+        );
+
+        tracing::debug!(
+            target: STORE_TRACE_TARGET,
+            integrated,
+            pruned,
+            diagnostics = diagnostics.len(),
+            "ticket_store_scan_once_complete"
         );
 
         Ok(ScanReport {
@@ -255,6 +320,29 @@ impl TicketStore {
 
 fn elapsed_ms(started: Instant) -> u64 {
     started.elapsed().as_millis() as u64
+}
+
+fn record_phase_timing(
+    timings: &mut std::collections::BTreeMap<String, u64>,
+    phase: &'static str,
+    started: Instant,
+) {
+    record_named_phase_timing(timings, phase.to_string(), started);
+}
+
+fn record_named_phase_timing(
+    timings: &mut std::collections::BTreeMap<String, u64>,
+    phase: String,
+    started: Instant,
+) {
+    let elapsed_ms = elapsed_ms(started);
+    timings.insert(phase.clone(), elapsed_ms);
+    tracing::debug!(
+        target: STORE_TRACE_TARGET,
+        phase = %phase,
+        elapsed_ms,
+        "ticket_store_phase_complete"
+    );
 }
 
 fn metric_root_label(

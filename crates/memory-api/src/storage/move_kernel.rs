@@ -36,12 +36,14 @@ use serde::{
     Deserialize,
     Serialize,
 };
+use tracing::field::Empty;
 use uuid::Uuid;
 
 use crate::storage::board::BoardEntry;
 
 const MOVE_LOCKS_DIR: &str = "move-locks";
 const MOVE_JOURNALS_DIR: &str = "move-journals";
+const MOVE_TRACE_TARGET: &str = "memory_api::storage::move_kernel";
 
 /// Error type for the move kernel.
 ///
@@ -610,6 +612,13 @@ pub fn execute_move<D: MoveDomain + ?Sized>(
     domain: &D,
     plan: &MovePlan,
 ) -> MoveResult<MoveOutcome> {
+    let _span_guard = tracing::info_span!(
+        target: MOVE_TRACE_TARGET,
+        "move_execute",
+        entity_id = %plan.entity_id,
+        supported = plan.supported(),
+    )
+    .entered();
     if !plan.supported() {
         return Err(MoveError::Domain(
             "move preflight contains blockers".to_string(),
@@ -623,7 +632,19 @@ pub fn resume_move<D: MoveDomain + ?Sized>(
     domain: &D,
     journal_id: Uuid,
 ) -> MoveResult<MoveOutcome> {
+    let _span_guard = tracing::info_span!(
+        target: MOVE_TRACE_TARGET,
+        "move_resume",
+        journal_id = %journal_id,
+    )
+    .entered();
     let journal = load_journal(&domain.source_store_root(), journal_id)?;
+    tracing::debug!(
+        target: MOVE_TRACE_TARGET,
+        entity_id = %journal.entity_id,
+        phase = phase_name(&journal.phase),
+        "move_resume_journal_loaded"
+    );
     let target_workspace_root = crate::workspace::resolve_workspace_root_from_store_root(
         &journal.target_store_root,
         domain.store_index_dir(),
@@ -639,6 +660,17 @@ pub fn rollback_move<D: MoveDomain + ?Sized>(
 ) -> MoveResult<MoveOutcome> {
     let source_store_root = domain.source_store_root();
     let mut journal = load_journal(&source_store_root, journal_id)?;
+    let span = tracing::info_span!(
+        target: MOVE_TRACE_TARGET,
+        "move_rollback",
+        journal_id = %journal.id,
+        entity_id = %journal.entity_id,
+        resumed = false,
+        rolled_back = true,
+        phase = Empty,
+    );
+    let _span_guard = span.enter();
+    span.record("phase", phase_name(&journal.phase));
     if journal.lock_paths.is_empty() {
         journal.lock_paths = collect_lock_paths(
             journal.entity_id,
@@ -682,6 +714,17 @@ pub fn rollback_move<D: MoveDomain + ?Sized>(
     journal.next_recovery_step = None;
     persist_journal(&source_store_root, &journal)?;
     release_lock_set(&journal.lock_paths);
+
+    tracing::info!(
+        target: MOVE_TRACE_TARGET,
+        journal_id = %journal.id,
+        entity_id = %journal.entity_id,
+        phase = phase_name(&journal.phase),
+        migrated_board_entries = journal.migrated_board_entries.len(),
+        rewritten_path_files = journal.rewritten_path_files.len(),
+        manual_followups = journal.manual_followups.len(),
+        "move_rollback_complete"
+    );
 
     Ok(MoveOutcome {
         journal,
@@ -734,17 +777,40 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
     }
     persist_journal(&journal_root, &journal)?;
 
+    let span = tracing::info_span!(
+        target: MOVE_TRACE_TARGET,
+        "move_execute_or_resume",
+        journal_id = %journal.id,
+        entity_id = %journal.entity_id,
+        resumed,
+        rolled_back = false,
+        phase = Empty,
+    );
+    let _span_guard = span.enter();
+    span.record("phase", phase_name(&journal.phase));
+    tracing::info!(
+        target: MOVE_TRACE_TARGET,
+        phase = phase_name(&journal.phase),
+        "move_journal_ready"
+    );
+
     let result: MoveResult<()> = (|| {
         if journal.phase == MoveExecutionPhase::Planned {
             let started = Instant::now();
             acquire_lock_set(&journal.lock_paths)?;
             record_phase_timing(&mut journal, "lock_acquisition_ms", started.elapsed());
             journal.phase = MoveExecutionPhase::Locked;
+            span.record("phase", phase_name(&journal.phase));
             journal.updated_at = Utc::now();
             journal
                 .steps
                 .push("acquired source/target store locks and move entity lock".to_string());
             persist_journal(&journal_root, &journal)?;
+            tracing::debug!(
+                target: MOVE_TRACE_TARGET,
+                phase = phase_name(&journal.phase),
+                "move_phase_advanced"
+            );
         }
 
         if journal.phase == MoveExecutionPhase::Locked {
@@ -757,9 +823,15 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
             }
             record_phase_timing(&mut journal, "rename_entity_ms", started.elapsed());
             journal.phase = MoveExecutionPhase::Moved;
+            span.record("phase", phase_name(&journal.phase));
             journal.updated_at = Utc::now();
             journal.steps.push("moved entity folder".to_string());
             persist_journal(&journal_root, &journal)?;
+            tracing::debug!(
+                target: MOVE_TRACE_TARGET,
+                phase = phase_name(&journal.phase),
+                "move_phase_advanced"
+            );
         }
 
         if journal.phase == MoveExecutionPhase::Moved {
@@ -799,9 +871,18 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
             domain.scan_store(&journal.source_store_root)?;
             record_phase_timing(&mut journal, "scan_source_ms", started.elapsed());
             journal.phase = MoveExecutionPhase::SourceScanned;
+            span.record("phase", phase_name(&journal.phase));
             journal.updated_at = Utc::now();
             journal.steps.push("scanned source store".to_string());
             persist_journal(&journal_root, &journal)?;
+            tracing::debug!(
+                target: MOVE_TRACE_TARGET,
+                phase = phase_name(&journal.phase),
+                rewritten_path_files = journal.rewritten_path_files.len(),
+                manual_followups = journal.manual_followups.len(),
+                migrated_board_entries = journal.migrated_board_entries.len(),
+                "move_phase_advanced"
+            );
         }
 
         if journal.phase == MoveExecutionPhase::SourceScanned {
@@ -809,9 +890,15 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
             domain.scan_store(&journal.target_store_root)?;
             record_phase_timing(&mut journal, "scan_target_ms", started.elapsed());
             journal.phase = MoveExecutionPhase::TargetScanned;
+            span.record("phase", phase_name(&journal.phase));
             journal.updated_at = Utc::now();
             journal.steps.push("scanned target store".to_string());
             persist_journal(&journal_root, &journal)?;
+            tracing::debug!(
+                target: MOVE_TRACE_TARGET,
+                phase = phase_name(&journal.phase),
+                "move_phase_advanced"
+            );
         }
 
         if journal.phase == MoveExecutionPhase::TargetScanned {
@@ -844,11 +931,17 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
             }
 
             journal.phase = MoveExecutionPhase::Validated;
+            span.record("phase", phase_name(&journal.phase));
             journal.updated_at = Utc::now();
             journal.steps.push("validated move ownership".to_string());
             journal.failure = None;
             journal.next_recovery_step = None;
             persist_journal(&journal_root, &journal)?;
+            tracing::debug!(
+                target: MOVE_TRACE_TARGET,
+                phase = phase_name(&journal.phase),
+                "move_phase_advanced"
+            );
         }
 
         Ok(())
@@ -857,6 +950,17 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
     match result {
         Ok(()) => {
             release_lock_set(&journal.lock_paths);
+            tracing::info!(
+                target: MOVE_TRACE_TARGET,
+                journal_id = %journal.id,
+                entity_id = %journal.entity_id,
+                phase = phase_name(&journal.phase),
+                resumed,
+                rewritten_path_files = journal.rewritten_path_files.len(),
+                manual_followups = journal.manual_followups.len(),
+                migrated_board_entries = journal.migrated_board_entries.len(),
+                "move_execute_or_resume_complete"
+            );
             Ok(MoveOutcome {
                 journal,
                 resumed,
@@ -869,6 +973,15 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
             journal.next_recovery_step = Some(recovery_hint_for_phase(&journal.phase).to_string());
             let _ = persist_journal(&journal_root, &journal);
             release_lock_set(&journal.lock_paths);
+            tracing::error!(
+                target: MOVE_TRACE_TARGET,
+                journal_id = %journal.id,
+                entity_id = %journal.entity_id,
+                phase = phase_name(&journal.phase),
+                resumed,
+                error = %error,
+                "move_execute_or_resume_failed"
+            );
             Err(error)
         },
     }
@@ -922,6 +1035,27 @@ fn record_phase_timing(
 ) {
     let millis = elapsed.as_millis().min(u64::MAX as u128) as u64;
     journal.phase_timings_ms.insert(key.to_string(), millis);
+    tracing::debug!(
+        target: MOVE_TRACE_TARGET,
+        journal_id = %journal.id,
+        entity_id = %journal.entity_id,
+        phase = phase_name(&journal.phase),
+        timing_key = key,
+        elapsed_ms = millis,
+        "move_phase_complete"
+    );
+}
+
+fn phase_name(phase: &MoveExecutionPhase) -> &'static str {
+    match phase {
+        MoveExecutionPhase::Planned => "planned",
+        MoveExecutionPhase::Locked => "locked",
+        MoveExecutionPhase::Moved => "moved",
+        MoveExecutionPhase::SourceScanned => "source_scanned",
+        MoveExecutionPhase::TargetScanned => "target_scanned",
+        MoveExecutionPhase::Validated => "validated",
+        MoveExecutionPhase::RolledBack => "rolled_back",
+    }
 }
 
 fn restore_rewritten_path(rewrite: &MovePathRewrite) -> MoveResult<()> {
