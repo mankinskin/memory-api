@@ -1,0 +1,13 @@
+- Added structured profiling for `TicketStore::open_or_init` and `scan`, with per-phase timings and scan-root entry counts surfaced to tests and benches.
+- Focused validation passed: `storage::tests::open_or_init_profiled_reports_bootstrap_scan_timings`, `storage::tests::scan_report_includes_phase_timings_and_root_counts`, and `health_all_e2e_reports_timings_on_large_fixture`.
+- Large health fixture evidence:
+  - `open_or_init_total_ms` was about `19535`.
+  - Bootstrap split almost evenly between `bootstrap_scan_manifest_bootstrap_ms` about `9779` and `post_init_scan_ms` about `9721`, which indicates a near double-scan during manifest-only bootstrap.
+  - `scan(true)` took about `9579 ms`, dominated by `integrate_root_0_tickets_ms` about `7799` and `rebuild_workflow_facts_ms` about `1749`.
+  - Directory walking itself was negligible: `scan_root_0_tickets_ms` was about `13 ms`.
+- Incremental scaling evidence:
+  - `scan(false)` after `1` appended ticket took about `11115 ms`.
+  - `scan(false)` after `10` appended tickets took about `11351 ms`.
+  - `scan(false)` after `100` appended tickets took about `20314 ms`.
+  - Across all three runs, `scan_root_0_tickets_ms` stayed about `12-24 ms`; the extra time came from `integrate_root_0_tickets_ms` and `rebuild_workflow_facts_ms`.
+- Combined with the earlier move evidence, the dominant slow paths are repeated bootstrap scans, ticket/index integration, and workflow-fact recomputation rather than filesystem enumeration.

@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
     path::Path,
+    time::Instant,
 };
 
 use chrono::Utc;
@@ -28,10 +29,13 @@ use super::TicketStore;
 
 const FILE_BACKED_EDGE_KINDS: &[&str] = &["depends_on", "linked"];
 
+#[derive(Debug, Clone, Default)]
 pub struct ScanReport {
     pub integrated: usize,
     pub pruned: usize,
     pub diagnostics: Vec<ParseDiagnostic>,
+    pub phase_timings_ms: std::collections::BTreeMap<String, u64>,
+    pub root_entry_counts: std::collections::BTreeMap<String, usize>,
 }
 
 impl TicketStore {
@@ -66,29 +70,62 @@ impl TicketStore {
         &self,
         reindex: bool,
     ) -> Result<ScanReport, StorageError> {
+        let overall_started = Instant::now();
+        let search_rebuild_started = Instant::now();
         // Proactively enforce all search-index invariants before any write. The
         // rebuild check heals structural corruption (via `num_docs`) and detects
         // an empty/partial/unreadable index; either forces a full rebuild so the
         // search index is reset and repopulated from the on-disk tickets.
         let force = reindex || self.search_needs_rebuild()?;
-        self.scan_once(force)
+        let mut report = self.scan_once(force)?;
+        report.phase_timings_ms.insert(
+            "search_rebuild_check_ms".to_string(),
+            elapsed_ms(search_rebuild_started),
+        );
+        report.phase_timings_ms.insert(
+            "scan_total_ms".to_string(),
+            elapsed_ms(overall_started),
+        );
+        Ok(report)
     }
 
     fn scan_once(
         &self,
         reindex: bool,
     ) -> Result<ScanReport, StorageError> {
+        let mut phase_timings_ms = std::collections::BTreeMap::new();
+        let mut root_entry_counts = std::collections::BTreeMap::new();
         if reindex {
+            let backfill_started = Instant::now();
             self.backfill_file_backed_edges_from_index()?;
+            phase_timings_ms.insert(
+                "backfill_file_backed_edges_ms".to_string(),
+                elapsed_ms(backfill_started),
+            );
+            let reset_started = Instant::now();
             // Reset the directory instead of clearing documents: a forced
             // rebuild must not depend on opening the (possibly corrupt) existing
             // index. The next upsert recreates a fresh index from the current
             // schema.
             self.search.reset_dir()?;
+            phase_timings_ms.insert(
+                "reset_search_index_ms".to_string(),
+                elapsed_ms(reset_started),
+            );
+            let clear_edges_started = Instant::now();
             self.index.clear_edges()?;
+            phase_timings_ms.insert(
+                "clear_index_edges_ms".to_string(),
+                elapsed_ms(clear_edges_started),
+            );
         }
 
+        let list_roots_started = Instant::now();
         let mut roots = self.list_scan_roots()?;
+        phase_timings_ms.insert(
+            "list_scan_roots_ms".to_string(),
+            elapsed_ms(list_roots_started),
+        );
         let default_root = ScanRoot {
             path: self.resolve_scan_root_path(&self.index_root.join("tickets")),
             label: "default".to_string(),
@@ -101,21 +138,34 @@ impl TicketStore {
         let mut diagnostics = Vec::new();
         let mut disk_ids = HashSet::new();
 
-        for root in &roots {
+        for (index, root) in roots.iter().enumerate() {
             if !root.path.exists() {
                 continue;
             }
+            let root_label = metric_root_label(index, root);
+            let scan_root_started = Instant::now();
             let (entries, diags) = TicketFs::scan_root(&root.path)?;
+            phase_timings_ms.insert(
+                format!("scan_root_{root_label}_ms"),
+                elapsed_ms(scan_root_started),
+            );
+            root_entry_counts.insert(root_label.clone(), entries.len());
             diagnostics.extend(diags);
 
+            let integrate_root_started = Instant::now();
             for entry in entries {
                 disk_ids.insert(entry.id);
                 integrate_entry(&self.index, &self.search, entry, reindex)?;
                 integrated += 1;
             }
+            phase_timings_ms.insert(
+                format!("integrate_root_{root_label}_ms"),
+                elapsed_ms(integrate_root_started),
+            );
         }
 
         let mut pruned = 0usize;
+        let prune_started = Instant::now();
         for ticket in self.index.list_tickets()? {
             if !disk_ids.contains(&ticket.id) {
                 diagnostics.push(stale_reconciliation_diagnostic(
@@ -127,13 +177,24 @@ impl TicketStore {
                 pruned += 1;
             }
         }
+        phase_timings_ms.insert(
+            "prune_stale_ms".to_string(),
+            elapsed_ms(prune_started),
+        );
 
+        let workflow_started = Instant::now();
         self.rebuild_workflow_facts()?;
+        phase_timings_ms.insert(
+            "rebuild_workflow_facts_ms".to_string(),
+            elapsed_ms(workflow_started),
+        );
 
         Ok(ScanReport {
             integrated,
             pruned,
             diagnostics,
+            phase_timings_ms,
+            root_entry_counts,
         })
     }
 
@@ -190,6 +251,32 @@ impl TicketStore {
         self.refresh_workflow_facts_for_roots(&[id], false, Utc::now())?;
         Ok(true)
     }
+}
+
+fn elapsed_ms(started: Instant) -> u64 {
+    started.elapsed().as_millis() as u64
+}
+
+fn metric_root_label(
+    index: usize,
+    root: &ScanRoot,
+) -> String {
+    let label = if root.label.trim().is_empty() {
+        root.path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("root")
+    } else {
+        root.label.as_str()
+    };
+    format!("{index}_{}", sanitize_metric_label(label))
+}
+
+fn sanitize_metric_label(label: &str) -> String {
+    label
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect()
 }
 
 fn stale_reconciliation_diagnostic(

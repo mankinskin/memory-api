@@ -1,4 +1,7 @@
-use std::time::Instant;
+use std::{
+    path::Path,
+    time::Instant,
+};
 
 use chrono::Utc;
 use memory_fixtures::{
@@ -60,6 +63,27 @@ fn add_perf_edges(store: &TicketStore, ids: &[Uuid]) {
                 })
                 .expect("add linked edge");
         }
+    }
+}
+
+fn append_incremental_fixture_tickets(
+    root_store: &Path,
+    batch: usize,
+    count: usize,
+) {
+    for offset in 0..count {
+        let id = format!(
+            "00000000-0000-5000-{batch:04x}-{value:012x}",
+            value = offset + 1,
+        );
+        append_fixture_ticket(
+            root_store,
+            &id,
+            &format!("incremental perf fixture ticket {batch}-{offset}"),
+            "ready",
+            "perf",
+        )
+        .expect("append incremental fixture ticket");
     }
 }
 
@@ -211,25 +235,22 @@ fn health_all_e2e_reports_timings_on_large_fixture() {
         .expect("root ticket store path")
         .to_path_buf();
 
-    let open_started = Instant::now();
-    let store = TicketStore::open_or_init(&root_store).expect("open root store");
-    let open_elapsed = open_started.elapsed();
+    let (store, open_report) =
+        TicketStore::open_or_init_profiled(&root_store).expect("open root store");
 
-    let scan_started = Instant::now();
-    store.scan(true).expect("scan root store");
-    let scan_elapsed = scan_started.elapsed();
+    let scan_report = store.scan(true).expect("scan root store");
 
-    append_fixture_ticket(
-        &root_store,
-        "00000000-0000-5000-0000-000000000001",
-        "incremental perf fixture ticket",
-        "ready",
-        "perf",
-    )
-    .expect("append incremental fixture ticket");
-    let incremental_scan_started = Instant::now();
-    store.scan(false).expect("incremental scan root store");
-    let incremental_scan_elapsed = incremental_scan_started.elapsed();
+    append_incremental_fixture_tickets(&root_store, 1, 1);
+    let incremental_scan_1 =
+        store.scan(false).expect("incremental scan root store (1)");
+
+    append_incremental_fixture_tickets(&root_store, 2, 10);
+    let incremental_scan_10 =
+        store.scan(false).expect("incremental scan root store (10)");
+
+    append_incremental_fixture_tickets(&root_store, 3, 100);
+    let incremental_scan_100 =
+        store.scan(false).expect("incremental scan root store (100)");
 
     let ids = parse_ids(&perf.root_ticket_ids);
     add_perf_edges(&store, &ids);
@@ -250,12 +271,30 @@ fn health_all_e2e_reports_timings_on_large_fixture() {
 
     assert!(!report.findings.is_empty());
     assert!(report.summary.contains_key("graph_participation") || report.summary.contains_key("missing_effort_estimation"));
+    assert!(open_report.phase_timings_ms.contains_key("open_or_init_total_ms"));
+    assert!(open_report.phase_timings_ms.contains_key("open_sqlite_index_ms"));
+    assert!(scan_report.phase_timings_ms.contains_key("scan_total_ms"));
+    assert!(scan_report.phase_timings_ms.contains_key("rebuild_workflow_facts_ms"));
+    assert!(scan_report
+        .phase_timings_ms
+        .keys()
+        .any(|key| key.starts_with("scan_root_")));
+    assert!(incremental_scan_1.phase_timings_ms.contains_key("scan_total_ms"));
+    assert!(incremental_scan_10.phase_timings_ms.contains_key("scan_total_ms"));
+    assert!(incremental_scan_100.phase_timings_ms.contains_key("scan_total_ms"));
 
     eprintln!(
-        "health_perf open_ms={} scan_true_ms={} scan_false_ms={} list_ms={} workflow_ms={} collect_ms={} tickets={} edges={} findings={}",
-        open_elapsed.as_millis(),
-        scan_elapsed.as_millis(),
-        incremental_scan_elapsed.as_millis(),
+        "health_perf open_phases={:?} bootstrap_scans={:?} scan_true_phases={:?} scan_false_1_phases={:?} scan_false_10_phases={:?} scan_false_100_phases={:?} list_ms={} workflow_ms={} collect_ms={} tickets={} edges={} findings={}",
+        open_report.phase_timings_ms,
+        open_report
+            .scan_reports
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>(),
+        scan_report.phase_timings_ms,
+        incremental_scan_1.phase_timings_ms,
+        incremental_scan_10.phase_timings_ms,
+        incremental_scan_100.phase_timings_ms,
         list_elapsed.as_millis(),
         workflow_elapsed.as_millis(),
         health_elapsed.as_millis(),

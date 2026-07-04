@@ -1059,6 +1059,34 @@ fn scan_without_reindex_prunes_removed_scan_root_visibility() {
 }
 
 #[test]
+fn scan_report_includes_phase_timings_and_root_counts() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Profile scan timings"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let report = store.scan(true).unwrap();
+
+    assert!(report.phase_timings_ms.contains_key("scan_total_ms"));
+    assert!(report.phase_timings_ms.contains_key("list_scan_roots_ms"));
+    assert!(report.phase_timings_ms.contains_key("rebuild_workflow_facts_ms"));
+    assert!(report
+        .phase_timings_ms
+        .keys()
+        .any(|key| key.starts_with("scan_root_")));
+    assert!(!report.root_entry_counts.is_empty());
+}
+
+#[test]
 fn scan_force_skips_stale_db_edges_for_missing_ticket_folders() {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();
@@ -1200,6 +1228,40 @@ fn open_or_init_bootstraps_manifest_only_workspace() {
     let manifest = rebuilt.get(&ticket_id).unwrap();
 
     assert_eq!(manifest.id, ticket_id);
+}
+
+#[test]
+fn open_or_init_profiled_reports_bootstrap_scan_timings() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let ticket_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Profile bootstrap open_or_init"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let index_root = store.index_root.clone();
+    drop(store);
+
+    fs::remove_file(index_root.join("tickets.db")).unwrap();
+    let _ = fs::remove_file(index_root.join("tickets.db-shm"));
+    let _ = fs::remove_file(index_root.join("tickets.db-wal"));
+    let _ = fs::remove_dir_all(index_root.join("search_index"));
+
+    let (rebuilt, report) = TicketStore::open_or_init_profiled(dir.path()).unwrap();
+
+    assert!(report.initialized_store);
+    assert!(report.phase_timings_ms.contains_key("open_or_init_total_ms"));
+    assert!(report.phase_timings_ms.contains_key("open_sqlite_index_ms"));
+    assert!(report.phase_timings_ms.contains_key("open_search_index_ms"));
+    assert!(!report.scan_reports.is_empty());
+    assert_eq!(rebuilt.get(&ticket_id).unwrap().id, ticket_id);
 }
 
 #[test]

@@ -1,4 +1,7 @@
-use std::time::Instant;
+use std::{
+    path::Path,
+    time::Instant,
+};
 
 use chrono::Utc;
 use criterion::{
@@ -55,6 +58,27 @@ fn add_perf_edges(store: &TicketStore, ids: &[Uuid]) {
                 })
                 .expect("add linked edge");
         }
+    }
+}
+
+fn append_incremental_fixture_tickets(
+    root_store: &Path,
+    batch: usize,
+    count: usize,
+) {
+    for offset in 0..count {
+        let id = format!(
+            "00000000-0000-5000-{batch:04x}-{value:012x}",
+            value = offset + 1,
+        );
+        append_fixture_ticket(
+            root_store,
+            &id,
+            &format!("bench incremental perf ticket {batch}-{offset}"),
+            "ready",
+            "perf",
+        )
+        .expect("append fixture ticket");
     }
 }
 
@@ -198,8 +222,10 @@ fn bench_open_or_init_root_perf_fixture(c: &mut Criterion) {
             },
             |(_perf, root_store)| {
                 let started = Instant::now();
-                let store = TicketStore::open_or_init(&root_store).expect("open store");
+                let (store, report) =
+                    TicketStore::open_or_init_profiled(&root_store).expect("open store");
                 criterion::black_box(started.elapsed());
+                criterion::black_box(report.phase_timings_ms);
                 criterion::black_box(store);
             },
             criterion::BatchSize::SmallInput,
@@ -223,16 +249,21 @@ fn bench_scan_reindex_root_perf_fixture(c: &mut Criterion) {
             },
             |(_perf, store)| {
                 let started = Instant::now();
-                store.scan(true).expect("scan(true)");
+                let report = store.scan(true).expect("scan(true)");
                 criterion::black_box(started.elapsed());
+                criterion::black_box(report.phase_timings_ms);
             },
             criterion::BatchSize::SmallInput,
         );
     });
 }
 
-fn bench_scan_incremental_root_perf_fixture(c: &mut Criterion) {
-    c.bench_function("scan_incremental_root_perf_fixture", |b| {
+fn bench_scan_incremental_root_perf_fixture(
+    c: &mut Criterion,
+    change_count: usize,
+    label: &str,
+) {
+    c.bench_function(label, |b| {
         b.iter_batched(
             || {
                 let perf = materialize_fixture_with_ticket_perf_load(TicketPerfFixtureOptions::heavy())
@@ -244,24 +275,43 @@ fn bench_scan_incremental_root_perf_fixture(c: &mut Criterion) {
                     .to_path_buf();
                 let store = TicketStore::open_or_init(&root_store).expect("open store");
                 store.scan(true).expect("initial scan");
-                append_fixture_ticket(
-                    &root_store,
-                    "00000000-0000-5000-0000-0000000000aa",
-                    "bench incremental perf ticket",
-                    "ready",
-                    "perf",
-                )
-                .expect("append fixture ticket");
+                append_incremental_fixture_tickets(&root_store, change_count, change_count);
                 (perf, store)
             },
             |(_perf, store)| {
                 let started = Instant::now();
-                store.scan(false).expect("scan(false)");
+                let report = store.scan(false).expect("scan(false)");
                 criterion::black_box(started.elapsed());
+                criterion::black_box(report.phase_timings_ms);
+                criterion::black_box(report.root_entry_counts);
             },
             criterion::BatchSize::SmallInput,
         );
     });
+}
+
+fn bench_scan_incremental_root_perf_fixture_1(c: &mut Criterion) {
+    bench_scan_incremental_root_perf_fixture(
+        c,
+        1,
+        "scan_incremental_root_perf_fixture_1_change",
+    );
+}
+
+fn bench_scan_incremental_root_perf_fixture_10(c: &mut Criterion) {
+    bench_scan_incremental_root_perf_fixture(
+        c,
+        10,
+        "scan_incremental_root_perf_fixture_10_changes",
+    );
+}
+
+fn bench_scan_incremental_root_perf_fixture_100(c: &mut Criterion) {
+    bench_scan_incremental_root_perf_fixture(
+        c,
+        100,
+        "scan_incremental_root_perf_fixture_100_changes",
+    );
 }
 
 fn bench_health_workflow_build_large_fixture(c: &mut Criterion) {
@@ -372,7 +422,9 @@ criterion_group!(
     benches,
     bench_open_or_init_root_perf_fixture,
     bench_scan_reindex_root_perf_fixture,
-    bench_scan_incremental_root_perf_fixture,
+    bench_scan_incremental_root_perf_fixture_1,
+    bench_scan_incremental_root_perf_fixture_10,
+    bench_scan_incremental_root_perf_fixture_100,
     bench_move_preflight_reference_heavy,
     bench_move_execute_reference_heavy,
     bench_move_rollback_reference_heavy,
