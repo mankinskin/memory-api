@@ -16,8 +16,20 @@ pub use default_schema::{
     rule_schema_registry,
 };
 pub use feedback::{
+    EntityFeedbackCore,
+    EntityFeedbackStore,
+    EntityFeedbackSummary,
+    EntityRatingEvent,
+    EntityRatingInput,
+    EntityUrn,
+    EntityUsageEvent,
+    FeedbackAuthorKind,
     FeedbackNoteKind,
     FeedbackRating,
+    IngestAuthor,
+    RetentionKindOutcome,
+    RetentionOutcome,
+    RetentionPolicy,
     RuleFeedbackEvent,
     RuleFeedbackInput,
 };

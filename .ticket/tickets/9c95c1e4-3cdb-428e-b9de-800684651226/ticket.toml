@@ -1,7 +1,10 @@
 id = "9c95c1e4-3cdb-428e-b9de-800684651226"
 created_at = "2026-06-17T15:34:46.740966800+00:00"
 title = "[feedback-api] Event ingestion, metadata normalization, and retention policy"
-state = "new"
+state = "in-review"
+depends_on = ["c7542933-3052-45c8-99e6-3e09f40cc9b9"]
 effort = "650"
+implementation_summary = "Extended rule-api EntityFeedbackStore (on the completed gate c7542933 core store) with author-aware ingestion (FeedbackAuthorKind human/privileged-agent + IngestAuthor with normalized identity and privileged-agent id requirement), ingest_usage/ingest_rating persisting author metadata on URN-keyed NDJSON events, backfill of agent_or_user_id from the author, and a baseline RetentionPolicy (max_age / max_events per kind) via apply_retention/apply_retention_at with idempotent chronological pruning. load_core now preserves stored timestamps and author metadata while keeping rating-invariant validation."
 priority = "high"
 type = "tracker-improvement"
+validation_summary = "cargo test -p rule-api feedback (12 passed); cargo test -p rule-api (77 passed); cargo clippy -p rule-api --all-targets (no new feedback.rs warnings)"
