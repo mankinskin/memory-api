@@ -799,15 +799,22 @@ fn build_failure_bundle(
     };
 
     let linkage = if let Some(meta) = metadata {
+        let has_log_sessions = !meta.log_session_ids.is_empty();
         serde_json::json!({
             "test_execution_id": meta.execution_id,
-            "log_session_ids": [],
+            "log_session_ids": meta.log_session_ids,
+            "log_session_ids_reason": if has_log_sessions {
+                "runtime sessions correlated by run_id + test_execution_id"
+            } else {
+                "runtime log sessions unavailable for this execution"
+            },
             "journal_id": serde_json::Value::Null,
         })
     } else {
         serde_json::json!({
             "test_execution_id": serde_json::Value::Null,
             "log_session_ids": [],
+            "log_session_ids_reason": "dispatch metadata unavailable",
             "journal_id": serde_json::Value::Null,
         })
     };

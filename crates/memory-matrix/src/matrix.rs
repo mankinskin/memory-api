@@ -166,6 +166,7 @@ pub(crate) struct DispatchMetadata {
     pub transport: String,
     pub operation: String,
     pub execution_id: String,
+    pub log_session_ids: Vec<String>,
 }
 
 pub(crate) fn pass() -> CellResult {

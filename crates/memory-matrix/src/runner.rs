@@ -186,6 +186,65 @@ fn bootstrap_core_store_roots(ctx: &MatrixCtx) {
     let _ = rule_api::RuleStore::open_or_init(&ctx.store_root(".rule"));
 }
 
+fn runtime_transport_for_cell(
+    transport: &str,
+) -> log_api::RuntimeLogTransport {
+    match transport {
+        "cli" => log_api::RuntimeLogTransport::Cli,
+        "http" => log_api::RuntimeLogTransport::Http,
+        "mcp" | "mcp-subprocess-fail" => log_api::RuntimeLogTransport::Mcp,
+        _ => log_api::RuntimeLogTransport::InProcess,
+    }
+}
+
+fn correlated_runtime_log_session_ids(
+    ctx: &MatrixCtx,
+    cell: &CellSpec,
+    run_id: &str,
+    execution_id: &str,
+) -> Vec<String> {
+    if cell.transport != "mcp-subprocess-fail" {
+        return Vec::new();
+    }
+
+    let log_store =
+        log_api::LogStoreConfig::new(ctx.store_root(".log"), "default");
+    let mut runtime_session = log_api::RuntimeLogSession::new(
+        format!("runtime-{execution_id}"),
+        Utc::now(),
+        log_api::RuntimeLogStatus::Failed,
+        "memory-matrix",
+        runtime_transport_for_cell(&cell.transport),
+        format!("matrix://failure-bundle/{execution_id}"),
+        "application/x-ndjson",
+        log_api::RuntimeLogFormat::JsonLines,
+    );
+    runtime_session.run_id = Some(run_id.to_string());
+    runtime_session.operation = Some(cell.operation.clone());
+    runtime_session.tool = Some("ticket-mcp-subprocess-failure-probe".to_string());
+    runtime_session.links.ticket_ids = vec![MATRIX_TICKET_ID.to_string()];
+    runtime_session.links.validation_execution_ids =
+        vec![execution_id.to_string()];
+
+    let _ = log_store.record_runtime_session(&runtime_session);
+
+    let mut query = log_api::RuntimeLogSessionQuery::default();
+    query.run_id = Some(run_id.to_string());
+    query.validation_execution_id = Some(execution_id.to_string());
+    query.limit = Some(16);
+
+    let mut ids = match log_store.list_runtime_sessions(&query) {
+        Ok(sessions) => sessions
+            .into_iter()
+            .map(|session| session.id)
+            .collect::<Vec<_>>(),
+        Err(_) => Vec::new(),
+    };
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
 /// Record the per-cell validation spec, run the cell, time it, and record the
 /// execution. This is the fixed harness machinery - it never changes when a
 /// domain or operation is added.
@@ -224,12 +283,15 @@ fn run_cell(
     let _ = test_store.record_spec(&spec);
 
     let started = Instant::now();
+    let log_session_ids =
+        correlated_runtime_log_session_ids(ctx, cell, run_id, &execution_id);
     let metadata = DispatchMetadata {
         run_id: run_id.to_string(),
         cell_id: cell.cell_id.clone(),
         transport: cell.transport.clone(),
         operation: cell.operation.clone(),
         execution_id: execution_id.clone(),
+        log_session_ids,
     };
     let result = dispatch(
         domain,

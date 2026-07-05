@@ -591,9 +591,13 @@ fn subprocess_probe_persists_full_failure_bundle_fields() {
     assert!(
         bundle["linkage"]["log_session_ids"]
             .as_array()
-            .map(|items| items.is_empty())
+            .map(|items| !items.is_empty())
             .unwrap_or(false),
-        "probe should emit empty log_session_ids when unavailable"
+        "probe should emit non-empty log_session_ids when runtime sessions are available"
+    );
+    assert_eq!(
+        bundle["linkage"]["log_session_ids_reason"].as_str(),
+        Some("runtime sessions correlated by run_id + test_execution_id")
     );
 
     let max_bytes = bundle["output_tails"]["max_bytes"]
@@ -641,6 +645,13 @@ fn subprocess_probe_persists_full_failure_bundle_fields() {
         Some(record.execution_id.as_str()),
         "persisted bundle should retain linkage id"
     );
+    assert!(
+        persisted_bundle["linkage"]["log_session_ids"]
+            .as_array()
+            .map(|items| !items.is_empty())
+            .unwrap_or(false),
+        "persisted bundle should retain non-empty correlated log_session_ids"
+    );
 
     let persisted_run_id = persisted
         .provenance
@@ -683,6 +694,13 @@ fn subprocess_spawn_probe_reports_spawn_failure_bundle() {
     assert_eq!(
         bundle["linkage"]["test_execution_id"].as_str(),
         Some(record.execution_id.as_str())
+    );
+    assert!(
+        bundle["linkage"]["log_session_ids"]
+            .as_array()
+            .map(|items| !items.is_empty())
+            .unwrap_or(false),
+        "spawn probe should include correlated runtime log session ids"
     );
     assert!(
         bundle["message"]
