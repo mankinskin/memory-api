@@ -29,11 +29,11 @@ pub struct ReadyOverviewArgs {
 #[derive(Debug, Args)]
 pub struct NextArgs {
     /// Optional ticket UUID or 8+ character hex prefix.
-    /// When set, scope results to actionable remaining blockers for reachable reverse dependents.
+    /// When set, scope results to actionable leaf blockers beneath this ticket.
     pub root: Option<String>,
     /// Maximum number of tickets to return.
-    #[arg(long, default_value = "20")]
-    pub limit: usize,
+    #[arg(long)]
+    pub limit: Option<usize>,
     /// Optional prefix filter — only include tickets whose title starts with this string.
     #[arg(long)]
     pub filter: Option<String>,

@@ -86,6 +86,15 @@ pub struct WorkflowTreeNode {
     pub dependency_state_gap: usize,
 }
 
+/// Shared root-scoped blocker view for `next <id>` style commands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RootBlockerScope {
+    pub tree: WorkflowTreeNode,
+    pub remaining_blockers: HashSet<Uuid>,
+    pub reachable_dependencies: usize,
+    pub blocked_dependencies: usize,
+}
+
 /// Board-owned ticket surfaced separately from visible workflow candidates.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct BoardExcludedCandidate {
@@ -206,9 +215,8 @@ impl WorkflowModel {
 
     /// Return actionable candidates while treating selected ticket ids as satisfied.
     ///
-    /// Root-scoped `ticket next <id>` and `unblocked-by <id>` use this to rank
-    /// the remaining blocker work beneath a prerequisite without requiring the
-    /// root ticket to be completed first.
+    /// `unblocked-by <id>` uses this to rank remaining blocker work beneath a
+    /// prerequisite without requiring the root ticket to be completed first.
     pub fn actionable_candidate_ids_with_satisfied(
         &self,
         scope: Option<&HashSet<Uuid>>,
@@ -321,6 +329,33 @@ impl WorkflowModel {
             .filter(|dependency_id| !satisfied_ids.contains(dependency_id))
             .copied()
             .collect()
+    }
+
+    /// Build the canonical root-scoped blocker scope used by `next <id>`.
+    ///
+    /// This returns the unresolved blocker tree beneath the supplied root,
+    /// plus descendant blocker ids and summary counts.
+    pub fn root_blocker_scope(
+        &self,
+        root_id: Uuid,
+    ) -> Option<RootBlockerScope> {
+        let tree = self.blocker_tree(root_id)?;
+        let remaining_blockers = collect_blocker_descendants(&tree);
+        let blocked_dependencies = remaining_blockers
+            .iter()
+            .filter(|ticket_id| {
+                !self
+                    .unresolved_dependencies_excluding(ticket_id, &HashSet::new())
+                    .is_empty()
+            })
+            .count();
+
+        Some(RootBlockerScope {
+            reachable_dependencies: remaining_blockers.len(),
+            blocked_dependencies,
+            remaining_blockers,
+            tree,
+        })
     }
 
     /// Build an upstream blocker tree from unresolved `depends_on` edges.
@@ -1781,5 +1816,23 @@ mod tests {
         assert_eq!(blocked.blocker_distance, 1);
         assert_eq!(model.unlock_frontier_leaf_ids(root.id), tree.frontier_leaf_ids);
         assert_eq!(model.blocker_frontier_leaf_ids(root.id), vec![root.id]);
+    }
+}
+
+fn collect_blocker_descendants(root: &WorkflowTreeNode) -> HashSet<Uuid> {
+    let mut ids = HashSet::new();
+    for child in &root.children {
+        collect_tree_node_ids(child, &mut ids);
+    }
+    ids
+}
+
+fn collect_tree_node_ids(
+    node: &WorkflowTreeNode,
+    ids: &mut HashSet<Uuid>,
+) {
+    ids.insert(node.ticket_id);
+    for child in &node.children {
+        collect_tree_node_ids(child, ids);
     }
 }

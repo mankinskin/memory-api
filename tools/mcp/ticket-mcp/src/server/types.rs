@@ -242,8 +242,7 @@ pub struct NextTicketsInput {
     #[serde(default)]
     pub filter: Option<String>,
     /// Optional ticket UUID or 8+ character hex prefix.
-    /// When set, scope results to actionable remaining blockers reachable from
-    /// the reverse-dependency tree of this ticket.
+    /// When set, scope results to actionable leaf blockers beneath this ticket.
     #[serde(default)]
     pub root: Option<String>,
 }

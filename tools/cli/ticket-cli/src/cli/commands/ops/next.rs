@@ -27,9 +27,10 @@ use crate::cli::commands::{
 
 struct NextScope {
     root: Value,
-    reachable_dependents: usize,
-    blocked_dependents: usize,
+    reachable_dependencies: usize,
+    blocked_dependencies: usize,
     remaining_blockers: HashSet<Uuid>,
+    blocker_tree: Value,
 }
 
 pub(super) fn run(
@@ -45,27 +46,20 @@ pub(super) fn run(
         .as_deref()
         .map(|root| resolve_uuid_prefix(root, store))
         .transpose()?;
-    let satisfied_ids = root_id.into_iter().collect::<HashSet<_>>();
     let next_scope = root_id.map(|resolved_root_id| {
-        build_next_scope(resolved_root_id, &model, &satisfied_ids)
+        build_next_scope(resolved_root_id, &model)
     });
     let candidate_scope = intersect_scopes(
         filtered_scope,
         next_scope.as_ref().map(|scope| &scope.remaining_blockers),
     );
-    let mut candidates = if satisfied_ids.is_empty() {
-        model.actionable_candidate_ids(candidate_scope.as_ref())
-    } else {
-        model.actionable_candidate_ids_with_satisfied(
-            candidate_scope.as_ref(),
-            &satisfied_ids,
-        )
-    };
+    let mut candidates = model.actionable_candidate_ids(candidate_scope.as_ref());
     model.sort_candidate_ids(&mut candidates);
     let board_filtered =
         apply_board_filter(candidates, board_snap.as_ref(), args.no_board);
+    let frontier_count = board_filtered.candidates.len();
     let limited_candidates =
-        limit_candidates(board_filtered.candidates, args.limit);
+        limit_candidates(board_filtered.candidates, args.limit, root_id.is_some());
 
     let active_index_root = store.index_root.display().to_string();
     let mut payload = json!({
@@ -88,17 +82,19 @@ pub(super) fn run(
             .expect("next payload should be a JSON object");
         obj.insert("root".to_string(), scope.root);
         obj.insert(
-            "reachable_dependents".to_string(),
-            json!(scope.reachable_dependents),
+            "reachable_dependencies".to_string(),
+            json!(scope.reachable_dependencies),
         );
         obj.insert(
-            "blocked_dependents".to_string(),
-            json!(scope.blocked_dependents),
+            "blocked_dependencies".to_string(),
+            json!(scope.blocked_dependencies),
         );
         obj.insert(
             "remaining_blocker_count".to_string(),
             json!(scope.remaining_blockers.len()),
         );
+        obj.insert("blocker_tree".to_string(), scope.blocker_tree);
+        obj.insert("frontier_count".to_string(), json!(frontier_count));
     }
 
     Ok(payload)
@@ -194,26 +190,18 @@ fn root_summary(
 fn build_next_scope(
     root_id: Uuid,
     model: &WorkflowModel,
-    satisfied_ids: &HashSet<Uuid>,
 ) -> NextScope {
-    let dependent_ids = model.reverse_dependents(root_id);
-    let blocked_dependents = dependent_ids
-        .iter()
-        .filter(|ticket_id| {
-            !model
-                .unresolved_dependencies_excluding(ticket_id, satisfied_ids)
-                .is_empty()
-        })
-        .count();
+    let empty_satisfied = HashSet::new();
+    let scope = model
+        .root_blocker_scope(root_id)
+        .expect("resolved root id must exist in workflow model");
 
     NextScope {
         root: root_summary(root_id, model),
-        reachable_dependents: dependent_ids.len(),
-        blocked_dependents,
-        remaining_blockers: model.remaining_blockers_for_dependents_with_satisfied(
-            &dependent_ids,
-            satisfied_ids,
-        ),
+        reachable_dependencies: scope.reachable_dependencies,
+        blocked_dependencies: scope.blocked_dependencies,
+        blocker_tree: build_tree_item(scope.tree, model, &empty_satisfied),
+        remaining_blockers: scope.remaining_blockers,
     }
 }
 
@@ -234,11 +222,16 @@ fn intersect_scopes(
     }
 }
 
-fn limit_candidates<'a>(
+fn limit_candidates(
     mut candidates: Vec<Uuid>,
-    limit: usize,
+    limit: Option<usize>,
+    root_scoped: bool,
 ) -> Vec<Uuid> {
-    candidates.truncate(limit);
+    match limit {
+        Some(limit) => candidates.truncate(limit),
+        None if !root_scoped => candidates.truncate(20),
+        None => {}
+    }
     candidates
 }
 

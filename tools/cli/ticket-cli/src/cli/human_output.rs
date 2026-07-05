@@ -114,7 +114,11 @@ fn render_next_report(obj: &serde_json::Map<String, Value>) -> String {
     let mut sections = Vec::new();
 
     for (key, val) in obj {
-        if key == "command" || key == "status" || key == "items" {
+        if key == "command"
+            || key == "status"
+            || key == "items"
+            || key == "blocker_tree"
+        {
             continue;
         }
         if is_section(val) {
@@ -130,6 +134,12 @@ fn render_next_report(obj: &serde_json::Map<String, Value>) -> String {
 
     for (key, val) in &sections {
         write_section(&mut out, key, val, 0);
+    }
+
+    if let Some(tree) = obj.get("blocker_tree") {
+        let _ = writeln!(out);
+        let _ = writeln!(out, "Blocker Tree:");
+        write_workflow_tree_node(&mut out, tree, "", true, true);
     }
 
     let recommendations = obj

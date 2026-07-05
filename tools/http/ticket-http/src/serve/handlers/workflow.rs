@@ -52,8 +52,8 @@ pub struct WorkflowNextQuery {
     pub workspace: String,
     pub root: Option<Uuid>,
     pub filter: Option<String>,
-    #[serde(default = "default_limit")]
-    pub limit: usize,
+    #[serde(default)]
+    pub limit: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -65,9 +65,10 @@ pub struct WorkflowTreeQuery {
 #[derive(Clone)]
 struct NextScope {
     root: WorkflowRootSummary,
-    reachable_dependents: usize,
-    blocked_dependents: usize,
+    reachable_dependencies: usize,
+    blocked_dependencies: usize,
     remaining_blockers: HashSet<Uuid>,
+    blocker_tree: WorkflowTreeItem,
 }
 
 #[derive(Clone, Serialize)]
@@ -101,7 +102,7 @@ pub struct WorkflowCandidateItem {
     pub created_at: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct WorkflowTreeItem {
     pub id: String,
     pub ticket_ref: TicketRef,
@@ -144,11 +145,15 @@ pub struct WorkflowNextResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub root: Option<WorkflowRootSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reachable_dependents: Option<usize>,
+    pub reachable_dependencies: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub blocked_dependents: Option<usize>,
+    pub blocked_dependencies: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remaining_blocker_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocker_tree: Option<WorkflowTreeItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frontier_count: Option<usize>,
     pub count: usize,
     pub items: Vec<WorkflowCandidateItem>,
     pub excluded_by_board: Vec<BoardExcludedCandidate>,
@@ -174,10 +179,6 @@ pub struct WorkflowTreeResponse {
 enum TreeKind {
     Blockers,
     UnblockedBy,
-}
-
-fn default_limit() -> usize {
-    20
 }
 
 pub async fn workflow_next(
@@ -224,14 +225,12 @@ pub async fn workflow_next(
 
         let filtered_scope =
             WorkflowModel::filter_scope(&tickets, params.filter.as_deref());
-        let satisfied_ids = params.root.into_iter().collect::<HashSet<_>>();
         let next_scope = match params.root {
             Some(root_id) => match build_next_scope(
                 root_id,
                 &model,
                 &store,
                 &workspace,
-                &satisfied_ids,
             ) {
                 Ok(scope) => Some(scope),
                 Err(error) => return storage_err(error, &request_id),
@@ -243,26 +242,26 @@ pub async fn workflow_next(
             filtered_scope,
             next_scope.as_ref().map(|scope| &scope.remaining_blockers),
         );
-        let mut candidates = if satisfied_ids.is_empty() {
-            model.actionable_candidate_ids(candidate_scope.as_ref())
-        } else {
-            model.actionable_candidate_ids_with_satisfied(
-                candidate_scope.as_ref(),
-                &satisfied_ids,
-            )
-        };
+        let mut candidates = model.actionable_candidate_ids(candidate_scope.as_ref());
         model.sort_candidate_ids(&mut candidates);
         let board_filtered =
             apply_board_filter(candidates, board_snap.as_ref(), false);
+        let frontier_count = board_filtered.candidates.len();
         let mut candidates = board_filtered.candidates;
-        candidates.truncate(params.limit.min(100));
+        match params.limit {
+            Some(limit) => candidates.truncate(limit.min(100)),
+            None if params.root.is_none() => candidates.truncate(20),
+            None => {}
+        }
+
+        let empty_satisfied = HashSet::new();
 
         let items = match build_candidate_items(
             &candidates,
             &model,
             &store,
             &workspace,
-            &satisfied_ids,
+            &empty_satisfied,
         ) {
             Ok(items) => items,
             Err(error) => return storage_err(error, &request_id),
@@ -279,15 +278,17 @@ pub async fn workflow_next(
                 root: scope_root,
             },
             root: next_scope.as_ref().map(|scope| scope.root.clone()),
-            reachable_dependents: next_scope
+            reachable_dependencies: next_scope
                 .as_ref()
-                .map(|scope| scope.reachable_dependents),
-            blocked_dependents: next_scope
+                .map(|scope| scope.reachable_dependencies),
+            blocked_dependencies: next_scope
                 .as_ref()
-                .map(|scope| scope.blocked_dependents),
+                .map(|scope| scope.blocked_dependencies),
             remaining_blocker_count: next_scope
                 .as_ref()
                 .map(|scope| scope.remaining_blockers.len()),
+            blocker_tree: next_scope.as_ref().map(|scope| scope.blocker_tree.clone()),
+            frontier_count: next_scope.as_ref().map(|_| frontier_count),
             count: items.len(),
             items,
             excluded_by_board: board_filtered.excluded_by_board,
@@ -455,26 +456,17 @@ fn build_next_scope(
     model: &WorkflowModel,
     store: &TicketStore,
     active_workspace: &str,
-    satisfied_ids: &HashSet<Uuid>,
 ) -> Result<NextScope, ticket_api::error::StorageError> {
-    let dependent_ids = model.reverse_dependents(root_id);
-    let blocked_dependents = dependent_ids
-        .iter()
-        .filter(|ticket_id| {
-            !model
-                .unresolved_dependencies_excluding(ticket_id, satisfied_ids)
-                .is_empty()
-        })
-        .count();
+    let scope = model
+        .root_blocker_scope(root_id)
+        .ok_or(ticket_api::error::StorageError::NotFound(root_id))?;
 
     Ok(NextScope {
         root: build_root_summary(root_id, model, store, active_workspace)?,
-        reachable_dependents: dependent_ids.len(),
-        blocked_dependents,
-        remaining_blockers: model.remaining_blockers_for_dependents_with_satisfied(
-            &dependent_ids,
-            satisfied_ids,
-        ),
+        reachable_dependencies: scope.reachable_dependencies,
+        blocked_dependencies: scope.blocked_dependencies,
+        remaining_blockers: scope.remaining_blockers,
+        blocker_tree: build_tree_item(scope.tree, model, store, active_workspace)?,
     })
 }
 
@@ -731,7 +723,7 @@ mod tests {
             .create(
                 None,
                 "tracker-improvement",
-                Some("Scoped prerequisite"),
+                Some("Root ticket to unblock"),
                 Some("ready"),
                 BTreeMap::new(),
                 None,
@@ -749,21 +741,37 @@ mod tests {
                 None,
             )
             .unwrap();
-        let blocked_dependent = store
+        let intermediate_blocker = store
             .create(
                 None,
                 "tracker-improvement",
-                Some("Blocked dependent"),
+                Some("Intermediate blocker"),
                 Some("new"),
                 BTreeMap::new(),
                 None,
                 None,
             )
             .unwrap();
-        for to in [root, scoped_blocker] {
+        let nested_leaf = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Nested actionable blocker"),
+                Some("ready"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        for (from, to) in [
+            (root, scoped_blocker),
+            (root, intermediate_blocker),
+            (intermediate_blocker, nested_leaf),
+        ] {
             store
                 .add_edge(EdgeRecord {
-                    from: blocked_dependent,
+                    from,
                     to,
                     kind: String::from("depends_on"),
                     created_at: chrono::Utc::now(),
@@ -777,10 +785,20 @@ mod tests {
         )
         .await;
         assert_eq!(scoped["root"]["id"], root.to_string());
-        assert_eq!(scoped["reachable_dependents"], 1);
-        assert_eq!(scoped["blocked_dependents"], 1);
-        assert_eq!(scoped["remaining_blocker_count"], 1);
-        assert_eq!(scoped["items"][0]["id"], scoped_blocker.to_string());
+        assert_eq!(scoped["reachable_dependencies"], 3);
+        assert_eq!(scoped["blocked_dependencies"], 1);
+        assert_eq!(scoped["remaining_blocker_count"], 3);
+        assert_eq!(scoped["frontier_count"], 2);
+        let item_ids = scoped["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|item| item["id"].as_str())
+            .collect::<std::collections::HashSet<_>>();
+        assert!(item_ids.contains(scoped_blocker.to_string().as_str()));
+        assert!(item_ids.contains(nested_leaf.to_string().as_str()));
+        assert!(!item_ids.contains(intermediate_blocker.to_string().as_str()));
+        assert_eq!(scoped["blocker_tree"]["id"], root.to_string());
         assert_eq!(scoped["scope"]["workspace"], workspace.as_str());
         assert_eq!(scoped["excluded_by_board"], json!([]));
         assert_eq!(scoped["warnings"], json!([]));

@@ -465,21 +465,19 @@ fn next_text_output_uses_pretty_card_format() {
 }
 
 #[test]
-fn next_with_root_returns_actionable_remaining_blockers() {
+fn next_with_root_returns_unblocked_blocker_leaves() {
     let s = Sandbox::new();
     assert_eq!(s.ticket_json(&["init"])["status"], "ok");
-    let root = create_ticket(&s, "Shared prerequisite");
-    let blocked_dependent = create_ticket(&s, "Reachable blocked dependent");
-    let actionable_blocker = create_ticket(&s, "Actionable blocker");
-    let blocked_blocker = create_ticket(&s, "Blocked blocker");
-    let nested_prerequisite = create_ticket(&s, "Nested prerequisite");
+    let root = create_ticket(&s, "Root ticket to unblock");
+    let direct_blocker = create_ticket(&s, "Direct actionable blocker");
+    let intermediate_blocker = create_ticket(&s, "Intermediate blocked blocker");
+    let nested_leaf = create_ticket(&s, "Nested actionable blocker");
     let unrelated = create_ticket(&s, "Unrelated actionable work");
 
     for (from, to) in [
-        (&blocked_dependent, &root),
-        (&blocked_dependent, &actionable_blocker),
-        (&blocked_dependent, &blocked_blocker),
-        (&blocked_blocker, &nested_prerequisite),
+        (&root, &direct_blocker),
+        (&root, &intermediate_blocker),
+        (&intermediate_blocker, &nested_leaf),
     ] {
         let linked = s.ticket_json(&[
             "link",
@@ -496,33 +494,44 @@ fn next_with_root_returns_actionable_remaining_blockers() {
     let next = s.ticket_json(&["next", &root]);
     assert_eq!(next["status"], "ok");
     assert_eq!(next["root"]["id"], root.as_str());
-    assert_eq!(next["reachable_dependents"], 1);
-    assert_eq!(next["blocked_dependents"], 1);
-    assert_eq!(next["remaining_blocker_count"], 2);
-    assert_eq!(next["count"], 1);
+    assert_eq!(next["reachable_dependencies"], 3);
+    assert_eq!(next["blocked_dependencies"], 1);
+    assert_eq!(next["remaining_blocker_count"], 3);
+    assert_eq!(next["frontier_count"], 2);
+    assert_eq!(next["count"], 2);
 
     let items = next["items"].as_array().unwrap();
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0]["id"], actionable_blocker.as_str());
-    assert_ne!(items[0]["id"], blocked_dependent.as_str());
-    assert_ne!(items[0]["id"], blocked_blocker.as_str());
-    assert_ne!(items[0]["id"], nested_prerequisite.as_str());
-    assert_ne!(items[0]["id"], unrelated.as_str());
+    assert_eq!(items.len(), 2);
+    let item_ids = items
+        .iter()
+        .filter_map(|item| item["id"].as_str())
+        .collect::<std::collections::HashSet<_>>();
+    assert!(item_ids.contains(direct_blocker.as_str()));
+    assert!(item_ids.contains(nested_leaf.as_str()));
+    assert!(!item_ids.contains(intermediate_blocker.as_str()));
+    assert!(!item_ids.contains(unrelated.as_str()));
+
+    let tree = &next["blocker_tree"];
+    assert_eq!(tree["id"], root.as_str());
+    assert_eq!(tree["remaining_blocker_count"], 2);
+    let children = tree["children"].as_array().unwrap();
+    assert_eq!(children.len(), 2);
 }
 
 #[test]
 fn next_with_root_text_output_shows_root_scope() {
     let s = Sandbox::new();
     assert_eq!(s.ticket_json(&["init"])["status"], "ok");
-    let root = create_ticket(&s, "Completed prerequisite");
+    let root = create_ticket(&s, "Root ticket");
     let blocker = create_ticket(&s, "Scoped blocker");
-    let dependent = create_ticket(&s, "Blocked dependent");
+    let nested = create_ticket(&s, "Nested blocker");
+    let intermediate = create_ticket(&s, "Intermediate blocker");
 
-    for to in [&root, &blocker] {
+    for (from, to) in [(&root, &blocker), (&root, &intermediate), (&intermediate, &nested)] {
         let linked = s.ticket_json(&[
             "link",
             "--from",
-            &dependent,
+            from,
             "--to",
             to,
             "--kind",
@@ -552,11 +561,13 @@ fn next_with_root_text_output_shows_root_scope() {
     assert!(stdout.contains("next ok"));
     assert!(stdout.contains("[root]"));
     assert!(stdout.contains(&format!("id: {root}")));
-    assert!(stdout.contains("reachable_dependents: 1"));
-    assert!(stdout.contains("blocked_dependents: 1"));
-    assert!(stdout.contains("remaining_blocker_count: 1"));
+    assert!(stdout.contains("reachable_dependencies: 3"));
+    assert!(stdout.contains("blocked_dependencies: 1"));
+    assert!(stdout.contains("remaining_blocker_count: 3"));
+    assert!(stdout.contains("Blocker Tree:"));
     assert!(stdout.contains("Next Up:"));
-    assert!(stdout.contains(&format!("#1  {short_ticket}  Scoped blocker")));
+    assert!(stdout.contains("Scoped blocker"));
+    assert!(stdout.contains(&short_ticket));
     assert!(stdout.contains(&format!("ticket_id: {blocker}")));
     assert!(!stdout.contains("[items]"));
 }

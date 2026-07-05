@@ -10,16 +10,15 @@ Given a `ticket_id` at `session_init`, proactively gather selective context from
 - No semantic auto-pinning of vague matches.
 
 ## Depends on (cross-store references — must be robust first)
-- default store, graph-edged: [82d6ada4 URN resolver], [6bd67a7a multi-store discovery].
-- **memory-api store, recorded textually (cannot be graph-edged from this store until the URN model lands):** b03be2d5 cross-entity edges spec↔ticket; f00291a3 ticket↔spec integration — these create the hard links the cascade follows.
+- graph-edged: [82d6ada4 URN resolver], [6bd67a7a multi-store discovery], [b03be2d5 cross-entity edges spec↔ticket], [f00291a3 ticket↔spec integration].
 - Builds on the runtime session-context model (412964a3).
 
 ## Refinement note (REQUIRED before implementation)
-This ticket is intentionally provisional. The concrete hard-link shape does not fully exist yet:
+This ticket is now ready for design refinement, but not for implementation. The remaining gaps are narrower and concrete:
 - ticket→spec links are free-text in spec Traceability today (not structured edges);
 - rules attach by `path_scope`/`repo_scope`, not by an entity id, so a rule→entity "hard link" and a rule URN shape are undefined.
 
-**Refine this ticket after the hard-link / cross-entity-edge work lands** (memory-api-store b03be2d5 + f00291a3, and the URN/rule-URN shape from 82d6ada4 / 6bd67a7a). At that point, replace the provisional link-following rules above with the exact edge kinds and URN forms the resolver actually exposes, then finalize the acceptance criteria in the spec. Do not start cascade implementation until the hard links are real.
+**Refine this ticket now against the delivered URN/discovery model and the planned hard-link tickets** (b03be2d5 + f00291a3). Replace the provisional link-following rules above with the exact edge kinds and URN forms the resolver is expected to expose, then finalize the acceptance criteria in the spec. Do not start cascade implementation until b03be2d5 and f00291a3 are done and the rule-entry link shape is explicit.
 
 ## Spec
 `memory-api/session-api/cascade-context-gathering` (fda5c915).
