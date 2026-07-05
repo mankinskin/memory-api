@@ -1,0 +1,9 @@
+id = "27558fde-37b0-43eb-86c6-cfbe2d99a0b8"
+created_at = "2026-06-27T14:46:06.783146700+00:00"
+title = "[ticket-mcp][ticket-http] Workspace-resolution parity — nested-root awareness + pure transport (first run)"
+state = "new"
+component = "ticket-api"
+depends_on = ["ef0ebf38-7f55-4bd7-bf0c-0b416650ee0b"]
+effort = "4000"
+priority = "high"
+type = "tracker-improvement"

@@ -1,0 +1,8 @@
+id = "c2d6a14a-98b7-4f98-9f62-90a5ccf06d9e"
+created_at = "2026-06-17T15:58:10.000000000+00:00"
+title = "[feedback-api] Retention, redaction, and privacy incident controls"
+state = "new"
+depends_on = ["9c95c1e4-3cdb-428e-b9de-800684651226"]
+effort = "500"
+priority = "high"
+type = "tracker-improvement"

@@ -1,0 +1,8 @@
+id = "4f86d3d2-2b2a-4c9d-9d46-5f2a437f91b7"
+created_at = "2026-06-17T15:49:50.000000000+00:00"
+title = "[feedback-api] Privileged feedback governance and abuse-boundary enforcement"
+state = "new"
+depends_on = ["9c95c1e4-3cdb-428e-b9de-800684651226", "b7b84c10-8dc5-4087-87ad-6fe27ebbcd45"]
+effort = "550"
+priority = "high"
+type = "tracker-improvement"

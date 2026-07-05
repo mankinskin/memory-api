@@ -1,0 +1,9 @@
+id = "1fd0c182-f4b4-486b-b757-fe47e3238e43"
+created_at = "2026-06-27T14:46:06.890047200+00:00"
+title = "[rule-mcp][rule-http] Workspace-resolution parity — nested-root awareness + pure transport"
+state = "new"
+component = "rule-api"
+depends_on = ["27558fde-37b0-43eb-86c6-cfbe2d99a0b8"]
+effort = "3000"
+priority = "medium"
+type = "tracker-improvement"

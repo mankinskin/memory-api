@@ -1,0 +1,9 @@
+id = "51e2210c-829b-4f7f-865e-99d120d8fd7d"
+created_at = "2026-06-28T23:02:33.809528400+00:00"
+title = "[memory-matrix] Add missing-store explicit-init policy coverage"
+state = "done"
+component = "memory-matrix"
+depends_on = ["a9514081-35c2-4162-b62d-3baf4a14ec8b"]
+effort = "4k tokens"
+priority = "high"
+type = "tracker-improvement"

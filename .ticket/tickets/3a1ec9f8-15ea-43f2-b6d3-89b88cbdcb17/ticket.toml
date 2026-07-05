@@ -1,0 +1,8 @@
+id = "3a1ec9f8-15ea-43f2-b6d3-89b88cbdcb17"
+created_at = "2026-06-17T16:04:10.000000000+00:00"
+title = "[feedback-api] Search latency and index growth SLOs"
+state = "new"
+depends_on = ["b7b84c10-8dc5-4087-87ad-6fe27ebbcd45"]
+effort = "420"
+priority = "high"
+type = "tracker-improvement"

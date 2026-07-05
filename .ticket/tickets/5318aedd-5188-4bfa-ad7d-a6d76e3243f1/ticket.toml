@@ -1,0 +1,9 @@
+id = "5318aedd-5188-4bfa-ad7d-a6d76e3243f1"
+created_at = "2026-06-27T14:46:07.101418300+00:00"
+title = "[spec-mcp][spec-http] Workspace-resolution parity — nested-root awareness + pure transport"
+state = "new"
+component = "spec-api"
+depends_on = ["27558fde-37b0-43eb-86c6-cfbe2d99a0b8", "59d96577-09a8-44a7-b0ea-3d51b3a6fb05"]
+effort = "3000"
+priority = "medium"
+type = "tracker-improvement"

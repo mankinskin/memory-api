@@ -1,0 +1,7 @@
+id = "9c95c1e4-3cdb-428e-b9de-800684651226"
+created_at = "2026-06-17T15:34:46.740966800+00:00"
+title = "[feedback-api] Event ingestion, metadata normalization, and retention policy"
+state = "new"
+effort = "650"
+priority = "high"
+type = "tracker-improvement"

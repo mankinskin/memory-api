@@ -112,3 +112,18 @@ Implication:
 	- `40ba5a15`
 	- `61cb6557`
 - Targeted health checks for these IDs in `./` and `./memory-api` are warning-only (`missing_effort_estimation`); no dangling-edge finding is present for the pair.
+
+### Update (continued 2026-07-05)
+
+- Ran fresh ownership inventory and preflight classification after moving `40ba5a15` and `61cb6557`.
+- Identified remaining root-owned memory-api candidates (feedback-api, workspace-resolution, explicit-init policy, path normalization implementation ticket, and transport diagnostics matrix ticket) and executed move applies in a single verified pass.
+- Successfully moved the following additional IDs into `memory-api/.ticket` (all `status=ok` with journaled execution):
+	- `b1e9e744`, `c7542933`, `9c95c1e4`, `3a1ec9f8`, `4f86d3d2`, `b7b84c10`, `c2d6a14a`
+	- `ef0ebf38`, `07836f41`, `59d96577`, `27558fde`, `1fd0c182`, `5318aedd`, `632974d1`, `39239e48`
+	- `a9514081`, `23f1c81b`, `e6bdafbe`, `50307cce`, `51e2210c`
+	- `e8e3ef17`, `cc78d33d`
+- Post-move ownership verification confirms all targeted IDs in this cleanup wave now resolve to `memory-api/.ticket` from both root and nested workspace lookups.
+- Cleared the two known effort warnings by setting:
+	- `40ba5a15`: `effort=2500`
+	- `61cb6557`: `effort=3000`
+- Targeted health check for `40ba5a15` and `61cb6557` now reports `finding_count=0`.

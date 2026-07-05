@@ -1,0 +1,8 @@
+id = "b7b84c10-8dc5-4087-87ad-6fe27ebbcd45"
+created_at = "2026-06-17T15:34:47.079352100+00:00"
+title = "[feedback-api] High-scale search, clustering, and reconciliation workflows"
+state = "new"
+depends_on = ["9c95c1e4-3cdb-428e-b9de-800684651226"]
+effort = "700"
+priority = "high"
+type = "tracker-improvement"
