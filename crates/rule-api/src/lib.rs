@@ -21,6 +21,7 @@ pub use feedback::{
     EntityFeedbackSummary,
     EntityRatingEvent,
     EntityRatingInput,
+    EntityRatingSubmission,
     EntityUrn,
     EntityUsageEvent,
     FeedbackAuthorKind,

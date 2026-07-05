@@ -229,15 +229,7 @@ impl RuleFeedbackInput {
         let session_id = normalize_optional(session_id);
         let agent_or_user_id = normalize_optional(agent_or_user_id);
 
-        let note_kind = match (note_text.as_ref(), note_kind) {
-            (Some(_), Some(kind)) => Some(kind),
-            (Some(_), None) => Some(FeedbackNoteKind::Note),
-            (None, None) => None,
-            (None, Some(_)) => {
-                return Err("feedback note kind requires feedback note text"
-                    .to_string());
-            },
-        };
+        let note_kind = resolve_note_kind(note_text.as_deref(), note_kind)?;
 
         match (session_id.as_ref(), agent_or_user_id.as_ref()) {
             (Some(_), Some(_)) | (None, None) => {},
@@ -512,19 +504,16 @@ impl EntityRatingInput {
         }
     }
 
-    /// Build a rating event tagged with an ingestion author. When the input
-    /// omits `agent_or_user_id`, the author identity backfills it so the
-    /// event retains an attributable actor.
+    /// Build a rating event tagged with an ingestion author. The paired
+    /// session/agent invariant is enforced when the [`EntityRatingInput`] is
+    /// constructed; the author identity is applied earlier (during ingestion)
+    /// so callers may submit a `session_id` without redundantly repeating the
+    /// author id. This only stamps the author classification onto the event.
     pub fn into_event_with_author(
-        mut self,
+        self,
         urn: EntityUrn,
         author: &IngestAuthor,
     ) -> EntityRatingEvent {
-        if self.agent_or_user_id.is_none()
-            && let Some(id) = author.id()
-        {
-            self.agent_or_user_id = Some(id.to_string());
-        }
         EntityRatingEvent {
             timestamp: Utc::now().to_rfc3339(),
             urn,
@@ -534,6 +523,34 @@ impl EntityRatingInput {
             session_id: self.session_id,
             agent_or_user_id: self.agent_or_user_id,
             author_kind: Some(author.kind()),
+        }
+    }
+}
+
+/// Raw, unvalidated rating submission for author-attributed ingestion.
+///
+/// Validation — including the paired `session_id`/`agent_or_user_id`
+/// invariant — runs inside [`EntityFeedbackStore::ingest_rating`] *after* the
+/// author identity has backfilled a missing `agent_or_user_id`. This lets a
+/// caller submit a `session_id` alongside an authenticated [`IngestAuthor`]
+/// without redundantly copying the author id into the submission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityRatingSubmission {
+    pub rating: FeedbackRating,
+    pub note_text: Option<String>,
+    pub note_kind: Option<FeedbackNoteKind>,
+    pub session_id: Option<String>,
+    pub agent_or_user_id: Option<String>,
+}
+
+impl EntityRatingSubmission {
+    pub fn new(rating: FeedbackRating) -> Self {
+        Self {
+            rating,
+            note_text: None,
+            note_kind: None,
+            session_id: None,
+            agent_or_user_id: None,
         }
     }
 }
@@ -690,14 +707,43 @@ impl EntityFeedbackStore {
     }
 
     /// Ingest a rating event attributed to a classified author. The author
-    /// identity backfills `agent_or_user_id` when the input omits it.
+    /// identity backfills a missing `agent_or_user_id` *before* the paired
+    /// `session_id`/`agent_or_user_id` invariant is validated, so a caller may
+    /// submit a `session_id` with an authenticated author and omit the actor id.
     pub fn ingest_rating(
         &self,
         author: &IngestAuthor,
         urn: EntityUrn,
-        input: EntityRatingInput,
+        submission: EntityRatingSubmission,
     ) -> Result<EntityRatingEvent, String> {
         self.ensure_workspace_urn(&urn)?;
+
+        let note_text = normalize_optional(submission.note_text);
+        let session_id = normalize_optional(submission.session_id);
+        // The author is always the attributable actor: backfill a missing
+        // `agent_or_user_id` from the author identity before validation.
+        let agent_or_user_id = normalize_optional(submission.agent_or_user_id)
+            .or_else(|| author.id().map(str::to_string));
+        let note_kind =
+            resolve_note_kind(note_text.as_deref(), submission.note_kind)?;
+
+        // A session reference still requires an attributable actor. Unlike the
+        // direct (author-less) rating path, an actor without a session is
+        // valid here because the author is the actor.
+        if session_id.is_some() && agent_or_user_id.is_none() {
+            return Err(
+                "feedback session references require session_id and agent_or_user_id together"
+                    .to_string(),
+            );
+        }
+
+        let input = EntityRatingInput {
+            rating: submission.rating,
+            note_text,
+            note_kind,
+            session_id,
+            agent_or_user_id,
+        };
         let event = input.into_event_with_author(urn, author);
         append_ndjson(&self.rating_events_path(), &event)?;
         Ok(event)
@@ -936,6 +982,22 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
     value
         .map(|item| item.trim().to_string())
         .filter(|item| !item.is_empty())
+}
+
+/// Resolve the effective note kind for a feedback event: a note kind requires
+/// note text, and note text without an explicit kind defaults to `Note`.
+fn resolve_note_kind(
+    note_text: Option<&str>,
+    note_kind: Option<FeedbackNoteKind>,
+) -> Result<Option<FeedbackNoteKind>, String> {
+    match (note_text, note_kind) {
+        (Some(_), Some(kind)) => Ok(Some(kind)),
+        (Some(_), None) => Ok(Some(FeedbackNoteKind::Note)),
+        (None, None) => Ok(None),
+        (None, Some(_)) => {
+            Err("feedback note kind requires feedback note text".to_string())
+        },
+    }
 }
 
 fn append_ndjson<T: Serialize>(
@@ -1305,14 +1367,7 @@ mod tests {
             .ingest_rating(
                 &agent,
                 rule_urn.clone(),
-                EntityRatingInput::new(
-                    FeedbackRating::Helpful,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-                .unwrap(),
+                EntityRatingSubmission::new(FeedbackRating::Helpful),
             )
             .unwrap();
         assert_eq!(rating.author_kind, Some(FeedbackAuthorKind::PrivilegedAgent));
@@ -1326,6 +1381,43 @@ mod tests {
             reloaded[0].author_kind,
             Some(FeedbackAuthorKind::PrivilegedAgent)
         );
+    }
+
+    #[test]
+    fn ingest_rating_backfills_author_for_session_scoped_rating() {
+        let dir = tempfile::tempdir().unwrap();
+        let store =
+            EntityFeedbackStore::new(dir.path(), "memory-api").unwrap();
+        let rule_urn = EntityUrn::rule("memory-api", "rule-session").unwrap();
+        let agent = IngestAuthor::privileged_agent("copilot").unwrap();
+
+        // Session-scoped rating with the actor id omitted: the author must
+        // backfill `agent_or_user_id` before the paired-session invariant is
+        // validated, so this call succeeds without repeating the author id.
+        let mut submission = EntityRatingSubmission::new(FeedbackRating::Mixed);
+        submission.session_id = Some("session-42".to_string());
+
+        let rating = store
+            .ingest_rating(&agent, rule_urn.clone(), submission)
+            .unwrap();
+
+        assert_eq!(rating.session_id.as_deref(), Some("session-42"));
+        assert_eq!(rating.agent_or_user_id.as_deref(), Some("copilot"));
+        assert_eq!(rating.author_kind, Some(FeedbackAuthorKind::PrivilegedAgent));
+
+        // The persisted event carries the backfilled actor and session.
+        let reloaded: Vec<EntityRatingEvent> =
+            read_ndjson(&store.rating_events_path()).unwrap();
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0].session_id.as_deref(), Some("session-42"));
+        assert_eq!(reloaded[0].agent_or_user_id.as_deref(), Some("copilot"));
+
+        // A human author with no identity still cannot attribute a session.
+        let anon = IngestAuthor::human(None).unwrap();
+        let mut orphan = EntityRatingSubmission::new(FeedbackRating::Mixed);
+        orphan.session_id = Some("session-99".to_string());
+        let err = store.ingest_rating(&anon, rule_urn, orphan).unwrap_err();
+        assert!(err.contains("session_id and agent_or_user_id together"));
     }
 
     #[test]
