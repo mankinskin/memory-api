@@ -15,7 +15,9 @@ use crate::{
         edge::EdgeRecord,
         filesystem::{
         ParseDiagnostic,
+        PersistedScanRoot,
         ScanRoot,
+        ScanRootMetadata,
         TICKET_MANIFEST_FILE,
         },
     },
@@ -42,6 +44,8 @@ pub struct ScanReport {
     pub diagnostics: Vec<ParseDiagnostic>,
     pub phase_timings_ms: std::collections::BTreeMap<String, u64>,
     pub root_entry_counts: std::collections::BTreeMap<String, usize>,
+    /// Labels of scan roots skipped because policy marked them `ignored`.
+    pub skipped_roots: Vec<String>,
 }
 
 impl TicketStore {
@@ -55,6 +59,21 @@ impl TicketStore {
         })
     }
 
+    /// Persist a scan root together with explicit auditability metadata.
+    pub fn add_scan_root_with_metadata(
+        &self,
+        root: ScanRoot,
+        metadata: ScanRootMetadata,
+    ) -> Result<(), StorageError> {
+        self.index.add_scan_root_with_metadata(
+            &ScanRoot {
+                path: self.resolve_scan_root_path(&root.path),
+                label: root.label,
+            },
+            &metadata,
+        )
+    }
+
     pub fn list_scan_roots(&self) -> Result<Vec<ScanRoot>, StorageError> {
         let mut seen = HashSet::new();
         let mut roots = Vec::new();
@@ -65,6 +84,31 @@ impl TicketStore {
                 roots.push(ScanRoot {
                     path,
                     label: root.label,
+                });
+            }
+        }
+
+        Ok(roots)
+    }
+
+    /// List persisted scan roots together with their auditability metadata.
+    ///
+    /// Paths are resolved and de-duplicated exactly like [`list_scan_roots`].
+    pub fn list_scan_roots_with_metadata(
+        &self
+    ) -> Result<Vec<PersistedScanRoot>, StorageError> {
+        let mut seen = HashSet::new();
+        let mut roots = Vec::new();
+
+        for persisted in self.index.list_scan_roots_with_metadata()? {
+            let path = self.resolve_scan_root_path(&persisted.root.path);
+            if seen.insert(path.clone()) {
+                roots.push(PersistedScanRoot {
+                    root: ScanRoot {
+                        path,
+                        label: persisted.root.label,
+                    },
+                    metadata: persisted.metadata,
                 });
             }
         }
@@ -265,6 +309,7 @@ impl TicketStore {
             diagnostics,
             phase_timings_ms,
             root_entry_counts,
+            skipped_roots: Vec::new(),
         })
     }
 
@@ -309,7 +354,20 @@ impl TicketStore {
         }
 
         let list_roots_started = Instant::now();
-        let mut roots = self.list_scan_roots()?;
+        let mut skipped_roots = Vec::new();
+        let mut roots = Vec::new();
+        for persisted in self.list_scan_roots_with_metadata()? {
+            if persisted.metadata.policy_decision.is_ignored() {
+                tracing::debug!(
+                    target: STORE_TRACE_TARGET,
+                    root_label = %persisted.root.label,
+                    "ticket_store_scan_root_skipped_by_policy"
+                );
+                skipped_roots.push(persisted.root.label);
+                continue;
+            }
+            roots.push(persisted.root);
+        }
         record_phase_timing(
             &mut phase_timings_ms,
             "list_scan_roots_ms",
@@ -482,6 +540,7 @@ impl TicketStore {
             diagnostics,
             phase_timings_ms,
             root_entry_counts,
+            skipped_roots,
         })
     }
 

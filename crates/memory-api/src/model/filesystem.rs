@@ -21,6 +21,96 @@ pub struct ScanRoot {
     pub label: String,
 }
 
+/// Provenance of a persisted scan root.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ScanRootSource {
+    /// Added by automatic workspace discovery.
+    #[default]
+    Discovered,
+    /// Added explicitly by a user or tool.
+    Manual,
+    /// Added as a result of a workspace-policy decision.
+    Policy,
+}
+
+impl ScanRootSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Discovered => "discovered",
+            Self::Manual => "manual",
+            Self::Policy => "policy",
+        }
+    }
+
+    pub fn from_str_or_default(value: &str) -> Self {
+        match value {
+            "manual" => Self::Manual,
+            "policy" => Self::Policy,
+            _ => Self::Discovered,
+        }
+    }
+}
+
+/// Whether a persisted scan root is included or ignored by policy.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PolicyDecision {
+    /// Root participates in scan and query.
+    #[default]
+    Included,
+    /// Root is excluded by workspace policy.
+    Ignored,
+}
+
+impl PolicyDecision {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Included => "included",
+            Self::Ignored => "ignored",
+        }
+    }
+
+    pub fn from_str_or_default(value: &str) -> Self {
+        match value {
+            "ignored" => Self::Ignored,
+            _ => Self::Included,
+        }
+    }
+
+    pub fn is_ignored(&self) -> bool {
+        matches!(self, Self::Ignored)
+    }
+}
+
+/// Auditability metadata persisted alongside a scan root.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ScanRootMetadata {
+    #[serde(default)]
+    pub source: ScanRootSource,
+    #[serde(default)]
+    pub policy_decision: PolicyDecision,
+    #[serde(default)]
+    pub workspace_root: Option<PathBuf>,
+}
+
+impl Default for ScanRootMetadata {
+    fn default() -> Self {
+        Self {
+            source: ScanRootSource::Discovered,
+            policy_decision: PolicyDecision::Included,
+            workspace_root: None,
+        }
+    }
+}
+
+/// A scan root together with its persisted auditability metadata.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PersistedScanRoot {
+    pub root: ScanRoot,
+    pub metadata: ScanRootMetadata,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ParseDiagnostic {
     pub path: PathBuf,

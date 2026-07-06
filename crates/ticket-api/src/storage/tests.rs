@@ -1968,3 +1968,54 @@ fn update_allows_reachable_reverse_multi_step_without_transition_states() {
     let indexed = store.get_indexed(&id).unwrap().unwrap();
     assert_eq!(indexed.state.as_deref(), Some("new"));
 }
+
+#[test]
+fn scan_skips_policy_ignored_scan_roots() {
+    use memory_api::model::filesystem::{
+        PolicyDecision,
+        ScanRootMetadata,
+        ScanRootSource,
+    };
+
+    // A separate fixture store whose tickets must not leak into the main store.
+    let fixture_dir = tempdir().unwrap();
+    let fixture = TicketStore::init(fixture_dir.path()).unwrap();
+    let fixture_ticket = fixture
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Fixture ticket that must be excluded"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let fixture_tickets_path = fixture.index_root.join("tickets");
+    drop(fixture);
+
+    let main_dir = tempdir().unwrap();
+    let store = TicketStore::init(main_dir.path()).unwrap();
+
+    // Register the fixture tickets directory as a policy-ignored scan root.
+    store
+        .add_scan_root_with_metadata(
+            ScanRoot {
+                path: fixture_tickets_path,
+                label: "fixtures".to_string(),
+            },
+            ScanRootMetadata {
+                source: ScanRootSource::Policy,
+                policy_decision: PolicyDecision::Ignored,
+                workspace_root: None,
+            },
+        )
+        .unwrap();
+
+    let report = store.scan(true).unwrap();
+
+    // The ignored root is reported as skipped and its ticket is not indexed.
+    assert!(report.skipped_roots.iter().any(|label| label == "fixtures"));
+    assert!(store.get(&fixture_ticket).is_err());
+}
+

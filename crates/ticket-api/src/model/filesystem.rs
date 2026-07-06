@@ -6,7 +6,11 @@ use serde::{
 // Re-export generic types from memory-api — same type identity, no duplication.
 pub use memory_api::model::filesystem::{
     ParseDiagnostic,
+    PersistedScanRoot,
+    PolicyDecision,
     ScanRoot,
+    ScanRootMetadata,
+    ScanRootSource,
 };
 
 use super::ticket::TicketManifest;

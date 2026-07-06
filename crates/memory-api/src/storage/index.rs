@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    collections::HashSet,
     path::{
         Path,
         PathBuf,
@@ -62,6 +63,7 @@ impl RedbIndexStore {
     pub fn open(db_path: &Path) -> Result<Self, StorageError> {
         let conn = write_connection(db_path)?;
         ensure_tables(&conn)?;
+        migrate_scan_roots_metadata(&conn)?;
         check_or_set_schema_version(&conn)?;
         Ok(Self {
             db_path: db_path.to_path_buf(),
@@ -559,8 +561,11 @@ fn ensure_tables(conn: &Connection) -> Result<(), StorageError> {
              PRIMARY KEY (from_id, to_id, kind)
          );
          CREATE TABLE IF NOT EXISTS {TABLE_SCAN_ROOTS} (
-             path  TEXT PRIMARY KEY NOT NULL,
-             label TEXT NOT NULL
+             path            TEXT PRIMARY KEY NOT NULL,
+             label           TEXT NOT NULL,
+             source          TEXT NOT NULL DEFAULT 'discovered',
+             policy_decision TEXT NOT NULL DEFAULT 'included',
+             workspace_root  TEXT
          );
          CREATE TABLE IF NOT EXISTS {TABLE_LEASES} (
              id   TEXT PRIMARY KEY NOT NULL,
@@ -585,6 +590,40 @@ fn ensure_tables(conn: &Connection) -> Result<(), StorageError> {
          COMMIT;"
     ))
     .map_err(|e| StorageError::Database(e.to_string()))
+}
+
+/// Non-destructive migration: add scan-root auditability columns to indexes
+/// created before the metadata schema existed. Existing rows receive safe
+/// defaults (`source = 'discovered'`, `policy_decision = 'included'`,
+/// `workspace_root = NULL`).
+fn migrate_scan_roots_metadata(conn: &Connection) -> Result<(), StorageError> {
+    let existing: HashSet<String> = {
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({TABLE_SCAN_ROOTS})"))
+            .map_err(|e| StorageError::Database(e.to_string()))?;
+        let names = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| StorageError::Database(e.to_string()))?
+            .collect::<Result<HashSet<String>, _>>()
+            .map_err(|e| StorageError::Database(e.to_string()))?;
+        names
+    };
+
+    let additions: [(&str, &str); 3] = [
+        ("source", "ALTER TABLE {t} ADD COLUMN source TEXT NOT NULL DEFAULT 'discovered'"),
+        ("policy_decision", "ALTER TABLE {t} ADD COLUMN policy_decision TEXT NOT NULL DEFAULT 'included'"),
+        ("workspace_root", "ALTER TABLE {t} ADD COLUMN workspace_root TEXT"),
+    ];
+
+    for (column, template) in additions {
+        if !existing.contains(column) {
+            let sql = template.replace("{t}", TABLE_SCAN_ROOTS);
+            conn.execute(&sql, [])
+                .map_err(|e| StorageError::Database(e.to_string()))?;
+        }
+    }
+
+    Ok(())
 }
 
 fn check_or_set_schema_version(conn: &Connection) -> Result<(), StorageError> {
