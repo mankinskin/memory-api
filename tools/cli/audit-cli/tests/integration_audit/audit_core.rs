@@ -56,6 +56,7 @@ fn audit_collects_findings_and_prunes_stale_index_entries() {
                         finding.id == "coverage_tool_missing"
                             || finding.id
                                 == "coverage_nested_invocation_skipped"
+                            || finding.id == "coverage_profraw_missing"
                     })
             );
         },

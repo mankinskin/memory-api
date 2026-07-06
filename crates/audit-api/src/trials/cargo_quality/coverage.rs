@@ -107,13 +107,18 @@ pub(super) fn collect_coverage(
     let output = output?;
 
     if !output.status.success() {
+        let stderr = trim_output(&output.stderr);
+        if stderr.contains("not found *.profraw files") {
+            return Ok(missing_profraw_coverage_result(stderr));
+        }
+
         return Ok(CoverageTrialResult {
             metric: CoverageSummary {
                 status: TrialStatus::Failed,
                 line_percent: None,
                 covered_lines: None,
                 total_lines: None,
-                details: Some(trim_output(&output.stderr)),
+                details: Some(stderr.clone()),
             },
             findings: vec![AuditFinding {
                 id: "coverage_collection_failed".to_string(),
@@ -129,7 +134,7 @@ pub(super) fn collect_coverage(
                     "Fix the failing coverage command, then rerun the audit so line coverage can be measured.".to_string(),
                 ],
                 evidence: json!({
-                    "stderr": trim_output(&output.stderr),
+                    "stderr": stderr,
                 }),
             }],
         });
@@ -298,6 +303,41 @@ fn nested_coverage_tool_result() -> CoverageTrialResult {
             ],
             evidence: json!({
                 "env_var": "CARGO_LLVM_COV",
+            }),
+        }],
+    }
+}
+
+fn missing_profraw_coverage_result(stderr: String) -> CoverageTrialResult {
+    CoverageTrialResult {
+        metric: CoverageSummary {
+            status: TrialStatus::Unavailable,
+            line_percent: None,
+            covered_lines: None,
+            total_lines: None,
+            details: Some(
+                "Coverage metrics are unavailable because cargo llvm-cov did not produce any profraw data in this environment."
+                    .to_string(),
+            ),
+        },
+        findings: vec![AuditFinding {
+            id: "coverage_profraw_missing".to_string(),
+            category: "coverage".to_string(),
+            severity: Severity::Medium,
+            summary:
+                "Coverage metrics are unavailable because cargo llvm-cov produced no profraw data."
+                    .to_string(),
+            path: None,
+            line: None,
+            metric_name: "coverage_status".to_string(),
+            metric_value: json!("unavailable"),
+            threshold: None,
+            instructions: vec![
+                "Re-run the audit in an environment where cargo llvm-cov can write profraw data, or treat coverage as unavailable for this run."
+                    .to_string(),
+            ],
+            evidence: json!({
+                "stderr": stderr,
             }),
         }],
     }

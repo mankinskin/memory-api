@@ -59,13 +59,7 @@ pub fn format_output_path(path: &Path) -> String {
 
 pub fn normalize_output_text(text: impl AsRef<str>) -> String {
     let text = text.as_ref().replace('\\', "/");
-    if let Some(stripped) = text.strip_prefix("//?/UNC/") {
-        return format!("//{stripped}");
-    }
-    if let Some(stripped) = text.strip_prefix("//?/") {
-        return stripped.to_string();
-    }
-    text
+    text.replace("//?/UNC/", "//").replace("//?/", "")
 }
 
 fn normalize_config_path(path: &str) -> String {
