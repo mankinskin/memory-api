@@ -2019,3 +2019,99 @@ fn scan_skips_policy_ignored_scan_roots() {
     assert!(store.get(&fixture_ticket).is_err());
 }
 
+#[test]
+fn query_guard_excludes_tickets_under_ignored_roots() {
+    use memory_api::model::filesystem::{
+        PolicyDecision,
+        ScanRootMetadata,
+        ScanRootSource,
+    };
+
+    // Fixture store whose ticket rows will be indexed while the root is
+    // `included`, then must disappear from query surfaces once the root is
+    // flipped to `ignored` (the final query-time defense — no re-scan).
+    let fixture_dir = tempdir().unwrap();
+    let fixture = TicketStore::init(fixture_dir.path()).unwrap();
+    let fixture_ticket = fixture
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Fixture ticket zzytestmarker excluded"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let fixture_tickets_path = fixture.index_root.join("tickets");
+    drop(fixture);
+
+    let main_dir = tempdir().unwrap();
+    let store = TicketStore::init(main_dir.path()).unwrap();
+
+    // Register the fixture root as `included` and index it.
+    store
+        .add_scan_root_with_metadata(
+            ScanRoot {
+                path: fixture_tickets_path.clone(),
+                label: "fixtures".to_string(),
+            },
+            ScanRootMetadata {
+                source: ScanRootSource::Discovered,
+                policy_decision: PolicyDecision::Included,
+                workspace_root: None,
+            },
+        )
+        .unwrap();
+    store.scan(true).unwrap();
+
+    // While included, the fixture ticket is visible via list and search.
+    assert!(
+        store
+            .list(None, None, None)
+            .unwrap()
+            .iter()
+            .any(|ticket| ticket.id == fixture_ticket)
+    );
+    assert!(
+        store
+            .search_tickets("zzytestmarker", 50)
+            .unwrap()
+            .iter()
+            .any(|result| result.id == fixture_ticket)
+    );
+
+    // Flip the root to `ignored` WITHOUT re-scanning: stale index rows remain.
+    store
+        .add_scan_root_with_metadata(
+            ScanRoot {
+                path: fixture_tickets_path,
+                label: "fixtures".to_string(),
+            },
+            ScanRootMetadata {
+                source: ScanRootSource::Policy,
+                policy_decision: PolicyDecision::Ignored,
+                workspace_root: None,
+            },
+        )
+        .unwrap();
+
+    // The query-time guard must now exclude the ticket from both surfaces even
+    // though its rows still exist in the index and search segments.
+    assert!(
+        !store
+            .list(None, None, None)
+            .unwrap()
+            .iter()
+            .any(|ticket| ticket.id == fixture_ticket)
+    );
+    assert!(
+        !store
+            .search_tickets("zzytestmarker", 50)
+            .unwrap()
+            .iter()
+            .any(|result| result.id == fixture_ticket)
+    );
+}
+
+

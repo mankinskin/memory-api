@@ -77,8 +77,8 @@ impl TicketStore {
         // read, repopulating from the on-disk tickets if it is empty or partial.
         self.ensure_search_complete()?;
 
-        match self.search.search(&expression, limit) {
-            Ok(results) => Ok(results),
+        let raw = match self.search.search(&expression, limit) {
+            Ok(results) => results,
             // Deep segment-content corruption keeps `meta.json` valid, so it
             // passes the cheap structural and completeness checks and only
             // surfaces on read. Rebuild from the on-disk tickets and retry once.
@@ -87,9 +87,32 @@ impl TicketStore {
             {
                 self.search.reset_dir()?;
                 self.scan(true)?;
-                self.search.search(&expression, limit)
+                self.search.search(&expression, limit)?
             },
-            Err(error) => Err(error),
+            Err(error) => return Err(error),
+        };
+
+        // Apply the same policy-allowed-root guard as `list`/`list_extended`.
+        // A ticket physically under an ignored/external root must never surface
+        // through search even if its row still exists in the search index.
+        let visible_roots = visible_scan_roots(self)?;
+        let filtered = raw
+            .into_iter()
+            .filter(|result| self.search_result_visible(result, &visible_roots))
+            .collect();
+        Ok(filtered)
+    }
+
+    /// Whether a search hit resolves to a ticket under a policy-allowed root.
+    /// Results whose ticket path cannot be resolved are treated as not visible.
+    fn search_result_visible(
+        &self,
+        result: &SearchResult,
+        visible_roots: &[std::path::PathBuf],
+    ) -> bool {
+        match self.get_indexed(&result.id) {
+            Ok(Some(ticket)) => is_ticket_visible(&ticket, visible_roots),
+            _ => false,
         }
     }
 
@@ -193,10 +216,14 @@ impl TicketStore {
 }
 
 fn visible_scan_roots(store: &TicketStore) -> Result<Vec<std::path::PathBuf>, StorageError> {
+    // Only surface roots whose persisted policy decision is `included`. Roots
+    // marked `ignored` (via marker, glob, or external-path denial) are the
+    // final defense against stale/ignored rows leaking into query results.
     let mut roots = store
-        .list_scan_roots()?
+        .list_scan_roots_with_metadata()?
         .into_iter()
-        .map(|root| root.path)
+        .filter(|persisted| !persisted.metadata.policy_decision.is_ignored())
+        .map(|persisted| persisted.root.path)
         .collect::<Vec<_>>();
     let default_root = store.resolve_scan_root_path(&store.index_root.join("tickets"));
     if !roots.iter().any(|root| *root == default_root) {
