@@ -2114,4 +2114,182 @@ fn query_guard_excludes_tickets_under_ignored_roots() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Slice 6 — consolidated end-to-end policy regression coverage.
+//
+// These exercise the full discovery -> scan -> query contract through
+// `TicketStore::reapply_workspace_policy`, which loads the on-disk
+// `.ticket/workspace-policy.toml`, discovers descendant/ancestor stores under
+// the policy, re-registers scan roots with `policy_decision` metadata, rescans,
+// and thereby makes the query-time guard authoritative.
+// ---------------------------------------------------------------------------
+
+/// Initialize a store at `index_root` and create one ticket in it.
+fn init_store_with_ticket(
+    index_root: &Path,
+    title: &str,
+) -> (TicketStore, Uuid) {
+    let store = TicketStore::init(index_root).unwrap();
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some(title),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    (store, id)
+}
+
+fn write_policy(workspace_root: &Path, contents: &str) {
+    let ticket_dir = workspace_root.join(".ticket");
+    fs::create_dir_all(&ticket_dir).unwrap();
+    fs::write(ticket_dir.join("workspace-policy.toml"), contents).unwrap();
+}
+
+#[test]
+fn policy_e2e_child_included_by_default() {
+    // No policy file -> compatibility mode -> descendants included, scanned,
+    // and queryable.
+    let dir = tempdir().unwrap();
+    let repo = dir.path();
+    let (main, _root) = init_store_with_ticket(&repo.join(".ticket"), "Root");
+    let (child, child_id) =
+        init_store_with_ticket(&repo.join("child").join(".ticket"), "Child");
+    drop(child);
+
+    let report = main.reapply_workspace_policy(repo).unwrap();
+
+    assert!(report.skipped_roots.is_empty());
+    assert!(main.get(&child_id).is_ok(), "child ticket should be scanned");
+    assert!(
+        main.list(None, None, None)
+            .unwrap()
+            .iter()
+            .any(|ticket| ticket.id == child_id),
+        "child ticket should be queryable by default"
+    );
+}
+
+#[test]
+fn policy_e2e_child_ignored_via_marker() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path();
+    let (main, _root) = init_store_with_ticket(&repo.join(".ticket"), "Root");
+    let (child, child_id) =
+        init_store_with_ticket(&repo.join("child").join(".ticket"), "Child");
+    drop(child);
+
+    // Default policy present (ignore_markers includes `.ticket-ignore`).
+    write_policy(repo, "");
+    fs::write(repo.join("child").join(".ticket-ignore"), "").unwrap();
+
+    main.reapply_workspace_policy(repo).unwrap();
+
+    assert!(
+        main.get(&child_id).is_err(),
+        "marker-ignored child must not be scanned"
+    );
+    assert!(
+        !main
+            .list(None, None, None)
+            .unwrap()
+            .iter()
+            .any(|ticket| ticket.id == child_id)
+    );
+}
+
+#[test]
+fn policy_e2e_child_ignored_via_glob() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path();
+    let (main, _root) = init_store_with_ticket(&repo.join(".ticket"), "Root");
+    let (fixture, fixture_id) =
+        init_store_with_ticket(&repo.join("fixtures").join(".ticket"), "Fixture");
+    drop(fixture);
+
+    write_policy(repo, "ignore_workspaces = [\"fixtures*\"]\n");
+
+    main.reapply_workspace_policy(repo).unwrap();
+
+    assert!(
+        main.get(&fixture_id).is_err(),
+        "glob-ignored descendant must not be scanned"
+    );
+    assert!(
+        !main
+            .list(None, None, None)
+            .unwrap()
+            .iter()
+            .any(|ticket| ticket.id == fixture_id)
+    );
+}
+
+#[test]
+fn policy_e2e_include_override_wins() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path();
+    let (main, _root) = init_store_with_ticket(&repo.join(".ticket"), "Root");
+    let (fixture, fixture_id) =
+        init_store_with_ticket(&repo.join("fixtures").join(".ticket"), "Fixture");
+    drop(fixture);
+
+    // Matches both the ignore glob and an include override -> override wins.
+    write_policy(
+        repo,
+        "ignore_workspaces = [\"fixtures*\"]\ninclude_overrides = [\"fixtures\"]\n",
+    );
+
+    main.reapply_workspace_policy(repo).unwrap();
+
+    assert!(
+        main.get(&fixture_id).is_ok(),
+        "include override should re-include the descendant"
+    );
+    assert!(
+        main.list(None, None, None)
+            .unwrap()
+            .iter()
+            .any(|ticket| ticket.id == fixture_id)
+    );
+}
+
+#[test]
+fn policy_e2e_external_path_denied() {
+    // Workspace is the child; an ancestor store outside its subtree must never
+    // be indexed or queryable when external paths are denied.
+    let dir = tempdir().unwrap();
+    let repo = dir.path();
+    let (ancestor, ancestor_id) =
+        init_store_with_ticket(&repo.join(".ticket"), "Ancestor");
+    drop(ancestor);
+    let child_root = repo.join("child");
+    let (main, _child_ticket) =
+        init_store_with_ticket(&child_root.join(".ticket"), "Child");
+
+    // Request ancestors but deny external paths -> ancestor suppressed.
+    write_policy(
+        &child_root,
+        "include_ancestors = true\ndeny_external_paths = true\n",
+    );
+
+    main.reapply_workspace_policy(&child_root).unwrap();
+
+    assert!(
+        main.get(&ancestor_id).is_err(),
+        "external ancestor ticket must not be indexed under deny_external_paths"
+    );
+    assert!(
+        !main
+            .list(None, None, None)
+            .unwrap()
+            .iter()
+            .any(|ticket| ticket.id == ancestor_id)
+    );
+}
+
+
 
