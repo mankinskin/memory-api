@@ -67,13 +67,6 @@ use super::{
     },
 };
 
-pub(super) fn dispatch(
-    command: RuleCommandCli,
-    index_root: &Path,
-) -> Result<Value, CliRunError> {
-    dispatch_with_workspace_root(command, index_root, None)
-}
-
 pub(super) fn dispatch_with_workspace_root(
     command: RuleCommandCli,
     index_root: &Path,

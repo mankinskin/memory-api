@@ -25,9 +25,11 @@ impl TicketStore {
         type_filter: Option<&str>,
         limit: Option<usize>,
     ) -> Result<Vec<IndexedTicket>, StorageError> {
+        let visible_roots = visible_scan_roots(self)?;
         let mut filtered: Vec<IndexedTicket> = self
             .normalize_indexed_tickets(self.index.list_tickets()?)
             .into_iter()
+            .filter(|ticket| is_ticket_visible(ticket, &visible_roots))
             .filter(|ticket| matches_filters(ticket, state_filter, type_filter))
             .collect();
         sort_tickets_by_effort(&mut filtered);
@@ -43,11 +45,13 @@ impl TicketStore {
         field_filters: &[(String, String)],
     ) -> Result<Vec<IndexedTicket>, StorageError> {
         let needs_manifest_check = !field_filters.is_empty();
+        let visible_roots = visible_scan_roots(self)?;
         let mut filtered: Vec<IndexedTicket> = self
             .normalize_indexed_tickets(
                 self.index.list_tickets()?,
             )
             .into_iter()
+            .filter(|ticket| is_ticket_visible(ticket, &visible_roots))
             .filter(|ticket| matches_filters(ticket, state_filter, type_filter))
             .filter(|ticket| {
                 matches_field_filters(
@@ -186,6 +190,28 @@ impl TicketStore {
         }
         Ok(())
     }
+}
+
+fn visible_scan_roots(store: &TicketStore) -> Result<Vec<std::path::PathBuf>, StorageError> {
+    let mut roots = store
+        .list_scan_roots()?
+        .into_iter()
+        .map(|root| root.path)
+        .collect::<Vec<_>>();
+    let default_root = store.resolve_scan_root_path(&store.index_root.join("tickets"));
+    if !roots.iter().any(|root| *root == default_root) {
+        roots.push(default_root);
+    }
+    Ok(roots)
+}
+
+fn is_ticket_visible(
+    ticket: &IndexedTicket,
+    visible_roots: &[std::path::PathBuf],
+) -> bool {
+    visible_roots
+        .iter()
+        .any(|root| ticket.path.starts_with(root))
 }
 
 fn sort_tickets_by_effort(tickets: &mut [IndexedTicket]) {

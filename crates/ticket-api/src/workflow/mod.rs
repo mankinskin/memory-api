@@ -616,10 +616,10 @@ impl WorkflowModel {
             .into_iter()
             .map(|ticket| (ticket.id, ticket))
             .collect();
-        let dependency_counts = dependency_counts(&all_edges);
-        let dependee_counts = dependee_counts(&all_edges);
+        let dependency_counts = dependency_counts(&tickets, &all_edges);
+        let dependee_counts = dependee_counts(&tickets, &all_edges);
         let unresolved_deps = unresolved_dependency_map(&tickets, &all_edges);
-        let reverse_map = reverse_map(&all_edges);
+        let reverse_map = reverse_map(&tickets, &all_edges);
         let metrics = compute_metrics(
             &tickets,
             &state_index,
@@ -900,20 +900,32 @@ fn effort_sort_key(effort: Option<u64>) -> u64 {
     effort.unwrap_or(u64::MAX)
 }
 
-fn dependency_counts(all_edges: &[EdgeRecord]) -> HashMap<Uuid, usize> {
+fn dependency_counts(
+    tickets: &HashMap<Uuid, IndexedTicket>,
+    all_edges: &[EdgeRecord],
+) -> HashMap<Uuid, usize> {
     let mut counts = HashMap::new();
     for edge in all_edges {
-        if edge.kind == "depends_on" {
+        if edge.kind == "depends_on"
+            && tickets.contains_key(&edge.from)
+            && tickets.contains_key(&edge.to)
+        {
             *counts.entry(edge.from).or_insert(0) += 1;
         }
     }
     counts
 }
 
-fn dependee_counts(all_edges: &[EdgeRecord]) -> HashMap<Uuid, usize> {
+fn dependee_counts(
+    tickets: &HashMap<Uuid, IndexedTicket>,
+    all_edges: &[EdgeRecord],
+) -> HashMap<Uuid, usize> {
     let mut counts = HashMap::new();
     for edge in all_edges {
-        if edge.kind == "depends_on" {
+        if edge.kind == "depends_on"
+            && tickets.contains_key(&edge.from)
+            && tickets.contains_key(&edge.to)
+        {
             *counts.entry(edge.to).or_insert(0) += 1;
         }
     }
@@ -929,6 +941,9 @@ fn unresolved_dependency_map(
         if edge.kind != "depends_on" {
             continue;
         }
+        if !tickets.contains_key(&edge.from) || !tickets.contains_key(&edge.to) {
+            continue;
+        }
         let is_resolved = tickets
             .get(&edge.to)
             .map(|ticket| is_done_state(ticket.state.as_deref()))
@@ -940,10 +955,16 @@ fn unresolved_dependency_map(
     unresolved
 }
 
-fn reverse_map(all_edges: &[EdgeRecord]) -> HashMap<Uuid, Vec<Uuid>> {
+fn reverse_map(
+    tickets: &HashMap<Uuid, IndexedTicket>,
+    all_edges: &[EdgeRecord],
+) -> HashMap<Uuid, Vec<Uuid>> {
     let mut reverse_map = HashMap::new();
     for edge in all_edges {
-        if edge.kind == "depends_on" {
+        if edge.kind == "depends_on"
+            && tickets.contains_key(&edge.from)
+            && tickets.contains_key(&edge.to)
+        {
             reverse_map.entry(edge.to).or_insert_with(Vec::new).push(edge.from);
         }
     }
