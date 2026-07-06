@@ -140,6 +140,8 @@ fn dry_run_payload_runtime(command: &TicketCommandCli) -> Option<Value> {
             Some(dry_run_payload("fmt", "reformat ticket.toml files")),
         TicketCommandCli::Board(_) =>
             Some(dry_run_payload("board", "board state mutation")),
+        TicketCommandCli::Workspace(_) =>
+            Some(dry_run_payload("workspace", "workspace policy mutation")),
         _ => None,
     }
 }
@@ -384,7 +386,8 @@ fn dispatch_store_command(
         | TicketCommandCli::StoreIndex(_)
         | TicketCommandCli::Audit
         | TicketCommandCli::Fmt(_)
-        | TicketCommandCli::Board(_) =>
+        | TicketCommandCli::Board(_)
+        | TicketCommandCli::Workspace(_) =>
             dispatch_store_command_ops(command, store, dry_run),
         TicketCommandCli::ExportCommandSchema | TicketCommandCli::Init => {
             unreachable!("handled before store dispatch")
@@ -476,6 +479,7 @@ fn dispatch_store_command_ops(
         TicketCommandCli::Audit => commands::cmd_audit(&store),
         TicketCommandCli::Fmt(args) => commands::cmd_fmt(args, &store),
         TicketCommandCli::Board(args) => commands::cmd_board(args, &store),
+        TicketCommandCli::Workspace(args) => commands::cmd_workspace(args, &store),
         _ => unreachable!("handled in ops store dispatch"),
     }
 }

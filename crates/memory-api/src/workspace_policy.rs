@@ -16,7 +16,10 @@ use globset::{
     GlobSet,
     GlobSetBuilder,
 };
-use serde::Deserialize;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 use crate::workspace::TICKET_INDEX_DIR;
 
@@ -36,7 +39,7 @@ fn default_ignore_markers() -> Vec<String> {
 /// Per-field defaults are applied for partial files via `#[serde(default)]`
 /// on each field, so an empty or partial policy still yields the documented
 /// defaults: descendants included, ancestors excluded, external paths denied.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkspacePolicy {
     /// Include descendant stores discovered beneath the workspace root.
@@ -70,7 +73,7 @@ pub struct WorkspacePolicy {
     pub ignore_markers: Vec<String>,
 
     /// Whether this policy was synthesized from compatibility-mode defaults
-    /// (no policy file present). Not read from the file.
+    /// (no policy file present). Not read from or written to the file.
     #[serde(skip)]
     pub compatibility_mode: bool,
 }
@@ -183,7 +186,39 @@ pub fn load_workspace_policy(workspace_root: &Path) -> WorkspacePolicy {
     }
 }
 
-/// Build a `GlobSet` from patterns, normalizing backslashes to `/`.
+/// Load the on-disk policy file only, without compatibility fallback.
+///
+/// Returns `None` when the file is absent, and a parsed policy otherwise
+/// (malformed files yield `WorkspacePolicy::default()` so editing callers never
+/// silently drop all fields). Intended for mutation flows that should start
+/// from documented defaults rather than compatibility-mode defaults.
+pub fn load_workspace_policy_file(
+    workspace_root: &Path,
+) -> Option<WorkspacePolicy> {
+    let policy_path = workspace_root
+        .join(TICKET_INDEX_DIR)
+        .join(WORKSPACE_POLICY_FILE);
+    let contents = std::fs::read_to_string(&policy_path).ok()?;
+    Some(toml::from_str(&contents).unwrap_or_default())
+}
+
+/// Persist `policy` to `<workspace_root>/.ticket/workspace-policy.toml`.
+///
+/// Creates the `.ticket/` directory when absent and serializes deterministically
+/// via the [`WorkspacePolicy`] type (field-ordered TOML), so `set`/`add`/`remove`
+/// operations round-trip through the typed model rather than raw text editing.
+pub fn save_workspace_policy(
+    workspace_root: &Path,
+    policy: &WorkspacePolicy,
+) -> std::io::Result<()> {
+    let ticket_dir = workspace_root.join(TICKET_INDEX_DIR);
+    std::fs::create_dir_all(&ticket_dir)?;
+    let policy_path = ticket_dir.join(WORKSPACE_POLICY_FILE);
+    let contents = toml::to_string_pretty(policy).map_err(|error| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, error)
+    })?;
+    std::fs::write(policy_path, contents)
+}
 ///
 /// Invalid patterns are skipped so a single bad entry does not disable the
 /// entire set.

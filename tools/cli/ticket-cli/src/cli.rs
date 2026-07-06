@@ -180,6 +180,8 @@ pub enum TicketCommandCli {
     Fmt(FmtArgs),
     /// Manage the work-in-progress board (check-in, check-out, heartbeat, show, clean).
     Board(BoardArgs),
+    /// Inspect or edit the workspace policy and rescan with policy applied.
+    Workspace(WorkspaceArgs),
 }
 
 // ── error type ─────────────────────────────────────────────────────────────────
@@ -293,6 +295,7 @@ fn command_name(command: &TicketCommandCli) -> &'static str {
         TicketCommandCli::Audit => "audit",
         TicketCommandCli::Fmt(_) => "fmt",
         TicketCommandCli::Board(_) => "board",
+        TicketCommandCli::Workspace(_) => "workspace",
     }
 }
 

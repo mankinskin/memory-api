@@ -5,6 +5,7 @@ mod history;
 mod lifecycle;
 mod ops;
 mod query;
+mod workspace;
 
 pub(crate) use board::*;
 pub(crate) use crud::*;
@@ -13,6 +14,7 @@ pub(crate) use history::*;
 pub(crate) use lifecycle::*;
 pub(crate) use ops::*;
 pub(crate) use query::*;
+pub(crate) use workspace::*;
 
 use crate::cli::CliRunError;
 use serde_json::{

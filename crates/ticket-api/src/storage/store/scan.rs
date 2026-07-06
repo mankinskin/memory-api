@@ -16,8 +16,10 @@ use crate::{
         filesystem::{
         ParseDiagnostic,
         PersistedScanRoot,
+        PolicyDecision,
         ScanRoot,
         ScanRootMetadata,
+        ScanRootSource,
         TICKET_MANIFEST_FILE,
         },
     },
@@ -114,6 +116,60 @@ impl TicketStore {
         }
 
         Ok(roots)
+    }
+
+    /// Re-apply the workspace policy to the registered scan roots.
+    ///
+    /// Discovery is re-run under the resolved policy: every discovered allowed
+    /// root is (re-)registered with `policy_decision = included`, and any
+    /// previously-registered root that the policy no longer allows is flipped to
+    /// `policy_decision = ignored` (so scan-time skipping and the query-time
+    /// guard exclude it). A forced rescan then re-indexes, and the returned
+    /// [`ScanReport`] surfaces the skipped roots.
+    pub fn reapply_workspace_policy(
+        &self,
+        workspace_root: &Path,
+    ) -> Result<ScanReport, StorageError> {
+        let policy = crate::workspace_policy::load_workspace_policy(workspace_root);
+
+        let allowed = crate::workspace::discover_workspace_scan_roots_with_policy(
+            workspace_root,
+            crate::workspace::TICKET_INDEX_DIR,
+            "tickets",
+            &policy,
+        );
+        let allowed_paths: HashSet<std::path::PathBuf> = allowed
+            .iter()
+            .map(|root| self.resolve_scan_root_path(&root.path))
+            .collect();
+
+        // Flip previously-registered roots the policy no longer allows.
+        for persisted in self.list_scan_roots_with_metadata()? {
+            if !allowed_paths.contains(&persisted.root.path) {
+                self.add_scan_root_with_metadata(
+                    persisted.root,
+                    ScanRootMetadata {
+                        source: ScanRootSource::Policy,
+                        policy_decision: PolicyDecision::Ignored,
+                        workspace_root: Some(workspace_root.to_path_buf()),
+                    },
+                )?;
+            }
+        }
+
+        // (Re-)register every allowed root as policy-included.
+        for root in allowed {
+            self.add_scan_root_with_metadata(
+                root,
+                ScanRootMetadata {
+                    source: ScanRootSource::Policy,
+                    policy_decision: PolicyDecision::Included,
+                    workspace_root: Some(workspace_root.to_path_buf()),
+                },
+            )?;
+        }
+
+        self.scan(true)
     }
 
     pub fn scan(
