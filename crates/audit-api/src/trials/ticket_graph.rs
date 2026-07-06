@@ -1,9 +1,22 @@
-use std::path::Path;
+use std::{
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
+use ignore::gitignore::{
+    Gitignore,
+    GitignoreBuilder,
+};
+use serde::Deserialize;
 use serde_json::json;
 use ticket_api::{
     error::StorageError,
     health,
+    model::edge::EdgeRecord,
+    storage::indexed::IndexedTicket,
     storage::TicketStore,
     workflow::WorkflowModel,
 };
@@ -21,6 +34,33 @@ use crate::{
 pub struct TicketGraphResult {
     pub metric: CountMetric,
     pub findings: Vec<AuditFinding>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct WorkspacePolicyFile {
+    #[serde(default)]
+    ignore_workspaces: Vec<String>,
+    #[serde(default)]
+    include_overrides: Vec<String>,
+    #[serde(default = "default_ignore_markers")]
+    ignore_markers: Vec<String>,
+    deny_external_paths: Option<bool>,
+}
+
+#[derive(Debug)]
+struct WorkspacePolicyMatchers {
+    repo_root: PathBuf,
+    ignore: Gitignore,
+    include: Gitignore,
+    ignore_markers: Vec<String>,
+    deny_external_paths: bool,
+}
+
+fn default_ignore_markers() -> Vec<String> {
+    vec![
+        ".ticket-ignore".to_string(),
+        ".workspace-ignore".to_string(),
+    ]
 }
 
 pub fn evaluate(repo_root: &Path) -> TicketGraphResult {
@@ -192,11 +232,23 @@ pub fn evaluate(repo_root: &Path) -> TicketGraphResult {
         }
     }
 
+    let policy_matchers = load_workspace_policy_matchers(repo_root);
+    let policy_excluded_reference_findings =
+        collect_policy_excluded_reference_findings(
+            repo_root,
+            &tickets,
+            &edges,
+            &policy_matchers,
+            Some(&store),
+        );
+
     let orphan_count = orphan_findings.len();
     let convergence_count = convergence_findings.len();
+    let policy_excluded_reference_count = policy_excluded_reference_findings.len();
     let findings = orphan_findings
         .into_iter()
         .chain(convergence_findings)
+        .chain(policy_excluded_reference_findings)
         .collect();
     TicketGraphResult {
         metric: CountMetric {
@@ -208,17 +260,221 @@ pub fn evaluate(repo_root: &Path) -> TicketGraphResult {
                         .to_string()
                 } else {
                     format!(
-                        "all tickets participate in at least one depends_on relationship; {convergence_count} dependency convergence finding(s) detected"
+                        "all tickets participate in at least one depends_on relationship; {convergence_count} dependency convergence finding(s) detected; {policy_excluded_reference_count} policy-excluded workspace reference finding(s) detected"
                     )
                 }
             } else {
                 format!(
-                    "{orphan_count} ticket(s) have neither outgoing dependencies nor incoming dependees; {convergence_count} dependency convergence finding(s) detected"
+                    "{orphan_count} ticket(s) have neither outgoing dependencies nor incoming dependees; {convergence_count} dependency convergence finding(s) detected; {policy_excluded_reference_count} policy-excluded workspace reference finding(s) detected"
                 )
             }),
         },
         findings,
     }
+}
+
+fn load_workspace_policy_matchers(repo_root: &Path) -> WorkspacePolicyMatchers {
+    let policy_path = repo_root.join(".ticket").join("workspace-policy.toml");
+    let mut parsed = WorkspacePolicyFile {
+        ignore_markers: default_ignore_markers(),
+        ..WorkspacePolicyFile::default()
+    };
+
+    if let Ok(raw) = fs::read_to_string(&policy_path)
+        && let Ok(file) = toml::from_str::<WorkspacePolicyFile>(&raw)
+    {
+        parsed = file;
+        if parsed.ignore_markers.is_empty() {
+            parsed.ignore_markers = default_ignore_markers();
+        }
+    }
+
+    let mut ignore_builder = GitignoreBuilder::new(repo_root);
+    for rule in &parsed.ignore_workspaces {
+        let _ = ignore_builder.add_line(None, rule);
+    }
+    let ignore = ignore_builder.build().unwrap_or_else(|_| Gitignore::empty());
+
+    let mut include_builder = GitignoreBuilder::new(repo_root);
+    for rule in &parsed.include_overrides {
+        let _ = include_builder.add_line(None, rule);
+    }
+    let include = include_builder.build().unwrap_or_else(|_| Gitignore::empty());
+
+    WorkspacePolicyMatchers {
+        repo_root: repo_root.to_path_buf(),
+        ignore,
+        include,
+        ignore_markers: parsed.ignore_markers,
+        deny_external_paths: parsed.deny_external_paths.unwrap_or(true),
+    }
+}
+
+fn collect_policy_excluded_reference_findings(
+    repo_root: &Path,
+    tickets: &[IndexedTicket],
+    edges: &[EdgeRecord],
+    policy_matchers: &WorkspacePolicyMatchers,
+    store: Option<&TicketStore>,
+) -> Vec<AuditFinding> {
+    let ticket_map = tickets
+        .iter()
+        .map(|ticket| (ticket.id, ticket))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut findings = Vec::new();
+
+    for edge in edges {
+        let source_ticket;
+        let source = if let Some(ticket) = ticket_map.get(&edge.from) {
+            *ticket
+        } else if let Some(store) = store {
+            let Ok(found) = store.get_indexed(&edge.from) else {
+                continue;
+            };
+            let Some(found) = found else {
+                continue;
+            };
+            source_ticket = found;
+            &source_ticket
+        } else {
+            continue;
+        };
+
+        let target_ticket;
+        let target = if let Some(ticket) = ticket_map.get(&edge.to) {
+            *ticket
+        } else if let Some(store) = store {
+            let Ok(found) = store.get_indexed(&edge.to) else {
+                continue;
+            };
+            let Some(found) = found else {
+                continue;
+            };
+            target_ticket = found;
+            &target_ticket
+        } else {
+            continue;
+        };
+
+        let Some(source_workspace_root) = ticket_workspace_root(&source.path) else {
+            continue;
+        };
+        let Some(target_workspace_root) = ticket_workspace_root(&target.path) else {
+            continue;
+        };
+
+        let source_exclusion_reason =
+            exclusion_reason(&source_workspace_root, policy_matchers);
+        let target_exclusion_reason =
+            exclusion_reason(&target_workspace_root, policy_matchers);
+
+        let Some(target_reason) = target_exclusion_reason else {
+            continue;
+        };
+        if source_exclusion_reason.is_some() {
+            continue;
+        }
+        if source_workspace_root == target_workspace_root {
+            continue;
+        }
+
+        let source_path = relative_ticket_path(repo_root, &source.path);
+        let target_path = relative_ticket_path(repo_root, &target.path);
+        let source_workspace_path = format_output_path(&source_workspace_root);
+        let target_workspace_path = format_output_path(&target_workspace_root);
+        findings.push(AuditFinding {
+            id: format!(
+                "ticket_graph:policy_excluded_reference:{}:{}:{}",
+                edge.kind, source.id, target.id
+            ),
+            category: "ticket_graph".to_string(),
+            severity: orphan_severity(source.state.as_deref()),
+            summary: format!(
+                "{} references {} in policy-excluded workspace {}.",
+                source
+                    .title
+                    .as_deref()
+                    .unwrap_or("source ticket"),
+                target
+                    .title
+                    .as_deref()
+                    .unwrap_or("target ticket"),
+                target_workspace_path
+            ),
+            path: Some(source_path.clone()),
+            line: None,
+            metric_name: "policy_excluded_reference_count".to_string(),
+            metric_value: json!(1),
+            threshold: Some(json!(0)),
+            instructions: vec![
+                format!(
+                    "Remove or retarget the '{}' edge from {} to {} so non-excluded workspaces do not reference policy-excluded workspace tickets.",
+                    edge.kind, source_path, target_path
+                ),
+                "If this relationship is intentional, move both tickets into the same allowed workspace or update policy so the target workspace is no longer excluded.".to_string(),
+            ],
+            evidence: json!({
+                "edge_kind": edge.kind,
+                "source_ticket_id": source.id,
+                "source_path": source_path,
+                "source_workspace_root": source_workspace_path,
+                "target_ticket_id": target.id,
+                "target_path": target_path,
+                "target_workspace_root": target_workspace_path,
+                "policy_exclusion_reason": target_reason,
+            }),
+        });
+    }
+
+    findings
+}
+
+fn ticket_workspace_root(ticket_path: &Path) -> Option<PathBuf> {
+    ticket_path
+        .ancestors()
+        .find(|ancestor| ancestor.file_name().is_some_and(|name| name == ".ticket"))
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+}
+
+fn exclusion_reason(
+    workspace_root: &Path,
+    policy_matchers: &WorkspacePolicyMatchers,
+) -> Option<String> {
+    let workspace_path_text = format_output_path(workspace_root);
+    if workspace_path_text.contains("/test-fixtures/") {
+        return Some("default:test-fixtures".to_string());
+    }
+
+    if policy_matchers.deny_external_paths
+        && !workspace_root.starts_with(&policy_matchers.repo_root)
+    {
+        return Some("policy:deny_external_paths".to_string());
+    }
+
+    if policy_matchers
+        .include
+        .matched_path_or_any_parents(workspace_root, true)
+        .is_ignore()
+    {
+        return None;
+    }
+
+    if policy_matchers
+        .ignore
+        .matched_path_or_any_parents(workspace_root, true)
+        .is_ignore()
+    {
+        return Some("policy:ignore_workspaces".to_string());
+    }
+
+    for marker in &policy_matchers.ignore_markers {
+        if workspace_root.join(marker).exists() {
+            return Some(format!("policy:ignore_marker:{marker}"));
+        }
+    }
+
+    None
 }
 
 fn failed_result(err: StorageError) -> TicketGraphResult {
@@ -276,10 +532,16 @@ mod tests {
     use chrono::Utc;
     use ticket_api::{
         model::edge::EdgeRecord,
+        storage::indexed::IndexedTicket,
         storage::TicketStore,
     };
+    use uuid::Uuid;
 
-    use super::evaluate;
+    use super::{
+        collect_policy_excluded_reference_findings,
+        evaluate,
+        load_workspace_policy_matchers,
+    };
     use crate::models::{
         Severity,
         TrialStatus,
@@ -438,5 +700,100 @@ mod tests {
             serde_json::json!(prerequisite)
         );
         assert_eq!(convergence.evidence["dependency_state_gap"], serde_json::json!(2));
+    }
+
+    #[test]
+    fn reports_policy_excluded_workspace_references() {
+        let repo = TestDir::new("audit-ticket-graph-policy-excluded");
+        let excluded_workspace = repo.path().join("excluded-workspace");
+        fs::create_dir_all(&excluded_workspace)
+            .expect("create excluded workspace root");
+        fs::write(excluded_workspace.join(".ticket-ignore"), "")
+            .expect("write marker");
+
+        let source = Uuid::new_v4();
+        let fixture_target = Uuid::new_v4();
+        let fixture_internal = Uuid::new_v4();
+        let now = Utc::now();
+        let source_path = repo
+            .path()
+            .join(".ticket")
+            .join("tickets")
+            .join(source.to_string());
+        let target_path = excluded_workspace
+            .join(".ticket")
+            .join("tickets")
+            .join(fixture_target.to_string());
+        let internal_path = excluded_workspace
+            .join(".ticket")
+            .join("tickets")
+            .join(fixture_internal.to_string());
+        let tickets = vec![
+            IndexedTicket {
+                id: source,
+                path: source_path,
+                type_id: "tracker-improvement".to_string(),
+                title: Some("source ticket".to_string()),
+                state: Some("in-review".to_string()),
+                created_at: now,
+                updated_at: now,
+            },
+            IndexedTicket {
+                id: fixture_target,
+                path: target_path,
+                type_id: "tracker-improvement".to_string(),
+                title: Some("fixture target".to_string()),
+                state: Some("new".to_string()),
+                created_at: now,
+                updated_at: now,
+            },
+            IndexedTicket {
+                id: fixture_internal,
+                path: internal_path,
+                type_id: "tracker-improvement".to_string(),
+                title: Some("fixture internal".to_string()),
+                state: Some("new".to_string()),
+                created_at: now,
+                updated_at: now,
+            },
+        ];
+        let edges = vec![
+            EdgeRecord {
+                from: source,
+                to: fixture_target,
+                kind: "depends_on".to_string(),
+                created_at: now,
+            },
+            EdgeRecord {
+                from: fixture_target,
+                to: fixture_internal,
+                kind: "depends_on".to_string(),
+                created_at: now,
+            },
+        ];
+
+        let policy_matchers = load_workspace_policy_matchers(repo.path());
+        let policy_findings = collect_policy_excluded_reference_findings(
+            repo.path(),
+            &tickets,
+            &edges,
+            &policy_matchers,
+            None,
+        );
+        assert_eq!(policy_findings.len(), 1);
+        let finding = &policy_findings[0];
+        assert!(matches!(finding.severity, Severity::High));
+        assert_eq!(
+            finding.evidence["source_ticket_id"],
+            serde_json::json!(source)
+        );
+        assert_eq!(
+            finding.evidence["target_ticket_id"],
+            serde_json::json!(fixture_target)
+        );
+        assert_eq!(
+            finding.evidence["policy_exclusion_reason"],
+            serde_json::json!("policy:ignore_marker:.ticket-ignore")
+        );
     }
 }

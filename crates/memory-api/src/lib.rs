@@ -6,6 +6,7 @@ pub mod model;
 pub mod runtime;
 pub mod storage;
 pub mod workspace;
+pub mod workspace_policy;
 
 #[cfg(feature = "testing")]
 pub mod testing;

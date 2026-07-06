@@ -10,6 +10,10 @@ use std::path::{
 };
 
 use crate::model::filesystem::ScanRoot;
+use crate::workspace_policy::{
+    WorkspacePolicy,
+    load_workspace_policy,
+};
 
 pub const TICKET_INDEX_DIR: &str = ".ticket";
 
@@ -478,13 +482,66 @@ pub fn discover_workspace_scan_roots(
     store_dir: &str,
     entity_dir: &str,
 ) -> Vec<ScanRoot> {
-    let workspace_root = normalize_working_dir_path(start_dir(workspace_root));
-    let mut store_roots = find_descendant_store_roots_from(&workspace_root, store_dir);
+    let normalized_root = normalize_working_dir_path(start_dir(workspace_root));
+    let policy = load_workspace_policy(&normalized_root);
+    discover_workspace_scan_roots_with_policy(
+        workspace_root,
+        store_dir,
+        entity_dir,
+        &policy,
+    )
+}
 
-    for ancestor in workspace_root.ancestors().skip(1) {
-        let candidate = ancestor.join(store_dir);
-        if candidate.is_dir() {
-            store_roots.push(candidate);
+/// Policy-aware variant of [`discover_workspace_scan_roots`].
+///
+/// The supplied [`WorkspacePolicy`] governs which store roots are collected:
+/// descendant discovery is gated on `include_descendants`, ancestor stores are
+/// gated on `include_ancestors` and suppressed entirely when
+/// `deny_external_paths` is set, and every candidate is filtered through the
+/// policy's ignore globs, ignore markers, and include overrides (overrides
+/// win). The active workspace root store is always included when present.
+pub fn discover_workspace_scan_roots_with_policy(
+    workspace_root: &Path,
+    store_dir: &str,
+    entity_dir: &str,
+    policy: &WorkspacePolicy,
+) -> Vec<ScanRoot> {
+    let workspace_root = normalize_working_dir_path(start_dir(workspace_root));
+    let mut store_roots = Vec::new();
+
+    // The active workspace root store is always included when present.
+    let root_store = workspace_root.join(store_dir);
+    if root_store.is_dir() {
+        store_roots.push(normalize_working_dir_path(&root_store));
+    }
+
+    if policy.include_descendants {
+        for store_root in find_descendant_store_roots_from(&workspace_root, store_dir)
+        {
+            let owning_workspace =
+                resolve_workspace_root_from_store_root(&store_root, store_dir);
+            if owning_workspace == workspace_root {
+                continue;
+            }
+            if policy_allows(policy, &workspace_root, &owning_workspace) {
+                store_roots.push(store_root);
+            }
+        }
+    }
+
+    // Ancestor stores live outside the workspace subtree, so they are only
+    // eligible when external paths are permitted and ancestors are requested.
+    if policy.include_ancestors && !policy.deny_external_paths {
+        for ancestor in workspace_root.ancestors().skip(1) {
+            let candidate = ancestor.join(store_dir);
+            if !candidate.is_dir() {
+                continue;
+            }
+            let owning_workspace =
+                resolve_workspace_root_from_store_root(&candidate, store_dir);
+            if policy_allows(policy, &workspace_root, &owning_workspace) {
+                store_roots.push(normalize_working_dir_path(&candidate));
+            }
         }
     }
 
@@ -519,6 +576,27 @@ pub fn discover_workspace_scan_roots(
             }
         })
         .collect()
+}
+
+/// Evaluate the policy against a candidate owning workspace.
+///
+/// Include overrides win over ignore globs and ignore markers. When the
+/// candidate cannot be expressed relative to the workspace root (e.g. an
+/// ancestor store), its normalized absolute path string is used for glob
+/// matching instead.
+fn policy_allows(
+    policy: &WorkspacePolicy,
+    workspace_root: &Path,
+    owning_workspace: &Path,
+) -> bool {
+    let match_path = owning_workspace
+        .strip_prefix(workspace_root)
+        .ok()
+        .filter(|path| !path.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| owning_workspace.to_path_buf());
+
+    !policy.is_ignored(&match_path, owning_workspace)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -893,6 +971,125 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn policy_gates_descendant_discovery() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("memory-api");
+        std::fs::create_dir_all(repo.join(".rule")).unwrap();
+        std::fs::create_dir_all(child.join(".rule")).unwrap();
+
+        let policy = WorkspacePolicy {
+            include_descendants: false,
+            ..WorkspacePolicy::default()
+        };
+        let roots = discover_workspace_scan_roots_with_policy(
+            &repo, ".rule", "rules", &policy,
+        );
+
+        // Only the active workspace root store remains.
+        assert_eq!(roots, vec![ScanRoot {
+            path: repo.join(".rule").join("rules"),
+            label: ".".to_string(),
+        }]);
+    }
+
+    #[test]
+    fn policy_gates_ancestor_inclusion() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("memory-viewers").join("memory-api");
+        std::fs::create_dir_all(repo.join(".rule")).unwrap();
+        std::fs::create_dir_all(child.join(".rule")).unwrap();
+
+        // Ancestors excluded when include_ancestors is false.
+        let policy = WorkspacePolicy {
+            include_ancestors: false,
+            deny_external_paths: false,
+            ..WorkspacePolicy::default()
+        };
+        let roots = discover_workspace_scan_roots_with_policy(
+            &child, ".rule", "rules", &policy,
+        );
+        assert_eq!(roots, vec![ScanRoot {
+            path: child.join(".rule").join("rules"),
+            label: ".".to_string(),
+        }]);
+    }
+
+    #[test]
+    fn deny_external_paths_suppresses_ancestors() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("memory-viewers").join("memory-api");
+        std::fs::create_dir_all(repo.join(".rule")).unwrap();
+        std::fs::create_dir_all(child.join(".rule")).unwrap();
+
+        // include_ancestors requested but external paths denied.
+        let policy = WorkspacePolicy {
+            include_ancestors: true,
+            deny_external_paths: true,
+            ..WorkspacePolicy::default()
+        };
+        let roots = discover_workspace_scan_roots_with_policy(
+            &child, ".rule", "rules", &policy,
+        );
+        assert_eq!(roots, vec![ScanRoot {
+            path: child.join(".rule").join("rules"),
+            label: ".".to_string(),
+        }]);
+    }
+
+    #[test]
+    fn ignore_glob_excludes_descendant_and_override_reincludes() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let fixtures = repo.join("test-fixtures");
+        std::fs::create_dir_all(repo.join(".rule")).unwrap();
+        std::fs::create_dir_all(fixtures.join(".rule")).unwrap();
+
+        let ignored = WorkspacePolicy {
+            ignore_workspaces: vec!["test-fixtures*".to_string()],
+            ..WorkspacePolicy::default()
+        };
+        let roots = discover_workspace_scan_roots_with_policy(
+            &repo, ".rule", "rules", &ignored,
+        );
+        assert_eq!(roots, vec![ScanRoot {
+            path: repo.join(".rule").join("rules"),
+            label: ".".to_string(),
+        }]);
+
+        let overridden = WorkspacePolicy {
+            ignore_workspaces: vec!["test-fixtures*".to_string()],
+            include_overrides: vec!["test-fixtures".to_string()],
+            ..WorkspacePolicy::default()
+        };
+        let roots = discover_workspace_scan_roots_with_policy(
+            &repo, ".rule", "rules", &overridden,
+        );
+        assert!(roots.iter().any(|r| r.label == "test-fixtures"));
+    }
+
+    #[test]
+    fn ignore_marker_excludes_descendant() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let child = repo.join("child");
+        std::fs::create_dir_all(repo.join(".rule")).unwrap();
+        std::fs::create_dir_all(child.join(".rule")).unwrap();
+        std::fs::write(child.join(".ticket-ignore"), "").unwrap();
+
+        let policy = WorkspacePolicy::default();
+        let roots = discover_workspace_scan_roots_with_policy(
+            &repo, ".rule", "rules", &policy,
+        );
+        assert_eq!(roots, vec![ScanRoot {
+            path: repo.join(".rule").join("rules"),
+            label: ".".to_string(),
+        }]);
     }
 
     #[test]
