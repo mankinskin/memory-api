@@ -918,10 +918,7 @@ fn generate_target_supports_folder_tree_config_output() {
     )
     .unwrap();
 
-    let rendered = fs::read_to_string(
-        dir.path().join("generated").join("docs").join("AGENTS.md"),
-    )
-    .unwrap();
+    let rendered = fs::read_to_string(dir.path().join("AGENTS.md")).unwrap();
     assert!(rendered.contains("slug=shared/agents/opening"));
 
     dispatch::dispatch(
@@ -987,7 +984,7 @@ fn generate_target_supports_dot_prefixed_prompt_tree_output() {
 
     let rendered = fs::read_to_string(
         dir.path()
-            .join(".github")
+            .join(".agents")
             .join("prompts")
             .join("spec.prompt.md"),
     )

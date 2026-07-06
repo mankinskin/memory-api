@@ -105,6 +105,14 @@ pub(super) fn dispatch_with_workspace_root(
     }
 }
 
+#[cfg(test)]
+pub(super) fn dispatch(
+    command: RuleCommandCli,
+    index_root: &Path,
+) -> Result<Value, CliRunError> {
+    dispatch_with_workspace_root(command, index_root, None)
+}
+
 fn bootstrap_rule_store(
     store: &mut RuleStore,
     command: &RuleCommandCli,
