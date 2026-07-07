@@ -2114,6 +2114,90 @@ fn query_guard_excludes_tickets_under_ignored_roots() {
     );
 }
 
+#[test]
+fn add_edge_rejects_targets_under_policy_ignored_roots() {
+    use crate::error::StorageError;
+    use memory_api::model::filesystem::{
+        PolicyDecision,
+        ScanRootMetadata,
+        ScanRootSource,
+    };
+
+    let fixture_dir = tempdir().unwrap();
+    let fixture = TicketStore::init(fixture_dir.path()).unwrap();
+    let fixture_ticket = fixture
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Fixture ticket blocked as edge target"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let fixture_tickets_path = fixture.index_root.join("tickets");
+    drop(fixture);
+
+    let main_dir = tempdir().unwrap();
+    let store = TicketStore::init(main_dir.path()).unwrap();
+    let source = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Source ticket"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    store
+        .add_scan_root_with_metadata(
+            ScanRoot {
+                path: fixture_tickets_path.clone(),
+                label: "fixtures".to_string(),
+            },
+            ScanRootMetadata {
+                source: ScanRootSource::Discovered,
+                policy_decision: PolicyDecision::Included,
+                workspace_root: None,
+            },
+        )
+        .unwrap();
+    store.scan(true).unwrap();
+
+    // Flip the fixture root to ignored without re-scanning to mimic stale
+    // index rows that must remain hidden by policy-aware query guards.
+    store
+        .add_scan_root_with_metadata(
+            ScanRoot {
+                path: fixture_tickets_path,
+                label: "fixtures".to_string(),
+            },
+            ScanRootMetadata {
+                source: ScanRootSource::Policy,
+                policy_decision: PolicyDecision::Ignored,
+                workspace_root: None,
+            },
+        )
+        .unwrap();
+
+    let err = store
+        .add_edge(EdgeRecord {
+            from: source,
+            to: fixture_ticket,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap_err();
+    assert!(matches!(err, StorageError::NotFound(id) if id == fixture_ticket));
+
+    assert!(store.edges_from(&source).unwrap().is_empty());
+    assert!(store.get(&source).unwrap().extra.get("depends_on").is_none());
+}
+
 // ---------------------------------------------------------------------------
 // Slice 6 — consolidated end-to-end policy regression coverage.
 //

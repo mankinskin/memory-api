@@ -139,6 +139,22 @@ impl TicketStore {
         &self,
         edge: EdgeRecord,
     ) -> Result<(), StorageError> {
+        let visible_roots = visible_scan_roots(self)?;
+
+        let target = self
+            .get_indexed(&edge.to)?
+            .ok_or(StorageError::NotFound(edge.to))?;
+        if !is_ticket_visible(&target, &visible_roots) {
+            return Err(StorageError::NotFound(edge.to));
+        }
+
+        let mut source = self
+            .get_indexed(&edge.from)?
+            .ok_or(StorageError::NotFound(edge.from))?;
+        if !is_ticket_visible(&source, &visible_roots) {
+            return Err(StorageError::NotFound(edge.from));
+        }
+
         let is_acyclic = self
             .schema_registry
             .get(crate::model::default_schema::TYPE_ID)
@@ -149,10 +165,6 @@ impl TicketStore {
         if is_acyclic && self.index.is_reachable(&edge.to, &edge.from)? {
             return Err(StorageError::DependencyCycle);
         }
-
-        let mut source = self
-            .get_indexed(&edge.from)?
-            .ok_or(StorageError::NotFound(edge.from))?;
 
         let (manifest, changed) = TicketFs::update_edge_field(
             &source.path,
