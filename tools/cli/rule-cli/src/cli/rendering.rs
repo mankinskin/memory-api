@@ -9,6 +9,7 @@ use memory_api::{
 use rule_api::{
     GENERATED_FILE_COMMENT,
     RenderTarget,
+    RenderTargetConfig,
     RuleManifest,
     RuleStore,
     collect_target_rules,
@@ -17,6 +18,7 @@ use rule_api::{
     render_markdown_file,
     resolve_render_target_output,
 };
+use rule_api::store::GeneratedTargetRecord;
 use serde_json::{
     Value,
     json,
@@ -257,104 +259,31 @@ pub(super) fn sync_targets_payload(
 ) -> Result<SyncTargetsPayload, CliRunError> {
     let config = load_render_target_config(config_path)?;
 
-    if !dry_run && !check {
-        let zero_matches = config
-            .targets
-            .iter()
-            .filter_map(|target| {
-                let output = resolve_render_target_output(config_path, target);
-                match collect_target_rules(store, target) {
-                    Ok(rules) if rules.is_empty() => Some(Ok(format!(
-                        "{} -> {}",
-                        target.name,
-                        output.display()
-                    ))),
-                    Ok(_) => None,
-                    Err(error) => Some(Err(CliRunError::from(error))),
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        if !zero_matches.is_empty() {
-            return Err(CliRunError::BadRequest(format!(
-                "refusing to overwrite generated outputs because these targets matched zero rules: {}",
-                zero_matches.join(", ")
-            )));
-        }
-    }
+    ensure_no_zero_match_targets(
+        store,
+        config_path,
+        &config,
+        dry_run,
+        check,
+    )?;
 
     let previous = store.list_generated_targets(config_path)?;
-    let current_outputs = config
-        .targets
-        .iter()
-        .map(|target| {
-            stable_output_key(&resolve_render_target_output(
-                config_path,
-                target,
-            ))
-        })
-        .collect::<std::collections::HashSet<_>>();
+    let current_outputs = current_output_keys(config_path, &config);
 
     let mut generated = Vec::new();
     for target in &config.targets {
-        let output = resolve_render_target_output(config_path, target);
-        let payload =
-            generate_target_payload(store, target, dry_run, check, &output)?;
-
-        if !dry_run && !check {
-            if let Some(previous_record) = previous
-                .iter()
-                .find(|record| record.target_name == target.name)
-            {
-                if is_spec_doc_target(target) {
-                    if previous_record.output_path
-                        != stable_output_key(&output)
-                    {
-                        remove_generated_output(
-                            Path::new(&previous_record.output_path),
-                            config_root(config_path),
-                        )?;
-                    }
-                    store.delete_generated_target(&previous_record.slug)?;
-                } else {
-                    if previous_record.output_path
-                        != stable_output_key(&output)
-                        && !current_outputs
-                            .contains(&previous_record.output_path)
-                    {
-                        remove_generated_output(
-                            Path::new(&previous_record.output_path),
-                            config_root(config_path),
-                        )?;
-                    }
-                }
-            }
-            if !is_spec_doc_target(target) {
-                store.upsert_generated_target(
-                    config_path,
-                    &target.name,
-                    &output,
-                )?;
-            }
-        }
-
-        generated.push(json!({
-            "target": target.name,
-            "output": output,
-            "count": payload.count,
-            "content": payload.content,
-        }));
+        generated.push(sync_target_payload_entry(
+            store,
+            config_path,
+            target,
+            &previous,
+            &current_outputs,
+            dry_run,
+            check,
+        )?);
     }
 
-    let stale = previous
-        .into_iter()
-        .filter(|record| {
-            !config
-                .targets
-                .iter()
-                .any(|target| target.name == record.target_name)
-        })
-        .collect::<Vec<_>>();
+    let stale = collect_stale_generated_targets(&config, previous);
 
     if check && !stale.is_empty() {
         return Err(CliRunError::BadRequest(format!(
@@ -387,6 +316,147 @@ pub(super) fn sync_targets_payload(
     }
 
     Ok(SyncTargetsPayload { generated, removed })
+}
+
+fn ensure_no_zero_match_targets(
+    store: &RuleStore,
+    config_path: &Path,
+    config: &RenderTargetConfig,
+    dry_run: bool,
+    check: bool,
+) -> Result<(), CliRunError> {
+    if dry_run || check {
+        return Ok(());
+    }
+
+    let zero_matches = config
+        .targets
+        .iter()
+        .filter_map(|target| {
+            let output = resolve_render_target_output(config_path, target);
+            match collect_target_rules(store, target) {
+                Ok(rules) if rules.is_empty() => Some(Ok(format!(
+                    "{} -> {}",
+                    target.name,
+                    output.display()
+                ))),
+                Ok(_) => None,
+                Err(error) => Some(Err(CliRunError::from(error))),
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if zero_matches.is_empty() {
+        Ok(())
+    } else {
+        Err(CliRunError::BadRequest(format!(
+            "refusing to overwrite generated outputs because these targets matched zero rules: {}",
+            zero_matches.join(", ")
+        )))
+    }
+}
+
+fn current_output_keys(
+    config_path: &Path,
+    config: &RenderTargetConfig,
+) -> std::collections::HashSet<String> {
+    config
+        .targets
+        .iter()
+        .map(|target| {
+            stable_output_key(&resolve_render_target_output(
+                config_path,
+                target,
+            ))
+        })
+        .collect::<std::collections::HashSet<_>>()
+}
+
+fn sync_target_payload_entry(
+    store: &mut RuleStore,
+    config_path: &Path,
+    target: &RenderTarget,
+    previous: &[GeneratedTargetRecord],
+    current_outputs: &std::collections::HashSet<String>,
+    dry_run: bool,
+    check: bool,
+) -> Result<Value, CliRunError> {
+    let output = resolve_render_target_output(config_path, target);
+    let payload = generate_target_payload(store, target, dry_run, check, &output)?;
+
+    if !dry_run && !check {
+        maybe_remove_previous_generated_target(
+            store,
+            target,
+            previous,
+            current_outputs,
+            &output,
+            config_path,
+        )?;
+        if !is_spec_doc_target(target) {
+            store.upsert_generated_target(config_path, &target.name, &output)?;
+        }
+    }
+
+    Ok(json!({
+        "target": target.name,
+        "output": output,
+        "count": payload.count,
+        "content": payload.content,
+    }))
+}
+
+fn maybe_remove_previous_generated_target(
+    store: &mut RuleStore,
+    target: &RenderTarget,
+    previous: &[GeneratedTargetRecord],
+    current_outputs: &std::collections::HashSet<String>,
+    output: &Path,
+    config_path: &Path,
+) -> Result<(), CliRunError> {
+    let Some(previous_record) = previous
+        .iter()
+        .find(|record| record.target_name == target.name)
+    else {
+        return Ok(());
+    };
+
+    if is_spec_doc_target(target) {
+        if previous_record.output_path != stable_output_key(output) {
+            remove_generated_output(
+                Path::new(&previous_record.output_path),
+                config_root(config_path),
+            )?;
+        }
+        store.delete_generated_target(&previous_record.slug)?;
+        return Ok(());
+    }
+
+    if previous_record.output_path != stable_output_key(output)
+        && !current_outputs.contains(&previous_record.output_path)
+    {
+        remove_generated_output(
+            Path::new(&previous_record.output_path),
+            config_root(config_path),
+        )?;
+    }
+
+    Ok(())
+}
+
+fn collect_stale_generated_targets(
+    config: &RenderTargetConfig,
+    previous: Vec<GeneratedTargetRecord>,
+) -> Vec<GeneratedTargetRecord> {
+    previous
+        .into_iter()
+        .filter(|record| {
+            !config
+                .targets
+                .iter()
+                .any(|target| target.name == record.target_name)
+        })
+        .collect::<Vec<_>>()
 }
 
 fn stable_output_key(path: &Path) -> String {

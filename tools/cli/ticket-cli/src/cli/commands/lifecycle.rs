@@ -16,6 +16,12 @@ use crate::cli::{
     UnclaimArgs,
 };
 
+enum MoveMode {
+    Resume,
+    Rollback,
+    PlanOrExecute,
+}
+
 fn resolve_author(explicit: Option<&str>) -> Option<String> {
     explicit.map(str::to_string).or_else(|| {
         std::env::var("TICKET_AUTHOR")
@@ -82,78 +88,10 @@ pub(crate) fn cmd_move(
         dry_run = global_dry_run || args.dry_run,
     )
     .entered();
-    let mut mode_count = 0;
-    if args.resume.is_some() {
-        mode_count += 1;
-    }
-    if args.rollback.is_some() {
-        mode_count += 1;
-    }
-    let resume = args.resume.as_deref();
-    let rollback = args.rollback.as_deref();
-
-    if mode_count > 1 {
-        return Err(CliRunError::BadRequest(
-            "move accepts only one of --resume or --rollback".to_string(),
-        ));
-    }
-
-    if let Some(journal_id) = resume {
-        tracing::Span::current().record("mode", "resume");
-        if args.id.is_some() || args.to_workspace_root.is_some() {
-            return Err(CliRunError::BadRequest(
-                "--resume cannot be combined with id or --to-workspace-root"
-                    .to_string(),
-            ));
-        }
-        let journal_id = journal_id.parse::<Uuid>().map_err(|error| {
-            CliRunError::BadRequest(format!("invalid --resume journal UUID: {error}"))
-        })?;
-        let outcome = store.resume_move_with_journal(journal_id)?;
-        tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
-        tracing::debug!(
-            target: "ticket_cli::transport",
-            journal_id = %outcome.journal.id,
-            phase = ?outcome.journal.phase,
-            resumed = outcome.resumed,
-            "ticket_cli_move_complete"
-        );
-        return Ok(json!({
-            "command": "move",
-            "status": "ok",
-            "mode": "resume",
-            "outcome": move_outcome_json(&outcome),
-            "recovery": recovery_hint(),
-        }));
-    }
-
-    if let Some(journal_id) = rollback {
-        tracing::Span::current().record("mode", "rollback");
-        if args.id.is_some() || args.to_workspace_root.is_some() {
-            return Err(CliRunError::BadRequest(
-                "--rollback cannot be combined with id or --to-workspace-root"
-                    .to_string(),
-            ));
-        }
-        let journal_id = journal_id.parse::<Uuid>().map_err(|error| {
-            CliRunError::BadRequest(format!("invalid --rollback journal UUID: {error}"))
-        })?;
-        let outcome = store.rollback_move_with_journal(journal_id)?;
-        tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
-        tracing::debug!(
-            target: "ticket_cli::transport",
-            journal_id = %outcome.journal.id,
-            phase = ?outcome.journal.phase,
-            rolled_back = outcome.rolled_back,
-            "ticket_cli_move_complete"
-        );
-        return Ok(json!({
-            "command": "move",
-            "status": "ok",
-            "mode": "rollback",
-            "outcome": move_outcome_json(&outcome),
-            "recovery": recovery_hint(),
-        }));
+    match resolve_move_mode(&args)? {
+        MoveMode::Resume => return handle_move_resume(&args, store),
+        MoveMode::Rollback => return handle_move_rollback(&args, store),
+        MoveMode::PlanOrExecute => {},
     }
 
     let id = args.id.as_deref().ok_or_else(|| {
@@ -231,6 +169,89 @@ pub(crate) fn cmd_move(
         "mode": "execute",
         "ticket_id": ticket_id,
         "plan": move_plan_json(&report)?,
+        "outcome": move_outcome_json(&outcome),
+        "recovery": recovery_hint(),
+    }))
+}
+
+fn resolve_move_mode(args: &MoveArgs) -> Result<MoveMode, CliRunError> {
+    match (args.resume.is_some(), args.rollback.is_some()) {
+        (true, true) => Err(CliRunError::BadRequest(
+            "move accepts only one of --resume or --rollback".to_string(),
+        )),
+        (true, false) => Ok(MoveMode::Resume),
+        (false, true) => Ok(MoveMode::Rollback),
+        (false, false) => Ok(MoveMode::PlanOrExecute),
+    }
+}
+
+fn validate_move_mode_args(
+    args: &MoveArgs,
+    mode_flag: &str,
+) -> Result<(), CliRunError> {
+    if args.id.is_some() || args.to_workspace_root.is_some() {
+        return Err(CliRunError::BadRequest(format!(
+            "{mode_flag} cannot be combined with id or --to-workspace-root"
+        )));
+    }
+    Ok(())
+}
+
+fn parse_move_journal_uuid(
+    value: Option<&str>,
+    mode_flag: &str,
+) -> Result<Uuid, CliRunError> {
+    let value = value.expect("mode-specific UUID should exist");
+    value.parse::<Uuid>().map_err(|error| {
+        CliRunError::BadRequest(format!("invalid {mode_flag} journal UUID: {error}"))
+    })
+}
+
+fn handle_move_resume(
+    args: &MoveArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    tracing::Span::current().record("mode", "resume");
+    validate_move_mode_args(args, "--resume")?;
+    let journal_id = parse_move_journal_uuid(args.resume.as_deref(), "--resume")?;
+    let outcome = store.resume_move_with_journal(journal_id)?;
+    tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
+    tracing::debug!(
+        target: "ticket_cli::transport",
+        journal_id = %outcome.journal.id,
+        phase = ?outcome.journal.phase,
+        resumed = outcome.resumed,
+        "ticket_cli_move_complete"
+    );
+    Ok(json!({
+        "command": "move",
+        "status": "ok",
+        "mode": "resume",
+        "outcome": move_outcome_json(&outcome),
+        "recovery": recovery_hint(),
+    }))
+}
+
+fn handle_move_rollback(
+    args: &MoveArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    tracing::Span::current().record("mode", "rollback");
+    validate_move_mode_args(args, "--rollback")?;
+    let journal_id = parse_move_journal_uuid(args.rollback.as_deref(), "--rollback")?;
+    let outcome = store.rollback_move_with_journal(journal_id)?;
+    tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
+    tracing::debug!(
+        target: "ticket_cli::transport",
+        journal_id = %outcome.journal.id,
+        phase = ?outcome.journal.phase,
+        rolled_back = outcome.rolled_back,
+        "ticket_cli_move_complete"
+    );
+    Ok(json!({
+        "command": "move",
+        "status": "ok",
+        "mode": "rollback",
         "outcome": move_outcome_json(&outcome),
         "recovery": recovery_hint(),
     }))

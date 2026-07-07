@@ -23,6 +23,14 @@ pub struct SpecFulfillmentResult {
     pub findings: Vec<AuditFinding>,
 }
 
+#[derive(Default)]
+struct SpecFulfillmentCounts {
+    structured_specs: usize,
+    satisfied_specs: usize,
+    blocked_specs: usize,
+    missed_specs: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FulfillmentDisposition {
     Blocked,
@@ -30,35 +38,10 @@ enum FulfillmentDisposition {
 }
 
 pub fn evaluate(repo_root: &Path) -> SpecFulfillmentResult {
-    let mut store = match SpecStore::open(repo_root) {
+    let mut store = match prepare_spec_store(repo_root) {
         Ok(store) => store,
-        Err(SpecError::Storage(StorageError::WorkspaceNotFound { path })) => {
-            return SpecFulfillmentResult {
-                metric: SpecFulfillmentSummary::unavailable(format!(
-                    "spec store not initialized at {}; skipping spec fulfillment audit",
-                    format_output_path(&path)
-                )),
-                findings: Vec::new(),
-            };
-        }
-        Err(err) => {
-            return SpecFulfillmentResult {
-                metric: SpecFulfillmentSummary::failed(format!(
-                    "failed to inspect structured specs: {err}"
-                )),
-                findings: Vec::new(),
-            };
-        }
+        Err(result) => return result,
     };
-
-    if let Err(err) = store.scan(false) {
-        return SpecFulfillmentResult {
-            metric: SpecFulfillmentSummary::failed(format!(
-                "failed to scan spec store: {err}"
-            )),
-            findings: Vec::new(),
-        };
-    }
 
     let indexed_specs = match store.entity_store().list_indexed() {
         Ok(indexed) => indexed,
@@ -72,67 +55,117 @@ pub fn evaluate(repo_root: &Path) -> SpecFulfillmentResult {
         }
     };
 
-    let mut structured_specs = 0usize;
-    let mut satisfied_specs = 0usize;
-    let mut blocked_specs = 0usize;
-    let mut missed_specs = 0usize;
+    let mut counts = SpecFulfillmentCounts::default();
     let mut findings = Vec::new();
 
     for indexed in indexed_specs {
-        let spec = match store.get(&indexed.id.to_string()) {
-            Ok(spec) => spec,
-            Err(_) => continue,
-        };
-        if !spec.uses_structured_contract() {
-            continue;
-        }
-
-        structured_specs += 1;
-        let issues = spec.health_issues();
-        if issues.is_empty() {
-            satisfied_specs += 1;
-            continue;
-        }
-
-        let disposition = classify_issues(&issues);
-        match disposition {
-            FulfillmentDisposition::Blocked => blocked_specs += 1,
-            FulfillmentDisposition::Missed => missed_specs += 1,
-        }
-
-        let display_path = indexed
-            .path
-            .strip_prefix(repo_root)
-            .map(format_output_path)
-            .unwrap_or_else(|_| format_output_path(&indexed.path));
-
-        for (issue_index, issue) in issues.iter().enumerate() {
-            findings.push(finding_for_issue(
-                &spec,
-                &display_path,
-                issue_index,
-                issue,
-                disposition,
-            ));
-        }
+        process_indexed_spec(
+            &mut store,
+            repo_root,
+            &indexed.id.to_string(),
+            &indexed.path,
+            &mut counts,
+            &mut findings,
+        );
     }
 
-    let metric = if structured_specs == 0 {
+    let metric = if counts.structured_specs == 0 {
         SpecFulfillmentSummary::not_applicable(
             "no structured expectation-oriented specs found"
         )
     } else {
         SpecFulfillmentSummary {
             status: TrialStatus::Collected,
-            structured_specs,
-            satisfied_specs,
-            blocked_specs,
-            missed_specs,
+            structured_specs: counts.structured_specs,
+            satisfied_specs: counts.satisfied_specs,
+            blocked_specs: counts.blocked_specs,
+            missed_specs: counts.missed_specs,
             details: None,
         }
     };
 
     SpecFulfillmentResult { metric, findings }
+}
+
+fn prepare_spec_store(
+    repo_root: &Path,
+) -> Result<spec_api::SpecStore, SpecFulfillmentResult> {
+    let mut store = match SpecStore::open(repo_root) {
+        Ok(store) => store,
+        Err(SpecError::Storage(StorageError::WorkspaceNotFound { path })) => {
+            return Err(SpecFulfillmentResult {
+                metric: SpecFulfillmentSummary::unavailable(format!(
+                    "spec store not initialized at {}; skipping spec fulfillment audit",
+                    format_output_path(&path)
+                )),
+                findings: Vec::new(),
+            });
+        }
+        Err(err) => {
+            return Err(SpecFulfillmentResult {
+                metric: SpecFulfillmentSummary::failed(format!(
+                    "failed to inspect structured specs: {err}"
+                )),
+                findings: Vec::new(),
+            });
+        }
+    };
+
+    if let Err(err) = store.scan(false) {
+        return Err(SpecFulfillmentResult {
+            metric: SpecFulfillmentSummary::failed(format!(
+                "failed to scan spec store: {err}"
+            )),
+            findings: Vec::new(),
+        });
+    }
+
+    Ok(store)
+}
+
+fn process_indexed_spec(
+    store: &mut SpecStore,
+    repo_root: &Path,
+    indexed_id: &str,
+    indexed_path: &std::path::Path,
+    counts: &mut SpecFulfillmentCounts,
+    findings: &mut Vec<AuditFinding>,
+) {
+    let spec = match store.get(indexed_id) {
+        Ok(spec) => spec,
+        Err(_) => return,
+    };
+    if !spec.uses_structured_contract() {
+        return;
+    }
+
+    counts.structured_specs += 1;
+    let issues = spec.health_issues();
+    if issues.is_empty() {
+        counts.satisfied_specs += 1;
+        return;
+    }
+
+    let disposition = classify_issues(&issues);
+    match disposition {
+        FulfillmentDisposition::Blocked => counts.blocked_specs += 1,
+        FulfillmentDisposition::Missed => counts.missed_specs += 1,
+    }
+
+    let display_path = indexed_path
+        .strip_prefix(repo_root)
+        .map(format_output_path)
+        .unwrap_or_else(|_| format_output_path(indexed_path));
+
+    for (issue_index, issue) in issues.iter().enumerate() {
+        findings.push(finding_for_issue(
+            &spec,
+            &display_path,
+            issue_index,
+            issue,
+            disposition,
+        ));
+    }
 }
 
 fn classify_issues(issues: &[String]) -> FulfillmentDisposition {

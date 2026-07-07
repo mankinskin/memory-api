@@ -64,48 +64,14 @@ fn default_ignore_markers() -> Vec<String> {
 }
 
 pub fn evaluate(repo_root: &Path) -> TicketGraphResult {
-    let store = match TicketStore::open(repo_root) {
+    let store = match open_ticket_store(repo_root) {
         Ok(store) => store,
-        Err(StorageError::WorkspaceNotFound { path }) => {
-            return TicketGraphResult {
-                metric: CountMetric::unavailable(format!(
-                    "ticket store not initialized at {}; skipping ticket dependency topology audit",
-                    format_output_path(&path)
-                )),
-                findings: Vec::new(),
-            };
-        },
-        Err(err) => {
-            return TicketGraphResult {
-                metric: CountMetric {
-                    status: TrialStatus::Failed,
-                    count: None,
-                    details: Some(format!(
-                        "failed to inspect ticket dependency topology: {err}"
-                    )),
-                },
-                findings: Vec::new(),
-            };
-        },
+        Err(result) => return result,
     };
 
-    let tickets = match store.list(None, None, None) {
-        Ok(tickets) => tickets,
-        Err(err) => {
-            return failed_result(err);
-        },
-    };
-    let edges = match store.list_all_edges() {
-        Ok(edges) => edges,
-        Err(err) => {
-            return failed_result(err);
-        },
-    };
-    let workflow = match WorkflowModel::build(&store, tickets.clone(), edges.clone()) {
-        Ok(workflow) => workflow,
-        Err(err) => {
-            return failed_result(err);
-        },
+    let (tickets, edges, workflow) = match load_ticket_graph_inputs(&store) {
+        Ok(inputs) => inputs,
+        Err(result) => return result,
     };
 
     let canonical_health = health::collect_findings(&store, &tickets, &edges, &workflow);
@@ -157,7 +123,80 @@ pub fn evaluate(repo_root: &Path) -> TicketGraphResult {
             })
         })
         .collect();
-    let mut convergence_findings = Vec::new();
+    let convergence_findings = collect_convergence_findings(repo_root, &workflow);
+
+    let policy_matchers = load_workspace_policy_matchers(repo_root);
+    let policy_excluded_reference_findings =
+        collect_policy_excluded_reference_findings(
+            repo_root,
+            &tickets,
+            &edges,
+            &policy_matchers,
+            Some(&store),
+        );
+
+    let orphan_count = orphan_findings.len();
+    let convergence_count = convergence_findings.len();
+    let policy_excluded_reference_count = policy_excluded_reference_findings.len();
+    let findings = orphan_findings
+        .into_iter()
+        .chain(convergence_findings)
+        .chain(policy_excluded_reference_findings)
+        .collect();
+    TicketGraphResult {
+        metric: CountMetric {
+            status: TrialStatus::Collected,
+            count: Some(orphan_count),
+            details: Some(ticket_graph_details(
+                orphan_count,
+                convergence_count,
+                policy_excluded_reference_count,
+            )),
+        },
+        findings,
+    }
+}
+
+fn open_ticket_store(repo_root: &Path) -> Result<TicketStore, TicketGraphResult> {
+    match TicketStore::open(repo_root) {
+        Ok(store) => Ok(store),
+        Err(StorageError::WorkspaceNotFound { path }) => Err(TicketGraphResult {
+            metric: CountMetric::unavailable(format!(
+                "ticket store not initialized at {}; skipping ticket dependency topology audit",
+                format_output_path(&path)
+            )),
+            findings: Vec::new(),
+        }),
+        Err(err) => Err(TicketGraphResult {
+            metric: CountMetric {
+                status: TrialStatus::Failed,
+                count: None,
+                details: Some(format!(
+                    "failed to inspect ticket dependency topology: {err}"
+                )),
+            },
+            findings: Vec::new(),
+        }),
+    }
+}
+
+fn load_ticket_graph_inputs(
+    store: &TicketStore,
+) -> Result<(Vec<IndexedTicket>, Vec<EdgeRecord>, WorkflowModel), TicketGraphResult> {
+    let tickets = store
+        .list(None, None, None)
+        .map_err(failed_result)?;
+    let edges = store.list_all_edges().map_err(failed_result)?;
+    let workflow = WorkflowModel::build(store, tickets.clone(), edges.clone())
+        .map_err(failed_result)?;
+    Ok((tickets, edges, workflow))
+}
+
+fn collect_convergence_findings(
+    repo_root: &Path,
+    workflow: &WorkflowModel,
+) -> Vec<AuditFinding> {
+    let mut findings = Vec::new();
     let mut sorted_ticket_ids = workflow
         .actionable_candidate_ids(None)
         .into_iter()
@@ -182,10 +221,8 @@ pub fn evaluate(repo_root: &Path) -> TicketGraphResult {
         for issue in issues {
             let prerequisite_path = workflow
                 .ticket(&issue.prerequisite_id)
-                .map(|prerequisite| {
-                    relative_ticket_path(repo_root, &prerequisite.path)
-                });
-            convergence_findings.push(AuditFinding {
+                .map(|prerequisite| relative_ticket_path(repo_root, &prerequisite.path));
+            findings.push(AuditFinding {
                 id: format!(
                     "ticket_graph:convergence:{}:{}",
                     issue.dependent_id, issue.prerequisite_id
@@ -232,44 +269,26 @@ pub fn evaluate(repo_root: &Path) -> TicketGraphResult {
         }
     }
 
-    let policy_matchers = load_workspace_policy_matchers(repo_root);
-    let policy_excluded_reference_findings =
-        collect_policy_excluded_reference_findings(
-            repo_root,
-            &tickets,
-            &edges,
-            &policy_matchers,
-            Some(&store),
-        );
+    findings
+}
 
-    let orphan_count = orphan_findings.len();
-    let convergence_count = convergence_findings.len();
-    let policy_excluded_reference_count = policy_excluded_reference_findings.len();
-    let findings = orphan_findings
-        .into_iter()
-        .chain(convergence_findings)
-        .chain(policy_excluded_reference_findings)
-        .collect();
-    TicketGraphResult {
-        metric: CountMetric {
-            status: TrialStatus::Collected,
-            count: Some(orphan_count),
-            details: Some(if orphan_count == 0 {
-                if convergence_count == 0 {
-                    "all tickets participate in at least one depends_on relationship"
-                        .to_string()
-                } else {
-                    format!(
-                        "all tickets participate in at least one depends_on relationship; {convergence_count} dependency convergence finding(s) detected; {policy_excluded_reference_count} policy-excluded workspace reference finding(s) detected"
-                    )
-                }
-            } else {
-                format!(
-                    "{orphan_count} ticket(s) have neither outgoing dependencies nor incoming dependees; {convergence_count} dependency convergence finding(s) detected; {policy_excluded_reference_count} policy-excluded workspace reference finding(s) detected"
-                )
-            }),
-        },
-        findings,
+fn ticket_graph_details(
+    orphan_count: usize,
+    convergence_count: usize,
+    policy_excluded_reference_count: usize,
+) -> String {
+    if orphan_count == 0 {
+        if convergence_count == 0 {
+            "all tickets participate in at least one depends_on relationship".to_string()
+        } else {
+            format!(
+                "all tickets participate in at least one depends_on relationship; {convergence_count} dependency convergence finding(s) detected; {policy_excluded_reference_count} policy-excluded workspace reference finding(s) detected"
+            )
+        }
+    } else {
+        format!(
+            "{orphan_count} ticket(s) have neither outgoing dependencies nor incoming dependees; {convergence_count} dependency convergence finding(s) detected; {policy_excluded_reference_count} policy-excluded workspace reference finding(s) detected"
+        )
     }
 }
 

@@ -22,49 +22,8 @@ pub(crate) fn render_human_readable(payload: &Value) -> String {
         return format_scalar(payload);
     };
 
-    if matches!(
-        obj.get("command").and_then(Value::as_str),
-        Some("board_show" | "board_history")
-    ) {
-        if let Some(report) = obj.get("human").and_then(Value::as_str) {
-            return report.to_string();
-        }
-    }
-
-    if obj.get("command").and_then(Value::as_str) == Some("next") {
-        return render_next_report(obj);
-    }
-
-    if obj.get("command").and_then(Value::as_str) == Some("blockers") {
-        return render_workflow_tree_report(obj, "Blocker Tree");
-    }
-
-    if obj.get("command").and_then(Value::as_str) == Some("unblocked_by") {
-        return render_workflow_tree_report(obj, "Unlock Tree");
-    }
-
-    // Special case: subgraph/topgraph command renders as ASCII tree
-    if matches!(
-        obj.get("command").and_then(Value::as_str),
-        Some("subgraph" | "topgraph")
-    ) {
-        if let Some(tree) = obj.get("tree").and_then(Value::as_str) {
-            return tree.to_string();
-        }
-    }
-
-    // Special case: describe command prints the markdown body directly
-    if obj.get("command").and_then(Value::as_str) == Some("describe") {
-        return obj
-            .get("description")
-            .and_then(Value::as_str)
-            .unwrap_or("(no description)")
-            .to_string();
-    }
-
-    // Special case: health command renders findings as a report
-    if obj.get("command").and_then(Value::as_str) == Some("health") {
-        return render_health_report(obj);
+    if let Some(rendered) = render_special_command(obj) {
+        return rendered;
     }
 
     let mut out = String::new();
@@ -74,19 +33,7 @@ pub(crate) fn render_human_readable(payload: &Value) -> String {
     let status = obj.get("status").and_then(Value::as_str).unwrap_or("?");
     let _ = writeln!(out, "{command} {status}");
 
-    let mut scalars = Vec::new();
-    let mut sections = Vec::new();
-
-    for (key, val) in obj {
-        if key == "command" || key == "status" {
-            continue;
-        }
-        if is_section(val) {
-            sections.push((key.as_str(), val));
-        } else {
-            scalars.push((key.as_str(), val));
-        }
-    }
+    let (scalars, sections) = partition_object_fields(obj, &["command", "status"]);
 
     for (key, val) in &scalars {
         let _ = writeln!(out, "{key}: {}", format_scalar(val));
@@ -101,6 +48,50 @@ pub(crate) fn render_human_readable(payload: &Value) -> String {
     let mut result = trimmed.to_string();
     result.push('\n');
     result
+}
+
+fn render_special_command(obj: &serde_json::Map<String, Value>) -> Option<String> {
+    let command = obj.get("command").and_then(Value::as_str)?;
+
+    if matches!(command, "board_show" | "board_history") {
+        return obj.get("human").and_then(Value::as_str).map(str::to_string);
+    }
+
+    match command {
+        "next" => Some(render_next_report(obj)),
+        "blockers" => Some(render_workflow_tree_report(obj, "Blocker Tree")),
+        "unblocked_by" => Some(render_workflow_tree_report(obj, "Unlock Tree")),
+        "subgraph" | "topgraph" => obj.get("tree").and_then(Value::as_str).map(str::to_string),
+        "describe" => Some(
+            obj.get("description")
+                .and_then(Value::as_str)
+                .unwrap_or("(no description)")
+                .to_string(),
+        ),
+        "health" => Some(render_health_report(obj)),
+        _ => None,
+    }
+}
+
+fn partition_object_fields<'a>(
+    obj: &'a serde_json::Map<String, Value>,
+    excluded_keys: &[&str],
+) -> (Vec<(&'a str, &'a Value)>, Vec<(&'a str, &'a Value)>) {
+    let mut scalars = Vec::new();
+    let mut sections = Vec::new();
+
+    for (key, val) in obj {
+        if excluded_keys.iter().any(|excluded| key == excluded) {
+            continue;
+        }
+        if is_section(val) {
+            sections.push((key.as_str(), val));
+        } else {
+            scalars.push((key.as_str(), val));
+        }
+    }
+
+    (scalars, sections)
 }
 
 fn render_next_report(obj: &serde_json::Map<String, Value>) -> String {

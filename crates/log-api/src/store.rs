@@ -141,64 +141,7 @@ impl LogStoreConfig {
         let mut sessions: Vec<RuntimeLogSession> =
             self.read_dir_json(&self.runtime_sessions_dir()?)?;
 
-        sessions.retain(|session| {
-            if let Some(status) = &query.status {
-                if &session.status != status {
-                    return false;
-                }
-            }
-            if let Some(transport) = &query.transport {
-                if &session.transport != transport {
-                    return false;
-                }
-            }
-            if let Some(component) = &query.component {
-                if &session.component != component {
-                    return false;
-                }
-            }
-            if let Some(run_id) = &query.run_id {
-                if session.run_id.as_deref() != Some(run_id.as_str()) {
-                    return false;
-                }
-            }
-            if let Some(ticket_id) = &query.ticket_id {
-                if !session.links.links_to_ticket(ticket_id) {
-                    return false;
-                }
-            }
-            if let Some(spec_id) = &query.spec_id {
-                if !session.links.links_to_spec(spec_id) {
-                    return false;
-                }
-            }
-            if let Some(execution_id) = &query.validation_execution_id {
-                if !session.links.links_to_execution(execution_id) {
-                    return false;
-                }
-            }
-            if let Some(journal_id) = &query.journal_id {
-                if !session.links.links_to_journal(journal_id) {
-                    return false;
-                }
-            }
-            if let Some(graph_operation_id) = &query.graph_operation_id {
-                if !session.links.links_to_graph_operation(graph_operation_id) {
-                    return false;
-                }
-            }
-            if let Some(benchmark_id) = &query.benchmark_id {
-                if !session.links.links_to_benchmark(benchmark_id) {
-                    return false;
-                }
-            }
-            if let Some(agent_session_id) = &query.agent_session_id {
-                if !session.links.links_to_agent_session(agent_session_id) {
-                    return false;
-                }
-            }
-            true
-        });
+        sessions.retain(|session| Self::matches_runtime_session_query(session, query));
 
         sessions.sort_by(|a, b| b.started_at.cmp(&a.started_at).then(a.id.cmp(&b.id)));
 
@@ -207,6 +150,98 @@ impl LogStoreConfig {
         }
 
         Ok(sessions)
+    }
+
+    fn matches_runtime_session_query(
+        session: &RuntimeLogSession,
+        query: &RuntimeLogSessionQuery,
+    ) -> bool {
+        Self::matches_runtime_session_core(session, query)
+            && Self::matches_runtime_session_traceability(session, query)
+    }
+
+    fn matches_runtime_session_core(
+        session: &RuntimeLogSession,
+        query: &RuntimeLogSessionQuery,
+    ) -> bool {
+        if let Some(status) = &query.status {
+            if &session.status != status {
+                return false;
+            }
+        }
+        if let Some(transport) = &query.transport {
+            if &session.transport != transport {
+                return false;
+            }
+        }
+        if let Some(component) = &query.component {
+            if &session.component != component {
+                return false;
+            }
+        }
+        if let Some(run_id) = &query.run_id {
+            if session.run_id.as_deref() != Some(run_id.as_str()) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn matches_runtime_session_traceability(
+        session: &RuntimeLogSession,
+        query: &RuntimeLogSessionQuery,
+    ) -> bool {
+        Self::matches_runtime_session_primary_links(session, query)
+            && Self::matches_runtime_session_secondary_links(session, query)
+    }
+
+    fn matches_runtime_session_primary_links(
+        session: &RuntimeLogSession,
+        query: &RuntimeLogSessionQuery,
+    ) -> bool {
+        if let Some(ticket_id) = &query.ticket_id {
+            if !session.links.links_to_ticket(ticket_id) {
+                return false;
+            }
+        }
+        if let Some(spec_id) = &query.spec_id {
+            if !session.links.links_to_spec(spec_id) {
+                return false;
+            }
+        }
+        if let Some(execution_id) = &query.validation_execution_id {
+            if !session.links.links_to_execution(execution_id) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn matches_runtime_session_secondary_links(
+        session: &RuntimeLogSession,
+        query: &RuntimeLogSessionQuery,
+    ) -> bool {
+        if let Some(journal_id) = &query.journal_id {
+            if !session.links.links_to_journal(journal_id) {
+                return false;
+            }
+        }
+        if let Some(graph_operation_id) = &query.graph_operation_id {
+            if !session.links.links_to_graph_operation(graph_operation_id) {
+                return false;
+            }
+        }
+        if let Some(benchmark_id) = &query.benchmark_id {
+            if !session.links.links_to_benchmark(benchmark_id) {
+                return false;
+            }
+        }
+        if let Some(agent_session_id) = &query.agent_session_id {
+            if !session.links.links_to_agent_session(agent_session_id) {
+                return false;
+            }
+        }
+        true
     }
 
     // ── Path helpers ────────────────────────────────────────────────────────

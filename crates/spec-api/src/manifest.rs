@@ -378,46 +378,11 @@ impl SpecManifest {
                 issues.push(format!("invalid contract mode: {error}")),
         }
 
-        let expected_properties = match self
-            .parse_field::<Vec<ExpectedProperty>>("expected_properties")
-        {
-            Ok(Some(properties)) => properties,
-            Ok(None) => Vec::new(),
-            Err(error) => {
-                issues.push(format!("invalid expected properties: {error}"));
-                Vec::new()
-            },
-        };
-        let acceptance_criteria = match self
-            .parse_field::<Vec<AcceptanceCriterion>>("acceptance_criteria")
-        {
-            Ok(Some(criteria)) => criteria,
-            Ok(None) => Vec::new(),
-            Err(error) => {
-                issues.push(format!("invalid acceptance criteria: {error}"));
-                Vec::new()
-            },
-        };
-        let evidence_requirements = match self
-            .parse_field::<Vec<EvidenceRequirement>>("evidence_requirements")
-        {
-            Ok(Some(evidence)) => evidence,
-            Ok(None) => Vec::new(),
-            Err(error) => {
-                issues.push(format!("invalid evidence requirements: {error}"));
-                Vec::new()
-            },
-        };
-        let fulfillment_summaries = match self
-            .parse_field::<Vec<FulfillmentSummary>>("fulfillment_summaries")
-        {
-            Ok(Some(summaries)) => summaries,
-            Ok(None) => Vec::new(),
-            Err(error) => {
-                issues.push(format!("invalid fulfillment summaries: {error}"));
-                Vec::new()
-            },
-        };
+        let parsed = self.parse_structured_contract_fields(&mut issues);
+        let expected_properties = parsed.expected_properties;
+        let acceptance_criteria = parsed.acceptance_criteria;
+        let evidence_requirements = parsed.evidence_requirements;
+        let fulfillment_summaries = parsed.fulfillment_summaries;
 
         if expected_properties.is_empty() {
             issues.push("missing expected properties".to_string());
@@ -454,89 +419,57 @@ impl SpecManifest {
                 .map(|summary| ("fulfillment summary", summary.id.as_str())),
         );
 
-        for criterion in &acceptance_criteria {
-            if criterion.expected_property_ids.is_empty() {
-                issues.push(format!(
-                    "acceptance criterion '{}' missing expected property links",
-                    criterion.id
-                ));
-            }
-            if criterion.required_evidence_ids.is_empty() {
-                issues.push(format!(
-                    "acceptance criterion '{}' missing required evidence",
-                    criterion.id
-                ));
-            }
-            for property_id in &criterion.expected_property_ids {
-                if !expected_property_ids.contains(property_id) {
-                    issues.push(format!(
-                        "acceptance criterion '{}' references missing expected property '{}'",
-                        criterion.id, property_id
-                    ));
-                }
-            }
-            for evidence_id in &criterion.required_evidence_ids {
-                if !evidence_requirement_ids.contains(evidence_id) {
-                    issues.push(format!(
-                        "acceptance criterion '{}' references missing evidence requirement '{}'",
-                        criterion.id, evidence_id
-                    ));
-                }
-            }
-        }
-
-        for summary in &fulfillment_summaries {
-            let target_exists = match summary.subject_kind {
-                FulfillmentSubjectKind::AcceptanceCriterion =>
-                    acceptance_criterion_ids.contains(&summary.subject_id),
-                FulfillmentSubjectKind::EvidenceRequirement =>
-                    evidence_requirement_ids.contains(&summary.subject_id),
-            };
-
-            if !target_exists {
-                issues.push(format!(
-                    "fulfillment summary '{}' references missing {} '{}'",
-                    summary.id,
-                    summary.subject_kind.as_str(),
-                    summary.subject_id
-                ));
-            }
-        }
-
-        for evidence in &evidence_requirements {
-            if evidence.optional {
-                continue;
-            }
-
-            let summaries: Vec<&FulfillmentSummary> = fulfillment_summaries
-                .iter()
-                .filter(|summary| {
-                    summary.subject_kind
-                        == FulfillmentSubjectKind::EvidenceRequirement
-                        && summary.subject_id == evidence.id
-                })
-                .collect();
-
-            if summaries.is_empty() {
-                issues.push(format!(
-                    "missing fulfillment summary for evidence requirement '{}'",
-                    evidence.id
-                ));
-                continue;
-            }
-
-            if summaries
-                .iter()
-                .all(|summary| !summary.status.is_satisfied())
-            {
-                issues.push(format!(
-                    "unsatisfied evidence requirement '{}'",
-                    evidence.id
-                ));
-            }
-        }
+        validate_acceptance_criterion_links(
+            &mut issues,
+            &acceptance_criteria,
+            &expected_property_ids,
+            &evidence_requirement_ids,
+        );
+        validate_fulfillment_summary_targets(
+            &mut issues,
+            &fulfillment_summaries,
+            &acceptance_criterion_ids,
+            &evidence_requirement_ids,
+        );
+        validate_required_evidence_fulfillment(
+            &mut issues,
+            &evidence_requirements,
+            &fulfillment_summaries,
+        );
 
         issues
+    }
+
+    fn parse_structured_contract_fields(
+        &self,
+        issues: &mut Vec<String>,
+    ) -> ParsedStructuredContractFields {
+        ParsedStructuredContractFields {
+            expected_properties: parse_structured_field(
+                self,
+                issues,
+                "expected_properties",
+                "invalid expected properties",
+            ),
+            acceptance_criteria: parse_structured_field(
+                self,
+                issues,
+                "acceptance_criteria",
+                "invalid acceptance criteria",
+            ),
+            evidence_requirements: parse_structured_field(
+                self,
+                issues,
+                "evidence_requirements",
+                "invalid evidence requirements",
+            ),
+            fulfillment_summaries: parse_structured_field(
+                self,
+                issues,
+                "fulfillment_summaries",
+                "invalid fulfillment summaries",
+            ),
+        }
     }
 
     fn parse_field<T>(
@@ -582,6 +515,133 @@ impl SpecManifest {
             Err(_) => {
                 self.extra.remove(key);
             },
+        }
+    }
+}
+
+struct ParsedStructuredContractFields {
+    expected_properties: Vec<ExpectedProperty>,
+    acceptance_criteria: Vec<AcceptanceCriterion>,
+    evidence_requirements: Vec<EvidenceRequirement>,
+    fulfillment_summaries: Vec<FulfillmentSummary>,
+}
+
+fn parse_structured_field<T>(
+    manifest: &SpecManifest,
+    issues: &mut Vec<String>,
+    key: &str,
+    error_prefix: &str,
+) -> Vec<T>
+where
+    T: DeserializeOwned,
+{
+    match manifest.parse_field::<Vec<T>>(key) {
+        Ok(Some(values)) => values,
+        Ok(None) => Vec::new(),
+        Err(error) => {
+            issues.push(format!("{error_prefix}: {error}"));
+            Vec::new()
+        },
+    }
+}
+
+fn validate_acceptance_criterion_links(
+    issues: &mut Vec<String>,
+    acceptance_criteria: &[AcceptanceCriterion],
+    expected_property_ids: &std::collections::BTreeSet<String>,
+    evidence_requirement_ids: &std::collections::BTreeSet<String>,
+) {
+    for criterion in acceptance_criteria {
+        if criterion.expected_property_ids.is_empty() {
+            issues.push(format!(
+                "acceptance criterion '{}' missing expected property links",
+                criterion.id
+            ));
+        }
+        if criterion.required_evidence_ids.is_empty() {
+            issues.push(format!(
+                "acceptance criterion '{}' missing required evidence",
+                criterion.id
+            ));
+        }
+        for property_id in &criterion.expected_property_ids {
+            if !expected_property_ids.contains(property_id) {
+                issues.push(format!(
+                    "acceptance criterion '{}' references missing expected property '{}'",
+                    criterion.id, property_id
+                ));
+            }
+        }
+        for evidence_id in &criterion.required_evidence_ids {
+            if !evidence_requirement_ids.contains(evidence_id) {
+                issues.push(format!(
+                    "acceptance criterion '{}' references missing evidence requirement '{}'",
+                    criterion.id, evidence_id
+                ));
+            }
+        }
+    }
+}
+
+fn validate_fulfillment_summary_targets(
+    issues: &mut Vec<String>,
+    fulfillment_summaries: &[FulfillmentSummary],
+    acceptance_criterion_ids: &std::collections::BTreeSet<String>,
+    evidence_requirement_ids: &std::collections::BTreeSet<String>,
+) {
+    for summary in fulfillment_summaries {
+        let target_exists = match summary.subject_kind {
+            FulfillmentSubjectKind::AcceptanceCriterion =>
+                acceptance_criterion_ids.contains(&summary.subject_id),
+            FulfillmentSubjectKind::EvidenceRequirement =>
+                evidence_requirement_ids.contains(&summary.subject_id),
+        };
+
+        if !target_exists {
+            issues.push(format!(
+                "fulfillment summary '{}' references missing {} '{}'",
+                summary.id,
+                summary.subject_kind.as_str(),
+                summary.subject_id
+            ));
+        }
+    }
+}
+
+fn validate_required_evidence_fulfillment(
+    issues: &mut Vec<String>,
+    evidence_requirements: &[EvidenceRequirement],
+    fulfillment_summaries: &[FulfillmentSummary],
+) {
+    for evidence in evidence_requirements {
+        if evidence.optional {
+            continue;
+        }
+
+        let summaries: Vec<&FulfillmentSummary> = fulfillment_summaries
+            .iter()
+            .filter(|summary| {
+                summary.subject_kind == FulfillmentSubjectKind::EvidenceRequirement
+                    && summary.subject_id == evidence.id
+            })
+            .collect();
+
+        if summaries.is_empty() {
+            issues.push(format!(
+                "missing fulfillment summary for evidence requirement '{}'",
+                evidence.id
+            ));
+            continue;
+        }
+
+        if summaries
+            .iter()
+            .all(|summary| !summary.status.is_satisfied())
+        {
+            issues.push(format!(
+                "unsatisfied evidence requirement '{}'",
+                evidence.id
+            ));
         }
     }
 }

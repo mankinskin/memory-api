@@ -142,58 +142,97 @@ impl TestStoreConfig {
         let mut executions: Vec<ValidationExecution> =
             self.read_dir_json(&self.executions_dir()?)?;
 
-        executions.retain(|exec| {
-            if let Some(ticket_id) = &query.ticket_id {
-                if !exec.links.links_to_ticket(ticket_id) {
-                    return false;
-                }
-            }
-            if let Some(spec_id) = &query.validation_spec_id {
-                if &exec.validation_spec_id != spec_id {
-                    return false;
-                }
-            }
-            if let Some(outcome) = &query.outcome {
-                if &exec.outcome != outcome {
-                    return false;
-                }
-            }
-            if let Some(min_duration_ms) = query.min_duration_ms {
-                match exec.duration_ms {
-                    Some(duration) if duration >= min_duration_ms => {},
-                    _ => return false,
-                }
-            }
-            if let Some(max_duration_ms) = query.max_duration_ms {
-                match exec.duration_ms {
-                    Some(duration) if duration <= max_duration_ms => {},
-                    _ => return false,
-                }
-            }
-            if let Some(domain) = &query.domain {
-                if exec.provenance.domain.as_deref() != Some(domain.as_str()) {
-                    return false;
-                }
-            }
-            if let Some(operation) = &query.operation {
-                if exec.provenance.operation.as_deref() != Some(operation.as_str()) {
-                    return false;
-                }
-            }
-            if let Some(transport) = &query.transport {
-                if exec.provenance.transport.as_deref() != Some(transport.as_str()) {
-                    return false;
-                }
-            }
-            if let Some(run_id) = &query.run_id {
-                if exec.provenance.run_id.as_deref() != Some(run_id.as_str()) {
-                    return false;
-                }
-            }
-            true
-        });
+        executions.retain(|exec| Self::matches_execution_query(exec, query));
+        Self::sort_executions(&mut executions, query.sort);
 
-        match query.sort {
+        if let Some(limit) = query.limit {
+            executions.truncate(limit);
+        }
+        Ok(executions)
+    }
+
+    fn matches_execution_query(
+        exec: &ValidationExecution,
+        query: &ExecutionQuery,
+    ) -> bool {
+        Self::matches_execution_identity_filters(exec, query)
+            && Self::matches_execution_duration_filters(exec, query)
+            && Self::matches_execution_provenance_filters(exec, query)
+    }
+
+    fn matches_execution_identity_filters(
+        exec: &ValidationExecution,
+        query: &ExecutionQuery,
+    ) -> bool {
+        if let Some(ticket_id) = &query.ticket_id {
+            if !exec.links.links_to_ticket(ticket_id) {
+                return false;
+            }
+        }
+        if let Some(spec_id) = &query.validation_spec_id {
+            if &exec.validation_spec_id != spec_id {
+                return false;
+            }
+        }
+        if let Some(outcome) = &query.outcome {
+            if &exec.outcome != outcome {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn matches_execution_duration_filters(
+        exec: &ValidationExecution,
+        query: &ExecutionQuery,
+    ) -> bool {
+        if let Some(min_duration_ms) = query.min_duration_ms {
+            match exec.duration_ms {
+                Some(duration) if duration >= min_duration_ms => {},
+                _ => return false,
+            }
+        }
+        if let Some(max_duration_ms) = query.max_duration_ms {
+            match exec.duration_ms {
+                Some(duration) if duration <= max_duration_ms => {},
+                _ => return false,
+            }
+        }
+        true
+    }
+
+    fn matches_execution_provenance_filters(
+        exec: &ValidationExecution,
+        query: &ExecutionQuery,
+    ) -> bool {
+        if let Some(domain) = &query.domain {
+            if exec.provenance.domain.as_deref() != Some(domain.as_str()) {
+                return false;
+            }
+        }
+        if let Some(operation) = &query.operation {
+            if exec.provenance.operation.as_deref() != Some(operation.as_str()) {
+                return false;
+            }
+        }
+        if let Some(transport) = &query.transport {
+            if exec.provenance.transport.as_deref() != Some(transport.as_str()) {
+                return false;
+            }
+        }
+        if let Some(run_id) = &query.run_id {
+            if exec.provenance.run_id.as_deref() != Some(run_id.as_str()) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn sort_executions(
+        executions: &mut [ValidationExecution],
+        sort: ExecutionSort,
+    ) {
+        match sort {
             ExecutionSort::NewestFirst => {
                 executions.sort_by(|a, b| b.executed_at.cmp(&a.executed_at).then(a.id.cmp(&b.id)));
             },
@@ -206,11 +245,6 @@ impl TestStoreConfig {
                 });
             },
         }
-
-        if let Some(limit) = query.limit {
-            executions.truncate(limit);
-        }
-        Ok(executions)
     }
 
     // ── Benchmark persistence ───────────────────────────────────────────────
