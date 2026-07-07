@@ -542,13 +542,11 @@ pub fn plan_move<D: MoveDomain + ?Sized>(
     let mut blockers = Vec::new();
 
     let source_git_root = git_toplevel(&source_workspace_root).map_err(MoveError::Domain)?;
-    let target_git_root = match git_toplevel(target_workspace_root) {
-        Ok(root) => root,
-        Err(reason) => {
-            blockers.push(MoveBlocker::PathReferenceScanUnavailable { reason });
-            source_git_root.clone()
-        },
-    };
+    let target_git_root = resolve_target_git_root_or_block(
+        target_workspace_root,
+        &source_git_root,
+        &mut blockers,
+    );
 
     let git_worktree_topology = classify_git_worktree_topology(&source_git_root, &target_git_root);
     if git_worktree_topology == GitWorktreeTopology::Unrelated {
@@ -575,23 +573,13 @@ pub fn plan_move<D: MoveDomain + ?Sized>(
     let inbound: BTreeSet<Uuid> = references.inbound.into_iter().collect();
     let outbound: BTreeSet<Uuid> = references.outbound.into_iter().collect();
 
-    let mut reference_visibility = Vec::new();
-    if target_store_present {
-        for related_entity_id in inbound.iter().chain(outbound.iter()).copied() {
-            let visible_from_destination =
-                domain.entity_indexed_in(&target_store_root, &related_entity_id)?;
-            let direction = if outbound.contains(&related_entity_id) {
-                MoveReferenceDirection::Outbound
-            } else {
-                MoveReferenceDirection::Inbound
-            };
-            reference_visibility.push(MoveReferenceVisibility {
-                related_entity_id,
-                direction,
-                visible_from_destination,
-            });
-        }
-    }
+    let reference_visibility = build_reference_visibility(
+        domain,
+        &target_store_root,
+        target_store_present,
+        &inbound,
+        &outbound,
+    )?;
 
     let board_state = domain.board_state(entity_id)?;
     for entry in &board_state.active_entries {
@@ -610,53 +598,16 @@ pub fn plan_move<D: MoveDomain + ?Sized>(
         });
     }
 
-    let path_reference_files = if source_entity_path.is_some() {
-        let mut files = BTreeSet::new();
-
-        match git_tracked_path_reference_files(&source_git_root, &resolved_source_path) {
-            Ok(found) => {
-                for file in found {
-                    let candidate = source_git_root.join(file);
-                    if is_persistent_move_reference_file(
-                        &candidate,
-                        &source_store_root,
-                        &target_store_root,
-                        &subdir,
-                    ) {
-                        files.insert(candidate);
-                    }
-                }
-            },
-            Err(reason) => {
-                blockers.push(MoveBlocker::PathReferenceScanUnavailable { reason });
-            },
-        }
-
-        if source_git_root != target_git_root {
-            match git_tracked_path_reference_files(&target_git_root, &resolved_source_path) {
-                Ok(found) => {
-                    for file in found {
-                        let candidate = target_git_root.join(file);
-                        if is_persistent_move_reference_file(
-                            &candidate,
-                            &source_store_root,
-                            &target_store_root,
-                            &subdir,
-                        ) {
-                            files.insert(candidate);
-                        }
-                    }
-                },
-                Err(reason) => {
-                    blockers.push(MoveBlocker::PathReferenceScanUnavailable { reason });
-                },
-            }
-        }
-
-        files.into_iter().collect()
-    } else {
-        Vec::new()
-    };
+    let path_reference_files = collect_plan_path_reference_files(
+        source_entity_path.is_some(),
+        &source_git_root,
+        &target_git_root,
+        &resolved_source_path,
+        &source_store_root,
+        &target_store_root,
+        &subdir,
+        &mut blockers,
+    );
 
     Ok(MovePlan {
         entity_id: *entity_id,
@@ -877,187 +828,11 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
     );
 
     let result: MoveResult<()> = (|| {
-        if journal.phase == MoveExecutionPhase::Planned {
-            let started = Instant::now();
-            acquire_lock_set(&journal.lock_paths)?;
-            record_phase_timing(&mut journal, "lock_acquisition_ms", started.elapsed());
-            journal.phase = MoveExecutionPhase::Locked;
-            span.record("phase", phase_name(&journal.phase));
-            journal.updated_at = Utc::now();
-            journal
-                .steps
-                .push("acquired source/target store locks and move entity lock".to_string());
-            persist_journal(&journal_root, &journal)?;
-            tracing::debug!(
-                target: MOVE_TRACE_TARGET,
-                phase = phase_name(&journal.phase),
-                "move_phase_advanced"
-            );
-        }
-
-        if journal.phase == MoveExecutionPhase::Locked {
-            if let Some(parent) = journal.destination_entity_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            let started = Instant::now();
-            if journal.source_entity_path.exists() {
-                fs::rename(&journal.source_entity_path, &journal.destination_entity_path)?;
-            }
-            record_phase_timing(&mut journal, "rename_entity_ms", started.elapsed());
-            journal.phase = MoveExecutionPhase::Moved;
-            span.record("phase", phase_name(&journal.phase));
-            journal.updated_at = Utc::now();
-            journal.steps.push("moved entity folder".to_string());
-            persist_journal(&journal_root, &journal)?;
-            tracing::debug!(
-                target: MOVE_TRACE_TARGET,
-                phase = phase_name(&journal.phase),
-                "move_phase_advanced"
-            );
-        }
-
-        if journal.phase == MoveExecutionPhase::Moved {
-            if journal.rewritten_path_files.is_empty() && journal.manual_followups.is_empty() {
-                let started = Instant::now();
-                let (rewritten, followups) = rewrite_path_references(plan)?;
-                record_phase_timing(&mut journal, "rewrite_path_refs_ms", started.elapsed());
-                if !rewritten.is_empty() {
-                    journal
-                        .steps
-                        .push(format!("rewrote {} tracked path reference files", rewritten.len()));
-                }
-                if !followups.is_empty() {
-                    journal.steps.push(format!(
-                        "recorded {} manual path-reference follow-ups",
-                        followups.len()
-                    ));
-                }
-                journal.rewritten_path_files = rewritten;
-                journal.manual_followups = followups;
-            }
-
-            if journal.migrated_board_entries.is_empty() {
-                let started = Instant::now();
-                journal.migrated_board_entries =
-                    domain.migrate_board_history(&journal.target_store_root, &journal.entity_id)?;
-                record_phase_timing(&mut journal, "migrate_board_history_ms", started.elapsed());
-                if !journal.migrated_board_entries.is_empty() {
-                    journal.steps.push(format!(
-                        "migrated {} historical board rows",
-                        journal.migrated_board_entries.len()
-                    ));
-                }
-            }
-
-            let started = Instant::now();
-            domain.reconcile_store_touched(
-                &journal.source_store_root,
-                &[journal.entity_id],
-            )?;
-            record_phase_timing(&mut journal, "scan_source_ms", started.elapsed());
-            journal.phase = MoveExecutionPhase::SourceScanned;
-            span.record("phase", phase_name(&journal.phase));
-            journal.updated_at = Utc::now();
-            journal.steps.push("scanned source store".to_string());
-            persist_journal(&journal_root, &journal)?;
-            tracing::debug!(
-                target: MOVE_TRACE_TARGET,
-                phase = phase_name(&journal.phase),
-                rewritten_path_files = journal.rewritten_path_files.len(),
-                manual_followups = journal.manual_followups.len(),
-                migrated_board_entries = journal.migrated_board_entries.len(),
-                "move_phase_advanced"
-            );
-        }
-
-        if journal.phase == MoveExecutionPhase::SourceScanned {
-            let started = Instant::now();
-            domain.reconcile_store_touched(
-                &journal.target_store_root,
-                &[journal.entity_id],
-            )?;
-            record_phase_timing(&mut journal, "scan_target_ms", started.elapsed());
-            journal.phase = MoveExecutionPhase::TargetScanned;
-            span.record("phase", phase_name(&journal.phase));
-            journal.updated_at = Utc::now();
-            journal.steps.push("scanned target store".to_string());
-            persist_journal(&journal_root, &journal)?;
-            tracing::debug!(
-                target: MOVE_TRACE_TARGET,
-                phase = phase_name(&journal.phase),
-                "move_phase_advanced"
-            );
-        }
-
-        if journal.phase == MoveExecutionPhase::TargetScanned {
-            let started = Instant::now();
-            let source_path_exists = journal.source_entity_path.exists();
-            let destination_path_exists = journal.destination_entity_path.exists();
-            let source_seen = domain.entity_indexed_in(&journal.source_store_root, &journal.entity_id)?;
-            let target_seen = domain.entity_indexed_in(&journal.target_store_root, &journal.entity_id)?;
-            record_phase_timing(&mut journal, "validate_move_ms", started.elapsed());
-            if source_path_exists || !destination_path_exists {
-                let mut problems = Vec::new();
-                if source_path_exists {
-                    problems.push(format!(
-                        "source entity folder {} still exists after the move",
-                        normalize_slashes(&journal.source_entity_path),
-                    ));
-                }
-                if !destination_path_exists {
-                    problems.push(format!(
-                        "destination entity folder {} does not exist after the move",
-                        normalize_slashes(&journal.destination_entity_path),
-                    ));
-                }
-                if source_seen {
-                    problems.push(format!(
-                        "source store {} still indexes entity {} after the move (source entity folder {} should no longer exist)",
-                        normalize_slashes(&journal.source_store_root),
-                        journal.entity_id,
-                        normalize_slashes(&journal.source_entity_path),
-                    ));
-                }
-                if !target_seen {
-                    problems.push(format!(
-                        "destination store {} does not index entity {} after the move (expected entity folder {} — check that the destination store root resolved without a Windows verbatim `\\\\?\\` prefix)",
-                        normalize_slashes(&journal.target_store_root),
-                        journal.entity_id,
-                        normalize_slashes(&journal.destination_entity_path),
-                    ));
-                }
-                return Err(MoveError::Domain(format!(
-                    "post-move validation failed: {}",
-                    problems.join("; ")
-                )));
-            }
-
-            if source_seen {
-                journal.steps.push(format!(
-                    "source index still resolves entity {}; source folder is absent, so ownership is correct (run scan --force later to clear stale index visibility)",
-                    journal.entity_id
-                ));
-            }
-            if !target_seen {
-                journal.steps.push(format!(
-                    "destination index has not resolved entity {} yet; destination folder exists and ownership is correct",
-                    journal.entity_id
-                ));
-            }
-
-            journal.phase = MoveExecutionPhase::Validated;
-            span.record("phase", phase_name(&journal.phase));
-            journal.updated_at = Utc::now();
-            journal.steps.push("validated move ownership".to_string());
-            journal.failure = None;
-            journal.next_recovery_step = None;
-            persist_journal(&journal_root, &journal)?;
-            tracing::debug!(
-                target: MOVE_TRACE_TARGET,
-                phase = phase_name(&journal.phase),
-                "move_phase_advanced"
-            );
-        }
+        advance_phase_planned(&mut journal, &journal_root, &span)?;
+        advance_phase_locked(&mut journal, &journal_root, &span)?;
+        advance_phase_moved(domain, plan, &mut journal, &journal_root, &span)?;
+        advance_phase_source_scanned(domain, &mut journal, &journal_root, &span)?;
+        advance_phase_target_scanned(domain, &mut journal, &journal_root, &span)?;
 
         Ok(())
     })();
@@ -1100,6 +875,357 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
             Err(error)
         },
     }
+}
+
+fn resolve_target_git_root_or_block(
+    target_workspace_root: &Path,
+    source_git_root: &Path,
+    blockers: &mut Vec<MoveBlocker>,
+) -> PathBuf {
+    match git_toplevel(target_workspace_root) {
+        Ok(root) => root,
+        Err(reason) => {
+            blockers.push(MoveBlocker::PathReferenceScanUnavailable { reason });
+            source_git_root.to_path_buf()
+        },
+    }
+}
+
+fn build_reference_visibility<D: MoveDomain + ?Sized>(
+    domain: &D,
+    target_store_root: &Path,
+    target_store_present: bool,
+    inbound: &BTreeSet<Uuid>,
+    outbound: &BTreeSet<Uuid>,
+) -> MoveResult<Vec<MoveReferenceVisibility>> {
+    if !target_store_present {
+        return Ok(Vec::new());
+    }
+
+    let mut visibility = Vec::new();
+    for related_entity_id in inbound.iter().chain(outbound.iter()).copied() {
+        let visible_from_destination = domain.entity_indexed_in(target_store_root, &related_entity_id)?;
+        let direction = if outbound.contains(&related_entity_id) {
+            MoveReferenceDirection::Outbound
+        } else {
+            MoveReferenceDirection::Inbound
+        };
+        visibility.push(MoveReferenceVisibility {
+            related_entity_id,
+            direction,
+            visible_from_destination,
+        });
+    }
+
+    Ok(visibility)
+}
+
+fn collect_plan_path_reference_files(
+    source_entity_exists: bool,
+    source_git_root: &Path,
+    target_git_root: &Path,
+    resolved_source_path: &Path,
+    source_store_root: &Path,
+    target_store_root: &Path,
+    subdir: &str,
+    blockers: &mut Vec<MoveBlocker>,
+) -> Vec<PathBuf> {
+    if !source_entity_exists {
+        return Vec::new();
+    }
+
+    let mut files = BTreeSet::new();
+    collect_candidate_reference_files(
+        source_git_root,
+        resolved_source_path,
+        source_store_root,
+        target_store_root,
+        subdir,
+        blockers,
+        &mut files,
+    );
+
+    if source_git_root != target_git_root {
+        collect_candidate_reference_files(
+            target_git_root,
+            resolved_source_path,
+            source_store_root,
+            target_store_root,
+            subdir,
+            blockers,
+            &mut files,
+        );
+    }
+
+    files.into_iter().collect()
+}
+
+fn collect_candidate_reference_files(
+    git_root: &Path,
+    resolved_source_path: &Path,
+    source_store_root: &Path,
+    target_store_root: &Path,
+    subdir: &str,
+    blockers: &mut Vec<MoveBlocker>,
+    files: &mut BTreeSet<PathBuf>,
+) {
+    match git_tracked_path_reference_files(git_root, resolved_source_path) {
+        Ok(found) => {
+            for file in found {
+                let candidate = git_root.join(file);
+                if is_persistent_move_reference_file(
+                    &candidate,
+                    source_store_root,
+                    target_store_root,
+                    subdir,
+                ) {
+                    files.insert(candidate);
+                }
+            }
+        },
+        Err(reason) => blockers.push(MoveBlocker::PathReferenceScanUnavailable { reason }),
+    }
+}
+
+fn advance_phase_planned(
+    journal: &mut MoveJournal,
+    journal_root: &Path,
+    span: &tracing::Span,
+) -> MoveResult<()> {
+    if journal.phase != MoveExecutionPhase::Planned {
+        return Ok(());
+    }
+
+    let started = Instant::now();
+    acquire_lock_set(&journal.lock_paths)?;
+    record_phase_timing(journal, "lock_acquisition_ms", started.elapsed());
+    journal.phase = MoveExecutionPhase::Locked;
+    span.record("phase", phase_name(&journal.phase));
+    journal.updated_at = Utc::now();
+    journal
+        .steps
+        .push("acquired source/target store locks and move entity lock".to_string());
+    persist_journal(journal_root, journal)?;
+    tracing::debug!(
+        target: MOVE_TRACE_TARGET,
+        phase = phase_name(&journal.phase),
+        "move_phase_advanced"
+    );
+    Ok(())
+}
+
+fn advance_phase_locked(
+    journal: &mut MoveJournal,
+    journal_root: &Path,
+    span: &tracing::Span,
+) -> MoveResult<()> {
+    if journal.phase != MoveExecutionPhase::Locked {
+        return Ok(());
+    }
+
+    if let Some(parent) = journal.destination_entity_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let started = Instant::now();
+    if journal.source_entity_path.exists() {
+        fs::rename(&journal.source_entity_path, &journal.destination_entity_path)?;
+    }
+    record_phase_timing(journal, "rename_entity_ms", started.elapsed());
+    journal.phase = MoveExecutionPhase::Moved;
+    span.record("phase", phase_name(&journal.phase));
+    journal.updated_at = Utc::now();
+    journal.steps.push("moved entity folder".to_string());
+    persist_journal(journal_root, journal)?;
+    tracing::debug!(
+        target: MOVE_TRACE_TARGET,
+        phase = phase_name(&journal.phase),
+        "move_phase_advanced"
+    );
+    Ok(())
+}
+
+fn advance_phase_moved<D: MoveDomain + ?Sized>(
+    domain: &D,
+    plan: &MovePlan,
+    journal: &mut MoveJournal,
+    journal_root: &Path,
+    span: &tracing::Span,
+) -> MoveResult<()> {
+    if journal.phase != MoveExecutionPhase::Moved {
+        return Ok(());
+    }
+
+    if journal.rewritten_path_files.is_empty() && journal.manual_followups.is_empty() {
+        let started = Instant::now();
+        let (rewritten, followups) = rewrite_path_references(plan)?;
+        record_phase_timing(journal, "rewrite_path_refs_ms", started.elapsed());
+        if !rewritten.is_empty() {
+            journal
+                .steps
+                .push(format!("rewrote {} tracked path reference files", rewritten.len()));
+        }
+        if !followups.is_empty() {
+            journal.steps.push(format!(
+                "recorded {} manual path-reference follow-ups",
+                followups.len()
+            ));
+        }
+        journal.rewritten_path_files = rewritten;
+        journal.manual_followups = followups;
+    }
+
+    if journal.migrated_board_entries.is_empty() {
+        let started = Instant::now();
+        journal.migrated_board_entries =
+            domain.migrate_board_history(&journal.target_store_root, &journal.entity_id)?;
+        record_phase_timing(journal, "migrate_board_history_ms", started.elapsed());
+        if !journal.migrated_board_entries.is_empty() {
+            journal.steps.push(format!(
+                "migrated {} historical board rows",
+                journal.migrated_board_entries.len()
+            ));
+        }
+    }
+
+    let started = Instant::now();
+    domain.reconcile_store_touched(&journal.source_store_root, &[journal.entity_id])?;
+    record_phase_timing(journal, "scan_source_ms", started.elapsed());
+    journal.phase = MoveExecutionPhase::SourceScanned;
+    span.record("phase", phase_name(&journal.phase));
+    journal.updated_at = Utc::now();
+    journal.steps.push("scanned source store".to_string());
+    persist_journal(journal_root, journal)?;
+    tracing::debug!(
+        target: MOVE_TRACE_TARGET,
+        phase = phase_name(&journal.phase),
+        rewritten_path_files = journal.rewritten_path_files.len(),
+        manual_followups = journal.manual_followups.len(),
+        migrated_board_entries = journal.migrated_board_entries.len(),
+        "move_phase_advanced"
+    );
+    Ok(())
+}
+
+fn advance_phase_source_scanned<D: MoveDomain + ?Sized>(
+    domain: &D,
+    journal: &mut MoveJournal,
+    journal_root: &Path,
+    span: &tracing::Span,
+) -> MoveResult<()> {
+    if journal.phase != MoveExecutionPhase::SourceScanned {
+        return Ok(());
+    }
+
+    let started = Instant::now();
+    domain.reconcile_store_touched(&journal.target_store_root, &[journal.entity_id])?;
+    record_phase_timing(journal, "scan_target_ms", started.elapsed());
+    journal.phase = MoveExecutionPhase::TargetScanned;
+    span.record("phase", phase_name(&journal.phase));
+    journal.updated_at = Utc::now();
+    journal.steps.push("scanned target store".to_string());
+    persist_journal(journal_root, journal)?;
+    tracing::debug!(
+        target: MOVE_TRACE_TARGET,
+        phase = phase_name(&journal.phase),
+        "move_phase_advanced"
+    );
+    Ok(())
+}
+
+fn advance_phase_target_scanned<D: MoveDomain + ?Sized>(
+    domain: &D,
+    journal: &mut MoveJournal,
+    journal_root: &Path,
+    span: &tracing::Span,
+) -> MoveResult<()> {
+    if journal.phase != MoveExecutionPhase::TargetScanned {
+        return Ok(());
+    }
+
+    let started = Instant::now();
+    let source_path_exists = journal.source_entity_path.exists();
+    let destination_path_exists = journal.destination_entity_path.exists();
+    let source_seen = domain.entity_indexed_in(&journal.source_store_root, &journal.entity_id)?;
+    let target_seen = domain.entity_indexed_in(&journal.target_store_root, &journal.entity_id)?;
+    record_phase_timing(journal, "validate_move_ms", started.elapsed());
+    if source_path_exists || !destination_path_exists {
+        return Err(build_post_move_validation_error(
+            journal,
+            source_path_exists,
+            destination_path_exists,
+            source_seen,
+            target_seen,
+        ));
+    }
+
+    if source_seen {
+        journal.steps.push(format!(
+            "source index still resolves entity {}; source folder is absent, so ownership is correct (run scan --force later to clear stale index visibility)",
+            journal.entity_id
+        ));
+    }
+    if !target_seen {
+        journal.steps.push(format!(
+            "destination index has not resolved entity {} yet; destination folder exists and ownership is correct",
+            journal.entity_id
+        ));
+    }
+
+    journal.phase = MoveExecutionPhase::Validated;
+    span.record("phase", phase_name(&journal.phase));
+    journal.updated_at = Utc::now();
+    journal.steps.push("validated move ownership".to_string());
+    journal.failure = None;
+    journal.next_recovery_step = None;
+    persist_journal(journal_root, journal)?;
+    tracing::debug!(
+        target: MOVE_TRACE_TARGET,
+        phase = phase_name(&journal.phase),
+        "move_phase_advanced"
+    );
+    Ok(())
+}
+
+fn build_post_move_validation_error(
+    journal: &MoveJournal,
+    source_path_exists: bool,
+    destination_path_exists: bool,
+    source_seen: bool,
+    target_seen: bool,
+) -> MoveError {
+    let mut problems = Vec::new();
+    if source_path_exists {
+        problems.push(format!(
+            "source entity folder {} still exists after the move",
+            normalize_slashes(&journal.source_entity_path),
+        ));
+    }
+    if !destination_path_exists {
+        problems.push(format!(
+            "destination entity folder {} does not exist after the move",
+            normalize_slashes(&journal.destination_entity_path),
+        ));
+    }
+    if source_seen {
+        problems.push(format!(
+            "source store {} still indexes entity {} after the move (source entity folder {} should no longer exist)",
+            normalize_slashes(&journal.source_store_root),
+            journal.entity_id,
+            normalize_slashes(&journal.source_entity_path),
+        ));
+    }
+    if !target_seen {
+        problems.push(format!(
+            "destination store {} does not index entity {} after the move (expected entity folder {} — check that the destination store root resolved without a Windows verbatim `\\?\\` prefix)",
+            normalize_slashes(&journal.target_store_root),
+            journal.entity_id,
+            normalize_slashes(&journal.destination_entity_path),
+        ));
+    }
+    MoveError::Domain(format!(
+        "post-move validation failed: {}",
+        problems.join("; ")
+    ))
 }
 
 /// Lock paths the kernel acquires for a move (store + entity locks on both roots).

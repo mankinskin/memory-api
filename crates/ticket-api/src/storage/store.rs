@@ -13,7 +13,10 @@ use std::{
     time::Instant,
 };
 
-use chrono::Utc;
+use chrono::{
+    DateTime,
+    Utc,
+};
 use memory_api::{
     model::filesystem::ScanRoot,
     storage::ensure_sqlite_index_root,
@@ -858,94 +861,33 @@ impl TicketStore {
 
         // Determine the target state and transition path.
         // Priority: to_state > last element of transition_states > current state (no change)
-        let (new_state, transition_path) = if let Some(to) = to_state {
-            let path = self.resolve_transition_path(
-                &indexed,
-                transition_states.unwrap_or(&[]),
-                to,
-            )?;
-            let final_state = path
-                .last()
-                .cloned()
-                .unwrap_or_else(|| to.to_string());
-            (Some(final_state), path)
-        } else if let Some(transition_states_slice) = transition_states {
-            // transition_states provided but no to_state: use last element as target
-            if let Some(final_target) = transition_states_slice.last() {
-                // Pass all elements except the last as intermediate steps
-                let intermediate_steps = &transition_states_slice[..transition_states_slice.len() - 1];
-                let path = self.resolve_transition_path(
-                    &indexed,
-                    intermediate_steps,
-                    final_target,
-                )?;
-                (Some(final_target.clone()), path)
-            } else {
-                // Empty transition_states array: no change
-                (indexed.state.clone(), Vec::new())
-            }
-        } else {
-            // No to_state and no transition_states: preserve current state
-            (indexed.state.clone(), Vec::new())
-        };
+        let (new_state, transition_path) = self.resolve_update_target(
+            &indexed,
+            transition_states,
+            to_state,
+        )?;
         let previous_state = indexed.state.clone();
-        let updated_manifest = if transition_path.is_empty() {
-            TicketFs::update(&indexed.path, &patch, new_state.as_deref())?
-        } else {
-            let mut manifest = None;
-            for (index, state) in transition_path.iter().enumerate() {
-                let step_patch = if index + 1 == transition_path.len() {
-                    patch.clone()
-                } else {
-                    BTreeMap::new()
-                };
-                manifest = Some(TicketFs::update(
-                    &indexed.path,
-                    &step_patch,
-                    Some(state.as_str()),
-                )?);
-            }
-            manifest.expect("transition path produces at least one manifest")
-        };
-
-        // Write description if provided.
-        if let Some(desc) = description {
-            TicketFs::write_description(&indexed.path, desc)?;
-        }
+        let updated_manifest = self.apply_manifest_update(
+            &indexed.path,
+            &patch,
+            &new_state,
+            &transition_path,
+            description,
+        )?;
 
         // Route edge-field updates through canonical graph APIs.
         apply_edge_patch_plans(self, *id, edge_patch_plans)?;
 
         // Refresh indexed metadata.
         let now = Utc::now();
-        indexed.updated_at = now;
-        if let Some(s) = &new_state {
-            indexed.state = Some(s.clone());
-        }
-        if let Some(title_val) = patch.get("title").and_then(|v| v.as_str()) {
-            indexed.title = Some(title_val.to_string());
-        }
-        self.index.insert_ticket(&indexed)?;
-
-        let body = TicketFs::read_description(&indexed.path);
-        let created_at_str = indexed.created_at.to_rfc3339();
-        let effort_str = updated_manifest.extra.get("effort")
-            .and_then(|v| match v {
-                serde_json::Value::String(s) => Some(s.clone()),
-                serde_json::Value::Number(n) => Some(n.to_string()),
-                _ => None,
-            });
-        self.with_search_repair(|| {
-            self.search.upsert(
-                id,
-                indexed.title.as_deref(),
-                body.as_deref(),
-                indexed.state.as_deref(),
-                Some(indexed.type_id.as_str()),
-                Some(&created_at_str),
-                effort_str.as_deref(),
-            )
-        })?;
+        self.refresh_index_and_search(
+            id,
+            &patch,
+            &new_state,
+            &updated_manifest,
+            &mut indexed,
+            now,
+        )?;
 
         // Append history snapshot after successful write.
         let _ = TicketFs::append_history(
@@ -975,6 +917,118 @@ impl TicketStore {
         }
 
         Ok(TicketFs::read(&indexed.path).unwrap_or(updated_manifest))
+    }
+
+    fn resolve_update_target(
+        &self,
+        indexed: &IndexedTicket,
+        transition_states: Option<&[String]>,
+        to_state: Option<&str>,
+    ) -> Result<(Option<String>, Vec<String>), StorageError> {
+        if let Some(to) = to_state {
+            let path = self.resolve_transition_path(
+                indexed,
+                transition_states.unwrap_or(&[]),
+                to,
+            )?;
+            let final_state = path
+                .last()
+                .cloned()
+                .unwrap_or_else(|| to.to_string());
+            return Ok((Some(final_state), path));
+        }
+
+        if let Some(transition_states_slice) = transition_states {
+            if let Some(final_target) = transition_states_slice.last() {
+                let intermediate_steps = &transition_states_slice[..transition_states_slice.len() - 1];
+                let path = self.resolve_transition_path(
+                    indexed,
+                    intermediate_steps,
+                    final_target,
+                )?;
+                return Ok((Some(final_target.clone()), path));
+            }
+            return Ok((indexed.state.clone(), Vec::new()));
+        }
+
+        Ok((indexed.state.clone(), Vec::new()))
+    }
+
+    fn apply_manifest_update(
+        &self,
+        ticket_path: &Path,
+        patch: &BTreeMap<String, Value>,
+        new_state: &Option<String>,
+        transition_path: &[String],
+        description: Option<&str>,
+    ) -> Result<TicketManifest, StorageError> {
+        let updated_manifest = if transition_path.is_empty() {
+            TicketFs::update(ticket_path, patch, new_state.as_deref())?
+        } else {
+            let mut manifest = None;
+            for (index, state) in transition_path.iter().enumerate() {
+                let step_patch = if index + 1 == transition_path.len() {
+                    patch.clone()
+                } else {
+                    BTreeMap::new()
+                };
+                manifest = Some(TicketFs::update(
+                    ticket_path,
+                    &step_patch,
+                    Some(state.as_str()),
+                )?);
+            }
+            manifest.expect("transition path produces at least one manifest")
+        };
+
+        if let Some(desc) = description {
+            TicketFs::write_description(ticket_path, desc)?;
+        }
+
+        Ok(updated_manifest)
+    }
+
+    fn refresh_index_and_search(
+        &self,
+        id: &Uuid,
+        patch: &BTreeMap<String, Value>,
+        new_state: &Option<String>,
+        updated_manifest: &TicketManifest,
+        indexed: &mut IndexedTicket,
+        now: DateTime<Utc>,
+    ) -> Result<(), StorageError> {
+        indexed.updated_at = now;
+        if let Some(s) = new_state {
+            indexed.state = Some(s.clone());
+        }
+        if let Some(title_val) = patch.get("title").and_then(|v| v.as_str()) {
+            indexed.title = Some(title_val.to_string());
+        }
+        self.index.insert_ticket(indexed)?;
+
+        let body = TicketFs::read_description(&indexed.path);
+        let created_at_str = indexed.created_at.to_rfc3339();
+        let effort_str = updated_manifest
+            .extra
+            .get("effort")
+            .and_then(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            });
+        self.with_search_repair(|| {
+            self.search.upsert(
+                id,
+                indexed.title.as_deref(),
+                body.as_deref(),
+                indexed.state.as_deref(),
+                Some(indexed.type_id.as_str()),
+                Some(&created_at_str),
+                effort_str.as_deref(),
+            )
+        })?;
+
+        Ok(())
     }
 
     fn resolve_transition_path(

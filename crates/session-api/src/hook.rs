@@ -207,50 +207,28 @@ fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
         let event: TranscriptEventEnvelope = deserialize_transcript_event(&line, transcript_path)?;
 
         match event.event_type.as_str() {
-            "session.start" => {
-                let data: TranscriptSessionStartData =
-                    deserialize_transcript_data(event.data, transcript_path)?;
-                if session_id.is_none() {
-                    session_id = Some(data.session_id);
-                }
-                if agent_id.is_none() {
-                    agent_id = data.producer.filter(|value| !value.trim().is_empty());
-                }
-                if started_at.is_none() {
-                    started_at = data.start_time.or(Some(event.timestamp));
-                }
-                if captured_at.is_none() {
-                    captured_at = Some(event.timestamp);
-                }
-            }
-            "user.message" => {
-                let data: TranscriptMessageData =
-                    deserialize_transcript_data(event.data, transcript_path)?;
-                if data.content.trim().is_empty() {
-                    continue;
-                }
-                captured_at = Some(event.timestamp);
-                messages.push(CopilotHookMessage {
-                    role: SessionRole::User,
-                    content: data.content,
-                    tool_name: None,
-                    captured_at: Some(event.timestamp),
-                });
-            }
-            "assistant.message" => {
-                let data: TranscriptMessageData =
-                    deserialize_transcript_data(event.data, transcript_path)?;
-                if data.content.trim().is_empty() {
-                    continue;
-                }
-                captured_at = Some(event.timestamp);
-                messages.push(CopilotHookMessage {
-                    role: SessionRole::Assistant,
-                    content: data.content,
-                    tool_name: None,
-                    captured_at: Some(event.timestamp),
-                });
-            }
+            "session.start" => handle_session_start_event(
+                event,
+                transcript_path,
+                &mut session_id,
+                &mut agent_id,
+                &mut started_at,
+                &mut captured_at,
+            )?,
+            "user.message" => handle_message_event(
+                event,
+                transcript_path,
+                SessionRole::User,
+                &mut captured_at,
+                &mut messages,
+            )?,
+            "assistant.message" => handle_message_event(
+                event,
+                transcript_path,
+                SessionRole::Assistant,
+                &mut captured_at,
+                &mut messages,
+            )?,
             _ => {}
         }
     }
@@ -270,6 +248,53 @@ fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
         trigger,
         messages,
     })
+}
+
+fn handle_session_start_event(
+    event: TranscriptEventEnvelope,
+    transcript_path: &Path,
+    session_id: &mut Option<String>,
+    agent_id: &mut Option<String>,
+    started_at: &mut Option<DateTime<Utc>>,
+    captured_at: &mut Option<DateTime<Utc>>,
+) -> Result<(), SessionError> {
+    let data: TranscriptSessionStartData =
+        deserialize_transcript_data(event.data, transcript_path)?;
+    if session_id.is_none() {
+        *session_id = Some(data.session_id);
+    }
+    if agent_id.is_none() {
+        *agent_id = data.producer.filter(|value| !value.trim().is_empty());
+    }
+    if started_at.is_none() {
+        *started_at = data.start_time.or(Some(event.timestamp));
+    }
+    if captured_at.is_none() {
+        *captured_at = Some(event.timestamp);
+    }
+    Ok(())
+}
+
+fn handle_message_event(
+    event: TranscriptEventEnvelope,
+    transcript_path: &Path,
+    role: SessionRole,
+    captured_at: &mut Option<DateTime<Utc>>,
+    messages: &mut Vec<CopilotHookMessage>,
+) -> Result<(), SessionError> {
+    let data: TranscriptMessageData =
+        deserialize_transcript_data(event.data, transcript_path)?;
+    if data.content.trim().is_empty() {
+        return Ok(());
+    }
+    *captured_at = Some(event.timestamp);
+    messages.push(CopilotHookMessage {
+        role,
+        content: data.content,
+        tool_name: None,
+        captured_at: Some(event.timestamp),
+    });
+    Ok(())
 }
 
 fn deserialize_transcript_event(
