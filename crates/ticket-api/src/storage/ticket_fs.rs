@@ -395,6 +395,9 @@ fn scan_candidate_path(
     let id = name.parse().ok()?;
     let manifest_path = path.join(TICKET_MANIFEST_FILE);
     if !manifest_path.exists() {
+        if prune_empty_ticket_artifact_dir(path) {
+            return None;
+        }
         diags.push(crate::model::filesystem::ParseDiagnostic {
             path: manifest_path,
             reason: "missing ticket.toml".to_string(),
@@ -403,6 +406,19 @@ fn scan_candidate_path(
     }
 
     Some(ScanCandidate { id, manifest_path })
+}
+
+fn prune_empty_ticket_artifact_dir(path: &Path) -> bool {
+    let mut entries = match fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(_) => return false,
+    };
+
+    if entries.next().is_some() {
+        return false;
+    }
+
+    fs::remove_dir(path).is_ok()
 }
 
 fn load_scan_entry(

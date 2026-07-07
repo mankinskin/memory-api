@@ -969,6 +969,28 @@ fn scan_force_prunes_row_for_physically_removed_ticket() {
 }
 
 #[test]
+fn scan_force_prunes_empty_uuid_artifact_folder_without_manifest() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let artifact_id = Uuid::parse_str("4ea42273-a134-4342-b601-1759df6d562f").unwrap();
+    let artifact_dir = store.index_root.join("tickets").join(artifact_id.to_string());
+    fs::create_dir_all(&artifact_dir).unwrap();
+    assert!(artifact_dir.exists());
+    assert!(!artifact_dir.join("ticket.toml").exists());
+
+    let report = store.scan(true).unwrap();
+
+    assert!(!artifact_dir.exists(), "scan should prune empty artifact dirs");
+    assert!(
+        !report
+            .diagnostics
+            .iter()
+            .any(|diag| diag.path == artifact_dir.join("ticket.toml")
+                && diag.reason.contains("missing ticket.toml"))
+    );
+}
+
+#[test]
 fn scan_without_reindex_prunes_deleted_nested_ticket_from_search_and_index() {
     let dir = tempdir().unwrap();
     let repo = dir.path().join("repo");

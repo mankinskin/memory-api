@@ -1,0 +1,4 @@
+# Limit scan-root discovery to the memory-api workspace scope.
+include_descendants = true
+include_ancestors = false
+deny_external_paths = true
