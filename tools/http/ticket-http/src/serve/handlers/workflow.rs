@@ -199,105 +199,142 @@ pub async fn workflow_next(
 
     tokio::task::spawn_blocking(move || {
         let request_id = task_request_id.clone();
-        let scope_root = params.root.map(|id| id.to_string());
-        let scope_filter = params.filter.clone();
-        let active_index_root = store.index_root.display().to_string();
-        let tickets = match store.list(None, None, None) {
-            Ok(tickets) => tickets,
-            Err(error) => return storage_err(error, &request_id),
-        };
-        let all_edges = match store.list_all_edges() {
-            Ok(edges) => edges,
-            Err(error) => return storage_err(error, &request_id),
-        };
-        let model = match WorkflowModel::build(&store, tickets.clone(), all_edges) {
-            Ok(model) => model,
-            Err(error) => return storage_err(error, &request_id),
-        };
-        let board_snap = store.board_show(None).ok();
-
-        if let Some(root_id) = params.root {
-            if model.ticket(&root_id).is_none() {
-                return ApiError::not_found("ticket", &request_id)
-                    .into_response_with_status(StatusCode::NOT_FOUND);
-            }
-        }
-
-        let filtered_scope =
-            WorkflowModel::filter_scope(&tickets, params.filter.as_deref());
-        let next_scope = match params.root {
-            Some(root_id) => match build_next_scope(
-                root_id,
-                &model,
-                &store,
-                &workspace,
-            ) {
-                Ok(scope) => Some(scope),
-                Err(error) => return storage_err(error, &request_id),
-            },
-            None => None,
-        };
-
-        let candidate_scope = intersect_scopes(
-            filtered_scope,
-            next_scope.as_ref().map(|scope| &scope.remaining_blockers),
-        );
-        let mut candidates = model.actionable_candidate_ids(candidate_scope.as_ref());
-        model.sort_candidate_ids(&mut candidates);
-        let board_filtered =
-            apply_board_filter(candidates, board_snap.as_ref(), false);
-        let frontier_count = board_filtered.candidates.len();
-        let mut candidates = board_filtered.candidates;
-        match params.limit {
-            Some(limit) => candidates.truncate(limit.min(100)),
-            None if params.root.is_none() => candidates.truncate(20),
-            None => {}
-        }
-
-        let empty_satisfied = HashSet::new();
-
-        let items = match build_candidate_items(
-            &candidates,
-            &model,
+        match workflow_next_payload(
             &store,
             &workspace,
-            &empty_satisfied,
+            &params,
+            &request_id,
         ) {
-            Ok(items) => items,
-            Err(error) => return storage_err(error, &request_id),
-        };
-
-        Json(WorkflowNextResponse {
-            request_id: request_id.clone(),
-            active_workspace: workspace.clone(),
-            workspace: workspace.clone(),
-            scope: ScopeMetadata {
-                workspace: workspace.clone(),
-                active_index_root,
-                filter: scope_filter,
-                root: scope_root,
-            },
-            root: next_scope.as_ref().map(|scope| scope.root.clone()),
-            reachable_dependencies: next_scope
-                .as_ref()
-                .map(|scope| scope.reachable_dependencies),
-            blocked_dependencies: next_scope
-                .as_ref()
-                .map(|scope| scope.blocked_dependencies),
-            remaining_blocker_count: next_scope
-                .as_ref()
-                .map(|scope| scope.remaining_blockers.len()),
-            blocker_tree: next_scope.as_ref().map(|scope| scope.blocker_tree.clone()),
-            frontier_count: next_scope.as_ref().map(|_| frontier_count),
-            count: items.len(),
-            items,
-            excluded_by_board: board_filtered.excluded_by_board,
-            warnings: board_filtered.warnings,
-        })
-        .into_response()
+            Ok(payload) => Json(payload).into_response(),
+            Err(response) => response,
+        }
     })
     .await
     .unwrap_or_else(|_| task_join_err(&request_id, "workflow next request"))
+}
+
+fn workflow_next_payload(
+    store: &TicketStore,
+    workspace: &str,
+    params: &WorkflowNextQuery,
+    request_id: &str,
+) -> Result<WorkflowNextResponse, Response> {
+    let scope_root = params.root.map(|id| id.to_string());
+    let scope_filter = params.filter.clone();
+    let active_index_root = store.index_root.display().to_string();
+    let tickets = store
+        .list(None, None, None)
+        .map_err(|error| storage_err(error, request_id))?;
+    let all_edges = store
+        .list_all_edges()
+        .map_err(|error| storage_err(error, request_id))?;
+    let model = WorkflowModel::build(store, tickets.clone(), all_edges)
+        .map_err(|error| storage_err(error, request_id))?;
+    ensure_next_root_exists(&model, params.root, request_id)?;
+
+    let next_scope = build_optional_next_scope(params.root, &model, store, workspace)
+        .map_err(|error| storage_err(error, request_id))?;
+    let (mut candidates, excluded_by_board, warnings, frontier_count) = collect_board_filtered_candidates(
+        &tickets,
+        &model,
+        params,
+        next_scope.as_ref(),
+        store,
+    );
+    apply_next_limit(&mut candidates, params);
+
+    let empty_satisfied = HashSet::new();
+    let items = build_candidate_items(
+        &candidates,
+        &model,
+        store,
+        workspace,
+        &empty_satisfied,
+    )
+    .map_err(|error| storage_err(error, request_id))?;
+    Ok(WorkflowNextResponse {
+        request_id: request_id.to_string(),
+        active_workspace: workspace.to_string(),
+        workspace: workspace.to_string(),
+        scope: ScopeMetadata {
+            workspace: workspace.to_string(),
+            active_index_root,
+            filter: scope_filter,
+            root: scope_root,
+        },
+        root: next_scope.as_ref().map(|scope| scope.root.clone()),
+        reachable_dependencies: next_scope
+            .as_ref()
+            .map(|scope| scope.reachable_dependencies),
+        blocked_dependencies: next_scope
+            .as_ref()
+            .map(|scope| scope.blocked_dependencies),
+        remaining_blocker_count: next_scope
+            .as_ref()
+            .map(|scope| scope.remaining_blockers.len()),
+        blocker_tree: next_scope.as_ref().map(|scope| scope.blocker_tree.clone()),
+        frontier_count: next_scope.as_ref().map(|_| frontier_count),
+        count: items.len(),
+        items,
+        excluded_by_board,
+        warnings,
+    })
+}
+
+fn ensure_next_root_exists(
+    model: &WorkflowModel,
+    root: Option<Uuid>,
+    request_id: &str,
+) -> Result<(), Response> {
+    if root.is_some_and(|root_id| model.ticket(&root_id).is_none()) {
+        return Err(
+            ApiError::not_found("ticket", request_id)
+                .into_response_with_status(StatusCode::NOT_FOUND),
+        );
+    }
+    Ok(())
+}
+
+fn build_optional_next_scope(
+    root: Option<Uuid>,
+    model: &WorkflowModel,
+    store: &TicketStore,
+    workspace: &str,
+) -> Result<Option<NextScope>, ticket_api::error::StorageError> {
+    root.map(|root_id| build_next_scope(root_id, model, store, workspace))
+        .transpose()
+}
+
+fn collect_board_filtered_candidates(
+    tickets: &[ticket_api::storage::indexed::IndexedTicket],
+    model: &WorkflowModel,
+    params: &WorkflowNextQuery,
+    next_scope: Option<&NextScope>,
+    store: &TicketStore,
+) -> (Vec<Uuid>, Vec<BoardExcludedCandidate>, Vec<String>, usize) {
+    let filtered_scope = WorkflowModel::filter_scope(tickets, params.filter.as_deref());
+    let candidate_scope = intersect_scopes(
+        filtered_scope,
+        next_scope.map(|scope| &scope.remaining_blockers),
+    );
+    let mut candidates = model.actionable_candidate_ids(candidate_scope.as_ref());
+    model.sort_candidate_ids(&mut candidates);
+    let board_filtered = apply_board_filter(candidates, store.board_show(None).ok().as_ref(), false);
+    let frontier_count = board_filtered.candidates.len();
+    (
+        board_filtered.candidates,
+        board_filtered.excluded_by_board,
+        board_filtered.warnings,
+        frontier_count,
+    )
+}
+
+fn apply_next_limit(candidates: &mut Vec<Uuid>, params: &WorkflowNextQuery) {
+    match params.limit {
+        Some(limit) => candidates.truncate(limit.min(100)),
+        None if params.root.is_none() => candidates.truncate(20),
+        None => {}
+    }
 }
 
 pub async fn workflow_blockers(
@@ -334,96 +371,143 @@ async fn workflow_tree_response(
 
     tokio::task::spawn_blocking(move || {
         let request_id = task_request_id.clone();
-        let tickets = match store.list(None, None, None) {
-            Ok(tickets) => tickets,
-            Err(error) => return storage_err(error, &request_id),
-        };
-        let all_edges = match store.list_all_edges() {
-            Ok(edges) => edges,
-            Err(error) => return storage_err(error, &request_id),
-        };
-        let model = match WorkflowModel::build(&store, tickets, all_edges) {
-            Ok(model) => model,
-            Err(error) => return storage_err(error, &request_id),
-        };
-
-        if model.ticket(&params.root).is_none() {
-            return ApiError::not_found("ticket", &request_id)
-                .into_response_with_status(StatusCode::NOT_FOUND);
-        }
-
-        let satisfied_ids = HashSet::from([params.root]);
-        let (tree, frontier_ids, reachable_dependents, blocked_dependents, kind_label) = match kind {
-            TreeKind::Blockers => {
-                let Some(tree) = model.blocker_tree(params.root) else {
-                    return ApiError::not_found("ticket", &request_id)
-                        .into_response_with_status(StatusCode::NOT_FOUND);
-                };
-                let frontier_ids = tree.frontier_leaf_ids.clone();
-                (tree, frontier_ids, None, None, "blockers")
-            }
-            TreeKind::UnblockedBy => {
-                let Some(tree) = model.unlock_tree_with_satisfied(params.root, &satisfied_ids) else {
-                    return ApiError::not_found("ticket", &request_id)
-                        .into_response_with_status(StatusCode::NOT_FOUND);
-                };
-                let dependent_ids = model.reverse_dependents(params.root);
-                let blocked_dependents = dependent_ids
-                    .iter()
-                    .filter(|ticket_id| {
-                        !model
-                            .unresolved_dependencies_excluding(ticket_id, &satisfied_ids)
-                            .is_empty()
-                    })
-                    .count();
-                (
-                    tree,
-                    model.unlock_frontier_leaf_ids_with_satisfied(
-                        params.root,
-                        &satisfied_ids,
-                    ),
-                    Some(dependent_ids.len()),
-                    Some(blocked_dependents),
-                    "unblocked-by",
-                )
-            }
-        };
-
-        let root = match build_tree_item(tree, &model, &store, &workspace) {
-            Ok(root) => root,
-            Err(error) => return storage_err(error, &request_id),
-        };
-        let empty_satisfied = HashSet::new();
-        let frontier_items = match build_candidate_items(
-            &frontier_ids,
-            &model,
+        match workflow_tree_payload(
             &store,
             &workspace,
-            if matches!(kind, TreeKind::UnblockedBy) {
-                &satisfied_ids
-            } else {
-                &empty_satisfied
-            },
+            &request_id,
+            params.root,
+            kind,
         ) {
-            Ok(items) => items,
-            Err(error) => return storage_err(error, &request_id),
-        };
-
-        Json(WorkflowTreeResponse {
-            request_id: request_id.clone(),
-            active_workspace: workspace.clone(),
-            workspace: workspace.clone(),
-            kind: kind_label.to_string(),
-            root,
-            frontier_count: frontier_items.len(),
-            frontier_items,
-            reachable_dependents,
-            blocked_dependents,
-        })
-        .into_response()
+            Ok(payload) => Json(payload).into_response(),
+            Err(response) => response,
+        }
     })
     .await
     .unwrap_or_else(|_| task_join_err(&request_id, "workflow tree request"))
+}
+
+fn workflow_tree_payload(
+    store: &TicketStore,
+    workspace: &str,
+    request_id: &str,
+    root: Uuid,
+    kind: TreeKind,
+) -> Result<WorkflowTreeResponse, Response> {
+    let tickets = store
+        .list(None, None, None)
+        .map_err(|error| storage_err(error, request_id))?;
+    let all_edges = store
+        .list_all_edges()
+        .map_err(|error| storage_err(error, request_id))?;
+    let model = WorkflowModel::build(store, tickets, all_edges)
+        .map_err(|error| storage_err(error, request_id))?;
+
+    if model.ticket(&root).is_none() {
+        return Err(
+            ApiError::not_found("ticket", request_id)
+                .into_response_with_status(StatusCode::NOT_FOUND),
+        );
+    }
+
+    let tree_info = tree_kind_payload(&model, root, kind, request_id)?;
+    let root_item = build_tree_item(tree_info.tree, &model, store, workspace)
+        .map_err(|error| storage_err(error, request_id))?;
+    let empty_satisfied = HashSet::new();
+    let frontier_items = build_candidate_items(
+        &tree_info.frontier_ids,
+        &model,
+        store,
+        workspace,
+        tree_info.satisfied_ids.as_ref().unwrap_or(&empty_satisfied),
+    )
+    .map_err(|error| storage_err(error, request_id))?;
+
+    Ok(WorkflowTreeResponse {
+        request_id: request_id.to_string(),
+        active_workspace: workspace.to_string(),
+        workspace: workspace.to_string(),
+        kind: tree_info.kind_label.to_string(),
+        root: root_item,
+        frontier_count: frontier_items.len(),
+        frontier_items,
+        reachable_dependents: tree_info.reachable_dependents,
+        blocked_dependents: tree_info.blocked_dependents,
+    })
+}
+
+struct TreePayload<'a> {
+    tree: WorkflowTreeNode,
+    frontier_ids: Vec<Uuid>,
+    reachable_dependents: Option<usize>,
+    blocked_dependents: Option<usize>,
+    kind_label: &'a str,
+    satisfied_ids: Option<HashSet<Uuid>>,
+}
+
+fn tree_kind_payload<'a>(
+    model: &'a WorkflowModel,
+    root: Uuid,
+    kind: TreeKind,
+    request_id: &str,
+) -> Result<TreePayload<'a>, Response> {
+    match kind {
+        TreeKind::Blockers => blockers_tree_payload(model, root, request_id),
+        TreeKind::UnblockedBy => unblocked_by_tree_payload(model, root, request_id),
+    }
+}
+
+fn blockers_tree_payload<'a>(
+    model: &'a WorkflowModel,
+    root: Uuid,
+    request_id: &str,
+) -> Result<TreePayload<'a>, Response> {
+    let tree = model
+        .blocker_tree(root)
+        .ok_or_else(|| {
+            ApiError::not_found("ticket", request_id)
+                .into_response_with_status(StatusCode::NOT_FOUND)
+        })?;
+    let frontier_ids = tree.frontier_leaf_ids.clone();
+    Ok(TreePayload {
+        tree,
+        frontier_ids,
+        reachable_dependents: None,
+        blocked_dependents: None,
+        kind_label: "blockers",
+        satisfied_ids: None,
+    })
+}
+
+fn unblocked_by_tree_payload<'a>(
+    model: &'a WorkflowModel,
+    root: Uuid,
+    request_id: &str,
+) -> Result<TreePayload<'a>, Response> {
+    let satisfied_ids = HashSet::from([root]);
+    let tree = model
+        .unlock_tree_with_satisfied(root, &satisfied_ids)
+        .ok_or_else(|| {
+            ApiError::not_found("ticket", request_id)
+                .into_response_with_status(StatusCode::NOT_FOUND)
+        })?;
+    let dependent_ids = model.reverse_dependents(root);
+    let blocked_dependents = dependent_ids
+        .iter()
+        .filter(|ticket_id| {
+            !model
+                .unresolved_dependencies_excluding(ticket_id, &satisfied_ids)
+                .is_empty()
+        })
+        .count();
+
+    Ok(TreePayload {
+        tree,
+        frontier_ids: model.unlock_frontier_leaf_ids_with_satisfied(root, &satisfied_ids),
+        reachable_dependents: Some(dependent_ids.len()),
+        blocked_dependents: Some(blocked_dependents),
+        kind_label: "unblocked-by",
+        satisfied_ids: Some(satisfied_ids),
+    })
 }
 
 fn resolve_workspace_request(
