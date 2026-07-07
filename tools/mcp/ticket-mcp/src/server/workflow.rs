@@ -67,6 +67,7 @@ impl TicketServer {
                 "list_edges",
                 "add_edge",
                 "remove_edge",
+                "prune_dangling_edges",
                 "subgraph",
                 "topgraph",
                 "health_check",
@@ -129,6 +130,11 @@ impl TicketServer {
                 "remove_edge": {
                     "description": "Remove a directed edge between tickets",
                     "required": ["workspace", "from", "to", "kind"],
+                },
+                "prune_dangling_edges": {
+                    "description": "Remove or report dangling edges for one ticket or globally",
+                    "required": ["workspace"],
+                    "optional": ["root", "all", "kind", "strategy", "reason"],
                 },
                 "subgraph": {
                     "description": "BFS dependency subgraph",
