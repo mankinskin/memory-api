@@ -222,6 +222,49 @@ pub struct RemoveEdgeInput {
     pub kind: String,
 }
 
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DanglingStrategy {
+    Unlink,
+    ReconcileOnly,
+}
+
+impl DanglingStrategy {
+    pub fn mutates(&self) -> bool {
+        matches!(self, Self::Unlink)
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Unlink => "unlink",
+            Self::ReconcileOnly => "reconcile_only",
+        }
+    }
+}
+
+fn default_dangling_kind() -> String {
+    "depends_on".to_string()
+}
+
+fn default_dangling_strategy() -> DanglingStrategy {
+    DanglingStrategy::Unlink
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct PruneDanglingEdgesInput {
+    pub workspace: String,
+    #[serde(default)]
+    pub root: Option<String>,
+    #[serde(default)]
+    pub all: bool,
+    #[serde(default = "default_dangling_kind")]
+    pub kind: String,
+    #[serde(default = "default_dangling_strategy")]
+    pub strategy: DanglingStrategy,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct WorkflowInput {
     #[serde(default = "default_workflow_name")]

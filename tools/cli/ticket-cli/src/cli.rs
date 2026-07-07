@@ -136,6 +136,9 @@ pub enum TicketCommandCli {
     Unlink(UnlinkArgs),
     /// List edges originating from a ticket, or all edges with --all.
     Links(LinksArgs),
+    /// Remove or report dangling edges (missing target tickets) for one ticket or globally.
+    #[command(name = "prune-dangling")]
+    PruneDangling(PruneDanglingArgs),
     /// Show the dependency subgraph rooted at a ticket.
     Subgraph(SubgraphArgs),
     /// Show all tickets that depend on a given ticket (reverse dependency tree).
@@ -250,53 +253,28 @@ pub fn run(cli: TicketCli) -> Result<CliOutput, CliRunError> {
     }
 }
 
-fn command_name(command: &TicketCommandCli) -> &'static str {
-    match command {
-        TicketCommandCli::Init => "init",
-        TicketCommandCli::Create(_) => "create",
-        TicketCommandCli::Get(_) => "get",
-        TicketCommandCli::Describe(_) => "describe",
-        TicketCommandCli::Update(_) => "update",
-        TicketCommandCli::Repro(_) => "repro",
-        TicketCommandCli::List(_) => "list",
-        TicketCommandCli::Delete(_) => "delete",
-        TicketCommandCli::Scan(_) => "scan",
-        TicketCommandCli::Claim(_) => "claim",
-        TicketCommandCli::Unclaim(_) => "unclaim",
-        TicketCommandCli::Leases => "leases",
-        TicketCommandCli::Search(_) => "search",
-        TicketCommandCli::Query(_) => "query",
-        TicketCommandCli::AddRoot(_) => "add-root",
-        TicketCommandCli::History(_) => "history",
-        TicketCommandCli::Diff(_) => "diff",
-        TicketCommandCli::Revert(_) => "revert",
-        TicketCommandCli::FinalizeMerge(_) => "finalize-merge",
-        TicketCommandCli::Batch(_) => "batch",
-        TicketCommandCli::ExportCommandSchema => "export-command-schema",
-        TicketCommandCli::Link(_) => "link",
-        TicketCommandCli::Unlink(_) => "unlink",
-        TicketCommandCli::Links(_) => "links",
-        TicketCommandCli::Subgraph(_) => "subgraph",
-        TicketCommandCli::Topgraph(_) => "topgraph",
-        TicketCommandCli::Watch(_) => "watch",
-        TicketCommandCli::Status(_) => "status",
-        TicketCommandCli::ReadyOverview(_) => "ready-overview",
-        TicketCommandCli::Next(_) => "next",
-        TicketCommandCli::Blockers(_) => "blockers",
-        TicketCommandCli::UnblockedBy(_) => "unblocked-by",
-        TicketCommandCli::Serve(_) => "serve",
-        TicketCommandCli::Close(_) => "close",
-        TicketCommandCli::Cancel(_) => "cancel",
-        TicketCommandCli::Move(_) => "move",
-        TicketCommandCli::Attach(_) => "attach",
-        TicketCommandCli::Assets(_) => "assets",
-        TicketCommandCli::Health(_) => "health",
-        TicketCommandCli::StoreIndex(_) => "store-index",
-        TicketCommandCli::Audit => "audit",
-        TicketCommandCli::Fmt(_) => "fmt",
-        TicketCommandCli::Board(_) => "board",
-        TicketCommandCli::Workspace(_) => "workspace",
+fn command_name(command: &TicketCommandCli) -> String {
+    let variant_debug = format!("{command:?}");
+    let variant_name = variant_debug
+        .split_once('(')
+        .map(|(name, _)| name)
+        .unwrap_or(variant_debug.as_str());
+    camel_to_kebab(variant_name)
+}
+
+fn camel_to_kebab(input: &str) -> String {
+    let mut out = String::with_capacity(input.len() + 4);
+    for (idx, ch) in input.chars().enumerate() {
+        if ch.is_ascii_uppercase() {
+            if idx != 0 {
+                out.push('-');
+            }
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push(ch);
+        }
     }
+    out
 }
 
 // ── output helpers ─────────────────────────────────────────────────────────────

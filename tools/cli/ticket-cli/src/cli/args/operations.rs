@@ -270,6 +270,47 @@ pub enum ReproOutcome {
     Fixed,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum DanglingStrategy {
+    /// Remove each dangling edge directly.
+    Unlink,
+    /// Reconcile only: report candidates without mutation.
+    ReconcileOnly,
+}
+
+impl DanglingStrategy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unlink => "unlink",
+            Self::ReconcileOnly => "reconcile_only",
+        }
+    }
+
+    pub fn mutates(self) -> bool {
+        matches!(self, Self::Unlink)
+    }
+}
+
+#[derive(Debug, Args)]
+pub struct PruneDanglingArgs {
+    /// Source ticket UUID or 8+ character hex prefix.
+    /// Omit with --all to inspect all source tickets.
+    #[arg(required_unless_present = "all")]
+    pub root: Option<String>,
+    /// Check all source tickets instead of a single root ticket.
+    #[arg(long, default_value_t = false)]
+    pub all: bool,
+    /// Edge kind to inspect (default: depends_on).
+    #[arg(long, default_value = "depends_on")]
+    pub kind: String,
+    /// Cleanup strategy.
+    #[arg(long, value_enum, default_value_t = DanglingStrategy::Unlink)]
+    pub strategy: DanglingStrategy,
+    /// Optional reason recorded in response output.
+    #[arg(long)]
+    pub reason: Option<String>,
+}
+
 impl ReproOutcome {
     pub fn as_str(self) -> &'static str {
         match self {

@@ -237,23 +237,97 @@ impl TicketServer {
         let kind = input.kind;
 
         self.with_store_ext(&workspace.clone(), move |store| {
-            let from = Self::resolve_uuid_with(store, &from_str)?;
-            let to = Self::resolve_uuid_with(store, &to_str)?;
-            let edge = EdgeRecord {
-                from,
-                to,
-                kind: kind.clone(),
-                created_at: chrono::Utc::now(),
-            };
-            store.remove_edge(edge).map_err(Self::store_err)?;
+            let edge = resolve_edge_for_remove(&from_str, &to_str, &kind, store)?;
+            store.remove_edge(edge.clone()).map_err(Self::store_err)?;
             Self::json_result(&serde_json::json!({
                 "workspace": workspace,
                 "status": "ok",
                 "removed": EdgeItem {
-                    from: from.to_string(),
-                    to: to.to_string(),
+                    from: edge.from.to_string(),
+                    to: edge.to.to_string(),
                     kind,
                 },
+            }))
+        })
+        .await
+    }
+
+    pub(crate) async fn prune_dangling_edges_tool(
+        &self,
+        input: PruneDanglingEdgesInput,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let root_str = input.root;
+        let all = input.all;
+        let kind = input.kind;
+        let strategy = input.strategy;
+        let reason = input.reason;
+
+        self.with_store_ext(&workspace.clone(), move |store| {
+            let root = if all {
+                None
+            } else {
+                let raw = root_str.as_deref().ok_or_else(|| {
+                    McpError::invalid_params(
+                        "root is required when all=false".to_string(),
+                        None,
+                    )
+                })?;
+                Some(Self::resolve_uuid_with(store, raw)?)
+            };
+
+            let mut candidates = Vec::new();
+            for edge in store.list_all_edges().map_err(Self::store_err)? {
+                if edge.kind != kind {
+                    continue;
+                }
+                if let Some(root_id) = root {
+                    if edge.from != root_id {
+                        continue;
+                    }
+                }
+                let target_exists = store
+                    .get_indexed(&edge.to)
+                    .map_err(Self::store_err)?
+                    .is_some();
+                if !target_exists {
+                    candidates.push(edge);
+                }
+            }
+
+            let mut removed = 0usize;
+            if strategy.mutates() {
+                for edge in &candidates {
+                    store
+                        .remove_edge(edge.clone())
+                        .map_err(Self::store_err)?;
+                    removed += 1;
+                }
+            }
+
+            let edges: Vec<EdgeItem> = candidates
+                .iter()
+                .map(|edge| EdgeItem {
+                    from: edge.from.to_string(),
+                    to: edge.to.to_string(),
+                    kind: edge.kind.clone(),
+                })
+                .collect();
+
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "status": "ok",
+                "scope": {
+                    "all": all,
+                    "root": root.map(|id| id.to_string()),
+                },
+                "kind": kind,
+                "strategy": strategy.as_str(),
+                "mutated": strategy.mutates(),
+                "candidate_count": edges.len(),
+                "removed_count": removed,
+                "reason": reason,
+                "edges": edges,
             }))
         })
         .await
@@ -648,6 +722,95 @@ fn parse_field_patch(
     }
 
     Ok(patch)
+}
+
+fn resolve_edge_for_remove(
+    from_selector: &str,
+    to_selector: &str,
+    kind: &str,
+    store: &ticket_api::storage::TicketStore,
+) -> Result<EdgeRecord, McpError> {
+    let from = resolve_from_selector_for_remove(from_selector, store)?;
+    let to = resolve_to_selector_for_remove(from, to_selector, kind, store)?;
+    Ok(EdgeRecord {
+        from,
+        to,
+        kind: kind.to_string(),
+        created_at: chrono::Utc::now(),
+    })
+}
+
+fn resolve_from_selector_for_remove(
+    selector: &str,
+    store: &ticket_api::storage::TicketStore,
+) -> Result<Uuid, McpError> {
+    let trimmed = selector.trim();
+    if let Ok(id) = trimmed.parse::<Uuid>() {
+        return Ok(id);
+    }
+    if trimmed.len() >= 8 && trimmed.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return TicketServer::resolve_uuid_with(store, trimmed).map_err(|_| {
+            McpError::invalid_params(
+                format!(
+                    "cannot resolve source prefix '{trimmed}'; provide full UUID when source ticket is missing"
+                ),
+                None,
+            )
+        });
+    }
+
+    Err(McpError::invalid_params(
+        format!(
+            "invalid UUID '{selector}': expected full UUID or hex prefix (>= 8 chars)"
+        ),
+        None,
+    ))
+}
+
+fn resolve_to_selector_for_remove(
+    from: Uuid,
+    selector: &str,
+    kind: &str,
+    store: &ticket_api::storage::TicketStore,
+) -> Result<Uuid, McpError> {
+    let trimmed = selector.trim();
+    if let Ok(id) = trimmed.parse::<Uuid>() {
+        return Ok(id);
+    }
+    if !(trimmed.len() >= 8 && trimmed.chars().all(|ch| ch.is_ascii_hexdigit())) {
+        return Err(McpError::invalid_params(
+            format!(
+                "invalid UUID '{selector}': expected full UUID or hex prefix (>= 8 chars)"
+            ),
+            None,
+        ));
+    }
+
+    let prefix = trimmed.to_ascii_lowercase();
+    let matches: Vec<Uuid> = store
+        .edges_from(&from)
+        .map_err(TicketServer::store_err)?
+        .into_iter()
+        .filter(|edge| edge.kind == kind)
+        .map(|edge| edge.to)
+        .filter(|to| to.simple().to_string().starts_with(&prefix))
+        .collect();
+
+    match matches.len() {
+        0 => Err(McpError::invalid_params(
+            format!(
+                "edge not found: kind='{kind}' from='{from}' to='{selector}'"
+            ),
+            None,
+        )),
+        1 => Ok(matches[0]),
+        count => Err(McpError::invalid_params(
+            format!(
+                "ambiguous target selector '{selector}' for from='{from}' kind='{kind}' (matches {count}); use full UUID"
+            ),
+            None,
+        )),
+    }
 }
 
 fn indexed_ticket_path(

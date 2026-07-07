@@ -7,6 +7,8 @@
 
 mod common;
 
+use std::fs;
+
 use common::{
     TicketCommands,
     TicketSandbox as Sandbox,
@@ -413,7 +415,7 @@ fn unlink_is_idempotent_when_edge_is_missing() {
         "tracker-improvement",
     ]);
 
-    // Missing-edge unlink should succeed as a no-op.
+    // Missing-edge unlink currently succeeds as a no-op.
     let first = s.ticket_json(&[
         "unlink",
         "--from",
@@ -438,6 +440,134 @@ fn unlink_is_idempotent_when_edge_is_missing() {
 
     let links = s.ticket_json(&["links", id_a]);
     assert_eq!(links["count"].as_u64().unwrap(), 0);
+}
+
+#[test]
+fn unlink_removes_edge_when_target_ticket_folder_is_missing_fixture() {
+    let s = Sandbox::new();
+
+    let id_a = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    let id_b = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+
+    s.ticket_json(&[
+        "create",
+        "--id",
+        id_a,
+        "--title",
+        "A",
+        "--type",
+        "tracker-improvement",
+    ]);
+    s.ticket_json(&[
+        "create",
+        "--id",
+        id_b,
+        "--title",
+        "B",
+        "--type",
+        "tracker-improvement",
+    ]);
+
+    s.ticket_json(&[
+        "link",
+        "--from",
+        id_a,
+        "--to",
+        id_b,
+        "--kind",
+        "depends_on",
+    ]);
+
+    // Fixture: remove target ticket folder directly to force a dangling edge.
+    let target_path = s.index_root().join("tickets").join(id_b);
+    fs::remove_dir_all(&target_path).expect("remove target ticket folder");
+    s.ticket_json(&["scan", "--force"]);
+
+    let before = s.ticket_json(&["health", id_a]);
+    assert_eq!(before["summary"]["dangling_edge"], 1);
+
+    let unlinked = s.ticket_json(&[
+        "unlink",
+        "--from",
+        id_a,
+        "--to",
+        "bbbbbbbb",
+        "--kind",
+        "depends_on",
+    ]);
+    assert_eq!(unlinked["status"], "ok");
+
+    let after = s.ticket_json(&["health", id_a]);
+    assert!(
+        after["summary"].get("dangling_edge").is_none(),
+        "dangling edge should be removed: {after}"
+    );
+}
+
+#[test]
+fn unlink_reports_error_when_source_ticket_folder_is_missing_fixture() {
+    let s = Sandbox::new();
+
+    let id_a = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    let id_b = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+
+    s.ticket_json(&[
+        "create",
+        "--id",
+        id_a,
+        "--title",
+        "A",
+        "--type",
+        "tracker-improvement",
+    ]);
+    s.ticket_json(&[
+        "create",
+        "--id",
+        id_b,
+        "--title",
+        "B",
+        "--type",
+        "tracker-improvement",
+    ]);
+
+    s.ticket_json(&[
+        "link",
+        "--from",
+        id_a,
+        "--to",
+        id_b,
+        "--kind",
+        "depends_on",
+    ]);
+
+    // Fixture: remove source ticket folder directly to force a dangling edge.
+    let source_path = s.index_root().join("tickets").join(id_a);
+    fs::remove_dir_all(&source_path).expect("remove source ticket folder");
+    s.ticket_json(&["scan", "--force"]);
+
+    let (_code, stderr) = s.ticket_fail(&[
+        "unlink",
+        "--from",
+        id_a,
+        "--to",
+        id_b,
+        "--kind",
+        "depends_on",
+    ]);
+    assert!(
+        stderr.contains("entity not found"),
+        "expected storage entity-not-found error, got stderr: {stderr}"
+    );
+
+    // Missing source no longer appears in list output, so verify globally.
+    let all_links = s.ticket_json(&["links", "--all"]);
+    let edges = all_links["edges"].as_array().expect("edges array");
+    let still_present = edges.iter().any(|edge| {
+        edge["from"] == id_a
+            && edge["to"] == id_b
+            && edge["kind"] == "depends_on"
+    });
+    assert!(!still_present, "edge should be removed from global edge set");
 }
 
 #[test]

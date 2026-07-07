@@ -23,6 +23,7 @@ use crate::cli::{
     CliRunError,
     LinkArgs,
     LinksArgs,
+    PruneDanglingArgs,
     SubgraphArgs,
     TopgraphArgs,
     UnlinkArgs,
@@ -77,8 +78,8 @@ pub(crate) fn cmd_unlink(
     args: UnlinkArgs,
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
-    let from = resolve_uuid_prefix(&args.from, store)?;
-    let to = resolve_uuid_prefix(&args.to, store)?;
+    let from = resolve_unlink_from(&args.from, store)?;
+    let to = resolve_unlink_to(from, &args.to, &args.kind, store)?;
     let from_title = store
         .get(&from)
         .ok()
@@ -118,6 +119,64 @@ pub(crate) fn cmd_unlink(
     }))
 }
 
+fn resolve_unlink_from(
+    selector: &str,
+    store: &TicketStore,
+) -> Result<Uuid, CliRunError> {
+    let trimmed = selector.trim();
+    if let Ok(id) = trimmed.parse::<Uuid>() {
+        return Ok(id);
+    }
+    if trimmed.len() >= 8 && trimmed.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return resolve_uuid_prefix(trimmed, store).map_err(|_| {
+            CliRunError::BadRequest(format!(
+                "cannot resolve source prefix '{trimmed}'; provide full UUID when source ticket is missing"
+            ))
+        });
+    }
+
+    Err(CliRunError::BadRequest(format!(
+        "invalid UUID '{selector}': expected full UUID or hex prefix (>= 8 chars)"
+    )))
+}
+
+fn resolve_unlink_to(
+    from: Uuid,
+    selector: &str,
+    kind: &str,
+    store: &TicketStore,
+) -> Result<Uuid, CliRunError> {
+    let trimmed = selector.trim();
+    if let Ok(parsed) = trimmed.parse::<Uuid>() {
+        return Ok(parsed);
+    }
+
+    if !(trimmed.len() >= 8 && trimmed.chars().all(|ch| ch.is_ascii_hexdigit())) {
+        return Err(CliRunError::BadRequest(format!(
+            "invalid UUID '{selector}': expected full UUID or hex prefix (>= 8 chars)"
+        )));
+    }
+
+    let prefix = trimmed.to_ascii_lowercase();
+    let matches: Vec<Uuid> = store
+        .edges_from(&from)?
+        .into_iter()
+        .filter(|edge| edge.kind == kind)
+        .map(|edge| edge.to)
+        .filter(|to| to.simple().to_string().starts_with(&prefix))
+        .collect();
+
+    match matches.len() {
+        0 => Err(CliRunError::BadRequest(format!(
+            "edge not found: kind='{kind}' from='{from}' to='{selector}'"
+        ))),
+        1 => Ok(matches[0]),
+        count => Err(CliRunError::BadRequest(format!(
+            "ambiguous target selector '{selector}' for from='{from}' kind='{kind}' (matches {count}); use full UUID"
+        ))),
+    }
+}
+
 pub(crate) fn cmd_links(
     args: LinksArgs,
     store: &TicketStore,
@@ -148,6 +207,81 @@ pub(crate) fn cmd_links(
         "all": args.all,
         "count": items.len(),
         "edges": items,
+    }))
+}
+
+pub(crate) fn cmd_prune_dangling(
+    args: PruneDanglingArgs,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    let strategy = args.strategy;
+    let all_edges = store.list_all_edges()?;
+
+    let root = if args.all {
+        None
+    } else {
+        let root_str = args.root.as_deref().ok_or_else(|| {
+            CliRunError::BadRequest(
+                "root ticket id is required unless --all is set".to_string(),
+            )
+        })?;
+        Some(resolve_uuid_prefix(root_str, store)?)
+    };
+
+    let mut candidates = Vec::new();
+    for edge in all_edges {
+        if edge.kind != args.kind {
+            continue;
+        }
+        if let Some(root_id) = root {
+            if edge.from != root_id {
+                continue;
+            }
+        }
+        if !ticket_exists(store, edge.to) {
+            candidates.push(edge);
+        }
+    }
+
+    let mut removed = 0usize;
+    if strategy.mutates() {
+        for edge in &candidates {
+            store.remove_edge(edge.clone())?;
+            removed += 1;
+        }
+    }
+
+    let preview: Vec<Value> = candidates
+        .iter()
+        .map(|edge| {
+            json!({
+                "from": edge.from,
+                "to": edge.to,
+                "kind": edge.kind,
+            })
+        })
+        .collect();
+
+    let scope = if args.all {
+        json!({ "all": true })
+    } else {
+        json!({
+            "all": false,
+            "root": root,
+        })
+    };
+
+    Ok(json!({
+        "command": "prune-dangling",
+        "status": "ok",
+        "scope": scope,
+        "kind": args.kind,
+        "strategy": strategy.as_str(),
+        "mutated": strategy.mutates(),
+        "candidate_count": preview.len(),
+        "removed_count": removed,
+        "reason": args.reason,
+        "edges": preview,
     }))
 }
 
@@ -361,6 +495,17 @@ fn graph_json_edges(unique_edges: &[EdgeRecord]) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+fn ticket_exists(
+    store: &TicketStore,
+    ticket_id: Uuid,
+) -> bool {
+    store
+        .get_indexed(&ticket_id)
+        .ok()
+        .flatten()
+        .is_some()
 }
 
 use super::resolve_uuid_prefix;

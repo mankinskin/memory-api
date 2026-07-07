@@ -392,6 +392,17 @@ impl TicketServer {
     }
 
     #[tool(
+        name = "prune_dangling_edges",
+        description = "Remove or report dangling edges (missing targets) for one source ticket or globally."
+    )]
+    async fn prune_dangling_edges(
+        &self,
+        Parameters(input): Parameters<PruneDanglingEdgesInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.prune_dangling_edges_tool(input).await
+    }
+
+    #[tool(
         name = "move_preflight",
         description = "Run move planning / dry-run for a cross-workspace ticket move and return structured blockers, reference visibility, and touched paths."
     )]

@@ -116,6 +116,8 @@ fn dry_run_payload_history(command: &TicketCommandCli) -> Option<Value> {
             Some(dry_run_payload("link", "add directed edge")),
         TicketCommandCli::Unlink(_) =>
             Some(dry_run_payload("unlink", "remove directed edge")),
+        TicketCommandCli::PruneDangling(_) =>
+            Some(dry_run_payload("prune-dangling", "remove dangling edges")),
         TicketCommandCli::Close(_) =>
             Some(dry_run_payload("close", "fast-forward ticket state")),
         TicketCommandCli::Cancel(_) => Some(dry_run_payload(
@@ -264,6 +266,7 @@ fn command_uses_descendant_scan_roots(command: &TicketCommandCli) -> bool {
             | TicketCommandCli::History(_)
             | TicketCommandCli::Diff(_)
             | TicketCommandCli::Links(_)
+            | TicketCommandCli::PruneDangling(_)
             | TicketCommandCli::Subgraph(_)
             | TicketCommandCli::Topgraph(_)
             | TicketCommandCli::Status(_)
@@ -367,6 +370,7 @@ fn dispatch_store_command(
         TicketCommandCli::Link(_)
         | TicketCommandCli::Unlink(_)
         | TicketCommandCli::Links(_)
+        | TicketCommandCli::PruneDangling(_)
         | TicketCommandCli::Subgraph(_)
         | TicketCommandCli::Topgraph(_)
         | TicketCommandCli::Watch(_)
@@ -448,6 +452,7 @@ fn dispatch_store_command_graph(
         TicketCommandCli::Link(_)
         | TicketCommandCli::Unlink(_)
         | TicketCommandCli::Links(_)
+        | TicketCommandCli::PruneDangling(_)
         | TicketCommandCli::Subgraph(_)
         | TicketCommandCli::Topgraph(_) => {
             dispatch_store_command_graph_edges(command, store)
@@ -472,6 +477,8 @@ fn dispatch_store_command_graph_edges(
         TicketCommandCli::Link(args) => commands::cmd_link(args, store),
         TicketCommandCli::Unlink(args) => commands::cmd_unlink(args, store),
         TicketCommandCli::Links(args) => commands::cmd_links(args, store),
+        TicketCommandCli::PruneDangling(args) =>
+            commands::cmd_prune_dangling(args, store),
         TicketCommandCli::Subgraph(args) => commands::cmd_subgraph(args, store),
         TicketCommandCli::Topgraph(args) => commands::cmd_topgraph(args, store),
         _ => unreachable!("handled in graph edge dispatch"),
