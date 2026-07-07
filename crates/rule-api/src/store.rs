@@ -378,7 +378,15 @@ impl RuleStore {
             .slug_index
             .get(id_or_slug)
             .copied()
-            .ok_or_else(|| RuleError::NotFound(id_or_slug.to_string()))?;
+            .ok_or_else(|| {
+                RuleError::NotFound(format!(
+                    "{}; {}",
+                    id_or_slug,
+                    crate::workspace::workspace_recovery_hint(
+                        &self.inner.index_root
+                    )
+                ))
+            })?;
         tracing::debug!(
             target: RULE_STORE_TRACE_TARGET,
             resolution = "slug",

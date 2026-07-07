@@ -568,7 +568,15 @@ impl SpecStore {
         let resolved = self
             .slug_index
             .resolve(id_or_slug)
-            .ok_or_else(|| SpecError::NotFound(id_or_slug.to_string()))?;
+            .ok_or_else(|| {
+                SpecError::NotFound(format!(
+                    "{}; {}",
+                    id_or_slug,
+                    crate::workspace::workspace_recovery_hint(
+                        &self.inner.index_root
+                    )
+                ))
+            })?;
         tracing::debug!(
             target: SPEC_STORE_TRACE_TARGET,
             resolution = "slug",

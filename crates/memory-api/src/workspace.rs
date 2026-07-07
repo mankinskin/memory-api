@@ -492,6 +492,62 @@ pub fn discover_workspace_scan_roots(
     )
 }
 
+/// Discover canonical hidden store roots for a workspace using active
+/// workspace-policy rules.
+pub fn discover_workspace_store_roots(
+    workspace_root: &Path,
+    store_dir: &str,
+    entity_dir: &str,
+) -> Vec<PathBuf> {
+    let mut roots = discover_workspace_scan_roots(
+        workspace_root,
+        store_dir,
+        entity_dir,
+    )
+    .into_iter()
+    .map(|root| resolve_store_root_from(&root.path, store_dir))
+    .collect::<Vec<_>>();
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
+/// Render a consistent workspace recovery hint for entity lookups.
+///
+/// The discovered stores are computed via the same policy-aware scan-root
+/// resolution path used by active entity indexing.
+pub fn workspace_recovery_hint_for_store(
+    active_index_root: &Path,
+    store_dir: &str,
+    entity_dir: &str,
+    store_label: &str,
+) -> String {
+    let active_store_root = resolve_store_root_from(active_index_root, store_dir);
+    let workspace_root =
+        resolve_workspace_root_from_store_root(&active_store_root, store_dir);
+    let discovered = discover_workspace_store_roots(
+        &workspace_root,
+        store_dir,
+        entity_dir,
+    )
+    .into_iter()
+    .map(|path| normalize_path_for_display(&path))
+    .collect::<Vec<_>>();
+
+    if discovered.is_empty() {
+        return format!(
+            "active index root: {}. Retry with --workspace-root <workspace-path> or --index-root <path-to-{store_dir}>",
+            normalize_path_for_display(&active_store_root)
+        );
+    }
+
+    format!(
+        "active index root: {}\n\n\tRetry with --workspace-root <workspace-path> or --index-root <path-to-{store_dir}>.\n\nDiscovered {store_label} stores:\n- {}",
+        normalize_path_for_display(&active_store_root),
+        discovered.join(",\n- ")
+    )
+}
+
 /// Policy-aware variant of [`discover_workspace_scan_roots`].
 ///
 /// The supplied [`WorkspacePolicy`] governs which store roots are collected:
@@ -1090,6 +1146,30 @@ mod tests {
             path: repo.join(".rule").join("rules"),
             label: ".".to_string(),
         }]);
+    }
+
+    #[test]
+    fn workspace_recovery_hint_uses_policy_aware_discovery() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let fixtures = repo.join("test-fixtures");
+        std::fs::create_dir_all(repo.join(".ticket")).unwrap();
+        std::fs::create_dir_all(fixtures.join(".ticket")).unwrap();
+        std::fs::write(
+            repo.join(".ticket").join("workspace-policy.toml"),
+            "include_descendants = true\nignore_workspaces = [\"test-fixtures\"]\n",
+        )
+        .unwrap();
+
+        let hint = workspace_recovery_hint_for_store(
+            &repo.join(".ticket"),
+            ".ticket",
+            "tickets",
+            "ticket",
+        );
+
+        assert!(hint.contains("Discovered ticket stores"));
+        assert!(!hint.contains("test-fixtures/.ticket"));
     }
 
     #[test]

@@ -76,5 +76,6 @@ pub use targets::{
 };
 pub use workspace::{
     discover_workspace_scan_roots,
+    workspace_recovery_hint,
     workspace_root_for_index_root,
 };

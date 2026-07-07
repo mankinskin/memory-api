@@ -62,32 +62,7 @@ pub(crate) fn ticket_workspace_metadata_for_id(
 }
 
 fn workspace_recovery_hint(store: &TicketStore) -> String {
-    let workspace_root =
-        ticket_api::workspace::resolve_workspace_root_from_store_root(
-            &store.index_root,
-            ticket_api::workspace::TICKET_INDEX_DIR,
-        );
-    let discovered = ticket_api::workspace::find_descendant_store_roots_from(
-        &workspace_root,
-        ticket_api::workspace::TICKET_INDEX_DIR,
-    );
-    let discovered = discovered
-        .into_iter()
-        .map(|path| normalize_display_path(&path))
-        .collect::<Vec<_>>();
-
-    if discovered.is_empty() {
-        return format!(
-            "active index root: {}. Retry with --workspace-root <workspace-path> or --index-root <path-to-.ticket>",
-            normalize_display_path(&store.index_root)
-        );
-    }
-
-    format!(
-        "active index root: {}. Retry with --workspace-root <workspace-path> or --index-root <path-to-.ticket>. Discovered ticket stores: {}",
-        normalize_display_path(&store.index_root),
-        discovered.join(", ")
-    )
+    ticket_api::workspace::workspace_recovery_hint(&store.index_root)
 }
 
 /// Resolve a UUID string that may be a full UUID or a hex prefix (>= 8 chars).
