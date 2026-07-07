@@ -386,3 +386,121 @@ fn unlink_removes_existing_edge() {
     let after = s.ticket_json(&["links", id_a]);
     assert_eq!(after["count"].as_u64().unwrap(), 0);
 }
+
+#[test]
+fn unlink_is_idempotent_when_edge_is_missing() {
+    let s = Sandbox::new();
+
+    let id_a = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    let id_b = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+
+    s.ticket_json(&[
+        "create",
+        "--id",
+        id_a,
+        "--title",
+        "A",
+        "--type",
+        "tracker-improvement",
+    ]);
+    s.ticket_json(&[
+        "create",
+        "--id",
+        id_b,
+        "--title",
+        "B",
+        "--type",
+        "tracker-improvement",
+    ]);
+
+    // Missing-edge unlink should succeed as a no-op.
+    let first = s.ticket_json(&[
+        "unlink",
+        "--from",
+        id_a,
+        "--to",
+        id_b,
+        "--kind",
+        "depends_on",
+    ]);
+    assert_eq!(first["status"], "ok");
+
+    let second = s.ticket_json(&[
+        "unlink",
+        "--from",
+        id_a,
+        "--to",
+        id_b,
+        "--kind",
+        "depends_on",
+    ]);
+    assert_eq!(second["status"], "ok");
+
+    let links = s.ticket_json(&["links", id_a]);
+    assert_eq!(links["count"].as_u64().unwrap(), 0);
+}
+
+#[test]
+fn update_routes_depends_on_field_patch_and_preserves_unlink_flow() {
+    let s = Sandbox::new();
+
+    let id_a = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    let id_b = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+
+    s.ticket_json(&[
+        "create",
+        "--id",
+        id_a,
+        "--title",
+        "A",
+        "--type",
+        "tracker-improvement",
+    ]);
+    s.ticket_json(&[
+        "create",
+        "--id",
+        id_b,
+        "--title",
+        "B",
+        "--type",
+        "tracker-improvement",
+    ]);
+
+    // Generic update path should route edge payload to canonical graph ops.
+    let updated = s.ticket_json(&[
+        "update",
+        id_a,
+        "--field",
+        "depends_on=[\"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb\"]",
+    ]);
+    assert_eq!(updated["status"], "ok");
+
+    let after_update = s.ticket_json(&["links", id_a]);
+    assert_eq!(after_update["count"].as_u64().unwrap(), 1);
+
+    // Canonical graph flow still works through link/unlink.
+    let linked = s.ticket_json(&[
+        "link",
+        "--from",
+        id_a,
+        "--to",
+        id_b,
+        "--kind",
+        "depends_on",
+    ]);
+    assert_eq!(linked["status"], "ok");
+
+    let unlinked = s.ticket_json(&[
+        "unlink",
+        "--from",
+        id_a,
+        "--to",
+        id_b,
+        "--kind",
+        "depends_on",
+    ]);
+    assert_eq!(unlinked["status"], "ok");
+
+    let links = s.ticket_json(&["links", id_a]);
+    assert_eq!(links["count"].as_u64().unwrap(), 0);
+}

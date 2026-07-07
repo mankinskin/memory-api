@@ -1,6 +1,7 @@
 use std::{
     collections::{
         BTreeMap,
+        BTreeSet,
         HashMap,
     },
     fs,
@@ -112,6 +113,8 @@ pub struct TicketStore {
     /// Not used in CLI mode.
     hook: OnceLock<Box<dyn StoreHook>>,
 }
+
+const FILE_BACKED_EDGE_FIELDS: &[&str] = &["depends_on", "linked"];
 
 impl TicketStore {
     /// Attach a mutation hook. May only be called once; subsequent calls
@@ -845,8 +848,13 @@ impl TicketStore {
         description: Option<&str>,
         author: Option<&str>,
     ) -> Result<TicketManifest, StorageError> {
+        let mut patch = patch;
+
         let mut indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
+        let current_manifest = TicketFs::read(&indexed.path)?;
+        let edge_patch_plans = edge_patch_plans(&patch, &current_manifest.extra)?;
+        strip_file_backed_edge_fields(&mut patch);
 
         // Determine the target state and transition path.
         // Priority: to_state > last element of transition_states > current state (no change)
@@ -904,6 +912,9 @@ impl TicketStore {
         if let Some(desc) = description {
             TicketFs::write_description(&indexed.path, desc)?;
         }
+
+        // Route edge-field updates through canonical graph APIs.
+        apply_edge_patch_plans(self, *id, edge_patch_plans)?;
 
         // Refresh indexed metadata.
         let now = Utc::now();
@@ -963,7 +974,7 @@ impl TicketStore {
             self.refresh_workflow_facts_for_roots(&[*id], state_progressed, now)?;
         }
 
-        Ok(updated_manifest)
+        Ok(TicketFs::read(&indexed.path).unwrap_or(updated_manifest))
     }
 
     fn resolve_transition_path(
@@ -1021,6 +1032,155 @@ impl TicketStore {
 
         Ok(path)
     }
+}
+
+#[derive(Debug)]
+struct EdgePatchPlan {
+    kind: String,
+    to_add: Vec<Uuid>,
+    to_remove: Vec<Uuid>,
+}
+
+fn strip_file_backed_edge_fields(
+    patch: &mut BTreeMap<String, Value>,
+) {
+    for field in FILE_BACKED_EDGE_FIELDS {
+        patch.remove(*field);
+    }
+}
+
+fn edge_patch_plans(
+    patch: &BTreeMap<String, Value>,
+    current_extra: &BTreeMap<String, Value>,
+) -> Result<Vec<EdgePatchPlan>, StorageError> {
+    let mut plans = Vec::new();
+
+    for field in FILE_BACKED_EDGE_FIELDS {
+        let Some(requested_value) = patch.get(*field) else {
+            continue;
+        };
+
+        let desired = parse_requested_edge_targets(requested_value, field)?;
+        let current = parse_manifest_edge_targets(current_extra.get(*field), field)?;
+
+        let to_add = desired
+            .difference(&current)
+            .copied()
+            .collect::<Vec<_>>();
+        let to_remove = current
+            .difference(&desired)
+            .copied()
+            .collect::<Vec<_>>();
+
+        plans.push(EdgePatchPlan {
+            kind: (*field).to_string(),
+            to_add,
+            to_remove,
+        });
+    }
+
+    Ok(plans)
+}
+
+fn parse_manifest_edge_targets(
+    value: Option<&Value>,
+    edge_kind: &str,
+) -> Result<BTreeSet<Uuid>, StorageError> {
+    match value {
+        None => Ok(BTreeSet::new()),
+        Some(value) => parse_requested_edge_targets(value, edge_kind),
+    }
+}
+
+fn parse_requested_edge_targets(
+    value: &Value,
+    edge_kind: &str,
+) -> Result<BTreeSet<Uuid>, StorageError> {
+    match value {
+        Value::Array(items) => parse_edge_target_array(items, edge_kind),
+        Value::String(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return Ok(BTreeSet::new());
+            }
+            if trimmed.starts_with('[') {
+                let parsed: Value = serde_json::from_str(trimmed).map_err(|e| {
+                    StorageError::Other(format!(
+                        "edge field '{}' string payload must be a JSON array or single UUID: {e}",
+                        edge_kind
+                    ))
+                })?;
+                let Value::Array(items) = parsed else {
+                    return Err(StorageError::Other(format!(
+                        "edge field '{}' JSON payload must be an array",
+                        edge_kind
+                    )));
+                };
+                parse_edge_target_array(&items, edge_kind)
+            } else {
+                let id = Uuid::parse_str(trimmed).map_err(|e| {
+                    StorageError::Other(format!(
+                        "edge field '{}' contains invalid ticket id '{}': {e}",
+                        edge_kind, trimmed
+                    ))
+                })?;
+                Ok(BTreeSet::from([id]))
+            }
+        }
+        _ => Err(StorageError::Other(format!(
+            "edge field '{}' must be an array, JSON array string, or UUID string",
+            edge_kind
+        ))),
+    }
+}
+
+fn parse_edge_target_array(
+    items: &[Value],
+    edge_kind: &str,
+) -> Result<BTreeSet<Uuid>, StorageError> {
+    let mut set = BTreeSet::new();
+    for item in items {
+        let Some(id_text) = item.as_str() else {
+            return Err(StorageError::Other(format!(
+                "edge field '{}' must contain only string ticket IDs",
+                edge_kind
+            )));
+        };
+        let id = Uuid::parse_str(id_text).map_err(|e| {
+            StorageError::Other(format!(
+                "edge field '{}' contains invalid ticket id '{}': {e}",
+                edge_kind, id_text
+            ))
+        })?;
+        set.insert(id);
+    }
+    Ok(set)
+}
+
+fn apply_edge_patch_plans(
+    store: &TicketStore,
+    from: Uuid,
+    plans: Vec<EdgePatchPlan>,
+) -> Result<(), StorageError> {
+    for plan in plans {
+        for to in plan.to_remove {
+            store.remove_edge(crate::model::edge::EdgeRecord {
+                from,
+                to,
+                kind: plan.kind.clone(),
+                created_at: Utc::now(),
+            })?;
+        }
+        for to in plan.to_add {
+            store.add_edge(crate::model::edge::EdgeRecord {
+                from,
+                to,
+                kind: plan.kind.clone(),
+                created_at: Utc::now(),
+            })?;
+        }
+    }
+    Ok(())
 }
 
 fn emit_store_open_report(

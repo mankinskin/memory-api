@@ -1906,6 +1906,78 @@ fn bug_7f4aaa05_transition_states_multi_step_path() {
 }
 
 #[test]
+fn update_routes_depends_on_patch_to_canonical_edge_ops() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let source = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Source"),
+            Some("new"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let target_a = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Target A"),
+            Some("new"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let target_b = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Target B"),
+            Some("new"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    store
+        .add_edge(EdgeRecord {
+            from: source,
+            to: target_a,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap();
+
+    let mut patch = BTreeMap::new();
+    patch.insert(
+        "depends_on".to_string(),
+        Value::Array(vec![Value::String(target_b.to_string())]),
+    );
+    store
+        .update(&source, patch, None, None, None, None)
+        .unwrap();
+
+    let manifest = store.get(&source).unwrap();
+    let items = manifest
+        .extra
+        .get("depends_on")
+        .and_then(Value::as_array)
+        .unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].as_str(), Some(target_b.to_string().as_str()));
+
+    let edges = store.edges_from(&source).unwrap();
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].to, target_b);
+    assert_eq!(edges[0].kind, "depends_on");
+}
+
+#[test]
 fn update_allows_reachable_multi_step_without_transition_states() {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();
