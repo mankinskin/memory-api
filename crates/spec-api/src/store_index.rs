@@ -757,6 +757,42 @@ fn render_tree_entry_page(
         .map(|p| p.to_string_lossy().replace('\\', "/"))
         .unwrap_or_default();
 
+    let parent_and_siblings = tree_parent_and_siblings(entry, by_id, children_by_parent);
+
+    let mut out = String::new();
+    render_tree_entry_front_matter(&mut out, entry, extras);
+    render_tree_entry_sections(&mut out, entry, extras);
+    render_tree_navigation(
+        &mut out,
+        entry,
+        &current_dir,
+        parent_and_siblings,
+        children_by_parent,
+        tree_paths,
+        extras,
+    );
+    out
+}
+
+fn tree_parent_and_siblings(
+    entry: &IndexEntry,
+    by_id: &HashMap<Uuid, &IndexEntry>,
+    children_by_parent: &HashMap<Uuid, Vec<Uuid>>,
+) -> Option<(Uuid, Vec<Uuid>)> {
+    let parent_ref = entry.relations.parent.as_ref()?;
+    let parent_entry = by_id.get(&parent_ref.entry_id)?;
+    let siblings = children_by_parent
+        .get(&parent_entry.id)
+        .cloned()
+        .unwrap_or_default();
+    Some((parent_entry.id, siblings))
+}
+
+fn render_tree_entry_front_matter(
+    out: &mut String,
+    entry: &IndexEntry,
+    extras: &BTreeMap<Uuid, SpecDisplayExtra>,
+) {
     let slug = extras
         .get(&entry.id)
         .map(|e| e.slug.clone())
@@ -776,16 +812,6 @@ fn render_tree_entry_page(
         .cloned()
         .unwrap_or_default();
 
-    let parent_and_siblings = entry.relations.parent.as_ref().and_then(|p| {
-        let parent_entry = by_id.get(&p.entry_id)?;
-        let siblings = children_by_parent
-            .get(&parent_entry.id)
-            .cloned()
-            .unwrap_or_default();
-        Some((parent_entry.id, siblings))
-    });
-
-    let mut out = String::new();
     out.push_str(SPEC_INDEX_TREE_ENTRY_COMMENT);
     out.push('\n');
     out.push_str(&format!(
@@ -805,7 +831,13 @@ fn render_tree_entry_page(
         out.push_str(&format!("- state: {state}\n"));
     }
     out.push_str(&format!("- index_ref: `{}`\n\n", entry.source_path));
+}
 
+fn render_tree_entry_sections(
+    out: &mut String,
+    entry: &IndexEntry,
+    extras: &BTreeMap<Uuid, SpecDisplayExtra>,
+) {
     if !entry.summary.is_empty() {
         out.push_str("## Summary\n\n");
         out.push_str(&entry.summary);
@@ -820,11 +852,21 @@ fn render_tree_entry_page(
         out.push_str(acceptance);
         out.push_str("\n\n");
     }
+}
 
+fn render_tree_navigation(
+    out: &mut String,
+    entry: &IndexEntry,
+    current_dir: &str,
+    parent_and_siblings: Option<(Uuid, Vec<Uuid>)>,
+    children_by_parent: &HashMap<Uuid, Vec<Uuid>>,
+    tree_paths: &HashMap<Uuid, String>,
+    extras: &BTreeMap<Uuid, SpecDisplayExtra>,
+) {
     out.push_str("## Navigation\n\n");
     if let Some((parent_id, siblings)) = parent_and_siblings {
         if let Some(parent_path) = tree_paths.get(&parent_id) {
-            let rel = relative_link(&current_dir, parent_path);
+            let rel = relative_link(current_dir, parent_path);
             let parent_slug = extras
                 .get(&parent_id)
                 .map(|e| e.slug.clone())
@@ -841,7 +883,7 @@ fn render_tree_entry_page(
             let Some(path) = tree_paths.get(&sibling_id) else {
                 continue;
             };
-            let rel = relative_link(&current_dir, path);
+            let rel = relative_link(current_dir, path);
             let label = extras
                 .get(&sibling_id)
                 .map(|e| e.slug.clone())
@@ -864,7 +906,7 @@ fn render_tree_entry_page(
                 .iter()
                 .filter_map(|child_id| {
                     let path = tree_paths.get(child_id)?;
-                    let rel = relative_link(&current_dir, path);
+                    let rel = relative_link(current_dir, path);
                     let label = extras
                         .get(child_id)
                         .map(|e| e.slug.clone())
@@ -878,8 +920,6 @@ fn render_tree_entry_page(
     } else {
         out.push_str("- Children: _(none)_\n");
     }
-
-    out
 }
 
 fn relative_link(

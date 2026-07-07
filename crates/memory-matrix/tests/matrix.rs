@@ -233,32 +233,59 @@ fn move_cells_reflect_adapter_backing_by_domain_and_transport() {
     }
 }
 
+fn is_wired_matrix_cell(
+    domain: &str,
+    operation: &str,
+    transport: &str,
+) -> bool {
+    match transport {
+        "in-process" => true,
+        "cli" => is_cli_wired_cell(domain, operation),
+        "mcp" => is_mcp_wired_cell(domain, operation),
+        "http" => is_http_wired_cell(domain, operation),
+        _ => false,
+    }
+}
+
+fn is_cli_wired_cell(
+    domain: &str,
+    operation: &str,
+) -> bool {
+    ["ticket", "spec", "rule"].contains(&domain) && operation != "move"
+}
+
+fn is_mcp_wired_cell(
+    domain: &str,
+    operation: &str,
+) -> bool {
+    match domain {
+        "ticket" => ["create", "get", "search", "update", "delete"]
+            .contains(&operation),
+        "spec" => ["create", "get", "search", "update", "delete", "scan"]
+            .contains(&operation),
+        "rule" => ["create", "get", "search", "update", "scan"]
+            .contains(&operation),
+        _ => false,
+    }
+}
+
+fn is_http_wired_cell(
+    domain: &str,
+    operation: &str,
+) -> bool {
+    domain == "ticket" && ["get", "search"].contains(&operation)
+}
+
 #[test]
 fn unwired_transports_are_explicitly_blocked_with_reason() {
     let run = run_matrix().expect("matrix should run against the fixture");
 
     for record in &run.records {
-        if record.transport == "in-process"
-            || (record.transport == "cli"
-                && ["ticket", "spec", "rule"].contains(&record.domain.as_str())
-                && record.operation != "move")
-            || (record.transport == "mcp"
-                && ((record.domain == "ticket"
-                    && ["create", "get", "search", "update", "delete"]
-                        .contains(&record.operation.as_str()))
-                    || (record.domain == "spec"
-                        && [
-                            "create", "get", "search", "update", "delete",
-                            "scan",
-                        ]
-                        .contains(&record.operation.as_str()))
-                    || (record.domain == "rule"
-                        && ["create", "get", "search", "update", "scan"]
-                            .contains(&record.operation.as_str()))))
-            || (record.transport == "http"
-                && record.domain == "ticket"
-                && ["get", "search"].contains(&record.operation.as_str()))
-        {
+        if is_wired_matrix_cell(
+            &record.domain,
+            &record.operation,
+            &record.transport,
+        ) {
             continue;
         }
 
