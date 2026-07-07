@@ -1,4 +1,12 @@
-# Limit scan-root discovery to the memory-api workspace scope.
 include_descendants = true
-include_ancestors = false
+include_ancestors = true
 deny_external_paths = true
+
+# Fixture/test workspaces must never be indexed into the real ticket graph.
+ignore_workspaces = [
+    "**/test-fixtures/**",
+]
+
+include_overrides = []
+
+ignore_markers = [".ticket-ignore", ".workspace-ignore"]
