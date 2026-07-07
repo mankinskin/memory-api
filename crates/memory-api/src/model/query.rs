@@ -192,12 +192,29 @@ fn parse_field_value(
     raw_value: &str,
     raw_token: &str,
 ) -> Result<(CompareOp, ValueExpr), QueryParseError> {
-    // Existence predicate: `key:?`.
-    if raw_value == "?" {
-        return Ok((CompareOp::Exists, ValueExpr::Empty));
+    if let Some(parsed) = parse_special_field_value(raw_value, raw_token)? {
+        return Ok(parsed);
     }
 
-    // Range predicate: `key:[a TO b]`.
+    let (op, rest) = parse_compare_prefix(raw_value);
+
+    if rest.is_empty() {
+        return Err(QueryParseError::InvalidExpression(format!(
+            "comparison operator on field '{key}' is missing a value: {raw_token}"
+        )));
+    }
+
+    Ok((op, ValueExpr::Text(trim_quotes(rest))))
+}
+
+fn parse_special_field_value(
+    raw_value: &str,
+    raw_token: &str,
+) -> Result<Option<(CompareOp, ValueExpr)>, QueryParseError> {
+    if raw_value == "?" {
+        return Ok(Some((CompareOp::Exists, ValueExpr::Empty)));
+    }
+
     if raw_value.starts_with('[')
         && raw_value.ends_with(']')
         && raw_value.contains(" TO ")
@@ -208,17 +225,20 @@ fn parse_field_value(
                 "invalid range expression: {raw_token}"
             ))
         })?;
-        return Ok((
+        return Ok(Some((
             CompareOp::Range,
             ValueExpr::Range {
                 start: start.trim().to_string(),
                 end: end.trim().to_string(),
             },
-        ));
+        )));
     }
 
-    // Comparison operators, longest-prefix first so `>=`/`<=` win over `>`/`<`.
-    let (op, rest) = if let Some(rest) = raw_value.strip_prefix(">=") {
+    Ok(None)
+}
+
+fn parse_compare_prefix(raw_value: &str) -> (CompareOp, &str) {
+    if let Some(rest) = raw_value.strip_prefix(">=") {
         (CompareOp::Gte, rest)
     } else if let Some(rest) = raw_value.strip_prefix("<=") {
         (CompareOp::Lte, rest)
@@ -235,15 +255,7 @@ fn parse_field_value(
         (CompareOp::Contains, &raw_value[1..raw_value.len() - 1])
     } else {
         (CompareOp::Eq, raw_value)
-    };
-
-    if rest.is_empty() {
-        return Err(QueryParseError::InvalidExpression(format!(
-            "comparison operator on field '{key}' is missing a value: {raw_token}"
-        )));
     }
-
-    Ok((op, ValueExpr::Text(trim_quotes(rest))))
 }
 
 fn validate_field_key(

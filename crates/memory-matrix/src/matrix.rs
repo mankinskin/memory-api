@@ -267,35 +267,30 @@ fn dispatch(
     ctx: &MatrixCtx,
     metadata: Option<&DispatchMetadata>,
 ) -> CellResult {
-    if transport == "cli" {
-        return cli::dispatch_cli(ops.domain(), operation, ctx);
-    }
-
-    if transport == "http" {
-        return http::dispatch_http(ops.domain(), operation, ctx);
-    }
-
-    if transport == "mcp" {
-        return mcp::dispatch_mcp(ops.domain(), operation, ctx, metadata);
-    }
-
-    if transport == "mcp-subprocess-fail" {
-        return mcp::dispatch_mcp_subprocess_failure_probe(
+    match transport {
+        "cli" => cli::dispatch_cli(ops.domain(), operation, ctx),
+        "http" => http::dispatch_http(ops.domain(), operation, ctx),
+        "mcp" => mcp::dispatch_mcp(ops.domain(), operation, ctx, metadata),
+        "mcp-subprocess-fail" => mcp::dispatch_mcp_subprocess_failure_probe(
             ops.domain(),
             operation,
             ctx,
             metadata,
-        );
-    }
-
-    if transport != "in-process" {
-        return blocked(format!(
+        ),
+        "in-process" => dispatch_in_process_operation(ops, operation, ctx),
+        _ => blocked(format!(
             "transport `{transport}` for domain `{}` operation `{operation}` is not wired in the matrix harness yet; \
              recorded as blocked-with-reason per real-transport rollout",
             ops.domain()
-        ));
+        )),
     }
+}
 
+fn dispatch_in_process_operation(
+    ops: &dyn DomainOps,
+    operation: &str,
+    ctx: &MatrixCtx,
+) -> CellResult {
     match operation {
         "get" => ops.get(ctx),
         "search" => ops.search(ctx),

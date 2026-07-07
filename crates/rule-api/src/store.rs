@@ -532,36 +532,8 @@ impl RuleStore {
             .remove("body")
             .and_then(|value| value.as_str().map(str::to_string));
 
-        if let Some(new_slug_value) = patch.get("slug") {
-            if let Some(new_slug) = new_slug_value.as_str() {
-                validate_slug(new_slug)?;
-                if let Some(existing) = self.slug_index.get(new_slug) {
-                    if *existing != uuid {
-                        return Err(RuleError::DuplicateSlug(
-                            new_slug.to_string(),
-                        ));
-                    }
-                }
-                let current = self.inner.fs.read(&indexed.path)?;
-                if let Some(old_slug) =
-                    current.extra.get("slug").and_then(Value::as_str)
-                {
-                    self.slug_index.remove(old_slug);
-                }
-                self.slug_index.insert(new_slug.to_string(), uuid);
-            }
-        }
-
-        if let Some(next_state) = to_state {
-            let current_state = indexed.state.as_deref().unwrap_or("draft");
-            if let Some(schema) =
-                self.inner.schema_registry().get(RULE_ENTRY_TYPE_ID)
-            {
-                schema
-                    .ensure_transition(current_state, next_state)
-                    .map_err(|err| RuleError::Asset(err.to_string()))?;
-            }
-        }
+        self.apply_slug_patch_if_present(uuid, &indexed.path, &patch)?;
+        self.validate_update_transition(indexed.state.as_deref(), to_state)?;
 
         let updated_entity =
             self.inner.fs.update(&indexed.path, &patch, to_state)?;
@@ -620,6 +592,54 @@ impl RuleStore {
         }
 
         Ok(rule)
+    }
+
+    fn apply_slug_patch_if_present(
+        &mut self,
+        uuid: Uuid,
+        indexed_path: &Path,
+        patch: &BTreeMap<String, Value>,
+    ) -> Result<(), RuleError> {
+        let Some(new_slug_value) = patch.get("slug") else {
+            return Ok(());
+        };
+        let Some(new_slug) = new_slug_value.as_str() else {
+            return Ok(());
+        };
+
+        validate_slug(new_slug)?;
+        if let Some(existing) = self.slug_index.get(new_slug) {
+            if *existing != uuid {
+                return Err(RuleError::DuplicateSlug(new_slug.to_string()));
+            }
+        }
+
+        let current = self.inner.fs.read(indexed_path)?;
+        if let Some(old_slug) =
+            current.extra.get("slug").and_then(Value::as_str)
+        {
+            self.slug_index.remove(old_slug);
+        }
+        self.slug_index.insert(new_slug.to_string(), uuid);
+        Ok(())
+    }
+
+    fn validate_update_transition(
+        &self,
+        current_state: Option<&str>,
+        to_state: Option<&str>,
+    ) -> Result<(), RuleError> {
+        let Some(next_state) = to_state else {
+            return Ok(());
+        };
+        let from_state = current_state.unwrap_or("draft");
+        if let Some(schema) = self.inner.schema_registry().get(RULE_ENTRY_TYPE_ID)
+        {
+            schema
+                .ensure_transition(from_state, next_state)
+                .map_err(|err| RuleError::Asset(err.to_string()))?;
+        }
+        Ok(())
     }
 
     pub fn update_body(
