@@ -2,6 +2,7 @@ pub mod audit;
 pub mod config;
 pub mod error;
 pub mod index;
+mod index_helpers;
 pub mod models;
 pub mod move_domain;
 pub mod store_index;

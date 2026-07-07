@@ -40,6 +40,15 @@ use serde::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+#[path = "server_move_json.rs"]
+mod server_move_json;
+
+use server_move_json::{
+    move_outcome_json,
+    move_plan_json,
+    path_display,
+};
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct AuditRepositoryInput {
     #[serde(default)]
@@ -153,60 +162,6 @@ impl AuditServer {
         config
     }
 
-    fn move_plan_json(report: &memory_api::storage::move_kernel::MovePlan) -> serde_json::Value {
-        serde_json::json!({
-            "supported": report.supported(),
-            "entity_id": report.entity_id,
-            "source_workspace_root": path_display(&report.source_workspace_root),
-            "target_workspace_root": path_display(&report.target_workspace_root),
-            "source_store_root": path_display(&report.source_store_root),
-            "target_store_root": path_display(&report.target_store_root),
-            "source_git_worktree_root": path_display(&report.source_git_worktree_root),
-            "target_git_worktree_root": path_display(&report.target_git_worktree_root),
-            "git_worktree_topology": report.git_worktree_topology,
-            "source_entity_path": path_display(&report.source_entity_path),
-            "destination_entity_path": path_display(&report.destination_entity_path),
-            "inbound_related_entity_ids": report.inbound_related_entity_ids,
-            "outbound_related_entity_ids": report.outbound_related_entity_ids,
-            "reference_visibility": report.reference_visibility,
-            "active_board_entries": report.active_board_entries,
-            "historical_board_entries": report.historical_board_entries,
-            "active_leases": report.active_leases,
-            "path_reference_files": report.path_reference_files.iter().map(|p| path_display(p)).collect::<Vec<_>>(),
-            "blockers": report.blockers,
-            "captured_at": report.captured_at,
-        })
-    }
-
-    fn move_outcome_json(outcome: &memory_api::storage::move_kernel::MoveOutcome) -> serde_json::Value {
-        serde_json::json!({
-            "resumed": outcome.resumed,
-            "rolled_back": outcome.rolled_back,
-            "journal": {
-                "id": outcome.journal.id,
-                "entity_id": outcome.journal.entity_id,
-                "source_store_root": path_display(&outcome.journal.source_store_root),
-                "target_store_root": path_display(&outcome.journal.target_store_root),
-                "source_entity_path": path_display(&outcome.journal.source_entity_path),
-                "destination_entity_path": path_display(&outcome.journal.destination_entity_path),
-                "phase": outcome.journal.phase,
-                "created_at": outcome.journal.created_at,
-                "updated_at": outcome.journal.updated_at,
-                "steps": outcome.journal.steps,
-                "rollback_steps": outcome.journal.rollback_steps,
-                "lock_paths": outcome.journal.lock_paths,
-                "migrated_board_entries": outcome.journal.migrated_board_entries,
-                "rewritten_path_files": outcome.journal.rewritten_path_files,
-                "manual_followups": outcome.journal.manual_followups,
-                "failure": outcome.journal.failure,
-                "next_recovery_step": outcome.journal.next_recovery_step,
-            },
-        })
-    }
-}
-
-fn path_display(path: &std::path::Path) -> String {
-    memory_api::workspace::normalize_path_for_display(path)
 }
 
 #[tool_router]
@@ -284,7 +239,7 @@ impl AuditServer {
             "mode": "preflight",
             "repo_root": path_display(&repo_root),
             "id": audit_id,
-            "plan": Self::move_plan_json(&report),
+            "plan": move_plan_json(&report),
             "recovery": {"resume": "audit move --resume <journal-uuid>", "rollback": "audit move --rollback <journal-uuid>"},
         }))
     }
@@ -324,8 +279,8 @@ impl AuditServer {
             "mode": "apply",
             "repo_root": path_display(&repo_root),
             "id": audit_id,
-            "plan": Self::move_plan_json(&report),
-            "outcome": Self::move_outcome_json(&outcome),
+            "plan": move_plan_json(&report),
+            "outcome": move_outcome_json(&outcome),
             "recovery": {"resume": "audit move --resume <journal-uuid>", "rollback": "audit move --rollback <journal-uuid>"},
         }))
     }
@@ -419,67 +374,5 @@ pub async fn run_mcp_server(
 }
 
 #[cfg(test)]
-mod tests {
-    use std::process::Command;
-
-    use rmcp::handler::server::wrapper::Parameters;
-    use serde_json::Value;
-    use tempfile::TempDir;
-
-    use super::{
-        AuditMoveInput,
-        AuditServer,
-    };
-
-    fn run_git(repo_root: &std::path::Path, args: &[&str]) {
-        let status = Command::new("git")
-            .current_dir(repo_root)
-            .args(args)
-            .status()
-            .expect("git command");
-        assert!(status.success(), "git {args:?} failed: {status}");
-    }
-
-    fn extract_json(result: rmcp::model::CallToolResult) -> Value {
-        let text = result
-            .content
-            .iter()
-            .find_map(|content| {
-                if let rmcp::model::RawContent::Text(text) = &content.raw {
-                    Some(text.text.clone())
-                } else {
-                    None
-                }
-            })
-            .expect("text content");
-        serde_json::from_str(&text).expect("parse json")
-    }
-
-    #[tokio::test]
-    async fn move_preflight_is_blocked_for_repository_level_audit_storage() {
-        let tmp = TempDir::new().expect("tempdir");
-        let repo_root = tmp.path().join("repo");
-        std::fs::create_dir_all(&repo_root).expect("repo root");
-        run_git(&repo_root, &["init"]);
-
-        let source_workspace = repo_root.join("source-workspace");
-        let target_workspace = repo_root.join("target-workspace");
-        std::fs::create_dir_all(source_workspace.join(".audit")).expect("source audit dir");
-        std::fs::create_dir_all(target_workspace.join(".audit")).expect("target audit dir");
-
-        let server = AuditServer::new(source_workspace.clone());
-        let result = server
-            .audit_move_preflight(Parameters(AuditMoveInput {
-                repo_root: Some(source_workspace.clone()),
-                id: "7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71".to_string(),
-                to_workspace_root: target_workspace.to_string_lossy().to_string(),
-            }))
-            .await
-            .expect("audit move preflight");
-        let json = extract_json(result);
-
-        assert_eq!(json["status"], "blocked");
-        assert_eq!(json["mode"], "preflight");
-        assert!(json["plan"]["blockers"].as_array().unwrap().len() > 0);
-    }
-}
+#[path = "server_tests.rs"]
+mod server_tests;
