@@ -282,36 +282,26 @@ fn workspace_graph(
     request: WorkspaceGraphRequest,
 ) -> Response {
     let total_timer = Instant::now();
-    let store =
-        match resolve_workspace_store(&state, &request.workspace, request_id) {
-            Ok(store) => store,
-            Err(response) => return response,
-        };
-
     let phase_timer = Instant::now();
-    let local_tickets = match store.list(None, None, None) {
-        Ok(tickets) => tickets,
-        Err(error) => return storage_err(error, request_id),
-    };
-    let all_edges = match store.list_all_edges() {
-        Ok(edges) => edges,
-        Err(error) => return storage_err(error, request_id),
-    };
-    let raw_edges = dedupe_edges(filter_graph_edges(
-        &all_edges,
+    let workspace_data = match workspace_graph_data(
+        &state,
+        &request.workspace,
         request.edge_kind_filter(),
-    ));
-    let node_ids = collect_workspace_node_ids(&local_tickets, &raw_edges);
+        request_id,
+    ) {
+        Ok(data) => data,
+        Err(response) => return response,
+    };
     let phase1_edges_ms = phase_timer.elapsed().as_millis();
 
     let (depths, max_depth_reached) =
-        compute_workspace_depths(&node_ids, &raw_edges);
+        compute_workspace_depths(&workspace_data.node_ids, &workspace_data.raw_edges);
     let phase2_end_ms = phase_timer.elapsed().as_millis();
 
     let resolved = match resolve_graph_tickets_by_ids(
         &state,
         &request.workspace,
-        &node_ids,
+        &workspace_data.node_ids,
         request_id,
     ) {
         Ok(resolved) => resolved,
@@ -328,7 +318,7 @@ fn workspace_graph(
         Err(response) => return response,
     };
     let edges = match build_edges(
-        raw_edges,
+        workspace_data.raw_edges,
         &resolved,
         &request.workspace,
         request_id,
@@ -361,6 +351,29 @@ fn workspace_graph(
         stats,
     })
     .into_response()
+}
+
+struct WorkspaceGraphData {
+    raw_edges: Vec<RawEdgeItem>,
+    node_ids: Vec<Uuid>,
+}
+
+fn workspace_graph_data(
+    state: &AppState,
+    workspace: &str,
+    edge_kind_filter: &str,
+    request_id: &str,
+) -> Result<WorkspaceGraphData, Response> {
+    let store = resolve_workspace_store(state, workspace, request_id)?;
+    let local_tickets = store
+        .list(None, None, None)
+        .map_err(|error| storage_err(error, request_id))?;
+    let all_edges = store
+        .list_all_edges()
+        .map_err(|error| storage_err(error, request_id))?;
+    let raw_edges = dedupe_edges(filter_graph_edges(&all_edges, edge_kind_filter));
+    let node_ids = collect_workspace_node_ids(&local_tickets, &raw_edges);
+    Ok(WorkspaceGraphData { raw_edges, node_ids })
 }
 
 fn resolve_workspace_store(

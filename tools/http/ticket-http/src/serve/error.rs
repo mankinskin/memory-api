@@ -29,8 +29,49 @@ pub fn storage_err(
     e: ticket_api::error::StorageError,
     rid: &str,
 ) -> Response {
+    match classify_storage_error(e) {
+        StorageErrClass::Client(error) => client_storage_err(error, rid),
+        StorageErrClass::Server(error) => server_storage_err(error, rid),
+    }
+}
+
+enum StorageErrClass {
+    Client(ticket_api::error::StorageError),
+    Server(ticket_api::error::StorageError),
+}
+
+fn classify_storage_error(
+    error: ticket_api::error::StorageError,
+) -> StorageErrClass {
+    if is_client_storage_err(&error) {
+        StorageErrClass::Client(error)
+    } else {
+        StorageErrClass::Server(error)
+    }
+}
+
+fn is_client_storage_err(error: &ticket_api::error::StorageError) -> bool {
     use ticket_api::error::StorageError;
-    match e {
+    match error {
+        StorageError::NotFound(_)
+        | StorageError::Validation(_)
+        | StorageError::QueryParse(_)
+        | StorageError::LeaseConflict { .. }
+        | StorageError::DependencyCycle
+        | StorageError::SchemaMismatch(_)
+        | StorageError::Protocol(_)
+        | StorageError::WorkspaceNotFound { .. } => true,
+        StorageError::Io(io_error) => io_error.kind() == ErrorKind::NotFound,
+        _ => false,
+    }
+}
+
+fn client_storage_err(
+    error: ticket_api::error::StorageError,
+    rid: &str,
+) -> Response {
+    use ticket_api::error::StorageError;
+    match error {
         StorageError::NotFound(id) => {
             tracing::debug!(request_id = %rid, ticket_id = %id, "ticket not found");
             ApiError::new(
@@ -40,7 +81,7 @@ pub fn storage_err(
             )
             .into_response_with_status(StatusCode::NOT_FOUND)
         },
-        StorageError::Io(error) if error.kind() == ErrorKind::NotFound => {
+        StorageError::Io(error) => {
             tracing::warn!(
                 request_id = %rid,
                 io_error = %error,
@@ -108,6 +149,41 @@ pub fn storage_err(
             )
             .into_response_with_status(StatusCode::CONFLICT)
         },
+        StorageError::Protocol(error) => {
+            tracing::warn!(request_id = %rid, error = %error, "protocol error");
+            ApiError::new(
+                error.code(),
+                error.to_string(),
+                rid,
+            )
+            .into_response_with_status(StatusCode::UNPROCESSABLE_ENTITY)
+        },
+        StorageError::WorkspaceNotFound { path } => {
+            tracing::warn!(
+                request_id = %rid,
+                path = %path.display(),
+                "workspace not initialized"
+            );
+            ApiError::new(
+                "workspace.not_initialized",
+                format!(
+                    "no ticket workspace found at {}; run 'ticket init' to create one",
+                    path.display()
+                ),
+                rid,
+            )
+            .into_response_with_status(StatusCode::SERVICE_UNAVAILABLE)
+        },
+        _ => unreachable!("client classification mismatch"),
+    }
+}
+
+fn server_storage_err(
+    error: ticket_api::error::StorageError,
+    rid: &str,
+) -> Response {
+    use ticket_api::error::StorageError;
+    match error {
         StorageError::ParseError { path, reason } => {
             tracing::error!(
                 request_id = %rid,
@@ -138,15 +214,6 @@ pub fn storage_err(
             .with_details(json!({ "path": path.display().to_string() }))
             .into_response_with_status(StatusCode::INTERNAL_SERVER_ERROR)
         },
-        StorageError::Protocol(error) => {
-            tracing::warn!(request_id = %rid, error = %error, "protocol error");
-            ApiError::new(
-                error.code(),
-                error.to_string(),
-                rid,
-            )
-            .into_response_with_status(StatusCode::UNPROCESSABLE_ENTITY)
-        },
         StorageError::Database(message) => {
             tracing::error!(request_id = %rid, message = %message, "ticket database error");
             ApiError::new(
@@ -169,9 +236,6 @@ pub fn storage_err(
             )
             .into_response_with_status(StatusCode::INTERNAL_SERVER_ERROR)
         },
-        // ── This is the "ticket serialization error: io error unexpected end of
-        //    file" case.  We log at ERROR with full detail so it is always
-        //    visible regardless of the configured log level filter.
         StorageError::Serialization(message) => {
             tracing::error!(
                 request_id = %rid,
@@ -210,22 +274,7 @@ pub fn storage_err(
             )
             .into_response_with_status(StatusCode::INTERNAL_SERVER_ERROR)
         },
-        StorageError::WorkspaceNotFound { path } => {
-            tracing::warn!(
-                request_id = %rid,
-                path = %path.display(),
-                "workspace not initialized"
-            );
-            ApiError::new(
-                "workspace.not_initialized",
-                format!(
-                    "no ticket workspace found at {}; run 'ticket init' to create one",
-                    path.display()
-                ),
-                rid,
-            )
-            .into_response_with_status(StatusCode::SERVICE_UNAVAILABLE)
-        },
+        _ => unreachable!("server classification mismatch"),
     }
 }
 

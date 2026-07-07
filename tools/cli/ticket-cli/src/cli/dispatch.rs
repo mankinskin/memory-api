@@ -445,11 +445,44 @@ fn dispatch_store_command_graph(
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
     match command {
+        TicketCommandCli::Link(_)
+        | TicketCommandCli::Unlink(_)
+        | TicketCommandCli::Links(_)
+        | TicketCommandCli::Subgraph(_)
+        | TicketCommandCli::Topgraph(_) => {
+            dispatch_store_command_graph_edges(command, store)
+        }
+        TicketCommandCli::Watch(_)
+        | TicketCommandCli::Status(_)
+        | TicketCommandCli::ReadyOverview(_)
+        | TicketCommandCli::Next(_)
+        | TicketCommandCli::Blockers(_)
+        | TicketCommandCli::UnblockedBy(_) => {
+            dispatch_store_command_graph_workflow(command, store)
+        }
+        _ => unreachable!("handled in graph store dispatch"),
+    }
+}
+
+fn dispatch_store_command_graph_edges(
+    command: TicketCommandCli,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    match command {
         TicketCommandCli::Link(args) => commands::cmd_link(args, store),
         TicketCommandCli::Unlink(args) => commands::cmd_unlink(args, store),
         TicketCommandCli::Links(args) => commands::cmd_links(args, store),
         TicketCommandCli::Subgraph(args) => commands::cmd_subgraph(args, store),
         TicketCommandCli::Topgraph(args) => commands::cmd_topgraph(args, store),
+        _ => unreachable!("handled in graph edge dispatch"),
+    }
+}
+
+fn dispatch_store_command_graph_workflow(
+    command: TicketCommandCli,
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    match command {
         TicketCommandCli::Watch(args) => commands::cmd_watch(args, store),
         TicketCommandCli::Status(args) => commands::cmd_status(args, store),
         TicketCommandCli::ReadyOverview(args) =>
@@ -458,11 +491,37 @@ fn dispatch_store_command_graph(
         TicketCommandCli::Blockers(args) => commands::cmd_blockers(args, store),
         TicketCommandCli::UnblockedBy(args) =>
             commands::cmd_unblocked_by(args, store),
-        _ => unreachable!("handled in graph store dispatch"),
+        _ => unreachable!("handled in graph workflow dispatch"),
     }
 }
 
 fn dispatch_store_command_ops(
+    command: TicketCommandCli,
+    store: TicketStore,
+    dry_run: bool,
+) -> Result<Value, CliRunError> {
+    match command {
+        TicketCommandCli::Serve(_)
+        | TicketCommandCli::Close(_)
+        | TicketCommandCli::Cancel(_)
+        | TicketCommandCli::Move(_)
+        | TicketCommandCli::Attach(_)
+        | TicketCommandCli::Assets(_) => {
+            dispatch_store_command_ops_runtime(command, store, dry_run)
+        }
+        TicketCommandCli::Health(_)
+        | TicketCommandCli::StoreIndex(_)
+        | TicketCommandCli::Audit
+        | TicketCommandCli::Fmt(_)
+        | TicketCommandCli::Board(_)
+        | TicketCommandCli::Workspace(_) => {
+            dispatch_store_command_ops_admin(command, store)
+        }
+        _ => unreachable!("handled in ops store dispatch"),
+    }
+}
+
+fn dispatch_store_command_ops_runtime(
     command: TicketCommandCli,
     store: TicketStore,
     dry_run: bool,
@@ -474,13 +533,22 @@ fn dispatch_store_command_ops(
         TicketCommandCli::Move(args) => commands::cmd_move(args, &store, dry_run),
         TicketCommandCli::Attach(args) => commands::cmd_attach(args, &store),
         TicketCommandCli::Assets(args) => commands::cmd_assets(args, &store),
+        _ => unreachable!("handled in ops runtime dispatch"),
+    }
+}
+
+fn dispatch_store_command_ops_admin(
+    command: TicketCommandCli,
+    store: TicketStore,
+) -> Result<Value, CliRunError> {
+    match command {
         TicketCommandCli::Health(args) => commands::cmd_health(args, &store),
         TicketCommandCli::StoreIndex(args) => commands::cmd_store_index(args, &store),
         TicketCommandCli::Audit => commands::cmd_audit(&store),
         TicketCommandCli::Fmt(args) => commands::cmd_fmt(args, &store),
         TicketCommandCli::Board(args) => commands::cmd_board(args, &store),
         TicketCommandCli::Workspace(args) => commands::cmd_workspace(args, &store),
-        _ => unreachable!("handled in ops store dispatch"),
+        _ => unreachable!("handled in ops admin dispatch"),
     }
 }
 

@@ -460,6 +460,28 @@ fn dispatch(
     command: TestCommand,
 ) -> Result<Value, CliRunError> {
     match command {
+        TestCommand::RecordSpec(_)
+        | TestCommand::Record(_)
+        | TestCommand::LogRecord(_)
+        | TestCommand::Run(_) => dispatch_recording(config, log_config, command),
+        TestCommand::GetSpec(_)
+        | TestCommand::Get(_)
+        | TestCommand::ListSpecs
+        | TestCommand::List(_)
+        | TestCommand::Logs(_) => dispatch_read_queries(config, log_config, command),
+        TestCommand::StoreIndex
+        | TestCommand::Benchmarks(_)
+        | TestCommand::Summary
+        | TestCommand::Audit => dispatch_reporting(config, command),
+    }
+}
+
+fn dispatch_recording(
+    config: &TestStoreConfig,
+    log_config: &LogStoreConfig,
+    command: TestCommand,
+) -> Result<Value, CliRunError> {
+    match command {
         TestCommand::RecordSpec(args) => {
             let mut spec = ValidationSpec::new(args.id, args.title);
             spec.command = args.command;
@@ -478,7 +500,7 @@ fn dispatch(
                 "id": spec.id,
                 "path": path,
             }))
-        },
+        }
         TestCommand::Record(args) => {
             let executed_at = parse_timestamp(args.executed_at.as_deref())?;
             let mut execution = ValidationExecution::new(
@@ -512,101 +534,7 @@ fn dispatch(
                 "outcome": execution.outcome,
                 "path": path,
             }))
-        },
-        TestCommand::GetSpec(args) => {
-            let spec = config.get_spec(&args.id)?;
-            to_value(&spec)
-        },
-        TestCommand::Get(args) => {
-            let execution = config.get_execution(&args.id)?;
-            to_value(&execution)
-        },
-        TestCommand::ListSpecs => {
-            let specs = config.list_specs()?;
-            to_value(&json!({
-                "count": specs.len(),
-                "specs": specs,
-            }))
-        },
-        TestCommand::List(args) => {
-            let query = ExecutionQuery {
-                ticket_id: args.ticket,
-                validation_spec_id: args.spec_id,
-                outcome: args.outcome.map(Into::into),
-                min_duration_ms: args.min_duration_ms,
-                max_duration_ms: args.max_duration_ms,
-                domain: args.domain,
-                operation: args.operation,
-                transport: args.transport,
-                run_id: args.run_id,
-                sort: args.sort.map(Into::into).unwrap_or_default(),
-                limit: args.limit,
-            };
-            let executions = config.list_executions(&query)?;
-            to_value(&json!({
-                "count": executions.len(),
-                "executions": executions,
-            }))
-        },
-        TestCommand::StoreIndex => {
-            let (digest, toon_path, readme_path) = config.regenerate_store_index()?;
-            to_value(&json!({
-                "status": "generated",
-                "kind": "test-store-index",
-                "digest": digest,
-                "toon_path": toon_path,
-                "readme_path": readme_path,
-            }))
-        },
-        TestCommand::Benchmarks(args) => {
-            let query = BenchmarkQuery {
-                domain: args.domain,
-                operation: args.operation,
-                over_budget: if args.over_budget { Some(true) } else { None },
-                limit: args.limit,
-            };
-            let benchmarks = config.list_benchmarks(&query)?;
-            to_value(&json!({
-                "count": benchmarks.len(),
-                "benchmarks": benchmarks,
-            }))
-        },
-        TestCommand::Summary => {
-            let artifacts = config.generate_store_index()?;
-            to_value(&json!({
-                "kind": "test-store-summary",
-                "digest": artifacts.digest,
-                "summary": artifacts.summary,
-                "markdown": artifacts.markdown,
-            }))
-        },
-        TestCommand::Audit => {
-            let artifacts = config.generate_store_index()?;
-            let summary = &artifacts.summary;
-
-            let failed: Vec<&_> = summary
-                .issues
-                .iter()
-                .filter(|i| i.kind == "execution")
-                .collect();
-            let over_budget: Vec<&_> = summary
-                .issues
-                .iter()
-                .filter(|i| i.kind == "benchmark")
-                .collect();
-
-            to_value(&json!({
-                "kind": "test-audit",
-                "digest": artifacts.digest,
-                "failed_count": failed.len(),
-                "over_budget_count": over_budget.len(),
-                "slow_count": summary.slow.len(),
-                // severity order: failed executions, then over-budget benchmarks, then slow runs
-                "failed": failed,
-                "over_budget": over_budget,
-                "slow": summary.slow,
-            }))
-        },
+        }
         TestCommand::LogRecord(args) => {
             let captured_at = parse_timestamp(args.captured_at.as_deref())?;
             let capture = ValidationLogCapture {
@@ -630,7 +558,53 @@ fn dispatch(
                 "id": capture.id,
                 "path": path,
             }))
-        },
+        }
+        TestCommand::Run(args) => run_harness(config, log_config, args),
+        _ => unreachable!("handled in recording dispatch"),
+    }
+}
+
+fn dispatch_read_queries(
+    config: &TestStoreConfig,
+    log_config: &LogStoreConfig,
+    command: TestCommand,
+) -> Result<Value, CliRunError> {
+    match command {
+        TestCommand::GetSpec(args) => {
+            let spec = config.get_spec(&args.id)?;
+            to_value(&spec)
+        }
+        TestCommand::Get(args) => {
+            let execution = config.get_execution(&args.id)?;
+            to_value(&execution)
+        }
+        TestCommand::ListSpecs => {
+            let specs = config.list_specs()?;
+            to_value(&json!({
+                "count": specs.len(),
+                "specs": specs,
+            }))
+        }
+        TestCommand::List(args) => {
+            let query = ExecutionQuery {
+                ticket_id: args.ticket,
+                validation_spec_id: args.spec_id,
+                outcome: args.outcome.map(Into::into),
+                min_duration_ms: args.min_duration_ms,
+                max_duration_ms: args.max_duration_ms,
+                domain: args.domain,
+                operation: args.operation,
+                transport: args.transport,
+                run_id: args.run_id,
+                sort: args.sort.map(Into::into).unwrap_or_default(),
+                limit: args.limit,
+            };
+            let executions = config.list_executions(&query)?;
+            to_value(&json!({
+                "count": executions.len(),
+                "executions": executions,
+            }))
+        }
         TestCommand::Logs(args) => {
             let query = LogCaptureQuery {
                 execution_id: args.execution_id,
@@ -641,8 +615,75 @@ fn dispatch(
                 "count": captures.len(),
                 "captures": captures,
             }))
-        },
-        TestCommand::Run(args) => run_harness(config, log_config, args),
+        }
+        _ => unreachable!("handled in read/query dispatch"),
+    }
+}
+
+fn dispatch_reporting(
+    config: &TestStoreConfig,
+    command: TestCommand,
+) -> Result<Value, CliRunError> {
+    match command {
+        TestCommand::StoreIndex => {
+            let (digest, toon_path, readme_path) = config.regenerate_store_index()?;
+            to_value(&json!({
+                "status": "generated",
+                "kind": "test-store-index",
+                "digest": digest,
+                "toon_path": toon_path,
+                "readme_path": readme_path,
+            }))
+        }
+        TestCommand::Benchmarks(args) => {
+            let query = BenchmarkQuery {
+                domain: args.domain,
+                operation: args.operation,
+                over_budget: if args.over_budget { Some(true) } else { None },
+                limit: args.limit,
+            };
+            let benchmarks = config.list_benchmarks(&query)?;
+            to_value(&json!({
+                "count": benchmarks.len(),
+                "benchmarks": benchmarks,
+            }))
+        }
+        TestCommand::Summary => {
+            let artifacts = config.generate_store_index()?;
+            to_value(&json!({
+                "kind": "test-store-summary",
+                "digest": artifacts.digest,
+                "summary": artifacts.summary,
+                "markdown": artifacts.markdown,
+            }))
+        }
+        TestCommand::Audit => {
+            let artifacts = config.generate_store_index()?;
+            let summary = &artifacts.summary;
+
+            let failed: Vec<&_> = summary
+                .issues
+                .iter()
+                .filter(|i| i.kind == "execution")
+                .collect();
+            let over_budget: Vec<&_> = summary
+                .issues
+                .iter()
+                .filter(|i| i.kind == "benchmark")
+                .collect();
+
+            to_value(&json!({
+                "kind": "test-audit",
+                "digest": artifacts.digest,
+                "failed_count": failed.len(),
+                "over_budget_count": over_budget.len(),
+                "slow_count": summary.slow.len(),
+                "failed": failed,
+                "over_budget": over_budget,
+                "slow": summary.slow,
+            }))
+        }
+        _ => unreachable!("handled in reporting dispatch"),
     }
 }
 
