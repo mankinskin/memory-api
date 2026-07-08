@@ -1,4 +1,43 @@
-use super::*;
+use std::{
+    collections::BTreeMap,
+    sync::Arc,
+};
+
+use axum::{
+    body::{
+        Body,
+        to_bytes,
+    },
+    http::{
+        Request,
+        StatusCode,
+    },
+};
+use serde_json::{
+    Value,
+    json,
+};
+use ticket_api::{
+    health::collect_findings,
+    model::{
+        edge::EdgeRecord,
+        filesystem::ScanRoot,
+    },
+    storage::store::TicketStore,
+    workflow::{
+        WorkflowModel,
+        apply_board_filter,
+    },
+};
+use ticket_mcp::server::TicketServer;
+use tower::ServiceExt;
+
+use ticket_http::serve::{
+    AppState,
+    StreamBroker,
+    WorkspaceRegistry,
+    routes::build_router,
+};
 
 pub(super) struct ParityFixture {
     /// Keeps the temp dir alive for the duration of the test.
@@ -25,12 +64,12 @@ impl ParityFixture {
         let high_fields =
             BTreeMap::from([(String::from("priority"), json!("high"))]);
 
-        // alpha: ready, high priority, no description → triggers missing_description
+        // alpha: ready, high priority, no description -> triggers missing_description
         let alpha = store
             .create(
                 None,
                 "tracker-improvement",
-                Some("[parity] Alpha — no description"),
+                Some("[parity] Alpha - no description"),
                 Some("ready"),
                 high_fields.clone(),
                 None,
@@ -38,12 +77,12 @@ impl ParityFixture {
             )
             .expect("create alpha");
 
-        // beta: ready, high priority, good description → no health findings
+        // beta: ready, high priority, good description -> no health findings
         let beta = store
             .create(
                 None,
                 "tracker-improvement",
-                Some("[parity] Beta — with description"),
+                Some("[parity] Beta - with description"),
                 Some("ready"),
                 high_fields,
                 None,
@@ -51,12 +90,12 @@ impl ParityFixture {
             )
             .expect("create beta");
 
-        // gamma: new, depends on alpha AND beta → not actionable
+        // gamma: new, depends on alpha AND beta -> not actionable
         let gamma = store
             .create(
                 None,
                 "tracker-improvement",
-                Some("[parity] Gamma — blocked"),
+                Some("[parity] Gamma - blocked"),
                 Some("new"),
                 BTreeMap::new(),
                 None,
