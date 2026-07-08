@@ -98,7 +98,7 @@
     }
 
     #[test]
-    fn store_plan_uses_workspace_and_session_id_in_paths() {
+    fn store_plan_uses_session_id_in_paths() {
         let config = SessionStoreConfig::new(".session", "context-engine");
         let plan = config
             .plan_capture(sample_request(
@@ -112,13 +112,13 @@
         assert_eq!(
             plan.paths.manifest_path,
             std::path::PathBuf::from(
-                ".session/sessions/context-engine/session-abc/session.json"
+                ".session/sessions/session-abc/session.json"
             )
         );
         assert_eq!(
             plan.paths.transcript_path,
             std::path::PathBuf::from(
-                ".session/sessions/context-engine/session-abc/transcript.json"
+                ".session/sessions/session-abc/transcript.json"
             )
         );
     }

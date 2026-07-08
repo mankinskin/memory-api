@@ -411,14 +411,9 @@ impl SessionStoreConfig {
         if self.root.as_os_str().is_empty() {
             return Err(SessionError::EmptyStoreRoot);
         }
-        validate_segment(&self.workspace_slug, true)?;
         validate_segment(session_id, false)?;
 
-        let session_dir = self
-            .root
-            .join("sessions")
-            .join(&self.workspace_slug)
-            .join(session_id);
+        let session_dir = self.root.join("sessions").join(session_id);
         let manifest_path = session_dir.join("session.json");
         let transcript_path = session_dir.join("transcript.json");
         let events_path = session_dir.join("events.json");
@@ -442,8 +437,7 @@ impl SessionStoreConfig {
         if self.root.as_os_str().is_empty() {
             return Err(SessionError::EmptyStoreRoot);
         }
-        validate_segment(&self.workspace_slug, true)?;
-        Ok(self.root.join("sessions").join(&self.workspace_slug))
+        Ok(self.root.join("sessions"))
     }
 
     pub fn plan_capture(

@@ -1,7 +1,7 @@
 //! Session-domain adapter onto the domain-neutral move kernel.
 //!
 //! Sessions are persisted as one folder per session id under
-//! `sessions/<workspace_slug>/<session_id>`. The shared kernel is UUID-based,
+//! `sessions/<session_id>`. The shared kernel is UUID-based,
 //! so this adapter supports sessions whose ids are UUID strings and leaves
 //! non-UUID legacy/session-provider ids to their existing read/query paths.
 
@@ -52,7 +52,7 @@ impl<'a> SessionMoveDomain<'a> {
     pub fn new(store: &'a SessionStoreConfig) -> Self {
         Self {
             store,
-            entity_subdir: format!("sessions/{}", store.workspace_slug),
+            entity_subdir: "sessions".to_string(),
         }
     }
 
