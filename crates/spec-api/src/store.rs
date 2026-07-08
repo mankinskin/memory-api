@@ -542,6 +542,7 @@ impl SpecStore {
             .inner
             .get_indexed(&uuid)?
             .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
+        let existing_entity = self.inner.fs.read(&indexed.path)?;
 
         if let Some(new_slug_val) = patch.get("slug") {
             if let Some(new_slug) = new_slug_val.as_str() {
@@ -567,6 +568,11 @@ impl SpecStore {
 
         let updated_entity =
             self.inner.fs.update(&indexed.path, &patch, to_state)?;
+        let changed = updated_entity.extra != existing_entity.extra;
+
+        if !changed {
+            return Ok(entity_to_spec(&updated_entity));
+        }
 
         let type_id = updated_entity
             .extra

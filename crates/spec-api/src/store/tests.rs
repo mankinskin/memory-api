@@ -158,6 +158,36 @@ fn create_and_get_round_trip_structured_contract_fields() {
 }
 
 #[test]
+fn no_op_update_does_not_append_history_revision() {
+    let (_tmp, mut store) = setup();
+
+    let spec = make_spec("root/no-op-history", "No-op History");
+    let id = store.create(&spec, "body", None).unwrap();
+    let indexed = store.entity_store().get_indexed(&id).unwrap().unwrap();
+    let history_path = indexed.path.join("history.ndjson");
+
+    let initial_history = fs::read_to_string(&history_path).unwrap();
+    let initial_count = initial_history
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count();
+    assert_eq!(initial_count, 1);
+
+    let mut patch = BTreeMap::new();
+    patch.insert("title".into(), Value::String("No-op History".into()));
+
+    let updated = store.update(&id.to_string(), patch, None).unwrap();
+    assert_eq!(updated.title(), Some("No-op History"));
+
+    let after_history = fs::read_to_string(&history_path).unwrap();
+    let after_count = after_history
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count();
+    assert_eq!(after_count, initial_count);
+}
+
+#[test]
 fn health_reports_missing_and_satisfied_contract_requirements() {
     let (_tmp, mut store) = setup();
 
