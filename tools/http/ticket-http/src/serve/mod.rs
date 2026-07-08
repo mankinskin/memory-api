@@ -2,7 +2,6 @@
 //!
 //! Exposes the ticket store over a REST/SSE API with bearer-token auth.
 //! See `api-contract-v0.1.md` (ticket `21a1b9ca`) for the full endpoint spec.
-
 pub mod auth_state;
 pub mod error;
 mod handlers;
@@ -10,7 +9,6 @@ pub mod middleware;
 pub mod registry;
 pub mod routes;
 pub mod stream;
-
 use std::{
     collections::{
         BTreeSet,
@@ -23,19 +21,16 @@ use std::{
         Mutex,
     },
 };
-
 use axum::{
     http::StatusCode,
     response::Response,
 };
 use serde_json::json;
 use tokio::net::TcpListener;
-
 use viewer_api::{
     auth::TokenSet,
     error::ApiError,
 };
-
 pub use auth_state::AuthState;
 pub use registry::WorkspaceRegistry;
 pub use stream::{
@@ -43,7 +38,6 @@ pub use stream::{
     StreamBroker,
 };
 use ticket_api::storage::store::TicketStore;
-
 pub fn register_descendant_scan_roots(
     store: &TicketStore,
     workspace_root: &Path,
@@ -54,7 +48,6 @@ pub fn register_descendant_scan_roots(
         .map(|root| root.path)
         .collect::<BTreeSet<_>>();
     let mut reindex = false;
-
     for root in ticket_api::workspace::discover_workspace_scan_roots(
         workspace_root,
         ticket_api::workspace::TICKET_INDEX_DIR,
@@ -65,17 +58,14 @@ pub fn register_descendant_scan_roots(
         }
         store.add_scan_root(root)?;
     }
-
     Ok(reindex)
 }
-
 /// Configuration for `ticket serve`.
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
     pub host: String,
     pub port: u16,
 }
-
 impl Default for ServeConfig {
     fn default() -> Self {
         Self {
@@ -84,7 +74,6 @@ impl Default for ServeConfig {
         }
     }
 }
-
 impl ServeConfig {
     pub fn addr(&self) -> SocketAddr {
         format!("{}:{}", self.host, self.port)
@@ -92,7 +81,6 @@ impl ServeConfig {
             .expect("valid socket address")
     }
 }
-
 /// Shared application state passed to all Axum handlers.
 #[derive(Clone)]
 pub struct AppState {
@@ -103,7 +91,6 @@ pub struct AppState {
     /// When `None`, write endpoints are unauthenticated (local/dev mode).
     pub auth: Option<Arc<TokenSet>>,
 }
-
 impl AppState {
     pub fn new(
         registry: Arc<WorkspaceRegistry>,
@@ -116,7 +103,6 @@ impl AppState {
             auth: None,
         }
     }
-
     /// Enable bearer-token authentication for write endpoints.
     pub fn with_auth(
         mut self,
@@ -125,7 +111,6 @@ impl AppState {
         self.auth = Some(token_set);
         self
     }
-
     /// Get a workspace store and ensure serve-runtime wiring is initialized once.
     ///
     /// This guarantees that even lazily opened workspaces get a broker channel,
@@ -139,7 +124,6 @@ impl AppState {
             .flatten()
             .map(|(_, store)| store)
     }
-
     pub fn resolve_workspace_runtime(
         &self,
         workspace: &str,
@@ -155,21 +139,17 @@ impl AppState {
             tracing::warn!(workspace, "resolved workspace could not be opened");
             return Ok(None);
         };
-
         let mut ready = self.runtime_ready.lock().unwrap();
         if !ready.insert(workspace.to_string()) {
             return Ok(Some((workspace, store)));
         }
-
         self.broker.ensure_channel(&workspace);
         let emitter =
             HookEmitter::new(workspace.to_string(), Arc::clone(&self.broker));
         store.set_hook(emitter.clone());
         stream::reconcile::spawn_reconcile(Arc::clone(&store), emitter);
-
         Ok(Some((workspace, store)))
     }
-
     pub fn resolve_public_workspace_request(
         &self,
         requested_workspace: &str,
@@ -218,7 +198,6 @@ impl AppState {
         }
     }
 }
-
 /// Start the HTTP server.
 ///
 /// Creates a `StreamBroker`, wires up per-workspace `HookEmitter`s and
@@ -229,23 +208,19 @@ pub async fn serve(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let state =
         AppState::new(Arc::new(registry), Arc::new(StreamBroker::new()));
-
     // Pre-initialize all known workspaces at startup while still keeping
     // on-demand initialization for lazily opened stores.
     let workspace_names = state.registry.workspace_names();
     for ws in &workspace_names {
         let _ = state.ensure_workspace_runtime(ws);
     }
-
     let app = routes::build_router(state);
     let addr = config.addr();
     let listener = TcpListener::bind(addr).await?;
-
     eprintln!("ticket serve listening on http://{}", addr);
     axum::serve(listener, app).await?;
     Ok(())
 }
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -263,7 +238,6 @@ mod tests {
         model::filesystem::ScanRoot,
         storage::store::TicketStore,
     };
-
     #[test]
     fn register_descendant_scan_roots_adds_nested_ticket_workspace() {
         let root = tempfile::tempdir().expect("tempdir");
@@ -274,7 +248,6 @@ mod tests {
                 label: "default".to_string(),
             })
             .expect("add root scan root");
-
         let child_store_root = root
             .path()
             .join("memory-viewers")
@@ -283,10 +256,8 @@ mod tests {
         std::fs::create_dir_all(child_store_root.join("tickets"))
             .expect("create child store dirs");
         TicketStore::init(&child_store_root).expect("open child store");
-
         let reindex = register_descendant_scan_roots(&store, root.path())
             .expect("register descendant scan roots");
-
         assert!(reindex, "new descendant roots should request reindex");
         assert!(
             store
@@ -299,7 +270,6 @@ mod tests {
                 })
         );
     }
-
     #[tokio::test]
     async fn ensure_workspace_runtime_wires_hook_for_lazy_open_store() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -312,14 +282,12 @@ mod tests {
         let store = state
             .ensure_workspace_runtime(&workspace)
             .expect("workspace should initialize");
-
         store
             .add_scan_root(ScanRoot {
                 path: dir.path().join("tickets"),
                 label: "default".to_string(),
             })
             .expect("add scan root");
-
         store
             .create(
                 None,
@@ -331,7 +299,6 @@ mod tests {
                 None,
             )
             .expect("create ticket");
-
         let (_, event) = rx.recv().await.expect("should receive hook event");
         match event {
             SseEvent::TicketUpsert(payload) => {
@@ -344,9 +311,7 @@ mod tests {
             other => panic!("expected TicketUpsert, got {other:?}"),
         }
     }
-
     // ── Auth middleware router-level tests ────────────────────────────────
-
     fn make_state_with_auth(
         dir: &std::path::Path,
         token: &str,
@@ -357,14 +322,12 @@ mod tests {
         );
         state.with_auth(Arc::new(viewer_api::auth::TokenSet::single(token)))
     }
-
     fn make_state_no_auth(dir: &std::path::Path) -> AppState {
         AppState::new(
             Arc::new(WorkspaceRegistry::single(dir.to_path_buf())),
             Arc::new(StreamBroker::new()),
         )
     }
-
     async fn post_create(
         app: axum::Router,
         workspace: &str,
@@ -375,29 +338,24 @@ mod tests {
             header,
         };
         use tower::ServiceExt;
-
         let body = serde_json::json!({
             "type_id": "tracker-improvement",
             "title": "auth test ticket"
         })
         .to_string();
-
         let mut req = Request::builder()
             .method("POST")
             .uri(format!("/api/tickets?workspace={workspace}"))
             .header(header::CONTENT_TYPE, "application/json");
-
         if let Some(val) = auth_header {
             req = req.header(header::AUTHORIZATION, val);
         }
-
         let response = app
             .oneshot(req.body(axum::body::Body::from(body)).unwrap())
             .await
             .unwrap();
         response.status()
     }
-
     #[tokio::test]
     async fn write_auth_rejects_when_token_missing() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -407,7 +365,6 @@ mod tests {
         let status = post_create(app, &workspace, None).await;
         assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED);
     }
-
     #[tokio::test]
     async fn write_auth_rejects_invalid_token() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -418,7 +375,6 @@ mod tests {
             post_create(app, &workspace, Some("Bearer wrong-token")).await;
         assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED);
     }
-
     #[tokio::test]
     async fn write_auth_allows_valid_token() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -430,7 +386,6 @@ mod tests {
         // 201 Created or 422 (validation) is acceptable — not 401
         assert_ne!(status, axum::http::StatusCode::UNAUTHORIZED);
     }
-
     #[tokio::test]
     async fn write_auth_passes_through_when_disabled() {
         let dir = tempfile::tempdir().expect("tempdir");
