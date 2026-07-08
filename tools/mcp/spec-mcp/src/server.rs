@@ -3,7 +3,6 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
-
 use rmcp::{
     ErrorData as McpError,
     ServerHandler,
@@ -24,20 +23,15 @@ use serde_json::{
     json,
 };
 use tokio::sync::Mutex;
-
 use spec_api::{
     SpecStore,
     error::SpecError,
 };
-
 mod query;
 mod sections;
 mod types;
-
 pub use self::types::*;
-
 // ── Server ───────────────────────────────────────────────────────────────────
-
 #[derive(Clone)]
 pub struct SpecServer {
     index_root: PathBuf,
@@ -47,7 +41,6 @@ pub struct SpecServer {
     /// between calls so the CLI can also access the database.
     store_lock: Arc<Mutex<()>>,
 }
-
 impl SpecServer {
     pub fn new(index_root: PathBuf) -> Self {
         Self {
@@ -56,7 +49,6 @@ impl SpecServer {
             store_lock: Arc::new(Mutex::new(())),
         }
     }
-
     fn json_result<T: Serialize>(
         value: &T
     ) -> Result<CallToolResult, McpError> {
@@ -65,7 +57,6 @@ impl SpecServer {
         })?;
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
-
     fn json_result_with_scope(
         value: Value,
         active_index_root: &Path,
@@ -80,7 +71,6 @@ impl SpecServer {
             .filter(|value| !value.is_empty())
             .unwrap_or("default")
             .to_string();
-
         let mut value = value;
         if let Value::Object(map) = &mut value {
             map.insert(
@@ -96,10 +86,8 @@ impl SpecServer {
                 }),
             );
         }
-
         Self::json_result(&value)
     }
-
     fn spec_err(e: SpecError) -> McpError {
         match &e {
             SpecError::NotFound(_) =>
@@ -111,17 +99,14 @@ impl SpecServer {
             _ => McpError::internal_error(format!("spec error: {e}"), None),
         }
     }
-
     fn storage_err(e: memory_api::error::StorageError) -> McpError {
         McpError::internal_error(format!("storage error: {e}"), None)
     }
-
     fn is_spec_store_root(path: &Path) -> bool {
         path.join("specs").is_dir()
             || path.join("entities.db").is_file()
             || path.join("search_index").is_dir()
     }
-
     fn resolve_workspace_root(
         &self,
         workspace: Option<&str>,
@@ -130,7 +115,6 @@ impl SpecServer {
         if workspace.is_empty() || workspace == "default" {
             return Ok(self.index_root.clone());
         }
-
         let resolved = memory_api::workspace::resolve_store_root_from(
             Path::new(workspace),
             ".spec",
@@ -140,7 +124,6 @@ impl SpecServer {
         {
             return Ok(resolved);
         }
-
         Err(McpError::invalid_params(
             format!(
                 "invalid workspace '{workspace}': expected 'default', a repo root containing .spec, the .spec store itself, a path inside that store, or an existing spec store root"
@@ -148,7 +131,6 @@ impl SpecServer {
             None,
         ))
     }
-
     /// Open a mutable SpecStore under the serialization lock, run the closure,
     /// then drop both store and lock before returning.
     ///
@@ -168,9 +150,7 @@ impl SpecServer {
         result
     }
 }
-
 // ── Tool implementations ──────────────────────────────────────────────────────
-
 #[tool_router]
 impl SpecServer {
     #[tool(
@@ -183,7 +163,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_create_tool(input).await
     }
-
     #[tool(
         name = "spec_get",
         description = "Get a spec by ID or slug, optionally with body and sections."
@@ -194,7 +173,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_get_tool(input).await
     }
-
     #[tool(
         name = "spec_update",
         description = "Update a spec's fields, state, or body. Omit untouched keys; the response returns only changed or directly relevant fields."
@@ -205,7 +183,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_update_tool(input).await
     }
-
     #[tool(name = "spec_delete", description = "Permanently delete a spec.")]
     pub async fn spec_delete(
         &self,
@@ -213,7 +190,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_delete_tool(input).await
     }
-
     #[tool(
         name = "spec_list",
         description = "List specs with optional field=value filters."
@@ -224,7 +200,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_list_tool(input).await
     }
-
     #[tool(
         name = "spec_search",
         description = "Full-text search across specs."
@@ -235,7 +210,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_search_tool(input).await
     }
-
     #[tool(
         name = "spec_tree",
         description = "Get hierarchy subtree for a spec, or list all root specs."
@@ -246,7 +220,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_tree_tool(input).await
     }
-
     #[tool(
         name = "spec_health",
         description = "Run health checks on specs (completeness of required fields)."
@@ -257,7 +230,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_health_tool(input).await
     }
-
     #[tool(
         name = "spec_refs_validate",
         description = "Validate code references for a spec (check file existence and line ranges)."
@@ -268,7 +240,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_refs_validate_tool(input).await
     }
-
     #[tool(name = "spec_section_add", description = "Add a section to a spec.")]
     pub async fn spec_section_add(
         &self,
@@ -276,7 +247,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_section_add_tool(input).await
     }
-
     #[tool(
         name = "spec_section_list",
         description = "List sections of a spec."
@@ -287,7 +257,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_section_list_tool(input).await
     }
-
     #[tool(name = "spec_section_get", description = "Get section content.")]
     pub async fn spec_section_get(
         &self,
@@ -295,7 +264,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_section_get_tool(input).await
     }
-
     #[tool(
         name = "spec_section_delete",
         description = "Delete a section from a spec."
@@ -306,7 +274,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_section_delete_tool(input).await
     }
-
     #[tool(
         name = "spec_scan",
         description = "Scan and reindex all spec roots."
@@ -317,7 +284,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_scan_tool(input).await
     }
-
     #[tool(
         name = "spec_add_root",
         description = "Register a directory as a scan root for specs."
@@ -328,7 +294,6 @@ impl SpecServer {
     ) -> Result<CallToolResult, McpError> {
         self.spec_add_root_tool(input).await
     }
-
     #[tool(
         name = "spec_move_preflight",
         description = "Read-only preflight plan for moving a spec to another workspace store."
@@ -348,7 +313,6 @@ impl SpecServer {
         })
         .await
     }
-
     #[tool(
         name = "spec_move_apply",
         description = "Execute a supported spec move to another workspace store."
@@ -375,7 +339,6 @@ impl SpecServer {
         })
         .await
     }
-
     #[tool(name = "spec_move_resume", description = "Resume an interrupted spec move from a journal id.")]
     pub async fn spec_move_resume(
         &self,
@@ -390,7 +353,6 @@ impl SpecServer {
         })
         .await
     }
-
     #[tool(name = "spec_move_rollback", description = "Roll back a spec move from a journal id.")]
     pub async fn spec_move_rollback(
         &self,
@@ -406,9 +368,7 @@ impl SpecServer {
         .await
     }
 }
-
 // ── MCP handler trait ─────────────────────────────────────────────────────────
-
 #[tool_handler]
 impl ServerHandler for SpecServer {
     fn get_info(&self) -> ServerInfo {
@@ -422,20 +382,15 @@ impl ServerHandler for SpecServer {
         }
     }
 }
-
 // ── Server startup ────────────────────────────────────────────────────────────
-
 pub async fn run_mcp_server(
     index_root: PathBuf
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let server = SpecServer::new(index_root);
-
     tracing::info!("Starting spec-mcp server on stdio (direct store access)");
-
     let service = server.serve(stdio()).await.inspect_err(|err| {
         eprintln!("Server error: {err:?}");
     })?;
-
     service.waiting().await?;
     Ok(())
 }

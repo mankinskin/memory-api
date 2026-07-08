@@ -1,9 +1,4 @@
 //! Handler for `POST /api/batch`.
-//!
-//! Executes a sequence of ticket mutation commands transactionally: on any
-//! failure, all previously-applied writes are rolled back before returning.
-//! Reuses the same underlying `TicketStore` operations used by the CLI
-//! `ticket batch` command.
 
 use axum::{
     extract::{
@@ -40,17 +35,8 @@ use crate::serve::{
     error::task_join_err,
 };
 
-// ── Request / response types ──────────────────────────────────────────────────
 
 /// A single mutation command within a batch request body.
-///
-/// Discriminated by the `"op"` field:
-/// - `"create"` — create a new ticket
-/// - `"update"` — patch fields or state of an existing ticket
-/// - `"close"`  — fast-forward a ticket to a terminal state (default `"done"`)
-/// - `"cancel"` — transition a ticket to `"cancelled"`
-/// - `"link"`   — add a directed edge between two tickets
-/// - `"unlink"` — remove a directed edge between two tickets
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum BatchCommand {
@@ -107,19 +93,14 @@ pub struct BatchResponse {
     pub results: Vec<Value>,
 }
 
-// ── Undo infrastructure ───────────────────────────────────────────────────────
 
-/// Rollback operation pushed onto the undo stack after each successful command.
 enum BatchUndoOp {
-    /// Delete a newly-created ticket.
     Delete { id: Uuid },
-    /// Restore a ticket's fields and state to a saved snapshot.
     RestoreUpdate {
         id: Uuid,
         saved_extra: BTreeMap<String, Value>,
         saved_state: Option<String>,
     },
-    /// Remove an edge that was added by a `link` command.
     RemoveEdge { from: Uuid, to: Uuid, kind: String },
 }
 
@@ -157,12 +138,8 @@ fn apply_batch_undo(
     }
 }
 
-// ── Dispatch ──────────────────────────────────────────────────────────────────
 
 /// Snapshot the full extra-field map and state of a ticket before mutation.
-///
-/// Returns `None` if the ticket does not exist or any read fails (best-effort;
-/// rollback may be incomplete if this pre-capture fails).
 fn snapshot_ticket(
     store: &TicketStore,
     id: &Uuid,
@@ -173,9 +150,6 @@ fn snapshot_ticket(
 }
 
 /// Dispatch one `BatchCommand` against the store.
-///
-/// Returns `(result_json, optional_undo_op)`.  The caller is responsible for
-/// pushing the undo op onto the undo stack and collecting results.
 fn dispatch_command(
     cmd: BatchCommand,
     store: &TicketStore,
@@ -348,20 +322,8 @@ fn dispatch_command(
     }
 }
 
-// ── Handler ───────────────────────────────────────────────────────────────────
 
 /// `POST /api/batch`
-///
-/// Execute a batch of mutation commands transactionally against a single
-/// workspace.  On any failure, all prior writes are rolled back before
-/// returning a `422 Unprocessable Entity` response that includes:
-/// - `"failed_at"` — zero-based index of the failing command
-/// - `"error"` — human-readable error description
-/// - `"rolled_back"` — `true` if all rollbacks succeeded
-/// - `"rollback_errors"` — list of rollback failure messages (normally empty)
-/// - `"results"` — outcomes of commands that ran before the failure
-///
-/// On success, returns `200 OK` with `{"status": "ok", "results": [...]}`.
 pub async fn batch_tickets(
     State(state): State<AppState>,
     Extension(rid): Extension<RequestIdExt>,

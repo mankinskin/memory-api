@@ -1,5 +1,4 @@
 use std::fmt::Write as FmtWrite;
-
 use chrono::{
     DateTime,
     Datelike,
@@ -11,7 +10,6 @@ use serde_json::{
     json,
 };
 use uuid::Uuid;
-
 use ticket_api::storage::board::{
     BoardConfig,
     BoardEntry,
@@ -19,17 +17,14 @@ use ticket_api::storage::board::{
     BoardHistorySnapshot,
     BoardSnapshot,
 };
-
 pub(super) struct BoardDisplay {
     pub current_work: Vec<BoardDisplayEntry>,
     pub recommended_next: Vec<BoardRecommendation>,
     pub actions: Vec<String>,
 }
-
 pub(super) struct BoardHistoryDisplay {
     pub entries: Vec<BoardDisplayEntry>,
 }
-
 pub(super) struct BoardDisplayEntry {
     pub entry_id: Uuid,
     pub ticket_id: Uuid,
@@ -43,7 +38,6 @@ pub(super) struct BoardDisplayEntry {
     pub handoff_reason: Option<String>,
     pub completed_at: Option<DateTime<Utc>>,
 }
-
 pub(crate) struct BoardRecommendation {
     pub rank: usize,
     pub ticket_id: String,
@@ -56,13 +50,11 @@ pub(crate) struct BoardRecommendation {
     pub became_actionable_at: Option<String>,
     pub created_at: String,
 }
-
 pub(super) fn entry_to_json(
     entry: &BoardEntry,
     config: &BoardConfig,
 ) -> Value {
     let age_secs = heartbeat_age_secs(entry, Utc::now());
-
     json!({
         "entry_id": entry.entry_id,
         "ticket_id": entry.ticket_id,
@@ -77,7 +69,6 @@ pub(super) fn entry_to_json(
         "handoff_reason": entry.handoff_reason,
     })
 }
-
 pub(super) fn config_to_json(config: &BoardConfig) -> Value {
     json!({
         "max_wip": config.max_wip,
@@ -85,7 +76,6 @@ pub(super) fn config_to_json(config: &BoardConfig) -> Value {
         "completed_audit_window_secs": config.completed_audit_window_secs,
     })
 }
-
 pub(super) fn board_display_entry_to_json(entry: &BoardDisplayEntry) -> Value {
     json!({
         "entry_id": entry.entry_id,
@@ -103,7 +93,6 @@ pub(super) fn board_display_entry_to_json(entry: &BoardDisplayEntry) -> Value {
         "completed_at": entry.completed_at,
     })
 }
-
 pub(super) fn board_recommendation_to_json(
     recommendation: &BoardRecommendation
 ) -> Value {
@@ -121,35 +110,28 @@ pub(super) fn board_recommendation_to_json(
         "created_at": recommendation.created_at,
     })
 }
-
 pub(super) fn render_board_human(
     snap: &BoardSnapshot,
     display: &BoardDisplay,
 ) -> String {
     let mut out = String::new();
-
     write_summary(&mut out, snap);
     write_actions(&mut out, &display.actions);
     write_current_work(&mut out, &display.current_work);
     write_next_up(&mut out, &display.recommended_next);
     write_warnings(&mut out, &snap.warnings);
     write_file_ownership(&mut out, &snap.file_ownership);
-
     out
 }
-
 pub(super) fn render_board_history_human(
     snap: &BoardHistorySnapshot,
     display: &BoardHistoryDisplay,
 ) -> String {
     let mut out = String::new();
-
     write_history_summary(&mut out, snap);
     write_history_entries(&mut out, &display.entries);
-
     out
 }
-
 fn write_summary(
     out: &mut String,
     snap: &BoardSnapshot,
@@ -165,11 +147,9 @@ fn write_summary(
         warning_suffix(snap.conflict_count),
     );
 }
-
 fn warning_suffix(count: u32) -> &'static str {
     if count > 0 { " ⚠" } else { "" }
 }
-
 fn write_actions(
     out: &mut String,
     actions: &[String],
@@ -177,33 +157,28 @@ fn write_actions(
     if actions.is_empty() {
         return;
     }
-
     let _ = writeln!(out);
     let _ = writeln!(out, "Immediate Actions:");
     for (index, action) in actions.iter().enumerate() {
         let _ = writeln!(out, "  {}. {action}", index + 1);
     }
 }
-
 fn write_current_work(
     out: &mut String,
     current_work: &[BoardDisplayEntry],
 ) {
     let _ = writeln!(out);
     let _ = writeln!(out, "Current Work:");
-
     if current_work.is_empty() {
         let _ = writeln!(out, "  (no active board entries)");
         return;
     }
-
     let _ = writeln!(
         out,
         "  {:<10}  {:<8}  {:<34}  {:<18}  {:<20}  {:>10}",
         "STATUS", "TICKET", "TITLE", "AGENT", "INTENT", "HB AGE"
     );
     let _ = writeln!(out, "  {}", "-".repeat(112));
-
     for entry in current_work {
         let _ = writeln!(
             out,
@@ -217,26 +192,22 @@ fn write_current_work(
         );
     }
 }
-
 pub(crate) fn write_next_up(
     out: &mut String,
     recommended_next: &[BoardRecommendation],
 ) {
     let _ = writeln!(out);
     let _ = writeln!(out, "Next Up:");
-
     if recommended_next.is_empty() {
         let _ = writeln!(out, "  (no unblocked tickets ready right now)");
         return;
     }
-
     for (index, recommendation) in recommended_next.iter().enumerate() {
         if index > 0 {
             let _ = writeln!(out);
         } else {
             let _ = writeln!(out);
         }
-
         let _ = writeln!(
             out,
             "  #{}  {}  {}",
@@ -261,7 +232,6 @@ pub(crate) fn write_next_up(
         let _ = writeln!(out, "  ticket_id: {}", recommendation.ticket_id,);
     }
 }
-
 fn write_history_summary(
     out: &mut String,
     snap: &BoardHistorySnapshot,
@@ -273,7 +243,6 @@ fn write_history_summary(
         snap.completed_count,
         if snap.completed_count == 1 { "" } else { "s" }
     );
-
     if snap.config.completed_audit_window_secs == 0 {
         let _ = writeln!(out, "Window: all recorded completion history");
     } else {
@@ -288,7 +257,6 @@ fn write_history_summary(
             }
         );
     }
-
     if snap.hidden_completed_count > 0 {
         let _ = writeln!(
             out,
@@ -302,14 +270,12 @@ fn write_history_summary(
         );
     }
 }
-
 fn write_history_entries(
     out: &mut String,
     entries: &[BoardDisplayEntry],
 ) {
     let _ = writeln!(out);
     let _ = writeln!(out, "Completed Work:");
-
     if entries.is_empty() {
         let _ = writeln!(
             out,
@@ -317,14 +283,12 @@ fn write_history_entries(
         );
         return;
     }
-
     let _ = writeln!(
         out,
         "  {:<8}  {:<34}  {:<18}  {:<20}  {:<36}",
         "TICKET", "TITLE", "AGENT", "COMPLETED", "HANDOFF"
     );
     let _ = writeln!(out, "  {}", "-".repeat(112));
-
     for entry in entries {
         let _ = writeln!(
             out,
@@ -343,7 +307,6 @@ fn write_history_entries(
         );
     }
 }
-
 fn write_warnings(
     out: &mut String,
     warnings: &[String],
@@ -351,13 +314,11 @@ fn write_warnings(
     if warnings.is_empty() {
         return;
     }
-
     let _ = writeln!(out);
     for warning in warnings {
         let _ = writeln!(out, "  ⚠  {warning}");
     }
 }
-
 fn write_file_ownership(
     out: &mut String,
     file_ownership: &std::collections::BTreeMap<String, Vec<String>>,
@@ -365,21 +326,18 @@ fn write_file_ownership(
     if file_ownership.is_empty() {
         return;
     }
-
     let _ = writeln!(out);
     let _ = writeln!(out, "File Ownership:");
     for (path, agents) in file_ownership {
         let _ = writeln!(out, "  {path}  →  {}", agents.join(", "));
     }
 }
-
 pub(super) fn heartbeat_age_secs(
     entry: &BoardEntry,
     now: DateTime<Utc>,
 ) -> u64 {
     (now - entry.last_heartbeat).num_seconds().max(0) as u64
 }
-
 pub(super) fn entry_status(
     entry: &BoardEntry,
     config: &BoardConfig,
@@ -390,7 +348,6 @@ pub(super) fn entry_status(
     {
         return "stale";
     }
-
     match &entry.status {
         BoardEntryStatus::Active => "active",
         BoardEntryStatus::Stale => "stale",
@@ -398,23 +355,18 @@ pub(super) fn entry_status(
         BoardEntryStatus::Completed => "completed",
     }
 }
-
 fn short_ticket_id(ticket_id: &Uuid) -> String {
     ticket_id.simple().to_string().chars().take(8).collect()
 }
-
 fn short_ticket_value(ticket_id: &str) -> String {
     ticket_id.chars().take(8).collect()
 }
-
 fn format_pretty_created_at(created_at: &str) -> String {
     let Ok(timestamp) = DateTime::parse_from_rfc3339(created_at) else {
         return created_at.to_string();
     };
-
     let timestamp = timestamp.with_timezone(&Utc);
     let month = timestamp.format("%b");
-
     format!(
         "{month} {} {} {:02}:{:02} UTC",
         timestamp.day(),
@@ -423,7 +375,6 @@ fn format_pretty_created_at(created_at: &str) -> String {
         timestamp.minute()
     )
 }
-
 fn truncate_field(
     value: &str,
     width: usize,
@@ -434,7 +385,6 @@ fn truncate_field(
         value.to_string()
     }
 }
-
 fn format_completed_at(completed_at: Option<DateTime<Utc>>) -> String {
     completed_at
         .map(|timestamp| timestamp.format("%Y-%m-%d %H:%M").to_string())
