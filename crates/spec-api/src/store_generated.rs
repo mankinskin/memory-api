@@ -269,3 +269,128 @@ pub(super) fn prepare_generated_document(
     prepare_generated_output(&rendered, existing)
 }
 
+impl SpecStore {
+    pub fn update_generated_body(
+        &self,
+        id_or_slug: &str,
+        snippets: &[GeneratedMarkdownSnippet<'_>],
+    ) -> Result<(), SpecError> {
+        let uuid = self.resolve_id(id_or_slug)?;
+        let indexed = self
+            .inner
+            .get_indexed(&uuid)?
+            .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
+        let existing = read_body(&indexed.path);
+        let prepared = prepare_generated_document(snippets, Some(&existing));
+
+        write_body(&indexed.path, &prepared)?;
+        Ok(())
+    }
+
+    pub fn generated_artifact_matches(
+        &self,
+        artifact_path: &Path,
+        snippets: &[GeneratedMarkdownSnippet<'_>],
+    ) -> Result<bool, SpecError> {
+        let location = parse_generated_artifact_location(artifact_path)?;
+
+        match location {
+            GeneratedSpecArtifactLocation::Body { spec_id } => {
+                let indexed = self
+                    .inner
+                    .get_indexed(&spec_id)?
+                    .ok_or_else(|| SpecError::NotFound(spec_id.to_string()))?;
+                let existing = read_body(&indexed.path);
+                let expected =
+                    prepare_generated_document(snippets, Some(&existing));
+                Ok(existing == expected)
+            },
+            GeneratedSpecArtifactLocation::Section { spec_id, section } => {
+                let indexed = self
+                    .inner
+                    .get_indexed(&spec_id)?
+                    .ok_or_else(|| SpecError::NotFound(spec_id.to_string()))?;
+                let existing = read_section(&indexed.path, &section);
+                let expected =
+                    prepare_generated_document(snippets, Some(&existing));
+                Ok(existing == expected)
+            },
+        }
+    }
+
+    pub fn sync_generated_artifact(
+        &mut self,
+        artifact_path: &Path,
+        snippets: &[GeneratedMarkdownSnippet<'_>],
+    ) -> Result<GeneratedSpecArtifactLocation, SpecError> {
+        let location = parse_generated_artifact_location(artifact_path)?;
+
+        match &location {
+            GeneratedSpecArtifactLocation::Body { spec_id } => {
+                self.update_generated_body(&spec_id.to_string(), snippets)?;
+                self.update(&spec_id.to_string(), BTreeMap::new(), None)?;
+            },
+            GeneratedSpecArtifactLocation::Section { spec_id, section } => {
+                self.update_generated_section(
+                    &spec_id.to_string(),
+                    section,
+                    snippets,
+                )?;
+                self.update(&spec_id.to_string(), BTreeMap::new(), None)?;
+            },
+        }
+
+        Ok(location)
+    }
+
+    pub fn get_generated_artifacts(
+        &self,
+        id_or_slug: &str,
+    ) -> Result<Option<GeneratedSpecArtifacts>, SpecError> {
+        let uuid = self.resolve_id(id_or_slug)?;
+        let indexed = self
+            .inner
+            .get_indexed(&uuid)?
+            .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
+        let path = indexed.path.join(GENERATED_SPEC_ARTIFACTS_FILE);
+        if !path.exists() {
+            return Ok(None);
+        }
+
+        let content = fs::read_to_string(&path)
+            .map_err(|error| SpecError::Storage(StorageError::Io(error)))?;
+        let parsed: GeneratedSpecArtifacts = toml::from_str(&content)
+            .map_err(|error| SpecError::Serialization(error.to_string()))?;
+        Ok(Some(parsed.normalized()?))
+    }
+
+    pub fn update_generated_artifacts(
+        &self,
+        id_or_slug: &str,
+        artifacts: &GeneratedSpecArtifacts,
+    ) -> Result<(), SpecError> {
+        let uuid = self.resolve_id(id_or_slug)?;
+        let indexed = self
+            .inner
+            .get_indexed(&uuid)?
+            .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
+        let path = indexed.path.join(GENERATED_SPEC_ARTIFACTS_FILE);
+        let normalized = artifacts.normalized()?;
+
+        if normalized.is_empty() {
+            if path.exists() {
+                fs::remove_file(&path).map_err(|error| {
+                    SpecError::Storage(StorageError::Io(error))
+                })?;
+            }
+            return Ok(());
+        }
+
+        let content = toml::to_string_pretty(&normalized)
+            .map_err(|error| SpecError::Serialization(error.to_string()))?;
+        fs::write(&path, content)
+            .map_err(|error| SpecError::Storage(StorageError::Io(error)))?;
+        Ok(())
+    }
+}
+
