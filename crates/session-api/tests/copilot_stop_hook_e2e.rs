@@ -60,8 +60,9 @@ fn e2e_hook_binary_persists_fixture_transcript() {
     let store_root = store_dir.path().join("memory-api-store");
     fs::create_dir_all(&store_root).expect("create temp store root");
 
-    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
-        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-stop-hook")
+        .or_else(|_| std::env::var("CARGO_BIN_EXE_copilot-capture-hook"))
+        .expect("cargo should expose stop or capture hook binary path for integration tests");
 
     let output = Command::new(hook_bin)
         .arg("--transcript-path")
@@ -73,11 +74,11 @@ fn e2e_hook_binary_persists_fixture_transcript() {
         .arg("--trigger")
         .arg("UserPromptSubmit")
         .output()
-        .expect("run copilot-capture-hook");
+        .expect("run copilot hook binary");
 
     assert!(
         output.status.success(),
-        "copilot-capture-hook failed: stdout={} stderr={}",
+        "copilot hook binary failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -94,7 +95,7 @@ fn e2e_hook_binary_persists_fixture_transcript() {
 }
 
 #[test]
-fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
+fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
     let repo_root = repo_root();
     let script_source = repo_root.join("tools/agent-hooks/session-capture-stop.sh");
     assert!(
@@ -183,7 +184,7 @@ fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
         output.status.success(),
         "session-capture-stop.sh failed: stdout={stdout} stderr={stderr}"
     );
-    assert_eq!(stdout.trim(), "{}", "capture hook should emit empty JSON sentinel");
+    assert_eq!(stdout.trim(), "{}", "stop hook should emit empty JSON sentinel");
     assert!(
         !stderr.contains("skip: transcript not found"),
         "hook skipped transcript unexpectedly: stdout={stdout} stderr={stderr}"
@@ -215,7 +216,7 @@ fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
     let config = SessionStoreConfig::new(&fixture_store_root, &workspace_slug);
     let record = config
         .read_session(&session_id)
-        .expect("capture hook should persist fixture transcript into the temp store");
+        .expect("stop hook should persist fixture transcript into the temp store");
 
     assert_eq!(record.session_id, session_id);
     assert_eq!(record.metadata.workspace_slug, workspace_slug);

@@ -12,7 +12,7 @@ pub(crate) struct SessionDomain;
 impl SessionDomain {
     fn config(ctx: &MatrixCtx) -> session_api::SessionStoreConfig {
         session_api::SessionStoreConfig::new(
-            ctx.store_root(".session"),
+            ctx.store_root(".session-matrix"),
             "default",
         )
     }
@@ -43,8 +43,11 @@ impl SessionDomain {
                     content: (*content).to_string(),
                     tool_name: None,
                     captured_at: None,
+                    event_meta: None,
                 })
                 .collect(),
+            events: vec![],
+            runtime: None,
         }
     }
 }
@@ -73,6 +76,14 @@ impl DomainOps for SessionDomain {
         ctx: &MatrixCtx,
     ) -> CellResult {
         let config = Self::config(ctx);
+        if config.read_session("fixture-session").is_err() {
+            config
+                .capture_copilot_hook(Self::payload(
+                    "fixture-session",
+                    "seeded turn",
+                ))
+                .map_err(|err| err.to_string())?;
+        }
         let record = config
             .read_session("fixture-session")
             .map_err(|err| err.to_string())?;
@@ -88,9 +99,17 @@ impl DomainOps for SessionDomain {
         ctx: &MatrixCtx,
     ) -> CellResult {
         let config = Self::config(ctx);
+        if config.read_session("fixture-session").is_err() {
+            config
+                .capture_copilot_hook(Self::payload(
+                    "fixture-session",
+                    "seeded turn",
+                ))
+                .map_err(|err| err.to_string())?;
+        }
         let records = config
             .query_sessions(&session_api::SessionQuery {
-                text: Some("seeded turn".to_string()),
+                session_id_prefix: Some("fixture-session".to_string()),
                 ..Default::default()
             })
             .map_err(|err| err.to_string())?;
