@@ -91,7 +91,6 @@ fn build_search_content(
 
 #[path = "store_generated.rs"]
 mod store_generated;
-use store_generated::*;
 pub use store_generated::{
     GeneratedSpecArtifactLocation,
     GeneratedSpecArtifactTarget,
