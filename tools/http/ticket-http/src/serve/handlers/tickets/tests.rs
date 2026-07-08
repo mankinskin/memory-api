@@ -15,6 +15,10 @@ use crate::serve::{
 mod lifecycle;
 #[path = "tests/listing.rs"]
 mod listing;
+#[path = "tests/listing_workspace.rs"]
+mod listing_workspace;
+#[path = "tests/listing_followups.rs"]
+mod listing_followups;
 #[path = "tests/mutations.rs"]
 mod mutations;
 
