@@ -6,7 +6,10 @@ use std::{
 use super::schema::TicketTypeSchema;
 use crate::{
     error::StorageError,
-    model::default_schema::tracker_improvement_schema,
+    model::default_schema::{
+        bug_schema,
+        tracker_improvement_schema,
+    },
 };
 
 /// Registry of ticket type schemas.
@@ -22,11 +25,13 @@ pub struct SchemaRegistry {
 impl SchemaRegistry {
     /// Create a registry pre-loaded with all built-in schemas.
     ///
-    /// Currently registers: `tracker-improvement`.
+    /// Currently registers: `tracker-improvement`, `bug`.
     pub fn with_builtins() -> Self {
         let mut reg = Self::default();
         let s = tracker_improvement_schema();
         reg.schemas.insert(s.type_id.clone(), s);
+        let bug = bug_schema();
+        reg.schemas.insert(bug.type_id.clone(), bug);
         reg
     }
 

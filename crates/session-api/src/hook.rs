@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs::File,
     io::{
         BufRead,
@@ -218,6 +219,13 @@ struct TranscriptEventEnvelope {
     raw_event_json: Option<Value>,
 }
 
+#[derive(Debug, Clone)]
+struct ToolExecutionContext {
+    started_at: Option<DateTime<Utc>>,
+    tool_name: Option<String>,
+    tool_arguments_json: Option<Value>,
+}
+
 impl TranscriptEventEnvelope {
     fn event_meta(&self) -> Option<SessionTurnEventMeta> {
         let meta = SessionTurnEventMeta {
@@ -321,6 +329,8 @@ fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
     };
     let mut messages = vec![];
     let mut events = vec![];
+    let mut tool_execution_contexts: HashMap<String, ToolExecutionContext> =
+        HashMap::new();
 
     for line in reader.lines() {
         let line = line.map_err(|source| SessionError::Io {
@@ -331,8 +341,28 @@ fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
             continue;
         }
 
-        let event = deserialize_transcript_event(&line, transcript_path)?;
-        events.push(event.captured_event());
+        let mut event = deserialize_transcript_event(&line, transcript_path)?;
+        retag_tool_only_assistant_message(&mut event);
+
+        if let Some(context) = capture_tool_execution_context(&event) {
+            if let Some(tool_call_id) = event.tool_call_id.clone() {
+                tool_execution_contexts.insert(tool_call_id, context);
+            }
+        }
+
+        let tool_call_key = event.tool_call_id.clone().unwrap_or_default();
+        let context = tool_execution_contexts.get(tool_call_key.as_str());
+        hydrate_tool_execution_complete(&mut event, context);
+
+        let captured_event = event.captured_event();
+        events.push(captured_event);
+
+        if let Some(result_event) = build_tool_execution_result_event(
+            &event,
+            context,
+        ) {
+            events.push(result_event);
+        }
 
         match event.event_type.as_deref() {
             Some("session.start")
@@ -471,6 +501,309 @@ fn handle_message_event(
         event_meta: event.event_meta(),
     });
     Ok(())
+}
+
+fn retag_tool_only_assistant_message(event: &mut TranscriptEventEnvelope) {
+    let is_assistant_message = matches!(
+        event.event_type.as_deref(),
+        Some("assistant.message") | Some("assistant_message")
+    );
+    if !is_assistant_message {
+        return;
+    }
+
+    let has_content = event
+        .content_hint
+        .as_ref()
+        .map(|content| !content.trim().is_empty())
+        .unwrap_or(false);
+    if has_content {
+        return;
+    }
+
+    let has_tool_requests = event
+        .tool_requests_json
+        .as_ref()
+        .and_then(serde_json::Value::as_array)
+        .map(|items| !items.is_empty())
+        .unwrap_or(false);
+    if has_tool_requests {
+        event.event_type = Some("assistant.tool_plan".to_string());
+    }
+}
+
+fn capture_tool_execution_context(
+    event: &TranscriptEventEnvelope
+) -> Option<ToolExecutionContext> {
+    let is_start = matches!(
+        event.event_type.as_deref(),
+        Some("tool.execution_start") | Some("tool_execution_start")
+    );
+    if !is_start {
+        return None;
+    }
+    event.tool_call_id.as_ref()?;
+
+    Some(ToolExecutionContext {
+        started_at: event.timestamp,
+        tool_name: event.tool_name.clone(),
+        tool_arguments_json: event.tool_arguments_json.clone(),
+    })
+}
+
+fn hydrate_tool_execution_complete(
+    event: &mut TranscriptEventEnvelope,
+    context: Option<&ToolExecutionContext>,
+) {
+    let is_complete = matches!(
+        event.event_type.as_deref(),
+        Some("tool.execution_complete") | Some("tool_execution_complete")
+    );
+    if !is_complete {
+        return;
+    }
+
+    if event.tool_name.is_none() {
+        event.tool_name = context.and_then(|ctx| ctx.tool_name.clone());
+    }
+    if event.tool_arguments_json.is_none() {
+        event.tool_arguments_json =
+            context.and_then(|ctx| ctx.tool_arguments_json.clone());
+    }
+}
+
+fn build_tool_execution_result_event(
+    event: &TranscriptEventEnvelope,
+    context: Option<&ToolExecutionContext>,
+) -> Option<CopilotHookEvent> {
+    let is_complete = matches!(
+        event.event_type.as_deref(),
+        Some("tool.execution_complete") | Some("tool_execution_complete")
+    );
+    if !is_complete {
+        return None;
+    }
+
+    let tool_call_id = event.tool_call_id.clone()?;
+    let tool_name = event
+        .tool_name
+        .clone()
+        .or_else(|| context.and_then(|ctx| ctx.tool_name.clone()));
+    let tool_arguments = event
+        .tool_arguments_json
+        .clone()
+        .or_else(|| context.and_then(|ctx| ctx.tool_arguments_json.clone()));
+    let duration_ms = event
+        .data
+        .get("durationMs")
+        .or_else(|| event.data.get("duration_ms"))
+        .and_then(serde_json::Value::as_i64)
+        .or_else(|| {
+            context.and_then(|ctx| {
+                let started_at = ctx.started_at?;
+                let finished_at = event.timestamp?;
+                Some((finished_at - started_at).num_milliseconds())
+            })
+        });
+    let success = event.tool_success;
+    let result_code = match success {
+        Some(true) => "ok",
+        Some(false) => "error",
+        None => "unknown",
+    };
+
+    let error_type = event
+        .data
+        .get("error")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|error| {
+            error
+                .get("type")
+                .and_then(serde_json::Value::as_str)
+                .or_else(|| {
+                    error
+                        .get("name")
+                        .and_then(serde_json::Value::as_str)
+                })
+        })
+        .map(ToString::to_string)
+        .or_else(|| {
+            event
+                .data
+                .get("errorType")
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string)
+        });
+
+    let summary = extract_tool_result_summary(&event.data);
+    let spill_pointer = find_spill_pointer(&event.data, summary.as_deref());
+    let has_spill = spill_pointer.is_some();
+
+    let sync_terminal_ambiguous = is_sync_terminal_completion_ambiguous(
+        tool_name.as_deref(),
+        tool_arguments.as_ref(),
+        success,
+        summary.as_deref(),
+        spill_pointer.as_deref(),
+        &event.data,
+    );
+
+    let mut normalized = serde_json::Map::new();
+    normalized.insert(
+        "toolCallId".to_string(),
+        serde_json::Value::String(tool_call_id.clone()),
+    );
+    normalized.insert(
+        "result_code".to_string(),
+        serde_json::Value::String(result_code.to_string()),
+    );
+    normalized.insert("has_spill".to_string(), serde_json::Value::Bool(has_spill));
+    if let Some(name) = tool_name.clone() {
+        normalized.insert("tool_name".to_string(), serde_json::Value::String(name));
+    }
+    if let Some(arguments) = tool_arguments.clone() {
+        normalized.insert("arguments".to_string(), arguments);
+    }
+    if let Some(duration_ms) = duration_ms {
+        normalized.insert(
+            "duration_ms".to_string(),
+            serde_json::Value::Number(duration_ms.into()),
+        );
+    }
+    if let Some(summary) = summary.clone() {
+        normalized.insert("summary".to_string(), serde_json::Value::String(summary));
+    }
+    if let Some(pointer) = spill_pointer.clone() {
+        normalized.insert(
+            "spill_pointer".to_string(),
+            serde_json::Value::String(pointer),
+        );
+    }
+    if let Some(error_type) = error_type {
+        normalized.insert(
+            "error_type".to_string(),
+            serde_json::Value::String(error_type),
+        );
+    }
+    if sync_terminal_ambiguous {
+        normalized.insert(
+            "blocker".to_string(),
+            serde_json::Value::String(
+                "sync-terminal-state-ambiguous".to_string(),
+            ),
+        );
+        normalized.insert(
+            "lifecycle_state".to_string(),
+            serde_json::Value::String("background-ambiguous".to_string()),
+        );
+        normalized.insert(
+            "lifecycle_reason".to_string(),
+            serde_json::Value::String(
+                "missing-deterministic-sync-completion-metadata".to_string(),
+            ),
+        );
+    }
+
+    Some(CopilotHookEvent {
+        event_id: None,
+        parent_event_id: event.event_id.clone(),
+        event_type: Some("tool.execution_result".to_string()),
+        captured_at: event.timestamp,
+        turn_id: event.turn_id.clone(),
+        message_id: event.message_id.clone(),
+        tool_call_id: Some(tool_call_id),
+        tool_name,
+        tool_success: success,
+        reasoning_text: None,
+        tool_requests_json: None,
+        tool_arguments_json: tool_arguments,
+        data_json: Some(serde_json::Value::Object(normalized)),
+        raw_event_json: None,
+    })
+}
+
+fn extract_tool_result_summary(data: &serde_json::Value) -> Option<String> {
+    let candidates = ["summary", "output", "stdout", "stderr", "message", "content"];
+    let value = candidates
+        .iter()
+        .filter_map(|key| data.get(*key))
+        .find_map(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())?;
+
+    Some(value.chars().take(240).collect())
+}
+
+fn find_spill_pointer(
+    data: &serde_json::Value,
+    summary: Option<&str>,
+) -> Option<String> {
+    if let Some(pointer) = data
+        .get("spillPointer")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+    {
+        return Some(pointer.to_string());
+    }
+
+    if let Some(pointer) = data
+        .get("outputPath")
+        .or_else(|| data.get("path"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+    {
+        return Some(pointer.to_string());
+    }
+
+    if let Some(text) = summary {
+        if let Some((_, right)) = text.split_once("content at:") {
+            let pointer = right.trim();
+            if !pointer.is_empty() {
+                return Some(pointer.to_string());
+            }
+        }
+        if let Some((_, right)) = text.split_once("saved to:") {
+            let pointer = right.trim();
+            if !pointer.is_empty() {
+                return Some(pointer.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+fn is_sync_terminal_completion_ambiguous(
+    tool_name: Option<&str>,
+    tool_arguments: Option<&serde_json::Value>,
+    success: Option<bool>,
+    summary: Option<&str>,
+    spill_pointer: Option<&str>,
+    data: &serde_json::Value,
+) -> bool {
+    if tool_name != Some("run_in_terminal") || success != Some(true) {
+        return false;
+    }
+
+    let mode_is_sync = tool_arguments
+        .and_then(|arguments| arguments.get("mode"))
+        .and_then(serde_json::Value::as_str)
+        .map(|mode| mode.eq_ignore_ascii_case("sync"))
+        .unwrap_or(false);
+    if !mode_is_sync {
+        return false;
+    }
+
+    let has_exit_metadata = data.get("exitCode").is_some()
+        || data.get("exit_code").is_some()
+        || data.get("status").is_some();
+    if has_exit_metadata {
+        return false;
+    }
+
+    summary.is_none() && spill_pointer.is_none()
 }
 
 fn deserialize_transcript_event(

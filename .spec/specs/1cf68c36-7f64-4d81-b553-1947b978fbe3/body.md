@@ -1,4 +1,3 @@
-<!-- aligned-structure:v1 -->
 <!-- spec-api:file generated=true -->
 
 <!-- spec-api:entry id=16786c84-4e99-4041-8292-a962d907c541 slug=spec-api/generated-documents/summary/l1 -->

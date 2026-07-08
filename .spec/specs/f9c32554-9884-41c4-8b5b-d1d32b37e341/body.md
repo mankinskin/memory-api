@@ -1,41 +1,14 @@
-<!-- aligned-structure:v1 -->
+<!-- spec-api:file generated=true -->
 
-# Summary
-
-Capture the recurring design principles that define how `memory-api` store, CLI, MCP, and HTTP layers are expected to behave.
-
-## Behavior Story
-
-`memory-api` keeps one canonical recurring-principles spec so downstream stores and tools inherit shared constraints such as workspace resolution, error envelopes, id resolution, history/index behavior, and schema-gated state progression from a stable contract surface.
-
-## Provided Surface Contracts
-
-- The `memory-api` recurring-principles spec is the canonical authority for shared store and transport behavior across `memory-api` subsystems.
-- Each principle is maintained as its own section so generated guidance can reference it independently.
-- The current principles cover workspace identifiers, typed error envelopes, JSON machine output, API ownership, shared id resolution, blocking-edge semantics, materialized indexes, nested workspace resolution, and one-way required states.
-
-## Required Validation
-
-- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
-
-## Related Implementation Tickets
-
-- [f147eb0e Migrate recurring spec principles to canonical rule entries via spec sync-generated](.ticket/tickets/f147eb0e-c758-459b-a956-a1162c3e1af6/ticket.toml)
-- [a5fe4c58 Adopt rule targets for generated spec artifacts](memory-api/.ticket/tickets/a5fe4c58-f59c-4d97-8ee6-3447724b5fac/ticket.toml)
-
-## Background Knowledge References
-
-- `spec-api/generated-documents` (`1cf68c36-7f64-4d81-b553-1947b978fbe3` in memory-viewers/memory-api)
-- `context-engine/recurring-principles` (`954d9807-f357-41e5-9fd4-b1da39e0933d` at the context-engine root)
-
-## Legacy Content (Preserved)
-
+<!-- spec-api:entry id=8ec75a50-bace-4f90-bae8-e6d16c8bc461 slug=memory-api/recurring-principles/memory-api-recurring-principles/l1 -->
 # memory-api recurring principles
 
 This spec captures the cross-cutting design principles that recur across `memory-api` specs (`rule-api`, `spec-api`, `ticket-api`, `doc-api`, `audit-api`, `mem-api`). They are the canonical authority for how store, CLI, MCP, and HTTP layers in `memory-viewers/memory-api` are expected to behave.
 
+<!-- spec-api:entry id=8a92308a-a962-4d26-be51-f3d076865791 slug=memory-api/recurring-principles/memory-api-recurring-principles/l5 -->
 Each principle is its own section so a `rule scan` materialises one canonical entry per principle and downstream agent guidance can reference them individually.
 
+<!-- spec-api:entry id=fd8cf21d-0c9e-4036-a7d0-347c42b66642 slug=memory-api/recurring-principles/memory-api-recurring-principles/sections/l7 -->
 ## Sections
 
 - `workspace-identifiers` — `--workspace-root` accepts only concrete checkout paths; `default`, `..`, and synthetic aliases are rejected.
@@ -48,11 +21,13 @@ Each principle is its own section so a `rule scan` materialises one canonical en
 - `nested-workspace-resolution` — The workspace resolver normalises any path to a single owning root; parents declare child stores via `imports:`.
 - `required-states-one-way` — Tickets and specs use a `required_states` schema-gated, one-way state machine.
 
+<!-- spec-api:entry id=74d940e6-88b0-4c20-be70-72cdd9db2b89 slug=memory-api/recurring-principles/memory-api-recurring-principles/related-tickets/l19 -->
 ## Related tickets
 
 - [f147eb0e Migrate recurring spec principles to canonical rule entries via spec sync-generated](.ticket/tickets/f147eb0e-c758-459b-a956-a1162c3e1af6/ticket.toml)
 - [a5fe4c58 Adopt rule targets for generated spec artifacts](memory-api/.ticket/tickets/a5fe4c58-f59c-4d97-8ee6-3447724b5fac/ticket.toml)
 
+<!-- spec-api:entry id=f2d4d117-cee4-4749-b542-43ea435c50f2 slug=memory-api/recurring-principles/memory-api-recurring-principles/related-specs/l24 -->
 ## Related specs
 
 - `spec-api/generated-documents` (`1cf68c36-7f64-4d81-b553-1947b978fbe3` in memory-viewers/memory-api)

@@ -112,7 +112,7 @@ fn transcript_reader_maps_visible_messages_into_payload() {
     assert_eq!(payload.agent_id.as_deref(), Some("copilot-agent"));
     assert_eq!(payload.trigger.as_deref(), Some("stop"));
     assert_eq!(payload.messages.len(), 2);
-    assert_eq!(payload.events.len(), 4);
+    assert_eq!(payload.events.len(), 5);
     assert!(
         payload.events[2]
             .data_json
@@ -127,6 +127,20 @@ fn transcript_reader_maps_visible_messages_into_payload() {
             .and_then(|json| json.get("type"))
             .and_then(serde_json::Value::as_str)
             == Some("tool.execution_complete")
+    );
+    let result_event = payload
+        .events
+        .iter()
+        .find(|event| event.event_type.as_deref() == Some("tool.execution_result"))
+        .expect("expected synthesized tool.execution_result event");
+    assert_eq!(result_event.tool_name.as_deref(), Some("read_file"));
+    assert_eq!(
+        result_event
+            .data_json
+            .as_ref()
+            .and_then(|json| json.get("result_code"))
+            .and_then(serde_json::Value::as_str),
+        Some("ok")
     );
     assert_eq!(payload.messages[0].role, SessionRole::User);
     assert_eq!(payload.messages[0].content, "Hello");
@@ -219,5 +233,72 @@ fn transcript_reader_destringifies_nested_json_payloads() {
             .and_then(|value| value.get("line"))
             .and_then(serde_json::Value::as_i64)
             == Some(42)
+    );
+}
+
+#[test]
+fn transcript_reader_retags_tool_only_assistant_messages() {
+    let transcript = r#"{"id":"evt-start","type":"session.start","timestamp":"2026-06-02T23:06:54.049Z","data":{"sessionId":"session-tool-plan","producer":"copilot-agent"}}
+{"id":"evt-0","type":"user.message","timestamp":"2026-06-02T23:07:00.000Z","data":{"content":"check status"}}
+{"id":"evt-1","type":"assistant.message","timestamp":"2026-06-02T23:07:05.000Z","data":{"messageId":"m-1","content":"","toolRequests":[{"name":"get_terminal_output","arguments":{"id":"term-1"}}],"reasoningText":""}}"#;
+
+    let payload = copilot_payload_from_transcript_reader(
+        std::io::Cursor::new(transcript),
+        "default",
+        Some("stop".to_string()),
+    )
+    .unwrap();
+
+    assert_eq!(payload.messages.len(), 1);
+    assert!(payload.events.iter().any(|event| {
+        event.event_type.as_deref() == Some("assistant.tool_plan")
+    }));
+    assert!(!payload.events.iter().any(|event| {
+        event.event_type.as_deref() == Some("assistant.message")
+            && event
+                .data_json
+                .as_ref()
+                .and_then(|json| json.get("content"))
+                .and_then(serde_json::Value::as_str)
+                .map(|content| content.trim().is_empty())
+                .unwrap_or(false)
+    }));
+}
+
+#[test]
+fn transcript_reader_marks_ambiguous_sync_terminal_completion() {
+    let transcript = r#"{"id":"evt-start","type":"session.start","timestamp":"2026-06-02T23:06:54.049Z","data":{"sessionId":"session-terminal","producer":"copilot-agent"}}
+{"id":"evt-1","type":"user.message","timestamp":"2026-06-02T23:07:00.000Z","data":{"content":"Run sync command"}}
+{"id":"evt-2","type":"tool.execution_start","timestamp":"2026-06-02T23:07:01.000Z","data":{"toolCallId":"call-rt-1","toolName":"run_in_terminal","arguments":{"mode":"sync","command":"cargo test"}}}
+{"id":"evt-3","type":"tool.execution_complete","timestamp":"2026-06-02T23:07:03.000Z","data":{"toolCallId":"call-rt-1","success":true}}"#;
+
+    let payload = copilot_payload_from_transcript_reader(
+        std::io::Cursor::new(transcript),
+        "default",
+        Some("stop".to_string()),
+    )
+    .unwrap();
+
+    let result_event = payload
+        .events
+        .iter()
+        .find(|event| event.event_type.as_deref() == Some("tool.execution_result"))
+        .expect("expected tool.execution_result event");
+    assert_eq!(result_event.tool_name.as_deref(), Some("run_in_terminal"));
+    assert_eq!(
+        result_event
+            .data_json
+            .as_ref()
+            .and_then(|json| json.get("blocker"))
+            .and_then(serde_json::Value::as_str),
+        Some("sync-terminal-state-ambiguous")
+    );
+    assert_eq!(
+        result_event
+            .data_json
+            .as_ref()
+            .and_then(|json| json.get("lifecycle_state"))
+            .and_then(serde_json::Value::as_str),
+        Some("background-ambiguous")
     );
 }
