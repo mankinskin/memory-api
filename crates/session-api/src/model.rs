@@ -2,11 +2,11 @@ use chrono::{
     DateTime,
     Utc,
 };
-use std::path::PathBuf;
 use serde::{
     Deserialize,
     Serialize,
 };
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SessionLinks {
@@ -46,6 +46,30 @@ pub enum SessionRole {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionTurnEventMeta {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_event_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_success: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_requests_json: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_arguments_json: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionTurn {
     pub sequence: usize,
     pub role: SessionRole,
@@ -53,6 +77,8 @@ pub struct SessionTurn {
     pub captured_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_meta: Option<SessionTurnEventMeta>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +94,14 @@ pub struct SessionMetadata {
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trigger: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copilot_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vscode_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protocol_version: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<SessionWorktreeAssignment>,
 }
@@ -131,6 +165,7 @@ mod tests {
         SessionRecord,
         SessionRole,
         SessionTurn,
+        SessionTurnEventMeta,
         SessionWorktreeAllocationMode,
         SessionWorktreeAssignment,
         SessionWorktreeStatus,
@@ -157,6 +192,10 @@ mod tests {
                 ticket_id: Some("ticket-1".to_string()),
                 model: Some("GPT-5.4".to_string()),
                 trigger: Some("post-turn".to_string()),
+                producer: Some("copilot-agent".to_string()),
+                copilot_version: Some("0.55.0".to_string()),
+                vscode_version: Some("1.127.0".to_string()),
+                protocol_version: Some(1),
                 worktree: Some(SessionWorktreeAssignment {
                     path: PathBuf::from("worktrees/session-123"),
                     branch: "session/session-123".to_string(),
@@ -172,6 +211,18 @@ mod tests {
                 content: "Summarize the test failures".to_string(),
                 captured_at: sample_time(),
                 tool_name: None,
+                event_meta: Some(SessionTurnEventMeta {
+                    event_id: Some("evt-1".to_string()),
+                    parent_event_id: None,
+                    event_type: Some("user.message".to_string()),
+                    turn_id: Some("turn-1".to_string()),
+                    message_id: Some("msg-1".to_string()),
+                    tool_call_id: None,
+                    tool_success: None,
+                    reasoning_text: None,
+                    tool_requests_json: None,
+                    tool_arguments_json: None,
+                }),
             }],
             links: SessionLinks {
                 ticket_ids: vec!["ticket-1".to_string()],

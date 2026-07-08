@@ -6,18 +6,18 @@ use clap::{
     Subcommand,
 };
 use serde_json::{
-    json,
     Value,
+    json,
 };
 use uuid::Uuid;
 
 use memory_api::workspace;
 use session_api::{
+    DEFAULT_SKELETON_PREVIEW_CHARS,
     SessionError,
     SessionQuery,
     SessionStoreConfig,
     SessionWorktreeCheckInRequest,
-    DEFAULT_SKELETON_PREVIEW_CHARS,
 };
 
 const SESSION_STORE_DIR: &str = ".session";
@@ -204,7 +204,8 @@ pub fn run(cli: SessionCli) -> Result<CliOutput, CliRunError> {
         None,
         SESSION_STORE_DIR,
     );
-    let config = SessionStoreConfig::new(store_root, cli.workspace_slug.clone());
+    let config =
+        SessionStoreConfig::new(store_root, cli.workspace_slug.clone());
 
     let payload = dispatch(&config, cli.command)?;
 
@@ -220,14 +221,15 @@ fn dispatch(
 ) -> Result<Value, CliRunError> {
     match command {
         SessionCommand::CheckIn(args) => {
-            let receipt = config.check_in_worktree(SessionWorktreeCheckInRequest {
-                session_id: args.session_id,
-                owner_id: args.owner_id,
-                ticket_id: args.ticket_id,
-                worktree_path: args.worktree_path,
-                branch: args.branch,
-                predecessor_session_id: args.predecessor_session_id,
-            })?;
+            let receipt =
+                config.check_in_worktree(SessionWorktreeCheckInRequest {
+                    session_id: args.session_id,
+                    owner_id: args.owner_id,
+                    ticket_id: args.ticket_id,
+                    worktree_path: args.worktree_path,
+                    branch: args.branch,
+                    predecessor_session_id: args.predecessor_session_id,
+                })?;
             to_value(&receipt)
         },
         SessionCommand::Lookup(args) => {
@@ -250,11 +252,13 @@ fn dispatch(
         },
         SessionCommand::Move(args) => move_command(config, args),
         SessionCommand::PeekRange(args) => {
-            let range = config.peek_range(&args.session_id, args.start, args.end)?;
+            let range =
+                config.peek_range(&args.session_id, args.start, args.end)?;
             to_value(&range)
         },
         SessionCommand::PeekSkeleton(args) => {
-            let skeleton = config.peek_skeleton(&args.session_id, args.preview_chars)?;
+            let skeleton =
+                config.peek_skeleton(&args.session_id, args.preview_chars)?;
             to_value(&skeleton)
         },
     }
@@ -272,7 +276,9 @@ fn move_command(
 
     if let Some(journal_id) = args.resume.as_deref() {
         let journal_id = journal_id.parse::<Uuid>().map_err(|error| {
-            CliRunError::BadRequest(format!("invalid --resume journal UUID: {error}"))
+            CliRunError::BadRequest(format!(
+                "invalid --resume journal UUID: {error}"
+            ))
         })?;
         let outcome = config.resume_move_with_journal(journal_id)?;
         return to_value(&json!({
@@ -287,7 +293,9 @@ fn move_command(
 
     if let Some(journal_id) = args.rollback.as_deref() {
         let journal_id = journal_id.parse::<Uuid>().map_err(|error| {
-            CliRunError::BadRequest(format!("invalid --rollback journal UUID: {error}"))
+            CliRunError::BadRequest(format!(
+                "invalid --rollback journal UUID: {error}"
+            ))
         })?;
         let outcome = config.rollback_move_with_journal(journal_id)?;
         return to_value(&json!({
@@ -305,25 +313,27 @@ fn move_command(
             "move requires <id> unless --resume/--rollback is used".to_string(),
         )
     })?;
-    let to_workspace_root = args.to_workspace_root.as_deref().ok_or_else(|| {
-        CliRunError::BadRequest(
-            "move requires --to-workspace-root in plan/execute mode".to_string(),
-        )
-    })?;
+    let to_workspace_root =
+        args.to_workspace_root.as_deref().ok_or_else(|| {
+            CliRunError::BadRequest(
+                "move requires --to-workspace-root in plan/execute mode"
+                    .to_string(),
+            )
+        })?;
 
     let session_id = id.parse::<Uuid>().map_err(|error| {
         CliRunError::BadRequest(format!("invalid session UUID: {error}"))
     })?;
-    let target_workspace_root = workspace::canonicalize_workspace_root_strict(
-        to_workspace_root,
-    )
-    .map_err(|error| {
-        CliRunError::BadRequest(format!(
-            "workspace root canonicalization failed for '{}': {error}",
-            to_workspace_root.display()
-        ))
-    })?;
-    let report = config.plan_move_preflight(&session_id, &target_workspace_root)?;
+    let target_workspace_root =
+        workspace::canonicalize_workspace_root_strict(to_workspace_root)
+            .map_err(|error| {
+                CliRunError::BadRequest(format!(
+                    "workspace root canonicalization failed for '{}': {error}",
+                    to_workspace_root.display()
+                ))
+            })?;
+    let report =
+        config.plan_move_preflight(&session_id, &target_workspace_root)?;
 
     if args.dry_run || !report.supported() {
         return to_value(&json!({
@@ -350,7 +360,7 @@ fn move_command(
 }
 
 fn move_plan_json(
-    report: &memory_api::storage::move_kernel::MovePlan,
+    report: &memory_api::storage::move_kernel::MovePlan
 ) -> Result<Value, CliRunError> {
     Ok(json!({
         "supported": report.supported(),
@@ -380,7 +390,7 @@ fn move_plan_json(
 }
 
 fn move_outcome_json(
-    outcome: &memory_api::storage::move_kernel::MoveOutcome,
+    outcome: &memory_api::storage::move_kernel::MoveOutcome
 ) -> Result<Value, CliRunError> {
     Ok(json!({
         "resumed": outcome.resumed,
@@ -424,11 +434,13 @@ fn path_display(path: &std::path::Path) -> Result<String, CliRunError> {
 }
 
 fn to_value<T: serde::Serialize>(value: &T) -> Result<Value, CliRunError> {
-    serde_json::to_value(value).map_err(|err| CliRunError::Serialization(err.to_string()))
+    serde_json::to_value(value)
+        .map_err(|err| CliRunError::Serialization(err.to_string()))
 }
 
 fn render_human(payload: &Value) -> String {
-    serde_json::to_string_pretty(payload).unwrap_or_else(|_| format!("{payload:?}"))
+    serde_json::to_string_pretty(payload)
+        .unwrap_or_else(|_| format!("{payload:?}"))
 }
 
 pub fn error_output(
@@ -438,8 +450,10 @@ pub fn error_output(
     let payload = json!({"status": "error", "message": message});
     match format {
         Some(MachineOutputFormat::Json) => payload.to_string(),
-        Some(MachineOutputFormat::Toon) => toon_format::encode_default(&payload)
-            .unwrap_or_else(|_| format!("status: error\nmessage: {message}")),
+        Some(MachineOutputFormat::Toon) =>
+            toon_format::encode_default(&payload).unwrap_or_else(|_| {
+                format!("status: error\nmessage: {message}")
+            }),
         None => message.to_string(),
     }
 }
@@ -449,12 +463,10 @@ pub fn render_machine_output(
     format: MachineOutputFormat,
 ) -> Result<String, String> {
     match format {
-        MachineOutputFormat::Json => {
-            serde_json::to_string_pretty(payload).map_err(|err| err.to_string())
-        },
-        MachineOutputFormat::Toon => {
-            toon_format::encode_default(payload).map_err(|err| err.to_string())
-        },
+        MachineOutputFormat::Json =>
+            serde_json::to_string_pretty(payload).map_err(|err| err.to_string()),
+        MachineOutputFormat::Toon =>
+            toon_format::encode_default(payload).map_err(|err| err.to_string()),
     }
 }
 
@@ -471,7 +483,8 @@ pub fn machine_output_format(
     }
 }
 
-pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat> {
+pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat>
+{
     machine_output_format(
         std::env::args().any(|arg| arg == "--json"),
         std::env::args().any(|arg| arg == "--toon"),
@@ -490,14 +503,14 @@ where
 mod tests {
     use super::*;
     use chrono::Utc;
-    use std::process::Command;
-    use tempfile::tempdir;
     use session_api::{
         CopilotHookMessage,
         CopilotHookPayload,
         SessionCaptureRequest,
         SessionRole,
     };
+    use std::process::Command;
+    use tempfile::tempdir;
 
     #[test]
     fn parses_check_in_command() {
@@ -530,13 +543,9 @@ mod tests {
 
     #[test]
     fn parses_peek_range_defaults() {
-        let cli = parse_cli_from([
-            "session",
-            "peek-range",
-            "--session-id",
-            "sess-1",
-        ])
-        .expect("parse peek-range");
+        let cli =
+            parse_cli_from(["session", "peek-range", "--session-id", "sess-1"])
+                .expect("parse peek-range");
 
         match cli.command {
             SessionCommand::PeekRange(args) => {
@@ -573,8 +582,14 @@ mod tests {
 
         match cli.command {
             SessionCommand::Move(args) => {
-                assert_eq!(args.id.as_deref(), Some("7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71"));
-                assert_eq!(args.to_workspace_root, Some(PathBuf::from("/repo/target")));
+                assert_eq!(
+                    args.id.as_deref(),
+                    Some("7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71")
+                );
+                assert_eq!(
+                    args.to_workspace_root,
+                    Some(PathBuf::from("/repo/target"))
+                );
             },
             other => panic!("unexpected command: {other:?}"),
         }
@@ -597,10 +612,14 @@ mod tests {
         let source_store_root = repo_root.join(".session");
         std::fs::create_dir_all(&source_store_root).unwrap();
         let target_workspace_root = repo_root.join("target-workspace");
-        std::fs::create_dir_all(target_workspace_root.join(".session")).unwrap();
+        std::fs::create_dir_all(target_workspace_root.join(".session"))
+            .unwrap();
 
         let session_id = "7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71";
-        let config = SessionStoreConfig::new(source_store_root.clone(), "default".to_string());
+        let config = SessionStoreConfig::new(
+            source_store_root.clone(),
+            "default".to_string(),
+        );
         let payload = CopilotHookPayload {
             session_id: session_id.to_string(),
             workspace_slug: "default".to_string(),
@@ -614,7 +633,10 @@ mod tests {
                 content: "move me".to_string(),
                 tool_name: None,
                 captured_at: None,
+                event_meta: None,
             }],
+            events: vec![],
+            runtime: None,
         };
         config
             .persist_capture(SessionCaptureRequest::copilot(payload))

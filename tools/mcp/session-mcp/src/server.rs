@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
 use rmcp::{
+    ErrorData as McpError,
+    ServerHandler,
+    ServiceExt,
     handler::server::{
         tool::ToolRouter,
         wrapper::Parameters,
@@ -14,9 +17,6 @@ use rmcp::{
     tool_handler,
     tool_router,
     transport::stdio,
-    ErrorData as McpError,
-    ServerHandler,
-    ServiceExt,
 };
 use serde::{
     Deserialize,
@@ -26,11 +26,11 @@ use uuid::Uuid;
 
 use memory_api::workspace;
 use session_api::{
+    DEFAULT_SKELETON_PREVIEW_CHARS,
     SessionError,
     SessionQuery,
     SessionStoreConfig,
     SessionWorktreeCheckInRequest,
-    DEFAULT_SKELETON_PREVIEW_CHARS,
 };
 
 // ── Input types ───────────────────────────────────────────────────────────────
@@ -136,25 +136,34 @@ impl SessionServer {
     }
 
     fn config(&self) -> SessionStoreConfig {
-        SessionStoreConfig::new(self.store_root.clone(), self.workspace_slug.clone())
+        SessionStoreConfig::new(
+            self.store_root.clone(),
+            self.workspace_slug.clone(),
+        )
     }
 
     fn config_for_workspace(
         &self,
         workspace_selector: &str,
     ) -> Result<SessionStoreConfig, McpError> {
-        let workspace_selector = workspace::validate_explicit_workspace_selector(
-            Some(workspace_selector),
-        )
-        .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
+        let workspace_selector =
+            workspace::validate_explicit_workspace_selector(Some(
+                workspace_selector,
+            ))
+            .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
         let store_root = workspace::resolve_store_root_from(
             std::path::Path::new(workspace_selector),
             ".session",
         );
-        Ok(SessionStoreConfig::new(store_root, self.workspace_slug.clone()))
+        Ok(SessionStoreConfig::new(
+            store_root,
+            self.workspace_slug.clone(),
+        ))
     }
 
-    fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
+    fn json_result<T: Serialize>(
+        value: &T
+    ) -> Result<CallToolResult, McpError> {
         let text = serde_json::to_string(value).map_err(|err| {
             McpError::internal_error(format!("serialization: {err}"), None)
         })?;
@@ -175,15 +184,15 @@ impl SessionServer {
             | SessionError::SessionOwnershipMismatch { .. }
             | SessionError::WorktreeConflict { .. }
             | SessionError::CrossSessionReuseRequiresAdopt { .. }
-            | SessionError::Move(_) => {
-                McpError::invalid_params(err.to_string(), None)
-            },
-            _ => McpError::internal_error(format!("session error: {err}"), None),
+            | SessionError::Move(_) =>
+                McpError::invalid_params(err.to_string(), None),
+            _ =>
+                McpError::internal_error(format!("session error: {err}"), None),
         }
     }
 
     fn move_plan_json(
-        report: &memory_api::storage::move_kernel::MovePlan,
+        report: &memory_api::storage::move_kernel::MovePlan
     ) -> Result<serde_json::Value, McpError> {
         Ok(serde_json::json!({
             "supported": report.supported(),
@@ -213,7 +222,7 @@ impl SessionServer {
     }
 
     fn move_outcome_json(
-        outcome: &memory_api::storage::move_kernel::MoveOutcome,
+        outcome: &memory_api::storage::move_kernel::MoveOutcome
     ) -> Result<serde_json::Value, McpError> {
         Ok(serde_json::json!({
             "resumed": outcome.resumed,
@@ -342,7 +351,9 @@ impl SessionServer {
         &self,
         Parameters(input): Parameters<PeekSkeletonInput>,
     ) -> Result<CallToolResult, McpError> {
-        let preview_chars = input.preview_chars.unwrap_or(DEFAULT_SKELETON_PREVIEW_CHARS);
+        let preview_chars = input
+            .preview_chars
+            .unwrap_or(DEFAULT_SKELETON_PREVIEW_CHARS);
         let skeleton = self
             .config()
             .peek_skeleton(&input.session_id, preview_chars)
@@ -359,7 +370,10 @@ impl SessionServer {
         Parameters(input): Parameters<SessionMoveInput>,
     ) -> Result<CallToolResult, McpError> {
         let session_id = input.id.parse::<Uuid>().map_err(|error| {
-            McpError::invalid_params(format!("invalid session UUID: {error}"), None)
+            McpError::invalid_params(
+                format!("invalid session UUID: {error}"),
+                None,
+            )
         })?;
         let target_workspace_root = workspace::canonicalize_workspace_root_strict(
             std::path::Path::new(&input.to_workspace_root),
@@ -397,7 +411,10 @@ impl SessionServer {
         Parameters(input): Parameters<SessionMoveInput>,
     ) -> Result<CallToolResult, McpError> {
         let session_id = input.id.parse::<Uuid>().map_err(|error| {
-            McpError::invalid_params(format!("invalid session UUID: {error}"), None)
+            McpError::invalid_params(
+                format!("invalid session UUID: {error}"),
+                None,
+            )
         })?;
         let target_workspace_root = workspace::canonicalize_workspace_root_strict(
             std::path::Path::new(&input.to_workspace_root),
@@ -446,7 +463,10 @@ impl SessionServer {
         Parameters(input): Parameters<SessionMoveJournalInput>,
     ) -> Result<CallToolResult, McpError> {
         let journal = input.id.parse::<Uuid>().map_err(|error| {
-            McpError::invalid_params(format!("invalid journal id: {error}"), None)
+            McpError::invalid_params(
+                format!("invalid journal id: {error}"),
+                None,
+            )
         })?;
         let outcome = self
             .config()
@@ -472,7 +492,10 @@ impl SessionServer {
         Parameters(input): Parameters<SessionMoveJournalInput>,
     ) -> Result<CallToolResult, McpError> {
         let journal = input.id.parse::<Uuid>().map_err(|error| {
-            McpError::invalid_params(format!("invalid journal id: {error}"), None)
+            McpError::invalid_params(
+                format!("invalid journal id: {error}"),
+                None,
+            )
         })?;
         let outcome = self
             .config()
@@ -514,7 +537,9 @@ pub async fn run_mcp_server(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let server = SessionServer::new(store_root, workspace_slug);
 
-    tracing::info!("Starting session-mcp server on stdio (direct store access)");
+    tracing::info!(
+        "Starting session-mcp server on stdio (direct store access)"
+    );
 
     let service = server.serve(stdio()).await.inspect_err(|err| {
         eprintln!("Server error: {err:?}");
@@ -527,16 +552,16 @@ pub async fn run_mcp_server(
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use std::process::Command;
     use serde_json::Value;
     use session_api::{
         CopilotHookMessage,
         CopilotHookPayload,
-        SessionError,
         SessionCaptureRequest,
+        SessionError,
         SessionRole,
         SessionStoreConfig,
     };
+    use std::process::Command;
     use tempfile::tempdir;
 
     use super::*;
@@ -559,7 +584,10 @@ mod tests {
                 content: "alpha body\nbeta".to_string(),
                 tool_name: None,
                 captured_at: None,
+                event_meta: None,
             }],
+            events: vec![],
+            runtime: None,
         };
         config
             .persist_capture(SessionCaptureRequest::copilot(payload))
@@ -586,7 +614,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let store_root = dir.path().join(".session");
         let worktree = dir.path().join("wt");
-        let server = SessionServer::new(store_root.clone(), "default".to_string());
+        let server =
+            SessionServer::new(store_root.clone(), "default".to_string());
 
         let receipt = server
             .session_check_in(Parameters(CheckInInput {
@@ -615,7 +644,8 @@ mod tests {
     async fn query_and_peek() {
         let dir = tempdir().unwrap();
         let store_root = dir.path().join(".session");
-        let server = SessionServer::new(store_root.clone(), "default".to_string());
+        let server =
+            SessionServer::new(store_root.clone(), "default".to_string());
         let config = SessionStoreConfig::new(store_root, "default".to_string());
         seed(&config, "s2", "agent-2");
 
@@ -658,17 +688,26 @@ mod tests {
         let source_store_root = repo_root.join(".session");
         std::fs::create_dir_all(&source_store_root).unwrap();
         let target_workspace_root = repo_root.join("target-workspace");
-        std::fs::create_dir_all(target_workspace_root.join(".session")).unwrap();
+        std::fs::create_dir_all(target_workspace_root.join(".session"))
+            .unwrap();
 
         let session_id = "7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71";
-        let config = SessionStoreConfig::new(source_store_root.clone(), "default".to_string());
+        let config = SessionStoreConfig::new(
+            source_store_root.clone(),
+            "default".to_string(),
+        );
         seed(&config, session_id, "agent-3");
 
-        let server = SessionServer::new(source_store_root.clone(), "default".to_string());
+        let server = SessionServer::new(
+            source_store_root.clone(),
+            "default".to_string(),
+        );
         let preflight = server
             .session_move_preflight(Parameters(SessionMoveInput {
                 id: session_id.to_string(),
-                to_workspace_root: target_workspace_root.to_string_lossy().to_string(),
+                to_workspace_root: target_workspace_root
+                    .to_string_lossy()
+                    .to_string(),
             }))
             .await
             .expect("move preflight");
@@ -680,7 +719,9 @@ mod tests {
         let apply = server
             .session_move_apply(Parameters(SessionMoveInput {
                 id: session_id.to_string(),
-                to_workspace_root: target_workspace_root.to_string_lossy().to_string(),
+                to_workspace_root: target_workspace_root
+                    .to_string_lossy()
+                    .to_string(),
             }))
             .await
             .expect("move apply");

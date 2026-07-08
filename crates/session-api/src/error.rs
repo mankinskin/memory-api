@@ -37,27 +37,23 @@ pub enum SessionError {
     #[error("store path has no parent directory: {0}")]
     InvalidStorePath(PathBuf),
 
-    #[error("session {session_id} does not have a persisted worktree assignment")]
-    MissingWorktreeAssignment {
-        session_id: String,
-    },
+    #[error(
+        "session {session_id} does not have a persisted worktree assignment"
+    )]
+    MissingWorktreeAssignment { session_id: String },
 
     #[error("session {session_id} ownership mismatch for worktree check-in")]
-    SessionOwnershipMismatch {
-        session_id: String,
-    },
+    SessionOwnershipMismatch { session_id: String },
 
-    #[error("worktree path {path} is already owned by active session {session_id}")]
-    WorktreeConflict {
-        path: PathBuf,
-        session_id: String,
-    },
+    #[error(
+        "worktree path {path} is already owned by active session {session_id}"
+    )]
+    WorktreeConflict { path: PathBuf, session_id: String },
 
-    #[error("cross-session worktree reuse requires an explicit adopt flow: predecessor {session_id} already owns {path}")]
-    CrossSessionReuseRequiresAdopt {
-        session_id: String,
-        path: PathBuf,
-    },
+    #[error(
+        "cross-session worktree reuse requires an explicit adopt flow: predecessor {session_id} already owns {path}"
+    )]
+    CrossSessionReuseRequiresAdopt { session_id: String, path: PathBuf },
 
     #[error("failed to serialize session data for {path}: {source}")]
     Serialize {
@@ -74,9 +70,7 @@ pub enum SessionError {
     },
 
     #[error("session data was not found at {path}")]
-    NotFound {
-        path: PathBuf,
-    },
+    NotFound { path: PathBuf },
 
     #[error(
         "incoming transcript would rewrite existing turns for session {session_id} ({existing_turns} existing, {incoming_turns} incoming)"

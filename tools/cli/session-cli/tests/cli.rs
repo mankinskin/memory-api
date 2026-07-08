@@ -11,10 +11,10 @@ use session_api::{
     SessionStoreConfig,
 };
 use session_cli::{
+    CliOutput,
     machine_output_format,
     parse_cli_from,
     run,
-    CliOutput,
 };
 
 fn seed_session(
@@ -36,14 +36,18 @@ fn seed_session(
                 content: "first turn body\nsecond line".to_string(),
                 tool_name: None,
                 captured_at: None,
+                event_meta: None,
             },
             CopilotHookMessage {
                 role: SessionRole::Assistant,
                 content: "second turn body".to_string(),
                 tool_name: None,
                 captured_at: None,
+                event_meta: None,
             },
         ],
+        events: vec![],
+        runtime: None,
     };
     config
         .persist_capture(SessionCaptureRequest::copilot(payload))
@@ -57,7 +61,8 @@ fn run_machine(args: &[&str]) -> serde_json::Value {
             assert_eq!(format, machine_output_format(true, false).unwrap());
             value
         },
-        CliOutput::Text(text) => panic!("expected machine output, got text: {text}"),
+        CliOutput::Text(text) =>
+            panic!("expected machine output, got text: {text}"),
     }
 }
 
@@ -107,7 +112,8 @@ fn query_returns_seeded_session() {
     let dir = tempdir().unwrap();
     let store_root = dir.path().join(".session");
     let store_root_str = store_root.to_string_lossy().to_string();
-    let config = SessionStoreConfig::new(store_root.clone(), "default".to_string());
+    let config =
+        SessionStoreConfig::new(store_root.clone(), "default".to_string());
     seed_session(&config, "sess-q", "agent-q");
 
     let result = run_machine(&[
@@ -128,7 +134,8 @@ fn peek_range_and_skeleton() {
     let dir = tempdir().unwrap();
     let store_root = dir.path().join(".session");
     let store_root_str = store_root.to_string_lossy().to_string();
-    let config = SessionStoreConfig::new(store_root.clone(), "default".to_string());
+    let config =
+        SessionStoreConfig::new(store_root.clone(), "default".to_string());
     seed_session(&config, "sess-p", "agent-p");
 
     let range = run_machine(&[
@@ -158,4 +165,3 @@ fn peek_range_and_skeleton() {
     assert_eq!(skeleton["total_turns"], 2);
     assert_eq!(skeleton["entries"][0]["preview"], "first turn body");
 }
-

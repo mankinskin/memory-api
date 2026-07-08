@@ -208,7 +208,10 @@ mod tests {
                 content: "move this session".to_string(),
                 tool_name: None,
                 captured_at: None,
+                event_meta: None,
             }],
+            events: vec![],
+            runtime: None,
         })
     }
 

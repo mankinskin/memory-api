@@ -135,6 +135,7 @@ mod tests {
             content: content.to_string(),
             captured_at: Utc::now(),
             tool_name: None,
+            event_meta: None,
         }
     }
 
@@ -151,6 +152,10 @@ mod tests {
                 ticket_id: None,
                 model: None,
                 trigger: None,
+                producer: None,
+                copilot_version: None,
+                vscode_version: None,
+                protocol_version: None,
                 worktree: None,
             },
             turns,

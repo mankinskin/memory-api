@@ -8,19 +8,12 @@ use std::{
 };
 
 use serde::{
-    de::DeserializeOwned,
     Deserialize,
     Serialize,
+    de::DeserializeOwned,
 };
 
 use crate::{
-    hook::copilot_payload_from_transcript_path,
-    peek::{
-        peek_skeleton,
-        peek_turn_range,
-        SessionSkeleton,
-        SessionTurnRange,
-    },
     CopilotHookPayload,
     SessionCaptureRequest,
     SessionError,
@@ -31,6 +24,16 @@ use crate::{
     SessionWorktreeAllocationMode,
     SessionWorktreeAssignment,
     SessionWorktreeStatus,
+    hook::{
+        CopilotHookEvent,
+        copilot_payload_from_transcript_path,
+    },
+    peek::{
+        SessionSkeleton,
+        SessionTurnRange,
+        peek_skeleton,
+        peek_turn_range,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,6 +76,14 @@ impl From<&SessionRecord> for PersistedSessionTranscript {
             turns: record.turns.clone(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersistedSessionEvents {
+    pub session_id: String,
+    pub captured_at: chrono::DateTime<chrono::Utc>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<CopilotHookEvent>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -165,8 +176,10 @@ impl SessionStoreConfig {
         session_id: &str,
     ) -> Result<SessionRecord, SessionError> {
         let paths = self.paths_for_session_id(session_id)?;
-        let manifest: PersistedSessionManifest = read_json(&paths.manifest_path)?;
-        let transcript: PersistedSessionTranscript = read_json(&paths.transcript_path)?;
+        let manifest: PersistedSessionManifest =
+            read_json(&paths.manifest_path)?;
+        let transcript: PersistedSessionTranscript =
+            read_json(&paths.transcript_path)?;
 
         Ok(SessionRecord {
             session_id: manifest.session_id,
@@ -189,18 +202,21 @@ impl SessionStoreConfig {
         }
 
         let mut records = vec![];
-        for entry in fs::read_dir(&sessions_root).map_err(|source| SessionError::Io {
-            path: sessions_root.clone(),
-            source,
-        })? {
+        for entry in
+            fs::read_dir(&sessions_root).map_err(|source| SessionError::Io {
+                path: sessions_root.clone(),
+                source,
+            })?
+        {
             let entry = entry.map_err(|source| SessionError::Io {
                 path: sessions_root.clone(),
                 source,
             })?;
-            let file_type = entry.file_type().map_err(|source| SessionError::Io {
-                path: entry.path(),
-                source,
-            })?;
+            let file_type =
+                entry.file_type().map_err(|source| SessionError::Io {
+                    path: entry.path(),
+                    source,
+                })?;
 
             if !file_type.is_dir() {
                 continue;
@@ -233,16 +249,17 @@ impl SessionStoreConfig {
     ) -> Result<SessionWorktreeCheckInReceipt, SessionError> {
         validate_worktree_request(&request)?;
 
-        if let Ok(mut existing_record) = self.read_session(&request.session_id) {
-            let existing_assignment = existing_record
-                .metadata
-                .worktree
-                .clone()
-                .ok_or_else(|| SessionError::MissingWorktreeAssignment {
-                    session_id: request.session_id.clone(),
+        if let Ok(mut existing_record) = self.read_session(&request.session_id)
+        {
+            let existing_assignment =
+                existing_record.metadata.worktree.clone().ok_or_else(|| {
+                    SessionError::MissingWorktreeAssignment {
+                        session_id: request.session_id.clone(),
+                    }
                 })?;
 
-            if existing_record.metadata.agent_id.as_deref() != Some(request.owner_id.as_str())
+            if existing_record.metadata.agent_id.as_deref()
+                != Some(request.owner_id.as_str())
                 || existing_record.metadata.ticket_id.as_deref()
                     != Some(request.ticket_id.as_str())
             {
@@ -252,32 +269,36 @@ impl SessionStoreConfig {
             }
 
             if can_reuse_assignment(&existing_assignment, &request) {
-                existing_record.metadata.worktree = Some(SessionWorktreeAssignment {
-                    allocation_mode: SessionWorktreeAllocationMode::Reused,
-                    ..existing_assignment
-                });
+                existing_record.metadata.worktree =
+                    Some(SessionWorktreeAssignment {
+                        allocation_mode: SessionWorktreeAllocationMode::Reused,
+                        ..existing_assignment
+                    });
                 existing_record.captured_at = chrono::Utc::now();
                 self.persist_record(existing_record.clone())?;
                 return receipt_from_record(&existing_record);
             }
 
-            fs::create_dir_all(&request.worktree_path).map_err(|source| SessionError::Io {
-                path: request.worktree_path.clone(),
-                source,
+            fs::create_dir_all(&request.worktree_path).map_err(|source| {
+                SessionError::Io {
+                    path: request.worktree_path.clone(),
+                    source,
+                }
             })?;
             self.ensure_no_active_worktree_conflict(
                 &request.worktree_path,
                 Some(request.session_id.as_str()),
             )?;
 
-            existing_record.metadata.worktree = Some(SessionWorktreeAssignment {
-                path: request.worktree_path,
-                branch: request.branch,
-                allocation_mode: SessionWorktreeAllocationMode::Rotated,
-                status: SessionWorktreeStatus::Active,
-                predecessor_session_id: None,
-                predecessor_path: Some(existing_assignment.path),
-            });
+            existing_record.metadata.worktree =
+                Some(SessionWorktreeAssignment {
+                    path: request.worktree_path,
+                    branch: request.branch,
+                    allocation_mode: SessionWorktreeAllocationMode::Rotated,
+                    status: SessionWorktreeStatus::Active,
+                    predecessor_session_id: None,
+                    predecessor_path: Some(existing_assignment.path),
+                });
             existing_record.captured_at = chrono::Utc::now();
             self.persist_record(existing_record.clone())?;
             return receipt_from_record(&existing_record);
@@ -286,12 +307,11 @@ impl SessionStoreConfig {
         let mut predecessor_path = None;
         if let Some(predecessor_session_id) = &request.predecessor_session_id {
             let mut predecessor = self.read_session(predecessor_session_id)?;
-            let predecessor_assignment = predecessor
-                .metadata
-                .worktree
-                .clone()
-                .ok_or_else(|| SessionError::MissingWorktreeAssignment {
-                    session_id: predecessor_session_id.clone(),
+            let predecessor_assignment =
+                predecessor.metadata.worktree.clone().ok_or_else(|| {
+                    SessionError::MissingWorktreeAssignment {
+                        session_id: predecessor_session_id.clone(),
+                    }
                 })?;
 
             if predecessor_assignment.path == request.worktree_path {
@@ -310,9 +330,11 @@ impl SessionStoreConfig {
             self.persist_record(predecessor)?;
         }
 
-        fs::create_dir_all(&request.worktree_path).map_err(|source| SessionError::Io {
-            path: request.worktree_path.clone(),
-            source,
+        fs::create_dir_all(&request.worktree_path).map_err(|source| {
+            SessionError::Io {
+                path: request.worktree_path.clone(),
+                source,
+            }
         })?;
         self.ensure_no_active_worktree_conflict(&request.worktree_path, None)?;
 
@@ -328,10 +350,15 @@ impl SessionStoreConfig {
                 ticket_id: Some(request.ticket_id),
                 model: None,
                 trigger: Some("session-check-in".to_string()),
+                producer: None,
+                copilot_version: None,
+                vscode_version: None,
+                protocol_version: None,
                 worktree: Some(SessionWorktreeAssignment {
                     path: request.worktree_path,
                     branch: request.branch,
-                    allocation_mode: if request.predecessor_session_id.is_some() {
+                    allocation_mode: if request.predecessor_session_id.is_some()
+                    {
                         SessionWorktreeAllocationMode::Rotated
                     } else {
                         SessionWorktreeAllocationMode::New
@@ -394,8 +421,12 @@ impl SessionStoreConfig {
             .join(session_id);
         let manifest_path = session_dir.join("session.json");
         let transcript_path = session_dir.join("transcript.json");
+        let events_path = session_dir.join("events.json");
 
-        if manifest_path.parent().is_none() || transcript_path.parent().is_none() {
+        if manifest_path.parent().is_none()
+            || transcript_path.parent().is_none()
+            || events_path.parent().is_none()
+        {
             return Err(SessionError::InvalidStorePath(session_dir));
         }
 
@@ -403,6 +434,7 @@ impl SessionStoreConfig {
             session_dir,
             manifest_path,
             transcript_path,
+            events_path,
         })
     }
 
@@ -418,9 +450,22 @@ impl SessionStoreConfig {
         &self,
         request: SessionCaptureRequest,
     ) -> Result<SessionStorePlan, SessionError> {
-        let record = request.into_record()?;
+        let (record, events) = request.into_record_and_events()?;
         let paths = self.paths_for(&record)?;
-        Ok(SessionStorePlan { record, paths })
+        let events = if events.is_empty() {
+            None
+        } else {
+            Some(PersistedSessionEvents {
+                session_id: record.session_id.clone(),
+                captured_at: record.captured_at,
+                events,
+            })
+        };
+        Ok(SessionStorePlan {
+            record,
+            paths,
+            events,
+        })
     }
 
     pub fn persist_capture(
@@ -437,7 +482,11 @@ impl SessionStoreConfig {
         record: SessionRecord,
     ) -> Result<SessionStorePlan, SessionError> {
         let paths = self.paths_for(&record)?;
-        let plan = SessionStorePlan { record, paths };
+        let plan = SessionStorePlan {
+            record,
+            paths,
+            events: None,
+        };
         plan.persist()?;
         Ok(plan)
     }
@@ -456,7 +505,9 @@ impl SessionStoreConfig {
                 continue;
             };
 
-            if worktree.status == SessionWorktreeStatus::Active && worktree.path == requested_path {
+            if worktree.status == SessionWorktreeStatus::Active
+                && worktree.path == requested_path
+            {
                 return Err(SessionError::WorktreeConflict {
                     path: requested_path.to_path_buf(),
                     session_id: record.session_id,
@@ -473,12 +524,15 @@ pub struct SessionStorePaths {
     pub session_dir: PathBuf,
     pub manifest_path: PathBuf,
     pub transcript_path: PathBuf,
+    pub events_path: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionStorePlan {
     pub record: SessionRecord,
     pub paths: SessionStorePaths,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<PersistedSessionEvents>,
 }
 
 impl SessionStorePlan {
@@ -491,9 +545,11 @@ impl SessionStorePlan {
     }
 
     pub fn persist(&self) -> Result<SessionStorePaths, SessionError> {
-        fs::create_dir_all(&self.paths.session_dir).map_err(|source| SessionError::Io {
-            path: self.paths.session_dir.clone(),
-            source,
+        fs::create_dir_all(&self.paths.session_dir).map_err(|source| {
+            SessionError::Io {
+                path: self.paths.session_dir.clone(),
+                source,
+            }
         })?;
 
         let manifest = merge_manifest(
@@ -505,8 +561,18 @@ impl SessionStorePlan {
             self.transcript(),
         )?;
 
+        let merged_events = merge_events(
+            read_json_if_exists(&self.paths.events_path)?,
+            self.events.clone(),
+            self.record.session_id.clone(),
+            self.record.captured_at,
+        )?;
+
         write_json(&self.paths.manifest_path, &manifest)?;
         write_json(&self.paths.transcript_path, &transcript)?;
+        if let Some(events) = merged_events {
+            write_json(&self.paths.events_path, &events)?;
+        }
 
         Ok(self.paths.clone())
     }
@@ -516,9 +582,11 @@ fn write_json<T: Serialize>(
     path: &Path,
     value: &T,
 ) -> Result<(), SessionError> {
-    let encoded = serde_json::to_vec_pretty(value).map_err(|source| SessionError::Serialize {
-        path: path.to_path_buf(),
-        source,
+    let encoded = serde_json::to_vec_pretty(value).map_err(|source| {
+        SessionError::Serialize {
+            path: path.to_path_buf(),
+            source,
+        }
     })?;
     fs::write(path, encoded).map_err(|source| SessionError::Io {
         path: path.to_path_buf(),
@@ -536,20 +604,25 @@ fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, SessionError> {
             source,
         },
     })?;
-    serde_json::from_slice(&encoded).map_err(|source| SessionError::Deserialize {
-        path: path.to_path_buf(),
-        source,
+    serde_json::from_slice(&encoded).map_err(|source| {
+        SessionError::Deserialize {
+            path: path.to_path_buf(),
+            source,
+        }
     })
 }
 
-fn read_json_if_exists<T: DeserializeOwned>(path: &Path) -> Result<Option<T>, SessionError> {
+fn read_json_if_exists<T: DeserializeOwned>(
+    path: &Path
+) -> Result<Option<T>, SessionError> {
     match fs::read(path) {
-        Ok(encoded) => serde_json::from_slice(&encoded)
-            .map(Some)
-            .map_err(|source| SessionError::Deserialize {
-                path: path.to_path_buf(),
-                source,
-            }),
+        Ok(encoded) =>
+            serde_json::from_slice(&encoded)
+                .map(Some)
+                .map_err(|source| SessionError::Deserialize {
+                    path: path.to_path_buf(),
+                    source,
+                }),
         Err(source) if source.kind() == ErrorKind::NotFound => Ok(None),
         Err(source) => Err(SessionError::Io {
             path: path.to_path_buf(),
@@ -569,7 +642,8 @@ fn merge_manifest(
         if existing.captured_at > incoming.captured_at {
             incoming.captured_at = existing.captured_at;
         }
-        incoming.metadata = merge_metadata(existing.metadata, incoming.metadata);
+        incoming.metadata =
+            merge_metadata(existing.metadata, incoming.metadata);
         incoming.links = merge_links(existing.links, incoming.links);
     }
 
@@ -591,12 +665,18 @@ fn merge_metadata(
         ticket_id: incoming.ticket_id.or(existing.ticket_id),
         model: incoming.model.or(existing.model),
         trigger: incoming.trigger.or(existing.trigger),
+        producer: incoming.producer.or(existing.producer),
+        copilot_version: incoming.copilot_version.or(existing.copilot_version),
+        vscode_version: incoming.vscode_version.or(existing.vscode_version),
+        protocol_version: incoming
+            .protocol_version
+            .or(existing.protocol_version),
         worktree: incoming.worktree.or(existing.worktree),
     }
 }
 
 fn validate_worktree_request(
-    request: &SessionWorktreeCheckInRequest,
+    request: &SessionWorktreeCheckInRequest
 ) -> Result<(), SessionError> {
     validate_segment(&request.session_id, false)?;
     if request.owner_id.trim().is_empty() {
@@ -625,15 +705,13 @@ fn can_reuse_assignment(
 }
 
 fn receipt_from_record(
-    record: &SessionRecord,
+    record: &SessionRecord
 ) -> Result<SessionWorktreeCheckInReceipt, SessionError> {
-    let worktree = record
-        .metadata
-        .worktree
-        .clone()
-        .ok_or_else(|| SessionError::MissingWorktreeAssignment {
+    let worktree = record.metadata.worktree.clone().ok_or_else(|| {
+        SessionError::MissingWorktreeAssignment {
             session_id: record.session_id.clone(),
-        })?;
+        }
+    })?;
 
     Ok(SessionWorktreeCheckInReceipt {
         session_id: record.session_id.clone(),
@@ -671,6 +749,74 @@ fn extend_unique(
     }
 }
 
+fn merge_events(
+    existing: Option<PersistedSessionEvents>,
+    incoming: Option<PersistedSessionEvents>,
+    session_id: String,
+    captured_at: chrono::DateTime<chrono::Utc>,
+) -> Result<Option<PersistedSessionEvents>, SessionError> {
+    match (existing, incoming) {
+        (None, None) => Ok(None),
+        (Some(existing), None) => Ok(Some(existing)),
+        (None, Some(incoming)) => Ok(Some(incoming)),
+        (Some(mut existing), Some(incoming)) => {
+            if existing.session_id != incoming.session_id {
+                return Err(SessionError::TranscriptConflict {
+                    session_id: incoming.session_id,
+                    existing_turns: existing.events.len(),
+                    incoming_turns: incoming.events.len(),
+                });
+            }
+
+            let mut known = std::collections::BTreeSet::new();
+            for event in &existing.events {
+                known.insert(captured_event_key(event));
+            }
+            for event in incoming.events {
+                let key = captured_event_key(&event);
+                if known.insert(key) {
+                    existing.events.push(event);
+                }
+            }
+
+            existing.session_id = session_id;
+            if captured_at > existing.captured_at {
+                existing.captured_at = captured_at;
+            }
+
+            Ok(Some(existing))
+        },
+    }
+}
+
+fn captured_event_key(event: &CopilotHookEvent) -> String {
+    if let Some(id) = &event.event_id {
+        return format!("id:{id}");
+    }
+
+    format!(
+        "type:{}|ts:{}|msg:{}|call:{}|turn:{}|tool:{}|ok:{}|reason:{}|req:{}|args:{}|data:{}|raw:{}",
+        event.event_type.as_deref().unwrap_or(""),
+        event
+            .captured_at
+            .map(|ts| ts.to_rfc3339())
+            .unwrap_or_default(),
+        event.message_id.as_deref().unwrap_or(""),
+        event.tool_call_id.as_deref().unwrap_or(""),
+        event.turn_id.as_deref().unwrap_or(""),
+        event.tool_name.as_deref().unwrap_or(""),
+        event
+            .tool_success
+            .map(|ok| ok.to_string())
+            .unwrap_or_default(),
+        event.reasoning_text.as_deref().unwrap_or(""),
+        event.tool_requests_json.as_deref().unwrap_or(""),
+        event.tool_arguments_json.as_deref().unwrap_or(""),
+        event.data_json.as_deref().unwrap_or(""),
+        event.raw_event_json.as_deref().unwrap_or(""),
+    )
+}
+
 fn merge_transcript(
     existing: Option<PersistedSessionTranscript>,
     incoming: PersistedSessionTranscript,
@@ -693,7 +839,9 @@ fn merge_transcript(
                 .take_while(|(left, right)| turns_match(left, right))
                 .count();
 
-            if shared_prefix_len < existing.turns.len() && shared_prefix_len < incoming.turns.len() {
+            if shared_prefix_len < existing.turns.len()
+                && shared_prefix_len < incoming.turns.len()
+            {
                 return Err(SessionError::TranscriptConflict {
                     session_id: existing.session_id,
                     existing_turns: existing.turns.len(),
@@ -702,9 +850,9 @@ fn merge_transcript(
             }
 
             if incoming.turns.len() > existing.turns.len() {
-                existing
-                    .turns
-                    .extend(incoming.turns.into_iter().skip(existing.turns.len()));
+                existing.turns.extend(
+                    incoming.turns.into_iter().skip(existing.turns.len()),
+                );
             }
 
             if incoming.captured_at > existing.captured_at {
@@ -712,7 +860,7 @@ fn merge_transcript(
             }
 
             Ok(existing)
-        }
+        },
     }
 }
 
@@ -724,6 +872,7 @@ fn turns_match(
         && left.role == right.role
         && left.content == right.content
         && left.tool_name == right.tool_name
+        && left.event_meta == right.event_meta
 }
 
 fn session_matches_query(
@@ -737,7 +886,9 @@ fn session_matches_query(
     }
 
     if let Some(conversation_id) = &query.conversation_id {
-        if record.metadata.conversation_id.as_deref() != Some(conversation_id.as_str()) {
+        if record.metadata.conversation_id.as_deref()
+            != Some(conversation_id.as_str())
+        {
             return false;
         }
     }
@@ -767,7 +918,8 @@ fn validate_segment(
     is_workspace_slug: bool,
 ) -> Result<(), SessionError> {
     let invalid = ['/', '\\', ':'];
-    if value.trim().is_empty() || value.chars().any(|ch| invalid.contains(&ch)) {
+    if value.trim().is_empty() || value.chars().any(|ch| invalid.contains(&ch))
+    {
         return if is_workspace_slug {
             Err(SessionError::InvalidWorkspaceSlug(value.to_string()))
         } else {
@@ -786,6 +938,7 @@ mod tests {
     use crate::{
         CopilotHookMessage,
         CopilotHookPayload,
+        PersistedSessionEvents,
         PersistedSessionManifest,
         PersistedSessionTranscript,
         SessionCaptureRequest,
@@ -838,8 +991,11 @@ mod tests {
                     content: (*content).to_string(),
                     tool_name: None,
                     captured_at: None,
+                    event_meta: None,
                 })
                 .collect(),
+            events: vec![],
+            runtime: None,
         }
     }
 
@@ -922,7 +1078,10 @@ mod tests {
     #[test]
     fn persist_capture_writes_manifest_and_transcript_files() {
         let tempdir = TempDir::new().unwrap();
-        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
 
         let plan = config
             .persist_capture(sample_request(
@@ -932,10 +1091,13 @@ mod tests {
                 &["Persist this chat"],
             ))
             .unwrap();
-        let manifest_text = std::fs::read_to_string(&plan.paths.manifest_path).unwrap();
-        let transcript_text = std::fs::read_to_string(&plan.paths.transcript_path).unwrap();
+        let manifest_text =
+            std::fs::read_to_string(&plan.paths.manifest_path).unwrap();
+        let transcript_text =
+            std::fs::read_to_string(&plan.paths.transcript_path).unwrap();
 
-        let manifest: PersistedSessionManifest = serde_json::from_str(&manifest_text).unwrap();
+        let manifest: PersistedSessionManifest =
+            serde_json::from_str(&manifest_text).unwrap();
         let transcript: PersistedSessionTranscript =
             serde_json::from_str(&transcript_text).unwrap();
 
@@ -949,7 +1111,10 @@ mod tests {
     #[test]
     fn persist_capture_appends_only_new_turns_from_later_capture() {
         let tempdir = TempDir::new().unwrap();
-        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
 
         config
             .persist_capture(sample_request(
@@ -976,7 +1141,8 @@ mod tests {
                 &["first", "second"],
             ))
             .unwrap();
-        let transcript_text = std::fs::read_to_string(&plan.paths.transcript_path).unwrap();
+        let transcript_text =
+            std::fs::read_to_string(&plan.paths.transcript_path).unwrap();
         let transcript: PersistedSessionTranscript =
             serde_json::from_str(&transcript_text).unwrap();
 
@@ -990,7 +1156,10 @@ mod tests {
     #[test]
     fn read_session_reconstructs_persisted_record() {
         let tempdir = TempDir::new().unwrap();
-        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
 
         config
             .persist_capture(sample_request(
@@ -1022,7 +1191,10 @@ mod tests {
     #[test]
     fn capture_copilot_hook_persists_payload() {
         let tempdir = TempDir::new().unwrap();
-        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
 
         let plan = config
             .capture_copilot_hook(sample_payload(
@@ -1041,9 +1213,93 @@ mod tests {
     }
 
     #[test]
+    fn persist_capture_keeps_distinct_id_less_events_using_raw_event_payload() {
+        let tempdir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
+
+        let mut first = sample_payload(
+            "session-events",
+            Some("conversation-events"),
+            sample_time(),
+            &["first"],
+        );
+        first.events = vec![crate::CopilotHookEvent {
+            event_id: None,
+            parent_event_id: None,
+            event_type: Some("tool.execution_complete".to_string()),
+            captured_at: Some(sample_time()),
+            turn_id: None,
+            message_id: None,
+            tool_call_id: Some("call-1".to_string()),
+            tool_name: Some("read_file".to_string()),
+            tool_success: Some(true),
+            reasoning_text: None,
+            tool_requests_json: None,
+            tool_arguments_json: Some("{\"path\":\"A\"}".to_string()),
+            data_json: Some("{\"arguments\":{\"path\":\"A\"}}".to_string()),
+            raw_event_json: Some("{\"type\":\"tool.execution_complete\",\"data\":{\"arguments\":{\"path\":\"A\"}}}".to_string()),
+        }];
+        config
+            .persist_capture(SessionCaptureRequest::copilot(first))
+            .unwrap();
+
+        let mut second = sample_payload(
+            "session-events",
+            Some("conversation-events"),
+            sample_time_later(),
+            &["first", "second"],
+        );
+        second.events = vec![crate::CopilotHookEvent {
+            event_id: None,
+            parent_event_id: None,
+            event_type: Some("tool.execution_complete".to_string()),
+            captured_at: Some(sample_time()),
+            turn_id: None,
+            message_id: None,
+            tool_call_id: Some("call-1".to_string()),
+            tool_name: Some("read_file".to_string()),
+            tool_success: Some(true),
+            reasoning_text: None,
+            tool_requests_json: None,
+            tool_arguments_json: Some("{\"path\":\"B\"}".to_string()),
+            data_json: Some("{\"arguments\":{\"path\":\"B\"}}".to_string()),
+            raw_event_json: Some("{\"type\":\"tool.execution_complete\",\"data\":{\"arguments\":{\"path\":\"B\"}}}".to_string()),
+        }];
+        let plan = config
+            .persist_capture(SessionCaptureRequest::copilot(second))
+            .unwrap();
+
+        let events_text =
+            std::fs::read_to_string(&plan.paths.events_path).unwrap();
+        let events: PersistedSessionEvents =
+            serde_json::from_str(&events_text).unwrap();
+        assert_eq!(events.events.len(), 2);
+        assert!(events.events.iter().any(|event| {
+            event
+                .raw_event_json
+                .as_deref()
+                .unwrap_or("")
+                .contains("\"path\":\"A\"")
+        }));
+        assert!(events.events.iter().any(|event| {
+            event
+                .raw_event_json
+                .as_deref()
+                .unwrap_or("")
+                .contains("\"path\":\"B\"")
+        }));
+    }
+
+    #[test]
     fn query_sessions_filters_by_text_and_metadata() {
         let tempdir = TempDir::new().unwrap();
-        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
 
         config
             .capture_copilot_hook(sample_payload(
@@ -1084,7 +1340,10 @@ mod tests {
     #[test]
     fn capture_copilot_transcript_persists_visible_transcript_messages() {
         let tempdir = TempDir::new().unwrap();
-        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
         let transcript_path = tempdir.path().join("copilot.jsonl");
 
         std::fs::write(
@@ -1114,7 +1373,10 @@ mod tests {
     #[test]
     fn check_in_worktree_creates_and_returns_new_assignment() {
         let tempdir = TempDir::new().unwrap();
-        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
         let worktree_path = tempdir.path().join("worktrees").join("session-a");
 
         let receipt = config
@@ -1140,7 +1402,10 @@ mod tests {
     #[test]
     fn check_in_worktree_reuses_existing_assignment_for_same_session() {
         let tempdir = TempDir::new().unwrap();
-        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
         let worktree_path = tempdir.path().join("worktrees").join("session-a");
 
         config
@@ -1163,18 +1428,27 @@ mod tests {
             ))
             .unwrap();
 
-        assert_eq!(receipt.allocation_mode, SessionWorktreeAllocationMode::Reused);
+        assert_eq!(
+            receipt.allocation_mode,
+            SessionWorktreeAllocationMode::Reused
+        );
         assert_eq!(receipt.worktree_path, worktree_path);
 
         let lookup = config.lookup_worktree("session-a").unwrap();
-        assert_eq!(lookup.allocation_mode, SessionWorktreeAllocationMode::Reused);
+        assert_eq!(
+            lookup.allocation_mode,
+            SessionWorktreeAllocationMode::Reused
+        );
         assert_eq!(lookup.status, SessionWorktreeStatus::Active);
     }
 
     #[test]
     fn check_in_worktree_rotates_for_handoff_and_supersedes_predecessor() {
         let tempdir = TempDir::new().unwrap();
-        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
         let first_path = tempdir.path().join("worktrees").join("session-a");
         let second_path = tempdir.path().join("worktrees").join("session-b");
 
@@ -1200,8 +1474,14 @@ mod tests {
         let receipt = config.check_in_worktree(handoff).unwrap();
         let predecessor = config.read_session("session-a").unwrap();
 
-        assert_eq!(receipt.allocation_mode, SessionWorktreeAllocationMode::Rotated);
-        assert_eq!(receipt.predecessor_session_id.as_deref(), Some("session-a"));
+        assert_eq!(
+            receipt.allocation_mode,
+            SessionWorktreeAllocationMode::Rotated
+        );
+        assert_eq!(
+            receipt.predecessor_session_id.as_deref(),
+            Some("session-a")
+        );
         assert_eq!(receipt.predecessor_path, Some(first_path));
         assert_eq!(
             predecessor.metadata.worktree.unwrap().status,
@@ -1212,9 +1492,13 @@ mod tests {
     #[test]
     fn check_in_worktree_rotates_when_existing_path_is_missing() {
         let tempdir = TempDir::new().unwrap();
-        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
         let first_path = tempdir.path().join("worktrees").join("session-a");
-        let second_path = tempdir.path().join("worktrees").join("session-a-rotated");
+        let second_path =
+            tempdir.path().join("worktrees").join("session-a-rotated");
 
         config
             .check_in_worktree(sample_worktree_request(
@@ -1237,7 +1521,10 @@ mod tests {
             ))
             .unwrap();
 
-        assert_eq!(receipt.allocation_mode, SessionWorktreeAllocationMode::Rotated);
+        assert_eq!(
+            receipt.allocation_mode,
+            SessionWorktreeAllocationMode::Rotated
+        );
         assert_eq!(receipt.predecessor_session_id, None);
         assert_eq!(receipt.predecessor_path, Some(first_path));
         assert_eq!(receipt.worktree_path, second_path);
@@ -1247,7 +1534,10 @@ mod tests {
     #[test]
     fn cross_session_reuse_requires_adopt_flow() {
         let tempdir = TempDir::new().unwrap();
-        let config = SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
         let shared_path = tempdir.path().join("worktrees").join("session-a");
 
         config

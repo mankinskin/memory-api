@@ -7,11 +7,13 @@ pub mod store;
 
 pub use error::SessionError;
 pub use hook::{
-    copilot_payload_from_transcript_path,
-    copilot_payload_from_transcript_reader,
+    CopilotHookEvent,
     CopilotHookMessage,
     CopilotHookPayload,
+    CopilotRuntimeMetadata,
     SessionCaptureRequest,
+    copilot_payload_from_transcript_path,
+    copilot_payload_from_transcript_reader,
 };
 pub use model::{
     SessionLinks,
@@ -19,19 +21,21 @@ pub use model::{
     SessionRecord,
     SessionRole,
     SessionTurn,
+    SessionTurnEventMeta,
     SessionWorktreeAllocationMode,
     SessionWorktreeAssignment,
     SessionWorktreeStatus,
 };
 pub use peek::{
-    peek_skeleton,
-    peek_turn_range,
+    DEFAULT_SKELETON_PREVIEW_CHARS,
     SessionSkeleton,
     SessionSkeletonEntry,
     SessionTurnRange,
-    DEFAULT_SKELETON_PREVIEW_CHARS,
+    peek_skeleton,
+    peek_turn_range,
 };
 pub use store::{
+    PersistedSessionEvents,
     PersistedSessionManifest,
     PersistedSessionTranscript,
     SessionQuery,
