@@ -2,7 +2,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { EventEmitter } from 'node:events';
 import * as vscode from 'vscode';
-
 jest.mock('node:child_process', () => {
   const actual = jest.requireActual('node:child_process');
   return {
@@ -11,16 +10,13 @@ jest.mock('node:child_process', () => {
     spawn: jest.fn(),
   };
 });
-
 jest.mock('../../src/api', () => ({
   fetchWorkspaces: jest.fn(),
 }));
-
 jest.mock('node:fs', () => ({
   existsSync: jest.fn(),
   statSync: jest.fn(),
 }));
-
 import { fetchWorkspaces } from '../../src/api';
 import {
   buildServerDiscoveryCandidates,

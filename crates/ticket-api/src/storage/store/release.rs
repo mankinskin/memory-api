@@ -1,12 +1,10 @@
 use std::collections::BTreeMap;
-
 use serde::{
     Deserialize,
     Serialize,
 };
 use serde_json::Value;
 use uuid::Uuid;
-
 use crate::{
     error::{
         ProtocolError,
@@ -18,7 +16,6 @@ use crate::{
         indexed::IndexedTicket,
     },
 };
-
 use super::TicketStore;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

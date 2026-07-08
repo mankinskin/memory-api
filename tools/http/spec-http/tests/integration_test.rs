@@ -27,7 +27,6 @@ use support::{
     make_app,
     seed_spec,
 };
-
 // ── healthz ──────────────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -50,7 +49,6 @@ async fn healthz_returns_ok() {
     let body = to_bytes(resp.into_body(), 1024).await.unwrap();
     assert_eq!(&body[..], b"ok");
 }
-
 // ── POST /api/specs — create ──────────────────────────────────────────────────
 
 #[tokio::test]
@@ -117,7 +115,6 @@ async fn create_spec_duplicate_slug_returns_409() {
     let payload: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(payload["code"], "spec.duplicate_slug");
 }
-
 // ── GET /api/specs — list ─────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -144,7 +141,6 @@ async fn list_specs_returns_seeded_spec() {
     assert_eq!(payload["count"], 1);
     assert_eq!(payload["items"][0]["slug"], "list-me");
 }
-
 // ── GET /api/specs/:id — get ──────────────────────────────────────────────────
 
 #[tokio::test]
@@ -191,7 +187,6 @@ async fn get_spec_unknown_id_returns_404() {
 
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
-
 // ── GET /api/specs/:id/full ───────────────────────────────────────────────────
 
 #[tokio::test]
@@ -218,7 +213,6 @@ async fn get_spec_full_includes_body() {
     assert_eq!(payload["spec"]["id"], id);
     assert!(payload["body"].as_str().is_some());
 }
-
 // ── PATCH /api/specs/:id — update ────────────────────────────────────────────
 
 #[tokio::test]
@@ -250,7 +244,6 @@ async fn update_spec_state_returns_updated_fields() {
     let payload: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(payload["spec"]["fields"]["state"], "reviewed");
 }
-
 // ── DELETE /api/specs/:id ─────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -282,7 +275,6 @@ async fn delete_spec_returns_200_then_404_on_get() {
         .unwrap();
     assert_eq!(get_resp.status(), StatusCode::NOT_FOUND);
 }
-
 // ── POST /api/specs/:id/move ─────────────────────────────────────────────────
 
 #[tokio::test]
@@ -326,7 +318,6 @@ async fn move_spec_dry_run_returns_supported_plan() {
     assert_eq!(payload["mode"], "plan");
     assert_eq!(payload["supported"], true);
 }
-
 // ── GET /api/specs/search ─────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -353,7 +344,6 @@ async fn search_specs_returns_matching_result() {
     // count may be 0 if full-text index not yet built, but should not error
     assert!(payload.get("items").is_some());
 }
-
 // ── POST /api/specs/scan ──────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -377,7 +367,6 @@ async fn scan_endpoint_returns_ok() {
     let payload: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(payload["status"], "ok");
 }
-
 // ── GET /api/specs/health ─────────────────────────────────────────────────────
 
 #[tokio::test]

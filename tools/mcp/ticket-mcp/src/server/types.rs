@@ -1,13 +1,7 @@
 use std::collections::BTreeMap;
 
-use rmcp::schemars::{
-    self,
-    JsonSchema,
-};
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use rmcp::schemars::{self, JsonSchema};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Serialize)]
@@ -173,9 +167,7 @@ pub struct CloseTicketInput {
     pub author: Option<String>,
 }
 
-fn default_close_state() -> String {
-    "done".to_string()
-}
+fn default_close_state() -> String { "done".to_string() }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CancelTicketInput {
@@ -242,13 +234,9 @@ impl DanglingStrategy {
     }
 }
 
-fn default_dangling_kind() -> String {
-    "depends_on".to_string()
-}
+fn default_dangling_kind() -> String { "depends_on".to_string() }
 
-fn default_dangling_strategy() -> DanglingStrategy {
-    DanglingStrategy::Unlink
-}
+fn default_dangling_strategy() -> DanglingStrategy { DanglingStrategy::Unlink }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct PruneDanglingEdgesInput {
@@ -290,9 +278,7 @@ pub struct NextTicketsInput {
     pub root: Option<String>,
 }
 
-fn default_workflow_name() -> WorkflowName {
-    WorkflowName::List
-}
+fn default_workflow_name() -> WorkflowName { WorkflowName::List }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct BoardShowInput {
