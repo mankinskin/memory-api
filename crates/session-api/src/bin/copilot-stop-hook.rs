@@ -39,8 +39,8 @@ fn resolve_store_root(
     match store_root {
         Some(store_root) => store_root,
         None => match cwd {
-            Some(cwd) => memory_api::workspace::resolve_local_root_from(cwd, ".memory-api"),
-            None => std::path::PathBuf::from(".memory-api"),
+            Some(cwd) => memory_api::workspace::resolve_local_root_from(cwd, ".session"),
+            None => std::path::PathBuf::from(".session"),
         },
     }
 }
@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn resolve_store_root_uses_explicit_path_when_present() {
-        let explicit = PathBuf::from("C:/repo/.memory-api");
+        let explicit = PathBuf::from("C:/repo/.session");
 
         assert_eq!(resolve_store_root(Some(explicit.clone()), None), explicit);
     }
@@ -130,30 +130,30 @@ mod tests {
 
         let resolved = resolve_store_root(None, Some(cwd.path()));
 
-        assert_eq!(resolved, cwd.path().join(".memory-api"));
+        assert_eq!(resolved, cwd.path().join(".session"));
     }
 
     #[test]
     fn resolve_store_root_walks_up_to_ancestor_store() {
         let repo = tempdir().unwrap();
         let nested = repo.path().join("memory-viewers").join("memory-api");
-        std::fs::create_dir_all(repo.path().join(".memory-api")).unwrap();
+        std::fs::create_dir_all(repo.path().join(".session")).unwrap();
         std::fs::create_dir_all(&nested).unwrap();
 
         let resolved = resolve_store_root(None, Some(&nested));
 
-        assert_eq!(resolved, repo.path().join(".memory-api"));
+        assert_eq!(resolved, repo.path().join(".session"));
     }
 
     #[test]
     fn resolve_store_root_does_not_descend_into_submodules() {
         let repo = tempdir().unwrap();
         let memory_api = repo.path().join("memory-viewers").join("memory-api");
-        std::fs::create_dir_all(memory_api.join(".memory-api")).unwrap();
+        std::fs::create_dir_all(memory_api.join(".session")).unwrap();
 
         // Running from repo root: must NOT descend into the submodule — creates at CWD.
         let resolved = resolve_store_root(None, Some(repo.path()));
 
-        assert_eq!(resolved, repo.path().join(".memory-api"));
+        assert_eq!(resolved, repo.path().join(".session"));
     }
 }

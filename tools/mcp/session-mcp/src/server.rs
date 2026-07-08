@@ -37,7 +37,7 @@ use session_api::{
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CheckInInput {
-    /// Concrete workspace path, repo root, .memory-api store path, or path inside that store.
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
     pub workspace: String,
     /// Session id to check in.
     pub session_id: String,
@@ -149,7 +149,7 @@ impl SessionServer {
         .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
         let store_root = workspace::resolve_store_root_from(
             std::path::Path::new(workspace_selector),
-            ".memory-api",
+            ".session",
         );
         Ok(SessionStoreConfig::new(store_root, self.workspace_slug.clone()))
     }
@@ -584,7 +584,7 @@ mod tests {
     #[tokio::test]
     async fn check_in_then_lookup() {
         let dir = tempdir().unwrap();
-        let store_root = dir.path().join(".memory-api");
+        let store_root = dir.path().join(".session");
         let worktree = dir.path().join("wt");
         let server = SessionServer::new(store_root.clone(), "default".to_string());
 
@@ -614,7 +614,7 @@ mod tests {
     #[tokio::test]
     async fn query_and_peek() {
         let dir = tempdir().unwrap();
-        let store_root = dir.path().join(".memory-api");
+        let store_root = dir.path().join(".session");
         let server = SessionServer::new(store_root.clone(), "default".to_string());
         let config = SessionStoreConfig::new(store_root, "default".to_string());
         seed(&config, "s2", "agent-2");
@@ -655,7 +655,7 @@ mod tests {
             .then_some(())
             .expect("git init failed");
 
-        let source_store_root = repo_root.join(".memory-api");
+        let source_store_root = repo_root.join(".session");
         std::fs::create_dir_all(&source_store_root).unwrap();
         let target_workspace_root = repo_root.join("target-workspace");
         std::fs::create_dir_all(target_workspace_root.join(".session")).unwrap();

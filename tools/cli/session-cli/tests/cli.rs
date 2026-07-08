@@ -64,7 +64,7 @@ fn run_machine(args: &[&str]) -> serde_json::Value {
 #[test]
 fn check_in_and_lookup_roundtrip() {
     let dir = tempdir().unwrap();
-    let store_root: PathBuf = dir.path().join(".memory-api");
+    let store_root: PathBuf = dir.path().join(".session");
     let store_root_str = store_root.to_string_lossy().to_string();
     let worktree = dir.path().join("wt-1");
     let worktree_str = worktree.to_string_lossy().to_string();
@@ -105,7 +105,7 @@ fn check_in_and_lookup_roundtrip() {
 #[test]
 fn query_returns_seeded_session() {
     let dir = tempdir().unwrap();
-    let store_root = dir.path().join(".memory-api");
+    let store_root = dir.path().join(".session");
     let store_root_str = store_root.to_string_lossy().to_string();
     let config = SessionStoreConfig::new(store_root.clone(), "default".to_string());
     seed_session(&config, "sess-q", "agent-q");
@@ -126,7 +126,7 @@ fn query_returns_seeded_session() {
 #[test]
 fn peek_range_and_skeleton() {
     let dir = tempdir().unwrap();
-    let store_root = dir.path().join(".memory-api");
+    let store_root = dir.path().join(".session");
     let store_root_str = store_root.to_string_lossy().to_string();
     let config = SessionStoreConfig::new(store_root.clone(), "default".to_string());
     seed_session(&config, "sess-p", "agent-p");

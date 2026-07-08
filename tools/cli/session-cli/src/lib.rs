@@ -20,7 +20,7 @@ use session_api::{
     DEFAULT_SKELETON_PREVIEW_CHARS,
 };
 
-const SESSION_STORE_DIR: &str = ".memory-api";
+const SESSION_STORE_DIR: &str = ".session";
 
 // ── CLI root ───────────────────────────────────────────────────────────────────
 
@@ -40,11 +40,11 @@ pub struct SessionCli {
     #[arg(long, global = true, conflicts_with = "json")]
     pub toon: bool,
 
-    /// Explicit session store root (the `.memory-api` directory).
+    /// Explicit session store root (the `.session` directory).
     #[arg(long, global = true)]
     pub store_root: Option<PathBuf>,
 
-    /// Workspace/repo root to normalize to the canonical `.memory-api` store.
+    /// Workspace/repo root to normalize to the canonical `.session` store.
     /// Lets a tool run from an ancestor checkout target a nested workspace.
     #[arg(long = "workspace", alias = "workspace-root", global = true)]
     pub workspace_root: Option<PathBuf>,
@@ -594,7 +594,7 @@ mod tests {
             .then_some(())
             .expect("git init failed");
 
-        let source_store_root = repo_root.join(".memory-api");
+        let source_store_root = repo_root.join(".session");
         std::fs::create_dir_all(&source_store_root).unwrap();
         let target_workspace_root = repo_root.join("target-workspace");
         std::fs::create_dir_all(target_workspace_root.join(".session")).unwrap();

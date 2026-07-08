@@ -12,7 +12,6 @@ use chrono::{
     Utc,
 };
 use serde::{
-    de::DeserializeOwned,
     Deserialize,
     Serialize,
 };
@@ -125,29 +124,13 @@ impl TryFrom<SessionCaptureRequest> for SessionRecord {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 struct TranscriptEventEnvelope {
-    #[serde(rename = "type")]
-    event_type: String,
-    timestamp: DateTime<Utc>,
-    #[serde(default)]
+    event_type: Option<String>,
+    timestamp: Option<DateTime<Utc>>,
     data: serde_json::Value,
-}
-
-#[derive(Debug, Deserialize)]
-struct TranscriptSessionStartData {
-    #[serde(rename = "sessionId")]
-    session_id: String,
-    #[serde(default)]
-    producer: Option<String>,
-    #[serde(default, rename = "startTime")]
-    start_time: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TranscriptMessageData {
-    #[serde(default)]
-    content: String,
+    role_hint: Option<SessionRole>,
+    content_hint: Option<String>,
 }
 
 pub fn copilot_payload_from_transcript_path(
@@ -204,32 +187,40 @@ fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
             continue;
         }
 
-        let event: TranscriptEventEnvelope = deserialize_transcript_event(&line, transcript_path)?;
+        let event = deserialize_transcript_event(&line, transcript_path)?;
 
-        match event.event_type.as_str() {
-            "session.start" => handle_session_start_event(
+        match event.event_type.as_deref() {
+            Some("session.start") | Some("session_start") | Some("sessionStart") => {
+                handle_session_start_event(
                 event,
-                transcript_path,
                 &mut session_id,
                 &mut agent_id,
                 &mut started_at,
                 &mut captured_at,
-            )?,
-            "user.message" => handle_message_event(
+            )?
+            }
+            Some("user.message") | Some("user_message") => handle_message_event(
                 event,
-                transcript_path,
                 SessionRole::User,
                 &mut captured_at,
                 &mut messages,
             )?,
-            "assistant.message" => handle_message_event(
+            Some("assistant.message") | Some("assistant_message") => handle_message_event(
                 event,
-                transcript_path,
                 SessionRole::Assistant,
                 &mut captured_at,
                 &mut messages,
             )?,
-            _ => {}
+            _ => {
+                if let Some(role) = event.role_hint.clone() {
+                    handle_message_event(
+                        event,
+                        role,
+                        &mut captured_at,
+                        &mut messages,
+                    )?;
+                }
+            }
         }
     }
 
@@ -252,47 +243,49 @@ fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
 
 fn handle_session_start_event(
     event: TranscriptEventEnvelope,
-    transcript_path: &Path,
     session_id: &mut Option<String>,
     agent_id: &mut Option<String>,
     started_at: &mut Option<DateTime<Utc>>,
     captured_at: &mut Option<DateTime<Utc>>,
 ) -> Result<(), SessionError> {
-    let data: TranscriptSessionStartData =
-        deserialize_transcript_data(event.data, transcript_path)?;
+    let data = &event.data;
+
+    let session_id_value = json_string(data, &["sessionId", "session_id", "id"]);
+    let producer_value = json_string(data, &["producer", "agentId", "agent_id"]);
+    let start_time_value = json_timestamp(data, &["startTime", "start_time"]);
+
     if session_id.is_none() {
-        *session_id = Some(data.session_id);
+        *session_id = session_id_value;
     }
     if agent_id.is_none() {
-        *agent_id = data.producer.filter(|value| !value.trim().is_empty());
+        *agent_id = producer_value;
     }
     if started_at.is_none() {
-        *started_at = data.start_time.or(Some(event.timestamp));
+        *started_at = start_time_value.or(event.timestamp);
     }
     if captured_at.is_none() {
-        *captured_at = Some(event.timestamp);
+        *captured_at = event.timestamp;
     }
     Ok(())
 }
 
 fn handle_message_event(
     event: TranscriptEventEnvelope,
-    transcript_path: &Path,
     role: SessionRole,
     captured_at: &mut Option<DateTime<Utc>>,
     messages: &mut Vec<CopilotHookMessage>,
 ) -> Result<(), SessionError> {
-    let data: TranscriptMessageData =
-        deserialize_transcript_data(event.data, transcript_path)?;
-    if data.content.trim().is_empty() {
+    let content = event.content_hint.unwrap_or_default();
+    if content.trim().is_empty() {
         return Ok(());
     }
-    *captured_at = Some(event.timestamp);
+    let timestamp = event.timestamp.unwrap_or_else(Utc::now);
+    *captured_at = Some(timestamp);
     messages.push(CopilotHookMessage {
         role,
-        content: data.content,
-        tool_name: None,
-        captured_at: Some(event.timestamp),
+        content,
+        tool_name: json_string(&event.data, &["toolName", "tool_name"]),
+        captured_at: Some(timestamp),
     });
     Ok(())
 }
@@ -301,20 +294,106 @@ fn deserialize_transcript_event(
     line: &str,
     transcript_path: &Path,
 ) -> Result<TranscriptEventEnvelope, SessionError> {
-    serde_json::from_str(line).map_err(|source| SessionError::Deserialize {
+    let value: serde_json::Value = serde_json::from_str(line).map_err(|source| SessionError::Deserialize {
         path: transcript_path.to_path_buf(),
         source,
+    })?;
+
+    let data = value
+        .get("data")
+        .cloned()
+        .unwrap_or_else(|| value.clone());
+
+    let event_type = first_non_empty_string(&[
+        value.get("type").and_then(serde_json::Value::as_str),
+        value.get("event").and_then(serde_json::Value::as_str),
+        value.get("name").and_then(serde_json::Value::as_str),
+    ])
+    .map(ToString::to_string);
+
+    let timestamp = value
+        .get("timestamp")
+        .and_then(parse_timestamp_value)
+        .or_else(|| value.get("ts").and_then(parse_timestamp_value))
+        .or_else(|| data.get("timestamp").and_then(parse_timestamp_value))
+        .or_else(|| data.get("ts").and_then(parse_timestamp_value));
+
+    let role_hint = parse_role(
+        value
+            .get("role")
+            .and_then(serde_json::Value::as_str)
+            .or_else(|| data.get("role").and_then(serde_json::Value::as_str)),
+    );
+
+    let content_hint = first_non_empty_string(&[
+        value.get("content").and_then(serde_json::Value::as_str),
+        value.get("text").and_then(serde_json::Value::as_str),
+        data.get("content").and_then(serde_json::Value::as_str),
+        data.get("text").and_then(serde_json::Value::as_str),
+    ])
+    .map(ToString::to_string);
+
+    Ok(TranscriptEventEnvelope {
+        event_type,
+        timestamp,
+        data,
+        role_hint,
+        content_hint,
     })
 }
 
-fn deserialize_transcript_data<T: DeserializeOwned>(
-    value: serde_json::Value,
-    transcript_path: &Path,
-) -> Result<T, SessionError> {
-    serde_json::from_value(value).map_err(|source| SessionError::Deserialize {
-        path: transcript_path.to_path_buf(),
-        source,
-    })
+fn json_string(
+    value: &serde_json::Value,
+    keys: &[&str],
+) -> Option<String> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(serde_json::Value::as_str))
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(ToString::to_string)
+}
+
+fn json_timestamp(
+    value: &serde_json::Value,
+    keys: &[&str],
+) -> Option<DateTime<Utc>> {
+    keys.iter()
+        .find_map(|key| value.get(*key))
+        .and_then(parse_timestamp_value)
+}
+
+fn parse_timestamp_value(
+    value: &serde_json::Value,
+) -> Option<DateTime<Utc>> {
+    if let Some(text) = value.as_str() {
+        return DateTime::parse_from_rfc3339(text)
+            .ok()
+            .map(|timestamp| timestamp.with_timezone(&Utc));
+    }
+    if let Some(millis) = value.as_i64() {
+        return DateTime::<Utc>::from_timestamp_millis(millis);
+    }
+    None
+}
+
+fn parse_role(
+    role: Option<&str>,
+) -> Option<SessionRole> {
+    match role?.trim().to_ascii_lowercase().as_str() {
+        "user" => Some(SessionRole::User),
+        "assistant" | "model" => Some(SessionRole::Assistant),
+        _ => None,
+    }
+}
+
+fn first_non_empty_string<'a>(
+    values: &[Option<&'a str>],
+) -> Option<&'a str> {
+    values
+        .iter()
+        .flatten()
+        .map(|value| value.trim())
+        .find(|value| !value.is_empty())
 }
 
 #[cfg(test)]
@@ -431,5 +510,26 @@ mod tests {
         assert_eq!(payload.messages[1].role, SessionRole::Assistant);
         assert_eq!(payload.messages[1].content, "World");
         assert_eq!(payload.captured_at, chrono::Utc.with_ymd_and_hms(2026, 6, 2, 23, 7, 5).single().unwrap());
+    }
+
+    #[test]
+    fn transcript_reader_supports_modern_message_shape() {
+        let transcript = r#"{"event":"session_start","ts":1717372014049,"data":{"session_id":"session-modern","producer":"copilot-agent"}}
+{"event":"message","timestamp":"2026-06-02T23:07:00.000Z","role":"user","content":"Hello modern"}
+{"event":"message","timestamp":"2026-06-02T23:07:05.000Z","data":{"role":"assistant","text":"Hi modern"}}"#;
+
+        let payload = copilot_payload_from_transcript_reader(
+            std::io::Cursor::new(transcript),
+            "default",
+            Some("stop".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(payload.session_id, "session-modern");
+        assert_eq!(payload.messages.len(), 2);
+        assert_eq!(payload.messages[0].role, SessionRole::User);
+        assert_eq!(payload.messages[0].content, "Hello modern");
+        assert_eq!(payload.messages[1].role, SessionRole::Assistant);
+        assert_eq!(payload.messages[1].content, "Hi modern");
     }
 }
