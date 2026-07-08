@@ -15,6 +15,7 @@ use serde::{
     Deserialize,
     Serialize,
 };
+use serde_json::Value;
 
 use crate::{
     SessionError,
@@ -49,13 +50,13 @@ pub struct CopilotHookEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_requests_json: Option<String>,
+    pub tool_requests_json: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_arguments_json: Option<String>,
+    pub tool_arguments_json: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data_json: Option<String>,
+    pub data_json: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub raw_event_json: Option<String>,
+    pub raw_event_json: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -211,10 +212,10 @@ struct TranscriptEventEnvelope {
     tool_name: Option<String>,
     tool_success: Option<bool>,
     reasoning_text: Option<String>,
-    tool_requests_json: Option<String>,
-    tool_arguments_json: Option<String>,
-    data_json: Option<String>,
-    raw_event_json: Option<String>,
+    tool_requests_json: Option<Value>,
+    tool_arguments_json: Option<Value>,
+    data_json: Option<Value>,
+    raw_event_json: Option<Value>,
 }
 
 impl TranscriptEventEnvelope {
@@ -525,10 +526,10 @@ fn deserialize_transcript_event(
     let tool_success = data.get("success").and_then(serde_json::Value::as_bool);
     let reasoning_text =
         json_string(&data, &["reasoningText", "reasoning_text"]);
-    let tool_requests_json = json_json_string(&data, "toolRequests");
-    let tool_arguments_json = json_json_string(&data, "arguments");
-    let data_json = serde_json::to_string(&data).ok();
-    let raw_event_json = Some(line.to_string());
+    let tool_requests_json = json_value(&data, "toolRequests");
+    let tool_arguments_json = json_value(&data, "arguments");
+    let data_json = Some(data.clone());
+    let raw_event_json = Some(value.clone());
 
     Ok(TranscriptEventEnvelope {
         event_id,
@@ -571,14 +572,11 @@ fn json_timestamp(
         .and_then(parse_timestamp_value)
 }
 
-fn json_json_string(
+fn json_value(
     value: &serde_json::Value,
     key: &str,
-) -> Option<String> {
-    value
-        .get(key)
-        .map(serde_json::to_string)
-        .and_then(Result::ok)
+) -> Option<Value> {
+    value.get(key).cloned()
 }
 
 fn parse_timestamp_value(value: &serde_json::Value) -> Option<DateTime<Utc>> {
@@ -731,16 +729,17 @@ mod tests {
         assert!(
             payload.events[2]
                 .data_json
-                .as_deref()
-                .unwrap_or("")
-                .contains("\"toolRequests\"")
+                .as_ref()
+                .and_then(|json| json.get("toolRequests"))
+                .is_some()
         );
         assert!(
             payload.events[3]
                 .raw_event_json
-                .as_deref()
-                .unwrap_or("")
-                .contains("tool.execution_complete")
+                .as_ref()
+                .and_then(|json| json.get("type"))
+                .and_then(serde_json::Value::as_str)
+                == Some("tool.execution_complete")
         );
         assert_eq!(payload.messages[0].role, SessionRole::User);
         assert_eq!(payload.messages[0].content, "Hello");

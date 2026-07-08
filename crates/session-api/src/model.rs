@@ -6,6 +6,7 @@ use serde::{
     Deserialize,
     Serialize,
 };
+use serde_json::Value;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -64,9 +65,9 @@ pub struct SessionTurnEventMeta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_requests_json: Option<String>,
+    pub tool_requests_json: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_arguments_json: Option<String>,
+    pub tool_arguments_json: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

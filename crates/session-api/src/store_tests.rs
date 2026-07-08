@@ -305,9 +305,12 @@
             tool_success: Some(true),
             reasoning_text: None,
             tool_requests_json: None,
-            tool_arguments_json: Some("{\"path\":\"A\"}".to_string()),
-            data_json: Some("{\"arguments\":{\"path\":\"A\"}}".to_string()),
-            raw_event_json: Some("{\"type\":\"tool.execution_complete\",\"data\":{\"arguments\":{\"path\":\"A\"}}}".to_string()),
+            tool_arguments_json: Some(serde_json::json!({ "path": "A" })),
+            data_json: Some(serde_json::json!({ "arguments": { "path": "A" } })),
+            raw_event_json: Some(serde_json::json!({
+                "type": "tool.execution_complete",
+                "data": { "arguments": { "path": "A" } }
+            })),
         }];
         config
             .persist_capture(SessionCaptureRequest::copilot(first))
@@ -331,9 +334,12 @@
             tool_success: Some(true),
             reasoning_text: None,
             tool_requests_json: None,
-            tool_arguments_json: Some("{\"path\":\"B\"}".to_string()),
-            data_json: Some("{\"arguments\":{\"path\":\"B\"}}".to_string()),
-            raw_event_json: Some("{\"type\":\"tool.execution_complete\",\"data\":{\"arguments\":{\"path\":\"B\"}}}".to_string()),
+            tool_arguments_json: Some(serde_json::json!({ "path": "B" })),
+            data_json: Some(serde_json::json!({ "arguments": { "path": "B" } })),
+            raw_event_json: Some(serde_json::json!({
+                "type": "tool.execution_complete",
+                "data": { "arguments": { "path": "B" } }
+            })),
         }];
         let plan = config
             .persist_capture(SessionCaptureRequest::copilot(second))
@@ -347,16 +353,18 @@
         assert!(events.events.iter().any(|event| {
             event
                 .raw_event_json
-                .as_deref()
-                .unwrap_or("")
-                .contains("\"path\":\"A\"")
+                .as_ref()
+                .and_then(|json| json.pointer("/data/arguments/path"))
+                .and_then(serde_json::Value::as_str)
+                == Some("A")
         }));
         assert!(events.events.iter().any(|event| {
             event
                 .raw_event_json
-                .as_deref()
-                .unwrap_or("")
-                .contains("\"path\":\"B\"")
+                .as_ref()
+                .and_then(|json| json.pointer("/data/arguments/path"))
+                .and_then(serde_json::Value::as_str)
+                == Some("B")
         }));
     }
 

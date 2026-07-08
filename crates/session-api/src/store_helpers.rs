@@ -232,11 +232,18 @@ pub(super) fn captured_event_key(event: &CopilotHookEvent) -> String {
             .map(|ok| ok.to_string())
             .unwrap_or_default(),
         event.reasoning_text.as_deref().unwrap_or(""),
-        event.tool_requests_json.as_deref().unwrap_or(""),
-        event.tool_arguments_json.as_deref().unwrap_or(""),
-        event.data_json.as_deref().unwrap_or(""),
-        event.raw_event_json.as_deref().unwrap_or(""),
+        json_fingerprint(&event.tool_requests_json),
+        json_fingerprint(&event.tool_arguments_json),
+        json_fingerprint(&event.data_json),
+        json_fingerprint(&event.raw_event_json),
     )
+}
+
+fn json_fingerprint(value: &Option<serde_json::Value>) -> String {
+    value
+        .as_ref()
+        .and_then(|v| serde_json::to_string(v).ok())
+        .unwrap_or_default()
 }
 
 pub(super) fn merge_transcript(
