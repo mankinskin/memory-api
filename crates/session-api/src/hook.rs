@@ -485,6 +485,8 @@ fn deserialize_transcript_event(
             }
         })?;
 
+    let value = normalize_embedded_json_strings(value);
+
     let data = value.get("data").cloned().unwrap_or_else(|| value.clone());
 
     let event_id = json_string(&value, &["id"]);
@@ -577,6 +579,44 @@ fn json_value(
     key: &str,
 ) -> Option<Value> {
     value.get(key).cloned()
+}
+
+fn normalize_embedded_json_strings(value: Value) -> Value {
+    match value {
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .map(normalize_embedded_json_strings)
+                .collect(),
+        ),
+        Value::Object(entries) => Value::Object(
+            entries
+                .into_iter()
+                .map(|(key, value)| (key, normalize_embedded_json_strings(value)))
+                .collect(),
+        ),
+        Value::String(text) =>
+            parse_stringified_json_value(&text)
+                .map(normalize_embedded_json_strings)
+                .unwrap_or(Value::String(text)),
+        other => other,
+    }
+}
+
+fn parse_stringified_json_value(text: &str) -> Option<Value> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    // De-stringify JSON payloads that were double-encoded upstream.
+    let starts_like_json =
+        trimmed.starts_with('{') || trimmed.starts_with('[');
+    if !starts_like_json {
+        return None;
+    }
+
+    serde_json::from_str(trimmed).ok()
 }
 
 fn parse_timestamp_value(value: &serde_json::Value) -> Option<DateTime<Utc>> {
@@ -787,5 +827,51 @@ mod tests {
         assert_eq!(payload.messages[0].content, "Hello modern");
         assert_eq!(payload.messages[1].role, SessionRole::Assistant);
         assert_eq!(payload.messages[1].content, "Hi modern");
+    }
+
+    #[test]
+    fn transcript_reader_destringifies_nested_json_payloads() {
+        let transcript = r#"{"id":"evt-start","type":"session.start","timestamp":"2026-06-02T23:06:54.049Z","data":"{\"sessionId\":\"session-json\",\"producer\":\"copilot-agent\"}"}
+{"id":"evt-1","type":"assistant.message","timestamp":"2026-06-02T23:07:05.000Z","data":{"messageId":"m-1","content":"World","arguments":"{\"path\":\"src/lib.rs\",\"line\":42}","toolRequests":"[{\"name\":\"read_file\"}]"}}"#;
+
+        let payload = copilot_payload_from_transcript_reader(
+            std::io::Cursor::new(transcript),
+            "default",
+            Some("stop".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(payload.session_id, "session-json");
+        assert_eq!(payload.events.len(), 2);
+
+        let event_meta = payload.messages[0].event_meta.as_ref().unwrap();
+        assert_eq!(
+            event_meta
+                .tool_arguments_json
+                .as_ref()
+                .and_then(|value| value.get("path"))
+                .and_then(serde_json::Value::as_str),
+            Some("src/lib.rs")
+        );
+        assert_eq!(
+            event_meta
+                .tool_requests_json
+                .as_ref()
+                .and_then(serde_json::Value::as_array)
+                .and_then(|items| items.first())
+                .and_then(|value| value.get("name"))
+                .and_then(serde_json::Value::as_str),
+            Some("read_file")
+        );
+
+        assert!(
+            payload.events[1]
+                .data_json
+                .as_ref()
+                .and_then(|value| value.get("arguments"))
+                .and_then(|value| value.get("line"))
+                .and_then(serde_json::Value::as_i64)
+                == Some(42)
+        );
     }
 }

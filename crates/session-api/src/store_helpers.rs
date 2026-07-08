@@ -271,11 +271,12 @@ pub(super) fn merge_transcript(
             if shared_prefix_len < existing.turns.len()
                 && shared_prefix_len < incoming.turns.len()
             {
-                return Err(SessionError::TranscriptConflict {
-                    session_id: existing.session_id,
-                    existing_turns: existing.turns.len(),
-                    incoming_turns: incoming.turns.len(),
-                });
+                // Hook captures are periodic snapshots; when histories diverge,
+                // keep the newest complete snapshot instead of rejecting sync.
+                if incoming.turns.len() >= existing.turns.len() {
+                    return Ok(incoming);
+                }
+                return Ok(existing);
             }
 
             if incoming.turns.len() > existing.turns.len() {

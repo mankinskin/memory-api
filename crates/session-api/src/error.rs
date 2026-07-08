@@ -73,7 +73,7 @@ pub enum SessionError {
     NotFound { path: PathBuf },
 
     #[error(
-        "incoming transcript would rewrite existing turns for session {session_id} ({existing_turns} existing, {incoming_turns} incoming)"
+        "incoming transcript conflicts with persisted session {session_id} ({existing_turns} existing, {incoming_turns} incoming)"
     )]
     TranscriptConflict {
         session_id: String,

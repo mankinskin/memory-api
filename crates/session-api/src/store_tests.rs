@@ -446,6 +446,50 @@
     }
 
     #[test]
+    fn capture_copilot_transcript_allows_divergent_newer_snapshot() {
+        let tempdir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
+        let transcript_path = tempdir.path().join("copilot.jsonl");
+
+        std::fs::write(
+            &transcript_path,
+            concat!(
+                "{\"type\":\"session.start\",\"timestamp\":\"2026-06-02T23:06:54.049Z\",\"data\":{\"sessionId\":\"session-sync\",\"producer\":\"copilot-agent\",\"startTime\":\"2026-06-02T23:06:54.049Z\"}}\n",
+                "{\"type\":\"user.message\",\"timestamp\":\"2026-06-02T23:07:00.000Z\",\"data\":{\"content\":\"Original prompt\"}}\n",
+                "{\"type\":\"assistant.message\",\"timestamp\":\"2026-06-02T23:07:05.000Z\",\"data\":{\"content\":\"Original response\"}}\n"
+            ),
+        )
+        .unwrap();
+
+        config
+            .capture_copilot_transcript(&transcript_path, "PostToolUse")
+            .unwrap();
+
+        std::fs::write(
+            &transcript_path,
+            concat!(
+                "{\"type\":\"session.start\",\"timestamp\":\"2026-06-02T23:06:54.049Z\",\"data\":{\"sessionId\":\"session-sync\",\"producer\":\"copilot-agent\",\"startTime\":\"2026-06-02T23:06:54.049Z\"}}\n",
+                "{\"type\":\"user.message\",\"timestamp\":\"2026-06-02T23:07:00.000Z\",\"data\":{\"content\":\"Edited prompt\"}}\n",
+                "{\"type\":\"assistant.message\",\"timestamp\":\"2026-06-02T23:07:05.000Z\",\"data\":{\"content\":\"Edited response\"}}\n",
+                "{\"type\":\"assistant.message\",\"timestamp\":\"2026-06-02T23:07:07.000Z\",\"data\":{\"content\":\"Additional message\"}}\n"
+            ),
+        )
+        .unwrap();
+
+        config
+            .capture_copilot_transcript(&transcript_path, "PostToolUse")
+            .unwrap();
+
+        let record = config.read_session("session-sync").unwrap();
+        assert_eq!(record.turns.len(), 3);
+        assert_eq!(record.turns[0].content, "Edited prompt");
+        assert_eq!(record.turns[2].content, "Additional message");
+    }
+
+    #[test]
     fn check_in_worktree_creates_and_returns_new_assignment() {
         let tempdir = TempDir::new().unwrap();
         let config = SessionStoreConfig::new(
