@@ -13,7 +13,9 @@ use uuid::Uuid;
 
 use memory_api::workspace;
 use session_api::{
+    DEFAULT_PROMPT_SUMMARIZE_THRESHOLD_CHARS,
     DEFAULT_SKELETON_PREVIEW_CHARS,
+    PromptPackOptions,
     SessionError,
     SessionQuery,
     SessionStoreConfig,
@@ -71,6 +73,8 @@ pub enum SessionCommand {
     PeekRange(PeekRangeArgs),
     /// Peek a body-stripped skeleton of a session transcript.
     PeekSkeleton(PeekSkeletonArgs),
+    /// Peek a prompt-facing compact view of a session transcript.
+    PeekPromptPack(PeekPromptPackArgs),
 }
 
 #[derive(Debug, Args)]
@@ -142,6 +146,19 @@ pub struct PeekSkeletonArgs {
     /// Maximum preview characters retained per turn.
     #[arg(long, default_value_t = DEFAULT_SKELETON_PREVIEW_CHARS)]
     pub preview_chars: usize,
+}
+
+#[derive(Debug, Args)]
+pub struct PeekPromptPackArgs {
+    /// Session id to peek.
+    #[arg(long)]
+    pub session_id: String,
+    /// Maximum preview characters retained per included turn.
+    #[arg(long, default_value_t = DEFAULT_SKELETON_PREVIEW_CHARS)]
+    pub preview_chars: usize,
+    /// Content-length threshold above which entries are summarized.
+    #[arg(long, default_value_t = DEFAULT_PROMPT_SUMMARIZE_THRESHOLD_CHARS)]
+    pub summarize_threshold_chars: usize,
 }
 
 #[derive(Debug, Args)]
@@ -260,6 +277,17 @@ fn dispatch(
             let skeleton =
                 config.peek_skeleton(&args.session_id, args.preview_chars)?;
             to_value(&skeleton)
+        },
+        SessionCommand::PeekPromptPack(args) => {
+            let pack = config.peek_prompt_pack(
+                &args.session_id,
+                PromptPackOptions {
+                    preview_chars: args.preview_chars,
+                    summarize_threshold_chars: args
+                        .summarize_threshold_chars,
+                },
+            )?;
+            to_value(&pack)
         },
     }
 }

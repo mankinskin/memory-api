@@ -29,8 +29,11 @@ use crate::{
         copilot_payload_from_transcript_path,
     },
     peek::{
+        PromptPackOptions,
+        SessionPromptPack,
         SessionSkeleton,
         SessionTurnRange,
+        peek_prompt_pack,
         peek_skeleton,
         peek_turn_range,
     },
@@ -402,6 +405,16 @@ impl SessionStoreConfig {
     ) -> Result<SessionSkeleton, SessionError> {
         let record = self.read_session(session_id)?;
         Ok(peek_skeleton(&record, preview_chars))
+    }
+
+    /// Return a prompt-facing compact view of a persisted session transcript.
+    pub fn peek_prompt_pack(
+        &self,
+        session_id: &str,
+        options: PromptPackOptions,
+    ) -> Result<SessionPromptPack, SessionError> {
+        let record = self.read_session(session_id)?;
+        Ok(peek_prompt_pack(&record, options))
     }
 
     pub(crate) fn paths_for_session_id(

@@ -27,10 +27,16 @@ pub use model::{
     SessionWorktreeStatus,
 };
 pub use peek::{
+    DEFAULT_PROMPT_SUMMARIZE_THRESHOLD_CHARS,
     DEFAULT_SKELETON_PREVIEW_CHARS,
+    PromptInclusion,
+    PromptPackOptions,
+    SessionPromptPack,
+    SessionPromptPackEntry,
     SessionSkeleton,
     SessionSkeletonEntry,
     SessionTurnRange,
+    peek_prompt_pack,
     peek_skeleton,
     peek_turn_range,
 };

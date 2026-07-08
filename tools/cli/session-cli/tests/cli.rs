@@ -54,6 +54,57 @@ fn seed_session(
         .expect("seed session");
 }
 
+fn seed_compaction_session(
+    config: &SessionStoreConfig,
+    session_id: &str,
+    agent: &str,
+) {
+    let payload = CopilotHookPayload {
+        session_id: session_id.to_string(),
+        workspace_slug: "default".to_string(),
+        captured_at: Utc::now(),
+        conversation_id: Some("conv-compact".to_string()),
+        agent_id: Some(agent.to_string()),
+        model: None,
+        trigger: None,
+        messages: vec![
+            CopilotHookMessage {
+                role: SessionRole::Tool,
+                content: "unchanged status".to_string(),
+                tool_name: Some("run_in_terminal".to_string()),
+                captured_at: None,
+                event_meta: None,
+            },
+            CopilotHookMessage {
+                role: SessionRole::Tool,
+                content: "unchanged status".to_string(),
+                tool_name: Some("run_in_terminal".to_string()),
+                captured_at: None,
+                event_meta: None,
+            },
+            CopilotHookMessage {
+                role: SessionRole::Tool,
+                content: "Large tool result written to file. Use the read_file tool to access the content at: /tmp/spill.txt".to_string(),
+                tool_name: Some("run_in_terminal".to_string()),
+                captured_at: None,
+                event_meta: None,
+            },
+            CopilotHookMessage {
+                role: SessionRole::Assistant,
+                content: "I will retry the same command and check again.".to_string(),
+                tool_name: None,
+                captured_at: None,
+                event_meta: None,
+            },
+        ],
+        events: vec![],
+        runtime: None,
+    };
+    config
+        .persist_capture(SessionCaptureRequest::copilot(payload))
+        .expect("seed compaction session");
+}
+
 fn run_machine(args: &[&str]) -> serde_json::Value {
     let cli = parse_cli_from(args).expect("parse cli");
     match run(cli).expect("run command") {
@@ -164,4 +215,31 @@ fn peek_range_and_skeleton() {
     ]);
     assert_eq!(skeleton["total_turns"], 2);
     assert_eq!(skeleton["entries"][0]["preview"], "first turn body");
+}
+
+#[test]
+fn peek_prompt_pack_reports_guarded_entries() {
+    let dir = tempdir().unwrap();
+    let store_root = dir.path().join(".session");
+    let store_root_str = store_root.to_string_lossy().to_string();
+    let config =
+        SessionStoreConfig::new(store_root.clone(), "default".to_string());
+    seed_compaction_session(&config, "sess-c", "agent-c");
+
+    let pack = run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "peek-prompt-pack",
+        "--session-id",
+        "sess-c",
+        "--summarize-threshold-chars",
+        "120",
+    ]);
+
+    assert_eq!(pack["total_turns"], 4);
+    assert_eq!(pack["dropped_turns"], 2);
+    assert_eq!(pack["reference_only_turns"], 1);
+    assert_eq!(pack["entries"].as_array().unwrap().len(), 2);
 }

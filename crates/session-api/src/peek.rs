@@ -2,6 +2,7 @@ use serde::{
     Deserialize,
     Serialize,
 };
+use std::collections::HashMap;
 
 use crate::{
     SessionRecord,
@@ -11,6 +12,8 @@ use crate::{
 
 /// Default number of preview characters retained per turn in a skeleton view.
 pub const DEFAULT_SKELETON_PREVIEW_CHARS: usize = 120;
+/// Default content length after which turns are summarized.
+pub const DEFAULT_PROMPT_SUMMARIZE_THRESHOLD_CHARS: usize = 600;
 
 /// A bounded window of transcript turns for a single session.
 ///
@@ -48,6 +51,60 @@ pub struct SessionSkeleton {
     pub total_turns: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub entries: Vec<SessionSkeletonEntry>,
+}
+
+/// Classification for whether a turn should reach model-facing prompt context.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PromptInclusion {
+    Retain,
+    Summarize,
+    ReferenceOnly,
+    DropFromPrompt,
+}
+
+/// A compact prompt-facing entry produced by guard classification.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionPromptPackEntry {
+    pub sequence: usize,
+    pub role: SessionRole,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    pub inclusion: PromptInclusion,
+    pub reason: String,
+    pub preview: String,
+    pub content_len: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_pointer: Option<String>,
+}
+
+/// Prompt-facing compact session view after applying guard classification.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionPromptPack {
+    pub session_id: String,
+    pub total_turns: usize,
+    pub retained_turns: usize,
+    pub summarized_turns: usize,
+    pub reference_only_turns: usize,
+    pub dropped_turns: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entries: Vec<SessionPromptPackEntry>,
+}
+
+/// Options used by prompt-pack classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromptPackOptions {
+    pub preview_chars: usize,
+    pub summarize_threshold_chars: usize,
+}
+
+impl Default for PromptPackOptions {
+    fn default() -> Self {
+        Self {
+            preview_chars: DEFAULT_SKELETON_PREVIEW_CHARS,
+            summarize_threshold_chars: DEFAULT_PROMPT_SUMMARIZE_THRESHOLD_CHARS,
+        }
+    }
 }
 
 /// Return a bounded window of turns from `record`.
@@ -100,6 +157,97 @@ pub fn peek_skeleton(
     }
 }
 
+/// Build a compact prompt-facing view of `record` by classifying each turn as
+/// retain/summarize/reference-only/drop-from-prompt.
+///
+/// The resulting `entries` vector contains only non-dropped items.
+pub fn peek_prompt_pack(
+    record: &SessionRecord,
+    options: PromptPackOptions,
+) -> SessionPromptPack {
+    let mut entries = Vec::new();
+    let mut retain = 0;
+    let mut summarize = 0;
+    let mut reference_only = 0;
+    let mut dropped = 0;
+    let mut seen_signatures: HashMap<String, usize> = HashMap::new();
+
+    for turn in &record.turns {
+        let content_len = turn.content.chars().count();
+        let normalized = normalize_for_signature(&turn.content);
+        let signature = format!(
+            "{:?}|{}|{}",
+            turn.role,
+            turn.tool_name.as_deref().unwrap_or(""),
+            normalized
+        );
+
+        if content_len == 0 {
+            dropped += 1;
+            continue;
+        }
+
+        if is_routine_retry_narration(turn, &normalized) {
+            dropped += 1;
+            continue;
+        }
+
+        if let Some(previous_sequence) = seen_signatures.get(&signature) {
+            if is_repeated_state_check(turn) || turn.role == SessionRole::Tool {
+                let _ = previous_sequence;
+                dropped += 1;
+                continue;
+            }
+        }
+
+        seen_signatures.insert(signature, turn.sequence);
+
+        let preview = preview_line(&turn.content, options.preview_chars);
+        let reference_pointer = extract_reference_pointer(&turn.content);
+        let (inclusion, reason) = if reference_pointer.is_some() {
+            (
+                PromptInclusion::ReferenceOnly,
+                "artifact-pointer-detected".to_string(),
+            )
+        } else if content_len > options.summarize_threshold_chars {
+            (
+                PromptInclusion::Summarize,
+                "oversized-content".to_string(),
+            )
+        } else {
+            (PromptInclusion::Retain, "durable-content".to_string())
+        };
+
+        match inclusion {
+            PromptInclusion::Retain => retain += 1,
+            PromptInclusion::Summarize => summarize += 1,
+            PromptInclusion::ReferenceOnly => reference_only += 1,
+            PromptInclusion::DropFromPrompt => dropped += 1,
+        }
+
+        entries.push(SessionPromptPackEntry {
+            sequence: turn.sequence,
+            role: turn.role.clone(),
+            tool_name: turn.tool_name.clone(),
+            inclusion,
+            reason,
+            preview,
+            content_len,
+            reference_pointer,
+        });
+    }
+
+    SessionPromptPack {
+        session_id: record.session_id.clone(),
+        total_turns: record.turns.len(),
+        retained_turns: retain,
+        summarized_turns: summarize,
+        reference_only_turns: reference_only,
+        dropped_turns: dropped,
+        entries,
+    }
+}
+
 /// Build a single-line, character-bounded preview of `content`.
 fn preview_line(
     content: &str,
@@ -116,6 +264,98 @@ fn preview_line(
         preview.push('\u{2026}');
     }
     preview
+}
+
+fn normalize_for_signature(content: &str) -> String {
+    let mut normalized = String::with_capacity(content.len().min(512));
+    let mut saw_space = false;
+
+    for ch in content.chars() {
+        if ch.is_whitespace() {
+            if !saw_space {
+                normalized.push(' ');
+                saw_space = true;
+            }
+            continue;
+        }
+        saw_space = false;
+        normalized.push(ch.to_ascii_lowercase());
+        if normalized.len() >= 512 {
+            break;
+        }
+    }
+
+    normalized.trim().to_string()
+}
+
+fn is_repeated_state_check(turn: &SessionTurn) -> bool {
+    matches!(
+        turn.tool_name.as_deref(),
+        Some(
+            "run_in_terminal"
+                | "get_terminal_output"
+                | "terminal_last_command"
+                | "file_search"
+                | "grep_search"
+                | "list_dir"
+                | "get_changed_files"
+                | "get_errors"
+        )
+    )
+}
+
+fn is_routine_retry_narration(
+    turn: &SessionTurn,
+    normalized_content: &str,
+) -> bool {
+    if turn.role != SessionRole::Assistant {
+        return false;
+    }
+
+    if normalized_content.len() > 220 {
+        return false;
+    }
+
+    let retry_markers = [
+        "retry",
+        "re-run",
+        "rerun",
+        "try again",
+        "run again",
+        "checking again",
+    ];
+
+    retry_markers
+        .iter()
+        .any(|marker| normalized_content.contains(marker))
+}
+
+fn extract_reference_pointer(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some((_, right)) = trimmed.split_once("saved to:") {
+            let pointer = right.trim();
+            if !pointer.is_empty() {
+                return Some(pointer.to_string());
+            }
+        }
+        if let Some((_, right)) = trimmed.split_once("content at:") {
+            let pointer = right.trim();
+            if !pointer.is_empty() {
+                return Some(pointer.to_string());
+            }
+        }
+    }
+
+    if content.contains("chat-session-resources") {
+        return Some("chat-session-resource-pointer".to_string());
+    }
+
+    if content.contains(".session/sessions/") {
+        return Some("session-store-pointer".to_string());
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -233,5 +473,75 @@ mod tests {
         assert_eq!(skeleton.entries[0].content_len, 50);
         assert_eq!(skeleton.entries[0].preview.chars().count(), 11); // 10 + ellipsis
         assert!(skeleton.entries[0].preview.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn prompt_pack_drops_repeated_state_checks() {
+        let mut first = turn(0, SessionRole::Tool, "status output");
+        first.tool_name = Some("run_in_terminal".to_string());
+        let mut second = turn(1, SessionRole::Tool, "status output");
+        second.tool_name = Some("run_in_terminal".to_string());
+        let record = record_with(vec![first, second]);
+
+        let pack = peek_prompt_pack(&record, PromptPackOptions::default());
+
+        assert_eq!(pack.total_turns, 2);
+        assert_eq!(pack.entries.len(), 1);
+        assert_eq!(pack.dropped_turns, 1);
+        assert_eq!(pack.retained_turns, 1);
+    }
+
+    #[test]
+    fn prompt_pack_marks_spill_paths_as_reference_only() {
+        let mut tool = turn(
+            0,
+            SessionRole::Tool,
+            "Large tool result written to file. Use the read_file tool to access the content at: /tmp/output.txt",
+        );
+        tool.tool_name = Some("run_in_terminal".to_string());
+        let record = record_with(vec![tool]);
+
+        let pack = peek_prompt_pack(&record, PromptPackOptions::default());
+
+        assert_eq!(pack.reference_only_turns, 1);
+        assert_eq!(pack.entries[0].inclusion, PromptInclusion::ReferenceOnly);
+        assert_eq!(
+            pack.entries[0].reference_pointer.as_deref(),
+            Some("/tmp/output.txt")
+        );
+    }
+
+    #[test]
+    fn prompt_pack_summarizes_oversized_content() {
+        let record = record_with(vec![turn(
+            0,
+            SessionRole::Assistant,
+            &"x".repeat(800),
+        )]);
+
+        let pack = peek_prompt_pack(
+            &record,
+            PromptPackOptions {
+                preview_chars: 40,
+                summarize_threshold_chars: 120,
+            },
+        );
+
+        assert_eq!(pack.summarized_turns, 1);
+        assert_eq!(pack.entries[0].inclusion, PromptInclusion::Summarize);
+    }
+
+    #[test]
+    fn prompt_pack_drops_routine_retry_narration() {
+        let record = record_with(vec![turn(
+            0,
+            SessionRole::Assistant,
+            "I will retry the same command and check again.",
+        )]);
+
+        let pack = peek_prompt_pack(&record, PromptPackOptions::default());
+
+        assert_eq!(pack.entries.len(), 0);
+        assert_eq!(pack.dropped_turns, 1);
     }
 }
