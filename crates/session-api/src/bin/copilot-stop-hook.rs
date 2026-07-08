@@ -1,7 +1,9 @@
 use std::{
     env,
-    path::Path,
-    path::PathBuf,
+    path::{
+        Path,
+        PathBuf,
+    },
     process,
 };
 
@@ -12,20 +14,23 @@ use session_api::{
 
 fn main() {
     match run() {
-        Ok(()) => {}
+        Ok(()) => {},
         Err(SessionError::InvalidHookInput(message)) if message == "help" => {
             print_usage();
-        }
+        },
         Err(error) => {
             eprintln!("[copilot-stop-hook] {error}");
             process::exit(1);
-        }
+        },
     }
 }
 
 fn run() -> Result<(), SessionError> {
     let args = parse_args()?;
-    let store_root = resolve_store_root(args.store_root, memory_api::workspace::working_dir().as_deref());
+    let store_root = resolve_store_root(
+        args.store_root,
+        memory_api::workspace::working_dir().as_deref(),
+    );
     let config = SessionStoreConfig::new(store_root, args.workspace_slug);
 
     config.capture_copilot_transcript(args.transcript_path, args.trigger)?;
@@ -39,7 +44,8 @@ fn resolve_store_root(
     match store_root {
         Some(store_root) => store_root,
         None => match cwd {
-            Some(cwd) => memory_api::workspace::resolve_local_root_from(cwd, ".session"),
+            Some(cwd) =>
+                memory_api::workspace::resolve_local_root_from(cwd, ".session"),
             None => std::path::PathBuf::from(".session"),
         },
     }
@@ -61,34 +67,46 @@ fn parse_args() -> Result<Args, SessionError> {
     let mut arguments = env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
-            "-h" | "--help" => return Err(SessionError::InvalidHookInput("help".to_string())),
+            "-h" | "--help" =>
+                return Err(SessionError::InvalidHookInput("help".to_string())),
             "--transcript-path" => {
-                transcript_path = Some(PathBuf::from(next_value(&mut arguments, "--transcript-path")?));
-            }
+                transcript_path = Some(PathBuf::from(next_value(
+                    &mut arguments,
+                    "--transcript-path",
+                )?));
+            },
             "--store-root" => {
-                store_root = Some(PathBuf::from(next_value(&mut arguments, "--store-root")?));
-            }
+                store_root = Some(PathBuf::from(next_value(
+                    &mut arguments,
+                    "--store-root",
+                )?));
+            },
             "--workspace-slug" => {
-                workspace_slug = Some(next_value(&mut arguments, "--workspace-slug")?);
-            }
+                workspace_slug =
+                    Some(next_value(&mut arguments, "--workspace-slug")?);
+            },
             "--trigger" => {
                 trigger = Some(next_value(&mut arguments, "--trigger")?);
-            }
+            },
             _ => {
                 return Err(SessionError::InvalidHookInput(format!(
                     "unknown argument: {argument}"
                 )));
-            }
+            },
         }
     }
 
     Ok(Args {
         transcript_path: transcript_path.ok_or_else(|| {
-            SessionError::InvalidHookInput("missing --transcript-path".to_string())
+            SessionError::InvalidHookInput(
+                "missing --transcript-path".to_string(),
+            )
         })?,
         store_root,
         workspace_slug: workspace_slug.ok_or_else(|| {
-            SessionError::InvalidHookInput("missing --workspace-slug".to_string())
+            SessionError::InvalidHookInput(
+                "missing --workspace-slug".to_string(),
+            )
         })?,
         trigger: trigger.unwrap_or_else(|| "stop".to_string()),
     })

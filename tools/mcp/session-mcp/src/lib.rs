@@ -1,6 +1,6 @@
 pub mod server;
 
 pub use server::{
-    run_mcp_server,
     SessionServer,
+    run_mcp_server,
 };

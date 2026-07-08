@@ -1,0 +1,5 @@
+id = "b3155a94-230e-416b-be0e-5948d6d2193a"
+created_at = "2026-07-07T23:08:07.313091500+00:00"
+title = "[session-api][hook] Fix Stop hook transcript capture robustness and workspace slug consistency"
+state = "in-review"
+type = "tracker-improvement"

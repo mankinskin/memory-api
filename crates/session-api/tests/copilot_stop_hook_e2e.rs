@@ -5,13 +5,12 @@ use std::{
 };
 
 use session_api::{
-    copilot_payload_from_transcript_path,
     SessionStoreConfig,
+    copilot_payload_from_transcript_path,
 };
 use tempfile::tempdir;
 
-const DEFAULT_TRANSCRIPTS_ROOT: &str =
-    "C:/Users/linus/AppData/Roaming/Code/User/workspaceStorage/85c65471aaff0b651db0ce38f3719fa7/GitHub.copilot-chat/transcripts";
+const DEFAULT_TRANSCRIPTS_ROOT: &str = "C:/Users/linus/AppData/Roaming/Code/User/workspaceStorage/85c65471aaff0b651db0ce38f3719fa7/GitHub.copilot-chat/transcripts";
 const FIXTURE_SESSION_ID: &str = "38095e95-c056-478a-8fe4-2b0a80f34573";
 
 fn transcripts_root() -> PathBuf {
@@ -113,18 +112,25 @@ fn e2e_parses_multiple_transcript_fixtures_from_root() {
         .expect("read transcript fixture root")
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
-        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("jsonl"))
+        .filter(|path| {
+            path.extension().and_then(|ext| ext.to_str()) == Some("jsonl")
+        })
         .collect::<Vec<_>>();
     fixtures.sort();
 
     let sample_size = fixtures.len().min(3);
-    assert!(sample_size > 0, "expected at least one .jsonl transcript fixture");
+    assert!(
+        sample_size > 0,
+        "expected at least one .jsonl transcript fixture"
+    );
 
     let mut parsed = 0usize;
     for path in fixtures.iter().take(sample_size) {
-        if let Ok(payload) =
-            copilot_payload_from_transcript_path(path, "default", Some("e2e-scan".to_string()))
-        {
+        if let Ok(payload) = copilot_payload_from_transcript_path(
+            path,
+            "default",
+            Some("e2e-scan".to_string()),
+        ) {
             if !payload.messages.is_empty() {
                 parsed += 1;
             }
