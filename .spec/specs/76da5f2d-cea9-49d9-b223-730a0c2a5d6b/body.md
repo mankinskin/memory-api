@@ -1,3 +1,34 @@
+<!-- aligned-structure:v1 -->
+
+# Summary
+
+This spec drafts the design for a real transport matrix covering CLI, HTTP, and MCP surfaces across the in-scope memory-api domains.
+
+## Behavior Story
+
+This spec drafts the design for a real transport matrix covering CLI, HTTP, and MCP surfaces across the in-scope memory-api domains.
+
+## Provided Surface Contracts
+
+- Define provided contracts for this behavior slice.
+
+## Required Validation
+
+- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+
+## Related Implementation Tickets
+
+- memory-api/.ticket/tickets/1bc3982c-e0c2-4b6a-b809-aff4eb78d161/ticket.toml
+- memory-api/.ticket/tickets/387843e4-815e-4424-97fa-9855a464b5e6/ticket.toml
+- memory-api/.ticket/tickets/2d59b99c-0205-4bf6-bad9-ecb69a52830a/ticket.toml
+- memory-api/.ticket/tickets/d8d18128-656e-4a13-9983-946d6af33c27/ticket.toml
+
+## Background Knowledge References
+
+- Prefer entity references and context rendering over embedding fully expanded payloads in this spec body.
+
+## Legacy Content (Preserved)
+
 # Transport-layer e2e matrix and benchmark strategy
 
 This spec drafts the design for a real transport matrix covering CLI, HTTP, and MCP surfaces across the in-scope memory-api domains.

@@ -1,3 +1,31 @@
+<!-- aligned-structure:v1 -->
+
+# Summary
+
+Establish one resilient, memory-api-owned path normalization utility kernel that emits Unix-style path strings for transport/UI while preserving typed path safety for filesystem operations, with deterministic behavior across Windows and Unix callers.
+
+## Behavior Story
+
+Establish one resilient, memory-api-owned path normalization utility kernel that emits Unix-style path strings for transport/UI while preserving typed path safety for filesystem operations, with deterministic behavior across Windows and Unix callers.
+
+## Provided Surface Contracts
+
+- Define provided contracts for this behavior slice.
+
+## Required Validation
+
+- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+
+## Related Implementation Tickets
+
+- No related implementation ticket is linked yet.
+
+## Background Knowledge References
+
+- Prefer entity references and context rendering over embedding fully expanded payloads in this spec body.
+
+## Legacy Content (Preserved)
+
 # Path Normalization Utility Kernel (Design)
 
 ## Goal

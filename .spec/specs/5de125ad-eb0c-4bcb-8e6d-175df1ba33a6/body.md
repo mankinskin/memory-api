@@ -1,3 +1,31 @@
+<!-- aligned-structure:v1 -->
+
+# Summary
+
+Nested rule workspaces should extend the existing `rule-api` store and target model from "one store + one config" into an explicitly scanned workspace graph. The owning repo workspace remains the unit of authoring, while generation and explanation can reuse persisted child-workspace scan roots deterministically.
+
+## Behavior Story
+
+Nested rule workspaces should extend the existing `rule-api` store and target model from "one store + one config" into an explicitly scanned workspace graph. The owning repo workspace remains the unit of authoring, while generation and explanation can reuse persisted child-workspace scan roots deterministically.
+
+## Provided Surface Contracts
+
+- Define provided contracts for this behavior slice.
+
+## Required Validation
+
+- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+
+## Related Implementation Tickets
+
+- No related implementation ticket is linked yet.
+
+## Background Knowledge References
+
+- Prefer entity references and context rendering over embedding fully expanded payloads in this spec body.
+
+## Legacy Content (Preserved)
+
 # Summary
 
 Nested rule workspaces should extend the existing `rule-api` store and target model from "one store + one config" into an explicitly scanned workspace graph. The owning repo workspace remains the unit of authoring, while generation and explanation can reuse persisted child-workspace scan roots deterministically.

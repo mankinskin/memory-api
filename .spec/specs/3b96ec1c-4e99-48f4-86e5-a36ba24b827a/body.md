@@ -1,3 +1,31 @@
+<!-- aligned-structure:v1 -->
+
+# Summary
+
+`memory-api` needs its own repo-local rule workspace so the repo README and local usage guides are authored next to the crates and tools they describe. The local target config should stay manageable by using a file/folder tree layout that groups generated outputs by domain and tool type.
+
+## Behavior Story
+
+`memory-api` needs its own repo-local rule workspace so the repo README and local usage guides are authored next to the crates and tools they describe. The local target config should stay manageable by using a file/folder tree layout that groups generated outputs by domain and tool type.
+
+## Provided Surface Contracts
+
+- Define provided contracts for this behavior slice.
+
+## Required Validation
+
+- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+
+## Related Implementation Tickets
+
+- No related implementation ticket is linked yet.
+
+## Background Knowledge References
+
+- Prefer entity references and context rendering over embedding fully expanded payloads in this spec body.
+
+## Legacy Content (Preserved)
+
 # Summary
 
 `memory-api` needs its own repo-local rule workspace so the repo README and local usage guides are authored next to the crates and tools they describe. The local target config should stay manageable by using a file/folder tree layout that groups generated outputs by domain and tool type.

@@ -1,3 +1,31 @@
+<!-- aligned-structure:v1 -->
+
+# Summary
+
+Port `memory-api/tools/ticket-vscode` to a dual-host Rust/WASM-backed architecture without breaking the existing ticket browsing workflow. Target: thin JS/TS host shell + Rust/WASM core, shipping both `main` (Node/Electron/remote) and `browser` (WebWorker) entrypoints.
+
+## Behavior Story
+
+Port `memory-api/tools/ticket-vscode` to a dual-host Rust/WASM-backed architecture without breaking the existing ticket browsing workflow. Target: thin JS/TS host shell + Rust/WASM core, shipping both `main` (Node/Electron/remote) and `browser` (WebWorker) entrypoints.
+
+## Provided Surface Contracts
+
+- Define provided contracts for this behavior slice.
+
+## Required Validation
+
+- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+
+## Related Implementation Tickets
+
+- No related implementation ticket is linked yet.
+
+## Background Knowledge References
+
+- Prefer entity references and context rendering over embedding fully expanded payloads in this spec body.
+
+## Legacy Content (Preserved)
+
 # Ticket-vscode Rust/WASM Port
 
 ## Goal

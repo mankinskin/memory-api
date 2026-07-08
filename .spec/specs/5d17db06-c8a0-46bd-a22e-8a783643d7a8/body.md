@@ -1,3 +1,31 @@
+<!-- aligned-structure:v1 -->
+
+# Summary
+
+The `ticket-vscode` extension (VS Code package id: `ticket-viewer`, v0.1.0) surfaces the ticket graph from a running `ticket-viewer` Axum/Dioxus server directly inside VS Code's activity bar. It allows developers to browse and manage tickets inside the editor while opening full ticket detail routes in the ticket viewer when deeper navigation is needed.
+
+## Behavior Story
+
+The `ticket-vscode` extension (VS Code package id: `ticket-viewer`, v0.1.0) surfaces the ticket graph from a running `ticket-viewer` Axum/Dioxus server directly inside VS Code's activity bar. It allows developers to browse and manage tickets inside the editor while opening full ticket detail routes in the ticket viewer when deeper navigation is needed.
+
+## Provided Surface Contracts
+
+- Define provided contracts for this behavior slice.
+
+## Required Validation
+
+- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+
+## Related Implementation Tickets
+
+- No related implementation ticket is linked yet.
+
+## Background Knowledge References
+
+- Prefer entity references and context rendering over embedding fully expanded payloads in this spec body.
+
+## Legacy Content (Preserved)
+
 The `ticket-vscode` extension (VS Code package id: `ticket-viewer`, v0.1.0) surfaces the ticket graph from a running `ticket-viewer` Axum/Dioxus server directly inside VS Code's activity bar. It allows developers to browse and manage tickets inside the editor while opening full ticket detail routes in the ticket viewer when deeper navigation is needed.
 
 ## Technology Stack

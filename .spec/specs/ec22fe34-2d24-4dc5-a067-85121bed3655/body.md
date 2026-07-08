@@ -1,3 +1,31 @@
+<!-- aligned-structure:v1 -->
+
+# Summary
+
+Best-next-ticket discovery must remain consistent anywhere the repository surfaces candidate work.
+
+## Behavior Story
+
+Best-next-ticket discovery must remain consistent anywhere the repository surfaces candidate work.
+
+## Provided Surface Contracts
+
+- Define provided contracts for this behavior slice.
+
+## Required Validation
+
+- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+
+## Related Implementation Tickets
+
+- No related implementation ticket is linked yet.
+
+## Background Knowledge References
+
+- Prefer entity references and context rendering over embedding fully expanded payloads in this spec body.
+
+## Legacy Content (Preserved)
+
 # Summary
 
 Best-next-ticket discovery must remain consistent anywhere the repository surfaces candidate work.

@@ -1,3 +1,31 @@
+<!-- aligned-structure:v1 -->
+
+# Summary
+
+`rule-api` already supports canonical rule storage in `.rule/rules/**`, repo-scoped filtering, hierarchical target outlines, and deterministic generation from a single `rule-targets.yaml`. The next step is to make rule workspaces first-class at nested repo boundaries so each submodule repository can own its local rules while parent repositories can compose child rules into parent targets.
+
+## Behavior Story
+
+`rule-api` already supports canonical rule storage in `.rule/rules/**`, repo-scoped filtering, hierarchical target outlines, and deterministic generation from a single `rule-targets.yaml`. The next step is to make rule workspaces first-class at nested repo boundaries so each submodule repository can own its local rules while parent repositories can compose child rules into parent targets.
+
+## Provided Surface Contracts
+
+- Define provided contracts for this behavior slice.
+
+## Required Validation
+
+- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+
+## Related Implementation Tickets
+
+- No related implementation ticket is linked yet.
+
+## Background Knowledge References
+
+- Prefer entity references and context rendering over embedding fully expanded payloads in this spec body.
+
+## Legacy Content (Preserved)
+
 # Summary
 
 `rule-api` already supports canonical rule storage in `.rule/rules/**`, repo-scoped filtering, hierarchical target outlines, and deterministic generation from a single `rule-targets.yaml`. The next step is to make rule workspaces first-class at nested repo boundaries so each submodule repository can own its local rules while parent repositories can compose child rules into parent targets.

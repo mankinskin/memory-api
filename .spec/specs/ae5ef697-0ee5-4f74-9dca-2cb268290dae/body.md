@@ -1,3 +1,31 @@
+<!-- aligned-structure:v1 -->
+
+# Summary
+
+Source: `crates/memory-api/src/workspace.rs`
+
+## Behavior Story
+
+Source: `crates/memory-api/src/workspace.rs`
+
+## Provided Surface Contracts
+
+- Define provided contracts for this behavior slice.
+
+## Required Validation
+
+- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+
+## Related Implementation Tickets
+
+- No related implementation ticket is linked yet.
+
+## Background Knowledge References
+
+- Prefer entity references and context rendering over embedding fully expanded payloads in this spec body.
+
+## Legacy Content (Preserved)
+
 # workspace
 
 Source: `crates/memory-api/src/workspace.rs`
@@ -118,4 +146,3 @@ The child-workspace dependency spec at `ticket-api/workspaces/ancestor-dependenc
 - Focused automated tests must cover the root-level nested-workspace `spec refs validate` path and prove that store selection and file-resolution options do not share one ambiguous flag name.
 - When a CLI discovers descendant scan roots dynamically, validation must prove that full-text search stays in sync with `get` and `list` for the same nested workspace fixture.
 - Shared workspace-spec updates and ticket acceptance criteria must stay aligned with those automated tests whenever the option contract changes.
-

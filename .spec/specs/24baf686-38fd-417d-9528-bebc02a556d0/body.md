@@ -1,3 +1,31 @@
+<!-- aligned-structure:v1 -->
+
+# Summary
+
+`memory-api` should gain a `docs` domain so humans and agents can navigate repository structure through the same family pattern already used for rules, specs, tickets, and audits. The first primitive is a generated table of contents in each repository README, derived from canonical `rule-api` content and aware of nested sub-workspaces.
+
+## Behavior Story
+
+`memory-api` should gain a `docs` domain so humans and agents can navigate repository structure through the same family pattern already used for rules, specs, tickets, and audits. The first primitive is a generated table of contents in each repository README, derived from canonical `rule-api` content and aware of nested sub-workspaces.
+
+## Provided Surface Contracts
+
+- Define provided contracts for this behavior slice.
+
+## Required Validation
+
+- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+
+## Related Implementation Tickets
+
+- No related implementation ticket is linked yet.
+
+## Background Knowledge References
+
+- Prefer entity references and context rendering over embedding fully expanded payloads in this spec body.
+
+## Legacy Content (Preserved)
+
 # Summary
 
 `memory-api` should gain a `docs` domain so humans and agents can navigate repository structure through the same family pattern already used for rules, specs, tickets, and audits. The first primitive is a generated table of contents in each repository README, derived from canonical `rule-api` content and aware of nested sub-workspaces.

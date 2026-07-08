@@ -1,3 +1,31 @@
+<!-- aligned-structure:v1 -->
+
+# Summary
+
+The ticket CLI needs first-class reverse-dependency workflow support: `ticket unblocked-by <id>` should show which dependents a prerequisite unlocks or still affects, and `ticket next <id>` should show the next actionable blocker tickets to finish in order to advance those affected dependents.
+
+## Behavior Story
+
+The ticket CLI needs first-class reverse-dependency workflow support: `ticket unblocked-by <id>` should show which dependents a prerequisite unlocks or still affects, and `ticket next <id>` should show the next actionable blocker tickets to finish in order to advance those affected dependents.
+
+## Provided Surface Contracts
+
+- Define provided contracts for this behavior slice.
+
+## Required Validation
+
+- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+
+## Related Implementation Tickets
+
+- No related implementation ticket is linked yet.
+
+## Background Knowledge References
+
+- Prefer entity references and context rendering over embedding fully expanded payloads in this spec body.
+
+## Legacy Content (Preserved)
+
 # Summary
 
 The ticket CLI needs first-class reverse-dependency workflow support: `ticket unblocked-by <id>` should show which dependents a prerequisite unlocks or still affects, and `ticket next <id>` should show the next actionable blocker tickets to finish in order to advance those affected dependents.

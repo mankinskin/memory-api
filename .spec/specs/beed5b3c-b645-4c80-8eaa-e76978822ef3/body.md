@@ -1,3 +1,31 @@
+<!-- aligned-structure:v1 -->
+
+# Summary
+
+The shared memory workspace fixture provides deterministic, representative data for every in-scope memory domain so matrix tests, benchmark matrices, transport tests, and backfill workflows exercise seeded real data rather than throwaway self-created records.
+
+## Behavior Story
+
+The shared memory workspace fixture provides deterministic, representative data for every in-scope memory domain so matrix tests, benchmark matrices, transport tests, and backfill workflows exercise seeded real data rather than throwaway self-created records.
+
+## Provided Surface Contracts
+
+- Define provided contracts for this behavior slice.
+
+## Required Validation
+
+- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+
+## Related Implementation Tickets
+
+- ticket id: 9138f4e7-2757-4d23-9676-3306608a429e
+
+## Background Knowledge References
+
+- Prefer entity references and context rendering over embedding fully expanded payloads in this spec body.
+
+## Legacy Content (Preserved)
+
 # Representative Fixture Population
 
 ## Goal
