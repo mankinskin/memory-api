@@ -6,11 +6,9 @@ use std::{
         Command,
         Stdio,
     },
-    time::{
-        SystemTime,
-        UNIX_EPOCH,
-    },
 };
+
+mod common;
 
 use session_api::{
     SessionStoreConfig,
@@ -18,95 +16,20 @@ use session_api::{
 };
 use tempfile::tempdir;
 
+use common::fixture_harness::{
+    ScriptWorkspaceFixture,
+    find_cargo_bin,
+    repo_root_from_manifest,
+    shell_single_quote,
+    unique_suffix,
+    write_fixture_transcript,
+};
+
 const FIXTURE_SESSION_ID: &str = "fixture-local-a";
 const LOCAL_FIXTURE_SESSION_ID: &str = "session-workspace-fixture";
 
 fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("session-api crate should live under repo root")
-}
-
-fn unique_suffix() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock before epoch")
-        .as_nanos();
-    format!("{}-{nanos}", std::process::id())
-}
-
-fn find_cargo_bin() -> Option<String> {
-    if let Ok(path) = std::env::var("CARGO") {
-        if !path.trim().is_empty() {
-            return Some(path);
-        }
-    }
-
-    let mut candidates = Vec::new();
-    if let Ok(cargo_home) = std::env::var("CARGO_HOME") {
-        candidates.push(
-            PathBuf::from(cargo_home)
-                .join("bin")
-                .join(if cfg!(windows) { "cargo.exe" } else { "cargo" }),
-        );
-    }
-    if let Ok(userprofile) = std::env::var("USERPROFILE") {
-        candidates.push(
-            PathBuf::from(userprofile)
-                .join(".cargo")
-                .join("bin")
-                .join("cargo.exe"),
-        );
-    }
-    if let Ok(home) = std::env::var("HOME") {
-        candidates.push(
-            PathBuf::from(home)
-                .join(".cargo")
-                .join("bin")
-                .join(if cfg!(windows) { "cargo.exe" } else { "cargo" }),
-        );
-    }
-
-    for candidate in candidates {
-        if candidate.is_file() {
-            return Some(candidate.to_string_lossy().to_string());
-        }
-    }
-
-    #[cfg(windows)]
-    {
-        if let Ok(output) = Command::new("where").arg("cargo").output() {
-            if output.status.success() {
-                if let Some(first) = String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .find(|line| !line.trim().is_empty())
-                {
-                    return Some(first.trim().to_string());
-                }
-            }
-        }
-    }
-
-    #[cfg(not(windows))]
-    {
-        if let Ok(output) = Command::new("which").arg("cargo").output() {
-            if output.status.success() {
-                if let Some(first) = String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .find(|line| !line.trim().is_empty())
-                {
-                    return Some(first.trim().to_string());
-                }
-            }
-        }
-    }
-
-    None
-}
-
-fn shell_single_quote(input: &str) -> String {
-    format!("'{}'", input.replace('\'', "'\"'\"'"))
+    repo_root_from_manifest(env!("CARGO_MANIFEST_DIR"))
 }
 
 fn local_fixture_a() -> &'static str {
@@ -119,16 +42,6 @@ fn local_fixture_b() -> &'static str {
 
 fn local_fixture_c() -> &'static str {
     include_str!("fixtures/local_parse_fixture_c.jsonl")
-}
-
-fn write_fixture_transcript(
-    dir: &std::path::Path,
-    name: &str,
-    content: &str,
-) -> PathBuf {
-    let path = dir.join(name);
-    fs::write(&path, content).expect("write local deterministic fixture transcript");
-    path
 }
 
 #[test]
@@ -158,8 +71,8 @@ fn e2e_hook_binary_persists_fixture_transcript() {
     let store_root = store_dir.path().join("memory-api-store");
     fs::create_dir_all(&store_root).expect("create temp store root");
 
-    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-stop-hook")
-        .expect("cargo should expose copilot-stop-hook binary path for integration tests");
+    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
+        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
 
     let output = Command::new(hook_bin)
         .arg("--transcript-path")
@@ -171,11 +84,11 @@ fn e2e_hook_binary_persists_fixture_transcript() {
         .arg("--trigger")
         .arg("UserPromptSubmit")
         .output()
-        .expect("run copilot-stop-hook");
+        .expect("run copilot-capture-hook");
 
     assert!(
         output.status.success(),
-        "copilot-stop-hook failed: stdout={} stderr={}",
+        "copilot-capture-hook failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -192,7 +105,7 @@ fn e2e_hook_binary_persists_fixture_transcript() {
 }
 
 #[test]
-fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
+fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
     let repo_root = repo_root();
     let script_source = repo_root.join("tools/agent-hooks/session-capture-stop.sh");
     assert!(
@@ -200,26 +113,14 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
         "missing hook script under repo root"
     );
 
-    let fixture_text = include_str!("fixtures/stop_hook_workspace_e2e.jsonl");
+    let fixture_text = include_str!("fixtures/capture_hook_workspace_e2e.jsonl");
     let suffix = unique_suffix();
-    let workspace_fixture =
-        tempdir().expect("create isolated workspace fixture tempdir");
-    let fixture_root = workspace_fixture.path().join("workspace-fixture");
-    let fixture_tools = fixture_root.join("tools").join("agent-hooks");
-    let fixture_transcripts = fixture_root.join("transcripts");
-    let fixture_store_root = fixture_root.join("session-store");
-    fs::create_dir_all(&fixture_tools).expect("create fixture hook directory");
-    fs::create_dir_all(&fixture_transcripts)
-        .expect("create fixture transcript directory");
-    fs::create_dir_all(&fixture_store_root)
-        .expect("create fixture session store root");
-
-    let fixture_script_path = fixture_tools.join("session-capture-stop.sh");
-    fs::copy(&script_source, &fixture_script_path)
-        .expect("copy hook script into fixture workspace");
+    let workspace_fixture = ScriptWorkspaceFixture::new(&script_source);
+    let fixture_root = &workspace_fixture.root;
+    let fixture_store_root = &workspace_fixture.store_root;
 
     let rel_transcript_path = PathBuf::from("transcripts").join("copilot.jsonl");
-    let abs_transcript_path = fixture_root.join(&rel_transcript_path);
+    let abs_transcript_path = workspace_fixture.transcript_path("copilot.jsonl");
 
     let workspace_slug = format!("fixture-workspace-{suffix}");
     let session_id = format!("{LOCAL_FIXTURE_SESSION_ID}-{suffix}");
@@ -246,9 +147,7 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
         .to_string_lossy()
         .replace("\\\\?\\", "")
         .replace('\\', "/");
-    let script_path_shell = PathBuf::from("tools/agent-hooks/session-capture-stop.sh")
-        .to_string_lossy()
-        .to_string();
+    let script_path_shell = ScriptWorkspaceFixture::script_path_shell();
     let command_line = format!(
         "SESSION_CAPTURE_STORE_ROOT={} SESSION_CAPTURE_MANIFEST_PATH={} SESSION_CAPTURE_CARGO_BIN={} bash {}",
         shell_single_quote("session-store"),
@@ -261,7 +160,7 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
     command
         .arg("-lc")
         .arg(command_line)
-        .current_dir(&fixture_root)
+        .current_dir(fixture_root)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -295,7 +194,7 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
         output.status.success(),
         "session-capture-stop.sh failed: stdout={stdout} stderr={stderr}"
     );
-    assert_eq!(stdout.trim(), "{}", "stop hook should emit empty JSON sentinel");
+    assert_eq!(stdout.trim(), "{}", "capture hook should emit empty JSON sentinel");
     assert!(
         !stderr.contains("skip: transcript not found"),
         "hook skipped transcript unexpectedly: stdout={stdout} stderr={stderr}"
@@ -327,7 +226,7 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
     let config = SessionStoreConfig::new(&fixture_store_root, &workspace_slug);
     let record = config
         .read_session(&session_id)
-        .expect("stop hook should persist fixture transcript into the temp store");
+        .expect("capture hook should persist fixture transcript into the temp store");
 
     assert_eq!(record.session_id, session_id);
     assert_eq!(record.metadata.workspace_slug, workspace_slug);

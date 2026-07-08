@@ -22,7 +22,7 @@ fn main() {
             print_usage();
         },
         Err(error) => {
-            eprintln!("[copilot-stop-hook] {error}");
+            eprintln!("[copilot-capture-hook] {error}");
             process::exit(1);
         },
     }
@@ -39,7 +39,7 @@ fn run() -> Result<(), SessionError> {
     let transcript_path = normalize_transcript_path(&args.transcript_path);
     if !transcript_path.is_file() {
         eprintln!(
-            "[copilot-stop-hook] skip: transcript not found at {}",
+            "[copilot-capture-hook] skip: transcript not found at {}",
             transcript_path.display()
         );
         println!("{{}}");
@@ -280,7 +280,7 @@ fn next_value(
 
 fn print_usage() {
     println!(
-        "Usage: copilot-stop-hook (session sync ingest) [--from-hook-stdin] [--transcript-path <PATH>] [--store-root <PATH>] [--workspace-slug <SLUG>] [--trigger <NAME>]"
+        "Usage: copilot-capture-hook (session sync ingest) [--from-hook-stdin] [--transcript-path <PATH>] [--store-root <PATH>] [--workspace-slug <SLUG>] [--trigger <NAME>]"
     );
 }
 
