@@ -72,6 +72,18 @@ pub enum SessionError {
     #[error("session data was not found at {path}")]
     NotFound { path: PathBuf },
 
+    #[error("no persisted sessions were found under {root}")]
+    NoSessionsFound { root: PathBuf },
+
+    #[error(
+        "session schema version mismatch at {path}: found {found}, expected {expected}"
+    )]
+    SchemaVersionMismatch {
+        path: PathBuf,
+        found: u32,
+        expected: u32,
+    },
+
     #[error(
         "incoming transcript conflicts with persisted session {session_id} ({existing_turns} existing, {incoming_turns} incoming)"
     )]

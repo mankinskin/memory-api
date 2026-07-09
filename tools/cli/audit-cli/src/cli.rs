@@ -39,6 +39,11 @@ use audit_api::{
     },
 };
 use memory_api::generated_markdown::prepare_generated_output;
+use session_api::{
+    SessionAuditReport,
+    SessionAuditSelector,
+    SessionStoreConfig,
+};
 use uuid::Uuid;
 
 #[derive(Debug, Parser)]
@@ -96,6 +101,22 @@ pub struct AuditArgs {
     /// Repository root to audit.
     #[arg(default_value = ".")]
     pub repo_root: PathBuf,
+
+    /// Audit a specific persisted session id instead of a repo-wide audit.
+    #[arg(long, conflicts_with = "latest_session")]
+    pub session_id: Option<String>,
+
+    /// Audit the latest persisted session instead of a repo-wide audit.
+    #[arg(long, default_value_t = false, conflicts_with = "session_id")]
+    pub latest_session: bool,
+
+    /// Session store root (defaults to <repo_root>/.session for session audit mode).
+    #[arg(long)]
+    pub session_store_root: Option<PathBuf>,
+
+    /// Workspace slug for session store operations.
+    #[arg(long)]
+    pub session_workspace_slug: Option<String>,
 
     #[arg(long)]
     pub max_file_lines: Option<usize>,
@@ -170,6 +191,9 @@ pub enum CliRunError {
     #[error("audit error: {0}")]
     Audit(#[from] AuditError),
 
+    #[error("session error: {0}")]
+    Session(#[from] session_api::SessionError),
+
     #[error("bad request: {0}")]
     BadRequest(String),
 
@@ -200,11 +224,23 @@ where
 pub fn run(cli: AuditCli) -> Result<CliOutput, CliRunError> {
     match cli.command {
         AuditCommand::Run(args) => {
-            let report = run_audit(&args)?;
-            if let Some(format) = machine_output_format(cli.json, cli.toon) {
-                Ok(CliOutput::Machine(json!(report), format))
+            if args.session_id.is_some() || args.latest_session {
+                let report = run_session_audit(&args)?;
+                if let Some(format) = machine_output_format(cli.json, cli.toon)
+                {
+                    Ok(CliOutput::Machine(json!(report), format))
+                } else {
+                    Ok(CliOutput::Text(render_session_audit_human(&report)))
+                }
             } else {
-                Ok(CliOutput::Text(render_human(&report)))
+                let report = run_audit(&args)?;
+                if let Some(format) =
+                    machine_output_format(cli.json, cli.toon)
+                {
+                    Ok(CliOutput::Machine(json!(report), format))
+                } else {
+                    Ok(CliOutput::Text(render_human(&report)))
+                }
             }
         },
         AuditCommand::StoreIndex(args) => {
@@ -393,6 +429,42 @@ fn run_audit(args: &AuditArgs) -> Result<AuditReport, CliRunError> {
     Ok(audit(&args.repo_root, config)?)
 }
 
+fn run_session_audit(
+    args: &AuditArgs
+) -> Result<SessionAuditReport, CliRunError> {
+    let repo_root = args
+        .repo_root
+        .canonicalize()
+        .unwrap_or_else(|_| args.repo_root.clone());
+    let store_root = args
+        .session_store_root
+        .clone()
+        .unwrap_or_else(|| repo_root.join(".session"));
+    let workspace_slug = args
+        .session_workspace_slug
+        .clone()
+        .or_else(|| {
+            repo_root
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| "workspace".to_string());
+
+    let selector = if args.latest_session {
+        SessionAuditSelector::Latest
+    } else if let Some(session_id) = args.session_id.clone() {
+        SessionAuditSelector::SessionId(session_id)
+    } else {
+        return Err(CliRunError::BadRequest(
+            "session audit mode requires --latest-session or --session-id"
+                .to_string(),
+        ));
+    };
+
+    let store = SessionStoreConfig::new(store_root, workspace_slug);
+    Ok(store.session_audit(selector)?)
+}
+
 pub fn error_output(
     message: &str,
     format: Option<MachineOutputFormat>,
@@ -521,6 +593,52 @@ fn render_human(report: &AuditReport) -> String {
             for instruction in &finding.instructions {
                 lines.push(format!("  fix: {instruction}"));
             }
+        }
+    }
+
+    lines.join("\n")
+}
+
+fn render_session_audit_human(report: &SessionAuditReport) -> String {
+    let mut lines = Vec::new();
+    lines.push("Session Audit".to_string());
+    lines.push(format!("Session: {}", report.session_id));
+    lines.push(format!("Schema version: {}", report.schema_version));
+    lines.push(format!("Source: {}", report.source));
+    lines.push(format!("Workspace: {}", report.workspace_slug));
+    lines.push(format!("Captured at: {}", report.captured_at));
+    lines.push(format!(
+        "Turns: {} (assistant {}, empty assistant {})",
+        report.metrics.turn_count,
+        report.metrics.assistant_turn_count,
+        report.metrics.empty_assistant_turn_count
+    ));
+    lines.push(format!(
+        "Events: {} (tool.execution_result {}, assistant.tool_plan {}, ambiguous sync-terminal {})",
+        report.metrics.event_count,
+        report.metrics.tool_execution_result_count,
+        report.metrics.assistant_tool_plan_count,
+        report.metrics.ambiguous_sync_terminal_count
+    ));
+
+    if report.top_tools.is_empty() {
+        lines.push("Top tools: none".to_string());
+    } else {
+        lines.push("Top tools:".to_string());
+        for tool in &report.top_tools {
+            lines.push(format!("- {}: {}", tool.tool_name, tool.count));
+        }
+    }
+
+    if report.findings.is_empty() {
+        lines.push("Findings: none".to_string());
+    } else {
+        lines.push(format!("Findings: {}", report.findings.len()));
+        for finding in &report.findings {
+            lines.push(format!(
+                "- [{:?}] {} ({})",
+                finding.severity, finding.summary, finding.code
+            ));
         }
     }
 
@@ -727,6 +845,10 @@ fn cmd_store_index(args: StoreIndexArgs) -> Result<Value, CliRunError> {
 fn run_audit_from_root(repo_root: &Path) -> Result<AuditReport, CliRunError> {
     let args = AuditArgs {
         repo_root: repo_root.to_path_buf(),
+        session_id: None,
+        latest_session: false,
+        session_store_root: None,
+        session_workspace_slug: None,
         max_file_lines: None,
         max_cyclomatic_complexity: None,
         coverage_warn_below: None,

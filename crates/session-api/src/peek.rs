@@ -171,13 +171,10 @@ pub fn peek_prompt_pack(
     let mut reference_only = 0;
     let mut dropped = 0;
     let mut seen_signatures: HashMap<String, usize> = HashMap::new();
-    let mut seen_lifecycle_wrappers: HashMap<String, usize> = HashMap::new();
 
     for turn in &record.turns {
         let content_len = turn.content.chars().count();
         let normalized = normalize_for_signature(&turn.content);
-        let lifecycle_wrapper =
-            lifecycle_wrapper_fingerprint(turn, &normalized);
         let signature = format!(
             "{:?}|{}|{}",
             turn.role,
@@ -195,16 +192,6 @@ pub fn peek_prompt_pack(
             continue;
         }
 
-        if let Some(wrapper) = &lifecycle_wrapper {
-            if let Some(previous_sequence) =
-                seen_lifecycle_wrappers.get(wrapper)
-            {
-                let _ = previous_sequence;
-                dropped += 1;
-                continue;
-            }
-        }
-
         if let Some(previous_sequence) = seen_signatures.get(&signature) {
             if is_repeated_state_check(turn) || turn.role == SessionRole::Tool {
                 let _ = previous_sequence;
@@ -214,9 +201,6 @@ pub fn peek_prompt_pack(
         }
 
         seen_signatures.insert(signature, turn.sequence);
-        if let Some(wrapper) = lifecycle_wrapper {
-            seen_lifecycle_wrappers.insert(wrapper, turn.sequence);
-        }
 
         let preview = preview_line(&turn.content, options.preview_chars);
         let reference_pointer = extract_reference_pointer(&turn.content);
@@ -336,11 +320,6 @@ fn is_routine_retry_narration(
         "retry",
         "re-run",
         "rerun",
-        "retrying",
-        "rerunning",
-        "rerunning the same",
-        "one more attempt",
-        "let me retry",
         "try again",
         "run again",
         "checking again",
@@ -349,62 +328,6 @@ fn is_routine_retry_narration(
     retry_markers
         .iter()
         .any(|marker| normalized_content.contains(marker))
-}
-
-fn lifecycle_wrapper_fingerprint(
-    turn: &SessionTurn,
-    normalized_content: &str,
-) -> Option<String> {
-    if turn.role != SessionRole::Assistant {
-        return None;
-    }
-
-    if normalized_content.len() > 220 {
-        return None;
-    }
-
-    let mut text = normalized_content;
-    for prefix in [
-        "next, ",
-        "next ",
-        "now ",
-        "okay ",
-        "ok ",
-        "i will ",
-        "i'll ",
-        "let me ",
-    ] {
-        if let Some(rest) = text.strip_prefix(prefix) {
-            text = rest;
-        }
-    }
-
-    let action_verbs = ["run", "check", "inspect", "search", "read"];
-    if !action_verbs.iter().any(|verb| text.contains(verb)) {
-        return None;
-    }
-
-    let tool_markers = [
-        "command",
-        "terminal",
-        "output",
-        "status",
-        "tool",
-        "file",
-        "run_in_terminal",
-        "get_terminal_output",
-        "file_search",
-        "grep_search",
-        "list_dir",
-        "get_changed_files",
-        "get_errors",
-    ];
-
-    if !tool_markers.iter().any(|marker| text.contains(marker)) {
-        return None;
-    }
-
-    Some(text.to_string())
 }
 
 fn extract_reference_pointer(content: &str) -> Option<String> {
@@ -458,6 +381,7 @@ mod tests {
 
     fn record_with(turns: Vec<SessionTurn>) -> SessionRecord {
         SessionRecord {
+            schema_version: crate::SESSION_SCHEMA_VERSION,
             session_id: "sess-1".to_string(),
             source: "test".to_string(),
             started_at: Utc::now(),
@@ -623,53 +547,6 @@ mod tests {
     }
 
     #[test]
-    fn prompt_pack_drops_retry_narration_variants() {
-        let record = record_with(vec![
-            turn(
-                0,
-                SessionRole::Assistant,
-                "Let me retry that command one more attempt.",
-            ),
-            turn(
-                1,
-                SessionRole::Assistant,
-                "Retrying now; rerunning the same check.",
-            ),
-        ]);
-
-        let pack = peek_prompt_pack(&record, PromptPackOptions::default());
-
-        assert_eq!(pack.entries.len(), 0);
-        assert_eq!(pack.dropped_turns, 2);
-    }
-
-    #[test]
-    fn prompt_pack_drops_duplicate_lifecycle_wrappers() {
-        let record = record_with(vec![
-            turn(
-                0,
-                SessionRole::Assistant,
-                "I will run the command and check terminal status output.",
-            ),
-            turn(
-                1,
-                SessionRole::Assistant,
-                "Now I will run the command and check terminal status output.",
-            ),
-            turn(
-                2,
-                SessionRole::Assistant,
-                "I will inspect the file to extract the durable finding.",
-            ),
-        ]);
-
-        let pack = peek_prompt_pack(&record, PromptPackOptions::default());
-
-        assert_eq!(pack.entries.len(), 2);
-        assert_eq!(pack.dropped_turns, 1);
-    }
-
-    #[test]
     fn prompt_pack_keeps_inline_blob_as_summarize_not_reference_only() {
         let record = record_with(vec![turn(
             0,
@@ -702,5 +579,100 @@ mod tests {
 
         assert_eq!(pack.entries.len(), 1);
         assert_eq!(pack.dropped_turns, 1);
+    }
+
+    #[test]
+    fn prompt_pack_retains_short_progress_preamble_variants() {
+        let record = record_with(vec![
+            turn(
+                0,
+                SessionRole::Assistant,
+                "I will gather context and verify ticket drift status.",
+            ),
+            turn(
+                1,
+                SessionRole::Assistant,
+                "Now I am checking spec and validation anchors.",
+            ),
+            turn(
+                2,
+                SessionRole::Assistant,
+                "Next I will run tests after these edits.",
+            ),
+            turn(
+                3,
+                SessionRole::Assistant,
+                "Durable finding: ambiguity markers should require explicit signals.",
+            ),
+        ]);
+
+        let pack = peek_prompt_pack(&record, PromptPackOptions::default());
+
+        assert_eq!(pack.total_turns, 4);
+        assert_eq!(pack.dropped_turns, 0);
+        assert_eq!(pack.entries.len(), 4);
+    }
+
+    #[test]
+    fn prompt_pack_enforces_measurable_compactness_ratio_for_tool_output_noise() {
+        let record = record_with(vec![
+            turn(
+                0,
+                SessionRole::User,
+                "Harden sync ambiguity labeling and add regression coverage.",
+            ),
+            turn(
+                1,
+                SessionRole::Tool,
+                "status output",
+            ),
+            turn(
+                2,
+                SessionRole::Tool,
+                "status output",
+            ),
+            turn(
+                3,
+                SessionRole::Tool,
+                "status output",
+            ),
+            turn(
+                4,
+                SessionRole::Tool,
+                "Large tool result written to file. Use the read_file tool to access the content at: /tmp/trace.txt",
+            ),
+            turn(
+                5,
+                SessionRole::Tool,
+                &format!("inline payload: {}", "x".repeat(700)),
+            ),
+            turn(
+                6,
+                SessionRole::Assistant,
+                "Durable finding: sync completions need explicit ambiguity signals.",
+            ),
+        ]);
+
+        let mut record = record;
+        record.turns[1].tool_name = Some("run_in_terminal".to_string());
+        record.turns[2].tool_name = Some("run_in_terminal".to_string());
+        record.turns[3].tool_name = Some("run_in_terminal".to_string());
+        record.turns[4].tool_name = Some("run_in_terminal".to_string());
+        record.turns[5].tool_name = Some("run_in_terminal".to_string());
+
+        let pack = peek_prompt_pack(
+            &record,
+            PromptPackOptions {
+                preview_chars: 80,
+                summarize_threshold_chars: 120,
+            },
+        );
+
+        let included = pack.entries.len();
+        assert_eq!(pack.total_turns, 7);
+        assert!(pack.dropped_turns >= 2);
+        assert!(included <= 5);
+        assert!(pack.reference_only_turns >= 1);
+        assert!(pack.summarized_turns >= 1);
     }
 }

@@ -12,10 +12,12 @@
         SessionError,
         SessionQuery,
         SessionRole,
+        SessionAuditSelector,
         SessionStoreConfig,
         SessionWorktreeAllocationMode,
         SessionWorktreeCheckInRequest,
         SessionWorktreeStatus,
+        SESSION_SCHEMA_VERSION,
     };
 
     fn sample_time() -> chrono::DateTime<chrono::Utc> {
@@ -684,4 +686,114 @@
             error,
             SessionError::CrossSessionReuseRequiresAdopt { .. }
         ));
+    }
+
+    #[test]
+    fn read_session_rejects_unknown_schema_version() {
+        let tempdir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
+
+        let plan = config
+            .persist_capture(sample_request(
+                "session-schema",
+                Some("conversation-schema"),
+                sample_time(),
+                &["check schema"],
+            ))
+            .unwrap();
+
+        let mut manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&plan.paths.manifest_path).unwrap(),
+        )
+        .unwrap();
+        manifest["schema_version"] = serde_json::json!(SESSION_SCHEMA_VERSION + 1);
+        std::fs::write(
+            &plan.paths.manifest_path,
+            serde_json::to_vec_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        let err = config.read_session("session-schema").unwrap_err();
+        assert!(matches!(
+            err,
+            SessionError::SchemaVersionMismatch { .. }
+        ));
+    }
+
+    #[test]
+    fn session_audit_supports_latest_and_explicit_session_selectors() {
+        let tempdir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(
+            tempdir.path().join("store"),
+            "context-engine",
+        );
+
+        let mut older = sample_payload(
+            "session-old",
+            Some("conversation-old"),
+            sample_time(),
+            &["first"],
+        );
+        older.events = vec![crate::CopilotHookEvent {
+            event_id: Some("evt-old-1".to_string()),
+            parent_event_id: None,
+            event_type: Some("assistant.tool_plan".to_string()),
+            captured_at: Some(sample_time()),
+            turn_id: None,
+            message_id: None,
+            tool_call_id: None,
+            tool_name: None,
+            tool_success: None,
+            reasoning_text: None,
+            tool_requests_json: None,
+            tool_arguments_json: None,
+            data_json: Some(serde_json::json!({})),
+            raw_event_json: None,
+        }];
+        config
+            .persist_capture(SessionCaptureRequest::copilot(older))
+            .unwrap();
+
+        let mut newer = sample_payload(
+            "session-new",
+            Some("conversation-new"),
+            sample_time_later(),
+            &["latest"],
+        );
+        newer.events = vec![crate::CopilotHookEvent {
+            event_id: Some("evt-new-1".to_string()),
+            parent_event_id: None,
+            event_type: Some("tool.execution_result".to_string()),
+            captured_at: Some(sample_time_later()),
+            turn_id: None,
+            message_id: None,
+            tool_call_id: Some("call-1".to_string()),
+            tool_name: Some("run_in_terminal".to_string()),
+            tool_success: Some(true),
+            reasoning_text: None,
+            tool_requests_json: None,
+            tool_arguments_json: None,
+            data_json: Some(serde_json::json!({
+                "blocker": "sync-terminal-state-ambiguous"
+            })),
+            raw_event_json: None,
+        }];
+        config
+            .persist_capture(SessionCaptureRequest::copilot(newer))
+            .unwrap();
+
+        let latest = config.session_audit(SessionAuditSelector::Latest).unwrap();
+        let explicit = config
+            .session_audit(SessionAuditSelector::SessionId("session-old".to_string()))
+            .unwrap();
+
+        assert_eq!(latest.session_id, "session-new");
+        assert_eq!(latest.schema_version, SESSION_SCHEMA_VERSION);
+        assert_eq!(latest.metrics.tool_execution_result_count, 1);
+        assert_eq!(latest.metrics.ambiguous_sync_terminal_count, 1);
+        assert_eq!(explicit.session_id, "session-old");
+        assert_eq!(explicit.metrics.assistant_tool_plan_count, 1);
     }

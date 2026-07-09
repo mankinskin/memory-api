@@ -116,6 +116,21 @@ pub(super) fn validate_worktree_request(
     Ok(())
 }
 
+pub(super) fn ensure_supported_schema_version(
+    path: &Path,
+    found: u32,
+) -> Result<(), SessionError> {
+    if found == SESSION_SCHEMA_VERSION {
+        Ok(())
+    } else {
+        Err(SessionError::SchemaVersionMismatch {
+            path: path.to_path_buf(),
+            found,
+            expected: SESSION_SCHEMA_VERSION,
+        })
+    }
+}
+
 pub(super) fn can_reuse_assignment(
     existing: &SessionWorktreeAssignment,
     request: &SessionWorktreeCheckInRequest,

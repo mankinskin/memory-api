@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod error;
 pub mod hook;
 pub mod model;
@@ -6,6 +7,14 @@ pub mod peek;
 pub mod store;
 
 pub use error::SessionError;
+pub use audit::{
+    SessionAuditFinding,
+    SessionAuditMetrics,
+    SessionAuditReport,
+    SessionAuditSelector,
+    SessionAuditSeverity,
+    SessionAuditToolCount,
+};
 pub use hook::{
     CopilotHookEvent,
     CopilotHookMessage,
@@ -16,6 +25,8 @@ pub use hook::{
     copilot_payload_from_transcript_reader,
 };
 pub use model::{
+    SESSION_SCHEMA_VERSION,
+    default_session_schema_version,
     SessionLinks,
     SessionMetadata,
     SessionRecord,

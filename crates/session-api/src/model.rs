@@ -9,6 +9,12 @@ use serde::{
 use serde_json::Value;
 use std::path::PathBuf;
 
+pub const SESSION_SCHEMA_VERSION: u32 = 1;
+
+pub fn default_session_schema_version() -> u32 {
+    SESSION_SCHEMA_VERSION
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SessionLinks {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -137,6 +143,8 @@ pub struct SessionWorktreeAssignment {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionRecord {
+    #[serde(default = "default_session_schema_version")]
+    pub schema_version: u32,
     pub session_id: String,
     pub source: String,
     pub started_at: DateTime<Utc>,
@@ -171,6 +179,7 @@ mod tests {
         SessionWorktreeAssignment,
         SessionWorktreeStatus,
     };
+    use crate::SESSION_SCHEMA_VERSION;
 
     fn sample_time() -> chrono::DateTime<chrono::Utc> {
         chrono::Utc
@@ -182,6 +191,7 @@ mod tests {
     #[test]
     fn session_record_round_trips_through_serde() {
         let record = SessionRecord {
+            schema_version: SESSION_SCHEMA_VERSION,
             session_id: "session-123".to_string(),
             source: "copilot-hook".to_string(),
             started_at: sample_time(),

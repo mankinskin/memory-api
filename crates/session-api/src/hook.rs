@@ -165,6 +165,7 @@ impl SessionCaptureRequest {
 
         Ok((
             SessionRecord {
+                schema_version: crate::SESSION_SCHEMA_VERSION,
                 session_id: payload.session_id,
                 source: self.source,
                 started_at,
@@ -796,14 +797,47 @@ fn is_sync_terminal_completion_ambiguous(
         return false;
     }
 
-    let has_exit_metadata = data.get("exitCode").is_some()
-        || data.get("exit_code").is_some()
-        || data.get("status").is_some();
-    if has_exit_metadata {
-        return false;
+    // Only flag ambiguity when the completion payload explicitly signals
+    // background/timeout/input-needed semantics. A plain sync success event
+    // without these signals is treated as deterministic completion.
+    if data.get("terminalId").is_some()
+        || data.get("terminal_id").is_some()
+        || data.get("deferredResultId").is_some()
+        || data.get("deferred_result_id").is_some()
+    {
+        return true;
     }
 
-    summary.is_none() && spill_pointer.is_none()
+    if data
+        .get("needsInput")
+        .or_else(|| data.get("needs_input"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    if data
+        .get("timedOut")
+        .or_else(|| data.get("timed_out"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    let text_signals = [
+        "moved to background",
+        "needs input",
+        "waiting for input",
+        "timed out",
+    ];
+
+    [summary, spill_pointer]
+        .into_iter()
+        .flatten()
+        .map(|text| text.to_ascii_lowercase())
+        .any(|text| text_signals.iter().any(|signal| text.contains(signal)))
 }
 
 fn deserialize_transcript_event(
