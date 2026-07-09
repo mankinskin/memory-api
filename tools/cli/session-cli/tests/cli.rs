@@ -96,6 +96,27 @@ fn seed_compaction_session(
                 captured_at: None,
                 event_meta: None,
             },
+            CopilotHookMessage {
+                role: SessionRole::Assistant,
+                content: "I will run the command and check terminal status output.".to_string(),
+                tool_name: None,
+                captured_at: None,
+                event_meta: None,
+            },
+            CopilotHookMessage {
+                role: SessionRole::Assistant,
+                content: "Now I will run the command and check terminal status output.".to_string(),
+                tool_name: None,
+                captured_at: None,
+                event_meta: None,
+            },
+            CopilotHookMessage {
+                role: SessionRole::Tool,
+                content: format!("inline payload: {}", "x".repeat(800)),
+                tool_name: Some("run_in_terminal".to_string()),
+                captured_at: None,
+                event_meta: None,
+            },
         ],
         events: vec![],
         runtime: None,
@@ -238,8 +259,17 @@ fn peek_prompt_pack_reports_guarded_entries() {
         "120",
     ]);
 
-    assert_eq!(pack["total_turns"], 4);
-    assert_eq!(pack["dropped_turns"], 2);
+    assert_eq!(pack["total_turns"], 7);
+    assert_eq!(pack["dropped_turns"], 3);
     assert_eq!(pack["reference_only_turns"], 1);
-    assert_eq!(pack["entries"].as_array().unwrap().len(), 2);
+    assert_eq!(pack["summarized_turns"], 1);
+    assert_eq!(pack["entries"].as_array().unwrap().len(), 4);
+
+    let entries = pack["entries"].as_array().unwrap();
+    assert!(entries
+        .iter()
+        .any(|entry| entry["reason"] == "artifact-pointer-detected"));
+    assert!(entries
+        .iter()
+        .any(|entry| entry["reason"] == "oversized-content"));
 }
