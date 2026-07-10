@@ -74,8 +74,7 @@ mod tests {
     }
 
     #[test]
-    fn render_markdown_file_omits_provenance_when_body_starts_with_frontmatter()
-    {
+    fn render_markdown_file_keeps_frontmatter_first_and_emits_provenance() {
         let prompt = RuleManifest::new(
             "context-engine/prompts/spec",
             "Spec Prompt",
@@ -83,12 +82,15 @@ mod tests {
             "spec-prompt",
             "---\nname: spec\n---\nCreate a new spec entry.\n",
         );
+        let prompt_id = prompt.id.to_string();
 
         let rendered = render_markdown_file(&[prompt]);
 
         assert_eq!(
             rendered,
-            "---\nname: spec\n---\nCreate a new spec entry.\n"
+            "---\nname: spec\n---\n\n<!-- rule-api:file generated=true -->\n\n<!-- rule-api:entry id=".to_string()
+                + &prompt_id
+                + " slug=context-engine/prompts/spec -->\nCreate a new spec entry.\n"
         );
     }
 

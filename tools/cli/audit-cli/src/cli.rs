@@ -28,8 +28,8 @@ use audit_api::{
         TrialStatus,
     },
     store_index::{
-        AuditCatalogSource,
         AUDIT_INDEX_AGENT_HOOK_PATH,
+        AuditCatalogSource,
         generate_audit_catalog,
     },
     summary::{
@@ -234,8 +234,7 @@ pub fn run(cli: AuditCli) -> Result<CliOutput, CliRunError> {
                 }
             } else {
                 let report = run_audit(&args)?;
-                if let Some(format) =
-                    machine_output_format(cli.json, cli.toon)
+                if let Some(format) = machine_output_format(cli.json, cli.toon)
                 {
                     Ok(CliOutput::Machine(json!(report), format))
                 } else {
@@ -265,7 +264,10 @@ pub fn run(cli: AuditCli) -> Result<CliOutput, CliRunError> {
             if let Some(format) = machine_output_format(cli.json, cli.toon) {
                 Ok(CliOutput::Machine(result, format))
             } else {
-                Ok(CliOutput::Text(serde_json::to_string_pretty(&result).unwrap_or_else(|_| format!("{result:?}"))))
+                Ok(CliOutput::Text(
+                    serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|_| format!("{result:?}")),
+                ))
             }
         },
     }
@@ -281,9 +283,11 @@ fn cmd_move(args: MoveArgs) -> Result<Value, CliRunError> {
     let index = RepositoryIndex::open(&args.repo_root)?;
 
     if let Some(journal_id) = args.resume.as_deref() {
-        let journal_id = journal_id
-            .parse::<Uuid>()
-            .map_err(|error| CliRunError::BadRequest(format!("invalid --resume journal UUID: {error}")))?;
+        let journal_id = journal_id.parse::<Uuid>().map_err(|error| {
+            CliRunError::BadRequest(format!(
+                "invalid --resume journal UUID: {error}"
+            ))
+        })?;
         let outcome = index.resume_move_with_journal(journal_id)?;
         return Ok(json!({
             "command": "move",
@@ -296,9 +300,11 @@ fn cmd_move(args: MoveArgs) -> Result<Value, CliRunError> {
     }
 
     if let Some(journal_id) = args.rollback.as_deref() {
-        let journal_id = journal_id
-            .parse::<Uuid>()
-            .map_err(|error| CliRunError::BadRequest(format!("invalid --rollback journal UUID: {error}")))?;
+        let journal_id = journal_id.parse::<Uuid>().map_err(|error| {
+            CliRunError::BadRequest(format!(
+                "invalid --rollback journal UUID: {error}"
+            ))
+        })?;
         let outcome = index.rollback_move_with_journal(journal_id)?;
         return Ok(json!({
             "command": "move",
@@ -315,15 +321,17 @@ fn cmd_move(args: MoveArgs) -> Result<Value, CliRunError> {
             "move requires <id> unless --resume/--rollback is used".to_string(),
         )
     })?;
-    let to_workspace_root = args.to_workspace_root.as_deref().ok_or_else(|| {
-        CliRunError::BadRequest(
-            "move requires --to-workspace-root in plan/execute mode".to_string(),
-        )
-    })?;
+    let to_workspace_root =
+        args.to_workspace_root.as_deref().ok_or_else(|| {
+            CliRunError::BadRequest(
+                "move requires --to-workspace-root in plan/execute mode"
+                    .to_string(),
+            )
+        })?;
 
-    let audit_id = id
-        .parse::<Uuid>()
-        .map_err(|error| CliRunError::BadRequest(format!("invalid audit UUID: {error}")))?;
+    let audit_id = id.parse::<Uuid>().map_err(|error| {
+        CliRunError::BadRequest(format!("invalid audit UUID: {error}"))
+    })?;
     let report = index.plan_move_preflight(&audit_id, to_workspace_root)?;
 
     if args.dry_run || !report.supported() {
@@ -352,7 +360,9 @@ fn cmd_move(args: MoveArgs) -> Result<Value, CliRunError> {
     }))
 }
 
-fn move_plan_json(report: &memory_api::storage::move_kernel::MovePlan) -> Value {
+fn move_plan_json(
+    report: &memory_api::storage::move_kernel::MovePlan
+) -> Value {
     json!({
         "supported": report.supported(),
         "entity_id": report.entity_id,
@@ -377,7 +387,9 @@ fn move_plan_json(report: &memory_api::storage::move_kernel::MovePlan) -> Value 
     })
 }
 
-fn move_outcome_json(outcome: &memory_api::storage::move_kernel::MoveOutcome) -> Value {
+fn move_outcome_json(
+    outcome: &memory_api::storage::move_kernel::MoveOutcome
+) -> Value {
     json!({
         "resumed": outcome.resumed,
         "rolled_back": outcome.rolled_back,
@@ -514,7 +526,8 @@ pub fn machine_output_format(
     }
 }
 
-pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat> {
+pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat>
+{
     machine_output_format(
         std::env::args().any(|arg| arg == "--json"),
         std::env::args().any(|arg| arg == "--toon"),
@@ -577,6 +590,10 @@ fn render_human(report: &AuditReport) -> String {
     lines.push(format!(
         "Ticket graph: {}",
         render_count_metric(&report.metrics.ticket_graph)
+    ));
+    lines.push(format!(
+        "Rule overlap: {}",
+        render_rule_overlap_metric(&report.metrics.rule_overlap)
     ));
 
     if report.findings.is_empty() {
@@ -731,6 +748,28 @@ fn render_spec_fulfillment_metric(
             metric.satisfied_specs,
             metric.blocked_specs,
             metric.missed_specs
+        ),
+        TrialStatus::Unavailable
+        | TrialStatus::NotApplicable
+        | TrialStatus::Failed => metric
+            .details
+            .clone()
+            .unwrap_or_else(|| "unavailable".to_string()),
+    }
+}
+
+fn render_rule_overlap_metric(
+    metric: &audit_api::models::RuleOverlapSummary
+) -> String {
+    match metric.status {
+        TrialStatus::Collected => format!(
+            "{} high-overlap pairs across {} rules (max similarity {})",
+            metric.high_overlap_pairs,
+            metric.rules_considered,
+            metric
+                .max_similarity
+                .map(|value| format!("{:.1}%", value * 100.0))
+                .unwrap_or_else(|| "n/a".to_string())
         ),
         TrialStatus::Unavailable
         | TrialStatus::NotApplicable

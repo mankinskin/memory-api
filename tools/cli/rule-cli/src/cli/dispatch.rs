@@ -29,6 +29,8 @@ use serde_json::{
 
 use super::{
     AddRootArgs,
+    BenchmarkOperation,
+    BenchmarkTargetsArgs,
     CliRunError,
     CreateArgs,
     ExplainTargetArgs,
@@ -129,6 +131,7 @@ fn bootstrap_rule_store(
             | RuleCommandCli::GenerateTarget(_)
             | RuleCommandCli::ExplainTarget(_)
             | RuleCommandCli::SyncTargets(_)
+            | RuleCommandCli::BenchmarkTargets(_)
             | RuleCommandCli::List(_)
             | RuleCommandCli::Search(_)
             | RuleCommandCli::StoreIndex(_)
@@ -160,6 +163,8 @@ fn dispatch_secondary(
         RuleCommandCli::ExplainTarget(args) =>
             explain_target_command(store, args),
         RuleCommandCli::SyncTargets(args) => sync_targets_command(store, args),
+        RuleCommandCli::BenchmarkTargets(args) =>
+            benchmark_targets_command(store, args),
         RuleCommandCli::List(args) => list_command(store, args),
         RuleCommandCli::Search(args) => search_command(store, args),
         RuleCommandCli::StoreIndex(args) =>
@@ -213,9 +218,8 @@ fn display_scan_path(path: &Path) -> String {
                 || Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
                 |parent| {
                     fs::canonicalize(parent).map(|canonical_parent| {
-                        canonical_parent.join(
-                            absolute.file_name().unwrap_or_default(),
-                        )
+                        canonical_parent
+                            .join(absolute.file_name().unwrap_or_default())
                     })
                 },
             )
@@ -239,20 +243,30 @@ fn move_command(
     }
     if let Some(journal) = args.resume.as_deref() {
         let journal = journal.parse::<uuid::Uuid>().map_err(|e| {
-            CliRunError::BadRequest(format!("invalid --resume journal UUID: {e}"))
+            CliRunError::BadRequest(format!(
+                "invalid --resume journal UUID: {e}"
+            ))
         })?;
         let outcome = store.resume_move_with_journal(journal)?;
-        return Ok(json!({"command":"move","status":"ok","mode":"resume","journal_id":outcome.journal.id,"phase":outcome.journal.phase}));
+        return Ok(
+            json!({"command":"move","status":"ok","mode":"resume","journal_id":outcome.journal.id,"phase":outcome.journal.phase}),
+        );
     }
     if let Some(journal) = args.rollback.as_deref() {
         let journal = journal.parse::<uuid::Uuid>().map_err(|e| {
-            CliRunError::BadRequest(format!("invalid --rollback journal UUID: {e}"))
+            CliRunError::BadRequest(format!(
+                "invalid --rollback journal UUID: {e}"
+            ))
         })?;
         let outcome = store.rollback_move_with_journal(journal)?;
-        return Ok(json!({"command":"move","status":"ok","mode":"rollback","journal_id":outcome.journal.id,"phase":outcome.journal.phase}));
+        return Ok(
+            json!({"command":"move","status":"ok","mode":"rollback","journal_id":outcome.journal.id,"phase":outcome.journal.phase}),
+        );
     }
     let id = args.id.as_deref().ok_or_else(|| {
-        CliRunError::BadRequest("move requires <id> unless --resume/--rollback".to_string())
+        CliRunError::BadRequest(
+            "move requires <id> unless --resume/--rollback".to_string(),
+        )
     })?;
     let to = args.to_workspace_root.as_deref().ok_or_else(|| {
         CliRunError::BadRequest("move requires --to-workspace-root".to_string())
@@ -268,7 +282,9 @@ fn move_command(
         }));
     }
     let outcome = store.execute_move_with_journal(&report)?;
-    Ok(json!({"command":"move","status":"ok","mode":"execute","rule_id":rule_id,"journal_id":outcome.journal.id,"phase":outcome.journal.phase}))
+    Ok(
+        json!({"command":"move","status":"ok","mode":"execute","rule_id":rule_id,"journal_id":outcome.journal.id,"phase":outcome.journal.phase}),
+    )
 }
 
 fn create_command(
@@ -360,10 +376,7 @@ fn update_command(
         patch.insert(
             "path_scopes".to_string(),
             Value::Array(
-                args.path_scope
-                    .into_iter()
-                    .map(Value::String)
-                    .collect(),
+                args.path_scope.into_iter().map(Value::String).collect(),
             ),
         );
     } else if !args.add_path_scope.is_empty() {
@@ -416,4 +429,3 @@ fn feedback_command(
         "rule": rule_json(&rule),
     }))
 }
-

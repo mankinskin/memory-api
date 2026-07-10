@@ -24,6 +24,7 @@ uuid = { version = "1", features = ["serde", "v4", "v5"] }
 ticket-api = { path = "../ticket-api" }
 spec-api = { path = "../spec-api" }
 memory-api = { path = "../memory-api" }
+rule-api = { path = "../rule-api" }
 
 [dev-dependencies]
 tempfile = "3"

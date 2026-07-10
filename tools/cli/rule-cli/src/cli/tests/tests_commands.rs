@@ -45,42 +45,56 @@ fn scan_command_reports_diagnostics_and_explains_counts() {
     assert_eq!(payload["status"], "ok");
     assert!(payload["integrated"].is_number());
     assert_eq!(payload["integrated"], payload["integrated_entities"]);
-    assert!(payload["integrated_description"]
-        .as_str()
-        .unwrap()
-        .contains("integrated"));
+    assert!(
+        payload["integrated_description"]
+            .as_str()
+            .unwrap()
+            .contains("integrated")
+    );
     assert!(payload["pruned"].is_number());
     assert_eq!(payload["pruned"], payload["pruned_entities"]);
-    assert!(payload["pruned_description"]
-        .as_str()
-        .unwrap()
-        .contains("reindex"));
+    assert!(
+        payload["pruned_description"]
+            .as_str()
+            .unwrap()
+            .contains("reindex")
+    );
     assert_eq!(payload["diagnostics_count"], 1);
-    assert!(payload["diagnostics_description"]
-        .as_str()
-        .unwrap()
-        .contains("path"));
+    assert!(
+        payload["diagnostics_description"]
+            .as_str()
+            .unwrap()
+            .contains("path")
+    );
     assert_eq!(payload["diagnostics"].as_array().unwrap().len(), 1);
-    assert!(payload["diagnostics"][0]["path"]
-        .as_str()
-        .unwrap()
-        .replace('\\', "/")
-        .ends_with("/rule.toml"));
-    assert!(!payload["diagnostics"][0]["reason"]
-        .as_str()
-        .unwrap()
-        .is_empty());
+    assert!(
+        payload["diagnostics"][0]["path"]
+            .as_str()
+            .unwrap()
+            .replace('\\', "/")
+            .ends_with("/rule.toml")
+    );
+    assert!(
+        !payload["diagnostics"][0]["reason"]
+            .as_str()
+            .unwrap()
+            .is_empty()
+    );
     assert!(payload["scan_root_count"].as_u64().unwrap() >= 1);
-    assert!(payload["active_scan_roots"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|root| root["kind"] == "default"));
-    assert!(payload["active_scan_roots"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|root| root["kind"] == "registered"));
+    assert!(
+        payload["active_scan_roots"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|root| root["kind"] == "default")
+    );
+    assert!(
+        payload["active_scan_roots"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|root| root["kind"] == "registered")
+    );
 }
 
 #[test]
@@ -188,10 +202,12 @@ fn generate_target_respects_explicit_workspace_root_over_config_path() {
         CliOutput::Machine(payload, MachineOutputFormat::Json) => {
             assert_eq!(payload["count"], 1);
             assert_eq!(payload["target"], "root-only");
-            assert!(payload["content"]
-                .as_str()
-                .unwrap()
-                .contains("slug=shared/agents/opening"));
+            assert!(
+                payload["content"]
+                    .as_str()
+                    .unwrap()
+                    .contains("slug=shared/agents/opening")
+            );
         },
         CliOutput::Text(text) => {
             panic!("expected json output, got text: {text}");
@@ -245,7 +261,9 @@ fn get_command_requires_explicit_scan_for_nested_workspaces() {
 
     assert!(matches!(
         result,
-        Err(crate::cli::CliRunError::Rule(rule_api::error::RuleError::NotFound(_)))
+        Err(crate::cli::CliRunError::Rule(
+            rule_api::error::RuleError::NotFound(_)
+        ))
     ));
 
     scan_nested_rule_fixture(&parent_index_root);
@@ -282,11 +300,13 @@ fn list_command_bootstraps_nested_workspaces_automatically() {
 
     assert_eq!(payload["status"], "ok");
     assert_eq!(payload["count"], 2);
-    assert!(payload["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|item| item["id"] == child_id));
+    assert!(
+        payload["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["id"] == child_id)
+    );
 }
 
 #[test]
@@ -323,7 +343,9 @@ fn delete_command_from_ancestor_root_does_not_remove_child_rule() {
 
     assert!(matches!(
         result,
-        Err(crate::cli::CliRunError::Rule(rule_api::error::RuleError::NotFound(_)))
+        Err(crate::cli::CliRunError::Rule(
+            rule_api::error::RuleError::NotFound(_)
+        ))
     ));
 
     let child_store = RuleStore::open(&child_index_root).unwrap();
@@ -378,7 +400,8 @@ fn generate_file_writes_deterministic_markdown_with_provenance() {
 }
 
 #[test]
-fn generate_file_omits_provenance_for_frontmatter_prompt_output() {
+fn generate_file_keeps_frontmatter_first_and_emits_provenance_for_prompt_output()
+ {
     let dir = tempdir().unwrap();
     let mut store = RuleStore::init(dir.path()).unwrap();
     let mut prompt = RuleManifest::new(
@@ -411,8 +434,8 @@ fn generate_file_omits_provenance_for_frontmatter_prompt_output() {
     let rendered = fs::read_to_string(&output).unwrap();
 
     assert!(rendered.starts_with("---\nname: spec\n"));
-    assert!(!rendered.contains("rule-api:file generated=true"));
-    assert!(!rendered.contains("rule-api:entry id="));
+    assert!(rendered.contains("rule-api:file generated=true"));
+    assert!(rendered.contains("rule-api:entry id="));
 }
 
 #[test]
@@ -570,15 +593,18 @@ fn generate_target_accepts_output_path_selector() {
     .unwrap();
 
     assert_eq!(payload["target"], "context-engine-copilot-instructions");
-    assert!(payload["output"]
-        .as_str()
-        .unwrap()
-        .replace('\\', "/")
-        .ends_with("/.github/copilot-instructions.md"));
+    assert!(
+        payload["output"]
+            .as_str()
+            .unwrap()
+            .replace('\\', "/")
+            .ends_with("/.github/copilot-instructions.md")
+    );
     assert_eq!(payload["count"], 1);
-    assert!(payload["content"]
-        .as_str()
-        .unwrap()
-        .contains("slug=shared/copilot/rtk"));
+    assert!(
+        payload["content"]
+            .as_str()
+            .unwrap()
+            .contains("slug=shared/copilot/rtk")
+    );
 }
-

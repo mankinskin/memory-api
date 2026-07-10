@@ -34,7 +34,10 @@ pub struct GeneratedMarkdownConfig<'a> {
 }
 
 impl<'a> GeneratedMarkdownConfig<'a> {
-    pub fn new<I, E>(file_comment: I, entry_prefix: E) -> Self
+    pub fn new<I, E>(
+        file_comment: I,
+        entry_prefix: E,
+    ) -> Self
     where
         I: Into<Cow<'a, str>>,
         E: Into<Cow<'a, str>>,
@@ -66,31 +69,40 @@ pub fn render_markdown_file(
     snippets: &[GeneratedMarkdownSnippet<'_>],
     config: &GeneratedMarkdownConfig<'_>,
 ) -> String {
-    let include_provenance_comments = !(config
-        .skip_provenance_for_yaml_frontmatter
-        && snippets
-            .first()
-            .is_some_and(|snippet| starts_with_yaml_frontmatter(&snippet.body)));
     let mut rendered = String::new();
+    let first_frontmatter = if config.skip_provenance_for_yaml_frontmatter {
+        snippets
+            .first()
+            .and_then(|snippet| split_yaml_frontmatter(&snippet.body))
+    } else {
+        None
+    };
 
-    if include_provenance_comments {
-        rendered.push_str(config.file_comment.as_ref());
+    if let Some((frontmatter, _)) = first_frontmatter {
+        rendered.push_str(frontmatter.trim_end());
+        rendered.push_str("\n\n");
     }
 
-    for (index, snippet) in snippets.iter().enumerate() {
-        if include_provenance_comments {
-            rendered.push_str("\n\n");
-            rendered.push_str(&format!(
-                "<!-- {} id={} slug={} -->\n",
-                config.entry_prefix,
-                snippet.id,
-                snippet.slug.as_deref().unwrap_or_default(),
-            ));
-        } else if index > 0 {
-            rendered.push_str("\n\n");
-        }
+    rendered.push_str(config.file_comment.as_ref());
 
-        rendered.push_str(snippet.body.trim_end());
+    for (index, snippet) in snippets.iter().enumerate() {
+        rendered.push_str("\n\n");
+        rendered.push_str(&format!(
+            "<!-- {} id={} slug={} -->\n",
+            config.entry_prefix,
+            snippet.id,
+            snippet.slug.as_deref().unwrap_or_default(),
+        ));
+
+        let body = if index == 0 {
+            first_frontmatter
+                .map(|(_, remainder)| remainder)
+                .unwrap_or(snippet.body.as_ref())
+        } else {
+            snippet.body.as_ref()
+        };
+
+        rendered.push_str(body.trim_end());
     }
 
     rendered.push('\n');
@@ -107,10 +119,22 @@ pub fn prepare_generated_output(
         .unwrap_or(normalized)
 }
 
-fn starts_with_yaml_frontmatter(body: &str) -> bool {
-    body.lines()
-        .next()
-        .is_some_and(|line| line.trim_end_matches('\r') == "---")
+fn split_yaml_frontmatter(body: &str) -> Option<(&str, &str)> {
+    let mut lines = body.split_inclusive('\n');
+    let first = lines.next()?;
+    if first.trim_end_matches(['\r', '\n']) != "---" {
+        return None;
+    }
+
+    let mut offset = first.len();
+    for line in lines {
+        offset += line.len();
+        if line.trim_end_matches(['\r', '\n']) == "---" {
+            return Some((&body[..offset], &body[offset..]));
+        }
+    }
+
+    None
 }
 
 fn normalize_newlines_to_lf(text: &str) -> String {
@@ -240,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn render_markdown_file_omits_provenance_when_body_starts_with_frontmatter() {
+    fn render_markdown_file_keeps_frontmatter_first_and_emits_provenance() {
         let rendered = render_markdown_file(
             &[GeneratedMarkdownSnippet::new(
                 "prompt",
@@ -252,7 +276,7 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "---\nname: spec\n---\nCreate a new spec entry.\n"
+            "---\nname: spec\n---\n\n<!-- generated:file true -->\n\n<!-- generated:entry id=prompt slug=context-engine/prompts/spec -->\nCreate a new spec entry.\n"
         );
     }
 

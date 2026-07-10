@@ -150,6 +150,40 @@ pub struct SpecFulfillmentSummary {
     pub details: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuleOverlapSummary {
+    pub status: TrialStatus,
+    pub rules_considered: usize,
+    pub compared_pairs: usize,
+    pub high_overlap_pairs: usize,
+    pub max_similarity: Option<f64>,
+    pub details: Option<String>,
+}
+
+impl RuleOverlapSummary {
+    pub fn unavailable(details: impl Into<String>) -> Self {
+        Self {
+            status: TrialStatus::Unavailable,
+            rules_considered: 0,
+            compared_pairs: 0,
+            high_overlap_pairs: 0,
+            max_similarity: None,
+            details: Some(details.into()),
+        }
+    }
+
+    pub fn not_applicable(details: impl Into<String>) -> Self {
+        Self {
+            status: TrialStatus::NotApplicable,
+            rules_considered: 0,
+            compared_pairs: 0,
+            high_overlap_pairs: 0,
+            max_similarity: None,
+            details: Some(details.into()),
+        }
+    }
+}
+
 impl SpecFulfillmentSummary {
     pub fn unavailable(details: impl Into<String>) -> Self {
         Self {
@@ -196,6 +230,7 @@ pub struct AuditMetrics {
     pub static_metrics: StaticMetricsSummary,
     pub spec_fulfillment: SpecFulfillmentSummary,
     pub ticket_graph: CountMetric,
+    pub rule_overlap: RuleOverlapSummary,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

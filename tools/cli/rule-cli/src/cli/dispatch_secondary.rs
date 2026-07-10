@@ -108,6 +108,189 @@ pub(super) fn sync_targets_command(
     }))
 }
 
+pub(super) fn benchmark_targets_command(
+    _store: &mut RuleStore,
+    args: BenchmarkTargetsArgs,
+) -> Result<Value, CliRunError> {
+    if args.iterations == 0 {
+        return Err(CliRunError::BadRequest(
+            "--iterations must be >= 1".to_string(),
+        ));
+    }
+
+    let workspace_roots = if args.workspace_roots.is_empty() {
+        discover_benchmark_workspaces(&std::env::current_dir().map_err(
+            |err| {
+                CliRunError::BadRequest(format!(
+                    "resolve current directory for benchmark: {err}"
+                ))
+            },
+        )?)
+    } else {
+        args.workspace_roots.clone()
+    };
+
+    if workspace_roots.is_empty() {
+        return Err(CliRunError::BadRequest(
+            "no workspace roots found for benchmarking".to_string(),
+        ));
+    }
+
+    let mut runs = Vec::new();
+    for workspace_root in workspace_roots {
+        let workspace_root =
+            fs::canonicalize(&workspace_root).unwrap_or(workspace_root);
+        let index_root = workspace_root.join(".rule");
+        let mut workspace_store = RuleStore::open_or_init(&index_root)?;
+        workspace_store.scan(false)?;
+
+        let config_path = if args.config.is_absolute() {
+            args.config.clone()
+        } else {
+            workspace_root.join(&args.config)
+        };
+
+        if !config_path.exists() {
+            continue;
+        }
+
+        let config = load_render_target_config(&config_path)?;
+
+        if matches!(
+            args.operation,
+            BenchmarkOperation::GenerateTarget | BenchmarkOperation::Both
+        ) {
+            let target_selector = args.target.clone().ok_or_else(|| {
+                CliRunError::BadRequest(
+                    "--target is required when operation includes generate-target"
+                        .to_string(),
+                )
+            })?;
+            let target = render_target_by_selector(
+                &config,
+                &config_path,
+                &target_selector,
+            )?;
+            let output = resolve_render_target_output(&config_path, target);
+
+            let durations = run_timed(args.iterations, || {
+                generate_target_payload(
+                    &workspace_store,
+                    target,
+                    true,
+                    false,
+                    &output,
+                )
+                .map(|_| ())
+            })?;
+            runs.push(operation_run_json(
+                &workspace_root,
+                "generate-target",
+                Some(target.name.as_str()),
+                &durations,
+            ));
+        }
+
+        if matches!(
+            args.operation,
+            BenchmarkOperation::SyncTargets | BenchmarkOperation::Both
+        ) {
+            let durations = run_timed(args.iterations, || {
+                sync_targets_payload(
+                    &mut workspace_store,
+                    &config_path,
+                    true,
+                    false,
+                )
+                .map(|_| ())
+            })?;
+            runs.push(operation_run_json(
+                &workspace_root,
+                "sync-targets",
+                None,
+                &durations,
+            ));
+        }
+    }
+
+    if runs.is_empty() {
+        return Err(CliRunError::BadRequest(
+            "no benchmark runs executed; check --config path and workspace roots"
+                .to_string(),
+        ));
+    }
+
+    Ok(json!({
+        "status": "ok",
+        "command": "benchmark-targets",
+        "iterations": args.iterations,
+        "config": args.config,
+        "operation": format!("{:?}", args.operation),
+        "runs": runs,
+    }))
+}
+
+fn run_timed<F>(
+    iterations: usize,
+    mut op: F,
+) -> Result<Vec<u128>, CliRunError>
+where
+    F: FnMut() -> Result<(), CliRunError>,
+{
+    let mut durations = Vec::with_capacity(iterations);
+    for _ in 0..iterations {
+        let start = std::time::Instant::now();
+        op()?;
+        durations.push(start.elapsed().as_micros());
+    }
+    Ok(durations)
+}
+
+fn operation_run_json(
+    workspace_root: &Path,
+    operation: &str,
+    target: Option<&str>,
+    durations_micros: &[u128],
+) -> Value {
+    let min = durations_micros.iter().min().copied().unwrap_or_default();
+    let max = durations_micros.iter().max().copied().unwrap_or_default();
+    let sum = durations_micros.iter().sum::<u128>();
+    let mean = if durations_micros.is_empty() {
+        0
+    } else {
+        sum / durations_micros.len() as u128
+    };
+
+    json!({
+        "workspace_root": display_scan_path(workspace_root),
+        "operation": operation,
+        "target": target,
+        "samples_micros": durations_micros,
+        "min_micros": min,
+        "mean_micros": mean,
+        "max_micros": max,
+    })
+}
+
+fn discover_benchmark_workspaces(root: &Path) -> Vec<PathBuf> {
+    let mut workspaces = Vec::new();
+    let candidates = [
+        root.to_path_buf(),
+        root.join("memory-api"),
+        root.join("memory-viewers"),
+        root.join("viewer-api"),
+        root.join("context-stack"),
+    ];
+
+    for candidate in candidates {
+        if candidate.join("rule-targets.yaml").exists() {
+            workspaces.push(candidate);
+        }
+    }
+
+    workspaces
+}
+
 pub(super) fn list_command(
     store: &RuleStore,
     args: ListArgs,
@@ -321,7 +504,8 @@ pub(super) fn store_index_command(
             fs::create_dir_all(parent)
                 .map_err(memory_api::error::StorageError::Io)?;
         }
-        fs::write(path, content).map_err(memory_api::error::StorageError::Io)?;
+        fs::write(path, content)
+            .map_err(memory_api::error::StorageError::Io)?;
         written.push(display_scan_path(path));
     }
 

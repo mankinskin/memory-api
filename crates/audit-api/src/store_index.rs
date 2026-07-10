@@ -112,7 +112,7 @@ fn severity_rank(s: &Severity) -> u8 {
 }
 
 fn stable_finding_key(
-    f: &AuditFinding,
+    f: &AuditFinding
 ) -> (u8, &str, &str, Option<&str>, Option<usize>) {
     (
         severity_rank(&f.severity),
@@ -124,11 +124,14 @@ fn stable_finding_key(
 }
 
 /// Generate the full audit status catalog from the most recent audit run.
-pub fn generate_audit_catalog(source: &AuditCatalogSource<'_>) -> AuditCatalogArtifacts {
+pub fn generate_audit_catalog(
+    source: &AuditCatalogSource<'_>
+) -> AuditCatalogArtifacts {
     let generated_at = epoch();
     match source.report {
         None => generate_no_data_catalog(source.store_dir, generated_at),
-        Some(report) => generate_from_report(report, source.store_dir, generated_at),
+        Some(report) =>
+            generate_from_report(report, source.store_dir, generated_at),
     }
 }
 
@@ -280,11 +283,13 @@ fn generate_from_report(
     let mut entries = vec![root];
     entries.extend(category_entries);
 
-    let mut sidecar = IndexSidecar::new(ContentKind::AuditFinding, store_dir, entries);
+    let mut sidecar =
+        IndexSidecar::new(ContentKind::AuditFinding, store_dir, entries);
     sidecar.generated_at = generated_at;
     sidecar.sort();
 
-    let readme_markdown = render_readme(report, store_dir, &sidecar, &by_category);
+    let readme_markdown =
+        render_readme(report, store_dir, &sidecar, &by_category);
     let agent_hook_markdown = render_agent_hook(store_dir, &sidecar);
 
     AuditCatalogArtifacts {
@@ -316,7 +321,13 @@ fn make_category_entry(
         .count();
     let low = findings.len() - high - medium;
 
-    let worst = if high > 0 { "high" } else if medium > 0 { "medium" } else { "low" };
+    let worst = if high > 0 {
+        "high"
+    } else if medium > 0 {
+        "medium"
+    } else {
+        "low"
+    };
     let count = findings.len();
     let title = format!(
         "[{worst}] {category}: {count} finding{}",
@@ -456,7 +467,8 @@ fn render_readme(
                 AUDIT_NS,
                 &format!("audit-category:{store_dir}:{category}"),
             );
-            let category_entry = sidecar.entries.iter().find(|e| e.id == category_id);
+            let category_entry =
+                sidecar.entries.iter().find(|e| e.id == category_id);
 
             let high = findings
                 .iter()
@@ -512,7 +524,10 @@ fn render_readme(
     out
 }
 
-fn render_agent_hook(store_dir: &str, sidecar: &IndexSidecar) -> String {
+fn render_agent_hook(
+    store_dir: &str,
+    sidecar: &IndexSidecar,
+) -> String {
     let total = sidecar.entries.len().saturating_sub(1); // exclude root
     let finding_entries: Vec<_> = sidecar
         .entries
@@ -560,9 +575,10 @@ mod tests {
         AuditMetrics,
         AuditReport,
         AuditRunInfo,
-        CoverageSummary,
         CountMetric,
+        CoverageSummary,
         FileLengthMetric,
+        RuleOverlapSummary,
         Severity,
         SpecFulfillmentSummary,
         StaticMetricsSummary,
@@ -613,13 +629,18 @@ mod tests {
                 },
                 spec_fulfillment: SpecFulfillmentSummary::not_applicable("n/a"),
                 ticket_graph: CountMetric::unavailable("n/a"),
+                rule_overlap: RuleOverlapSummary::not_applicable("n/a"),
             },
             findings,
             instructions: vec![],
         }
     }
 
-    fn finding(id: &str, category: &str, severity: Severity) -> AuditFinding {
+    fn finding(
+        id: &str,
+        category: &str,
+        severity: Severity,
+    ) -> AuditFinding {
         AuditFinding {
             id: id.to_string(),
             category: category.to_string(),
@@ -637,7 +658,10 @@ mod tests {
 
     #[test]
     fn no_data_produces_placeholder() {
-        let source = AuditCatalogSource { report: None, store_dir: ".audit" };
+        let source = AuditCatalogSource {
+            report: None,
+            store_dir: ".audit",
+        };
         let artifacts = generate_audit_catalog(&source);
         assert_eq!(artifacts.sidecar.entries.len(), 1);
         let root = &artifacts.sidecar.entries[0];
@@ -700,9 +724,8 @@ mod tests {
 
     #[test]
     fn catalog_is_byte_stable() {
-        let report = minimal_report(vec![
-            finding("f1", "file_length", Severity::Low),
-        ]);
+        let report =
+            minimal_report(vec![finding("f1", "file_length", Severity::Low)]);
         let source = AuditCatalogSource {
             report: Some(&report),
             store_dir: ".audit",
@@ -752,9 +775,8 @@ mod tests {
 
     #[test]
     fn readme_has_provenance_and_category_sections() {
-        let report = minimal_report(vec![
-            finding("f1", "file_length", Severity::High),
-        ]);
+        let report =
+            minimal_report(vec![finding("f1", "file_length", Severity::High)]);
         let source = AuditCatalogSource {
             report: Some(&report),
             store_dir: ".audit",

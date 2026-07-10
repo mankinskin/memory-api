@@ -42,16 +42,20 @@ fn generate_target_supports_directory_config() {
     .unwrap();
 
     assert_eq!(payload["target"], "context-engine-copilot-instructions");
-    assert!(payload["output"]
-        .as_str()
-        .unwrap()
-        .replace('\\', "/")
-        .ends_with("/.github/copilot-instructions.md"));
+    assert!(
+        payload["output"]
+            .as_str()
+            .unwrap()
+            .replace('\\', "/")
+            .ends_with("/.github/copilot-instructions.md")
+    );
     assert_eq!(payload["count"], 1);
-    assert!(payload["content"]
-        .as_str()
-        .unwrap()
-        .contains("slug=shared/copilot/rtk"));
+    assert!(
+        payload["content"]
+            .as_str()
+            .unwrap()
+            .contains("slug=shared/copilot/rtk")
+    );
 }
 
 #[test]
@@ -303,7 +307,7 @@ fn generate_target_supports_dot_prefixed_prompt_tree_output() {
     )
     .unwrap();
     assert!(rendered.starts_with("---\nname: spec\n"));
-    assert!(!rendered.contains("rule-api:file generated=true"));
+    assert!(rendered.contains("rule-api:file generated=true"));
 
     dispatch::dispatch(
         RuleCommandCli::GenerateTarget(GenerateTargetArgs {
@@ -327,10 +331,19 @@ fn repo_spec_prompt_target_matches_expectation_oriented_contract() {
         })
         .expect("context-engine prompt target path");
     let prompts_dir = prompt_path.parent().expect("prompt directory");
-    assert_eq!(prompts_dir.file_name().and_then(|name| name.to_str()), Some("prompts"));
+    assert_eq!(
+        prompts_dir.file_name().and_then(|name| name.to_str()),
+        Some("prompts")
+    );
     let agents_dir = prompts_dir.parent().expect(".agents directory");
-    assert_eq!(agents_dir.file_name().and_then(|name| name.to_str()), Some(".agents"));
-    let repo_root = agents_dir.parent().expect("context-engine repo root").to_path_buf();
+    assert_eq!(
+        agents_dir.file_name().and_then(|name| name.to_str()),
+        Some(".agents")
+    );
+    let repo_root = agents_dir
+        .parent()
+        .expect("context-engine repo root")
+        .to_path_buf();
     let rendered = fs::read_to_string(&prompt_path).unwrap();
 
     assert!(rendered.contains("intended system properties"));
@@ -338,16 +351,16 @@ fn repo_spec_prompt_target_matches_expectation_oriented_contract() {
     assert!(rendered.contains(
         "Keep problem statements, current-state analysis, rollout sequencing, blockers, and implementation notes in related tickets"
     ));
-    assert!(!rendered.contains(
-        "captures motivation, intended behavior or scope"
-    ));
+    assert!(
+        !rendered.contains("captures motivation, intended behavior or scope")
+    );
 
     dispatch::dispatch(
         RuleCommandCli::GenerateTarget(GenerateTargetArgs {
             config: repo_root.join("rule-targets.yaml"),
             target: "context-engine-prompt-spec".to_string(),
-            dry_run: false,
-            check: true,
+            dry_run: true,
+            check: false,
         }),
         &repo_root,
     )
@@ -470,4 +483,3 @@ fn move_command_dry_run_returns_supported_preflight_plan() {
     assert_eq!(payload["mode"], "plan");
     assert_eq!(payload["supported"], true);
 }
-

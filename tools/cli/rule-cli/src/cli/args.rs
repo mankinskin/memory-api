@@ -4,6 +4,7 @@ use clap::{
     Args,
     Parser,
     Subcommand,
+    ValueEnum,
 };
 
 #[derive(Debug, Parser)]
@@ -52,6 +53,8 @@ pub enum RuleCommandCli {
     ExplainTarget(ExplainTargetArgs),
     #[command(name = "sync-targets")]
     SyncTargets(SyncTargetsArgs),
+    #[command(name = "benchmark-targets")]
+    BenchmarkTargets(BenchmarkTargetsArgs),
     List(ListArgs),
     Search(SearchArgs),
     Scan(ScanArgs),
@@ -220,6 +223,36 @@ pub struct SyncTargetsArgs {
     pub check: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum BenchmarkOperation {
+    GenerateTarget,
+    SyncTargets,
+    Both,
+}
+
+#[derive(Debug, Args)]
+pub struct BenchmarkTargetsArgs {
+    /// Target config path relative to each workspace root, or absolute.
+    #[arg(long, default_value = "rule-targets.yaml")]
+    pub config: PathBuf,
+
+    /// Target selector for generate-target benchmarks.
+    #[arg(long)]
+    pub target: Option<String>,
+
+    /// Operation to benchmark.
+    #[arg(long, value_enum, default_value_t = BenchmarkOperation::Both)]
+    pub operation: BenchmarkOperation,
+
+    /// Number of timed iterations per workspace/operation.
+    #[arg(long, default_value_t = 5)]
+    pub iterations: usize,
+
+    /// Repeat to benchmark multiple workspace roots explicitly.
+    #[arg(long = "bench-workspace-root")]
+    pub workspace_roots: Vec<PathBuf>,
+}
+
 #[derive(Debug, Args)]
 pub struct FilterArgs {
     #[arg(long)]
@@ -333,6 +366,40 @@ mod tests {
                 assert_eq!(args.id, "shared/agents/delete-me");
             },
             _ => panic!("expected delete command"),
+        }
+    }
+
+    #[test]
+    fn parse_benchmark_targets_command() {
+        let cli = RuleCli::parse_from([
+            "rule",
+            "benchmark-targets",
+            "--config",
+            "rule-targets.yaml",
+            "--operation",
+            "both",
+            "--target",
+            "context-engine-agents",
+            "--iterations",
+            "3",
+            "--bench-workspace-root",
+            ".",
+            "--bench-workspace-root",
+            "memory-api",
+        ]);
+
+        match cli.command {
+            RuleCommandCli::BenchmarkTargets(args) => {
+                assert_eq!(args.config, PathBuf::from("rule-targets.yaml"));
+                assert_eq!(args.operation, BenchmarkOperation::Both);
+                assert_eq!(
+                    args.target.as_deref(),
+                    Some("context-engine-agents")
+                );
+                assert_eq!(args.iterations, 3);
+                assert_eq!(args.workspace_roots.len(), 2);
+            },
+            _ => panic!("expected benchmark-targets command"),
         }
     }
 }
