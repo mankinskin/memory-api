@@ -1,9 +1,1 @@
-1. Documentation: use doc-viewer MCP tools to locate relevant module docs.
-2. Known issues/plans: use ticket-mcp tools before duplicating work.
-3. Board state: check active WIP, stale entries, and file ownership before touching
-   implementation files — `mcp_ticket-mcp_board_show` with `{"workspace": "default"}` or:
-   ```bash
-   ./target/debug/ticket.exe board show --toon
-   ```
-4. Test failures: use log-viewer MCP tools (`get_log`, `search_all_logs`, `query_logs`).
-5. Graph/workspace behavior: use context-mcp tools for context-engine operations.
+The canonical discovery protocol is owned at the context-engine root and mirrored through memory-viewers. Add memory-api-specific discovery steps here only when the shared protocol is insufficient.
