@@ -94,6 +94,34 @@ impl From<ValidationLinks> for ValidationLogLinks {
     }
 }
 
+impl ValidationLogCapture {
+    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+        let mut gaps = Vec::new();
+        if self.validation_execution_id.trim().is_empty() {
+            gaps.push("missing validation_execution_id");
+        }
+        if !self
+            .links
+            .links_to_execution(&self.validation_execution_id)
+        {
+            gaps.push("missing execution link");
+        }
+        gaps
+    }
+
+    pub fn validate_interoperability_contract(&self) -> Result<(), crate::LogError> {
+        let gaps = self.interoperability_gaps();
+        if gaps.is_empty() {
+            return Ok(());
+        }
+
+        Err(crate::LogError::InteroperabilityContract {
+            record_kind: "validation-log-capture".to_string(),
+            detail: gaps.join(", "),
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ValidationLogKind {
@@ -191,6 +219,14 @@ pub struct RuntimeLogLinks {
 }
 
 impl RuntimeLogLinks {
+    pub fn has_correlation_links(&self) -> bool {
+        !self.validation_execution_ids.is_empty()
+            || !self.benchmark_ids.is_empty()
+            || !self.agent_session_ids.is_empty()
+            || !self.journal_ids.is_empty()
+            || !self.graph_operation_ids.is_empty()
+    }
+
     pub fn links_to_spec(
         &self,
         spec_id: &str,
@@ -308,6 +344,22 @@ pub struct RuntimeLogSession {
     pub detail: Option<String>,
     #[serde(default)]
     pub links: RuntimeLogLinks,
+}
+
+impl RuntimeLogSession {
+    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+        let mut gaps = Vec::new();
+        if self.operation.as_deref().is_none() {
+            gaps.push("missing operation");
+        }
+        if self.run_id.as_deref().is_none() {
+            gaps.push("missing run_id");
+        }
+        if !self.links.has_correlation_links() {
+            gaps.push("missing execution, benchmark, journal, agent-session, or graph-operation links");
+        }
+        gaps
+    }
 }
 
 impl RuntimeLogSession {

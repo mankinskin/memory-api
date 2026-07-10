@@ -27,7 +27,10 @@ impl LogDomain {
             media_type: "text/plain".to_string(),
             locator: "memory://matrix".to_string(),
             detail: Some(detail.to_string()),
-            links: log_api::ValidationLogLinks::default(),
+            links: log_api::ValidationLogLinks {
+                validation_execution_ids: vec!["vt-log-domain".to_string()],
+                ..Default::default()
+            },
         }
     }
 }

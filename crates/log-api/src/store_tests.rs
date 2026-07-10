@@ -78,6 +78,19 @@ fn records_and_reads_capture() {
 }
 
 #[test]
+fn record_capture_rejects_missing_execution_back_link() {
+    let dir = TempDir::new().unwrap();
+    let cfg = config(&dir);
+    let mut cap = capture("cap-interop", "exec-1", 0);
+    cap.links.validation_execution_ids.clear();
+
+    assert!(matches!(
+        cfg.record_capture(&cap),
+        Err(LogError::InteroperabilityContract { .. })
+    ));
+}
+
+#[test]
 fn missing_capture_reports_not_found() {
     let dir = TempDir::new().unwrap();
     let cfg = config(&dir);

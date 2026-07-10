@@ -86,6 +86,27 @@ fn captures_inherit_execution_links_and_identity() {
 }
 
 #[test]
+fn capture_interoperability_contract_requires_execution_back_link() {
+    let execution = sample_execution();
+    let mut capture = ValidationLogCapture::from_execution(
+        "capture-interop",
+        &execution,
+        ValidationLogKind::Stdout,
+        sample_time(),
+        "text/plain",
+        "target/test-logs/spec.stdout",
+    );
+    capture.links.validation_execution_ids.clear();
+
+    let gaps = capture.interoperability_gaps();
+    assert!(gaps.contains(&"missing execution link"));
+    assert!(matches!(
+        capture.validate_interoperability_contract(),
+        Err(crate::LogError::InteroperabilityContract { .. })
+    ));
+}
+
+#[test]
 fn retrievals_preserve_locator_and_link_metadata() {
     let links = ValidationLogLinks {
         spec_ids: vec!["spec-1".to_string()],
@@ -155,4 +176,24 @@ fn runtime_sessions_round_trip_through_serde() {
     assert!(reparsed.links.links_to_agent_session("agent-1"));
     assert!(reparsed.links.links_to_journal("journal-1"));
     assert!(reparsed.links.links_to_graph_operation("graph-op-1"));
+    assert!(reparsed.interoperability_gaps().is_empty());
+}
+
+#[test]
+fn runtime_session_interoperability_contract_requires_correlation_links() {
+    let session = RuntimeLogSession::new(
+        "runtime-2",
+        sample_time(),
+        RuntimeLogStatus::Active,
+        "ticket-api",
+        RuntimeLogTransport::Mcp,
+        "target/test-logs/runtime-2.jsonl",
+        "application/json",
+        RuntimeLogFormat::JsonLines,
+    );
+
+    let gaps = session.interoperability_gaps();
+    assert!(gaps.contains(&"missing operation"));
+    assert!(gaps.contains(&"missing run_id"));
+    assert!(gaps.contains(&"missing execution, benchmark, journal, agent-session, or graph-operation links"));
 }

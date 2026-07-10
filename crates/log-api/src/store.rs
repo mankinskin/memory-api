@@ -73,6 +73,7 @@ impl LogStoreConfig {
         &self,
         capture: &ValidationLogCapture,
     ) -> Result<PathBuf, LogError> {
+        capture.validate_interoperability_contract()?;
         let path = self.capture_path(&capture.id)?;
         write_json(&path, capture)?;
         Ok(path)

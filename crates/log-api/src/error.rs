@@ -6,6 +6,12 @@ pub enum LogError {
     #[error("log store root cannot be empty")]
     EmptyRoot,
 
+    #[error("interoperability contract violation for {record_kind}: {detail}")]
+    InteroperabilityContract {
+        record_kind: String,
+        detail: String,
+    },
+
     #[error("identifier contains invalid path characters: {0}")]
     InvalidId(String),
 
