@@ -42,8 +42,8 @@ use crate::serve::{
         task_join_err,
     },
     handlers::tickets::{
-        ticket_ref_from_indexed,
         TicketRef,
+        ticket_ref_from_indexed,
     },
 };
 
@@ -186,25 +186,17 @@ pub async fn workflow_next(
     Extension(rid): Extension<RequestIdExt>,
     Query(params): Query<WorkflowNextQuery>,
 ) -> Response {
-    let (workspace, store) = match resolve_workspace_request(
-        &state,
-        &params.workspace,
-        &rid.0,
-    ) {
-        Ok(resolved) => resolved,
-        Err(response) => return response,
-    };
+    let (workspace, store) =
+        match resolve_workspace_request(&state, &params.workspace, &rid.0) {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || {
         let request_id = task_request_id.clone();
-        match workflow_next_payload(
-            &store,
-            &workspace,
-            &params,
-            &request_id,
-        ) {
+        match workflow_next_payload(&store, &workspace, &params, &request_id) {
             Ok(payload) => Json(payload).into_response(),
             Err(response) => response,
         }
@@ -232,15 +224,17 @@ fn workflow_next_payload(
         .map_err(|error| storage_err(error, request_id))?;
     ensure_next_root_exists(&model, params.root, request_id)?;
 
-    let next_scope = build_optional_next_scope(params.root, &model, store, workspace)
-        .map_err(|error| storage_err(error, request_id))?;
-    let (mut candidates, excluded_by_board, warnings, frontier_count) = collect_board_filtered_candidates(
-        &tickets,
-        &model,
-        params,
-        next_scope.as_ref(),
-        store,
-    );
+    let next_scope =
+        build_optional_next_scope(params.root, &model, store, workspace)
+            .map_err(|error| storage_err(error, request_id))?;
+    let (mut candidates, excluded_by_board, warnings, frontier_count) =
+        collect_board_filtered_candidates(
+            &tickets,
+            &model,
+            params,
+            next_scope.as_ref(),
+            store,
+        );
     apply_next_limit(&mut candidates, params);
 
     let empty_satisfied = HashSet::new();
@@ -272,7 +266,9 @@ fn workflow_next_payload(
         remaining_blocker_count: next_scope
             .as_ref()
             .map(|scope| scope.remaining_blockers.len()),
-        blocker_tree: next_scope.as_ref().map(|scope| scope.blocker_tree.clone()),
+        blocker_tree: next_scope
+            .as_ref()
+            .map(|scope| scope.blocker_tree.clone()),
         frontier_count: next_scope.as_ref().map(|_| frontier_count),
         count: items.len(),
         items,
@@ -287,10 +283,8 @@ fn ensure_next_root_exists(
     request_id: &str,
 ) -> Result<(), Response> {
     if root.is_some_and(|root_id| model.ticket(&root_id).is_none()) {
-        return Err(
-            ApiError::not_found("ticket", request_id)
-                .into_response_with_status(StatusCode::NOT_FOUND),
-        );
+        return Err(ApiError::not_found("ticket", request_id)
+            .into_response_with_status(StatusCode::NOT_FOUND));
     }
     Ok(())
 }
@@ -312,14 +306,20 @@ fn collect_board_filtered_candidates(
     next_scope: Option<&NextScope>,
     store: &TicketStore,
 ) -> (Vec<Uuid>, Vec<BoardExcludedCandidate>, Vec<String>, usize) {
-    let filtered_scope = WorkflowModel::filter_scope(tickets, params.filter.as_deref());
+    let filtered_scope =
+        WorkflowModel::filter_scope(tickets, params.filter.as_deref());
     let candidate_scope = intersect_scopes(
         filtered_scope,
         next_scope.map(|scope| &scope.remaining_blockers),
     );
-    let mut candidates = model.actionable_candidate_ids(candidate_scope.as_ref());
+    let mut candidates =
+        model.actionable_candidate_ids(candidate_scope.as_ref());
     model.sort_candidate_ids(&mut candidates);
-    let board_filtered = apply_board_filter(candidates, store.board_show(None).ok().as_ref(), false);
+    let board_filtered = apply_board_filter(
+        candidates,
+        store.board_show(None).ok().as_ref(),
+        false,
+    );
     let frontier_count = board_filtered.candidates.len();
     (
         board_filtered.candidates,
@@ -329,11 +329,14 @@ fn collect_board_filtered_candidates(
     )
 }
 
-fn apply_next_limit(candidates: &mut Vec<Uuid>, params: &WorkflowNextQuery) {
+fn apply_next_limit(
+    candidates: &mut Vec<Uuid>,
+    params: &WorkflowNextQuery,
+) {
     match params.limit {
         Some(limit) => candidates.truncate(limit.min(100)),
         None if params.root.is_none() => candidates.truncate(20),
-        None => {}
+        None => {},
     }
 }
 
@@ -359,14 +362,12 @@ async fn workflow_tree_response(
     params: WorkflowTreeQuery,
     kind: TreeKind,
 ) -> Response {
-    let (workspace, store) = match resolve_workspace_request(
-        &state,
-        &params.workspace,
-        &request_id,
-    ) {
-        Ok(resolved) => resolved,
-        Err(response) => return response,
-    };
+    let (workspace, store) =
+        match resolve_workspace_request(&state, &params.workspace, &request_id)
+        {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let task_request_id = request_id.clone();
 
     tokio::task::spawn_blocking(move || {
@@ -403,10 +404,8 @@ fn workflow_tree_payload(
         .map_err(|error| storage_err(error, request_id))?;
 
     if model.ticket(&root).is_none() {
-        return Err(
-            ApiError::not_found("ticket", request_id)
-                .into_response_with_status(StatusCode::NOT_FOUND),
-        );
+        return Err(ApiError::not_found("ticket", request_id)
+            .into_response_with_status(StatusCode::NOT_FOUND));
     }
 
     let tree_info = tree_kind_payload(&model, root, kind, request_id)?;
@@ -452,7 +451,8 @@ fn tree_kind_payload<'a>(
 ) -> Result<TreePayload<'a>, Response> {
     match kind {
         TreeKind::Blockers => blockers_tree_payload(model, root, request_id),
-        TreeKind::UnblockedBy => unblocked_by_tree_payload(model, root, request_id),
+        TreeKind::UnblockedBy =>
+            unblocked_by_tree_payload(model, root, request_id),
     }
 }
 
@@ -461,12 +461,10 @@ fn blockers_tree_payload<'a>(
     root: Uuid,
     request_id: &str,
 ) -> Result<TreePayload<'a>, Response> {
-    let tree = model
-        .blocker_tree(root)
-        .ok_or_else(|| {
-            ApiError::not_found("ticket", request_id)
-                .into_response_with_status(StatusCode::NOT_FOUND)
-        })?;
+    let tree = model.blocker_tree(root).ok_or_else(|| {
+        ApiError::not_found("ticket", request_id)
+            .into_response_with_status(StatusCode::NOT_FOUND)
+    })?;
     let frontier_ids = tree.frontier_leaf_ids.clone();
     Ok(TreePayload {
         tree,
@@ -502,7 +500,8 @@ fn unblocked_by_tree_payload<'a>(
 
     Ok(TreePayload {
         tree,
-        frontier_ids: model.unlock_frontier_leaf_ids_with_satisfied(root, &satisfied_ids),
+        frontier_ids: model
+            .unlock_frontier_leaf_ids_with_satisfied(root, &satisfied_ids),
         reachable_dependents: Some(dependent_ids.len()),
         blocked_dependents: Some(blocked_dependents),
         kind_label: "unblocked-by",
@@ -550,7 +549,12 @@ fn build_next_scope(
         reachable_dependencies: scope.reachable_dependencies,
         blocked_dependencies: scope.blocked_dependencies,
         remaining_blockers: scope.remaining_blockers,
-        blocker_tree: build_tree_item(scope.tree, model, store, active_workspace)?,
+        blocker_tree: build_tree_item(
+            scope.tree,
+            model,
+            store,
+            active_workspace,
+        )?,
     })
 }
 
@@ -587,7 +591,11 @@ fn build_candidate_items(
         items.push(WorkflowCandidateItem {
             rank: rank + 1,
             id: ticket.id.to_string(),
-            ticket_ref: ticket_ref_from_indexed(store, active_workspace, ticket)?,
+            ticket_ref: ticket_ref_from_indexed(
+                store,
+                active_workspace,
+                ticket,
+            )?,
             title: ticket.title.clone(),
             state: ticket.state.clone(),
             ticket_type: ticket.type_id.clone(),
@@ -598,8 +606,10 @@ fn build_candidate_items(
                 .unresolved_dependencies_excluding(ticket_id, satisfied_ids)
                 .len(),
             dependee_count: model.dependee_count(ticket_id),
-            transitive_reverse_dependents: metrics.transitive_reverse_dependents,
-            affected_reverse_dependent_reach: metrics.affected_reverse_dependent_reach,
+            transitive_reverse_dependents: metrics
+                .transitive_reverse_dependents,
+            affected_reverse_dependent_reach: metrics
+                .affected_reverse_dependent_reach,
             max_affected_dependent_state: metrics.max_affected_dependent_state,
             dependency_state_gap: metrics.dependency_state_gap,
             became_actionable_at: metrics
@@ -660,7 +670,6 @@ fn build_tree_item(
         children,
     })
 }
-
 
 #[cfg(test)]
 #[path = "workflow_tests.rs"]

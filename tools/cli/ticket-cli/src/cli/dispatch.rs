@@ -1,7 +1,9 @@
-use std::collections::BTreeSet;
-use std::path::{
-    Path,
-    PathBuf,
+use std::{
+    collections::BTreeSet,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
 use serde_json::{
@@ -36,12 +38,11 @@ pub(super) fn dispatch(
     match command {
         TicketCommandCli::ExportCommandSchema =>
             export_command_schema_payload(),
-        TicketCommandCli::Init =>
-            cmd_init(
-                index_root_override,
-                workspace_root_override,
-                schema_dir_override,
-            ),
+        TicketCommandCli::Init => cmd_init(
+            index_root_override,
+            workspace_root_override,
+            schema_dir_override,
+        ),
         other => dispatch_store_backed(
             other,
             index_root_override,
@@ -57,10 +58,8 @@ fn cmd_init(
     workspace_root_override: Option<&Path>,
     schema_dir_override: Option<&Path>,
 ) -> Result<Value, CliRunError> {
-    let index_root = resolve_index_root(
-        index_root_override,
-        workspace_root_override,
-    );
+    let index_root =
+        resolve_index_root(index_root_override, workspace_root_override);
     let mut registry = SchemaRegistry::with_builtins();
     if let Some(schema_dir) = schema_dir_override {
         registry.load_dir(schema_dir)?;
@@ -136,8 +135,10 @@ fn dry_run_payload_runtime(command: &TicketCommandCli) -> Option<Value> {
             Some(dry_run_payload("watch", "start watcher/reconcile loop")),
         TicketCommandCli::Serve(_) =>
             Some(dry_run_payload("serve", "start HTTP server")),
-        TicketCommandCli::StoreIndex(_) =>
-            Some(dry_run_payload("store-index", "generate/check ticket catalog")),
+        TicketCommandCli::StoreIndex(_) => Some(dry_run_payload(
+            "store-index",
+            "generate/check ticket catalog",
+        )),
         TicketCommandCli::Fmt(_) =>
             Some(dry_run_payload("fmt", "reformat ticket.toml files")),
         TicketCommandCli::Board(_) =>
@@ -219,14 +220,10 @@ fn dispatch_store_backed(
         workspace_root_override,
     )?;
 
-    let index_root = resolve_index_root(
-        index_root_override,
-        workspace_root_override,
-    );
-    let workspace_root = resolve_workspace_root(
-        &index_root,
-        workspace_root_override,
-    );
+    let index_root =
+        resolve_index_root(index_root_override, workspace_root_override);
+    let workspace_root =
+        resolve_workspace_root(&index_root, workspace_root_override);
     let store = open_store(&index_root, schema_dir_override)?;
     if command_uses_descendant_scan_roots(&command) {
         let reindex = register_descendant_scan_roots(&store, &workspace_root)?;
@@ -243,8 +240,10 @@ fn require_explicit_workspace_for_create(
     index_root_override: Option<&Path>,
     workspace_root_override: Option<&Path>,
 ) -> Result<(), CliRunError> {
-    if matches!(command, TicketCommandCli::Create(_) | TicketCommandCli::Batch(_))
-        && index_root_override.is_none()
+    if matches!(
+        command,
+        TicketCommandCli::Create(_) | TicketCommandCli::Batch(_)
+    ) && index_root_override.is_none()
         && workspace_root_override.is_none()
     {
         return Err(CliRunError::BadRequest(
@@ -287,11 +286,10 @@ fn resolve_workspace_root(
     workspace_root_override: Option<&Path>,
 ) -> PathBuf {
     if let Some(path) = workspace_root_override {
-        let store_root =
-            ticket_api::workspace::resolve_store_root_from(
-                path,
-                ticket_api::workspace::TICKET_INDEX_DIR,
-            );
+        let store_root = ticket_api::workspace::resolve_store_root_from(
+            path,
+            ticket_api::workspace::TICKET_INDEX_DIR,
+        );
         return ticket_api::workspace::resolve_workspace_root_from_store_root(
             &store_root,
             ticket_api::workspace::TICKET_INDEX_DIR,
@@ -454,17 +452,15 @@ fn dispatch_store_command_graph(
         | TicketCommandCli::Links(_)
         | TicketCommandCli::PruneDangling(_)
         | TicketCommandCli::Subgraph(_)
-        | TicketCommandCli::Topgraph(_) => {
-            dispatch_store_command_graph_edges(command, store)
-        }
+        | TicketCommandCli::Topgraph(_) =>
+            dispatch_store_command_graph_edges(command, store),
         TicketCommandCli::Watch(_)
         | TicketCommandCli::Status(_)
         | TicketCommandCli::ReadyOverview(_)
         | TicketCommandCli::Next(_)
         | TicketCommandCli::Blockers(_)
-        | TicketCommandCli::UnblockedBy(_) => {
-            dispatch_store_command_graph_workflow(command, store)
-        }
+        | TicketCommandCli::UnblockedBy(_) =>
+            dispatch_store_command_graph_workflow(command, store),
         _ => unreachable!("handled in graph store dispatch"),
     }
 }
@@ -513,17 +509,15 @@ fn dispatch_store_command_ops(
         | TicketCommandCli::Cancel(_)
         | TicketCommandCli::Move(_)
         | TicketCommandCli::Attach(_)
-        | TicketCommandCli::Assets(_) => {
-            dispatch_store_command_ops_runtime(command, store, dry_run)
-        }
+        | TicketCommandCli::Assets(_) =>
+            dispatch_store_command_ops_runtime(command, store, dry_run),
         TicketCommandCli::Health(_)
         | TicketCommandCli::StoreIndex(_)
         | TicketCommandCli::Audit
         | TicketCommandCli::Fmt(_)
         | TicketCommandCli::Board(_)
-        | TicketCommandCli::Workspace(_) => {
-            dispatch_store_command_ops_admin(command, store)
-        }
+        | TicketCommandCli::Workspace(_) =>
+            dispatch_store_command_ops_admin(command, store),
         _ => unreachable!("handled in ops store dispatch"),
     }
 }
@@ -537,7 +531,8 @@ fn dispatch_store_command_ops_runtime(
         TicketCommandCli::Serve(args) => commands::cmd_serve(args, store),
         TicketCommandCli::Close(args) => commands::cmd_close(args, &store),
         TicketCommandCli::Cancel(args) => commands::cmd_cancel(args, &store),
-        TicketCommandCli::Move(args) => commands::cmd_move(args, &store, dry_run),
+        TicketCommandCli::Move(args) =>
+            commands::cmd_move(args, &store, dry_run),
         TicketCommandCli::Attach(args) => commands::cmd_attach(args, &store),
         TicketCommandCli::Assets(args) => commands::cmd_assets(args, &store),
         _ => unreachable!("handled in ops runtime dispatch"),
@@ -550,11 +545,13 @@ fn dispatch_store_command_ops_admin(
 ) -> Result<Value, CliRunError> {
     match command {
         TicketCommandCli::Health(args) => commands::cmd_health(args, &store),
-        TicketCommandCli::StoreIndex(args) => commands::cmd_store_index(args, &store),
+        TicketCommandCli::StoreIndex(args) =>
+            commands::cmd_store_index(args, &store),
         TicketCommandCli::Audit => commands::cmd_audit(&store),
         TicketCommandCli::Fmt(args) => commands::cmd_fmt(args, &store),
         TicketCommandCli::Board(args) => commands::cmd_board(args, &store),
-        TicketCommandCli::Workspace(args) => commands::cmd_workspace(args, &store),
+        TicketCommandCli::Workspace(args) =>
+            commands::cmd_workspace(args, &store),
         _ => unreachable!("handled in ops admin dispatch"),
     }
 }

@@ -12,9 +12,9 @@ use axum::{
         StatusCode,
     },
 };
-use std::process::Command;
 use std::{
     collections::BTreeMap,
+    process::Command,
     sync::Arc,
 };
 use viewer_api::error::RequestIdExt;
@@ -33,7 +33,10 @@ use super::{
     make_store,
 };
 
-fn run_git(repo_root: &std::path::Path, args: &[&str]) {
+fn run_git(
+    repo_root: &std::path::Path,
+    args: &[&str],
+) {
     let status = Command::new("git")
         .current_dir(repo_root)
         .args(args)
@@ -220,9 +223,11 @@ async fn move_ticket_dry_run_returns_structured_plan() {
 
     let source_store = make_store(dir.path());
     let target_workspace = dir.path().join("target-workspace");
-    std::fs::create_dir_all(&target_workspace).expect("create target workspace");
-    let _target_store = ticket_api::storage::store::TicketStore::init(&target_workspace)
-        .expect("init target store");
+    std::fs::create_dir_all(&target_workspace)
+        .expect("create target workspace");
+    let _target_store =
+        ticket_api::storage::store::TicketStore::init(&target_workspace)
+            .expect("init target store");
 
     let id = source_store
         .create(
@@ -257,7 +262,8 @@ async fn move_ticket_dry_run_returns_structured_plan() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["mode"], "plan");
     assert_eq!(payload["status"], "ok");
     assert!(payload["plan"]["source_ticket_path"].is_string());
@@ -271,9 +277,11 @@ async fn move_ticket_apply_executes_and_returns_journal() {
 
     let source_store = make_store(dir.path());
     let target_workspace = dir.path().join("target-workspace");
-    std::fs::create_dir_all(&target_workspace).expect("create target workspace");
-    let target_store = ticket_api::storage::store::TicketStore::init(&target_workspace)
-        .expect("init target store");
+    std::fs::create_dir_all(&target_workspace)
+        .expect("create target workspace");
+    let target_store =
+        ticket_api::storage::store::TicketStore::init(&target_workspace)
+            .expect("init target store");
 
     let id = source_store
         .create(
@@ -308,10 +316,21 @@ async fn move_ticket_apply_executes_and_returns_journal() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body");
-    let payload: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["mode"], "apply");
     assert!(payload["outcome"]["journal"]["id"].is_string());
 
-    assert!(source_store.get_indexed(&id).expect("source lookup").is_none());
-    assert!(target_store.get_indexed(&id).expect("target lookup").is_some());
+    assert!(
+        source_store
+            .get_indexed(&id)
+            .expect("source lookup")
+            .is_none()
+    );
+    assert!(
+        target_store
+            .get_indexed(&id)
+            .expect("target lookup")
+            .is_some()
+    );
 }

@@ -225,7 +225,14 @@ fn add_edge_rejects_targets_under_policy_ignored_roots() {
     assert!(matches!(err, StorageError::NotFound(id) if id == fixture_ticket));
 
     assert!(store.edges_from(&source).unwrap().is_empty());
-    assert!(store.get(&source).unwrap().extra.get("depends_on").is_none());
+    assert!(
+        store
+            .get(&source)
+            .unwrap()
+            .extra
+            .get("depends_on")
+            .is_none()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -258,7 +265,10 @@ fn init_store_with_ticket(
     (store, id)
 }
 
-fn write_policy(workspace_root: &Path, contents: &str) {
+fn write_policy(
+    workspace_root: &Path,
+    contents: &str,
+) {
     let ticket_dir = workspace_root.join(".ticket");
     fs::create_dir_all(&ticket_dir).unwrap();
     fs::write(ticket_dir.join("workspace-policy.toml"), contents).unwrap();
@@ -278,7 +288,10 @@ fn policy_e2e_child_included_by_default() {
     let report = main.reapply_workspace_policy(repo).unwrap();
 
     assert!(report.skipped_roots.is_empty());
-    assert!(main.get(&child_id).is_ok(), "child ticket should be scanned");
+    assert!(
+        main.get(&child_id).is_ok(),
+        "child ticket should be scanned"
+    );
     assert!(
         main.list(None, None, None)
             .unwrap()
@@ -321,8 +334,10 @@ fn policy_e2e_child_ignored_via_glob() {
     let dir = tempdir().unwrap();
     let repo = dir.path();
     let (main, _root) = init_store_with_ticket(&repo.join(".ticket"), "Root");
-    let (fixture, fixture_id) =
-        init_store_with_ticket(&repo.join("fixtures").join(".ticket"), "Fixture");
+    let (fixture, fixture_id) = init_store_with_ticket(
+        &repo.join("fixtures").join(".ticket"),
+        "Fixture",
+    );
     drop(fixture);
 
     write_policy(repo, "ignore_workspaces = [\"fixtures*\"]\n");
@@ -347,8 +362,10 @@ fn policy_e2e_include_override_wins() {
     let dir = tempdir().unwrap();
     let repo = dir.path();
     let (main, _root) = init_store_with_ticket(&repo.join(".ticket"), "Root");
-    let (fixture, fixture_id) =
-        init_store_with_ticket(&repo.join("fixtures").join(".ticket"), "Fixture");
+    let (fixture, fixture_id) = init_store_with_ticket(
+        &repo.join("fixtures").join(".ticket"),
+        "Fixture",
+    );
     drop(fixture);
 
     // Matches both the ignore glob and an include override -> override wins.
@@ -404,6 +421,3 @@ fn policy_e2e_external_path_denied() {
             .any(|ticket| ticket.id == ancestor_id)
     );
 }
-
-
-

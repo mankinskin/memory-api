@@ -621,7 +621,8 @@ fn validate_required_evidence_fulfillment(
         let summaries: Vec<&FulfillmentSummary> = fulfillment_summaries
             .iter()
             .filter(|summary| {
-                summary.subject_kind == FulfillmentSubjectKind::EvidenceRequirement
+                summary.subject_kind
+                    == FulfillmentSubjectKind::EvidenceRequirement
                     && summary.subject_id == evidence.id
             })
             .collect();

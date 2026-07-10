@@ -24,7 +24,9 @@ pub(crate) fn cmd_move(
 
     if let Some(journal_id) = args.resume.as_deref() {
         let journal_id = journal_id.parse::<Uuid>().map_err(|error| {
-            CliRunError::BadRequest(format!("invalid --resume journal UUID: {error}"))
+            CliRunError::BadRequest(format!(
+                "invalid --resume journal UUID: {error}"
+            ))
         })?;
         let outcome = store.resume_move_with_journal(journal_id)?;
         return Ok(json!({
@@ -38,7 +40,9 @@ pub(crate) fn cmd_move(
 
     if let Some(journal_id) = args.rollback.as_deref() {
         let journal_id = journal_id.parse::<Uuid>().map_err(|error| {
-            CliRunError::BadRequest(format!("invalid --rollback journal UUID: {error}"))
+            CliRunError::BadRequest(format!(
+                "invalid --rollback journal UUID: {error}"
+            ))
         })?;
         let outcome = store.rollback_move_with_journal(journal_id)?;
         return Ok(json!({
@@ -55,11 +59,13 @@ pub(crate) fn cmd_move(
             "move requires <id> unless --resume/--rollback is used".to_string(),
         )
     })?;
-    let to_workspace_root = args.to_workspace_root.as_deref().ok_or_else(|| {
-        CliRunError::BadRequest(
-            "move requires --to-workspace-root in plan/execute mode".to_string(),
-        )
-    })?;
+    let to_workspace_root =
+        args.to_workspace_root.as_deref().ok_or_else(|| {
+            CliRunError::BadRequest(
+                "move requires --to-workspace-root in plan/execute mode"
+                    .to_string(),
+            )
+        })?;
 
     let spec_id = store.resolve_id(id)?;
     let report = store.plan_move_preflight(&spec_id, to_workspace_root)?;
@@ -88,7 +94,9 @@ pub(crate) fn cmd_move(
     }))
 }
 
-fn move_plan_json(report: &memory_api::storage::move_kernel::MovePlan) -> Value {
+fn move_plan_json(
+    report: &memory_api::storage::move_kernel::MovePlan
+) -> Value {
     json!({
         "supported": report.supported(),
         "source_workspace_root": disp(&report.source_workspace_root),
@@ -99,7 +107,9 @@ fn move_plan_json(report: &memory_api::storage::move_kernel::MovePlan) -> Value 
     })
 }
 
-fn move_outcome_json(outcome: &memory_api::storage::move_kernel::MoveOutcome) -> Value {
+fn move_outcome_json(
+    outcome: &memory_api::storage::move_kernel::MoveOutcome
+) -> Value {
     json!({
         "resumed": outcome.resumed,
         "rolled_back": outcome.rolled_back,

@@ -30,7 +30,10 @@ fn cli_supports_json_and_text_output() {
     .expect("parse cli");
 
     match run(cli).expect("run cli") {
-        CliOutput::Machine(value, audit_cli::cli::MachineOutputFormat::Json) => {
+        CliOutput::Machine(
+            value,
+            audit_cli::cli::MachineOutputFormat::Json,
+        ) => {
             assert_eq!(value["service"], "audit-mcp");
             assert!(
                 value["findings"]

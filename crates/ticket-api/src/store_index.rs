@@ -82,8 +82,10 @@ pub fn generate_ticket_catalog(
 ) -> TicketCatalogArtifacts {
     let generated_at = epoch();
 
-    let mut entries: Vec<IndexEntry> =
-        sources.iter().map(|s| make_entry(s, generated_at)).collect();
+    let mut entries: Vec<IndexEntry> = sources
+        .iter()
+        .map(|s| make_entry(s, generated_at))
+        .collect();
     for entry in &mut entries {
         entry.seal();
     }
@@ -106,7 +108,8 @@ pub fn generate_ticket_catalog(
         })
         .collect();
 
-    let mut sidecar = IndexSidecar::new(ContentKind::Ticket, store_dir, entries);
+    let mut sidecar =
+        IndexSidecar::new(ContentKind::Ticket, store_dir, entries);
     sidecar.generated_at = generated_at;
     sidecar.sort();
 
@@ -144,11 +147,8 @@ fn make_entry(
     }
     normalize_tokens(&mut tags);
 
-    let mut keywords = vec![
-        "ticket".to_string(),
-        state.clone(),
-        component.clone(),
-    ];
+    let mut keywords =
+        vec!["ticket".to_string(), state.clone(), component.clone()];
     keywords.extend(words_for_keywords(&title));
     keywords.extend(words_for_keywords(&source.description));
     if let Some(priority) = &priority {
@@ -193,22 +193,24 @@ fn normalize_summary(description: &str) -> String {
 
         let clean = line
             .trim_start_matches(['-', '*', '+'])
-            .trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == ')')
+            .trim_start_matches(|c: char| {
+                c.is_ascii_digit() || c == '.' || c == ')'
+            })
             .trim();
         if clean.is_empty() {
             continue;
         }
 
-        let collapsed = clean
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ");
+        let collapsed = clean.split_whitespace().collect::<Vec<_>>().join(" ");
         return truncate_chars(&collapsed, 200);
     }
     String::new()
 }
 
-fn truncate_chars(input: &str, max_chars: usize) -> String {
+fn truncate_chars(
+    input: &str,
+    max_chars: usize,
+) -> String {
     let count = input.chars().count();
     if count <= max_chars {
         return input.to_string();
@@ -266,7 +268,8 @@ fn render_catalog_markdown(
     sidecar: &IndexSidecar,
     extras: &BTreeMap<uuid::Uuid, TicketDisplayExtra>,
 ) -> String {
-    let mut by_group: BTreeMap<(String, String), Vec<&IndexEntry>> = BTreeMap::new();
+    let mut by_group: BTreeMap<(String, String), Vec<&IndexEntry>> =
+        BTreeMap::new();
     for entry in &sidecar.entries {
         let extra = extras.get(&entry.id).expect("entry has display data");
         by_group
@@ -292,13 +295,12 @@ fn render_catalog_markdown(
 
         let mut sorted = entries;
         sorted.sort_by(|a, b| {
-            a.title
-                .cmp(&b.title)
-                .then_with(|| a.id.cmp(&b.id))
+            a.title.cmp(&b.title).then_with(|| a.id.cmp(&b.id))
         });
 
         for entry in sorted {
-            let digest_prefix = entry.digest.get(0..12).unwrap_or(&entry.digest);
+            let digest_prefix =
+                entry.digest.get(0..12).unwrap_or(&entry.digest);
             out.push_str(&format!(
                 "<!-- {TICKET_INDEX_ENTRY_PREFIX} id={} slug={}/{} digest={} -->\n",
                 entry.id, state, component, digest_prefix
@@ -319,11 +321,7 @@ fn render_entry_block(
     extra: Option<&TicketDisplayExtra>,
 ) -> String {
     let mut block = String::new();
-    block.push_str(&format!(
-        "#### [{}] {}\n",
-        short_id(entry.id),
-        entry.title
-    ));
+    block.push_str(&format!("#### [{}] {}\n", short_id(entry.id), entry.title));
 
     if let Some(priority) = extra.and_then(|e| e.priority.as_deref()) {
         block.push_str(&format!("- priority: `{priority}`\n"));
@@ -420,10 +418,12 @@ mod tests {
 
     #[test]
     fn catalog_groups_by_state_and_component() {
-        let id_a = uuid::Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
-            .unwrap();
-        let id_b = uuid::Uuid::parse_str("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
-            .unwrap();
+        let id_a =
+            uuid::Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+                .unwrap();
+        let id_b =
+            uuid::Uuid::parse_str("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+                .unwrap();
         let sources = vec![
             source(
                 id_a,
@@ -448,7 +448,11 @@ mod tests {
         let artifacts = generate_ticket_catalog(&sources, ".ticket");
         assert!(artifacts.readme_markdown.contains("## State: in-review"));
         assert!(artifacts.readme_markdown.contains("## State: new"));
-        assert!(artifacts.readme_markdown.contains("### Component: ticket-api"));
+        assert!(
+            artifacts
+                .readme_markdown
+                .contains("### Component: ticket-api")
+        );
         assert!(artifacts.readme_markdown.contains("### Component: docs"));
     }
 

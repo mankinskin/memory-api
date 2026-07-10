@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use memory_api::runtime::init_transport_tracing;
 use doc_http::{
     DocAppState,
     ServeConfig,
     start_server,
 };
+use memory_api::runtime::init_transport_tracing;
 
 #[tokio::main]
 async fn main() {

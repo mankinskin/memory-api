@@ -16,10 +16,12 @@
 //! cross-store reference model: each store maps `workspace + ContentKind` to a
 //! filesystem location.
 
-use std::collections::BTreeSet;
-use std::path::{
-    Path,
-    PathBuf,
+use std::{
+    collections::BTreeSet,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
 use crate::model::index_entry::ContentKind;
@@ -70,7 +72,8 @@ fn walk(
     }
 
     // Loop-safety: dedup on canonical path so a symlink cycle terminates.
-    let canonical = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let canonical =
+        std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
     if !visited.insert(canonical) {
         return;
     }
@@ -161,8 +164,10 @@ pub fn reconcile_stores(
     root: &Path,
 ) -> Vec<StoreReport> {
     let current = discover_stores(root);
-    let prev: BTreeSet<_> = previous.iter().map(|s| s.store_root.clone()).collect();
-    let cur: BTreeSet<_> = current.iter().map(|s| s.store_root.clone()).collect();
+    let prev: BTreeSet<_> =
+        previous.iter().map(|s| s.store_root.clone()).collect();
+    let cur: BTreeSet<_> =
+        current.iter().map(|s| s.store_root.clone()).collect();
 
     let mut reports: Vec<StoreReport> = current
         .iter()
@@ -209,7 +214,10 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
-    fn mk(root: &Path, rel: &str) {
+    fn mk(
+        root: &Path,
+        rel: &str,
+    ) {
         std::fs::create_dir_all(root.join(rel)).unwrap();
     }
 
@@ -222,7 +230,8 @@ mod tests {
         mk(root, "sub/nested/.rule");
         mk(root, "sub/.test");
 
-        let kinds: HashSet<_> = discover_stores(root).into_iter().map(|s| s.kind).collect();
+        let kinds: HashSet<_> =
+            discover_stores(root).into_iter().map(|s| s.kind).collect();
         assert!(kinds.contains(&ContentKind::Ticket));
         assert!(kinds.contains(&ContentKind::Spec));
         assert!(kinds.contains(&ContentKind::Rule));
@@ -278,7 +287,10 @@ mod tests {
             kind: ContentKind::Spec,
         }];
         let reports = reconcile_stores(&absent_spec, root);
-        let spec = reports.iter().find(|r| r.kind == ContentKind::Spec).unwrap();
+        let spec = reports
+            .iter()
+            .find(|r| r.kind == ContentKind::Spec)
+            .unwrap();
         assert_eq!(spec.status, IntegrationStatus::Absent);
         assert_eq!(summarize(&reports).diagnostic, 1);
 
@@ -286,7 +298,10 @@ mod tests {
         mk(root, ".spec");
         let known = discover_stores(root);
         let reports = reconcile_stores(&known, root);
-        let spec = reports.iter().find(|r| r.kind == ContentKind::Spec).unwrap();
+        let spec = reports
+            .iter()
+            .find(|r| r.kind == ContentKind::Spec)
+            .unwrap();
         assert_eq!(spec.status, IntegrationStatus::Integrated);
         assert_eq!(summarize(&reports).diagnostic, 0);
     }
@@ -299,7 +314,10 @@ mod tests {
         let prev = discover_stores(root);
         mk(root, ".rule");
         let reports = reconcile_stores(&prev, root);
-        let rule = reports.iter().find(|r| r.kind == ContentKind::Rule).unwrap();
+        let rule = reports
+            .iter()
+            .find(|r| r.kind == ContentKind::Rule)
+            .unwrap();
         assert_eq!(rule.status, IntegrationStatus::Discovered);
         assert_eq!(summarize(&reports).discovered, 1);
         assert_eq!(summarize(&reports).integrated, 1);

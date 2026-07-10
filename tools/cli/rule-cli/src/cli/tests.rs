@@ -57,7 +57,8 @@ fn empty_filter_args() -> FilterArgs {
     }
 }
 
-fn create_nested_rule_fixture() -> (tempfile::TempDir, PathBuf, PathBuf, String) {
+fn create_nested_rule_fixture() -> (tempfile::TempDir, PathBuf, PathBuf, String)
+{
     let dir = tempdir().unwrap();
     let repo_root = dir.path().join("repo");
     let parent_index_root = repo_root.join(".rule");
@@ -92,7 +93,12 @@ fn create_nested_rule_fixture() -> (tempfile::TempDir, PathBuf, PathBuf, String)
     child_rule.set_order_key(20);
     let child_id = child_store.create(&child_rule, None).unwrap();
 
-    (dir, parent_index_root, child_index_root, child_id.to_string())
+    (
+        dir,
+        parent_index_root,
+        child_index_root,
+        child_id.to_string(),
+    )
 }
 
 fn scan_nested_rule_fixture(parent_index_root: &Path) {
@@ -104,7 +110,6 @@ fn scan_nested_rule_fixture(parent_index_root: &Path) {
 
     assert_eq!(payload["status"], "ok");
 }
-
 
 #[path = "tests/tests_commands.rs"]
 mod tests_commands;

@@ -9,10 +9,12 @@ use std::path::{
     PathBuf,
 };
 
-use crate::model::filesystem::ScanRoot;
-use crate::workspace_policy::{
-    WorkspacePolicy,
-    load_workspace_policy,
+use crate::{
+    model::filesystem::ScanRoot,
+    workspace_policy::{
+        WorkspacePolicy,
+        load_workspace_policy,
+    },
 };
 
 pub const TICKET_INDEX_DIR: &str = ".ticket";
@@ -82,27 +84,14 @@ impl std::fmt::Display for WorkspacePathError {
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            Self::CanonicalizeFailed {
-                input,
-                source,
-            } => write!(
+            Self::CanonicalizeFailed { input, source } => write!(
                 f,
                 "failed to canonicalize workspace root '{input}': {source}"
             ),
-            Self::InvalidWindowsPrefix {
-                input,
-                detail,
-            } => write!(
-                f,
-                "invalid Windows path prefix for '{input}': {detail}"
-            ),
-            Self::UnrepresentablePath {
-                input,
-                detail,
-            } => write!(
-                f,
-                "unrepresentable path '{input}': {detail}"
-            ),
+            Self::InvalidWindowsPrefix { input, detail } =>
+                write!(f, "invalid Windows path prefix for '{input}': {detail}"),
+            Self::UnrepresentablePath { input, detail } =>
+                write!(f, "unrepresentable path '{input}': {detail}"),
         }
     }
 }
@@ -110,10 +99,7 @@ impl std::fmt::Display for WorkspacePathError {
 impl std::error::Error for WorkspacePathError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::CanonicalizeFailed {
-                source,
-                ..
-            } => Some(source),
+            Self::CanonicalizeFailed { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -128,13 +114,14 @@ pub fn working_dir() -> Option<PathBuf> {
 
 pub fn normalize_path_for_display(path: &Path) -> String {
     normalize_path_for_display_impl(path).unwrap_or_else(|_| {
-        let fallback = normalize_path_for_workspace_string(&path.to_string_lossy());
+        let fallback =
+            normalize_path_for_workspace_string(&path.to_string_lossy());
         normalize_drive_letter_for_display(&fallback)
     })
 }
 
 pub fn normalize_path_for_display_strict(
-    path: &Path,
+    path: &Path
 ) -> Result<String, WorkspacePathError> {
     normalize_path_for_display_impl(path)
 }
@@ -152,7 +139,7 @@ pub fn canonicalize_workspace_root(path: &Path) -> PathBuf {
 }
 
 pub fn canonicalize_workspace_root_strict(
-    path: &Path,
+    path: &Path
 ) -> Result<PathBuf, WorkspacePathError> {
     let canonical = std::fs::canonicalize(path).map_err(|source| {
         WorkspacePathError::CanonicalizeFailed {
@@ -185,15 +172,14 @@ pub fn normalize_slashes(path: &Path) -> String {
 }
 
 fn normalize_path_for_display_impl(
-    path: &Path,
+    path: &Path
 ) -> Result<String, WorkspacePathError> {
-    let raw = path
-        .to_str()
-        .map(str::to_string)
-        .ok_or_else(|| WorkspacePathError::UnrepresentablePath {
+    let raw = path.to_str().map(str::to_string).ok_or_else(|| {
+        WorkspacePathError::UnrepresentablePath {
             input: path.to_string_lossy().to_string(),
             detail: "path is not valid UTF-8".to_string(),
-        })?;
+        }
+    })?;
 
     let workspace = normalize_path_for_workspace_string_strict(&raw)?;
     Ok(normalize_drive_letter_for_display(&workspace))
@@ -215,12 +201,13 @@ fn normalize_drive_letter_for_display(value: &str) -> String {
 }
 
 fn normalize_path_for_workspace_string(raw: &str) -> String {
-    normalize_path_for_workspace_string_impl(raw, false)
-        .unwrap_or_else(|_| collapse_slashes_preserving_root(&raw.replace('\\', "/")))
+    normalize_path_for_workspace_string_impl(raw, false).unwrap_or_else(|_| {
+        collapse_slashes_preserving_root(&raw.replace('\\', "/"))
+    })
 }
 
 fn normalize_path_for_workspace_string_strict(
-    raw: &str,
+    raw: &str
 ) -> Result<String, WorkspacePathError> {
     normalize_path_for_workspace_string_impl(raw, true)
 }
@@ -249,7 +236,8 @@ fn normalize_path_for_workspace_string_impl(
         .strip_prefix(r"\\?\")
         .or_else(|| raw.strip_prefix("//?/"))
         .unwrap_or(raw);
-    let normalized = collapse_slashes_preserving_root(&without_verbatim.replace('\\', "/"));
+    let normalized =
+        collapse_slashes_preserving_root(&without_verbatim.replace('\\', "/"));
 
     if strict && normalized.starts_with("//") {
         let remainder = normalized.trim_start_matches('/');
@@ -269,7 +257,8 @@ fn validate_unc_remainder(
     if server.is_none() || share.is_none() {
         return Err(WorkspacePathError::InvalidWindowsPrefix {
             input: input.to_string(),
-            detail: "UNC path must include both server and share segments".to_string(),
+            detail: "UNC path must include both server and share segments"
+                .to_string(),
         });
     }
     Ok(())
@@ -499,14 +488,11 @@ pub fn discover_workspace_store_roots(
     store_dir: &str,
     entity_dir: &str,
 ) -> Vec<PathBuf> {
-    let mut roots = discover_workspace_scan_roots(
-        workspace_root,
-        store_dir,
-        entity_dir,
-    )
-    .into_iter()
-    .map(|root| resolve_store_root_from(&root.path, store_dir))
-    .collect::<Vec<_>>();
+    let mut roots =
+        discover_workspace_scan_roots(workspace_root, store_dir, entity_dir)
+            .into_iter()
+            .map(|root| resolve_store_root_from(&root.path, store_dir))
+            .collect::<Vec<_>>();
     roots.sort();
     roots.dedup();
     roots
@@ -522,17 +508,15 @@ pub fn workspace_recovery_hint_for_store(
     entity_dir: &str,
     store_label: &str,
 ) -> String {
-    let active_store_root = resolve_store_root_from(active_index_root, store_dir);
+    let active_store_root =
+        resolve_store_root_from(active_index_root, store_dir);
     let workspace_root =
         resolve_workspace_root_from_store_root(&active_store_root, store_dir);
-    let discovered = discover_workspace_store_roots(
-        &workspace_root,
-        store_dir,
-        entity_dir,
-    )
-    .into_iter()
-    .map(|path| normalize_path_for_display(&path))
-    .collect::<Vec<_>>();
+    let discovered =
+        discover_workspace_store_roots(&workspace_root, store_dir, entity_dir)
+            .into_iter()
+            .map(|path| normalize_path_for_display(&path))
+            .collect::<Vec<_>>();
 
     if discovered.is_empty() {
         return format!(
@@ -572,7 +556,8 @@ pub fn discover_workspace_scan_roots_with_policy(
     }
 
     if policy.include_descendants {
-        for store_root in find_descendant_store_roots_from(&workspace_root, store_dir)
+        for store_root in
+            find_descendant_store_roots_from(&workspace_root, store_dir)
         {
             let owning_workspace =
                 resolve_workspace_root_from_store_root(&store_root, store_dir);
@@ -739,7 +724,8 @@ fn collect_descendant_store_roots(
             continue;
         }
 
-        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+        let Some(name) = path.file_name().and_then(|value| value.to_str())
+        else {
             continue;
         };
 
@@ -757,7 +743,10 @@ fn collect_descendant_store_roots(
 }
 
 fn should_skip_descendant_dir(name: &str) -> bool {
-    matches!(name, ".git" | ".hg" | ".svn" | "target" | "node_modules" | "release" | "tmp")
+    matches!(
+        name,
+        ".git" | ".hg" | ".svn" | "target" | "node_modules" | "release" | "tmp"
+    )
 }
 
 #[cfg(windows)]
@@ -779,7 +768,6 @@ fn normalize_git_bash_pwd(raw: &str) -> Option<String> {
     normalized.push_str(&raw[3..]);
     Some(normalized)
 }
-
 
 #[cfg(test)]
 #[path = "workspace_tests.rs"]

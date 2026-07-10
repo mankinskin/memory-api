@@ -374,11 +374,8 @@ impl RuleStore {
             return Ok(uuid);
         }
 
-        let resolved = self
-            .slug_index
-            .get(id_or_slug)
-            .copied()
-            .ok_or_else(|| {
+        let resolved =
+            self.slug_index.get(id_or_slug).copied().ok_or_else(|| {
                 RuleError::NotFound(format!(
                     "{}; {}",
                     id_or_slug,
@@ -641,7 +638,8 @@ impl RuleStore {
             return Ok(());
         };
         let from_state = current_state.unwrap_or("draft");
-        if let Some(schema) = self.inner.schema_registry().get(RULE_ENTRY_TYPE_ID)
+        if let Some(schema) =
+            self.inner.schema_registry().get(RULE_ENTRY_TYPE_ID)
         {
             schema
                 .ensure_transition(from_state, next_state)
@@ -713,7 +711,6 @@ impl RuleStore {
 
 #[path = "store/store_query.rs"]
 mod store_query;
-
 
 #[path = "store_helpers.rs"]
 mod store_helpers;

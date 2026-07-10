@@ -10,7 +10,8 @@ use std::{
 #[test]
 fn concurrent_get_returns_shared_store_instance() {
     let dir = tempfile::tempdir().expect("create tempdir");
-    let registry = Arc::new(WorkspaceRegistry::single(dir.path().to_path_buf()));
+    let registry =
+        Arc::new(WorkspaceRegistry::single(dir.path().to_path_buf()));
     let primary_workspace = registry.primary_workspace_name().to_string();
 
     let workers = 8usize;

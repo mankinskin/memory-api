@@ -61,12 +61,12 @@ pub async fn list_edges(
     Extension(rid): Extension<RequestIdExt>,
     Query(params): Query<EdgesQuery>,
 ) -> Response {
-    let (active_workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (active_workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
@@ -168,12 +168,12 @@ pub async fn add_edge(
     Query(params): Query<EdgeMutationQuery>,
     Json(body): Json<EdgeBody>,
 ) -> Response {
-    let (active_workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (active_workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
@@ -238,12 +238,12 @@ pub async fn remove_edge(
     Query(params): Query<EdgeMutationQuery>,
     Json(body): Json<EdgeBody>,
 ) -> Response {
-    let (active_workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (active_workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();

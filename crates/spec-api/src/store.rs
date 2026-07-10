@@ -88,15 +88,14 @@ fn build_search_content(
     }
 }
 
-
 #[path = "store_generated.rs"]
 mod store_generated;
 pub use store_generated::{
+    GENERATED_BODY_FILE_COMMENT,
+    GENERATED_SPEC_FILE_COMMENT,
     GeneratedSpecArtifactLocation,
     GeneratedSpecArtifactTarget,
     GeneratedSpecArtifacts,
-    GENERATED_BODY_FILE_COMMENT,
-    GENERATED_SPEC_FILE_COMMENT,
     render_generated_body,
     render_generated_document,
 };
@@ -308,10 +307,8 @@ impl SpecStore {
             );
             return Ok(uuid);
         }
-        let resolved = self
-            .slug_index
-            .resolve(id_or_slug)
-            .ok_or_else(|| {
+        let resolved =
+            self.slug_index.resolve(id_or_slug).ok_or_else(|| {
                 SpecError::NotFound(format!(
                     "{}; {}",
                     id_or_slug,

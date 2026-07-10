@@ -1,19 +1,15 @@
-use std::{
-    collections::BTreeMap,
-};
 use rmcp::handler::server::wrapper::Parameters;
 use serde_json::{
     Value,
     json,
 };
+use std::collections::BTreeMap;
 use ticket_api::{
     BoardConfig,
     model::edge::EdgeRecord,
     workflow::WorkflowModel,
 };
-use ticket_mcp::server::{
-    NextTicketsInput,
-};
+use ticket_mcp::server::NextTicketsInput;
 
 use super::integration_parity_fixture::*;
 
@@ -49,11 +45,8 @@ async fn workflow_next_candidates_parity_across_http_and_mcp() {
     // ── HTTP ──────────────────────────────────────────────────────────────
     let app = fx.http_router();
     let ws = &fx.workspace;
-    let http = http_get_json(
-        app,
-        format!("/api/workflow/next?workspace={ws}"),
-    )
-    .await;
+    let http =
+        http_get_json(app, format!("/api/workflow/next?workspace={ws}")).await;
 
     let http_items = http["items"].as_array().expect("items array in HTTP");
     let http_ids: Vec<String> = http_items
@@ -69,14 +62,10 @@ async fn workflow_next_candidates_parity_across_http_and_mcp() {
         http_ids.contains(&fx.beta_id),
         "HTTP: beta must appear in items; got {http_ids:?}"
     );
-    let http_alpha_pos = http_ids
-        .iter()
-        .position(|id| id == &fx.alpha_id)
-        .unwrap();
-    let http_beta_pos = http_ids
-        .iter()
-        .position(|id| id == &fx.beta_id)
-        .unwrap();
+    let http_alpha_pos =
+        http_ids.iter().position(|id| id == &fx.alpha_id).unwrap();
+    let http_beta_pos =
+        http_ids.iter().position(|id| id == &fx.beta_id).unwrap();
     assert!(
         http_beta_pos < http_alpha_pos,
         "HTTP: beta (newer) must rank before alpha (older); \
@@ -104,7 +93,8 @@ async fn workflow_next_candidates_parity_across_http_and_mcp() {
         .await
         .expect("MCP next_tickets");
     let mcp_text = extract_text(&mcp_result);
-    let mcp: Value = serde_json::from_str(&mcp_text).expect("valid JSON from MCP");
+    let mcp: Value =
+        serde_json::from_str(&mcp_text).expect("valid JSON from MCP");
 
     let mcp_items = mcp["items"].as_array().expect("items array in MCP");
     let mcp_ids: Vec<String> = mcp_items
@@ -120,14 +110,9 @@ async fn workflow_next_candidates_parity_across_http_and_mcp() {
         mcp_ids.contains(&fx.beta_id),
         "MCP: beta must appear in items; got {mcp_ids:?}"
     );
-    let mcp_alpha_pos = mcp_ids
-        .iter()
-        .position(|id| id == &fx.alpha_id)
-        .unwrap();
-    let mcp_beta_pos = mcp_ids
-        .iter()
-        .position(|id| id == &fx.beta_id)
-        .unwrap();
+    let mcp_alpha_pos =
+        mcp_ids.iter().position(|id| id == &fx.alpha_id).unwrap();
+    let mcp_beta_pos = mcp_ids.iter().position(|id| id == &fx.beta_id).unwrap();
     assert!(
         mcp_beta_pos < mcp_alpha_pos,
         "MCP: beta (newer) must rank before alpha (older); \
@@ -237,16 +222,14 @@ async fn workflow_next_root_scope_parity_across_http_and_mcp() {
 
     let tickets = fx.store.list(None, None, None).expect("list");
     let edges = fx.store.list_all_edges().expect("edges");
-    let model = WorkflowModel::build(&fx.store, tickets, edges).expect("build model");
-    let scope = model
-        .root_blocker_scope(root)
-        .expect("root blocker scope");
-    let mut expected_ids = model.actionable_candidate_ids(Some(&scope.remaining_blockers));
+    let model =
+        WorkflowModel::build(&fx.store, tickets, edges).expect("build model");
+    let scope = model.root_blocker_scope(root).expect("root blocker scope");
+    let mut expected_ids =
+        model.actionable_candidate_ids(Some(&scope.remaining_blockers));
     model.sort_candidate_ids(&mut expected_ids);
-    let expected_ids: Vec<String> = expected_ids
-        .into_iter()
-        .map(|id| id.to_string())
-        .collect();
+    let expected_ids: Vec<String> =
+        expected_ids.into_iter().map(|id| id.to_string()).collect();
 
     // HTTP
     let app = fx.http_router();
@@ -262,7 +245,10 @@ async fn workflow_next_root_scope_parity_across_http_and_mcp() {
         .iter()
         .map(|item| item["id"].as_str().unwrap_or("").to_owned())
         .collect();
-    assert_eq!(http_ids, expected_ids, "HTTP root-scoped items must match API model");
+    assert_eq!(
+        http_ids, expected_ids,
+        "HTTP root-scoped items must match API model"
+    );
     assert_eq!(http["reachable_dependencies"], scope.reachable_dependencies);
     assert_eq!(http["blocked_dependencies"], scope.blocked_dependencies);
     assert_eq!(
@@ -284,7 +270,8 @@ async fn workflow_next_root_scope_parity_across_http_and_mcp() {
         .await
         .expect("MCP next_tickets root scope");
     let mcp_text = extract_text(&mcp_result);
-    let mcp: Value = serde_json::from_str(&mcp_text).expect("valid JSON from MCP");
+    let mcp: Value =
+        serde_json::from_str(&mcp_text).expect("valid JSON from MCP");
     let mcp_ids: Vec<String> = mcp["items"]
         .as_array()
         .expect("mcp items")
@@ -292,7 +279,10 @@ async fn workflow_next_root_scope_parity_across_http_and_mcp() {
         .map(|item| item["id"].as_str().unwrap_or("").to_owned())
         .collect();
 
-    assert_eq!(mcp_ids, expected_ids, "MCP root-scoped items must match API model");
+    assert_eq!(
+        mcp_ids, expected_ids,
+        "MCP root-scoped items must match API model"
+    );
     assert_eq!(mcp["reachable_dependencies"], scope.reachable_dependencies);
     assert_eq!(mcp["blocked_dependencies"], scope.blocked_dependencies);
     assert_eq!(
@@ -306,7 +296,10 @@ async fn workflow_next_root_scope_parity_across_http_and_mcp() {
         !http_ids.contains(&unrelated.to_string()),
         "root scope must exclude unrelated actionable tickets"
     );
-    assert_eq!(http_ids, mcp_ids, "HTTP and MCP root-scoped next must match");
+    assert_eq!(
+        http_ids, mcp_ids,
+        "HTTP and MCP root-scoped next must match"
+    );
 }
 
 // ── health findings parity ────────────────────────────────────────────────────
@@ -397,18 +390,20 @@ async fn health_findings_parity_across_http_and_mcp() {
     let mcp_result = server
         .run_health_checks(
             &mcp_ws(),
-            None,  // root
-            true,  // all
-            &[],   // ids
-            None,  // depth
-            None,  // direction
+            None, // root
+            true, // all
+            &[],  // ids
+            None, // depth
+            None, // direction
         )
         .await
         .expect("MCP run_health_checks");
     let mcp_text = extract_text(&mcp_result);
-    let mcp: Value = serde_json::from_str(&mcp_text).expect("valid JSON from MCP");
+    let mcp: Value =
+        serde_json::from_str(&mcp_text).expect("valid JSON from MCP");
 
-    let mcp_findings = mcp["findings"].as_array().expect("findings array in MCP");
+    let mcp_findings =
+        mcp["findings"].as_array().expect("findings array in MCP");
     let mcp_alpha_missing: Vec<_> = mcp_findings
         .iter()
         .filter(|f| {
@@ -492,7 +487,8 @@ async fn board_aware_next_parity_across_http_and_mcp() {
         )
         .expect("board check-in");
 
-    let (api_ids, api_excluded, api_warnings) = fx.api_board_filtered_candidates();
+    let (api_ids, api_excluded, api_warnings) =
+        fx.api_board_filtered_candidates();
     assert_eq!(api_ids, vec![fx.beta_id.clone()]);
     assert_eq!(api_excluded, vec![fx.alpha_id.clone()]);
     assert!(
@@ -505,11 +501,8 @@ async fn board_aware_next_parity_across_http_and_mcp() {
     // ── HTTP ──────────────────────────────────────────────────────────────
     let app = fx.http_router();
     let ws = &fx.workspace;
-    let http = http_get_json(
-        app,
-        format!("/api/workflow/next?workspace={ws}"),
-    )
-    .await;
+    let http =
+        http_get_json(app, format!("/api/workflow/next?workspace={ws}")).await;
     let http_items = http["items"].as_array().expect("items");
     let http_ids: Vec<String> = http_items
         .iter()
@@ -522,7 +515,10 @@ async fn board_aware_next_parity_across_http_and_mcp() {
         .iter()
         .filter_map(|warning| warning.as_str().map(ToOwned::to_owned))
         .collect();
-    assert_eq!(http_ids, api_ids, "HTTP visible items must match shared helper");
+    assert_eq!(
+        http_ids, api_ids,
+        "HTTP visible items must match shared helper"
+    );
     assert_eq!(
         http_excluded[0]["ticket_id"].as_str(),
         Some(fx.alpha_id.as_str()),
@@ -547,21 +543,27 @@ async fn board_aware_next_parity_across_http_and_mcp() {
         .await
         .expect("MCP next_tickets");
     let mcp_text = extract_text(&mcp_result);
-    let mcp: Value = serde_json::from_str(&mcp_text).expect("valid JSON from MCP");
+    let mcp: Value =
+        serde_json::from_str(&mcp_text).expect("valid JSON from MCP");
 
     let mcp_items = mcp["items"].as_array().expect("items");
     let mcp_ids: Vec<String> = mcp_items
         .iter()
         .map(|item| item["id"].as_str().unwrap_or("").to_owned())
         .collect();
-    let excluded = mcp["excluded_by_board"].as_array().expect("excluded_by_board");
+    let excluded = mcp["excluded_by_board"]
+        .as_array()
+        .expect("excluded_by_board");
     let mcp_warning_strings: Vec<String> = mcp["warnings"]
         .as_array()
         .expect("warnings")
         .iter()
         .filter_map(|warning| warning.as_str().map(ToOwned::to_owned))
         .collect();
-    assert_eq!(mcp_ids, api_ids, "MCP visible items must match shared helper");
+    assert_eq!(
+        mcp_ids, api_ids,
+        "MCP visible items must match shared helper"
+    );
     assert_eq!(
         excluded[0]["ticket_id"].as_str(),
         Some(fx.alpha_id.as_str()),
@@ -576,8 +578,7 @@ async fn board_aware_next_parity_across_http_and_mcp() {
 
     assert_eq!(http_ids, mcp_ids, "HTTP and MCP visible items must match");
     assert_eq!(
-        http_excluded[0]["ticket_id"],
-        excluded[0]["ticket_id"],
+        http_excluded[0]["ticket_id"], excluded[0]["ticket_id"],
         "HTTP and MCP excluded_by_board must match"
     );
 }
@@ -593,16 +594,16 @@ async fn scope_active_index_root_parity_http_and_mcp() {
     // HTTP scope
     let app = fx.http_router();
     let ws = &fx.workspace;
-    let http = http_get_json(
-        app,
-        format!("/api/workflow/next?workspace={ws}"),
-    )
-    .await;
+    let http =
+        http_get_json(app, format!("/api/workflow/next?workspace={ws}")).await;
     let http_index_root = http["scope"]["active_index_root"]
         .as_str()
         .expect("HTTP scope.active_index_root must be a string")
         .to_owned();
-    assert!(!http_index_root.is_empty(), "HTTP scope.active_index_root must not be empty");
+    assert!(
+        !http_index_root.is_empty(),
+        "HTTP scope.active_index_root must not be empty"
+    );
 
     // MCP scope (embedded in next_tickets response)
     let server = fx.mcp_server();
@@ -616,12 +617,16 @@ async fn scope_active_index_root_parity_http_and_mcp() {
         .await
         .expect("MCP next_tickets");
     let mcp_text = extract_text(&mcp_result);
-    let mcp: Value = serde_json::from_str(&mcp_text).expect("valid JSON from MCP");
+    let mcp: Value =
+        serde_json::from_str(&mcp_text).expect("valid JSON from MCP");
     let mcp_index_root = mcp["scope"]["active_index_root"]
         .as_str()
         .expect("MCP scope.active_index_root must be a string")
         .to_owned();
-    assert!(!mcp_index_root.is_empty(), "MCP scope.active_index_root must not be empty");
+    assert!(
+        !mcp_index_root.is_empty(),
+        "MCP scope.active_index_root must not be empty"
+    );
 
     // Both must point to the same store (path may differ by separator style,
     // so normalise to forward slashes before comparing).

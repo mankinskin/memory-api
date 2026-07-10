@@ -93,7 +93,8 @@ fn next_with_root_returns_unblocked_blocker_leaves() {
     assert_eq!(s.ticket_json(&["init"])["status"], "ok");
     let root = create_ticket(&s, "Root ticket to unblock");
     let direct_blocker = create_ticket(&s, "Direct actionable blocker");
-    let intermediate_blocker = create_ticket(&s, "Intermediate blocked blocker");
+    let intermediate_blocker =
+        create_ticket(&s, "Intermediate blocked blocker");
     let nested_leaf = create_ticket(&s, "Nested actionable blocker");
     let unrelated = create_ticket(&s, "Unrelated actionable work");
 
@@ -150,7 +151,11 @@ fn next_with_root_text_output_shows_root_scope() {
     let nested = create_ticket(&s, "Nested blocker");
     let intermediate = create_ticket(&s, "Intermediate blocker");
 
-    for (from, to) in [(&root, &blocker), (&root, &intermediate), (&intermediate, &nested)] {
+    for (from, to) in [
+        (&root, &blocker),
+        (&root, &intermediate),
+        (&intermediate, &nested),
+    ] {
         let linked = s.ticket_json(&[
             "link",
             "--from",
@@ -194,4 +199,3 @@ fn next_with_root_text_output_shows_root_scope() {
     assert!(stdout.contains(&format!("ticket_id: {blocker}")));
     assert!(!stdout.contains("[items]"));
 }
-

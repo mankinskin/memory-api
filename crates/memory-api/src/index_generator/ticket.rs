@@ -13,13 +13,17 @@ use std::path::Path;
 use chrono::Utc;
 
 use super::util::to_relative_slash;
-use crate::model::index_entry::{
-    ContentKind,
-    IndexEntry,
-    IndexRelations,
+use crate::{
+    model::{
+        index_entry::{
+            ContentKind,
+            IndexEntry,
+            IndexRelations,
+        },
+        index_sidecar::IndexSidecar,
+    },
+    storage::indexed::IndexedEntity,
 };
-use crate::model::index_sidecar::IndexSidecar;
-use crate::storage::indexed::IndexedEntity;
 
 /// Input for the ticket sidecar generator.
 pub struct TicketIndexInput<'a> {
@@ -51,11 +55,8 @@ pub fn generate_ticket_sidecar(input: TicketIndexInput<'_>) -> IndexSidecar {
         e.seal();
     }
 
-    let mut sidecar = IndexSidecar::new(
-        ContentKind::Ticket,
-        input.store_dir,
-        entries,
-    );
+    let mut sidecar =
+        IndexSidecar::new(ContentKind::Ticket, input.store_dir, entries);
     sidecar.sort();
     sidecar
 }
@@ -78,7 +79,11 @@ fn make_ticket_entry(
         let mut kw: Vec<String> = title
             .split_whitespace()
             .filter(|w| w.len() > 3)
-            .map(|w| w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+            .map(|w| {
+                w.to_lowercase()
+                    .trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_string()
+            })
             .filter(|w| !w.is_empty())
             .collect();
         kw.sort_unstable();
@@ -106,11 +111,16 @@ fn make_ticket_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
     use chrono::Utc;
+    use std::path::PathBuf;
     use uuid::Uuid;
 
-    fn fake_ticket(id: Uuid, title: &str, state: &str, path: PathBuf) -> IndexedEntity {
+    fn fake_ticket(
+        id: Uuid,
+        title: &str,
+        state: &str,
+        path: PathBuf,
+    ) -> IndexedEntity {
         IndexedEntity {
             id,
             path,
@@ -125,12 +135,24 @@ mod tests {
     #[test]
     fn generate_ticket_sidecar_produces_sealed_sorted_entries() {
         let ws = PathBuf::from("/workspace");
-        let id_a = Uuid::parse_str("aaaaaaaa-0000-0000-0000-000000000000").unwrap();
-        let id_b = Uuid::parse_str("bbbbbbbb-0000-0000-0000-000000000000").unwrap();
+        let id_a =
+            Uuid::parse_str("aaaaaaaa-0000-0000-0000-000000000000").unwrap();
+        let id_b =
+            Uuid::parse_str("bbbbbbbb-0000-0000-0000-000000000000").unwrap();
 
         let tickets = vec![
-            fake_ticket(id_b, "Ticket B", "done", ws.join(".ticket/tickets/b/ticket.toml")),
-            fake_ticket(id_a, "Ticket A", "new", ws.join(".ticket/tickets/a/ticket.toml")),
+            fake_ticket(
+                id_b,
+                "Ticket B",
+                "done",
+                ws.join(".ticket/tickets/b/ticket.toml"),
+            ),
+            fake_ticket(
+                id_a,
+                "Ticket A",
+                "new",
+                ws.join(".ticket/tickets/a/ticket.toml"),
+            ),
         ];
 
         let sidecar = generate_ticket_sidecar(TicketIndexInput {
@@ -152,5 +174,4 @@ mod tests {
         assert!(sidecar.entries[0].source_path.starts_with(".ticket/"));
         assert!(!sidecar.entries[0].source_path.contains('\\'));
     }
-
 }

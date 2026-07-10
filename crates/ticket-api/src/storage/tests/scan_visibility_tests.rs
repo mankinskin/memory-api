@@ -168,7 +168,8 @@ fn run_scan_reconciliation_visibility_agreement(reindex: bool) {
         "in-implementation",
     );
 
-    let delete_path = child_store_a.get_indexed(&delete_id).unwrap().unwrap().path;
+    let delete_path =
+        child_store_a.get_indexed(&delete_id).unwrap().unwrap().path;
     fs::remove_dir_all(&delete_path).unwrap();
 
     root_store.scan(reindex).unwrap();
@@ -524,7 +525,9 @@ fn scan_without_reindex_repairs_moved_nested_ticket_path_and_search_doc() {
     let report = root_store.scan(false).unwrap();
 
     assert_eq!(
-        report.phase_timings_ms.get("workflow.incremental_root_count"),
+        report
+            .phase_timings_ms
+            .get("workflow.incremental_root_count"),
         Some(&1)
     );
     assert_eq!(
@@ -541,15 +544,18 @@ fn scan_without_reindex_repairs_moved_nested_ticket_path_and_search_doc() {
     assert_eq!(indexed.state, expected.state);
     assert_eq!(indexed.created_at, expected.created_at);
     assert!(root_store.get(&ticket_id).is_ok());
-    assert!(root_store
-        .search_tickets("Nested workspace ticket", 10)
-        .unwrap()
-        .iter()
-        .any(|result| {
-            result.id == ticket_id
-                && result.title.as_deref() == Some("Nested workspace ticket")
-                && result.state.as_deref() == Some("in-implementation")
-        }));
+    assert!(
+        root_store
+            .search_tickets("Nested workspace ticket", 10)
+            .unwrap()
+            .iter()
+            .any(|result| {
+                result.id == ticket_id
+                    && result.title.as_deref()
+                        == Some("Nested workspace ticket")
+                    && result.state.as_deref() == Some("in-implementation")
+            })
+    );
     assert_eq!(
         root_store
             .get_workflow_facts(&dependent_id)
@@ -589,4 +595,3 @@ fn scan_indexes_manual_ticket_with_missing_optional_fields() {
     assert!(stored.extra.get("title").is_none());
     assert!(stored.extra.get("state").is_none());
 }
-

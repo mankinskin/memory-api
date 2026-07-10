@@ -61,9 +61,13 @@ pub fn run(cli: RuleCli) -> Result<CliOutput, CliRunError> {
     }
 }
 
-fn require_explicit_workspace_for_create(cli: &RuleCli) -> Result<(), CliRunError> {
-    if matches!(cli.command, RuleCommandCli::Create(_) | RuleCommandCli::ImportFile(_))
-        && cli.index_root.is_none()
+fn require_explicit_workspace_for_create(
+    cli: &RuleCli
+) -> Result<(), CliRunError> {
+    if matches!(
+        cli.command,
+        RuleCommandCli::Create(_) | RuleCommandCli::ImportFile(_)
+    ) && cli.index_root.is_none()
         && cli.workspace_root.is_none()
     {
         return Err(CliRunError::BadRequest(
@@ -81,8 +85,9 @@ pub fn error_output(
     match format {
         Some(MachineOutputFormat::Json) => payload.to_string(),
         Some(MachineOutputFormat::Toon) =>
-            toon_format::encode_default(&payload)
-                .unwrap_or_else(|_| format!("status: error\nmessage: {message}")),
+            toon_format::encode_default(&payload).unwrap_or_else(|_| {
+                format!("status: error\nmessage: {message}")
+            }),
         None => message.to_string(),
     }
 }
@@ -112,7 +117,8 @@ pub fn machine_output_format(
     }
 }
 
-pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat> {
+pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat>
+{
     machine_output_format(
         std::env::args().any(|arg| arg == "--json"),
         std::env::args().any(|arg| arg == "--toon"),

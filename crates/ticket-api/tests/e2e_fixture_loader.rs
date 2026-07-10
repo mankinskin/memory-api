@@ -9,11 +9,16 @@ fn ticket_store_reads_seeded_root_ticket_from_materialized_fixture() {
         .store_root("ticket-root")
         .expect("ticket-root store path should exist");
 
-    let store = TicketStore::open_or_init(store_root).expect("open_or_init should work");
-    store.scan(true).expect("scan should index seeded manifests");
+    let store = TicketStore::open_or_init(store_root)
+        .expect("open_or_init should work");
+    store
+        .scan(true)
+        .expect("scan should index seeded manifests");
 
     let id = Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
-    let manifest = store.get(&id).expect("seeded root ticket should be readable");
+    let manifest = store
+        .get(&id)
+        .expect("seeded root ticket should be readable");
     assert_eq!(
         manifest.extra.get("state").and_then(|v| v.as_str()),
         Some("new")

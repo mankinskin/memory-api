@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 
 use rmcp::handler::server::wrapper::Parameters;
 use serde_json::Value;
+use tempfile::TempDir;
 use ticket_api::storage::store::TicketStore;
 use ticket_mcp::server::{
     TicketServer,
     UpdateTicketInput,
 };
-use tempfile::TempDir;
 
 fn make_sandbox() -> (TempDir, TicketServer) {
     let tmp = TempDir::new().expect("tempdir");

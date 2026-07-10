@@ -60,12 +60,12 @@ pub async fn create_ticket(
     Query(params): Query<MutationWorkspaceParam>,
     Json(body): Json<CreateTicketBody>,
 ) -> Response {
-    let (workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
 
     let extra = body.fields.unwrap_or_default();
     let type_id = body.type_id;
@@ -132,12 +132,12 @@ pub async fn update_ticket(
     headers: HeaderMap,
     Json(body): Json<UpdateTicketBody>,
 ) -> Response {
-    let (workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
 
     let patch = body.fields.unwrap_or_default();
     let transition_states = body.transition_states;
@@ -196,12 +196,12 @@ pub async fn close_ticket(
     headers: HeaderMap,
     Json(body): Json<CloseTicketBody>,
 ) -> Response {
-    let (workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
 
     let target = body.target_state.as_deref().unwrap_or("done").to_string();
     let author = author_from_headers(&headers);
@@ -248,12 +248,12 @@ pub async fn cancel_ticket(
     headers: HeaderMap,
     Json(body): Json<CancelTicketBody>,
 ) -> Response {
-    let (workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
 
     let author = author_from_headers(&headers);
     let mut patch = BTreeMap::new();
@@ -316,12 +316,12 @@ pub async fn move_ticket(
         requested_workspace = %params.workspace,
         dry_run = body.dry_run,
     );
-    let (workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
 
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
@@ -438,12 +438,12 @@ pub async fn revert_ticket(
     headers: HeaderMap,
     Json(body): Json<RevertTicketBody>,
 ) -> Response {
-    let (workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
 
     let revision = body.revision;
     let author = author_from_headers(&headers);
@@ -476,12 +476,8 @@ pub async fn revert_ticket(
         };
 
         match store.apply_revert(&id, target_rev.fields, author.as_deref()) {
-            Ok(_new_rev) => current_ticket_response(
-                &store,
-                &request_id,
-                &workspace,
-                &id,
-            ),
+            Ok(_new_rev) =>
+                current_ticket_response(&store, &request_id, &workspace, &id),
             Err(e) => storage_err(e, &request_id),
         }
     })
@@ -500,12 +496,12 @@ pub async fn undo_ticket(
     Query(params): Query<MutationWorkspaceParam>,
     headers: HeaderMap,
 ) -> Response {
-    let (workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
 
     let author = author_from_headers(&headers);
     let request_id = rid.0.clone();
@@ -530,12 +526,8 @@ pub async fn undo_ticket(
         let prev_fields = revisions[revisions.len() - 2].fields.clone();
 
         match store.apply_revert(&id, prev_fields, author.as_deref()) {
-            Ok(_new_rev) => current_ticket_response(
-                &store,
-                &request_id,
-                &workspace,
-                &id,
-            ),
+            Ok(_new_rev) =>
+                current_ticket_response(&store, &request_id, &workspace, &id),
             Err(e) => storage_err(e, &request_id),
         }
     })
@@ -552,12 +544,12 @@ pub async fn delete_ticket(
     Path(id): Path<Uuid>,
     Query(params): Query<MutationWorkspaceParam>,
 ) -> Response {
-    let (workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
 
@@ -568,16 +560,14 @@ pub async fn delete_ticket(
             Err(e) => return storage_err(e, &task_request_id),
         };
         match store.delete(&id) {
-            Ok(()) => {
-                Json(DeleteResponse {
-                    request_id: task_request_id.clone(),
-                    active_workspace: workspace.clone(),
-                    workspace: workspace.clone(),
-                    id: id.to_string(),
-                    ticket_ref,
-                })
-                .into_response()
-            },
+            Ok(()) => Json(DeleteResponse {
+                request_id: task_request_id.clone(),
+                active_workspace: workspace.clone(),
+                workspace: workspace.clone(),
+                id: id.to_string(),
+                ticket_ref,
+            })
+            .into_response(),
             Err(e) => storage_err(e, &task_request_id),
         }
     })
@@ -629,7 +619,9 @@ fn current_ticket_response(
     .into_response()
 }
 
-fn move_plan_json(report: &ticket_api::storage::move_planner::MovePreflightReport) -> Value {
+fn move_plan_json(
+    report: &ticket_api::storage::move_planner::MovePreflightReport
+) -> Value {
     serde_json::json!({
         "supported": report.supported(),
         "source_workspace_root": normalize_display_path(&report.source_workspace_root),
@@ -648,7 +640,9 @@ fn move_plan_json(report: &ticket_api::storage::move_planner::MovePreflightRepor
     })
 }
 
-fn move_outcome_json(outcome: &ticket_api::storage::move_execution::MoveExecutionOutcome) -> Value {
+fn move_outcome_json(
+    outcome: &ticket_api::storage::move_execution::MoveExecutionOutcome
+) -> Value {
     serde_json::json!({
         "resumed": outcome.resumed,
         "rolled_back": outcome.rolled_back,

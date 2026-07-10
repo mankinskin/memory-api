@@ -31,7 +31,10 @@ const fn default_true() -> bool {
 }
 
 fn default_ignore_markers() -> Vec<String> {
-    vec![".ticket-ignore".to_string(), ".workspace-ignore".to_string()]
+    vec![
+        ".ticket-ignore".to_string(),
+        ".workspace-ignore".to_string(),
+    ]
 }
 
 /// In-memory representation of `.ticket/workspace-policy.toml`.
@@ -166,7 +169,7 @@ pub fn load_workspace_policy(workspace_root: &Path) -> WorkspacePolicy {
             Ok(mut policy) => {
                 policy.compatibility_mode = false;
                 policy
-            }
+            },
             Err(error) => {
                 tracing::warn!(
                     path = %policy_path.display(),
@@ -174,7 +177,7 @@ pub fn load_workspace_policy(workspace_root: &Path) -> WorkspacePolicy {
                     "failed to parse workspace-policy.toml; using compatibility-mode defaults"
                 );
                 WorkspacePolicy::compatibility_default()
-            }
+            },
         },
         Err(_) => {
             tracing::warn!(
@@ -182,7 +185,7 @@ pub fn load_workspace_policy(workspace_root: &Path) -> WorkspacePolicy {
                 "no .ticket/workspace-policy.toml found; using compatibility-mode discovery (descendants + ancestors). Add an explicit policy to control scan-root inclusion."
             );
             WorkspacePolicy::compatibility_default()
-        }
+        },
     }
 }
 
@@ -193,7 +196,7 @@ pub fn load_workspace_policy(workspace_root: &Path) -> WorkspacePolicy {
 /// silently drop all fields). Intended for mutation flows that should start
 /// from documented defaults rather than compatibility-mode defaults.
 pub fn load_workspace_policy_file(
-    workspace_root: &Path,
+    workspace_root: &Path
 ) -> Option<WorkspacePolicy> {
     let policy_path = workspace_root
         .join(TICKET_INDEX_DIR)
@@ -271,10 +274,10 @@ ignore_markers = [".skip"]
         assert!(!policy.include_descendants);
         assert!(policy.include_ancestors);
         assert!(!policy.deny_external_paths);
-        assert_eq!(policy.ignore_workspaces, vec![
-            "fixtures/**".to_string(),
-            "test-*".to_string()
-        ]);
+        assert_eq!(
+            policy.ignore_workspaces,
+            vec!["fixtures/**".to_string(), "test-*".to_string()]
+        );
         assert_eq!(policy.include_overrides, vec!["fixtures/keep".to_string()]);
         assert_eq!(policy.ignore_markers, vec![".skip".to_string()]);
         assert!(!policy.compatibility_mode);
@@ -344,7 +347,10 @@ ignore_markers = [".skip"]
     #[test]
     fn glob_matches_and_non_matches() {
         let policy = WorkspacePolicy {
-            ignore_workspaces: vec!["fixtures/**".to_string(), "test-*".to_string()],
+            ignore_workspaces: vec![
+                "fixtures/**".to_string(),
+                "test-*".to_string(),
+            ],
             ..WorkspacePolicy::default()
         };
         assert!(policy.matches_ignore(&PathBuf::from("fixtures/a/b")));

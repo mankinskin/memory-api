@@ -8,12 +8,10 @@ use std::{
     time::Instant,
 };
 
-use axum::{
-    response::{
-        IntoResponse,
-        Json,
-        Response,
-    },
+use axum::response::{
+    IntoResponse,
+    Json,
+    Response,
 };
 use ticket_api::{
     model::edge::EdgeRecord,
@@ -294,8 +292,10 @@ fn workspace_graph(
     };
     let phase1_edges_ms = phase_timer.elapsed().as_millis();
 
-    let (depths, max_depth_reached) =
-        compute_workspace_depths(&workspace_data.node_ids, &workspace_data.raw_edges);
+    let (depths, max_depth_reached) = compute_workspace_depths(
+        &workspace_data.node_ids,
+        &workspace_data.raw_edges,
+    );
     let phase2_end_ms = phase_timer.elapsed().as_millis();
 
     let resolved = match resolve_graph_tickets_by_ids(
@@ -308,15 +308,11 @@ fn workspace_graph(
         Err(response) => return response,
     };
 
-    let nodes = match build_nodes(
-        &resolved,
-        &depths,
-        &request.workspace,
-        request_id,
-    ) {
-        Ok(nodes) => nodes,
-        Err(response) => return response,
-    };
+    let nodes =
+        match build_nodes(&resolved, &depths, &request.workspace, request_id) {
+            Ok(nodes) => nodes,
+            Err(response) => return response,
+        };
     let edges = match build_edges(
         workspace_data.raw_edges,
         &resolved,
@@ -371,9 +367,13 @@ fn workspace_graph_data(
     let all_edges = store
         .list_all_edges()
         .map_err(|error| storage_err(error, request_id))?;
-    let raw_edges = dedupe_edges(filter_graph_edges(&all_edges, edge_kind_filter));
+    let raw_edges =
+        dedupe_edges(filter_graph_edges(&all_edges, edge_kind_filter));
     let node_ids = collect_workspace_node_ids(&local_tickets, &raw_edges);
-    Ok(WorkspaceGraphData { raw_edges, node_ids })
+    Ok(WorkspaceGraphData {
+        raw_edges,
+        node_ids,
+    })
 }
 
 fn resolve_workspace_store(
@@ -530,7 +530,8 @@ fn collect_workspace_node_ids(
     local_tickets: &[IndexedTicket],
     edges: &[RawEdgeItem],
 ) -> Vec<Uuid> {
-    let mut ids: Vec<Uuid> = local_tickets.iter().map(|ticket| ticket.id).collect();
+    let mut ids: Vec<Uuid> =
+        local_tickets.iter().map(|ticket| ticket.id).collect();
     for edge in edges {
         ids.push(edge.from);
         ids.push(edge.to);
@@ -545,11 +546,8 @@ fn compute_workspace_depths(
     edges: &[RawEdgeItem],
 ) -> (HashMap<Uuid, usize>, usize) {
     let node_set: HashSet<Uuid> = node_ids.iter().copied().collect();
-    let mut indegree: HashMap<Uuid, usize> = node_ids
-        .iter()
-        .copied()
-        .map(|id| (id, 0))
-        .collect();
+    let mut indegree: HashMap<Uuid, usize> =
+        node_ids.iter().copied().map(|id| (id, 0)).collect();
     let mut outgoing: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
 
     for edge in edges {

@@ -8,8 +8,8 @@ use chrono::{
     DateTime,
     Utc,
 };
-use uuid::Uuid;
 use std::time::Instant;
+use uuid::Uuid;
 
 use crate::{
     error::StorageError,
@@ -20,7 +20,7 @@ use super::TicketStore;
 
 impl TicketStore {
     pub(super) fn rebuild_workflow_facts(
-        &self,
+        &self
     ) -> Result<BTreeMap<String, u64>, StorageError> {
         let overall_started = Instant::now();
         let mut timings = BTreeMap::new();
@@ -39,11 +39,7 @@ impl TicketStore {
             .map(|ticket| ticket.id)
             .collect::<Vec<_>>();
 
-        add_timing(
-            &mut timings,
-            "workflow.list_all_tickets_ms",
-            list_started,
-        );
+        add_timing(&mut timings, "workflow.list_all_tickets_ms", list_started);
 
         self.recompute_workflow_facts_for_ids_with_timings(
             &all_ticket_ids,
@@ -67,9 +63,7 @@ impl TicketStore {
         changed_at: DateTime<Utc>,
     ) -> Result<(), StorageError> {
         self.refresh_workflow_facts_for_roots_with_timings(
-            root_ids,
-            progress,
-            changed_at,
+            root_ids, progress, changed_at,
         )?;
         Ok(())
     }
@@ -114,7 +108,9 @@ impl TicketStore {
         };
         self.schema_registry
             .get(type_id)
-            .and_then(|schema| schema.states.iter().position(|value| value == state))
+            .and_then(|schema| {
+                schema.states.iter().position(|value| value == state)
+            })
             .unwrap_or(0)
     }
 
@@ -191,7 +187,9 @@ impl TicketStore {
                 .filter(|dependency_id| {
                     dependencies
                         .get(dependency_id)
-                        .map(|dependency| !is_done_state(dependency.state.as_deref()))
+                        .map(|dependency| {
+                            !is_done_state(dependency.state.as_deref())
+                        })
                         .unwrap_or(true)
                 })
                 .count();
@@ -207,10 +205,10 @@ impl TicketStore {
             let old_facts = existing.get(ticket_id);
             let became_actionable_at = if unresolved_dependency_count == 0 {
                 match old_facts {
-                    Some(facts) if facts.unresolved_dependency_count > 0 => {
-                        Some(progress_at.unwrap_or(ticket.updated_at))
-                    }
-                    Some(facts) => facts.became_actionable_at.or(Some(ticket.created_at)),
+                    Some(facts) if facts.unresolved_dependency_count > 0 =>
+                        Some(progress_at.unwrap_or(ticket.updated_at)),
+                    Some(facts) =>
+                        facts.became_actionable_at.or(Some(ticket.created_at)),
                     None => Some(ticket.created_at),
                 }
             } else {
@@ -235,11 +233,7 @@ impl TicketStore {
             )?;
 
             if let Some(map) = timings.as_deref_mut() {
-                add_timing(
-                    map,
-                    "workflow.write_facts_ms",
-                    write_started,
-                );
+                add_timing(map, "workflow.write_facts_ms", write_started);
             }
         }
 

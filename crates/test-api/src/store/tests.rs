@@ -35,7 +35,8 @@ fn records_and_reads_spec() {
 fn records_and_reads_execution() {
     let dir = TempDir::new().unwrap();
     let cfg = config(&dir);
-    let mut exec = ValidationExecution::passed("exec-1", "vt-core-tests", at(0));
+    let mut exec =
+        ValidationExecution::passed("exec-1", "vt-core-tests", at(0));
     exec.links = ValidationLinks {
         ticket_ids: vec!["ticket-parity".to_string()],
         ..Default::default()
@@ -83,7 +84,8 @@ fn lists_executions_filtered_by_ticket_and_outcome() {
         run_id: Some("run-2".to_string()),
         ..Default::default()
     };
-    let mut blocked = ValidationExecution::blocked("exec-blocked", "vt-b", at(2));
+    let mut blocked =
+        ValidationExecution::blocked("exec-blocked", "vt-b", at(2));
     blocked.duration_ms = Some(80);
     blocked.links = ValidationLinks {
         ticket_ids: vec!["ticket-x".to_string()],
@@ -242,19 +244,37 @@ fn records_and_queries_benchmarks_by_domain_and_over_budget() {
     let dir = TempDir::new().unwrap();
     let cfg = config(&dir);
 
-    let mut get = BenchmarkExecution::new("bench-get", "get_by_id", "get", "ticket", at(1));
+    let mut get = BenchmarkExecution::new(
+        "bench-get",
+        "get_by_id",
+        "get",
+        "ticket",
+        at(1),
+    );
     get.run_id = Some("bench-run-1".to_string());
     get.links.ticket_ids = vec!["ticket-bench".to_string()];
     get.mean_ns = 75_000_000;
     get.apply_budget(Some(50_000_000));
 
-    let mut scan = BenchmarkExecution::new("bench-scan", "scan_root", "scan", "ticket", at(2));
+    let mut scan = BenchmarkExecution::new(
+        "bench-scan",
+        "scan_root",
+        "scan",
+        "ticket",
+        at(2),
+    );
     scan.run_id = Some("bench-run-1".to_string());
     scan.links.ticket_ids = vec!["ticket-bench".to_string()];
     scan.mean_ns = 400_000_000;
     scan.apply_budget(Some(1_000_000_000));
 
-    let mut spec_search = BenchmarkExecution::new("bench-search", "search_q", "search", "spec", at(3));
+    let mut spec_search = BenchmarkExecution::new(
+        "bench-search",
+        "search_q",
+        "search",
+        "spec",
+        at(3),
+    );
     spec_search.run_id = Some("bench-run-2".to_string());
     spec_search.links.ticket_ids = vec!["ticket-bench".to_string()];
 
@@ -309,7 +329,13 @@ fn record_benchmark_rejects_missing_interoperability_contract_fields() {
     let dir = TempDir::new().unwrap();
     let cfg = config(&dir);
 
-    let bench = BenchmarkExecution::new("bench-missing", "scan_root", "scan", "ticket", at(1));
+    let bench = BenchmarkExecution::new(
+        "bench-missing",
+        "scan_root",
+        "scan",
+        "ticket",
+        at(1),
+    );
 
     assert!(matches!(
         cfg.record_benchmark(&bench),
@@ -322,7 +348,8 @@ fn record_execution_rejects_missing_interoperability_contract_fields() {
     let dir = TempDir::new().unwrap();
     let cfg = config(&dir);
 
-    let exec = ValidationExecution::passed("exec-missing", "vt-core-tests", at(1));
+    let exec =
+        ValidationExecution::passed("exec-missing", "vt-core-tests", at(1));
 
     assert!(matches!(
         cfg.record_execution(&exec),

@@ -27,15 +27,22 @@ fn scan_force_prunes_row_for_physically_removed_ticket() {
 fn scan_force_prunes_empty_uuid_artifact_folder_without_manifest() {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();
-    let artifact_id = Uuid::parse_str("4ea42273-a134-4342-b601-1759df6d562f").unwrap();
-    let artifact_dir = store.index_root.join("tickets").join(artifact_id.to_string());
+    let artifact_id =
+        Uuid::parse_str("4ea42273-a134-4342-b601-1759df6d562f").unwrap();
+    let artifact_dir = store
+        .index_root
+        .join("tickets")
+        .join(artifact_id.to_string());
     fs::create_dir_all(&artifact_dir).unwrap();
     assert!(artifact_dir.exists());
     assert!(!artifact_dir.join("ticket.toml").exists());
 
     let report = store.scan(true).unwrap();
 
-    assert!(!artifact_dir.exists(), "scan should prune empty artifact dirs");
+    assert!(
+        !artifact_dir.exists(),
+        "scan should prune empty artifact dirs"
+    );
     assert!(
         !report
             .diagnostics
@@ -74,13 +81,16 @@ fn scan_without_reindex_prunes_deleted_nested_ticket_from_search_and_index() {
         .unwrap();
 
     root_store.scan(true).unwrap();
-    assert!(root_store
-        .search_tickets("Deleted nested visibility", 10)
-        .unwrap()
-        .iter()
-        .any(|result| result.id == ticket_id));
+    assert!(
+        root_store
+            .search_tickets("Deleted nested visibility", 10)
+            .unwrap()
+            .iter()
+            .any(|result| result.id == ticket_id)
+    );
 
-    let ticket_path = child_store.get_indexed(&ticket_id).unwrap().unwrap().path;
+    let ticket_path =
+        child_store.get_indexed(&ticket_id).unwrap().unwrap().path;
     let parent_path = ticket_path.parent().unwrap().to_path_buf();
     fs::remove_dir_all(&ticket_path).unwrap();
 
@@ -93,16 +103,20 @@ fn scan_without_reindex_prunes_deleted_nested_ticket_from_search_and_index() {
     }));
     assert!(root_store.get_indexed(&ticket_id).unwrap().is_none());
     assert!(root_store.get(&ticket_id).is_err());
-    assert!(!root_store
-        .search_tickets("Deleted nested visibility", 10)
-        .unwrap()
-        .iter()
-        .any(|result| result.id == ticket_id));
-    assert!(!root_store
-        .list(None, None, None)
-        .unwrap()
-        .iter()
-        .any(|ticket| ticket.id == ticket_id));
+    assert!(
+        !root_store
+            .search_tickets("Deleted nested visibility", 10)
+            .unwrap()
+            .iter()
+            .any(|result| result.id == ticket_id)
+    );
+    assert!(
+        !root_store
+            .list(None, None, None)
+            .unwrap()
+            .iter()
+            .any(|ticket| ticket.id == ticket_id)
+    );
 }
 
 #[test]
@@ -144,11 +158,13 @@ fn scan_without_reindex_prunes_removed_scan_root_visibility() {
         .unwrap()
         .path
         .join("ticket.toml");
-    assert!(root_store
-        .search_tickets("Removed scan root", 10)
-        .unwrap()
-        .iter()
-        .any(|result| result.id == ticket_id));
+    assert!(
+        root_store
+            .search_tickets("Removed scan root", 10)
+            .unwrap()
+            .iter()
+            .any(|result| result.id == ticket_id)
+    );
 
     fs::remove_dir_all(&child_repo).unwrap();
 
@@ -156,21 +172,24 @@ fn scan_without_reindex_prunes_removed_scan_root_visibility() {
 
     assert_eq!(report.pruned, 1);
     assert!(report.diagnostics.iter().any(|diag| {
-        diag.path == manifest_path
-            && diag.reason.contains("missing on disk")
+        diag.path == manifest_path && diag.reason.contains("missing on disk")
     }));
     assert!(root_store.get_indexed(&ticket_id).unwrap().is_none());
     assert!(root_store.get(&ticket_id).is_err());
-    assert!(!root_store
-        .search_tickets("Removed scan root", 10)
-        .unwrap()
-        .iter()
-        .any(|result| result.id == ticket_id));
-    assert!(!root_store
-        .list(None, None, None)
-        .unwrap()
-        .iter()
-        .any(|ticket| ticket.id == ticket_id));
+    assert!(
+        !root_store
+            .search_tickets("Removed scan root", 10)
+            .unwrap()
+            .iter()
+            .any(|result| result.id == ticket_id)
+    );
+    assert!(
+        !root_store
+            .list(None, None, None)
+            .unwrap()
+            .iter()
+            .any(|ticket| ticket.id == ticket_id)
+    );
 }
 
 #[test]
@@ -193,38 +212,62 @@ fn scan_report_includes_phase_timings_and_root_counts() {
 
     assert!(report.phase_timings_ms.contains_key("scan_total_ms"));
     assert!(report.phase_timings_ms.contains_key("list_scan_roots_ms"));
-    assert!(report.phase_timings_ms.contains_key("rebuild_workflow_facts_ms"));
-    assert!(report
-        .phase_timings_ms
-        .contains_key("integration.manifest_parse_ms"));
-    assert!(report
-        .phase_timings_ms
-        .contains_key("integration.index_upsert_ms"));
-    assert!(report
-        .phase_timings_ms
-        .contains_key("integration.edge_write_ms"));
-    assert!(report
-        .phase_timings_ms
-        .contains_key("integration.description_read_ms"));
-    assert!(report
-        .phase_timings_ms
-        .contains_key("integration.search_upsert_ms"));
-    assert!(report
-        .phase_timings_ms
-        .contains_key("workflow.fetch_dependency_edges_ms"));
-    assert!(report
-        .phase_timings_ms
-        .contains_key("workflow.fetch_dependency_tickets_ms"));
-    assert!(report
-        .phase_timings_ms
-        .contains_key("workflow.compute_unresolved_ms"));
-    assert!(report
-        .phase_timings_ms
-        .contains_key("workflow.write_facts_ms"));
-    assert!(report
-        .phase_timings_ms
-        .keys()
-        .any(|key| key.starts_with("scan_root_")));
+    assert!(
+        report
+            .phase_timings_ms
+            .contains_key("rebuild_workflow_facts_ms")
+    );
+    assert!(
+        report
+            .phase_timings_ms
+            .contains_key("integration.manifest_parse_ms")
+    );
+    assert!(
+        report
+            .phase_timings_ms
+            .contains_key("integration.index_upsert_ms")
+    );
+    assert!(
+        report
+            .phase_timings_ms
+            .contains_key("integration.edge_write_ms")
+    );
+    assert!(
+        report
+            .phase_timings_ms
+            .contains_key("integration.description_read_ms")
+    );
+    assert!(
+        report
+            .phase_timings_ms
+            .contains_key("integration.search_upsert_ms")
+    );
+    assert!(
+        report
+            .phase_timings_ms
+            .contains_key("workflow.fetch_dependency_edges_ms")
+    );
+    assert!(
+        report
+            .phase_timings_ms
+            .contains_key("workflow.fetch_dependency_tickets_ms")
+    );
+    assert!(
+        report
+            .phase_timings_ms
+            .contains_key("workflow.compute_unresolved_ms")
+    );
+    assert!(
+        report
+            .phase_timings_ms
+            .contains_key("workflow.write_facts_ms")
+    );
+    assert!(
+        report
+            .phase_timings_ms
+            .keys()
+            .any(|key| key.starts_with("scan_root_"))
+    );
     assert!(!report.root_entry_counts.is_empty());
 }
 
@@ -267,7 +310,9 @@ fn scan_without_reindex_skips_workflow_recompute_when_nothing_changed() {
     let report = store.scan(false).unwrap();
 
     assert_eq!(
-        report.phase_timings_ms.get("workflow.incremental_root_count"),
+        report
+            .phase_timings_ms
+            .get("workflow.incremental_root_count"),
         Some(&0)
     );
     assert_eq!(
@@ -276,9 +321,11 @@ fn scan_without_reindex_skips_workflow_recompute_when_nothing_changed() {
             .get("workflow.incremental_affected_count"),
         Some(&0)
     );
-    assert!(!report
-        .phase_timings_ms
-        .contains_key("workflow.fetch_dependency_edges_ms"));
+    assert!(
+        !report
+            .phase_timings_ms
+            .contains_key("workflow.fetch_dependency_edges_ms")
+    );
 }
 
 #[test]
@@ -336,7 +383,9 @@ fn scan_without_reindex_recomputes_workflow_facts_for_changed_ticket_slice() {
 
     let report = root_store.scan(false).unwrap();
     assert_eq!(
-        report.phase_timings_ms.get("workflow.incremental_root_count"),
+        report
+            .phase_timings_ms
+            .get("workflow.incremental_root_count"),
         Some(&1)
     );
     assert_eq!(
@@ -380,12 +429,10 @@ fn reconcile_known_tickets_is_noop_for_unchanged_ticket_and_unaffected_rows() {
         .unwrap();
 
     store.scan(true).unwrap();
-    let before_touched = store.get_indexed(&touched).unwrap().unwrap().updated_at;
-    let before_unaffected = store
-        .get_indexed(&unaffected)
-        .unwrap()
-        .unwrap()
-        .updated_at;
+    let before_touched =
+        store.get_indexed(&touched).unwrap().unwrap().updated_at;
+    let before_unaffected =
+        store.get_indexed(&unaffected).unwrap().unwrap().updated_at;
 
     let report = store.reconcile_known_tickets(&[touched]).unwrap();
 
@@ -450,7 +497,10 @@ fn reconcile_known_tickets_handles_move_and_updates_affected_dependents() {
         .unwrap();
 
     source_store.scan(true).unwrap();
-    let initial = source_store.get_workflow_facts(&dependent).unwrap().unwrap();
+    let initial = source_store
+        .get_workflow_facts(&dependent)
+        .unwrap()
+        .unwrap();
     assert_eq!(initial.unresolved_dependency_count, 0);
 
     let source_path = source_store.get_indexed(&blocker).unwrap().unwrap().path;
@@ -461,8 +511,10 @@ fn reconcile_known_tickets_handles_move_and_updates_affected_dependents() {
         .join(blocker.to_string());
     fs::rename(&source_path, &target_path).unwrap();
 
-    let source_report = source_store.reconcile_known_tickets(&[blocker]).unwrap();
-    let target_report = target_store.reconcile_known_tickets(&[blocker]).unwrap();
+    let source_report =
+        source_store.reconcile_known_tickets(&[blocker]).unwrap();
+    let target_report =
+        target_store.reconcile_known_tickets(&[blocker]).unwrap();
 
     assert_eq!(source_report.pruned, 1);
     assert_eq!(source_report.integrated, 0);
@@ -470,7 +522,10 @@ fn reconcile_known_tickets_handles_move_and_updates_affected_dependents() {
     assert!(source_store.get_indexed(&blocker).unwrap().is_none());
     assert!(target_store.get_indexed(&blocker).unwrap().is_some());
 
-    let updated = source_store.get_workflow_facts(&dependent).unwrap().unwrap();
+    let updated = source_store
+        .get_workflow_facts(&dependent)
+        .unwrap()
+        .unwrap();
     assert_eq!(updated.unresolved_dependency_count, 1);
 }
 
@@ -501,8 +556,8 @@ fn scan_force_skips_stale_db_edges_for_missing_ticket_folders() {
         )
         .unwrap();
 
-    let legacy_index = RedbIndexStore::open(&store.index_root.join("tickets.db"))
-        .unwrap();
+    let legacy_index =
+        RedbIndexStore::open(&store.index_root.join("tickets.db")).unwrap();
     legacy_index
         .insert_edge(&EdgeRecord {
             from: source_id,
@@ -617,4 +672,3 @@ fn open_or_init_bootstraps_manifest_only_workspace() {
 
     assert_eq!(manifest.id, ticket_id);
 }
-

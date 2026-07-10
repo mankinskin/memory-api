@@ -14,21 +14,23 @@ use std::path::Path;
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::model::index_entry::{
-    ContentKind,
-    IndexEntry,
-    IndexRef,
-    IndexRelations,
-    RelationKind,
+use crate::model::{
+    index_entry::{
+        ContentKind,
+        IndexEntry,
+        IndexRef,
+        IndexRelations,
+        RelationKind,
+    },
+    index_sidecar::IndexSidecar,
 };
-use crate::model::index_sidecar::IndexSidecar;
 
 use super::util::deterministic_uuid;
 
 /// Namespace UUID for deterministic workspace node UUIDs.
 const WORKSPACE_NS: Uuid = Uuid::from_bytes([
-    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
-    0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00,
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc,
+    0xdd, 0xee, 0xff, 0x00,
 ]);
 
 /// A reference to a neighbouring workspace node (parent or child).
@@ -67,30 +69,36 @@ pub struct WorkspaceIndexInput<'a> {
 ///
 /// The entry id is deterministic: given the same `store_dir` slug the UUID is
 /// identical across runs and platforms.
-pub fn generate_workspace_sidecar(input: WorkspaceIndexInput<'_>) -> IndexSidecar {
+pub fn generate_workspace_sidecar(
+    input: WorkspaceIndexInput<'_>
+) -> IndexSidecar {
     let node_id = deterministic_uuid(WORKSPACE_NS, input.store_dir);
 
-    let parent_refs: Vec<IndexRef> = input.parents.iter().map(|p| {
-        IndexRef {
+    let parent_refs: Vec<IndexRef> = input
+        .parents
+        .iter()
+        .map(|p| IndexRef {
             canonical_path: p.relative_path.clone(),
             entry_id: deterministic_uuid(WORKSPACE_NS, &p.relative_path),
             relation_kind: RelationKind::Parent,
             content_kind: p.domain,
             digest: String::new(),
             anchor: None,
-        }
-    }).collect();
+        })
+        .collect();
 
-    let child_refs: Vec<IndexRef> = input.children.iter().map(|c| {
-        IndexRef {
+    let child_refs: Vec<IndexRef> = input
+        .children
+        .iter()
+        .map(|c| IndexRef {
             canonical_path: c.relative_path.clone(),
             entry_id: deterministic_uuid(WORKSPACE_NS, &c.relative_path),
             relation_kind: RelationKind::Child,
             content_kind: c.domain,
             digest: String::new(),
             anchor: None,
-        }
-    }).collect();
+        })
+        .collect();
 
     let mut tags = vec![input.name.to_string(), "workspace".to_string()];
     tags.sort_unstable();
@@ -118,11 +126,8 @@ pub fn generate_workspace_sidecar(input: WorkspaceIndexInput<'_>) -> IndexSideca
     };
     entry.seal();
 
-    let mut sidecar = IndexSidecar::new(
-        input.domain,
-        input.store_dir,
-        vec![entry],
-    );
+    let mut sidecar =
+        IndexSidecar::new(input.domain, input.store_dir, vec![entry]);
     sidecar.sort();
     sidecar
 }
@@ -196,7 +201,9 @@ mod tests {
                 parents: &[],
                 children: &[],
                 workspace_root: &ws,
-            }).entries[0].id
+            })
+            .entries[0]
+                .id
         };
         assert_ne!(make(".ticket"), make(".spec"));
     }

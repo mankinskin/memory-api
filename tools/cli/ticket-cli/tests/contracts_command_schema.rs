@@ -75,9 +75,6 @@ fn command_schema_toon_is_machine_readable() {
         parsed["payload"]["schema"]["version"],
         COMMAND_SCHEMA_VERSION
     );
-    assert_eq!(
-        parsed["payload"]["schema"]["command_namespace"],
-        "ticket"
-    );
+    assert_eq!(parsed["payload"]["schema"]["command_namespace"], "ticket");
     assert!(parsed["payload"]["schema"]["commands"].is_array());
 }

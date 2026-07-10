@@ -25,9 +25,9 @@ use uuid::Uuid;
 use crate::{
     error::StorageError,
     storage::{
-        store::TicketStore,
         BoardEntry,
         BoardEntryStatus,
+        store::TicketStore,
     },
     workspace,
 };
@@ -61,13 +61,15 @@ pub(crate) fn from_move_error(error: MoveError) -> StorageError {
 
 fn map_board_error(error: crate::storage::BoardError) -> MoveError {
     match error {
-        crate::storage::BoardError::Storage(storage_error) => to_move_error(storage_error),
+        crate::storage::BoardError::Storage(storage_error) =>
+            to_move_error(storage_error),
         other => MoveError::Domain(other.to_string()),
     }
 }
 
 fn ticket_entity_root(store_root: &Path) -> PathBuf {
-    workspace::resolve_store_root_from(store_root, workspace::TICKET_INDEX_DIR).join("tickets")
+    workspace::resolve_store_root_from(store_root, workspace::TICKET_INDEX_DIR)
+        .join("tickets")
 }
 
 /// Ticket-domain implementation of the move kernel's [`MoveDomain`] trait.
@@ -84,7 +86,8 @@ impl<'a> TicketMoveDomain<'a> {
         &self,
         store_root: &Path,
     ) -> MoveResult<TicketStore> {
-        TicketStore::open_with(store_root, self.store.schema_registry().clone()).map_err(to_move_error)
+        TicketStore::open_with(store_root, self.store.schema_registry().clone())
+            .map_err(to_move_error)
     }
 }
 
@@ -105,12 +108,14 @@ impl MoveDomain for TicketMoveDomain<'_> {
         &self,
         entity_id: &Uuid,
     ) -> MoveResult<Option<PathBuf>> {
-            let entity_root = ticket_entity_root(&self.store.index_root);
-            Ok(self
-                .store
-                .get_indexed(entity_id)
-                .map_err(to_move_error)?
-                .and_then(|ticket| ticket.path.starts_with(&entity_root).then_some(ticket.path)))
+        let entity_root = ticket_entity_root(&self.store.index_root);
+        Ok(self
+            .store
+            .get_indexed(entity_id)
+            .map_err(to_move_error)?
+            .and_then(|ticket| {
+                ticket.path.starts_with(&entity_root).then_some(ticket.path)
+            }))
     }
 
     fn related_entities(
@@ -133,7 +138,10 @@ impl MoveDomain for TicketMoveDomain<'_> {
         &self,
         target_store_root: &Path,
     ) -> MoveResult<bool> {
-        match TicketStore::open_with(target_store_root, self.store.schema_registry().clone()) {
+        match TicketStore::open_with(
+            target_store_root,
+            self.store.schema_registry().clone(),
+        ) {
             Ok(_) => Ok(true),
             Err(StorageError::WorkspaceNotFound { .. }) => Ok(false),
             Err(error) => Err(to_move_error(error)),
@@ -168,7 +176,8 @@ impl MoveDomain for TicketMoveDomain<'_> {
                 state.active_entries.push(entry);
             }
         }
-        let history = self.store.board_history(None).map_err(map_board_error)?;
+        let history =
+            self.store.board_history(None).map_err(map_board_error)?;
         for entry in history.entries {
             if entry.ticket_id == *entity_id {
                 state.historical_entries.push(entry);
@@ -206,7 +215,9 @@ impl MoveDomain for TicketMoveDomain<'_> {
 
         let mut historical_entries = Vec::new();
         for entry in entries {
-            if entry.status == BoardEntryStatus::Active || entry.status == BoardEntryStatus::Stale {
+            if entry.status == BoardEntryStatus::Active
+                || entry.status == BoardEntryStatus::Stale
+            {
                 return Err(MoveError::Domain(format!(
                     "cannot move entity {} while board entry {} is active/stale",
                     entity_id, entry.entry_id
@@ -222,7 +233,10 @@ impl MoveDomain for TicketMoveDomain<'_> {
         target_store
             .board_import_entries(&historical_entries)
             .map_err(map_board_error)?;
-        let ids: Vec<Uuid> = historical_entries.iter().map(|entry| entry.entry_id).collect();
+        let ids: Vec<Uuid> = historical_entries
+            .iter()
+            .map(|entry| entry.entry_id)
+            .collect();
         self.store
             .board_delete_entries(&ids)
             .map_err(map_board_error)?;
@@ -242,7 +256,8 @@ impl MoveDomain for TicketMoveDomain<'_> {
         self.store
             .board_import_entries(entries)
             .map_err(map_board_error)?;
-        let ids: Vec<Uuid> = entries.iter().map(|entry| entry.entry_id).collect();
+        let ids: Vec<Uuid> =
+            entries.iter().map(|entry| entry.entry_id).collect();
         target_store
             .board_delete_entries(&ids)
             .map_err(map_board_error)?;
@@ -280,7 +295,8 @@ impl TicketStore {
         target_workspace_root: &Path,
     ) -> Result<MovePreflightReport, StorageError> {
         let domain = TicketMoveDomain::new(self);
-        move_kernel::plan_move(&domain, ticket_id, target_workspace_root).map_err(from_move_error)
+        move_kernel::plan_move(&domain, ticket_id, target_workspace_root)
+            .map_err(from_move_error)
     }
 }
 
@@ -295,10 +311,16 @@ mod tests {
         storage::index::RedbIndexStore,
     };
     use chrono::Utc;
-    use std::{fs, process::Command};
+    use std::{
+        fs,
+        process::Command,
+    };
     use tempfile::tempdir;
 
-    fn run_git(repo_root: &Path, args: &[&str]) {
+    fn run_git(
+        repo_root: &Path,
+        args: &[&str],
+    ) {
         let status = Command::new("git")
             .current_dir(repo_root)
             .args(args)
@@ -387,7 +409,8 @@ mod tests {
             .to_string_lossy()
             .replace('\\', "/");
         let tracked_doc = docs_dir.join("move.md");
-        fs::write(&tracked_doc, format!("See {relative_ticket_path}\n")).unwrap();
+        fs::write(&tracked_doc, format!("See {relative_ticket_path}\n"))
+            .unwrap();
         run_git(&repo, &["add", "docs/move.md"]);
 
         let report = source_store
@@ -400,9 +423,12 @@ mod tests {
                 && entry.direction == MoveReferenceDirection::Inbound
                 && !entry.visible_from_destination
         }));
-        assert!(report.path_reference_files.iter().any(|path| {
-            path.ends_with("docs/move.md")
-        }));
+        assert!(
+            report
+                .path_reference_files
+                .iter()
+                .any(|path| { path.ends_with("docs/move.md") })
+        );
         assert!(!report.blockers.iter().any(|blocker| matches!(
             blocker,
             MovePreflightBlocker::InvisibleReference { .. }
@@ -439,7 +465,10 @@ mod tests {
             .plan_move_preflight(&source_ticket, &nested_repo)
             .unwrap();
 
-        assert_eq!(report.git_worktree_topology, GitWorktreeTopology::ParentToSubmodule);
+        assert_eq!(
+            report.git_worktree_topology,
+            GitWorktreeTopology::ParentToSubmodule
+        );
         assert!(!report.blockers.iter().any(|blocker| matches!(
             blocker,
             MovePreflightBlocker::DifferentGitWorktree { .. }
@@ -475,7 +504,10 @@ mod tests {
             .plan_move_preflight(&source_ticket, &target_repo)
             .unwrap();
 
-        assert_eq!(report.git_worktree_topology, GitWorktreeTopology::Unrelated);
+        assert_eq!(
+            report.git_worktree_topology,
+            GitWorktreeTopology::Unrelated
+        );
         assert!(report.blockers.iter().any(|blocker| matches!(
             blocker,
             MovePreflightBlocker::DifferentGitWorktree { .. }
@@ -515,15 +547,18 @@ mod tests {
 
         let target_indexed = target_store.get_indexed(&id).unwrap().unwrap();
 
-        let poisoned_index = RedbIndexStore::open(&source_store.index_root.join("tickets.db"))
-            .unwrap();
+        let poisoned_index =
+            RedbIndexStore::open(&source_store.index_root.join("tickets.db"))
+                .unwrap();
         poisoned_index.insert_ticket(&target_indexed).unwrap();
 
         let source_domain = TicketMoveDomain::new(&source_store);
         let target_domain = TicketMoveDomain::new(&target_store);
-        assert!(move_kernel::MoveDomain::source_entity_path(&source_domain, &id)
-            .unwrap()
-            .is_none());
+        assert!(
+            move_kernel::MoveDomain::source_entity_path(&source_domain, &id)
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(
             move_kernel::MoveDomain::source_entity_path(&target_domain, &id)
                 .unwrap()

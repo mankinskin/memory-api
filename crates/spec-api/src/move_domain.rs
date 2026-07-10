@@ -41,7 +41,8 @@ fn to_move_error(error: SpecError) -> MoveError {
 }
 
 fn spec_entity_root(store_root: &Path) -> PathBuf {
-    memory_api::workspace::resolve_store_root_from(store_root, SPEC_INDEX_DIR).join("specs")
+    memory_api::workspace::resolve_store_root_from(store_root, SPEC_INDEX_DIR)
+        .join("specs")
 }
 
 fn from_move_error(error: MoveError) -> SpecError {

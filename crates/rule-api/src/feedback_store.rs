@@ -5,10 +5,8 @@ impl EntityFeedbackStore {
         root: impl Into<PathBuf>,
         workspace_slug: impl Into<String>,
     ) -> Result<Self, String> {
-        let workspace_slug = normalize_required(
-            workspace_slug.into(),
-            "workspace_slug",
-        )?;
+        let workspace_slug =
+            normalize_required(workspace_slug.into(), "workspace_slug")?;
         Ok(Self {
             root: root.into(),
             workspace_slug,
@@ -146,13 +144,13 @@ impl EntityFeedbackStore {
     }
 
     pub fn low_rated_entities(
-        &self,
+        &self
     ) -> Result<Vec<EntityFeedbackSummary>, String> {
         Ok(self.load_core()?.low_rated_entities())
     }
 
     pub fn unresolved_note_entities(
-        &self,
+        &self
     ) -> Result<Vec<EntityFeedbackSummary>, String> {
         Ok(self.load_core()?.unresolved_note_entities())
     }
@@ -296,17 +294,17 @@ impl EntityFeedbackCore {
             HashMap::new();
 
         for event in &self.usage_events {
-            let entry = index
-                .entry(event.urn.clone())
-                .or_insert_with(|| EntityFeedbackSummary::new(event.urn.clone()));
+            let entry = index.entry(event.urn.clone()).or_insert_with(|| {
+                EntityFeedbackSummary::new(event.urn.clone())
+            });
             entry.usage_count += 1;
             entry.last_used_at = Some(event.timestamp.clone());
         }
 
         for event in &self.rating_events {
-            let entry = index
-                .entry(event.urn.clone())
-                .or_insert_with(|| EntityFeedbackSummary::new(event.urn.clone()));
+            let entry = index.entry(event.urn.clone()).or_insert_with(|| {
+                EntityFeedbackSummary::new(event.urn.clone())
+            });
             match event.rating {
                 FeedbackRating::Helpful => entry.helpful_count += 1,
                 FeedbackRating::Mixed => entry.mixed_count += 1,
@@ -320,10 +318,8 @@ impl EntityFeedbackCore {
         }
 
         let mut summaries: Vec<_> = index.into_values().collect();
-        summaries.sort_by(|left, right| left.urn.as_str().cmp(&right.urn.as_str()));
+        summaries
+            .sort_by(|left, right| left.urn.as_str().cmp(&right.urn.as_str()));
         summaries
     }
 }
-
-
-

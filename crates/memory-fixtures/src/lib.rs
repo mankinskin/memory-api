@@ -27,7 +27,9 @@ pub fn append_fixture_ticket(
     )?;
     write_text(
         &ticket_dir.join("description.md"),
-        &format!("# {title}\n\nAppended representative fixture ticket for incremental scan and perf timing.\n"),
+        &format!(
+            "# {title}\n\nAppended representative fixture ticket for incremental scan and perf timing.\n"
+        ),
     )?;
     write_text(
         &ticket_dir.join("history.ndjson"),
@@ -106,7 +108,7 @@ pub fn materialize_fixture_with_generated_tickets(
 }
 
 pub fn materialize_fixture_with_ticket_perf_load(
-    options: TicketPerfFixtureOptions,
+    options: TicketPerfFixtureOptions
 ) -> Result<TicketPerfFixture, FixtureError> {
     let fixture = materialize_fixture()?;
     let (root_ticket_ids, submodule_ticket_ids, tracked_reference_files) =
@@ -165,7 +167,7 @@ pub fn materialize_git_fixture() -> Result<LoadedFixture, FixtureError> {
 }
 
 pub fn materialize_git_fixture_with_ticket_perf_load(
-    options: TicketPerfFixtureOptions,
+    options: TicketPerfFixtureOptions
 ) -> Result<TicketPerfFixture, FixtureError> {
     let fixture = materialize_git_fixture()?;
     let (root_ticket_ids, submodule_ticket_ids, tracked_reference_files) =
@@ -178,7 +180,6 @@ pub fn materialize_git_fixture_with_ticket_perf_load(
         tracked_reference_files,
     })
 }
-
 
 #[path = "lib_types.rs"]
 mod lib_types;

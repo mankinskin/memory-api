@@ -4,16 +4,19 @@ use super::*;
 use crate::{
     model::filesystem::ScanRoot,
     storage::{
+        BoardEntryStatus,
         index::RedbIndexStore,
         move_planner::MovePreflightBlocker,
-        BoardEntryStatus,
     },
 };
 use chrono::Utc;
 use std::process::Command;
 use tempfile::tempdir;
 
-fn run_git(repo_root: &std::path::Path, args: &[&str]) {
+fn run_git(
+    repo_root: &std::path::Path,
+    args: &[&str],
+) {
     let status = Command::new("git")
         .current_dir(repo_root)
         .args(args)
@@ -28,7 +31,10 @@ fn git_commit_path(
     message: &str,
 ) {
     run_git(repo_root, &["config", "user.name", "Move Test"]);
-    run_git(repo_root, &["config", "user.email", "move-test@example.com"]);
+    run_git(
+        repo_root,
+        &["config", "user.email", "move-test@example.com"],
+    );
     run_git(repo_root, &["add", "--", pathspec]);
     run_git(repo_root, &["commit", "-m", message]);
 }

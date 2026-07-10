@@ -102,12 +102,14 @@ impl TestStoreConfig {
         id: &str,
     ) -> Result<ValidationSpec, TestError> {
         let path = self.spec_path(id)?;
-        read_json_if_exists(&path)?.ok_or_else(|| TestError::SpecNotFound(id.to_string()))
+        read_json_if_exists(&path)?
+            .ok_or_else(|| TestError::SpecNotFound(id.to_string()))
     }
 
     /// List all validation specs, sorted by id.
     pub fn list_specs(&self) -> Result<Vec<ValidationSpec>, TestError> {
-        let mut specs: Vec<ValidationSpec> = self.read_dir_json(&self.specs_dir()?)?;
+        let mut specs: Vec<ValidationSpec> =
+            self.read_dir_json(&self.specs_dir()?)?;
         specs.sort_by(|a, b| a.id.cmp(&b.id));
         Ok(specs)
     }
@@ -132,7 +134,8 @@ impl TestStoreConfig {
         id: &str,
     ) -> Result<ValidationExecution, TestError> {
         let path = self.execution_path(id)?;
-        read_json_if_exists(&path)?.ok_or_else(|| TestError::ExecutionNotFound(id.to_string()))
+        read_json_if_exists(&path)?
+            .ok_or_else(|| TestError::ExecutionNotFound(id.to_string()))
     }
 
     /// Query stored executions, sorted by `executed_at` descending (newest first).
@@ -212,12 +215,14 @@ impl TestStoreConfig {
             }
         }
         if let Some(operation) = &query.operation {
-            if exec.provenance.operation.as_deref() != Some(operation.as_str()) {
+            if exec.provenance.operation.as_deref() != Some(operation.as_str())
+            {
                 return false;
             }
         }
         if let Some(transport) = &query.transport {
-            if exec.provenance.transport.as_deref() != Some(transport.as_str()) {
+            if exec.provenance.transport.as_deref() != Some(transport.as_str())
+            {
                 return false;
             }
         }
@@ -235,7 +240,9 @@ impl TestStoreConfig {
     ) {
         match sort {
             ExecutionSort::NewestFirst => {
-                executions.sort_by(|a, b| b.executed_at.cmp(&a.executed_at).then(a.id.cmp(&b.id)));
+                executions.sort_by(|a, b| {
+                    b.executed_at.cmp(&a.executed_at).then(a.id.cmp(&b.id))
+                });
             },
             ExecutionSort::SlowestFirst => {
                 executions.sort_by(|a, b| {
@@ -267,7 +274,8 @@ impl TestStoreConfig {
         id: &str,
     ) -> Result<BenchmarkExecution, TestError> {
         let path = self.benchmark_path(id)?;
-        read_json_if_exists(&path)?.ok_or_else(|| TestError::BenchmarkNotFound(id.to_string()))
+        read_json_if_exists(&path)?
+            .ok_or_else(|| TestError::BenchmarkNotFound(id.to_string()))
     }
 
     /// Query stored benchmarks, sorted by `executed_at` descending (newest first).
@@ -297,7 +305,9 @@ impl TestStoreConfig {
             true
         });
 
-        benchmarks.sort_by(|a, b| b.executed_at.cmp(&a.executed_at).then(a.id.cmp(&b.id)));
+        benchmarks.sort_by(|a, b| {
+            b.executed_at.cmp(&a.executed_at).then(a.id.cmp(&b.id))
+        });
 
         if let Some(limit) = query.limit {
             benchmarks.truncate(limit);
@@ -309,7 +319,9 @@ impl TestStoreConfig {
 
     /// Build the deterministic store-index artifacts from all recorded
     /// executions, specs (for slow thresholds), and benchmarks.
-    pub fn generate_store_index(&self) -> Result<TestStoreIndexArtifacts, TestError> {
+    pub fn generate_store_index(
+        &self
+    ) -> Result<TestStoreIndexArtifacts, TestError> {
         let executions = self.list_executions(&ExecutionQuery::default())?;
         let specs = self.list_specs()?;
         let benchmarks = self.list_benchmarks(&BenchmarkQuery::default())?;
@@ -334,15 +346,19 @@ impl TestStoreConfig {
         })?;
 
         let toon_path = dir.join("index.toon");
-        fs::write(&toon_path, &artifacts.toon_sidecar).map_err(|source| TestError::Io {
-            path: toon_path.clone(),
-            source,
+        fs::write(&toon_path, &artifacts.toon_sidecar).map_err(|source| {
+            TestError::Io {
+                path: toon_path.clone(),
+                source,
+            }
         })?;
 
         let md_path = dir.join("README.md");
-        fs::write(&md_path, &artifacts.markdown).map_err(|source| TestError::Io {
-            path: md_path.clone(),
-            source,
+        fs::write(&md_path, &artifacts.markdown).map_err(|source| {
+            TestError::Io {
+                path: md_path.clone(),
+                source,
+            }
         })?;
 
         Ok((toon_path, md_path))
@@ -350,7 +366,9 @@ impl TestStoreConfig {
 
     /// Generate and write the store index in one step. Returns the digest and
     /// the two written paths.
-    pub fn regenerate_store_index(&self) -> Result<(String, PathBuf, PathBuf), TestError> {
+    pub fn regenerate_store_index(
+        &self
+    ) -> Result<(String, PathBuf, PathBuf), TestError> {
         let artifacts = self.generate_store_index()?;
         let (toon_path, md_path) = self.write_store_index(&artifacts)?;
         Ok((artifacts.digest, toon_path, md_path))
@@ -362,8 +380,9 @@ impl TestStoreConfig {
         if self.root.as_os_str().is_empty() {
             return Err(TestError::EmptyRoot);
         }
-        validate_segment(&self.workspace_slug)
-            .map_err(|_| TestError::InvalidWorkspaceSlug(self.workspace_slug.clone()))?;
+        validate_segment(&self.workspace_slug).map_err(|_| {
+            TestError::InvalidWorkspaceSlug(self.workspace_slug.clone())
+        })?;
         Ok(self.root.join(&self.workspace_slug))
     }
 
@@ -383,7 +402,8 @@ impl TestStoreConfig {
         &self,
         id: &str,
     ) -> Result<PathBuf, TestError> {
-        validate_segment(id).map_err(|_| TestError::InvalidId(id.to_string()))?;
+        validate_segment(id)
+            .map_err(|_| TestError::InvalidId(id.to_string()))?;
         Ok(self.specs_dir()?.join(format!("{id}.json")))
     }
 
@@ -391,7 +411,8 @@ impl TestStoreConfig {
         &self,
         id: &str,
     ) -> Result<PathBuf, TestError> {
-        validate_segment(id).map_err(|_| TestError::InvalidId(id.to_string()))?;
+        validate_segment(id)
+            .map_err(|_| TestError::InvalidId(id.to_string()))?;
         Ok(self.executions_dir()?.join(format!("{id}.json")))
     }
 
@@ -399,7 +420,8 @@ impl TestStoreConfig {
         &self,
         id: &str,
     ) -> Result<PathBuf, TestError> {
-        validate_segment(id).map_err(|_| TestError::InvalidId(id.to_string()))?;
+        validate_segment(id)
+            .map_err(|_| TestError::InvalidId(id.to_string()))?;
         Ok(self.benchmarks_dir()?.join(format!("{id}.json")))
     }
 
@@ -409,13 +431,13 @@ impl TestStoreConfig {
     ) -> Result<Vec<T>, TestError> {
         let entries = match fs::read_dir(dir) {
             Ok(entries) => entries,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(source) => {
+            Err(err) if err.kind() == ErrorKind::NotFound =>
+                return Ok(Vec::new()),
+            Err(source) =>
                 return Err(TestError::Io {
                     path: dir.to_path_buf(),
                     source,
-                })
-            },
+                }),
         };
 
         let mut items = Vec::new();
@@ -463,8 +485,11 @@ impl TestStoreConfig {
         let mut runs: Vec<(String, chrono::DateTime<chrono::Utc>)> =
             newest_by_run.into_iter().collect();
         runs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-        let stale_runs: HashSet<String> =
-            runs.into_iter().skip(keep_runs).map(|(run, _)| run).collect();
+        let stale_runs: HashSet<String> = runs
+            .into_iter()
+            .skip(keep_runs)
+            .map(|(run, _)| run)
+            .collect();
 
         for execution in executions {
             let Some(run_id) = execution.provenance.run_id.as_ref() else {
@@ -499,9 +524,11 @@ fn write_json<T: serde::Serialize>(
             source,
         })?;
     }
-    let json = serde_json::to_string_pretty(value).map_err(|source| TestError::Serialize {
-        path: path.to_path_buf(),
-        source,
+    let json = serde_json::to_string_pretty(value).map_err(|source| {
+        TestError::Serialize {
+            path: path.to_path_buf(),
+            source,
+        }
     })?;
     fs::write(path, json).map_err(|source| TestError::Io {
         path: path.to_path_buf(),
@@ -509,20 +536,23 @@ fn write_json<T: serde::Serialize>(
     })
 }
 
-fn read_json_if_exists<T: DeserializeOwned>(path: &Path) -> Result<Option<T>, TestError> {
+fn read_json_if_exists<T: DeserializeOwned>(
+    path: &Path
+) -> Result<Option<T>, TestError> {
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(source) => {
+        Err(source) =>
             return Err(TestError::Io {
                 path: path.to_path_buf(),
                 source,
-            })
-        },
+            }),
     };
-    let value = serde_json::from_slice(&bytes).map_err(|source| TestError::Deserialize {
-        path: path.to_path_buf(),
-        source,
+    let value = serde_json::from_slice(&bytes).map_err(|source| {
+        TestError::Deserialize {
+            path: path.to_path_buf(),
+            source,
+        }
     })?;
     Ok(Some(value))
 }
@@ -533,7 +563,8 @@ fn validate_segment(segment: &str) -> Result<(), ()> {
     if segment.is_empty() || segment == "." || segment == ".." {
         return Err(());
     }
-    if segment.contains('/') || segment.contains('\\') || segment.contains("..") {
+    if segment.contains('/') || segment.contains('\\') || segment.contains("..")
+    {
         return Err(());
     }
     if segment

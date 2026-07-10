@@ -18,15 +18,13 @@ use crate::cli::{
     ListArgs,
     ReproArgs,
     UpdateArgs,
+    commands::ticket_workspace_metadata_for_path,
     current_git_commit,
     default_repro_summary,
     normalize_repro_timestamp,
     parse_fields,
     parse_fields_to_json,
     repro_summary_from_fields,
-};
-use crate::cli::commands::{
-    ticket_workspace_metadata_for_path,
 };
 
 fn effort_from_ticket(
@@ -116,7 +114,7 @@ pub(crate) fn cmd_get(
             return Err(CliRunError::BadRequest(format!(
                 "ticket '{id}' was not found in the active workspace. Retry with --workspace-root <workspace-path> or --index-root <path-to-.ticket>."
             )));
-        }
+        },
         Err(error) => return Err(CliRunError::Storage(error)),
     };
     let path = store

@@ -92,8 +92,8 @@ pub fn run_matrix() -> Result<MatrixRun, FixtureError> {
 
 /// Run a single deterministic failing subprocess transport probe and persist
 /// its execution detail in the same `.test` store format as full matrix runs.
-pub fn run_ticket_get_mcp_subprocess_failure_probe(
-) -> Result<MatrixRun, FixtureError> {
+pub fn run_ticket_get_mcp_subprocess_failure_probe()
+-> Result<MatrixRun, FixtureError> {
     let fixture = materialize_fixture()?;
     let workspace_root = fixture.workspace_root.clone();
     let ctx = MatrixCtx {
@@ -102,10 +102,8 @@ pub fn run_ticket_get_mcp_subprocess_failure_probe(
 
     let test_store_root = workspace_root.join(".test");
     let test_store = TestStoreConfig::new(test_store_root.clone(), "default");
-    let run_id = format!(
-        "matrix-probe-{}",
-        Utc::now().format("%Y%m%dT%H%M%SZ")
-    );
+    let run_id =
+        format!("matrix-probe-{}", Utc::now().format("%Y%m%dT%H%M%SZ"));
 
     bootstrap_core_store_roots(&ctx);
 
@@ -136,8 +134,8 @@ pub fn run_ticket_get_mcp_subprocess_failure_probe(
 
 /// Run a deterministic spawn-failure subprocess probe and persist
 /// diagnostics using the same matrix execution format.
-pub fn run_ticket_spawn_fail_mcp_subprocess_failure_probe(
-) -> Result<MatrixRun, FixtureError> {
+pub fn run_ticket_spawn_fail_mcp_subprocess_failure_probe()
+-> Result<MatrixRun, FixtureError> {
     let fixture = materialize_fixture()?;
     let workspace_root = fixture.workspace_root.clone();
     let ctx = MatrixCtx {
@@ -146,10 +144,8 @@ pub fn run_ticket_spawn_fail_mcp_subprocess_failure_probe(
 
     let test_store_root = workspace_root.join(".test");
     let test_store = TestStoreConfig::new(test_store_root.clone(), "default");
-    let run_id = format!(
-        "matrix-probe-{}",
-        Utc::now().format("%Y%m%dT%H%M%SZ")
-    );
+    let run_id =
+        format!("matrix-probe-{}", Utc::now().format("%Y%m%dT%H%M%SZ"));
 
     bootstrap_core_store_roots(&ctx);
 
@@ -186,9 +182,7 @@ fn bootstrap_core_store_roots(ctx: &MatrixCtx) {
     let _ = rule_api::RuleStore::open_or_init(&ctx.store_root(".rule"));
 }
 
-fn runtime_transport_for_cell(
-    transport: &str,
-) -> log_api::RuntimeLogTransport {
+fn runtime_transport_for_cell(transport: &str) -> log_api::RuntimeLogTransport {
     match transport {
         "cli" => log_api::RuntimeLogTransport::Cli,
         "http" => log_api::RuntimeLogTransport::Http,
@@ -221,7 +215,8 @@ fn correlated_runtime_log_session_ids(
     );
     runtime_session.run_id = Some(run_id.to_string());
     runtime_session.operation = Some(cell.operation.clone());
-    runtime_session.tool = Some("ticket-mcp-subprocess-failure-probe".to_string());
+    runtime_session.tool =
+        Some("ticket-mcp-subprocess-failure-probe".to_string());
     runtime_session.links.ticket_ids = vec![MATRIX_TICKET_ID.to_string()];
     runtime_session.links.validation_execution_ids =
         vec![execution_id.to_string()];

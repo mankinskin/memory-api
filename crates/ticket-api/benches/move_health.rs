@@ -36,17 +36,20 @@ fn init_perf_bench_tracing() {
     PERF_TRACING.get_or_init(|| {
         let filter = tracing_subscriber::EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("off"));
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(filter)
-            .try_init();
+        let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
     });
 }
 
 fn parse_ids(ids: &[String]) -> Vec<Uuid> {
-    ids.iter().map(|id| id.parse().expect("valid fixture uuid")).collect()
+    ids.iter()
+        .map(|id| id.parse().expect("valid fixture uuid"))
+        .collect()
 }
 
-fn add_perf_edges(store: &TicketStore, ids: &[Uuid]) {
+fn add_perf_edges(
+    store: &TicketStore,
+    ids: &[Uuid],
+) {
     let now = Utc::now();
     for pair in ids.windows(2) {
         store
@@ -107,7 +110,8 @@ fn percentile_nearest_rank(
         return sorted[0];
     }
 
-    let rank = ((percentile as f64 / 100.0) * sorted.len() as f64).ceil() as usize;
+    let rank =
+        ((percentile as f64 / 100.0) * sorted.len() as f64).ceil() as usize;
     let idx = rank.saturating_sub(1).min(sorted.len() - 1);
     sorted[idx]
 }
@@ -122,7 +126,9 @@ fn percentile_summary(samples: &[u64]) -> (u64, u64, u64) {
     )
 }
 
-fn map_percentiles(values: &std::collections::BTreeMap<String, u64>) -> (u64, u64, u64) {
+fn map_percentiles(
+    values: &std::collections::BTreeMap<String, u64>
+) -> (u64, u64, u64) {
     let samples = values.values().copied().collect::<Vec<_>>();
     percentile_summary(&samples)
 }
@@ -132,12 +138,14 @@ fn bench_move_preflight_reference_heavy(c: &mut Criterion) {
     c.bench_function("move_preflight_reference_heavy", |b| {
         b.iter_batched(
             || {
-                let perf = materialize_git_fixture_with_ticket_perf_load(TicketPerfFixtureOptions {
-                    root_generated_ticket_count: 48,
-                    submodule_generated_ticket_count: 24,
-                    tracked_reference_file_count: 8,
-                    references_per_file: 18,
-                })
+                let perf = materialize_git_fixture_with_ticket_perf_load(
+                    TicketPerfFixtureOptions {
+                        root_generated_ticket_count: 48,
+                        submodule_generated_ticket_count: 24,
+                        tracked_reference_file_count: 8,
+                        references_per_file: 18,
+                    },
+                )
                 .expect("perf fixture should materialize");
                 let source_root = perf
                     .fixture
@@ -145,9 +153,12 @@ fn bench_move_preflight_reference_heavy(c: &mut Criterion) {
                     .expect("submodule store")
                     .to_path_buf();
                 let target_workspace = perf.fixture.workspace_root.clone();
-                let store = TicketStore::open_or_init(&source_root).expect("open source store");
+                let store = TicketStore::open_or_init(&source_root)
+                    .expect("open source store");
                 store.scan(true).expect("scan source store");
-                let id: Uuid = perf.submodule_ticket_ids[0].parse().expect("fixture move id");
+                let id: Uuid = perf.submodule_ticket_ids[0]
+                    .parse()
+                    .expect("fixture move id");
                 (perf, store, target_workspace, id)
             },
             |(_perf, store, target_workspace, id)| {
@@ -291,8 +302,10 @@ fn bench_open_or_init_root_perf_fixture(c: &mut Criterion) {
     c.bench_function("open_or_init_root_perf_fixture", |b| {
         b.iter_batched(
             || {
-                let perf = materialize_fixture_with_ticket_perf_load(TicketPerfFixtureOptions::heavy())
-                    .expect("perf fixture should materialize");
+                let perf = materialize_fixture_with_ticket_perf_load(
+                    TicketPerfFixtureOptions::heavy(),
+                )
+                .expect("perf fixture should materialize");
                 let root_store = perf
                     .fixture
                     .store_root("ticket-root")
@@ -303,11 +316,13 @@ fn bench_open_or_init_root_perf_fixture(c: &mut Criterion) {
             |(_perf, root_store)| {
                 let started = Instant::now();
                 let (store, report) =
-                    TicketStore::open_or_init_profiled(&root_store).expect("open store");
+                    TicketStore::open_or_init_profiled(&root_store)
+                        .expect("open store");
                 let elapsed = started.elapsed();
                 criterion::black_box(elapsed);
                 let phase_count = report.phase_timings_ms.len();
-                let (p50_ms, p95_ms, p99_ms) = map_percentiles(&report.phase_timings_ms);
+                let (p50_ms, p95_ms, p99_ms) =
+                    map_percentiles(&report.phase_timings_ms);
                 criterion::black_box(report.phase_timings_ms);
                 criterion::black_box(store);
                 tracing::info!(
@@ -336,21 +351,25 @@ fn bench_scan_reindex_root_perf_fixture(c: &mut Criterion) {
     c.bench_function("scan_reindex_root_perf_fixture", |b| {
         b.iter_batched(
             || {
-                let perf = materialize_fixture_with_ticket_perf_load(TicketPerfFixtureOptions::heavy())
-                    .expect("perf fixture should materialize");
+                let perf = materialize_fixture_with_ticket_perf_load(
+                    TicketPerfFixtureOptions::heavy(),
+                )
+                .expect("perf fixture should materialize");
                 let root_store = perf
                     .fixture
                     .store_root("ticket-root")
                     .expect("root store")
                     .to_path_buf();
-                let store = TicketStore::open_or_init(&root_store).expect("open store");
+                let store =
+                    TicketStore::open_or_init(&root_store).expect("open store");
                 (perf, store)
             },
             |(_perf, store)| {
                 let started = Instant::now();
                 let report = store.scan(true).expect("scan(true)");
                 let elapsed = started.elapsed();
-                let (p50_ms, p95_ms, p99_ms) = map_percentiles(&report.phase_timings_ms);
+                let (p50_ms, p95_ms, p99_ms) =
+                    map_percentiles(&report.phase_timings_ms);
                 criterion::black_box(started.elapsed());
                 criterion::black_box(report.phase_timings_ms);
                 tracing::info!(
@@ -382,23 +401,31 @@ fn bench_scan_incremental_root_perf_fixture(
     c.bench_function(label, |b| {
         b.iter_batched(
             || {
-                let perf = materialize_fixture_with_ticket_perf_load(TicketPerfFixtureOptions::heavy())
-                    .expect("perf fixture should materialize");
+                let perf = materialize_fixture_with_ticket_perf_load(
+                    TicketPerfFixtureOptions::heavy(),
+                )
+                .expect("perf fixture should materialize");
                 let root_store = perf
                     .fixture
                     .store_root("ticket-root")
                     .expect("root store")
                     .to_path_buf();
-                let store = TicketStore::open_or_init(&root_store).expect("open store");
+                let store =
+                    TicketStore::open_or_init(&root_store).expect("open store");
                 store.scan(true).expect("initial scan");
-                append_incremental_fixture_tickets(&root_store, change_count, change_count);
+                append_incremental_fixture_tickets(
+                    &root_store,
+                    change_count,
+                    change_count,
+                );
                 (perf, store)
             },
             |(_perf, store)| {
                 let started = Instant::now();
                 let report = store.scan(false).expect("scan(false)");
                 let elapsed = started.elapsed();
-                let (p50_ms, p95_ms, p99_ms) = map_percentiles(&report.phase_timings_ms);
+                let (p50_ms, p95_ms, p99_ms) =
+                    map_percentiles(&report.phase_timings_ms);
                 criterion::black_box(started.elapsed());
                 criterion::black_box(report.phase_timings_ms);
                 criterion::black_box(report.root_entry_counts);
@@ -459,11 +486,13 @@ fn bench_health_workflow_build_large_fixture(c: &mut Criterion) {
                     .store_root("ticket-root")
                     .expect("root store")
                     .to_path_buf();
-                let store = TicketStore::open_or_init(&root_store).expect("open store");
+                let store =
+                    TicketStore::open_or_init(&root_store).expect("open store");
                 store.scan(true).expect("scan store");
                 let ids = parse_ids(&perf.root_ticket_ids);
                 add_perf_edges(&store, &ids);
-                let tickets = store.list(None, None, None).expect("list tickets");
+                let tickets =
+                    store.list(None, None, None).expect("list tickets");
                 let all_edges = store.list_all_edges().expect("list edges");
                 (perf, store, tickets, all_edges)
             },
@@ -507,19 +536,26 @@ fn bench_health_collect_large_fixture(c: &mut Criterion) {
                     .store_root("ticket-root")
                     .expect("root store")
                     .to_path_buf();
-                let store = TicketStore::open_or_init(&root_store).expect("open store");
+                let store =
+                    TicketStore::open_or_init(&root_store).expect("open store");
                 store.scan(true).expect("scan store");
                 let ids = parse_ids(&perf.root_ticket_ids);
                 add_perf_edges(&store, &ids);
-                let tickets = store.list(None, None, None).expect("list tickets");
+                let tickets =
+                    store.list(None, None, None).expect("list tickets");
                 let all_edges = store.list_all_edges().expect("list edges");
-                let workflow = WorkflowModel::build(&store, tickets.clone(), all_edges.clone())
-                    .expect("build workflow");
+                let workflow = WorkflowModel::build(
+                    &store,
+                    tickets.clone(),
+                    all_edges.clone(),
+                )
+                .expect("build workflow");
                 (perf, store, tickets, all_edges, workflow)
             },
             |(_perf, store, tickets, all_edges, workflow)| {
                 let started = Instant::now();
-                let report = collect_findings(&store, &tickets, &all_edges, &workflow);
+                let report =
+                    collect_findings(&store, &tickets, &all_edges, &workflow);
                 let elapsed = started.elapsed();
                 criterion::black_box(elapsed);
                 criterion::black_box(report.findings.len());
@@ -562,7 +598,8 @@ fn bench_health_all_large_fixture(c: &mut Criterion) {
                     .store_root("ticket-root")
                     .expect("root store")
                     .to_path_buf();
-                let store = TicketStore::open_or_init(&root_store).expect("open store");
+                let store =
+                    TicketStore::open_or_init(&root_store).expect("open store");
                 store.scan(true).expect("scan store");
                 let ids = parse_ids(&perf.root_ticket_ids);
                 add_perf_edges(&store, &ids);
@@ -570,11 +607,17 @@ fn bench_health_all_large_fixture(c: &mut Criterion) {
             },
             |(_perf, store)| {
                 let started = Instant::now();
-                let tickets = store.list(None, None, None).expect("list tickets");
+                let tickets =
+                    store.list(None, None, None).expect("list tickets");
                 let all_edges = store.list_all_edges().expect("list edges");
-                let workflow = WorkflowModel::build(&store, tickets.clone(), all_edges.clone())
-                    .expect("build workflow");
-                let report = collect_findings(&store, &tickets, &all_edges, &workflow);
+                let workflow = WorkflowModel::build(
+                    &store,
+                    tickets.clone(),
+                    all_edges.clone(),
+                )
+                .expect("build workflow");
+                let report =
+                    collect_findings(&store, &tickets, &all_edges, &workflow);
                 let elapsed = started.elapsed();
                 criterion::black_box(report.findings.len());
                 tracing::info!(
@@ -597,7 +640,9 @@ fn bench_health_all_large_fixture(c: &mut Criterion) {
         );
     });
     let mut group = c.benchmark_group("health_all_large_fixture_meta");
-    group.throughput(Throughput::Elements(options.root_generated_ticket_count as u64));
+    group.throughput(Throughput::Elements(
+        options.root_generated_ticket_count as u64,
+    ));
     group.finish();
 }
 

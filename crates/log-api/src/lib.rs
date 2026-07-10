@@ -100,16 +100,15 @@ impl ValidationLogCapture {
         if self.validation_execution_id.trim().is_empty() {
             gaps.push("missing validation_execution_id");
         }
-        if !self
-            .links
-            .links_to_execution(&self.validation_execution_id)
-        {
+        if !self.links.links_to_execution(&self.validation_execution_id) {
             gaps.push("missing execution link");
         }
         gaps
     }
 
-    pub fn validate_interoperability_contract(&self) -> Result<(), crate::LogError> {
+    pub fn validate_interoperability_contract(
+        &self
+    ) -> Result<(), crate::LogError> {
         let gaps = self.interoperability_gaps();
         if gaps.is_empty() {
             return Ok(());

@@ -19,10 +19,10 @@ use crate::cli::{
     CliRunError,
     NextArgs,
     UnblockedByArgs,
-};
-use crate::cli::commands::{
-    resolve_uuid_prefix,
-    ticket_workspace_metadata_for_id,
+    commands::{
+        resolve_uuid_prefix,
+        ticket_workspace_metadata_for_id,
+    },
 };
 
 struct NextScope {
@@ -39,27 +39,32 @@ pub(super) fn run(
 ) -> Result<Value, CliRunError> {
     let board_snap = store.board_show(None).ok();
     let all_tickets = store.list(None, None, None)?;
-    let filtered_scope = WorkflowModel::filter_scope(&all_tickets, args.filter.as_deref());
-    let model = WorkflowModel::build(store, all_tickets, store.list_all_edges()?)?;
+    let filtered_scope =
+        WorkflowModel::filter_scope(&all_tickets, args.filter.as_deref());
+    let model =
+        WorkflowModel::build(store, all_tickets, store.list_all_edges()?)?;
     let root_id = args
         .root
         .as_deref()
         .map(|root| resolve_uuid_prefix(root, store))
         .transpose()?;
-    let next_scope = root_id.map(|resolved_root_id| {
-        build_next_scope(resolved_root_id, &model)
-    });
+    let next_scope = root_id
+        .map(|resolved_root_id| build_next_scope(resolved_root_id, &model));
     let candidate_scope = intersect_scopes(
         filtered_scope,
         next_scope.as_ref().map(|scope| &scope.remaining_blockers),
     );
-    let mut candidates = model.actionable_candidate_ids(candidate_scope.as_ref());
+    let mut candidates =
+        model.actionable_candidate_ids(candidate_scope.as_ref());
     model.sort_candidate_ids(&mut candidates);
     let board_filtered =
         apply_board_filter(candidates, board_snap.as_ref(), args.no_board);
     let frontier_count = board_filtered.candidates.len();
-    let limited_candidates =
-        limit_candidates(board_filtered.candidates, args.limit, root_id.is_some());
+    let limited_candidates = limit_candidates(
+        board_filtered.candidates,
+        args.limit,
+        root_id.is_some(),
+    );
 
     let active_index_root = store.index_root.display().to_string();
     let mut payload = json!({
@@ -114,11 +119,13 @@ pub(super) fn run_unblocked_by(
     let satisfied_ids = HashSet::from([root_id]);
     let tree = model
         .unlock_tree_with_satisfied(root_id, &satisfied_ids)
-        .ok_or_else(|| CliRunError::Storage(ticket_api::error::StorageError::NotFound(root_id)))?;
-    let frontier_ids = model.unlock_frontier_leaf_ids_with_satisfied(
-        root_id,
-        &satisfied_ids,
-    );
+        .ok_or_else(|| {
+            CliRunError::Storage(ticket_api::error::StorageError::NotFound(
+                root_id,
+            ))
+        })?;
+    let frontier_ids =
+        model.unlock_frontier_leaf_ids_with_satisfied(root_id, &satisfied_ids);
     let blocked_dependents = dependent_ids
         .iter()
         .filter(|ticket_id| {
@@ -154,9 +161,9 @@ pub(super) fn run_blockers(
         store.list(None, None, None)?,
         store.list_all_edges()?,
     )?;
-    let tree = model
-        .blocker_tree(root_id)
-        .ok_or_else(|| CliRunError::Storage(ticket_api::error::StorageError::NotFound(root_id)))?;
+    let tree = model.blocker_tree(root_id).ok_or_else(|| {
+        CliRunError::Storage(ticket_api::error::StorageError::NotFound(root_id))
+    })?;
     let frontier_ids = tree.frontier_leaf_ids.clone();
     let satisfied_ids = HashSet::new();
 
@@ -230,7 +237,7 @@ fn limit_candidates(
     match limit {
         Some(limit) => candidates.truncate(limit),
         None if !root_scoped => candidates.truncate(20),
-        None => {}
+        None => {},
     }
     candidates
 }

@@ -21,12 +21,14 @@
 //! markdown never embeds a timestamp. This lets the pre-commit drift check
 //! (`--check`) compare rendered output against the working tree without churn.
 
-use std::collections::{
-    BTreeMap,
-    BTreeSet,
-    HashMap,
+use std::{
+    collections::{
+        BTreeMap,
+        BTreeSet,
+        HashMap,
+    },
+    path::Path,
 };
-use std::path::Path;
 
 use chrono::{
     DateTime,
@@ -157,7 +159,8 @@ pub fn generate_spec_catalog(
 
     let tree_paths = build_tree_paths(&sidecar, &extras, store_dir);
     let tree_markdown = render_tree_markdown(&sidecar, &tree_paths, &extras);
-    let readme_markdown = render_catalog_markdown(&sidecar, &tree_paths, &extras);
+    let readme_markdown =
+        render_catalog_markdown(&sidecar, &tree_paths, &extras);
     let agent_hook_markdown = render_agent_hook(&sidecar, store_dir, &extras);
 
     SpecCatalogArtifacts {

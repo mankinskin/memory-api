@@ -1,17 +1,22 @@
-use std::collections::BTreeMap;
-use std::process::Command;
+use std::{
+    collections::BTreeMap,
+    process::Command,
+};
 
 use rmcp::handler::server::wrapper::Parameters;
 use serde_json::Value;
+use tempfile::TempDir;
 use ticket_api::storage::store::TicketStore;
 use ticket_mcp::server::{
     MoveApplyInput,
     MovePreflightInput,
     TicketServer,
 };
-use tempfile::TempDir;
 
-fn run_git(repo_root: &std::path::Path, args: &[&str]) {
+fn run_git(
+    repo_root: &std::path::Path,
+    args: &[&str],
+) {
     let status = Command::new("git")
         .current_dir(repo_root)
         .args(args)
@@ -48,8 +53,10 @@ async fn move_tools_preflight_and_apply_smoke() {
     let source_store = TicketStore::init(tmp.path()).expect("open store");
 
     let target_workspace = tmp.path().join("target-workspace");
-    std::fs::create_dir_all(&target_workspace).expect("create target workspace");
-    let target_store = TicketStore::init(&target_workspace).expect("init target store");
+    std::fs::create_dir_all(&target_workspace)
+        .expect("create target workspace");
+    let target_store =
+        TicketStore::init(&target_workspace).expect("init target store");
 
     let ticket_id = source_store
         .create(
@@ -90,6 +97,16 @@ async fn move_tools_preflight_and_apply_smoke() {
     assert_eq!(apply_json["mode"], "apply");
     assert!(apply_json["outcome"]["journal"]["id"].is_string());
 
-    assert!(source_store.get_indexed(&ticket_id).expect("source lookup").is_none());
-    assert!(target_store.get_indexed(&ticket_id).expect("target lookup").is_some());
+    assert!(
+        source_store
+            .get_indexed(&ticket_id)
+            .expect("source lookup")
+            .is_none()
+    );
+    assert!(
+        target_store
+            .get_indexed(&ticket_id)
+            .expect("target lookup")
+            .is_some()
+    );
 }

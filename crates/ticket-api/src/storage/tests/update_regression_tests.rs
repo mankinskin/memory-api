@@ -27,11 +27,12 @@ fn bug_7f4aaa05_state_preserved_on_field_patch_without_to_state() {
 
     // BUG: Update description WITHOUT to_state - state should be preserved
     let mut patch = BTreeMap::new();
-    patch.insert("custom_field".to_string(), Value::String("custom value".to_string()));
+    patch.insert(
+        "custom_field".to_string(),
+        Value::String("custom value".to_string()),
+    );
 
-    store
-        .update(&id, patch, None, None, None, None)
-        .unwrap();
+    store.update(&id, patch, None, None, None, None).unwrap();
 
     let indexed = store.get_indexed(&id).unwrap().unwrap();
     assert_eq!(
@@ -69,7 +70,10 @@ fn bug_7f4aaa05_description_patch_with_to_state_transition() {
 
     // Combined: patch fields AND transition in one call
     let mut patch = BTreeMap::new();
-    patch.insert("custom_field".to_string(), Value::String("custom value".to_string()));
+    patch.insert(
+        "custom_field".to_string(),
+        Value::String("custom value".to_string()),
+    );
 
     store
         .update(&id, patch, None, Some("in-implementation"), None, None)
@@ -249,17 +253,9 @@ fn update_allows_reachable_reverse_multi_step_without_transition_states() {
         .unwrap();
 
     store
-        .update(
-            &id,
-            BTreeMap::new(),
-            None,
-            Some("new"),
-            None,
-            None,
-        )
+        .update(&id, BTreeMap::new(), None, Some("new"), None, None)
         .unwrap();
 
     let indexed = store.get_indexed(&id).unwrap().unwrap();
     assert_eq!(indexed.state.as_deref(), Some("new"));
 }
-

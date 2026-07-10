@@ -171,7 +171,9 @@ impl ValidationSpec {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExecutionSort {
     #[default]
@@ -244,7 +246,12 @@ impl ValidationExecution {
         validation_spec_id: impl Into<String>,
         executed_at: DateTime<Utc>,
     ) -> Self {
-        Self::new(id, validation_spec_id, ValidationOutcome::Passed, executed_at)
+        Self::new(
+            id,
+            validation_spec_id,
+            ValidationOutcome::Passed,
+            executed_at,
+        )
     }
 
     pub fn failed(
@@ -252,7 +259,12 @@ impl ValidationExecution {
         validation_spec_id: impl Into<String>,
         executed_at: DateTime<Utc>,
     ) -> Self {
-        Self::new(id, validation_spec_id, ValidationOutcome::Failed, executed_at)
+        Self::new(
+            id,
+            validation_spec_id,
+            ValidationOutcome::Failed,
+            executed_at,
+        )
     }
 
     pub fn blocked(
@@ -260,7 +272,12 @@ impl ValidationExecution {
         validation_spec_id: impl Into<String>,
         executed_at: DateTime<Utc>,
     ) -> Self {
-        Self::new(id, validation_spec_id, ValidationOutcome::Blocked, executed_at)
+        Self::new(
+            id,
+            validation_spec_id,
+            ValidationOutcome::Blocked,
+            executed_at,
+        )
     }
 
     pub fn references_doc_evidence(

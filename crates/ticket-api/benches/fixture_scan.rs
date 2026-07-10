@@ -19,17 +19,21 @@ fn bench_fixture_scan(c: &mut Criterion) {
     c.bench_function("fixture_scan_reindex_root_store", |b| {
         b.iter_batched(
             || {
-                let fixture = materialize_fixture_with_generated_tickets(generated)
-                    .expect("fixture should materialize");
+                let fixture =
+                    materialize_fixture_with_generated_tickets(generated)
+                        .expect("fixture should materialize");
                 let store_root = fixture
                     .store_root("ticket-root")
                     .expect("ticket-root path")
                     .to_path_buf();
-                let store = TicketStore::open_or_init(&store_root).expect("open_or_init");
+                let store = TicketStore::open_or_init(&store_root)
+                    .expect("open_or_init");
                 (fixture, store)
             },
             |(fixture, store)| {
-                store.scan(true).expect("scan should index generated tickets");
+                store
+                    .scan(true)
+                    .expect("scan should index generated tickets");
                 drop(fixture);
             },
             criterion::BatchSize::SmallInput,

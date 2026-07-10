@@ -45,10 +45,7 @@ mod tests {
     fn to_relative_slash_strips_root_and_normalizes() {
         let root = PathBuf::from("/workspace");
         let abs = PathBuf::from("/workspace/.rule/entries/x/rule.toml");
-        assert_eq!(
-            to_relative_slash(&root, &abs),
-            ".rule/entries/x/rule.toml"
-        );
+        assert_eq!(to_relative_slash(&root, &abs), ".rule/entries/x/rule.toml");
     }
 
     #[test]
@@ -58,9 +55,6 @@ mod tests {
             deterministic_uuid(ns, "shared/agent-rules"),
             deterministic_uuid(ns, "shared/agent-rules")
         );
-        assert_ne!(
-            deterministic_uuid(ns, "a"),
-            deterministic_uuid(ns, "b")
-        );
+        assert_ne!(deterministic_uuid(ns, "a"), deterministic_uuid(ns, "b"));
     }
 }

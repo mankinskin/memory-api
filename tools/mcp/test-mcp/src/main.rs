@@ -30,9 +30,12 @@ fn resolve_store_root() -> PathBuf {
     if let Ok(path) = std::env::var("TEST_STORE_ROOT") {
         return PathBuf::from(path);
     }
-    memory_api::workspace::resolve_requested_store_root(None, None, None, ".test")
+    memory_api::workspace::resolve_requested_store_root(
+        None, None, None, ".test",
+    )
 }
 
 fn resolve_workspace_slug() -> String {
-    std::env::var("TEST_WORKSPACE_SLUG").unwrap_or_else(|_| "default".to_string())
+    std::env::var("TEST_WORKSPACE_SLUG")
+        .unwrap_or_else(|_| "default".to_string())
 }

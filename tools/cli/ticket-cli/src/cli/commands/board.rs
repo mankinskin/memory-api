@@ -397,9 +397,8 @@ fn build_actions(
     } else if let Some(next) = recommended_next.first() {
         let action_target = format_action_target(next);
         if current_work.is_empty() {
-            actions.push(format!(
-                "Board is clear. Start {action_target} next.",
-            ));
+            actions
+                .push(format!("Board is clear. Start {action_target} next.",));
         } else {
             actions.push(format!(
                 "When you free capacity, start {action_target} next.",

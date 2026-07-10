@@ -45,9 +45,11 @@ async fn read_probes_do_not_create_missing_ticket_store_root() {
         "fixture should start without .ticket"
     );
 
-    let registry = Arc::new(WorkspaceRegistry::single(missing_store_root.clone()));
+    let registry =
+        Arc::new(WorkspaceRegistry::single(missing_store_root.clone()));
     let workspace = registry.primary_workspace_name().to_string();
-    let app = build_router(AppState::new(registry, Arc::new(StreamBroker::new())));
+    let app =
+        build_router(AppState::new(registry, Arc::new(StreamBroker::new())));
 
     let (workspaces_status, workspaces_payload) =
         get_json(app.clone(), "/api/workspaces").await;
@@ -62,7 +64,8 @@ async fn read_probes_do_not_create_missing_ticket_store_root() {
     );
 
     let (tickets_status, _tickets_payload) =
-        get_json(app, &format!("/api/tickets?workspace={workspace}&limit=10")).await;
+        get_json(app, &format!("/api/tickets?workspace={workspace}&limit=10"))
+            .await;
     assert_eq!(
         tickets_status,
         StatusCode::NOT_FOUND,

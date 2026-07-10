@@ -23,7 +23,10 @@ fn parses_move_command() {
 
     match cli.command {
         AuditCommand::Move(args) => {
-            assert_eq!(args.id.as_deref(), Some("7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71"));
+            assert_eq!(
+                args.id.as_deref(),
+                Some("7b3a7c62-1f3f-45d6-b8a1-f2b83e3d9f71")
+            );
             assert_eq!(args.repo_root, PathBuf::from("/repo"));
             assert_eq!(args.to_workspace_root, Some(PathBuf::from("/target")));
         },
@@ -88,7 +91,10 @@ fn parses_run_session_selector_flags() {
         AuditCommand::Run(args) => {
             assert!(args.latest_session);
             assert_eq!(args.session_id, None);
-            assert_eq!(args.session_store_root, Some(PathBuf::from("/repo/.session")));
+            assert_eq!(
+                args.session_store_root,
+                Some(PathBuf::from("/repo/.session"))
+            );
             assert_eq!(
                 args.session_workspace_slug,
                 Some("context-engine".to_string())

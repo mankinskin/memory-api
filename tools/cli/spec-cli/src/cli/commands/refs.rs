@@ -25,14 +25,13 @@ pub(crate) fn cmd_refs(
         Some(RefsSubcommand::Validate {
             code_workspace_root,
         }) => {
-            let workspace_root = code_workspace_root
-                .unwrap_or_else(|| {
-                    inferred_workspace_root_for_spec(
-                        store,
-                        spec.id,
-                        default_workspace_root,
-                    )
-                });
+            let workspace_root = code_workspace_root.unwrap_or_else(|| {
+                inferred_workspace_root_for_spec(
+                    store,
+                    spec.id,
+                    default_workspace_root,
+                )
+            });
             let canonical_workspace_root =
                 memory_api::workspace::canonicalize_workspace_root_strict(
                     &workspace_root,
@@ -43,7 +42,8 @@ pub(crate) fn cmd_refs(
                         workspace_root.display()
                     ))
                 })?;
-            let results = validate_refs(&spec.code_refs, &canonical_workspace_root);
+            let results =
+                validate_refs(&spec.code_refs, &canonical_workspace_root);
             let items: Vec<Value> = results
                 .iter()
                 .map(|r| {
@@ -98,7 +98,7 @@ pub(crate) fn cmd_refs(
 }
 
 fn render_workspace_root_for_payload(
-    path: &std::path::Path,
+    path: &std::path::Path
 ) -> Result<String, CliRunError> {
     memory_api::workspace::normalize_path_for_display_strict(path).map_err(
         |error| {
@@ -156,7 +156,8 @@ mod tests {
         let store_root = workspace_root.join(".spec");
         fs::create_dir_all(&store_root).unwrap();
         fs::create_dir_all(file_root.join("src")).unwrap();
-        fs::write(file_root.join("src/lib.rs"), "pub fn target() {}\n").unwrap();
+        fs::write(file_root.join("src/lib.rs"), "pub fn target() {}\n")
+            .unwrap();
 
         let mut store = SpecStore::init(&store_root).unwrap();
         let mut manifest =
@@ -236,7 +237,8 @@ mod tests {
     fn refs_validate_uses_default_workspace_root() {
         let dir = tempdir().unwrap();
         let workspace_root = dir.path().join("repo");
-        let (store, id) = create_spec_with_ref(&workspace_root, &workspace_root);
+        let (store, id) =
+            create_spec_with_ref(&workspace_root, &workspace_root);
 
         let payload = cmd_refs(
             RefsArgs {

@@ -283,8 +283,7 @@ fn dispatch(
                 &args.session_id,
                 PromptPackOptions {
                     preview_chars: args.preview_chars,
-                    summarize_threshold_chars: args
-                        .summarize_threshold_chars,
+                    summarize_threshold_chars: args.summarize_threshold_chars,
                 },
             )?;
             to_value(&pack)

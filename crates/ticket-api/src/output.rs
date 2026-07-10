@@ -33,11 +33,10 @@ pub fn strip_default_metadata(value: &mut Value) {
                 map.remove("type_id");
             }
         },
-        Value::Array(items) => {
+        Value::Array(items) =>
             for item in items {
                 strip_default_metadata(item);
-            }
-        },
+            },
         _ => {},
     }
 }

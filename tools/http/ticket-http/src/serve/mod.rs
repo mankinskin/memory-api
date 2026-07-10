@@ -9,6 +9,13 @@ pub mod middleware;
 pub mod registry;
 pub mod routes;
 pub mod stream;
+pub use auth_state::AuthState;
+use axum::{
+    http::StatusCode,
+    response::Response,
+};
+pub use registry::WorkspaceRegistry;
+use serde_json::json;
 use std::{
     collections::{
         BTreeSet,
@@ -21,23 +28,16 @@ use std::{
         Mutex,
     },
 };
-use axum::{
-    http::StatusCode,
-    response::Response,
-};
-use serde_json::json;
-use tokio::net::TcpListener;
-use viewer_api::{
-    auth::TokenSet,
-    error::ApiError,
-};
-pub use auth_state::AuthState;
-pub use registry::WorkspaceRegistry;
 pub use stream::{
     HookEmitter,
     StreamBroker,
 };
 use ticket_api::storage::store::TicketStore;
+use tokio::net::TcpListener;
+use viewer_api::{
+    auth::TokenSet,
+    error::ApiError,
+};
 pub fn register_descendant_scan_roots(
     store: &TicketStore,
     workspace_root: &Path,

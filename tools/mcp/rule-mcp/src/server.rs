@@ -92,10 +92,11 @@ impl RuleServer {
         &self,
         workspace: &str,
     ) -> Result<PathBuf, McpError> {
-        let workspace = memory_api::workspace::validate_explicit_workspace_selector(
-            Some(workspace),
-        )
-        .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
+        let workspace =
+            memory_api::workspace::validate_explicit_workspace_selector(Some(
+                workspace,
+            ))
+            .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
         let resolved = memory_api::workspace::resolve_store_root_from(
             Path::new(workspace),
             ".rule",
@@ -137,8 +138,7 @@ impl RuleServer {
     ) -> Result<T, McpError> {
         let _guard = self.store_lock.lock().await;
         let mut store = RuleStore::open(&index_root).map_err(Self::rule_err)?;
-        if let Some(workspace_root) =
-            workspace_root_for_index_root(&index_root)
+        if let Some(workspace_root) = workspace_root_for_index_root(&index_root)
         {
             for root in discover_workspace_scan_roots(&workspace_root) {
                 store
@@ -285,7 +285,10 @@ impl RuleServer {
         self.rule_add_root_tool(input).await
     }
 
-    #[tool(name = "rule_move_preflight", description = "Read-only preflight plan for moving a rule to another workspace store.")]
+    #[tool(
+        name = "rule_move_preflight",
+        description = "Read-only preflight plan for moving a rule to another workspace store."
+    )]
     pub async fn rule_move_preflight(
         &self,
         Parameters(input): Parameters<RuleMoveInput>,
@@ -299,7 +302,10 @@ impl RuleServer {
         .await
     }
 
-    #[tool(name = "rule_move_apply", description = "Execute a supported rule move to another workspace store.")]
+    #[tool(
+        name = "rule_move_apply",
+        description = "Execute a supported rule move to another workspace store."
+    )]
     pub async fn rule_move_apply(
         &self,
         Parameters(input): Parameters<RuleMoveInput>,
@@ -317,12 +323,17 @@ impl RuleServer {
         .await
     }
 
-    #[tool(name = "rule_move_resume", description = "Resume an interrupted rule move from a journal id.")]
+    #[tool(
+        name = "rule_move_resume",
+        description = "Resume an interrupted rule move from a journal id."
+    )]
     pub async fn rule_move_resume(
         &self,
         Parameters(input): Parameters<RuleMoveJournalInput>,
     ) -> Result<CallToolResult, McpError> {
-        let journal = input.id.parse::<uuid::Uuid>().map_err(|e| McpError::invalid_params(format!("invalid journal id: {e}"), None))?;
+        let journal = input.id.parse::<uuid::Uuid>().map_err(|e| {
+            McpError::invalid_params(format!("invalid journal id: {e}"), None)
+        })?;
         self.with_store(move |store| {
             let outcome = store.resume_move_with_journal(journal).map_err(Self::rule_err)?;
             Self::json_result(&serde_json::json!({"status":"ok","mode":"resume","journal_id":outcome.journal.id,"phase":outcome.journal.phase}))
@@ -330,12 +341,17 @@ impl RuleServer {
         .await
     }
 
-    #[tool(name = "rule_move_rollback", description = "Roll back a rule move from a journal id.")]
+    #[tool(
+        name = "rule_move_rollback",
+        description = "Roll back a rule move from a journal id."
+    )]
     pub async fn rule_move_rollback(
         &self,
         Parameters(input): Parameters<RuleMoveJournalInput>,
     ) -> Result<CallToolResult, McpError> {
-        let journal = input.id.parse::<uuid::Uuid>().map_err(|e| McpError::invalid_params(format!("invalid journal id: {e}"), None))?;
+        let journal = input.id.parse::<uuid::Uuid>().map_err(|e| {
+            McpError::invalid_params(format!("invalid journal id: {e}"), None)
+        })?;
         self.with_store(move |store| {
             let outcome = store.rollback_move_with_journal(journal).map_err(Self::rule_err)?;
             Self::json_result(&serde_json::json!({"status":"ok","mode":"rollback","journal_id":outcome.journal.id,"phase":outcome.journal.phase}))

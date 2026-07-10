@@ -56,7 +56,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/edges", get(handlers::edges::list_edges))
         .route("/api/schema", get(handlers::schema::list_schemas))
         .route("/api/schema/{type_id}", get(handlers::schema::get_schema))
-        .route("/api/graph/workspace", get(handlers::graph::workspace_graph))
+        .route(
+            "/api/graph/workspace",
+            get(handlers::graph::workspace_graph),
+        )
         .route("/api/graph/subgraph", get(handlers::graph::subgraph))
         .route("/api/graph/topgraph", get(handlers::graph::topgraph))
         .route("/api/graph/health", get(handlers::graph::health_check))

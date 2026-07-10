@@ -314,4 +314,3 @@ fn board_show_lists_ten_recommendations_when_available() {
     assert!(!human.contains("Candidate 02"));
     assert!(!human.contains("Candidate 01"));
 }
-

@@ -3,9 +3,7 @@ use std::{
     path::Path,
 };
 
-use memory_api::{
-    generated_markdown::GeneratedMarkdownSnippet,
-};
+use memory_api::generated_markdown::GeneratedMarkdownSnippet;
 use rule_api::{
     GENERATED_FILE_COMMENT,
     RenderTarget,
@@ -17,8 +15,8 @@ use rule_api::{
     prepare_generated_output,
     render_markdown_file,
     resolve_render_target_output,
+    store::GeneratedTargetRecord,
 };
-use rule_api::store::GeneratedTargetRecord;
 use serde_json::{
     Value,
     json,
@@ -182,7 +180,7 @@ fn is_spec_doc_target(target: &RenderTarget) -> bool {
 }
 
 fn rules_as_snippets(
-    rules: &[RuleManifest],
+    rules: &[RuleManifest]
 ) -> Vec<GeneratedMarkdownSnippet<'_>> {
     rules
         .iter()
@@ -197,13 +195,12 @@ fn rules_as_snippets(
 }
 
 fn open_spec_store_for_artifact(
-    artifact_path: &Path,
+    artifact_path: &Path
 ) -> Result<SpecStore, CliRunError> {
     let workspace_root = artifact_path
         .ancestors()
         .find(|ancestor| {
-            ancestor.file_name().and_then(|name| name.to_str())
-                == Some(".spec")
+            ancestor.file_name().and_then(|name| name.to_str()) == Some(".spec")
         })
         .and_then(Path::parent)
         .ok_or_else(|| {
@@ -259,13 +256,7 @@ pub(super) fn sync_targets_payload(
 ) -> Result<SyncTargetsPayload, CliRunError> {
     let config = load_render_target_config(config_path)?;
 
-    ensure_no_zero_match_targets(
-        store,
-        config_path,
-        &config,
-        dry_run,
-        check,
-    )?;
+    ensure_no_zero_match_targets(store, config_path, &config, dry_run, check)?;
 
     let previous = store.list_generated_targets(config_path)?;
     let current_outputs = current_output_keys(config_path, &config);
@@ -329,22 +320,23 @@ fn ensure_no_zero_match_targets(
         return Ok(());
     }
 
-    let zero_matches = config
-        .targets
-        .iter()
-        .filter_map(|target| {
-            let output = resolve_render_target_output(config_path, target);
-            match collect_target_rules(store, target) {
-                Ok(rules) if rules.is_empty() => Some(Ok(format!(
-                    "{} -> {}",
-                    target.name,
-                    output.display()
-                ))),
-                Ok(_) => None,
-                Err(error) => Some(Err(CliRunError::from(error))),
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let zero_matches =
+        config
+            .targets
+            .iter()
+            .filter_map(|target| {
+                let output = resolve_render_target_output(config_path, target);
+                match collect_target_rules(store, target) {
+                    Ok(rules) if rules.is_empty() => Some(Ok(format!(
+                        "{} -> {}",
+                        target.name,
+                        output.display()
+                    ))),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(CliRunError::from(error))),
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
     if zero_matches.is_empty() {
         Ok(())
@@ -382,7 +374,8 @@ fn sync_target_payload_entry(
     check: bool,
 ) -> Result<Value, CliRunError> {
     let output = resolve_render_target_output(config_path, target);
-    let payload = generate_target_payload(store, target, dry_run, check, &output)?;
+    let payload =
+        generate_target_payload(store, target, dry_run, check, &output)?;
 
     if !dry_run && !check {
         maybe_remove_previous_generated_target(
@@ -394,7 +387,11 @@ fn sync_target_payload_entry(
             config_path,
         )?;
         if !is_spec_doc_target(target) {
-            store.upsert_generated_target(config_path, &target.name, &output)?;
+            store.upsert_generated_target(
+                config_path,
+                &target.name,
+                &output,
+            )?;
         }
     }
 

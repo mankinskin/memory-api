@@ -171,17 +171,11 @@ pub(super) fn render_readme_tree_lines(
             .map(|e| e.slug.clone())
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| entry.title.clone());
-        let path = tree_paths
-            .get(id)
-            .cloned()
-            .unwrap_or_else(|| format!(".spec/{SPEC_INDEX_TREE_DIR}/README.md"));
+        let path = tree_paths.get(id).cloned().unwrap_or_else(|| {
+            format!(".spec/{SPEC_INDEX_TREE_DIR}/README.md")
+        });
         let rel = rel_from_readme(&path);
-        out.push_str(&format!(
-            "{}- [{}]({})\n",
-            "  ".repeat(depth),
-            slug,
-            rel
-        ));
+        out.push_str(&format!("{}- [{}]({})\n", "  ".repeat(depth), slug, rel));
 
         if let Some(children) = children_by_parent.get(id) {
             render_readme_tree_lines(
@@ -364,8 +358,12 @@ pub(super) fn children_from_sidecar(
 ) -> HashMap<Uuid, Vec<Uuid>> {
     let mut map: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
     for entry in &sidecar.entries {
-        let mut children: Vec<Uuid> =
-            entry.relations.children.iter().map(|c| c.entry_id).collect();
+        let mut children: Vec<Uuid> = entry
+            .relations
+            .children
+            .iter()
+            .map(|c| c.entry_id)
+            .collect();
         sort_ids_by_slug_then_id(&mut children, extras);
         map.insert(entry.id, children);
     }
@@ -447,7 +445,8 @@ pub(super) fn render_tree_entry_page(
         .map(|p| p.to_string_lossy().replace('\\', "/"))
         .unwrap_or_default();
 
-    let parent_and_siblings = tree_parent_and_siblings(entry, by_id, children_by_parent);
+    let parent_and_siblings =
+        tree_parent_and_siblings(entry, by_id, children_by_parent);
 
     let mut out = String::new();
     render_tree_entry_front_matter(&mut out, entry, extras);
@@ -492,9 +491,7 @@ pub(super) fn render_tree_entry_front_matter(
         .get(&entry.id)
         .and_then(|e| e.component.clone())
         .unwrap_or_else(|| "ungrouped".to_string());
-    let visibility = extras
-        .get(&entry.id)
-        .and_then(|e| e.visibility.clone());
+    let visibility = extras.get(&entry.id).and_then(|e| e.visibility.clone());
     let state = entry
         .tags
         .iter()
@@ -582,7 +579,10 @@ pub(super) fn render_tree_navigation(
             sibling_lines.push(format!("[{label}]({rel})"));
         }
         if !sibling_lines.is_empty() {
-            out.push_str(&format!("- Siblings: {}\n", sibling_lines.join(", ")));
+            out.push_str(&format!(
+                "- Siblings: {}\n",
+                sibling_lines.join(", ")
+            ));
         }
     } else {
         out.push_str("- Parent: _(root)_\n");
@@ -616,8 +616,10 @@ pub(super) fn relative_link(
     from_dir: &str,
     to_path: &str,
 ) -> String {
-    let from_parts: Vec<&str> = from_dir.split('/').filter(|s| !s.is_empty()).collect();
-    let to_parts: Vec<&str> = to_path.split('/').filter(|s| !s.is_empty()).collect();
+    let from_parts: Vec<&str> =
+        from_dir.split('/').filter(|s| !s.is_empty()).collect();
+    let to_parts: Vec<&str> =
+        to_path.split('/').filter(|s| !s.is_empty()).collect();
 
     let mut common = 0usize;
     while common < from_parts.len()
@@ -677,5 +679,3 @@ pub(super) fn render_agent_hook(
 
     out
 }
-
-

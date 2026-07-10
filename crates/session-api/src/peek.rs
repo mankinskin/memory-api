@@ -210,10 +210,7 @@ pub fn peek_prompt_pack(
                 "artifact-pointer-detected".to_string(),
             )
         } else if content_len > options.summarize_threshold_chars {
-            (
-                PromptInclusion::Summarize,
-                "oversized-content".to_string(),
-            )
+            (PromptInclusion::Summarize, "oversized-content".to_string())
         } else {
             (PromptInclusion::Retain, "durable-content".to_string())
         };
@@ -614,28 +611,17 @@ mod tests {
     }
 
     #[test]
-    fn prompt_pack_enforces_measurable_compactness_ratio_for_tool_output_noise() {
+    fn prompt_pack_enforces_measurable_compactness_ratio_for_tool_output_noise()
+    {
         let record = record_with(vec![
             turn(
                 0,
                 SessionRole::User,
                 "Harden sync ambiguity labeling and add regression coverage.",
             ),
-            turn(
-                1,
-                SessionRole::Tool,
-                "status output",
-            ),
-            turn(
-                2,
-                SessionRole::Tool,
-                "status output",
-            ),
-            turn(
-                3,
-                SessionRole::Tool,
-                "status output",
-            ),
+            turn(1, SessionRole::Tool, "status output"),
+            turn(2, SessionRole::Tool, "status output"),
+            turn(3, SessionRole::Tool, "status output"),
             turn(
                 4,
                 SessionRole::Tool,

@@ -25,7 +25,11 @@ fn config(dir: &TempDir) -> LogStoreConfig {
     LogStoreConfig::new(dir.path().join(".log"), "default")
 }
 
-fn capture(id: &str, exec_id: &str, secs: u32) -> ValidationLogCapture {
+fn capture(
+    id: &str,
+    exec_id: &str,
+    secs: u32,
+) -> ValidationLogCapture {
     let execution = ValidationExecution::passed(exec_id, "vt-a", at(secs));
     ValidationLogCapture::from_execution(
         id,

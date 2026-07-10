@@ -405,11 +405,9 @@ async fn descendant_ticket_ref_from_list_is_followable() {
     let list_bytes = to_bytes(list_response.into_body(), 1024 * 1024)
         .await
         .unwrap();
-    let list_payload: serde_json::Value = serde_json::from_slice(&list_bytes).unwrap();
-    assert_eq!(
-        list_payload["items"][0]["ticket_ref"]["workspace"],
-        "child"
-    );
+    let list_payload: serde_json::Value =
+        serde_json::from_slice(&list_bytes).unwrap();
+    assert_eq!(list_payload["items"][0]["ticket_ref"]["workspace"], "child");
     assert_eq!(
         list_payload["items"][0]["ticket_ref"]["id"],
         child_id.to_string()
@@ -427,12 +425,10 @@ async fn descendant_ticket_ref_from_list_is_followable() {
     let detail_bytes = to_bytes(detail_response.into_body(), 1024 * 1024)
         .await
         .unwrap();
-    let detail_payload: serde_json::Value = serde_json::from_slice(&detail_bytes).unwrap();
+    let detail_payload: serde_json::Value =
+        serde_json::from_slice(&detail_bytes).unwrap();
     assert_eq!(detail_payload["active_workspace"], "child");
-    assert_eq!(
-        detail_payload["ticket"]["ticket_ref"]["workspace"],
-        "child"
-    );
+    assert_eq!(detail_payload["ticket"]["ticket_ref"]["workspace"], "child");
     assert_eq!(
         detail_payload["ticket"]["ticket_ref"]["id"],
         child_id.to_string()
@@ -498,7 +494,8 @@ async fn ancestor_graph_ref_from_child_workspace_is_followable() {
     let graph_bytes = to_bytes(graph_response.into_body(), 1024 * 1024)
         .await
         .unwrap();
-    let graph_payload: serde_json::Value = serde_json::from_slice(&graph_bytes).unwrap();
+    let graph_payload: serde_json::Value =
+        serde_json::from_slice(&graph_bytes).unwrap();
 
     let parent_node = graph_payload["nodes"]
         .as_array()
@@ -530,12 +527,13 @@ async fn ancestor_graph_ref_from_child_workspace_is_followable() {
     let history_bytes = to_bytes(history_response.into_body(), 1024 * 1024)
         .await
         .unwrap();
-    let history_payload: serde_json::Value = serde_json::from_slice(&history_bytes).unwrap();
-    assert_eq!(history_payload["active_workspace"], parent_workspace.clone());
+    let history_payload: serde_json::Value =
+        serde_json::from_slice(&history_bytes).unwrap();
     assert_eq!(
-        history_payload["ticket_ref"]["workspace"],
-        parent_workspace
+        history_payload["active_workspace"],
+        parent_workspace.clone()
     );
+    assert_eq!(history_payload["ticket_ref"]["workspace"], parent_workspace);
     assert_eq!(history_payload["ticket_ref"]["id"], parent_id.to_string());
 }
 
@@ -597,24 +595,21 @@ async fn workspace_graph_includes_isolated_local_and_cross_workspace_nodes() {
         .uri("/api/workspaces")
         .body(Body::empty())
         .unwrap();
-    let workspace_response = app.clone().oneshot(workspace_request).await.unwrap();
+    let workspace_response =
+        app.clone().oneshot(workspace_request).await.unwrap();
     assert_eq!(workspace_response.status(), StatusCode::OK);
-    let workspace_bytes = to_bytes(
-        workspace_response.into_body(),
-        1024 * 1024,
-    )
-    .await
-    .unwrap();
-    let workspace_payload: serde_json::Value = serde_json::from_slice(&workspace_bytes).unwrap();
+    let workspace_bytes = to_bytes(workspace_response.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    let workspace_payload: serde_json::Value =
+        serde_json::from_slice(&workspace_bytes).unwrap();
     let child_workspace = workspace_payload["active_workspace"]
         .as_str()
         .expect("active workspace")
         .to_string();
     let request = Request::builder()
         .method(Method::GET)
-        .uri(format!(
-            "/api/graph/workspace?workspace={child_workspace}"
-        ))
+        .uri(format!("/api/graph/workspace?workspace={child_workspace}"))
         .body(Body::empty())
         .unwrap();
 

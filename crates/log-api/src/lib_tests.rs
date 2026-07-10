@@ -25,8 +25,11 @@ fn sample_time() -> chrono::DateTime<chrono::Utc> {
 }
 
 fn sample_execution() -> ValidationExecution {
-    let mut execution =
-        ValidationExecution::passed("exec-1", "validation-spec-1", sample_time());
+    let mut execution = ValidationExecution::passed(
+        "exec-1",
+        "validation-spec-1",
+        sample_time(),
+    );
     execution.links = ValidationLinks {
         spec_ids: vec!["spec-1".to_string()],
         acceptance_criterion_ids: vec!["criterion-1".to_string()],
@@ -57,7 +60,9 @@ fn captures_and_retrievals_round_trip_through_serde() {
         capture.links.clone(),
     );
 
-    let json = serde_json::to_string_pretty(&(capture.clone(), retrieval.clone())).unwrap();
+    let json =
+        serde_json::to_string_pretty(&(capture.clone(), retrieval.clone()))
+            .unwrap();
     let reparsed: (ValidationLogCapture, ValidationLogRetrieval) =
         serde_json::from_str(&json).unwrap();
 

@@ -35,7 +35,6 @@ use crate::serve::{
     error::task_join_err,
 };
 
-
 /// A single mutation command within a batch request body.
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
@@ -93,15 +92,20 @@ pub struct BatchResponse {
     pub results: Vec<Value>,
 }
 
-
 enum BatchUndoOp {
-    Delete { id: Uuid },
+    Delete {
+        id: Uuid,
+    },
     RestoreUpdate {
         id: Uuid,
         saved_extra: BTreeMap<String, Value>,
         saved_state: Option<String>,
     },
-    RemoveEdge { from: Uuid, to: Uuid, kind: String },
+    RemoveEdge {
+        from: Uuid,
+        to: Uuid,
+        kind: String,
+    },
 }
 
 /// Apply a single rollback operation, appending any error description to `errors`.
@@ -137,7 +141,6 @@ fn apply_batch_undo(
         },
     }
 }
-
 
 /// Snapshot the full extra-field map and state of a ticket before mutation.
 fn snapshot_ticket(
@@ -321,7 +324,6 @@ fn dispatch_command(
         },
     }
 }
-
 
 /// `POST /api/batch`
 pub async fn batch_tickets(

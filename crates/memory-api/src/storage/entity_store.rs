@@ -416,8 +416,8 @@ impl EntityStore {
         if update_search {
             let body = self.fs.read_description(&entry.path);
             let created_at_str = indexed.created_at.to_rfc3339();
-            let effort_str = entry.manifest.extra.get("effort")
-                .and_then(|v| match v {
+            let effort_str =
+                entry.manifest.extra.get("effort").and_then(|v| match v {
                     serde_json::Value::String(s) => Some(s.clone()),
                     serde_json::Value::Number(n) => Some(n.to_string()),
                     _ => None,
@@ -478,10 +478,10 @@ mod tests {
         use crate::model::entity::EntityManifest;
         use serde_json::json;
         use tantivy::schema::{
-            Schema,
             FAST,
             STORED,
             STRING,
+            Schema,
             TEXT,
         };
 
@@ -564,14 +564,13 @@ mod tests {
             std::fs::read_dir(&search_dir)
                 .unwrap()
                 .filter_map(|e| e.ok().map(|e| e.path()))
-                .filter(|p| {
-                    p.extension().and_then(|x| x.to_str()) == Some(ext)
-                })
+                .filter(|p| p.extension().and_then(|x| x.to_str()) == Some(ext))
                 .collect()
         };
 
         // 1. Corrupt meta.json (unopenable index).
-        std::fs::write(search_dir.join("meta.json"), b"not valid json").unwrap();
+        std::fs::write(search_dir.join("meta.json"), b"not valid json")
+            .unwrap();
         assert_eq!(store.search("needle", 10).unwrap().len(), 3);
 
         // 2. Wipe the whole index directory.
@@ -598,8 +597,12 @@ mod tests {
         assert_eq!(store.search("needle", 10).unwrap().len(), 3);
 
         // The index is healthy and every seeded entity is searchable again.
-        let healed: std::collections::HashSet<_> =
-            store.search("needle", 10).unwrap().into_iter().map(|r| r.id).collect();
+        let healed: std::collections::HashSet<_> = store
+            .search("needle", 10)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
         for id in ids {
             assert!(healed.contains(&id));
         }
@@ -620,8 +623,13 @@ mod tests {
         let id = Uuid::new_v4();
         let mut manifest = EntityManifest::new(id, Utc::now());
         manifest.extra.insert("type".into(), json!("rule-entry"));
-        manifest.extra.insert("title".into(), json!("Corrupt reindex"));
-        store.fs.create(&manifest, &entity_dir, Some("searchable body")).unwrap();
+        manifest
+            .extra
+            .insert("title".into(), json!("Corrupt reindex"));
+        store
+            .fs
+            .create(&manifest, &entity_dir, Some("searchable body"))
+            .unwrap();
         store.scan(true).unwrap();
 
         // Corrupt every segment file, then force a reindex.
@@ -641,8 +649,8 @@ mod tests {
 
     #[test]
     fn test_query_ordering_comparisons() {
-        use chrono::TimeZone;
         use crate::model::entity::EntityManifest;
+        use chrono::TimeZone;
         use serde_json::json;
 
         let tmp = tempfile::tempdir().unwrap();
@@ -653,29 +661,52 @@ mod tests {
         let id1 = Uuid::new_v4();
         let date1 = Utc.with_ymd_and_hms(2026, 6, 1, 12, 0, 0).unwrap();
         let mut manifest1 = EntityManifest::new(id1, date1);
-        manifest1.extra.insert("type".to_string(), json!("tracker-improvement"));
-        manifest1.extra.insert("title".to_string(), json!("Low effort, early date"));
+        manifest1
+            .extra
+            .insert("type".to_string(), json!("tracker-improvement"));
+        manifest1
+            .extra
+            .insert("title".to_string(), json!("Low effort, early date"));
         manifest1.extra.insert("state".to_string(), json!("ready"));
         manifest1.extra.insert("effort".to_string(), json!("3"));
-        store.fs.create(&manifest1, &entity_dir, Some("Description 1")).unwrap();
+        store
+            .fs
+            .create(&manifest1, &entity_dir, Some("Description 1"))
+            .unwrap();
 
         let id2 = Uuid::new_v4();
         let date2 = Utc.with_ymd_and_hms(2026, 6, 5, 12, 0, 0).unwrap();
         let mut manifest2 = EntityManifest::new(id2, date2);
-        manifest2.extra.insert("type".to_string(), json!("tracker-improvement"));
-        manifest2.extra.insert("title".to_string(), json!("Medium effort, mid date"));
-        manifest2.extra.insert("state".to_string(), json!("in-implementation"));
+        manifest2
+            .extra
+            .insert("type".to_string(), json!("tracker-improvement"));
+        manifest2
+            .extra
+            .insert("title".to_string(), json!("Medium effort, mid date"));
+        manifest2
+            .extra
+            .insert("state".to_string(), json!("in-implementation"));
         manifest2.extra.insert("effort".to_string(), json!("5"));
-        store.fs.create(&manifest2, &entity_dir, Some("Description 2")).unwrap();
+        store
+            .fs
+            .create(&manifest2, &entity_dir, Some("Description 2"))
+            .unwrap();
 
         let id3 = Uuid::new_v4();
         let date3 = Utc.with_ymd_and_hms(2026, 6, 10, 12, 0, 0).unwrap();
         let mut manifest3 = EntityManifest::new(id3, date3);
-        manifest3.extra.insert("type".to_string(), json!("tracker-improvement"));
-        manifest3.extra.insert("title".to_string(), json!("High effort, late date"));
+        manifest3
+            .extra
+            .insert("type".to_string(), json!("tracker-improvement"));
+        manifest3
+            .extra
+            .insert("title".to_string(), json!("High effort, late date"));
         manifest3.extra.insert("state".to_string(), json!("done"));
         manifest3.extra.insert("effort".to_string(), json!("8"));
-        store.fs.create(&manifest3, &entity_dir, Some("Description 3")).unwrap();
+        store
+            .fs
+            .create(&manifest3, &entity_dir, Some("Description 3"))
+            .unwrap();
 
         // Scan and index them all!
         store.scan(true).unwrap();
@@ -702,12 +733,19 @@ mod tests {
         assert!(ids.contains(&id3));
 
         // Query 4: created_at gt mid date (should return id3)
-        let results = store.search("created_at:>2026-06-05T12:00:00Z", 10).unwrap();
+        let results = store
+            .search("created_at:>2026-06-05T12:00:00Z", 10)
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, id3);
 
         // Query 5: created_at range (should return id1 and id2)
-        let results = store.search("created_at:[2026-06-01T00:00:00Z TO 2026-06-06T00:00:00Z]", 10).unwrap();
+        let results = store
+            .search(
+                "created_at:[2026-06-01T00:00:00Z TO 2026-06-06T00:00:00Z]",
+                10,
+            )
+            .unwrap();
         assert_eq!(results.len(), 2);
         let ids: Vec<Uuid> = results.iter().map(|r| r.id).collect();
         assert!(ids.contains(&id1));

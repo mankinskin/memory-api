@@ -9,7 +9,10 @@ use super::{
     AuditServer,
 };
 
-fn run_git(repo_root: &std::path::Path, args: &[&str]) {
+fn run_git(
+    repo_root: &std::path::Path,
+    args: &[&str],
+) {
     let status = Command::new("git")
         .current_dir(repo_root)
         .args(args)

@@ -6,11 +6,13 @@
 //! next`, `ticket-mcp next_tickets`, ticket health surfaces, and repo audit
 //! stay aligned.
 
-use std::cmp::Ordering;
-use std::collections::{
-    HashMap,
-    HashSet,
-    VecDeque,
+use std::{
+    cmp::Ordering,
+    collections::{
+        HashMap,
+        HashSet,
+        VecDeque,
+    },
 };
 
 use chrono::{
@@ -128,9 +130,8 @@ pub struct WorkflowModel {
 
 #[path = "workflow_metrics.rs"]
 mod workflow_metrics;
-use workflow_metrics::*;
 pub use workflow_metrics::parse_effort;
-
+use workflow_metrics::*;
 
 impl WorkflowModel {
     /// Build the shared workflow model from indexed tickets and dependency edges.
@@ -142,10 +143,9 @@ impl WorkflowModel {
         let state_index = build_state_index(store);
         let priorities = read_priorities(&tickets);
         let efforts = read_efforts(&tickets);
-        let workflow_facts = store
-            .get_workflow_facts_many(
-                &tickets.iter().map(|ticket| ticket.id).collect::<Vec<_>>(),
-            )?;
+        let workflow_facts = store.get_workflow_facts_many(
+            &tickets.iter().map(|ticket| ticket.id).collect::<Vec<_>>(),
+        )?;
         Ok(Self::build_from_parts(
             tickets,
             all_edges,
@@ -253,7 +253,8 @@ impl WorkflowModel {
         &self,
         candidates: &mut [Uuid],
     ) {
-        candidates.sort_by(|left, right| self.compare_candidate_ids(*left, *right));
+        candidates
+            .sort_by(|left, right| self.compare_candidate_ids(*left, *right));
     }
 
     /// Return the set of ticket IDs whose title starts with `filter`, or `None`
@@ -266,7 +267,9 @@ impl WorkflowModel {
         filter.map(|prefix| {
             tickets
                 .iter()
-                .filter(|t| t.title.as_deref().unwrap_or("").starts_with(prefix))
+                .filter(|t| {
+                    t.title.as_deref().unwrap_or("").starts_with(prefix)
+                })
                 .map(|t| t.id)
                 .collect()
         })
@@ -287,7 +290,9 @@ impl WorkflowModel {
                 continue;
             }
 
-            for dependent in self.reverse_map.get(&current).into_iter().flatten() {
+            for dependent in
+                self.reverse_map.get(&current).into_iter().flatten()
+            {
                 if dependents.insert(*dependent) {
                     queue.push_back(*dependent);
                 }
@@ -351,7 +356,10 @@ impl WorkflowModel {
             .iter()
             .filter(|ticket_id| {
                 !self
-                    .unresolved_dependencies_excluding(ticket_id, &HashSet::new())
+                    .unresolved_dependencies_excluding(
+                        ticket_id,
+                        &HashSet::new(),
+                    )
                     .is_empty()
             })
             .count();
@@ -429,7 +437,9 @@ impl WorkflowModel {
         &self,
         dependent_id: &Uuid,
     ) -> Option<&[DependencyStateInversion]> {
-        self.inversions_by_dependent.get(dependent_id).map(Vec::as_slice)
+        self.inversions_by_dependent
+            .get(dependent_id)
+            .map(Vec::as_slice)
     }
 
     pub fn state_rank(
@@ -453,7 +463,8 @@ impl WorkflowModel {
             return self.finalize_tree_node(ticket_id, 0, false, Vec::new(), 1);
         }
 
-        let child_ids = self.unresolved_dependencies_excluding(&ticket_id, &HashSet::new());
+        let child_ids =
+            self.unresolved_dependencies_excluding(&ticket_id, &HashSet::new());
         let remaining_blocker_count = child_ids.len();
         let children = child_ids
             .into_iter()
@@ -496,8 +507,9 @@ impl WorkflowModel {
             })
             .copied()
             .collect::<Vec<_>>();
-        let remaining_blocker_count =
-            self.unresolved_dependencies_excluding(&ticket_id, satisfied_ids).len();
+        let remaining_blocker_count = self
+            .unresolved_dependencies_excluding(&ticket_id, satisfied_ids)
+            .len();
         let is_frontier = allow_frontier
             && remaining_blocker_count == 0
             && is_candidate_state(ticket.state.as_deref());
@@ -566,8 +578,10 @@ impl WorkflowModel {
             is_frontier,
             dependency_count: metrics.dependency_count,
             immediate_dependees: metrics.immediate_dependees,
-            transitive_reverse_dependents: metrics.transitive_reverse_dependents,
-            affected_reverse_dependent_reach: metrics.affected_reverse_dependent_reach,
+            transitive_reverse_dependents: metrics
+                .transitive_reverse_dependents,
+            affected_reverse_dependent_reach: metrics
+                .affected_reverse_dependent_reach,
             dependency_state_gap: metrics.dependency_state_gap,
         })
     }
@@ -579,15 +593,15 @@ impl WorkflowModel {
         nodes.sort_by(|left, right| {
             left.unresolved_frontier_leaf_count
                 .cmp(&right.unresolved_frontier_leaf_count)
-                .then_with(|| left.blocker_distance.cmp(&right.blocker_distance))
+                .then_with(|| {
+                    left.blocker_distance.cmp(&right.blocker_distance)
+                })
                 .then_with(|| {
                     effort_sort_key(self.effort(&left.ticket_id))
                         .cmp(&effort_sort_key(self.effort(&right.ticket_id)))
                 })
                 .then_with(|| {
-                    right
-                        .dependency_state_gap
-                        .cmp(&left.dependency_state_gap)
+                    right.dependency_state_gap.cmp(&left.dependency_state_gap)
                 })
                 .then_with(|| {
                     right
@@ -599,7 +613,10 @@ impl WorkflowModel {
                         .transitive_reverse_dependents
                         .cmp(&left.transitive_reverse_dependents)
                 })
-                .then_with(|| priority_weight(&left.priority).cmp(&priority_weight(&right.priority)))
+                .then_with(|| {
+                    priority_weight(&left.priority)
+                        .cmp(&priority_weight(&right.priority))
+                })
                 .then_with(|| {
                     left.title
                         .as_deref()
@@ -667,7 +684,8 @@ impl WorkflowModel {
             return Ordering::Less;
         };
         let left_metrics = self.metrics.get(&left).cloned().unwrap_or_default();
-        let right_metrics = self.metrics.get(&right).cloned().unwrap_or_default();
+        let right_metrics =
+            self.metrics.get(&right).cloned().unwrap_or_default();
 
         right_metrics
             .max_affected_dependent_state_index
@@ -711,7 +729,9 @@ impl WorkflowModel {
                     .cmp(&left_metrics.immediate_dependees)
             })
             .then_with(|| right_ticket.created_at.cmp(&left_ticket.created_at))
-            .then_with(|| ticket_title(left_ticket).cmp(ticket_title(right_ticket)))
+            .then_with(|| {
+                ticket_title(left_ticket).cmp(ticket_title(right_ticket))
+            })
             .then_with(|| left.cmp(&right))
     }
 }
@@ -749,7 +769,10 @@ pub fn apply_board_filter(
     let excluded_by_board = snapshot
         .entries
         .iter()
-        .filter(|entry| tracked_by_board(&entry.status) && candidate_ids.contains(&entry.ticket_id))
+        .filter(|entry| {
+            tracked_by_board(&entry.status)
+                && candidate_ids.contains(&entry.ticket_id)
+        })
         .map(|entry| BoardExcludedCandidate {
             ticket_id: entry.ticket_id,
             agent_id: entry.agent_id.clone(),
@@ -818,7 +841,6 @@ fn board_status(status: &BoardEntryStatus) -> &'static str {
         BoardEntryStatus::Completed => "completed",
     }
 }
-
 
 #[cfg(test)]
 #[path = "workflow/tests.rs"]

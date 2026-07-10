@@ -144,7 +144,12 @@ fn update_allows_reverse_transitions_from_terminal_states() {
         )
         .unwrap();
     assert_eq!(
-        store.get_indexed(&done_ticket).unwrap().unwrap().state.as_deref(),
+        store
+            .get_indexed(&done_ticket)
+            .unwrap()
+            .unwrap()
+            .state
+            .as_deref(),
         Some("in-review")
     );
 
@@ -230,4 +235,3 @@ fn workflow_facts_follow_depends_on_edge_removal() {
     assert!(updated.became_actionable_at.is_some());
     assert!(updated.last_blocker_progress_at.is_none());
 }
-

@@ -4,8 +4,10 @@
 //! that finding keys, severities, and message text are identical regardless of
 //! how they are serialized to their respective envelopes.
 
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::{
+    collections::BTreeMap,
+    path::PathBuf,
+};
 
 use serde::Serialize;
 use uuid::Uuid;
@@ -65,7 +67,11 @@ pub struct HealthReport {
 }
 
 impl HealthReport {
-    fn record(&mut self, check: &str, finding: HealthFinding) {
+    fn record(
+        &mut self,
+        check: &str,
+        finding: HealthFinding,
+    ) {
         *self.summary.entry(check.to_string()).or_insert(0) += 1;
         self.findings.push(finding);
     }
@@ -89,10 +95,7 @@ pub fn collect_findings(
     let done_ids = tickets
         .iter()
         .filter(|t| {
-            matches!(
-                t.state.as_deref(),
-                Some("done") | Some("cancelled")
-            )
+            matches!(t.state.as_deref(), Some("done") | Some("cancelled"))
         })
         .map(|t| t.id)
         .collect::<std::collections::HashSet<_>>();
@@ -184,7 +187,10 @@ fn append_graph_participation_findings(
     );
 }
 
-fn append_description_findings(ticket: &IndexedTicket, report: &mut HealthReport) {
+fn append_description_findings(
+    ticket: &IndexedTicket,
+    report: &mut HealthReport,
+) {
     match TicketFs::read_description(&ticket.path) {
         None => report.record(
             "missing_description",
@@ -218,7 +224,10 @@ fn append_description_findings(ticket: &IndexedTicket, report: &mut HealthReport
     }
 }
 
-fn append_title_finding(ticket: &IndexedTicket, report: &mut HealthReport) {
+fn append_title_finding(
+    ticket: &IndexedTicket,
+    report: &mut HealthReport,
+) {
     if ticket.title.is_none() || ticket.title.as_deref() == Some("") {
         report.record(
             "missing_title",
@@ -311,11 +320,8 @@ fn append_dangling_edge_findings(
         if edge.from != ticket.id || edge.kind != "depends_on" {
             continue;
         }
-        let target_exists = store
-            .get_indexed(&edge.to)
-            .ok()
-            .flatten()
-            .is_some();
+        let target_exists =
+            store.get_indexed(&edge.to).ok().flatten().is_some();
         if target_exists {
             continue;
         }
@@ -452,15 +458,21 @@ mod tests {
 
         let tickets = store.list(None, None, None).unwrap();
         let edges = store.list_all_edges().unwrap();
-        let workflow = WorkflowModel::build(&store, tickets.clone(), edges.clone()).unwrap();
-        let report = super::collect_findings(&store, &tickets, &edges, &workflow);
+        let workflow =
+            WorkflowModel::build(&store, tickets.clone(), edges.clone())
+                .unwrap();
+        let report =
+            super::collect_findings(&store, &tickets, &edges, &workflow);
 
         let ticket_findings: Vec<_> = report
             .findings
             .iter()
             .filter(|f| f.ticket_id == id)
             .collect();
-        assert!(ticket_findings.is_empty(), "expected no findings, got {ticket_findings:?}");
+        assert!(
+            ticket_findings.is_empty(),
+            "expected no findings, got {ticket_findings:?}"
+        );
     }
 
     #[test]
@@ -480,15 +492,21 @@ mod tests {
 
         let tickets = store.list(None, None, None).unwrap();
         let edges = store.list_all_edges().unwrap();
-        let workflow = WorkflowModel::build(&store, tickets.clone(), edges.clone()).unwrap();
-        let report = super::collect_findings(&store, &tickets, &edges, &workflow);
+        let workflow =
+            WorkflowModel::build(&store, tickets.clone(), edges.clone())
+                .unwrap();
+        let report =
+            super::collect_findings(&store, &tickets, &edges, &workflow);
 
         let finding = report
             .findings
             .iter()
             .find(|f| f.ticket_id == id && f.check == "missing_description")
             .expect("expected missing_description finding");
-        assert_eq!(finding.severity, "warning", "severity must be 'warning', not 'error'");
+        assert_eq!(
+            finding.severity, "warning",
+            "severity must be 'warning', not 'error'"
+        );
         assert!(
             finding.message.contains("description.md"),
             "message must mention description.md"
@@ -513,8 +531,11 @@ mod tests {
 
         let tickets = store.list(None, None, None).unwrap();
         let edges = store.list_all_edges().unwrap();
-        let workflow = WorkflowModel::build(&store, tickets.clone(), edges.clone()).unwrap();
-        let report = super::collect_findings(&store, &tickets, &edges, &workflow);
+        let workflow =
+            WorkflowModel::build(&store, tickets.clone(), edges.clone())
+                .unwrap();
+        let report =
+            super::collect_findings(&store, &tickets, &edges, &workflow);
 
         let finding = report
             .findings
@@ -560,8 +581,11 @@ mod tests {
 
         let tickets = store.list(None, None, None).unwrap();
         let edges = store.list_all_edges().unwrap();
-        let workflow = WorkflowModel::build(&store, tickets.clone(), edges.clone()).unwrap();
-        let report = super::collect_findings(&store, &tickets, &edges, &workflow);
+        let workflow =
+            WorkflowModel::build(&store, tickets.clone(), edges.clone())
+                .unwrap();
+        let report =
+            super::collect_findings(&store, &tickets, &edges, &workflow);
 
         let ticket_findings: Vec<_> = report
             .findings
@@ -591,8 +615,11 @@ mod tests {
 
         let tickets = store.list(None, None, None).unwrap();
         let edges = store.list_all_edges().unwrap();
-        let workflow = WorkflowModel::build(&store, tickets.clone(), edges.clone()).unwrap();
-        let report = super::collect_findings(&store, &tickets, &edges, &workflow);
+        let workflow =
+            WorkflowModel::build(&store, tickets.clone(), edges.clone())
+                .unwrap();
+        let report =
+            super::collect_findings(&store, &tickets, &edges, &workflow);
 
         let finding = report
             .findings
@@ -642,13 +669,18 @@ mod tests {
 
         let tickets = store.list(None, None, None).unwrap();
         let edges = store.list_all_edges().unwrap();
-        let workflow = WorkflowModel::build(&store, tickets.clone(), edges.clone()).unwrap();
-        let report = super::collect_findings(&store, &tickets, &edges, &workflow);
+        let workflow =
+            WorkflowModel::build(&store, tickets.clone(), edges.clone())
+                .unwrap();
+        let report =
+            super::collect_findings(&store, &tickets, &edges, &workflow);
 
         let finding = report
             .findings
             .iter()
-            .find(|f| f.ticket_id == id && f.check == "missing_effort_estimation")
+            .find(|f| {
+                f.ticket_id == id && f.check == "missing_effort_estimation"
+            })
             .expect("expected missing_effort_estimation finding");
         assert_eq!(finding.severity, "warning");
         assert!(

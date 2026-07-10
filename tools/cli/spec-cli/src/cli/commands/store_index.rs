@@ -1,6 +1,10 @@
-use std::fs;
-use std::path::Path;
-use std::path::PathBuf;
+use std::{
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
 use serde_json::{
     Value,
@@ -142,7 +146,8 @@ pub(crate) fn cmd_store_index(
             fs::create_dir_all(parent)
                 .map_err(memory_api::error::StorageError::Io)?;
         }
-        fs::write(&path, content).map_err(memory_api::error::StorageError::Io)?;
+        fs::write(&path, content)
+            .map_err(memory_api::error::StorageError::Io)?;
         written.push(display_path(path.as_path()));
     }
 

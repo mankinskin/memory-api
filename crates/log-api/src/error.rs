@@ -7,10 +7,7 @@ pub enum LogError {
     EmptyRoot,
 
     #[error("interoperability contract violation for {record_kind}: {detail}")]
-    InteroperabilityContract {
-        record_kind: String,
-        detail: String,
-    },
+    InteroperabilityContract { record_kind: String, detail: String },
 
     #[error("identifier contains invalid path characters: {0}")]
     InvalidId(String),

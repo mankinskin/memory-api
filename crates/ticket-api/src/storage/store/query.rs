@@ -47,9 +47,7 @@ impl TicketStore {
         let needs_manifest_check = !field_filters.is_empty();
         let visible_roots = visible_scan_roots(self)?;
         let mut filtered: Vec<IndexedTicket> = self
-            .normalize_indexed_tickets(
-                self.index.list_tickets()?,
-            )
+            .normalize_indexed_tickets(self.index.list_tickets()?)
             .into_iter()
             .filter(|ticket| is_ticket_visible(ticket, &visible_roots))
             .filter(|ticket| matches_filters(ticket, state_filter, type_filter))
@@ -187,7 +185,11 @@ impl TicketStore {
             hook.edge_upsert(edge.from, edge.to, edge.kind.clone());
         }
         if edge.kind == "depends_on" && changed {
-            self.refresh_workflow_facts_for_roots(&[edge.from], false, source.updated_at)?;
+            self.refresh_workflow_facts_for_roots(
+                &[edge.from],
+                false,
+                source.updated_at,
+            )?;
         }
         Ok(())
     }
@@ -221,13 +223,19 @@ impl TicketStore {
             hook.edge_delete(edge.from, edge.to, edge.kind.clone());
         }
         if edge.kind == "depends_on" && changed {
-            self.refresh_workflow_facts_for_roots(&[edge.from], true, source.updated_at)?;
+            self.refresh_workflow_facts_for_roots(
+                &[edge.from],
+                true,
+                source.updated_at,
+            )?;
         }
         Ok(())
     }
 }
 
-fn visible_scan_roots(store: &TicketStore) -> Result<Vec<std::path::PathBuf>, StorageError> {
+fn visible_scan_roots(
+    store: &TicketStore
+) -> Result<Vec<std::path::PathBuf>, StorageError> {
     // Only surface roots whose persisted policy decision is `included`. Roots
     // marked `ignored` (via marker, glob, or external-path denial) are the
     // final defense against stale/ignored rows leaking into query results.
@@ -237,7 +245,8 @@ fn visible_scan_roots(store: &TicketStore) -> Result<Vec<std::path::PathBuf>, St
         .filter(|persisted| !persisted.metadata.policy_decision.is_ignored())
         .map(|persisted| persisted.root.path)
         .collect::<Vec<_>>();
-    let default_root = store.resolve_scan_root_path(&store.index_root.join("tickets"));
+    let default_root =
+        store.resolve_scan_root_path(&store.index_root.join("tickets"));
     if !roots.iter().any(|root| *root == default_root) {
         roots.push(default_root);
     }

@@ -39,7 +39,8 @@ fn to_move_error(error: RuleError) -> MoveError {
 }
 
 fn rule_entity_root(store_root: &Path) -> PathBuf {
-    memory_api::workspace::resolve_store_root_from(store_root, RULE_INDEX_DIR).join("rules")
+    memory_api::workspace::resolve_store_root_from(store_root, RULE_INDEX_DIR)
+        .join("rules")
 }
 
 fn from_move_error(error: MoveError) -> RuleError {

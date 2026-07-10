@@ -35,10 +35,7 @@ fn manifest_supports_rule_metadata_fields() {
     manifest.set_feedback_summary(3, 1, 0, 2, 1, Some("2026-05-07T14:00:00Z"));
 
     assert_eq!(manifest.order_key(), Some(20));
-    assert_eq!(
-        manifest.repo_scopes(),
-        vec!["context-engine", "memory-api"]
-    );
+    assert_eq!(manifest.repo_scopes(), vec!["context-engine", "memory-api"]);
     assert_eq!(manifest.path_scopes(), vec![".github/**", "AGENTS.md"]);
     assert_eq!(manifest.sentence_anchors(), vec!["p1-s1", "p1-s2"]);
     assert_eq!(manifest.source_repo(), Some("context-engine"));

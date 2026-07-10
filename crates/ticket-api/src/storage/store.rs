@@ -49,8 +49,8 @@ mod lifecycle;
 mod query;
 mod release;
 mod scan;
-mod workflow_facts;
 mod store_open;
+mod workflow_facts;
 
 pub use self::{
     release::{
@@ -251,12 +251,11 @@ impl TicketStore {
             .map(str::to_string)
             .or_else(|| TicketFs::read_description(&indexed.path));
         let created_at_str = indexed.created_at.to_rfc3339();
-        let effort_str = manifest.extra.get("effort")
-            .and_then(|v| match v {
-                serde_json::Value::String(s) => Some(s.clone()),
-                serde_json::Value::Number(n) => Some(n.to_string()),
-                _ => None,
-            });
+        let effort_str = manifest.extra.get("effort").and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        });
         self.with_search_repair(|| {
             self.search.upsert(
                 &id,
@@ -378,14 +377,18 @@ impl TicketStore {
     pub fn get_workflow_facts(
         &self,
         id: &Uuid,
-    ) -> Result<Option<crate::storage::indexed::WorkflowFacts>, StorageError> {
+    ) -> Result<Option<crate::storage::indexed::WorkflowFacts>, StorageError>
+    {
         self.index.get_workflow_facts(id)
     }
 
     pub fn get_workflow_facts_many(
         &self,
         ids: &[Uuid],
-    ) -> Result<HashMap<Uuid, crate::storage::indexed::WorkflowFacts>, StorageError> {
+    ) -> Result<
+        HashMap<Uuid, crate::storage::indexed::WorkflowFacts>,
+        StorageError,
+    > {
         self.index.get_workflow_facts_many(ids)
     }
 
@@ -404,16 +407,14 @@ impl TicketStore {
         let mut indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
         let current_manifest = TicketFs::read(&indexed.path)?;
-        let edge_patch_plans = edge_patch_plans(&patch, &current_manifest.extra)?;
+        let edge_patch_plans =
+            edge_patch_plans(&patch, &current_manifest.extra)?;
         strip_file_backed_edge_fields(&mut patch);
 
         // Determine the target state and transition path.
         // Priority: to_state > last element of transition_states > current state (no change)
-        let (new_state, transition_path) = self.resolve_update_target(
-            &indexed,
-            transition_states,
-            to_state,
-        )?;
+        let (new_state, transition_path) =
+            self.resolve_update_target(&indexed, transition_states, to_state)?;
         let previous_state = indexed.state.clone();
         let updated_manifest = self.apply_manifest_update(
             &indexed.path,
@@ -457,11 +458,19 @@ impl TicketStore {
         // Reconcile board: mark completed on terminal states.
         self.board_reconcile(id, false);
 
-        let state_progressed = previous_state.as_deref() != new_state.as_deref()
+        let state_progressed = previous_state.as_deref()
+            != new_state.as_deref()
             && self.state_rank_for_type(&indexed.type_id, new_state.as_deref())
-                > self.state_rank_for_type(&indexed.type_id, previous_state.as_deref());
+                > self.state_rank_for_type(
+                    &indexed.type_id,
+                    previous_state.as_deref(),
+                );
         if previous_state.as_deref() != new_state.as_deref() {
-            self.refresh_workflow_facts_for_roots(&[*id], state_progressed, now)?;
+            self.refresh_workflow_facts_for_roots(
+                &[*id],
+                state_progressed,
+                now,
+            )?;
         }
 
         Ok(TicketFs::read(&indexed.path).unwrap_or(updated_manifest))
@@ -479,16 +488,15 @@ impl TicketStore {
                 transition_states.unwrap_or(&[]),
                 to,
             )?;
-            let final_state = path
-                .last()
-                .cloned()
-                .unwrap_or_else(|| to.to_string());
+            let final_state =
+                path.last().cloned().unwrap_or_else(|| to.to_string());
             return Ok((Some(final_state), path));
         }
 
         if let Some(transition_states_slice) = transition_states {
             if let Some(final_target) = transition_states_slice.last() {
-                let intermediate_steps = &transition_states_slice[..transition_states_slice.len() - 1];
+                let intermediate_steps = &transition_states_slice
+                    [..transition_states_slice.len() - 1];
                 let path = self.resolve_transition_path(
                     indexed,
                     intermediate_steps,
@@ -556,10 +564,8 @@ impl TicketStore {
 
         let body = TicketFs::read_description(&indexed.path);
         let created_at_str = indexed.created_at.to_rfc3339();
-        let effort_str = updated_manifest
-            .extra
-            .get("effort")
-            .and_then(|v| match v {
+        let effort_str =
+            updated_manifest.extra.get("effort").and_then(|v| match v {
                 serde_json::Value::String(s) => Some(s.clone()),
                 serde_json::Value::Number(n) => Some(n.to_string()),
                 _ => None,
@@ -589,9 +595,13 @@ impl TicketStore {
         if current_state == target_state && transition_states.is_empty() {
             return Ok(vec![]);
         }
-        let schema = self.schema_registry.get(&indexed.type_id).ok_or_else(|| {
-            StorageError::Other(format!("no schema for type '{}'", indexed.type_id))
-        })?;
+        let schema =
+            self.schema_registry.get(&indexed.type_id).ok_or_else(|| {
+                StorageError::Other(format!(
+                    "no schema for type '{}'",
+                    indexed.type_id
+                ))
+            })?;
 
         let mut path = Vec::new();
         let mut from = current_state.to_string();
@@ -603,12 +613,13 @@ impl TicketStore {
                 continue;
             }
 
-            let segment = schema.find_path(&from, &checkpoint).ok_or_else(|| {
-                StorageError::Other(format!(
-                    "no path from '{}' to '{}'",
-                    from, checkpoint
-                ))
-            })?;
+            let segment =
+                schema.find_path(&from, &checkpoint).ok_or_else(|| {
+                    StorageError::Other(format!(
+                        "no path from '{}' to '{}'",
+                        from, checkpoint
+                    ))
+                })?;
 
             path.extend(segment);
             from = checkpoint;
@@ -617,7 +628,8 @@ impl TicketStore {
         if !schema.required_states.is_empty()
             && schema.terminal_states.contains(&target_state.to_string())
         {
-            let history = TicketFs::read_history(&indexed.path).unwrap_or_default();
+            let history =
+                TicketFs::read_history(&indexed.path).unwrap_or_default();
             let mut visited: Vec<String> = history
                 .iter()
                 .filter_map(|r| {
@@ -642,7 +654,6 @@ struct EdgePatchPlan {
     to_add: Vec<Uuid>,
     to_remove: Vec<Uuid>,
 }
-
 
 #[path = "store_helpers.rs"]
 mod store_helpers;

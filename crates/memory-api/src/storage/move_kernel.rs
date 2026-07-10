@@ -45,11 +45,14 @@ const MOVE_LOCKS_DIR: &str = "move-locks";
 const MOVE_JOURNALS_DIR: &str = "move-journals";
 const MOVE_TRACE_TARGET: &str = "memory_api::storage::move_kernel";
 
-
 #[path = "move_kernel/internal.rs"]
 mod internal;
 use internal::*;
-pub use internal::{collect_lock_paths, load_journal, persist_journal};
+pub use internal::{
+    collect_lock_paths,
+    load_journal,
+    persist_journal,
+};
 /// Error type for the move kernel.
 ///
 /// Domain trait implementations map their own storage errors onto
@@ -58,8 +61,8 @@ pub use internal::{collect_lock_paths, load_journal, persist_journal};
 
 #[path = "move_kernel_types.rs"]
 mod move_kernel_types;
-pub use move_kernel_types::*;
 use move_kernel_types::path_buf_is_empty;
+pub use move_kernel_types::*;
 
 /// Build a read-only preflight plan for moving `entity_id` to
 /// `target_workspace_root`.
@@ -71,26 +74,36 @@ pub fn plan_move<D: MoveDomain + ?Sized>(
     let index_dir = domain.store_index_dir().to_string();
     let source_store_root = domain.source_store_root();
     let source_workspace_root =
-        crate::workspace::resolve_workspace_root_from_store_root(&source_store_root, &index_dir);
-    let target_store_root = crate::workspace::resolve_store_root_from(target_workspace_root, &index_dir);
+        crate::workspace::resolve_workspace_root_from_store_root(
+            &source_store_root,
+            &index_dir,
+        );
+    let target_store_root = crate::workspace::resolve_store_root_from(
+        target_workspace_root,
+        &index_dir,
+    );
 
     let subdir = domain.entity_subdir().to_string();
     let source_entity_path = domain.source_entity_path(entity_id)?;
-    let resolved_source_path = source_entity_path
-        .clone()
-        .unwrap_or_else(|| source_store_root.join(&subdir).join(entity_id.to_string()));
-    let destination_entity_path = target_store_root.join(&subdir).join(entity_id.to_string());
+    let resolved_source_path =
+        source_entity_path.clone().unwrap_or_else(|| {
+            source_store_root.join(&subdir).join(entity_id.to_string())
+        });
+    let destination_entity_path =
+        target_store_root.join(&subdir).join(entity_id.to_string());
 
     let mut blockers = Vec::new();
 
-    let source_git_root = git_toplevel(&source_workspace_root).map_err(MoveError::Domain)?;
+    let source_git_root =
+        git_toplevel(&source_workspace_root).map_err(MoveError::Domain)?;
     let target_git_root = resolve_target_git_root_or_block(
         target_workspace_root,
         &source_git_root,
         &mut blockers,
     );
 
-    let git_worktree_topology = classify_git_worktree_topology(&source_git_root, &target_git_root);
+    let git_worktree_topology =
+        classify_git_worktree_topology(&source_git_root, &target_git_root);
     if git_worktree_topology == GitWorktreeTopology::Unrelated {
         blockers.push(MoveBlocker::DifferentGitWorktree {
             source_worktree_root: source_git_root.clone(),
@@ -98,7 +111,8 @@ pub fn plan_move<D: MoveDomain + ?Sized>(
         });
     }
 
-    let target_store_present = domain.target_store_present(&target_store_root)?;
+    let target_store_present =
+        domain.target_store_present(&target_store_root)?;
     if !target_store_present {
         blockers.push(MoveBlocker::MissingTargetStore {
             target_store_root: target_store_root.clone(),
@@ -212,10 +226,11 @@ pub fn resume_move<D: MoveDomain + ?Sized>(
         phase = phase_name(&journal.phase),
         "move_resume_journal_loaded"
     );
-    let target_workspace_root = crate::workspace::resolve_workspace_root_from_store_root(
-        &journal.target_store_root,
-        domain.store_index_dir(),
-    );
+    let target_workspace_root =
+        crate::workspace::resolve_workspace_root_from_store_root(
+            &journal.target_store_root,
+            domain.store_index_dir(),
+        );
     let plan = plan_move(domain, &journal.entity_id, &target_workspace_root)?;
     execute_or_resume(domain, &plan, Some(journal), true)
 }
@@ -248,11 +263,16 @@ pub fn rollback_move<D: MoveDomain + ?Sized>(
     }
     acquire_lock_set(&journal.lock_paths)?;
 
-    if journal.destination_entity_path.exists() && !journal.source_entity_path.exists() {
+    if journal.destination_entity_path.exists()
+        && !journal.source_entity_path.exists()
+    {
         if let Some(parent) = journal.source_entity_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::rename(&journal.destination_entity_path, &journal.source_entity_path)?;
+        fs::rename(
+            &journal.destination_entity_path,
+            &journal.source_entity_path,
+        )?;
     }
 
     for rewrite in &journal.rewritten_path_files {
@@ -261,8 +281,15 @@ pub fn rollback_move<D: MoveDomain + ?Sized>(
 
     if !journal.migrated_board_entries.is_empty() {
         let started = Instant::now();
-        domain.restore_board_history(&journal.target_store_root, &journal.migrated_board_entries)?;
-        record_phase_timing(&mut journal, "rollback_restore_board_history_ms", started.elapsed());
+        domain.restore_board_history(
+            &journal.target_store_root,
+            &journal.migrated_board_entries,
+        )?;
+        record_phase_timing(
+            &mut journal,
+            "rollback_restore_board_history_ms",
+            started.elapsed(),
+        );
     }
 
     let source_scan_started = Instant::now();
@@ -270,14 +297,22 @@ pub fn rollback_move<D: MoveDomain + ?Sized>(
         &journal.source_store_root,
         &[journal.entity_id],
     )?;
-    record_phase_timing(&mut journal, "rollback_scan_source_ms", source_scan_started.elapsed());
+    record_phase_timing(
+        &mut journal,
+        "rollback_scan_source_ms",
+        source_scan_started.elapsed(),
+    );
 
     let target_scan_started = Instant::now();
     domain.reconcile_store_touched(
         &journal.target_store_root,
         &[journal.entity_id],
     )?;
-    record_phase_timing(&mut journal, "rollback_scan_target_ms", target_scan_started.elapsed());
+    record_phase_timing(
+        &mut journal,
+        "rollback_scan_target_ms",
+        target_scan_started.elapsed(),
+    );
 
     journal.phase = MoveExecutionPhase::RolledBack;
     journal.updated_at = Utc::now();
@@ -373,8 +408,18 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
         advance_phase_planned(&mut journal, &journal_root, &span)?;
         advance_phase_locked(&mut journal, &journal_root, &span)?;
         advance_phase_moved(domain, plan, &mut journal, &journal_root, &span)?;
-        advance_phase_source_scanned(domain, &mut journal, &journal_root, &span)?;
-        advance_phase_target_scanned(domain, &mut journal, &journal_root, &span)?;
+        advance_phase_source_scanned(
+            domain,
+            &mut journal,
+            &journal_root,
+            &span,
+        )?;
+        advance_phase_target_scanned(
+            domain,
+            &mut journal,
+            &journal_root,
+            &span,
+        )?;
 
         Ok(())
     })();
@@ -402,7 +447,8 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
         Err(error) => {
             journal.updated_at = Utc::now();
             journal.failure = Some(error.to_string());
-            journal.next_recovery_step = Some(recovery_hint_for_phase(&journal.phase).to_string());
+            journal.next_recovery_step =
+                Some(recovery_hint_for_phase(&journal.phase).to_string());
             let _ = persist_journal(&journal_root, &journal);
             release_lock_set(&journal.lock_paths);
             tracing::error!(
@@ -418,4 +464,3 @@ fn execute_or_resume<D: MoveDomain + ?Sized>(
         },
     }
 }
-

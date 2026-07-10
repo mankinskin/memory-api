@@ -90,8 +90,10 @@ fn duplicate_basename_workspaces_receive_distinct_public_ids() {
         })
         .expect("add parent scan root");
 
-    let left_index_root = root.path().join("alpha").join("shared").join(".ticket");
-    let right_index_root = root.path().join("beta").join("shared").join(".ticket");
+    let left_index_root =
+        root.path().join("alpha").join("shared").join(".ticket");
+    let right_index_root =
+        root.path().join("beta").join("shared").join(".ticket");
     std::fs::create_dir_all(left_index_root.join("tickets"))
         .expect("mkdir left store");
     std::fs::create_dir_all(right_index_root.join("tickets"))
@@ -270,10 +272,7 @@ fn resolve_indexed_many_prefers_deepest_existing_workspace() {
 
     let registry = WorkspaceRegistry::single_opened(Arc::clone(&parent_store));
     let resolved = registry
-        .resolve_indexed_many(
-            registry.primary_workspace_name(),
-            &[ticket_id],
-        )
+        .resolve_indexed_many(registry.primary_workspace_name(), &[ticket_id])
         .expect("resolve ticket");
     let resolved = resolved.get(&ticket_id).expect("resolved ticket");
 

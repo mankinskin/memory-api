@@ -53,7 +53,8 @@ pub(super) struct ParityFixture {
 impl ParityFixture {
     pub(super) fn build() -> Self {
         let dir = tempfile::tempdir().expect("temp dir");
-        let store = Arc::new(TicketStore::init(dir.path()).expect("init store"));
+        let store =
+            Arc::new(TicketStore::init(dir.path()).expect("init store"));
         store
             .add_scan_root(ScanRoot {
                 path: dir.path().join("tickets"),
@@ -147,22 +148,16 @@ impl ParityFixture {
             .expect("build model");
         let mut candidates = model.actionable_candidate_ids(None);
         model.sort_candidate_ids(&mut candidates);
-        candidates
-            .into_iter()
-            .map(|id| id.to_string())
-            .collect()
+        candidates.into_iter().map(|id| id.to_string()).collect()
     }
 
     /// Collect health findings directly via ticket-api.
     pub(super) fn api_health_findings(&self) -> Vec<(String, String, String)> {
         let tickets = self.store.list(None, None, None).expect("list");
         let edges = self.store.list_all_edges().expect("edges");
-        let workflow = WorkflowModel::build(
-            &self.store,
-            tickets.clone(),
-            edges.clone(),
-        )
-        .expect("build model");
+        let workflow =
+            WorkflowModel::build(&self.store, tickets.clone(), edges.clone())
+                .expect("build model");
         let report = collect_findings(&self.store, &tickets, &edges, &workflow);
         report
             .findings
@@ -171,7 +166,9 @@ impl ParityFixture {
             .collect()
     }
 
-    pub(super) fn api_board_filtered_candidates(&self) -> (Vec<String>, Vec<String>, Vec<String>) {
+    pub(super) fn api_board_filtered_candidates(
+        &self
+    ) -> (Vec<String>, Vec<String>, Vec<String>) {
         let tickets = self.store.list(None, None, None).expect("list");
         let edges = self.store.list_all_edges().expect("edges");
         let model = WorkflowModel::build(&self.store, tickets, edges)
@@ -179,7 +176,8 @@ impl ParityFixture {
         let mut candidates = model.actionable_candidate_ids(None);
         model.sort_candidate_ids(&mut candidates);
         let board_snap = self.store.board_show(None).ok();
-        let filtered = apply_board_filter(candidates, board_snap.as_ref(), false);
+        let filtered =
+            apply_board_filter(candidates, board_snap.as_ref(), false);
 
         (
             filtered
@@ -200,17 +198,26 @@ impl ParityFixture {
 pub(super) fn workspace_name_for(dir: &std::path::Path) -> String {
     // WorkspaceRegistry::single_opened computes the name from the index_root
     // path and exposes it via `primary_workspace_name()`.
-    let registry =
-        WorkspaceRegistry::single_opened(Arc::new(TicketStore::init(dir).expect("open")));
+    let registry = WorkspaceRegistry::single_opened(Arc::new(
+        TicketStore::init(dir).expect("open"),
+    ));
     registry.primary_workspace_name().to_owned()
 }
 
-pub(super) async fn http_get_json(app: axum::Router, uri: String) -> Value {
+pub(super) async fn http_get_json(
+    app: axum::Router,
+    uri: String,
+) -> Value {
     let resp = app
         .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "HTTP GET {}", "request failed");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "HTTP GET {}",
+        "request failed"
+    );
     let bytes = to_bytes(resp.into_body(), 4 * 1024 * 1024).await.unwrap();
     serde_json::from_slice(&bytes).unwrap()
 }

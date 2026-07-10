@@ -52,7 +52,7 @@ pub fn evaluate(repo_root: &Path) -> SpecFulfillmentResult {
                 )),
                 findings: Vec::new(),
             };
-        }
+        },
     };
 
     let mut counts = SpecFulfillmentCounts::default();
@@ -71,7 +71,7 @@ pub fn evaluate(repo_root: &Path) -> SpecFulfillmentResult {
 
     let metric = if counts.structured_specs == 0 {
         SpecFulfillmentSummary::not_applicable(
-            "no structured expectation-oriented specs found"
+            "no structured expectation-oriented specs found",
         )
     } else {
         SpecFulfillmentSummary {
@@ -88,7 +88,7 @@ pub fn evaluate(repo_root: &Path) -> SpecFulfillmentResult {
 }
 
 fn prepare_spec_store(
-    repo_root: &Path,
+    repo_root: &Path
 ) -> Result<spec_api::SpecStore, SpecFulfillmentResult> {
     let mut store = match SpecStore::open(repo_root) {
         Ok(store) => store,
@@ -100,7 +100,7 @@ fn prepare_spec_store(
                 )),
                 findings: Vec::new(),
             });
-        }
+        },
         Err(err) => {
             return Err(SpecFulfillmentResult {
                 metric: SpecFulfillmentSummary::failed(format!(
@@ -108,7 +108,7 @@ fn prepare_spec_store(
                 )),
                 findings: Vec::new(),
             });
-        }
+        },
     };
 
     if let Err(err) = store.scan(false) {
@@ -204,10 +204,9 @@ fn finding_for_issue(
             spec.title().unwrap_or("structured spec"),
             evidence_requirement_id
         )
-    } else if let Some(evidence_requirement_id) = issue_suffix(
-        issue,
-        "unsatisfied evidence requirement '",
-    ) {
+    } else if let Some(evidence_requirement_id) =
+        issue_suffix(issue, "unsatisfied evidence requirement '")
+    {
         format!(
             "{} is blocked by unsatisfied evidence requirement '{}'.",
             spec.title().unwrap_or("structured spec"),
@@ -260,10 +259,9 @@ fn finding_instructions(issue: &str) -> Vec<String> {
         ];
     }
 
-    if let Some(evidence_requirement_id) = issue_suffix(
-        issue,
-        "unsatisfied evidence requirement '",
-    ) {
+    if let Some(evidence_requirement_id) =
+        issue_suffix(issue, "unsatisfied evidence requirement '")
+    {
         return vec![
             format!(
                 "Resolve the blocking evidence for '{}' or capture the blocker explicitly in the owning store metadata.",
@@ -286,7 +284,8 @@ fn issue_suffix(
     issue: &str,
     prefix: &str,
 ) -> Option<String> {
-    issue.strip_prefix(prefix)
+    issue
+        .strip_prefix(prefix)
         .and_then(|suffix| suffix.strip_suffix('\''))
         .map(ToString::to_string)
 }
@@ -314,25 +313,33 @@ mod tests {
         let mut store = SpecStore::init(dir.path()).unwrap();
 
         store
-            .create(&make_structured_spec(
-                "Satisfied spec",
-                "spec/satisfied",
-                Some(FulfillmentStatus::Satisfied),
-            ), "", None)
-            .unwrap();
-        store
-            .create(&make_structured_spec(
-                "Blocked spec",
-                "spec/blocked",
-                Some(FulfillmentStatus::Blocked),
-            ), "", None)
-            .unwrap();
-        store
-            .create(&make_structured_spec(
-                "Missing spec",
-                "spec/missing",
+            .create(
+                &make_structured_spec(
+                    "Satisfied spec",
+                    "spec/satisfied",
+                    Some(FulfillmentStatus::Satisfied),
+                ),
+                "",
                 None,
-            ), "", None)
+            )
+            .unwrap();
+        store
+            .create(
+                &make_structured_spec(
+                    "Blocked spec",
+                    "spec/blocked",
+                    Some(FulfillmentStatus::Blocked),
+                ),
+                "",
+                None,
+            )
+            .unwrap();
+        store
+            .create(
+                &make_structured_spec("Missing spec", "spec/missing", None),
+                "",
+                None,
+            )
             .unwrap();
 
         let result = evaluate(dir.path());
@@ -343,7 +350,9 @@ mod tests {
         assert_eq!(result.metric.missed_specs, 1);
         assert_eq!(result.findings.len(), 2);
         assert!(result.findings.iter().any(|finding| {
-            finding.summary.contains("blocked by unsatisfied evidence requirement")
+            finding
+                .summary
+                .contains("blocked by unsatisfied evidence requirement")
         }));
         assert!(result.findings.iter().any(|finding| {
             finding.summary.contains("missing authoritative evidence")
@@ -363,7 +372,8 @@ mod tests {
         }]);
         manifest.set_acceptance_criteria(vec![AcceptanceCriterion {
             id: "criterion-visible".to_string(),
-            statement: "Audit status is derived from structured store data.".to_string(),
+            statement: "Audit status is derived from structured store data."
+                .to_string(),
             expected_property_ids: vec!["prop-visible".to_string()],
             required_evidence_ids: vec!["evidence-doc".to_string()],
         }]);

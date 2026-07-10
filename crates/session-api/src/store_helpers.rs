@@ -16,7 +16,9 @@ pub(super) fn write_json<T: Serialize>(
     })
 }
 
-pub(super) fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, SessionError> {
+pub(super) fn read_json<T: DeserializeOwned>(
+    path: &Path
+) -> Result<T, SessionError> {
     let encoded = fs::read(path).map_err(|source| match source.kind() {
         ErrorKind::NotFound => SessionError::NotFound {
             path: path.to_path_buf(),
@@ -373,5 +375,3 @@ pub(super) fn validate_segment(
     }
     Ok(())
 }
-
-

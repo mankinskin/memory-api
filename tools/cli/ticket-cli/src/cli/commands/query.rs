@@ -8,8 +8,8 @@ use ticket_api::storage::TicketStore;
 use crate::cli::{
     CliRunError,
     TextArgs,
+    commands::ticket_workspace_metadata_for_id,
 };
-use crate::cli::commands::ticket_workspace_metadata_for_id;
 
 pub(crate) fn cmd_search(
     args: TextArgs,

@@ -8,15 +8,24 @@
 
 use std::fs;
 
-use memory_fixtures::{FixtureError, materialize_git_fixture};
-use ticket_api::storage::move_execution::MoveExecutionPhase;
-use ticket_api::storage::move_planner::MovePreflightBlocker;
-use ticket_api::storage::store::TicketStore;
+use memory_fixtures::{
+    FixtureError,
+    materialize_git_fixture,
+};
+use ticket_api::storage::{
+    move_execution::MoveExecutionPhase,
+    move_planner::MovePreflightBlocker,
+    store::TicketStore,
+};
 
-fn git_available_or_skip(result: Result<memory_fixtures::LoadedFixture, FixtureError>) -> Option<memory_fixtures::LoadedFixture> {
+fn git_available_or_skip(
+    result: Result<memory_fixtures::LoadedFixture, FixtureError>
+) -> Option<memory_fixtures::LoadedFixture> {
     match result {
         Ok(fixture) => Some(fixture),
-        Err(FixtureError::Git { detail, .. }) if detail.contains("os error 2") => None,
+        Err(FixtureError::Git { detail, .. })
+            if detail.contains("os error 2") =>
+            None,
         Err(err) => panic!("git fixture should materialize: {err}"),
     }
 }
@@ -35,9 +44,11 @@ fn cross_worktree_move_from_submodule_to_root_is_clean_and_reversible() {
     let target_workspace = fixture.workspace_root.clone();
 
     // Ensure both stores are initialized (target store must exist for the move).
-    let source_store = TicketStore::open_or_init(&source_root).expect("open source store");
+    let source_store =
+        TicketStore::open_or_init(&source_root).expect("open source store");
     source_store.scan(true).expect("scan source");
-    let target_store = TicketStore::open_or_init(&target_workspace).expect("open target store");
+    let target_store = TicketStore::open_or_init(&target_workspace)
+        .expect("open target store");
     target_store.scan(true).expect("scan target");
 
     let id = "00000000-0000-0000-0000-00000000000a"
@@ -65,7 +76,9 @@ fn cross_worktree_move_from_submodule_to_root_is_clean_and_reversible() {
     );
     let reference_file = fixture.workspace_root.join("submodule-a/README.md");
     assert!(
-        plan.path_reference_files.iter().any(|path| path == &reference_file),
+        plan.path_reference_files
+            .iter()
+            .any(|path| path == &reference_file),
         "expected tracked submodule README path reference in preflight plan"
     );
     fs::remove_file(&reference_file).expect("remove tracked reference file");
@@ -101,7 +114,8 @@ fn cross_worktree_move_from_submodule_to_root_is_clean_and_reversible() {
     );
 
     // Destination store can read the moved ticket.
-    let target_store = TicketStore::open_or_init(&target_workspace).expect("reopen target");
+    let target_store =
+        TicketStore::open_or_init(&target_workspace).expect("reopen target");
     target_store.scan(true).expect("rescan target");
     assert!(
         target_store.get(&id).is_ok(),
@@ -115,7 +129,8 @@ fn cross_worktree_move_from_submodule_to_root_is_clean_and_reversible() {
     assert!(rolled.rolled_back);
     assert_eq!(rolled.journal.phase, MoveExecutionPhase::RolledBack);
 
-    let source_store = TicketStore::open_or_init(&source_root).expect("reopen source");
+    let source_store =
+        TicketStore::open_or_init(&source_root).expect("reopen source");
     source_store.scan(true).expect("rescan source");
     assert!(
         source_store.get(&id).is_ok(),

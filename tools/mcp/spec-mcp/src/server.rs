@@ -1,8 +1,3 @@
-use std::{
-    path::Path,
-    path::PathBuf,
-    sync::Arc,
-};
 use rmcp::{
     ErrorData as McpError,
     ServerHandler,
@@ -22,11 +17,18 @@ use serde_json::{
     Value,
     json,
 };
-use tokio::sync::Mutex;
 use spec_api::{
     SpecStore,
     error::SpecError,
 };
+use std::{
+    path::{
+        Path,
+        PathBuf,
+    },
+    sync::Arc,
+};
+use tokio::sync::Mutex;
 mod query;
 mod sections;
 mod types;
@@ -62,10 +64,11 @@ impl SpecServer {
         active_index_root: &Path,
         requested_workspace: Option<&str>,
     ) -> Result<CallToolResult, McpError> {
-        let workspace_root = memory_api::workspace::resolve_workspace_root_from_store_root(
-            active_index_root,
-            ".spec",
-        );
+        let workspace_root =
+            memory_api::workspace::resolve_workspace_root_from_store_root(
+                active_index_root,
+                ".spec",
+            );
         let workspace = requested_workspace
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -305,7 +308,9 @@ impl SpecServer {
         let to = PathBuf::from(&input.to_workspace_root);
         self.with_store(input.workspace.as_deref(), move |store, _| {
             let id = store.resolve_id(&input.id).map_err(Self::spec_err)?;
-            let report = store.plan_move_preflight(&id, &to).map_err(Self::spec_err)?;
+            let report = store
+                .plan_move_preflight(&id, &to)
+                .map_err(Self::spec_err)?;
             Self::json_result(&json!({
                 "status": "ok", "mode": "preflight", "id": id.to_string(),
                 "supported": report.supported(), "blockers": report.blockers,
@@ -339,7 +344,10 @@ impl SpecServer {
         })
         .await
     }
-    #[tool(name = "spec_move_resume", description = "Resume an interrupted spec move from a journal id.")]
+    #[tool(
+        name = "spec_move_resume",
+        description = "Resume an interrupted spec move from a journal id."
+    )]
     pub async fn spec_move_resume(
         &self,
         Parameters(input): Parameters<SpecMoveJournalInput>,
@@ -353,7 +361,10 @@ impl SpecServer {
         })
         .await
     }
-    #[tool(name = "spec_move_rollback", description = "Roll back a spec move from a journal id.")]
+    #[tool(
+        name = "spec_move_rollback",
+        description = "Roll back a spec move from a journal id."
+    )]
     pub async fn spec_move_rollback(
         &self,
         Parameters(input): Parameters<SpecMoveJournalInput>,

@@ -169,10 +169,8 @@ impl TantivySearchIndex {
         if let Some(body) = &doc.body {
             tantivy_doc.add_text(self.fields.body, body);
         }
-        tantivy_doc.add_text(
-            self.fields.state,
-            doc.state.as_deref().unwrap_or(""),
-        );
+        tantivy_doc
+            .add_text(self.fields.state, doc.state.as_deref().unwrap_or(""));
         tantivy_doc.add_text(
             self.fields.ticket_type,
             doc.ticket_type.as_deref().unwrap_or(""),
@@ -187,9 +185,11 @@ impl TantivySearchIndex {
             .and_then(|value| value.parse::<i64>().ok())
             .unwrap_or(0);
         tantivy_doc.add_i64(self.fields.effort, effort_value);
-        writer.add_document(tantivy_doc).map_err(|e: TantivyError| {
-            StorageError::SearchIndex(e.to_string())
-        })?;
+        writer
+            .add_document(tantivy_doc)
+            .map_err(|e: TantivyError| {
+                StorageError::SearchIndex(e.to_string())
+            })?;
         Ok(())
     }
 
@@ -247,8 +247,7 @@ impl TantivySearchIndex {
         // read: a caught, recovered-from corruption panic is not a crash.
         let previous_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(|_| {}));
-        let result =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(op));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(op));
         std::panic::set_hook(previous_hook);
 
         match result {
@@ -260,7 +259,6 @@ impl TantivySearchIndex {
             )),
         }
     }
-
 
     pub fn should_rebuild_search_index(error: &StorageError) -> bool {
         let StorageError::SearchIndex(message) = error else {
@@ -576,56 +574,61 @@ impl TantivySearchIndex {
         // Catch panics from corrupt on-disk segments so the read can be retried
         // against a rebuilt index instead of aborting the process.
         Self::catch_index_panic(|| {
-        let index = self.open_index()?;
-        let reader = index
-            .reader()
-            .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
-        let searcher = reader.searcher();
+            let index = self.open_index()?;
+            let reader = index
+                .reader()
+                .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
+            let searcher = reader.searcher();
 
-        let query: Box<dyn Query> = expr_to_query(expr, &self.fields, &index);
+            let query: Box<dyn Query> =
+                expr_to_query(expr, &self.fields, &index);
 
-        let top_docs = searcher
-            .search(&*query, &TopDocs::with_limit(limit))
-            .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
-
-        let schema = index.schema();
-        let mut results = Vec::with_capacity(top_docs.len());
-
-        for (score, doc_addr) in top_docs {
-            let doc = searcher
-                .doc::<TantivyDocument>(doc_addr)
+            let top_docs = searcher
+                .search(&*query, &TopDocs::with_limit(limit))
                 .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
 
-            let id_str = get_text(&doc, self.fields.id, &schema);
-            let id: Uuid = match id_str.as_deref().and_then(|s| s.parse().ok())
-            {
-                Some(u) => u,
-                None => continue,
-            };
+            let schema = index.schema();
+            let mut results = Vec::with_capacity(top_docs.len());
 
-            results.push(SearchResult {
-                id,
-                title: get_text(&doc, self.fields.title, &schema),
-                state: get_text(&doc, self.fields.state, &schema),
-                ticket_type: get_text(&doc, self.fields.ticket_type, &schema),
-                snippet: get_text(&doc, self.fields.body, &schema)
-                    .map(|b| truncate_snippet(&b, 120)),
-                score,
-            });
-        }
+            for (score, doc_addr) in top_docs {
+                let doc = searcher
+                    .doc::<TantivyDocument>(doc_addr)
+                    .map_err(|e| StorageError::SearchIndex(e.to_string()))?;
 
-        // Suppress unused import warnings — these are used inside expr_to_query.
-        let _ = (
-            AllQuery,
-            BooleanQuery::new(vec![]),
-            Occur::Must,
-            TermQuery::new(
-                Term::from_field_text(self.fields.id, ""),
-                Default::default(),
-            ),
-        );
+                let id_str = get_text(&doc, self.fields.id, &schema);
+                let id: Uuid =
+                    match id_str.as_deref().and_then(|s| s.parse().ok()) {
+                        Some(u) => u,
+                        None => continue,
+                    };
 
-        Ok(results)
+                results.push(SearchResult {
+                    id,
+                    title: get_text(&doc, self.fields.title, &schema),
+                    state: get_text(&doc, self.fields.state, &schema),
+                    ticket_type: get_text(
+                        &doc,
+                        self.fields.ticket_type,
+                        &schema,
+                    ),
+                    snippet: get_text(&doc, self.fields.body, &schema)
+                        .map(|b| truncate_snippet(&b, 120)),
+                    score,
+                });
+            }
+
+            // Suppress unused import warnings — these are used inside expr_to_query.
+            let _ = (
+                AllQuery,
+                BooleanQuery::new(vec![]),
+                Occur::Must,
+                TermQuery::new(
+                    Term::from_field_text(self.fields.id, ""),
+                    Default::default(),
+                ),
+            );
+
+            Ok(results)
         })
     }
 }
@@ -651,7 +654,6 @@ fn truncate_snippet(
     }
     s
 }
-
 
 #[cfg(test)]
 #[path = "search_tests.rs"]

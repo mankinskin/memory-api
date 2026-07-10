@@ -3,8 +3,8 @@ mod handlers;
 
 use clap::Parser;
 use serde_json::{
-    json,
     Value,
+    json,
 };
 
 use log_api::{
@@ -76,7 +76,8 @@ pub fn run(cli: TestCli) -> Result<CliOutput, CliRunError> {
         None,
         TEST_STORE_DIR,
     );
-    let config = TestStoreConfig::new(store_root.clone(), cli.workspace_slug.clone());
+    let config =
+        TestStoreConfig::new(store_root.clone(), cli.workspace_slug.clone());
 
     let log_root = match store_root.parent() {
         Some(parent) => parent.join(LOG_STORE_DIR),
@@ -106,12 +107,14 @@ fn dispatch(
         TestCommand::RecordSpec(_)
         | TestCommand::Record(_)
         | TestCommand::LogRecord(_)
-        | TestCommand::Run(_) => dispatch_recording(config, log_config, command),
+        | TestCommand::Run(_) =>
+            dispatch_recording(config, log_config, command),
         TestCommand::GetSpec(_)
         | TestCommand::Get(_)
         | TestCommand::ListSpecs
         | TestCommand::List(_)
-        | TestCommand::Logs(_) => dispatch_read_queries(config, log_config, command),
+        | TestCommand::Logs(_) =>
+            dispatch_read_queries(config, log_config, command),
         TestCommand::StoreIndex
         | TestCommand::Benchmarks(_)
         | TestCommand::Summary
@@ -120,7 +123,8 @@ fn dispatch(
 }
 
 fn render_human(payload: &Value) -> String {
-    serde_json::to_string_pretty(payload).unwrap_or_else(|_| format!("{payload:?}"))
+    serde_json::to_string_pretty(payload)
+        .unwrap_or_else(|_| format!("{payload:?}"))
 }
 
 pub fn error_output(
@@ -130,8 +134,10 @@ pub fn error_output(
     let payload = json!({"status": "error", "message": message});
     match format {
         Some(MachineOutputFormat::Json) => payload.to_string(),
-        Some(MachineOutputFormat::Toon) => toon_format::encode_default(&payload)
-            .unwrap_or_else(|_| format!("status: error\nmessage: {message}")),
+        Some(MachineOutputFormat::Toon) =>
+            toon_format::encode_default(&payload).unwrap_or_else(|_| {
+                format!("status: error\nmessage: {message}")
+            }),
         None => message.to_string(),
     }
 }
@@ -141,12 +147,10 @@ pub fn render_machine_output(
     format: MachineOutputFormat,
 ) -> Result<String, String> {
     match format {
-        MachineOutputFormat::Json => {
-            serde_json::to_string_pretty(payload).map_err(|err| err.to_string())
-        },
-        MachineOutputFormat::Toon => {
-            toon_format::encode_default(payload).map_err(|err| err.to_string())
-        },
+        MachineOutputFormat::Json =>
+            serde_json::to_string_pretty(payload).map_err(|err| err.to_string()),
+        MachineOutputFormat::Toon =>
+            toon_format::encode_default(payload).map_err(|err| err.to_string()),
     }
 }
 
@@ -163,7 +167,8 @@ pub fn machine_output_format(
     }
 }
 
-pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat> {
+pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat>
+{
     machine_output_format(
         std::env::args().any(|arg| arg == "--json"),
         std::env::args().any(|arg| arg == "--toon"),

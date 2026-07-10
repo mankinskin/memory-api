@@ -125,13 +125,12 @@ pub enum MachineOutputFormat {
 // ── entry point ───────────────────────────────────────────────────────────────
 
 pub fn run(cli: SpecCli) -> Result<CliOutput, CliRunError> {
-    let payload =
-        dispatch::dispatch(
-            cli.command,
-            cli.index_root.as_deref(),
-            cli.workspace_root.as_deref(),
-            cli.json || cli.toon,
-        )?;
+    let payload = dispatch::dispatch(
+        cli.command,
+        cli.index_root.as_deref(),
+        cli.workspace_root.as_deref(),
+        cli.json || cli.toon,
+    )?;
     if let Some(format) = machine_output_format(cli.json, cli.toon) {
         Ok(CliOutput::Machine(payload, format))
     } else {
@@ -152,8 +151,9 @@ pub fn error_output(
     match format {
         Some(MachineOutputFormat::Json) => payload.to_string(),
         Some(MachineOutputFormat::Toon) =>
-            toon_format::encode_default(&payload)
-                .unwrap_or_else(|_| format!("status: error\nmessage: {message}")),
+            toon_format::encode_default(&payload).unwrap_or_else(|_| {
+                format!("status: error\nmessage: {message}")
+            }),
         None => message.to_string(),
     }
 }
@@ -183,7 +183,8 @@ pub fn machine_output_format(
     }
 }
 
-pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat> {
+pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat>
+{
     machine_output_format(
         std::env::args().any(|arg| arg == "--json"),
         std::env::args().any(|arg| arg == "--toon"),
@@ -206,12 +207,7 @@ mod tests {
 
     #[test]
     fn parse_list_accepts_toon_flag() {
-        let cli = parse_cli_from([
-            "spec",
-            "--toon",
-            "list",
-        ])
-        .unwrap();
+        let cli = parse_cli_from(["spec", "--toon", "list"]).unwrap();
 
         match cli.command {
             SpecCommandCli::List(ListArgs { .. }) => {},
@@ -278,12 +274,8 @@ mod tests {
 
     #[test]
     fn parse_sync_generated_keeps_target_spec_id() {
-        let cli = parse_cli_from([
-            "spec",
-            "sync-generated",
-            "0386c4d0",
-        ])
-        .unwrap();
+        let cli =
+            parse_cli_from(["spec", "sync-generated", "0386c4d0"]).unwrap();
 
         match cli.command {
             SpecCommandCli::SyncGenerated(args) => {

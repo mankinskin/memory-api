@@ -3,8 +3,8 @@ use chrono::{
     Utc,
 };
 use serde_json::{
-    json,
     Value,
+    json,
 };
 
 use log_api::{
@@ -17,12 +17,12 @@ use log_api::{
 use test_api::{
     BenchmarkQuery,
     ExecutionQuery,
+    TestStoreConfig,
     ValidationExecution,
     ValidationLinks,
     ValidationOutcome,
     ValidationProvenance,
     ValidationSpec,
-    TestStoreConfig,
 };
 
 use crate::{
@@ -55,7 +55,7 @@ pub(crate) fn dispatch_recording(
                 "id": spec.id,
                 "path": path,
             }))
-        }
+        },
         TestCommand::Record(args) => {
             let executed_at = parse_timestamp(args.executed_at.as_deref())?;
             let mut execution = ValidationExecution::new(
@@ -89,7 +89,7 @@ pub(crate) fn dispatch_recording(
                 "outcome": execution.outcome,
                 "path": path,
             }))
-        }
+        },
         TestCommand::LogRecord(args) => {
             let captured_at = parse_timestamp(args.captured_at.as_deref())?;
             let capture = ValidationLogCapture {
@@ -113,7 +113,7 @@ pub(crate) fn dispatch_recording(
                 "id": capture.id,
                 "path": path,
             }))
-        }
+        },
         TestCommand::Run(args) => run_harness(config, log_config, args),
         _ => unreachable!("handled in recording dispatch"),
     }
@@ -128,18 +128,18 @@ pub(crate) fn dispatch_read_queries(
         TestCommand::GetSpec(args) => {
             let spec = config.get_spec(&args.id)?;
             to_value(&spec)
-        }
+        },
         TestCommand::Get(args) => {
             let execution = config.get_execution(&args.id)?;
             to_value(&execution)
-        }
+        },
         TestCommand::ListSpecs => {
             let specs = config.list_specs()?;
             to_value(&json!({
                 "count": specs.len(),
                 "specs": specs,
             }))
-        }
+        },
         TestCommand::List(args) => {
             let query = ExecutionQuery {
                 ticket_id: args.ticket,
@@ -159,7 +159,7 @@ pub(crate) fn dispatch_read_queries(
                 "count": executions.len(),
                 "executions": executions,
             }))
-        }
+        },
         TestCommand::Logs(args) => {
             let query = LogCaptureQuery {
                 execution_id: args.execution_id,
@@ -170,7 +170,7 @@ pub(crate) fn dispatch_read_queries(
                 "count": captures.len(),
                 "captures": captures,
             }))
-        }
+        },
         _ => unreachable!("handled in read/query dispatch"),
     }
 }
@@ -181,7 +181,8 @@ pub(crate) fn dispatch_reporting(
 ) -> Result<Value, CliRunError> {
     match command {
         TestCommand::StoreIndex => {
-            let (digest, toon_path, readme_path) = config.regenerate_store_index()?;
+            let (digest, toon_path, readme_path) =
+                config.regenerate_store_index()?;
             to_value(&json!({
                 "status": "generated",
                 "kind": "test-store-index",
@@ -189,7 +190,7 @@ pub(crate) fn dispatch_reporting(
                 "toon_path": toon_path,
                 "readme_path": readme_path,
             }))
-        }
+        },
         TestCommand::Benchmarks(args) => {
             let query = BenchmarkQuery {
                 domain: args.domain,
@@ -202,7 +203,7 @@ pub(crate) fn dispatch_reporting(
                 "count": benchmarks.len(),
                 "benchmarks": benchmarks,
             }))
-        }
+        },
         TestCommand::Summary => {
             let artifacts = config.generate_store_index()?;
             to_value(&json!({
@@ -211,7 +212,7 @@ pub(crate) fn dispatch_reporting(
                 "summary": artifacts.summary,
                 "markdown": artifacts.markdown,
             }))
-        }
+        },
         TestCommand::Audit => {
             let artifacts = config.generate_store_index()?;
             let summary = &artifacts.summary;
@@ -237,7 +238,7 @@ pub(crate) fn dispatch_reporting(
                 "over_budget": over_budget,
                 "slow": summary.slow,
             }))
-        }
+        },
         _ => unreachable!("handled in reporting dispatch"),
     }
 }
@@ -282,7 +283,9 @@ pub(crate) fn run_harness(
         .arg(shell_flag)
         .arg(&args.command)
         .output()
-        .map_err(|err| CliRunError::Spawn(args.command.clone(), err.to_string()))?;
+        .map_err(|err| {
+            CliRunError::Spawn(args.command.clone(), err.to_string())
+        })?;
     let duration_ms = started.elapsed().as_millis() as u64;
 
     let outcome = if output.status.success() {
@@ -291,8 +294,9 @@ pub(crate) fn run_harness(
         ValidationOutcome::Failed
     };
 
-    fs::create_dir_all(&args.log_dir)
-        .map_err(|err| CliRunError::Io(args.log_dir.display().to_string(), err.to_string()))?;
+    fs::create_dir_all(&args.log_dir).map_err(|err| {
+        CliRunError::Io(args.log_dir.display().to_string(), err.to_string())
+    })?;
     let log_path = args.log_dir.join(format!("{execution_id}.log"));
     let mut combined = output.stdout.clone();
     if !output.stderr.is_empty() {
@@ -301,8 +305,9 @@ pub(crate) fn run_harness(
         }
         combined.extend_from_slice(&output.stderr);
     }
-    fs::write(&log_path, &combined)
-        .map_err(|err| CliRunError::Io(log_path.display().to_string(), err.to_string()))?;
+    fs::write(&log_path, &combined).map_err(|err| {
+        CliRunError::Io(log_path.display().to_string(), err.to_string())
+    })?;
     let locator = log_path.to_string_lossy().replace('\\', "/");
 
     let exit_code = output.status.code();
@@ -382,15 +387,22 @@ pub(crate) fn run_harness(
     }))
 }
 
-pub(crate) fn parse_timestamp(raw: Option<&str>) -> Result<DateTime<Utc>, CliRunError> {
+pub(crate) fn parse_timestamp(
+    raw: Option<&str>
+) -> Result<DateTime<Utc>, CliRunError> {
     match raw {
         None => Ok(Utc::now()),
         Some(value) => DateTime::parse_from_rfc3339(value)
             .map(|dt| dt.with_timezone(&Utc))
-            .map_err(|err| CliRunError::Timestamp(value.to_string(), err.to_string())),
+            .map_err(|err| {
+                CliRunError::Timestamp(value.to_string(), err.to_string())
+            }),
     }
 }
 
-pub(crate) fn to_value<T: serde::Serialize>(value: &T) -> Result<Value, CliRunError> {
-    serde_json::to_value(value).map_err(|err| CliRunError::Serialization(err.to_string()))
+pub(crate) fn to_value<T: serde::Serialize>(
+    value: &T
+) -> Result<Value, CliRunError> {
+    serde_json::to_value(value)
+        .map_err(|err| CliRunError::Serialization(err.to_string()))
 }

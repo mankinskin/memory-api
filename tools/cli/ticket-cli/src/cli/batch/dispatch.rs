@@ -112,10 +112,14 @@ fn batch_dispatch_forbidden(
 fn forbidden_batch_message(cmd: TicketCommandCli) -> &'static str {
     forbidden_batch_message_core(&cmd)
         .or_else(|| forbidden_batch_message_admin(&cmd))
-        .unwrap_or_else(|| unreachable!("handled before forbidden batch dispatch"))
+        .unwrap_or_else(|| {
+            unreachable!("handled before forbidden batch dispatch")
+        })
 }
 
-fn forbidden_batch_message_core(cmd: &TicketCommandCli) -> Option<&'static str> {
+fn forbidden_batch_message_core(
+    cmd: &TicketCommandCli
+) -> Option<&'static str> {
     match cmd {
         TicketCommandCli::Serve(_) => Some("'serve' cannot be used in a batch"),
         TicketCommandCli::Watch(_) => Some("'watch' cannot be used in a batch"),
@@ -123,27 +127,27 @@ fn forbidden_batch_message_core(cmd: &TicketCommandCli) -> Option<&'static str> 
         TicketCommandCli::Scan(_) => Some("'scan' cannot be used in a batch"),
         TicketCommandCli::Claim(_)
         | TicketCommandCli::Unclaim(_)
-        | TicketCommandCli::Leases => Some("lease commands cannot be used in a batch"),
-        TicketCommandCli::AddRoot(_) => Some("'add-root' cannot be used in a batch"),
-        TicketCommandCli::ExportCommandSchema => {
-            Some("'export-command-schema' cannot be used in a batch")
-        }
-        TicketCommandCli::FinalizeMerge(_) => {
-            Some("'finalize-merge' is not supported in a batch")
-        }
+        | TicketCommandCli::Leases =>
+            Some("lease commands cannot be used in a batch"),
+        TicketCommandCli::AddRoot(_) =>
+            Some("'add-root' cannot be used in a batch"),
+        TicketCommandCli::ExportCommandSchema =>
+            Some("'export-command-schema' cannot be used in a batch"),
+        TicketCommandCli::FinalizeMerge(_) =>
+            Some("'finalize-merge' is not supported in a batch"),
         _ => None,
     }
 }
 
-fn forbidden_batch_message_admin(cmd: &TicketCommandCli) -> Option<&'static str> {
+fn forbidden_batch_message_admin(
+    cmd: &TicketCommandCli
+) -> Option<&'static str> {
     match cmd {
         TicketCommandCli::Move(_) => Some("'move' cannot be used in a batch"),
-        TicketCommandCli::PruneDangling(_) => {
-            Some("'prune-dangling' cannot be used in a batch")
-        }
-        TicketCommandCli::Workspace(_) => {
-            Some("'workspace' policy commands cannot be used in a batch")
-        }
+        TicketCommandCli::PruneDangling(_) =>
+            Some("'prune-dangling' cannot be used in a batch"),
+        TicketCommandCli::Workspace(_) =>
+            Some("'workspace' policy commands cannot be used in a batch"),
         _ => None,
     }
 }

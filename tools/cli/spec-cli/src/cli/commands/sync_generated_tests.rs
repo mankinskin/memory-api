@@ -1,5 +1,7 @@
-use std::collections::BTreeMap;
-use std::fs;
+use std::{
+    collections::BTreeMap,
+    fs,
+};
 
 use tempfile::tempdir;
 
@@ -13,8 +15,8 @@ use spec_api::{
     store::GeneratedSpecArtifacts,
 };
 
-fn create_sync_fixture(
-) -> (tempfile::TempDir, PathBuf, PathBuf, SpecStore, String) {
+fn create_sync_fixture()
+-> (tempfile::TempDir, PathBuf, PathBuf, SpecStore, String) {
     let dir = tempdir().unwrap();
     let repo_root = dir.path().join("repo");
     let child_root = repo_root.join("memory-api");
@@ -164,12 +166,9 @@ fn sync_generated_fails_when_declared_target_is_missing() {
         )
         .unwrap();
 
-    let error = cmd_sync_generated(
-        SyncGeneratedArgs { id },
-        &mut store,
-        &repo_root,
-    )
-    .unwrap_err();
+    let error =
+        cmd_sync_generated(SyncGeneratedArgs { id }, &mut store, &repo_root)
+            .unwrap_err();
 
     assert!(error.to_string().contains("missing-target"));
 }

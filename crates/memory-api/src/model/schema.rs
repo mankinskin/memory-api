@@ -79,9 +79,9 @@ impl EntityTypeSchema {
         from: &str,
         to: &str,
     ) -> bool {
-        self.transitions
-            .iter()
-            .any(|t| (t.from == from && t.to == to) || (t.from == to && t.to == from))
+        self.transitions.iter().any(|t| {
+            (t.from == from && t.to == to) || (t.from == to && t.to == from)
+        })
     }
 
     pub fn ensure_transition(

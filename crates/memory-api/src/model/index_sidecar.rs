@@ -29,8 +29,10 @@
 //! - every entry's stored `digest` matches a fresh `compute_digest()` call
 //! - no duplicate `id` values within the sidecar
 
-use std::collections::HashSet;
-use std::path::Path;
+use std::{
+    collections::HashSet,
+    path::Path,
+};
 
 use chrono::{
     DateTime,
@@ -74,9 +76,7 @@ pub enum SidecarValidationIssue {
     /// An entry has an empty `digest` (was never sealed before writing).
     ///
     /// Contains the entry index.
-    MissingDigest {
-        entry_index: usize,
-    },
+    MissingDigest { entry_index: usize },
 
     /// Two entries share the same `id` UUID.
     ///
@@ -110,10 +110,16 @@ impl std::fmt::Display for SidecarValidationIssue {
                 "entry[{entry_index}]: stale digest (stored={stored}, computed={computed})"
             ),
             Self::MissingDigest { entry_index } => {
-                write!(f, "entry[{entry_index}]: digest is empty (entry was never sealed)")
+                write!(
+                    f,
+                    "entry[{entry_index}]: digest is empty (entry was never sealed)"
+                )
             },
             Self::DuplicateId { id, first, second } => {
-                write!(f, "duplicate entry id {id} at indices {first} and {second}")
+                write!(
+                    f,
+                    "duplicate entry id {id} at indices {first} and {second}"
+                )
             },
         }
     }
@@ -193,8 +199,10 @@ impl IndexSidecar {
     /// Equivalent to serializing to JSON and then calling
     /// `toon_format::encode_default`. Returns the TOON string.
     pub fn encode_toon(&self) -> Result<String, SidecarError> {
-        let json = serde_json::to_value(self).map_err(SidecarError::Serialize)?;
-        toon_format::encode_default(&json).map_err(|e| SidecarError::Toon(e.to_string()))
+        let json =
+            serde_json::to_value(self).map_err(SidecarError::Serialize)?;
+        toon_format::encode_default(&json)
+            .map_err(|e| SidecarError::Toon(e.to_string()))
     }
 
     /// Decode a sidecar from a TOON string (as read from disk).
@@ -202,8 +210,8 @@ impl IndexSidecar {
     /// Equivalent to calling `toon_format::decode_default` and then
     /// deserializing from JSON.
     pub fn decode_toon(toon: &str) -> Result<Self, SidecarError> {
-        let json =
-            toon_format::decode_default(toon).map_err(|e| SidecarError::Toon(e.to_string()))?;
+        let json = toon_format::decode_default(toon)
+            .map_err(|e| SidecarError::Toon(e.to_string()))?;
         serde_json::from_value(json).map_err(SidecarError::Deserialize)
     }
 
@@ -244,7 +252,9 @@ impl IndexSidecar {
 
             // 2. Missing digest
             if entry.digest.is_empty() {
-                issues.push(SidecarValidationIssue::MissingDigest { entry_index: i });
+                issues.push(SidecarValidationIssue::MissingDigest {
+                    entry_index: i,
+                });
             } else {
                 // 3. Stale digest
                 let computed = entry.compute_digest();
@@ -377,10 +387,14 @@ mod tests {
         let sidecar = IndexSidecar::new(
             ContentKind::Ticket,
             ".ticket",
-            vec![make_entry(Uuid::new_v4(), ".ticket/tickets/abc/ticket.toml")],
+            vec![make_entry(
+                Uuid::new_v4(),
+                ".ticket/tickets/abc/ticket.toml",
+            )],
         );
         let toon = sidecar.encode_toon().expect("encode should succeed");
-        let decoded = IndexSidecar::decode_toon(&toon).expect("decode should succeed");
+        let decoded =
+            IndexSidecar::decode_toon(&toon).expect("decode should succeed");
         assert_eq!(sidecar.version, decoded.version);
         assert_eq!(sidecar.domain, decoded.domain);
         assert_eq!(sidecar.store_path, decoded.store_path);
@@ -425,11 +439,9 @@ mod tests {
     #[test]
     fn validate_detects_duplicate_ids() {
         let id = Uuid::nil();
-        let entries = vec![
-            make_entry(id, "a.toml"),
-            make_entry(id, "b.toml"),
-        ];
-        let sidecar = IndexSidecar::new(ContentKind::Ticket, ".ticket", entries);
+        let entries = vec![make_entry(id, "a.toml"), make_entry(id, "b.toml")];
+        let sidecar =
+            IndexSidecar::new(ContentKind::Ticket, ".ticket", entries);
         let issues = sidecar.validate(Path::new("."));
         assert!(
             issues.iter().any(|i| matches!(
@@ -442,8 +454,10 @@ mod tests {
 
     #[test]
     fn validate_broken_source_path() {
-        let entry = make_entry(Uuid::new_v4(), "definitely/does/not/exist.toml");
-        let sidecar = IndexSidecar::new(ContentKind::Ticket, ".ticket", vec![entry]);
+        let entry =
+            make_entry(Uuid::new_v4(), "definitely/does/not/exist.toml");
+        let sidecar =
+            IndexSidecar::new(ContentKind::Ticket, ".ticket", vec![entry]);
         let issues = sidecar.validate(Path::new("."));
         assert!(
             issues.iter().any(|i| matches!(

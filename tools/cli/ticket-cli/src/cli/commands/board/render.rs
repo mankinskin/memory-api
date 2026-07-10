@@ -1,4 +1,3 @@
-use std::fmt::Write as FmtWrite;
 use chrono::{
     DateTime,
     Datelike,
@@ -9,7 +8,7 @@ use serde_json::{
     Value,
     json,
 };
-use uuid::Uuid;
+use std::fmt::Write as FmtWrite;
 use ticket_api::storage::board::{
     BoardConfig,
     BoardEntry,
@@ -17,6 +16,7 @@ use ticket_api::storage::board::{
     BoardHistorySnapshot,
     BoardSnapshot,
 };
+use uuid::Uuid;
 pub(super) struct BoardDisplay {
     pub current_work: Vec<BoardDisplayEntry>,
     pub recommended_next: Vec<BoardRecommendation>,

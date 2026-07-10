@@ -44,8 +44,14 @@ fn workspace_policy_show_set_ignore_rescan_flow() {
     assert_eq!(shown["policy"]["deny_external_paths"], true);
 
     // Create a descendant fixture store with its own ticket.
-    let fixture_index = sandbox.workspace_root().join("fixtures").join(".ticket");
-    run_ticket(&["--index-root", fixture_index.to_str().unwrap(), "--json", "init"]);
+    let fixture_index =
+        sandbox.workspace_root().join("fixtures").join(".ticket");
+    run_ticket(&[
+        "--index-root",
+        fixture_index.to_str().unwrap(),
+        "--json",
+        "init",
+    ]);
     run_ticket(&[
         "--index-root",
         fixture_index.to_str().unwrap(),
@@ -60,7 +66,8 @@ fn workspace_policy_show_set_ignore_rescan_flow() {
     ]);
 
     // First rescan (no ignore): fixture root is included and indexed.
-    let rescan = sandbox.ticket_json(&["workspace", "rescan", "--apply-policy"]);
+    let rescan =
+        sandbox.ticket_json(&["workspace", "rescan", "--apply-policy"]);
     assert_eq!(rescan["status"], "ok");
     assert_eq!(rescan["apply_policy"], true);
     let visible_before = sandbox
@@ -69,10 +76,14 @@ fn workspace_policy_show_set_ignore_rescan_flow() {
         .and_then(|value| value.as_array())
         .map(|items| items.len())
         .unwrap_or(0);
-    assert!(visible_before >= 1, "fixture ticket should be visible before ignore");
+    assert!(
+        visible_before >= 1,
+        "fixture ticket should be visible before ignore"
+    );
 
     // 4. ignore add — exclude the fixture workspace by relative path.
-    let ignored = sandbox.ticket_json(&["workspace", "ignore", "add", "fixtures"]);
+    let ignored =
+        sandbox.ticket_json(&["workspace", "ignore", "add", "fixtures"]);
     assert_eq!(ignored["status"], "ok");
     assert_eq!(ignored["changed"], true);
     assert_eq!(
@@ -86,7 +97,8 @@ fn workspace_policy_show_set_ignore_rescan_flow() {
     );
 
     // 5. rescan again — the fixture root is now skipped by policy.
-    let rescan = sandbox.ticket_json(&["workspace", "rescan", "--apply-policy"]);
+    let rescan =
+        sandbox.ticket_json(&["workspace", "rescan", "--apply-policy"]);
     let skipped = rescan["skipped_roots"].as_array().unwrap();
     assert!(
         skipped.iter().any(|label| label == "fixtures"),
@@ -100,13 +112,18 @@ fn workspace_policy_show_set_ignore_rescan_flow() {
         .and_then(|value| value.as_array())
         .map(|items| items.len())
         .unwrap_or(0);
-    assert_eq!(visible_after, 0, "fixture ticket must be excluded after ignore");
+    assert_eq!(
+        visible_after, 0,
+        "fixture ticket must be excluded after ignore"
+    );
 }
 
 #[test]
 fn workspace_commands_are_forbidden_in_batch() {
-    use std::io::Write;
-    use std::process::Stdio;
+    use std::{
+        io::Write,
+        process::Stdio,
+    };
 
     let sandbox = WorkspaceSandbox::new();
     let mut child = Command::new(TICKET)
@@ -126,15 +143,18 @@ fn workspace_commands_are_forbidden_in_batch() {
         .write_all(b"workspace policy set --include-descendants false\n")
         .unwrap();
     let out = child.wait_with_output().unwrap();
-    let envelope: serde_json::Value =
-        serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+    let envelope: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| {
             panic!(
                 "batch stdout not JSON: {e}\nraw: {}",
                 String::from_utf8_lossy(&out.stdout)
             )
         });
     let payload = &envelope["payload"];
-    assert_eq!(payload["status"], "error", "batch should reject workspace command");
+    assert_eq!(
+        payload["status"], "error",
+        "batch should reject workspace command"
+    );
     let message = payload["error"].as_str().unwrap_or_default();
     assert!(
         message.contains("workspace") && message.contains("batch"),

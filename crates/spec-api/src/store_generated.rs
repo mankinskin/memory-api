@@ -80,7 +80,9 @@ impl GeneratedSpecArtifacts {
     }
 }
 
-pub(super) fn normalize_generated_section_name(name: &str) -> Result<String, SpecError> {
+pub(super) fn normalize_generated_section_name(
+    name: &str
+) -> Result<String, SpecError> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
         return Err(SpecError::InvalidGeneratedArtifact(
@@ -393,4 +395,3 @@ impl SpecStore {
         Ok(())
     }
 }
-

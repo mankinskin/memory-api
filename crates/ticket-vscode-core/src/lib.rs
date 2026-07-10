@@ -42,21 +42,39 @@ impl TicketSummary {
     /// Construct a TicketSummary from the JS host.
     /// `title` and `state` are empty strings when the API returns null.
     #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
-    pub fn new(id: String, ticket_type: String, title: String, state: String) -> Self {
-        Self { id, ticket_type, title, state }
+    pub fn new(
+        id: String,
+        ticket_type: String,
+        title: String,
+        state: String,
+    ) -> Self {
+        Self {
+            id,
+            ticket_type,
+            title,
+            state,
+        }
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(getter))]
-    pub fn id(&self) -> String { self.id.clone() }
+    pub fn id(&self) -> String {
+        self.id.clone()
+    }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(getter))]
-    pub fn ticket_type(&self) -> String { self.ticket_type.clone() }
+    pub fn ticket_type(&self) -> String {
+        self.ticket_type.clone()
+    }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(getter))]
-    pub fn title(&self) -> String { self.title.clone() }
+    pub fn title(&self) -> String {
+        self.title.clone()
+    }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(getter))]
-    pub fn state(&self) -> String { self.state.clone() }
+    pub fn state(&self) -> String {
+        self.state.clone()
+    }
 }
 
 /// A directed edge between two tickets — mirrors `EdgeRecord` in `src/api.ts`.
@@ -71,18 +89,28 @@ pub struct EdgeRecord {
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 impl EdgeRecord {
     #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
-    pub fn new(from: String, to: String, kind: String) -> Self {
+    pub fn new(
+        from: String,
+        to: String,
+        kind: String,
+    ) -> Self {
         Self { from, to, kind }
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(getter))]
-    pub fn from_id(&self) -> String { self.from.clone() }
+    pub fn from_id(&self) -> String {
+        self.from.clone()
+    }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(getter))]
-    pub fn to_id(&self) -> String { self.to.clone() }
+    pub fn to_id(&self) -> String {
+        self.to.clone()
+    }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(getter))]
-    pub fn kind(&self) -> String { self.kind.clone() }
+    pub fn kind(&self) -> String {
+        self.kind.clone()
+    }
 }
 
 // ── Host-kind detection ───────────────────────────────────────────────────────
@@ -124,7 +152,11 @@ pub fn supports_file_browsing(host: HostKind) -> bool {
 /// Returns `true` when a ticket matches both state and query filters.
 /// Pure function — no I/O, no VS Code APIs.
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-pub fn ticket_matches(ticket: &TicketSummary, state_filter: &str, query: &str) -> bool {
+pub fn ticket_matches(
+    ticket: &TicketSummary,
+    state_filter: &str,
+    query: &str,
+) -> bool {
     if !state_filter.is_empty() && ticket.state != state_filter {
         return false;
     }
@@ -139,7 +171,11 @@ pub fn ticket_matches(ticket: &TicketSummary, state_filter: &str, query: &str) -
     true
 }
 
-fn filter_indices(tickets: &[TicketSummary], state_filter: &str, query: &str) -> Vec<usize> {
+fn filter_indices(
+    tickets: &[TicketSummary],
+    state_filter: &str,
+    query: &str,
+) -> Vec<usize> {
     tickets
         .iter()
         .enumerate()
@@ -161,7 +197,10 @@ pub struct DependencyMaps {
 }
 
 impl DependencyMaps {
-    pub fn build(tickets: &[TicketSummary], edges: &[EdgeRecord]) -> Self {
+    pub fn build(
+        tickets: &[TicketSummary],
+        edges: &[EdgeRecord],
+    ) -> Self {
         let known: std::collections::HashSet<&str> =
             tickets.iter().map(|t| t.id.as_str()).collect();
 
@@ -171,12 +210,22 @@ impl DependencyMaps {
             std::collections::HashMap::new();
 
         for edge in edges {
-            if edge.kind != "depends_on" { continue; }
-            if !known.contains(edge.from.as_str()) || !known.contains(edge.to.as_str()) {
+            if edge.kind != "depends_on" {
                 continue;
             }
-            deps_of.entry(edge.from.clone()).or_default().push(edge.to.clone());
-            parent_of.entry(edge.to.clone()).or_default().push(edge.from.clone());
+            if !known.contains(edge.from.as_str())
+                || !known.contains(edge.to.as_str())
+            {
+                continue;
+            }
+            deps_of
+                .entry(edge.from.clone())
+                .or_default()
+                .push(edge.to.clone());
+            parent_of
+                .entry(edge.to.clone())
+                .or_default()
+                .push(edge.from.clone());
         }
 
         Self { deps_of, parent_of }
@@ -211,7 +260,8 @@ pub fn build_state_groups(
 ) -> Vec<StateGroup> {
     let maps = DependencyMaps::build(tickets, edges);
     let visible_indices = filter_indices(tickets, state_filter, query);
-    let visible: Vec<&TicketSummary> = visible_indices.iter().map(|&i| &tickets[i]).collect();
+    let visible: Vec<&TicketSummary> =
+        visible_indices.iter().map(|&i| &tickets[i]).collect();
 
     let mut grouped: std::collections::HashMap<&str, Vec<&TicketSummary>> =
         std::collections::HashMap::new();
@@ -225,13 +275,17 @@ pub fn build_state_groups(
         let root_ids: Vec<String> = bucket
             .iter()
             .filter(|t| {
-                !maps.parent_of
-                    .get(t.id.as_str())
-                    .map_or(false, |ps| ps.iter().any(|p| state_ids.contains(p.as_str())))
+                !maps.parent_of.get(t.id.as_str()).map_or(false, |ps| {
+                    ps.iter().any(|p| state_ids.contains(p.as_str()))
+                })
             })
             .map(|t| t.id.clone())
             .collect();
-        StateGroup { state: state.to_string(), total: bucket.len(), root_ids }
+        StateGroup {
+            state: state.to_string(),
+            total: bucket.len(),
+            root_ids,
+        }
     };
 
     let mut result: Vec<StateGroup> = Vec::new();
@@ -244,7 +298,8 @@ pub fn build_state_groups(
             }
         }
     }
-    let mut extra: Vec<(&str, Vec<&TicketSummary>)> = remaining.into_iter().collect();
+    let mut extra: Vec<(&str, Vec<&TicketSummary>)> =
+        remaining.into_iter().collect();
     extra.sort_by_key(|(s, _)| *s);
     for (s, bucket) in extra {
         if !bucket.is_empty() {
@@ -259,13 +314,20 @@ pub fn build_state_groups(
 
 /// Returns the URL for opening a ticket in the ticket-viewer SPA.
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-pub fn ticket_viewer_url(base_url: &str, workspace: &str, ticket_id: &str) -> String {
+pub fn ticket_viewer_url(
+    base_url: &str,
+    workspace: &str,
+    ticket_id: &str,
+) -> String {
     format!("{base_url}/?workspace={workspace}&ticket={ticket_id}")
 }
 
 /// Returns the short display label for a ticket (first 8 chars of id if no title).
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-pub fn ticket_display_label(id: &str, title: &str) -> String {
+pub fn ticket_display_label(
+    id: &str,
+    title: &str,
+) -> String {
     if title.is_empty() {
         format!("({})", &id[..id.len().min(8)])
     } else {
@@ -285,9 +347,9 @@ pub fn ticket_display_label(id: &str, title: &str) -> String {
 #[cfg(feature = "wasm")]
 mod wasm_api {
     use super::*;
+    use js_sys::Array;
     #[allow(unused_imports)]
     use wasm_bindgen::prelude::*;
-    use js_sys::Array;
 
     // ── helpers ─────────────────────────────────────────────────────────────
 
@@ -361,35 +423,49 @@ mod wasm_api {
             // DependencyMaps only needs IDs; create minimal TicketSummary stubs.
             let tickets: Vec<TicketSummary> = str_vec(ticket_ids)
                 .into_iter()
-                .map(|id| TicketSummary::new(id, String::new(), String::new(), String::new()))
+                .map(|id| {
+                    TicketSummary::new(
+                        id,
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                    )
+                })
                 .collect();
             let edges = edges_from_arrays(edge_froms, edge_tos, edge_kinds);
-            WasmDependencyMaps { inner: super::DependencyMaps::build(&tickets, &edges) }
+            WasmDependencyMaps {
+                inner: super::DependencyMaps::build(&tickets, &edges),
+            }
         }
 
         /// Returns an Array of dependency IDs for the given ticket ID.
         #[wasm_bindgen(js_name = "depsOf")]
-        pub fn deps_of_js(&self, id: &str) -> Array {
-            self.inner.deps_of
-                .get(id)
-                .map_or_else(Array::new, |deps| {
-                    deps.iter().map(|d| JsValue::from_str(d)).collect::<Array>()
-                })
+        pub fn deps_of_js(
+            &self,
+            id: &str,
+        ) -> Array {
+            self.inner.deps_of.get(id).map_or_else(Array::new, |deps| {
+                deps.iter().map(|d| JsValue::from_str(d)).collect::<Array>()
+            })
         }
 
         /// Returns an Array of parent ticket IDs for the given ticket ID.
         #[wasm_bindgen(js_name = "parentOf")]
-        pub fn parent_of_js(&self, id: &str) -> Array {
-            self.inner.parent_of
-                .get(id)
-                .map_or_else(Array::new, |ps| {
-                    ps.iter().map(|p| JsValue::from_str(p)).collect::<Array>()
-                })
+        pub fn parent_of_js(
+            &self,
+            id: &str,
+        ) -> Array {
+            self.inner.parent_of.get(id).map_or_else(Array::new, |ps| {
+                ps.iter().map(|p| JsValue::from_str(p)).collect::<Array>()
+            })
         }
 
         /// Returns true when the ticket has at least one parent.
         #[wasm_bindgen(js_name = "hasParent")]
-        pub fn has_parent_js(&self, id: &str) -> bool {
+        pub fn has_parent_js(
+            &self,
+            id: &str,
+        ) -> bool {
             self.inner.parent_of.contains_key(id)
         }
     }
@@ -407,12 +483,17 @@ mod wasm_api {
     #[wasm_bindgen(js_class = "WasmStateGroup")]
     impl WasmStateGroup {
         #[wasm_bindgen(getter)]
-        pub fn state(&self) -> String { self.state.clone() }
+        pub fn state(&self) -> String {
+            self.state.clone()
+        }
 
         /// Returns a JS Array of root ticket IDs for this state group.
         #[wasm_bindgen(js_name = "rootIds")]
         pub fn root_ids_js(&self) -> Array {
-            self.root_ids.iter().map(|id| JsValue::from_str(id)).collect::<Array>()
+            self.root_ids
+                .iter()
+                .map(|id| JsValue::from_str(id))
+                .collect::<Array>()
         }
     }
 
@@ -439,21 +520,28 @@ mod wasm_api {
         state_filter: &str,
         query: &str,
     ) -> Array {
-        let tickets = tickets_from_arrays(ticket_ids, ticket_titles, ticket_states);
+        let tickets =
+            tickets_from_arrays(ticket_ids, ticket_titles, ticket_states);
         let edges = edges_from_arrays(edge_froms, edge_tos, edge_kinds);
         let state_order_vec = str_vec(state_order);
 
-        super::build_state_groups(&tickets, &edges, &state_order_vec, state_filter, query)
-            .into_iter()
-            .map(|g| {
-                let wsg = WasmStateGroup {
-                    state: g.state,
-                    total: g.total,
-                    root_ids: g.root_ids,
-                };
-                JsValue::from(wsg)
-            })
-            .collect::<Array>()
+        super::build_state_groups(
+            &tickets,
+            &edges,
+            &state_order_vec,
+            state_filter,
+            query,
+        )
+        .into_iter()
+        .map(|g| {
+            let wsg = WasmStateGroup {
+                state: g.state,
+                total: g.total,
+                root_ids: g.root_ids,
+            };
+            JsValue::from(wsg)
+        })
+        .collect::<Array>()
     }
 }
 
@@ -463,15 +551,30 @@ mod wasm_api {
 mod tests {
     use super::*;
 
-    fn t(id: &str, title: &str, state: &str) -> TicketSummary {
-        TicketSummary::new(id.into(), "tracker-improvement".into(), title.into(), state.into())
+    fn t(
+        id: &str,
+        title: &str,
+        state: &str,
+    ) -> TicketSummary {
+        TicketSummary::new(
+            id.into(),
+            "tracker-improvement".into(),
+            title.into(),
+            state.into(),
+        )
     }
 
-    fn e(from: &str, to: &str) -> EdgeRecord {
+    fn e(
+        from: &str,
+        to: &str,
+    ) -> EdgeRecord {
         EdgeRecord::new(from.into(), to.into(), "depends_on".into())
     }
 
-    #[test] fn version_is_non_empty() { assert!(!core_version().is_empty()); }
+    #[test]
+    fn version_is_non_empty() {
+        assert!(!core_version().is_empty());
+    }
 
     // Host-kind gates
     #[test]
@@ -489,20 +592,23 @@ mod tests {
     }
 
     // Filtering
-    #[test] fn filter_by_state() {
+    #[test]
+    fn filter_by_state() {
         let ticket = t("a", "Add feature", "ready");
         assert!(ticket_matches(&ticket, "ready", ""));
         assert!(!ticket_matches(&ticket, "done", ""));
         assert!(ticket_matches(&ticket, "", ""));
     }
-    #[test] fn filter_by_query() {
+    #[test]
+    fn filter_by_query() {
         let ticket = t("abc123", "Add feature", "ready");
         assert!(ticket_matches(&ticket, "", "feature"));
         assert!(ticket_matches(&ticket, "", "FEATURE"));
         assert!(!ticket_matches(&ticket, "", "missing"));
         assert!(ticket_matches(&ticket, "", "abc"));
     }
-    #[test] fn filter_combined() {
+    #[test]
+    fn filter_combined() {
         let ticket = t("a", "Add feature", "ready");
         assert!(ticket_matches(&ticket, "ready", "feature"));
         assert!(!ticket_matches(&ticket, "done", "feature"));
@@ -529,7 +635,8 @@ mod tests {
     #[test]
     fn dependency_maps_skips_non_depends_on() {
         let tickets = vec![t("a", "A", "ready"), t("b", "B", "ready")];
-        let edges = vec![EdgeRecord::new("a".into(), "b".into(), "linked".into())];
+        let edges =
+            vec![EdgeRecord::new("a".into(), "b".into(), "linked".into())];
         let maps = DependencyMaps::build(&tickets, &edges);
         assert!(!maps.deps_of.contains_key("a"));
     }
@@ -537,7 +644,11 @@ mod tests {
     // State grouping
     #[test]
     fn state_groups_roots() {
-        let tickets = vec![t("a", "Parent", "ready"), t("b", "Child", "ready"), t("c", "Done", "done")];
+        let tickets = vec![
+            t("a", "Parent", "ready"),
+            t("b", "Child", "ready"),
+            t("c", "Done", "done"),
+        ];
         let edges = vec![e("a", "b")];
         let groups = build_state_groups(&tickets, &edges, &[], "", "");
         let done = groups.iter().find(|g| g.state == "done").unwrap();
@@ -563,7 +674,10 @@ mod tests {
     }
     #[test]
     fn state_groups_query_filter() {
-        let tickets = vec![t("a", "Alpha feature", "ready"), t("b", "Beta thing", "ready")];
+        let tickets = vec![
+            t("a", "Alpha feature", "ready"),
+            t("b", "Beta thing", "ready"),
+        ];
         let groups = build_state_groups(&tickets, &[], &[], "", "alpha");
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].root_ids, vec!["a"]);
@@ -577,13 +691,16 @@ mod tests {
             "http://localhost:3002/?workspace=default&ticket=abc123"
         );
     }
-    #[test] fn display_label_with_title() {
+    #[test]
+    fn display_label_with_title() {
         assert_eq!(ticket_display_label("abc123", "My ticket"), "My ticket");
     }
-    #[test] fn display_label_no_title() {
+    #[test]
+    fn display_label_no_title() {
         assert_eq!(ticket_display_label("abcdef1234", ""), "(abcdef12)");
     }
-    #[test] fn display_label_short_id() {
+    #[test]
+    fn display_label_short_id() {
         assert_eq!(ticket_display_label("ab", ""), "(ab)");
     }
 }

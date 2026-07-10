@@ -5,6 +5,9 @@ use chrono::{
     Utc,
 };
 use rmcp::{
+    ErrorData as McpError,
+    ServerHandler,
+    ServiceExt,
     handler::server::{
         tool::ToolRouter,
         wrapper::Parameters,
@@ -18,17 +21,14 @@ use rmcp::{
     tool_handler,
     tool_router,
     transport::stdio,
-    ErrorData as McpError,
-    ServerHandler,
-    ServiceExt,
 };
 use serde::{
     Deserialize,
     Serialize,
 };
 use test_api::{
-    ExecutionSort,
     ExecutionQuery,
+    ExecutionSort,
     TestError,
     TestStoreConfig,
     ValidationExecution,
@@ -196,27 +196,37 @@ impl TestServer {
     }
 
     fn config(&self) -> TestStoreConfig {
-        TestStoreConfig::new(self.store_root.clone(), self.workspace_slug.clone())
+        TestStoreConfig::new(
+            self.store_root.clone(),
+            self.workspace_slug.clone(),
+        )
     }
 
     fn config_for_workspace(
         &self,
         workspace_selector: &str,
     ) -> Result<TestStoreConfig, McpError> {
-        let workspace_selector = memory_api::workspace::validate_explicit_workspace_selector(
-            Some(workspace_selector),
-        )
-        .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
+        let workspace_selector =
+            memory_api::workspace::validate_explicit_workspace_selector(Some(
+                workspace_selector,
+            ))
+            .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
         let store_root = memory_api::workspace::resolve_store_root_from(
             std::path::Path::new(workspace_selector),
             ".test",
         );
-        Ok(TestStoreConfig::new(store_root, self.workspace_slug.clone()))
+        Ok(TestStoreConfig::new(
+            store_root,
+            self.workspace_slug.clone(),
+        ))
     }
 
-    fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
-        let text = serde_json::to_string(value)
-            .map_err(|err| McpError::internal_error(format!("serialization: {err}"), None))?;
+    fn json_result<T: Serialize>(
+        value: &T
+    ) -> Result<CallToolResult, McpError> {
+        let text = serde_json::to_string(value).map_err(|err| {
+            McpError::internal_error(format!("serialization: {err}"), None)
+        })?;
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
@@ -226,7 +236,8 @@ impl TestServer {
             | TestError::InvalidId(_)
             | TestError::InvalidWorkspaceSlug(_)
             | TestError::SpecNotFound(_)
-            | TestError::ExecutionNotFound(_) => McpError::invalid_params(err.to_string(), None),
+            | TestError::ExecutionNotFound(_) =>
+                McpError::invalid_params(err.to_string(), None),
             _ => McpError::internal_error(format!("test error: {err}"), None),
         }
     }
@@ -237,7 +248,9 @@ impl TestServer {
             "failed" | "fail" => Ok(ValidationOutcome::Failed),
             "blocked" | "block" => Ok(ValidationOutcome::Blocked),
             other => Err(McpError::invalid_params(
-                format!("invalid outcome `{other}` (expected passed, failed, or blocked)"),
+                format!(
+                    "invalid outcome `{other}` (expected passed, failed, or blocked)"
+                ),
                 None,
             )),
         }
@@ -522,7 +535,9 @@ mod tests {
                 acceptance_criterion_ids: vec![],
                 doc_evidence_ids: vec![],
                 log_ids: vec![],
-                source_path: Some("crates/memory-matrix/tests/matrix.rs".to_string()),
+                source_path: Some(
+                    "crates/memory-matrix/tests/matrix.rs".to_string(),
+                ),
                 test_id: Some("ticket.get".to_string()),
                 domain: Some("ticket".to_string()),
                 operation: Some("get".to_string()),

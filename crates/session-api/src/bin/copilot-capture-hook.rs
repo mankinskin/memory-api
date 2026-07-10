@@ -149,15 +149,15 @@ fn parse_args() -> Result<Args, SessionError> {
     })
 }
 
-fn args_from_hook_stdin(
-    mut args: Args,
-) -> Result<Args, SessionError> {
+fn args_from_hook_stdin(mut args: Args) -> Result<Args, SessionError> {
     let mut stdin = String::new();
-    std::io::stdin().read_to_string(&mut stdin).map_err(|error| {
-        SessionError::InvalidHookInput(format!(
-            "failed reading hook stdin: {error}"
-        ))
-    })?;
+    std::io::stdin()
+        .read_to_string(&mut stdin)
+        .map_err(|error| {
+            SessionError::InvalidHookInput(format!(
+                "failed reading hook stdin: {error}"
+            ))
+        })?;
 
     if stdin.trim().is_empty() {
         return Ok(args);
@@ -169,10 +169,9 @@ fn args_from_hook_stdin(
         ))
     })?;
 
-    if let Some(transcript_path) = get_hook_field(
-        &payload,
-        &["transcript_path", "transcriptPath"],
-    ) {
+    if let Some(transcript_path) =
+        get_hook_field(&payload, &["transcript_path", "transcriptPath"])
+    {
         args.transcript_path = PathBuf::from(transcript_path);
     }
     if let Some(workspace_slug) =
@@ -181,10 +180,9 @@ fn args_from_hook_stdin(
         args.workspace_slug = workspace_slug;
     }
 
-    if let Some(trigger) = get_hook_field(
-        &payload,
-        &["hook_event_name", "hookEventName"],
-    ) {
+    if let Some(trigger) =
+        get_hook_field(&payload, &["hook_event_name", "hookEventName"])
+    {
         args.trigger = normalize_trigger(&trigger);
     }
 

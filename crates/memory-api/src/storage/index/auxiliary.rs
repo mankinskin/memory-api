@@ -118,7 +118,8 @@ impl RedbIndexStore {
         })?;
         let mut roots = Vec::new();
         for row in rows {
-            let (path_str, label, source, policy_decision, workspace_root) = row?;
+            let (path_str, label, source, policy_decision, workspace_root) =
+                row?;
             roots.push(PersistedScanRoot {
                 root: ScanRoot {
                     path: std::path::PathBuf::from(path_str),
@@ -243,11 +244,13 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::model::filesystem::{
-        PolicyDecision,
-        ScanRootSource,
+    use crate::{
+        model::filesystem::{
+            PolicyDecision,
+            ScanRootSource,
+        },
+        storage::index::RedbIndexStore,
     };
-    use crate::storage::index::RedbIndexStore;
 
     fn open_store(dir: &std::path::Path) -> RedbIndexStore {
         RedbIndexStore::open(&dir.join("index.sqlite")).unwrap()

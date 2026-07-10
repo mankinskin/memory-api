@@ -54,7 +54,10 @@ pub(super) fn stale_reconciliation_diagnostic(
     roots: &[ScanRoot],
 ) -> ParseDiagnostic {
     let manifest_path = ticket.path.join(TICKET_MANIFEST_FILE);
-    let reason = if roots.iter().all(|root| !ticket.path.starts_with(&root.path)) {
+    let reason = if roots
+        .iter()
+        .all(|root| !ticket.path.starts_with(&root.path))
+    {
         "ticket path left configured scan roots; pruned stale index/search entry"
             .to_string()
     } else if !ticket.path.exists() {
@@ -127,15 +130,11 @@ pub(super) fn integrate_entry(
     let description_read_ms = elapsed_ms(description_read_started);
 
     let created_at_str = indexed.created_at.to_rfc3339();
-    let effort_str = entry
-        .manifest
-        .extra
-        .get("effort")
-        .and_then(|v| match v {
-            serde_json::Value::String(s) => Some(s.clone()),
-            serde_json::Value::Number(n) => Some(n.to_string()),
-            _ => None,
-        });
+    let effort_str = entry.manifest.extra.get("effort").and_then(|v| match v {
+        serde_json::Value::String(s) => Some(s.clone()),
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    });
     Ok(Some(ScanIntegrationUpdate {
         indexed,
         edges,
@@ -206,7 +205,8 @@ pub(super) fn entry_is_current(
     }
 
     let indexed_at = existing.updated_at;
-    if path_modified_after(&entry.path.join(TICKET_MANIFEST_FILE), indexed_at)? {
+    if path_modified_after(&entry.path.join(TICKET_MANIFEST_FILE), indexed_at)?
+    {
         return Ok(false);
     }
 
@@ -241,7 +241,7 @@ pub(super) fn merge_phase_totals(
 }
 
 pub(super) fn manifest_edges(
-    entry: &TicketScanEntry,
+    entry: &TicketScanEntry
 ) -> Vec<crate::model::edge::EdgeRecord> {
     let mut edges = Vec::new();
 

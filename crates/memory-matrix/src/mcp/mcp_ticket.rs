@@ -18,7 +18,10 @@ pub(super) fn extract_mcp_json(
         .map_err(|err| format!("parse mcp json result: {err}"))
 }
 
-pub(super) fn ensure_status_ok(json: &serde_json::Value, context: &str) -> Result<(), String> {
+pub(super) fn ensure_status_ok(
+    json: &serde_json::Value,
+    context: &str,
+) -> Result<(), String> {
     let status = json["status"].as_str().unwrap_or_default();
     if status != "ok" {
         return Err(format!("{context}: {}", json));
@@ -102,11 +105,13 @@ async fn ticket_mcp_create(
             id: created_id,
         }))
         .await
-        .map_err(|err| format!("mcp ticket create verification failed: {err}"))?;
+        .map_err(|err| {
+            format!("mcp ticket create verification failed: {err}")
+        })?;
     let json = extract_mcp_json(result)?;
-    let _ = json["ticket"]["id"]
-        .as_str()
-        .ok_or_else(|| "mcp ticket create verification missing ticket.id".to_string())?;
+    let _ = json["ticket"]["id"].as_str().ok_or_else(|| {
+        "mcp ticket create verification missing ticket.id".to_string()
+    })?;
     Ok(Cell::Passed)
 }
 

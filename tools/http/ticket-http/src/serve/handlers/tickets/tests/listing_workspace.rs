@@ -32,7 +32,6 @@ use super::{
     make_store,
 };
 
-
 #[tokio::test]
 async fn list_tickets_uses_scan_root_label_for_ticket_ref_workspace() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -140,24 +139,28 @@ async fn search_list_prefers_authoritative_mixed_workspace_hit() {
         .get_indexed(&id)
         .expect("get parent indexed ticket")
         .expect("parent indexed ticket");
-    poisoned.path = parent_store.index_root.join("tickets").join(id.to_string());
-    poisoned.title = Some("mixed-workspace stale parent placeholder".to_string());
+    poisoned.path =
+        parent_store.index_root.join("tickets").join(id.to_string());
+    poisoned.title =
+        Some("mixed-workspace stale parent placeholder".to_string());
     poisoned.state = Some("new".to_string());
     poisoned_index
         .insert_ticket(&poisoned)
         .expect("poison parent indexed row");
-    TantivySearchIndex::open_or_create(&parent_store.index_root.join("search_index"))
-        .expect("open parent search index")
-        .upsert(
-            &id,
-            Some("mixed-workspace stale parent placeholder"),
-            Some("mixed-workspace stale parent body"),
-            Some("new"),
-            Some("tracker-improvement"),
-            Some(&chrono::Utc::now().to_rfc3339()),
-            None,
-        )
-        .expect("upsert stale parent search doc");
+    TantivySearchIndex::open_or_create(
+        &parent_store.index_root.join("search_index"),
+    )
+    .expect("open parent search index")
+    .upsert(
+        &id,
+        Some("mixed-workspace stale parent placeholder"),
+        Some("mixed-workspace stale parent body"),
+        Some("new"),
+        Some("tracker-improvement"),
+        Some(&chrono::Utc::now().to_rfc3339()),
+        None,
+    )
+    .expect("upsert stale parent search doc");
 
     let state = make_state(Arc::clone(&parent_store));
     let workspace = state.registry.primary_workspace_name().to_string();
@@ -190,7 +193,10 @@ async fn search_list_prefers_authoritative_mixed_workspace_hit() {
     let items = payload["items"].as_array().expect("items array");
 
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0]["ticket_ref"]["workspace"], child_workspace.as_str());
+    assert_eq!(
+        items[0]["ticket_ref"]["workspace"],
+        child_workspace.as_str()
+    );
     assert_eq!(items[0]["ticket_ref"]["id"], id.to_string());
     assert_eq!(
         items[0]["title"],
@@ -330,24 +336,28 @@ async fn mixed_workspace_search_followups_remain_reversible() {
         .get_indexed(&id)
         .expect("get parent indexed ticket")
         .expect("parent indexed ticket");
-    poisoned.path = parent_store.index_root.join("tickets").join(id.to_string());
-    poisoned.title = Some("mixed-workspace stale parent placeholder".to_string());
+    poisoned.path =
+        parent_store.index_root.join("tickets").join(id.to_string());
+    poisoned.title =
+        Some("mixed-workspace stale parent placeholder".to_string());
     poisoned.state = Some("new".to_string());
     poisoned_index
         .insert_ticket(&poisoned)
         .expect("poison parent indexed row");
-    TantivySearchIndex::open_or_create(&parent_store.index_root.join("search_index"))
-        .expect("open parent search index")
-        .upsert(
-            &id,
-            Some("mixed-workspace stale parent placeholder"),
-            Some("mixed-workspace stale parent body"),
-            Some("new"),
-            Some("tracker-improvement"),
-            Some(&chrono::Utc::now().to_rfc3339()),
-            None,
-        )
-        .expect("upsert stale parent search doc");
+    TantivySearchIndex::open_or_create(
+        &parent_store.index_root.join("search_index"),
+    )
+    .expect("open parent search index")
+    .upsert(
+        &id,
+        Some("mixed-workspace stale parent placeholder"),
+        Some("mixed-workspace stale parent body"),
+        Some("new"),
+        Some("tracker-improvement"),
+        Some(&chrono::Utc::now().to_rfc3339()),
+        None,
+    )
+    .expect("upsert stale parent search doc");
 
     let state = make_state(Arc::clone(&parent_store));
     let workspace = state.registry.primary_workspace_name().to_string();
@@ -470,7 +480,10 @@ async fn mixed_workspace_search_followups_remain_reversible() {
         .expect("files body");
     let files_payload: serde_json::Value =
         serde_json::from_slice(&files_bytes).expect("files json");
-    assert_eq!(files_payload["ticket_ref"]["workspace"], child_workspace.as_str());
+    assert_eq!(
+        files_payload["ticket_ref"]["workspace"],
+        child_workspace.as_str()
+    );
 
     let asset = get_ticket_asset(
         State(state),
@@ -488,7 +501,10 @@ async fn mixed_workspace_search_followups_remain_reversible() {
         .expect("asset body");
     let asset_payload: serde_json::Value =
         serde_json::from_slice(&asset_bytes).expect("asset json");
-    assert_eq!(asset_payload["ticket_ref"]["workspace"], child_workspace.as_str());
+    assert_eq!(
+        asset_payload["ticket_ref"]["workspace"],
+        child_workspace.as_str()
+    );
     assert_eq!(asset_payload["content"], "nested child asset");
 }
 
@@ -506,8 +522,10 @@ async fn legacy_workspace_label_collision_returns_typed_bad_request() {
         })
         .expect("add parent scan root");
 
-    let left_index_root = root.path().join("alpha").join("shared").join(".ticket");
-    let right_index_root = root.path().join("beta").join("shared").join(".ticket");
+    let left_index_root =
+        root.path().join("alpha").join("shared").join(".ticket");
+    let right_index_root =
+        root.path().join("beta").join("shared").join(".ticket");
     std::fs::create_dir_all(left_index_root.join("tickets"))
         .expect("mkdir left store");
     std::fs::create_dir_all(right_index_root.join("tickets"))
@@ -669,10 +687,14 @@ async fn unique_display_workspace_label_returns_typed_bad_request() {
 
     assert_eq!(payload["code"], "workspace.display_label_not_allowed");
     assert_eq!(payload["details"]["requested"], "child");
-    assert_eq!(payload["details"]["canonical"], canonical_workspace.as_str());
-    assert!(payload["message"]
-        .as_str()
-        .expect("message")
-        .contains(canonical_workspace.as_str()));
+    assert_eq!(
+        payload["details"]["canonical"],
+        canonical_workspace.as_str()
+    );
+    assert!(
+        payload["message"]
+            .as_str()
+            .expect("message")
+            .contains(canonical_workspace.as_str())
+    );
 }
-

@@ -33,7 +33,8 @@ pub(crate) fn render_human_readable(payload: &Value) -> String {
     let status = obj.get("status").and_then(Value::as_str).unwrap_or("?");
     let _ = writeln!(out, "{command} {status}");
 
-    let (scalars, sections) = partition_object_fields(obj, &["command", "status"]);
+    let (scalars, sections) =
+        partition_object_fields(obj, &["command", "status"]);
 
     for (key, val) in &scalars {
         let _ = writeln!(out, "{key}: {}", format_scalar(val));
@@ -50,7 +51,9 @@ pub(crate) fn render_human_readable(payload: &Value) -> String {
     result
 }
 
-fn render_special_command(obj: &serde_json::Map<String, Value>) -> Option<String> {
+fn render_special_command(
+    obj: &serde_json::Map<String, Value>
+) -> Option<String> {
     let command = obj.get("command").and_then(Value::as_str)?;
 
     if matches!(command, "board_show" | "board_history") {
@@ -61,7 +64,8 @@ fn render_special_command(obj: &serde_json::Map<String, Value>) -> Option<String
         "next" => Some(render_next_report(obj)),
         "blockers" => Some(render_workflow_tree_report(obj, "Blocker Tree")),
         "unblocked_by" => Some(render_workflow_tree_report(obj, "Unlock Tree")),
-        "subgraph" | "topgraph" => obj.get("tree").and_then(Value::as_str).map(str::to_string),
+        "subgraph" | "topgraph" =>
+            obj.get("tree").and_then(Value::as_str).map(str::to_string),
         "describe" => Some(
             obj.get("description")
                 .and_then(Value::as_str)
@@ -278,16 +282,12 @@ fn write_frontier_items(
         let _ = writeln!(
             out,
             "  state: {}  priority: {}  dependee_count: {}  dependency_count: {}",
-            state,
-            priority,
-            dependee_count,
-            dependency_count,
+            state, priority, dependee_count, dependency_count,
         );
         let _ = writeln!(
             out,
             "  remaining_blockers: {}  blocker_ids: {}",
-            remaining_blocker_count,
-            remaining_blockers,
+            remaining_blocker_count, remaining_blockers,
         );
         let _ = writeln!(out, "  created_at: {}", created_at);
         let _ = writeln!(out, "  ticket_id: {}", ticket_id);

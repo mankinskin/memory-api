@@ -282,7 +282,7 @@ fn is_spec_doc_target(target: &RenderTarget) -> bool {
 }
 
 fn rules_as_snippets(
-    rules: &[RuleManifest],
+    rules: &[RuleManifest]
 ) -> Vec<GeneratedMarkdownSnippet<'_>> {
     rules
         .iter()
@@ -297,13 +297,12 @@ fn rules_as_snippets(
 }
 
 fn open_spec_store_for_artifact(
-    artifact_path: &Path,
+    artifact_path: &Path
 ) -> Result<SpecStore, McpError> {
     let workspace_root = artifact_path
         .ancestors()
         .find(|ancestor| {
-            ancestor.file_name().and_then(|name| name.to_str())
-                == Some(".spec")
+            ancestor.file_name().and_then(|name| name.to_str()) == Some(".spec")
         })
         .and_then(Path::parent)
         .ok_or_else(|| {
@@ -316,12 +315,11 @@ fn open_spec_store_for_artifact(
             )
         })?;
 
-    let mut store = SpecStore::open(workspace_root).map_err(|error| {
-        McpError::invalid_params(error.to_string(), None)
-    })?;
-    store.scan(false).map_err(|error| {
-        McpError::invalid_params(error.to_string(), None)
-    })?;
+    let mut store = SpecStore::open(workspace_root)
+        .map_err(|error| McpError::invalid_params(error.to_string(), None))?;
+    store
+        .scan(false)
+        .map_err(|error| McpError::invalid_params(error.to_string(), None))?;
     Ok(store)
 }
 
@@ -333,9 +331,7 @@ fn ensure_spec_generated_output_matches(
 
     if store
         .generated_artifact_matches(artifact_path, snippets)
-        .map_err(|error| {
-            McpError::invalid_params(error.to_string(), None)
-        })?
+        .map_err(|error| McpError::invalid_params(error.to_string(), None))?
     {
         Ok(())
     } else {
@@ -356,8 +352,6 @@ fn write_spec_generated_output(
     let mut store = open_spec_store_for_artifact(artifact_path)?;
     store
         .sync_generated_artifact(artifact_path, snippets)
-        .map_err(|error| {
-            McpError::invalid_params(error.to_string(), None)
-        })?;
+        .map_err(|error| McpError::invalid_params(error.to_string(), None))?;
     Ok(())
 }

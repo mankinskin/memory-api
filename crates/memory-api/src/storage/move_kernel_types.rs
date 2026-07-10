@@ -326,11 +326,14 @@ fn serialize_normalized_path_vec<S>(
 where
     S: serde::Serializer,
 {
-    let normalized: Vec<String> = paths.iter().map(|path| normalize_slashes(path)).collect();
+    let normalized: Vec<String> =
+        paths.iter().map(|path| normalize_slashes(path)).collect();
     normalized.serialize(serializer)
 }
 
-fn deserialize_pathbuf_vec<'de, D>(deserializer: D) -> Result<Vec<PathBuf>, D::Error>
+fn deserialize_pathbuf_vec<'de, D>(
+    deserializer: D
+) -> Result<Vec<PathBuf>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -454,7 +457,10 @@ pub struct MoveJournal {
     pub rewritten_path_files: Vec<MovePathRewrite>,
     #[serde(default)]
     pub manual_followups: Vec<MoveManualFollowup>,
-    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "std::collections::BTreeMap::is_empty"
+    )]
     pub phase_timings_ms: std::collections::BTreeMap<String, u64>,
     pub failure: Option<String>,
     #[serde(default)]
@@ -468,4 +474,3 @@ pub struct MoveOutcome {
     pub resumed: bool,
     pub rolled_back: bool,
 }
-

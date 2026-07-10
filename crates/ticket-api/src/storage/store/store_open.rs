@@ -39,7 +39,9 @@ impl TicketStore {
         path: &Path,
         marker_file: Option<&str>,
     ) -> PathBuf {
-        if path.is_absolute() && Self::resolved_candidate_matches(path, marker_file) {
+        if path.is_absolute()
+            && Self::resolved_candidate_matches(path, marker_file)
+        {
             return Self::normalize_path(path.to_path_buf());
         }
 
@@ -139,12 +141,14 @@ impl TicketStore {
         );
         let (store, internal_report) =
             Self::open_internal_profiled(index_root, schema_registry)?;
-        merge_timings(&mut report.phase_timings_ms, internal_report.phase_timings_ms);
-        report.scan_reports.extend(internal_report.scan_reports);
-        report.phase_timings_ms.insert(
-            "open_total_ms".to_string(),
-            elapsed_ms(overall_started),
+        merge_timings(
+            &mut report.phase_timings_ms,
+            internal_report.phase_timings_ms,
         );
+        report.scan_reports.extend(internal_report.scan_reports);
+        report
+            .phase_timings_ms
+            .insert("open_total_ms".to_string(), elapsed_ms(overall_started));
         emit_store_open_report("ticket_store_open_profiled_complete", &report);
         Ok((store, report))
     }
@@ -210,12 +214,14 @@ impl TicketStore {
         );
         let (store, internal_report) =
             Self::open_internal_profiled(index_root, schema_registry)?;
-        merge_timings(&mut report.phase_timings_ms, internal_report.phase_timings_ms);
-        report.scan_reports.extend(internal_report.scan_reports);
-        report.phase_timings_ms.insert(
-            "init_total_ms".to_string(),
-            elapsed_ms(overall_started),
+        merge_timings(
+            &mut report.phase_timings_ms,
+            internal_report.phase_timings_ms,
         );
+        report.scan_reports.extend(internal_report.scan_reports);
+        report
+            .phase_timings_ms
+            .insert("init_total_ms".to_string(), elapsed_ms(overall_started));
         emit_store_open_report("ticket_store_init_profiled_complete", &report);
         Ok((store, report))
     }
@@ -227,12 +233,13 @@ impl TicketStore {
         index_root: &Path,
         schema_registry: SchemaRegistry,
     ) -> Result<Self, StorageError> {
-        let (store, _) = Self::open_or_init_with_profiled(index_root, schema_registry)?;
+        let (store, _) =
+            Self::open_or_init_with_profiled(index_root, schema_registry)?;
         Ok(store)
     }
 
     pub fn open_or_init_profiled(
-        index_root: &Path,
+        index_root: &Path
     ) -> Result<(Self, StoreOpenReport), StorageError> {
         Self::open_or_init_with_profiled(
             index_root,
@@ -263,7 +270,7 @@ impl TicketStore {
                     &report,
                 );
                 Ok((store, report))
-            }
+            },
             Err(StorageError::WorkspaceNotFound { .. }) => {
                 span.record("initialized_store", true);
                 let (store, mut report) =
@@ -286,7 +293,7 @@ impl TicketStore {
                     &report,
                 );
                 Ok((store, report))
-            }
+            },
             Err(error) => Err(error),
         }
     }
@@ -347,7 +354,8 @@ impl TicketStore {
             elapsed_ms(add_root_started),
         );
         let bootstrap_started = Instant::now();
-        let bootstrap = store.bootstrap_empty_index_from_manifests_profiled()?;
+        let bootstrap =
+            store.bootstrap_empty_index_from_manifests_profiled()?;
         report.phase_timings_ms.insert(
             "bootstrap_empty_index_ms".to_string(),
             elapsed_ms(bootstrap_started),
@@ -367,7 +375,7 @@ impl TicketStore {
     }
 
     fn bootstrap_empty_index_from_manifests_profiled(
-        &self,
+        &self
     ) -> Result<StoreOpenReport, StorageError> {
         let _span_guard = tracing::debug_span!(
             target: STORE_TRACE_TARGET,
@@ -398,9 +406,10 @@ impl TicketStore {
                     "scan_existing_index_ms".to_string(),
                     elapsed_ms(bootstrap_scan_started),
                 );
-                report
-                    .scan_reports
-                    .insert("bootstrap_existing_index_scan".to_string(), scan_report);
+                report.scan_reports.insert(
+                    "bootstrap_existing_index_scan".to_string(),
+                    scan_report,
+                );
                 return Ok(report);
             }
             report.phase_timings_ms.insert(
@@ -409,10 +418,9 @@ impl TicketStore {
             );
             return Ok(report);
         }
-        report.phase_timings_ms.insert(
-            "count_tickets_ms".to_string(),
-            elapsed_ms(count_started),
-        );
+        report
+            .phase_timings_ms
+            .insert("count_tickets_ms".to_string(), elapsed_ms(count_started));
 
         let roots_started = Instant::now();
         for root in self.list_scan_roots()? {
@@ -452,5 +460,4 @@ impl TicketStore {
 
         Ok(report)
     }
-
 }

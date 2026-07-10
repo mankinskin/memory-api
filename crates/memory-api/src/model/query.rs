@@ -11,7 +11,10 @@ pub const DYNAMIC_FIELD_PREFIX: &str = "x_";
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ValueExpr {
     Text(String),
-    Range { start: String, end: String },
+    Range {
+        start: String,
+        end: String,
+    },
     /// Value-less marker used by the existence predicate (`key:?`).
     Empty,
 }
@@ -53,7 +56,10 @@ pub enum Expr {
     /// Retained as the canonical `Eq`/`Range` shape so existing parser output
     /// and consumers keep working. New comparison operators are emitted via
     /// [`Expr::Compare`].
-    Field { key: String, value: ValueExpr },
+    Field {
+        key: String,
+        value: ValueExpr,
+    },
     /// Field predicate carrying an explicit comparison operator and a
     /// (possibly deep / dotted) field path.
     Compare {
@@ -146,19 +152,9 @@ fn parse_token(
         let (op, value) = parse_field_value(&key, raw_value, raw_token)?;
 
         match op {
-            CompareOp::Eq => Expr::Field {
-                key,
-                value,
-            },
-            CompareOp::Range => Expr::Field {
-                key,
-                value,
-            },
-            _ => Expr::Compare {
-                key,
-                op,
-                value,
-            },
+            CompareOp::Eq => Expr::Field { key, value },
+            CompareOp::Range => Expr::Field { key, value },
+            _ => Expr::Compare { key, op, value },
         }
     } else {
         Expr::Fts(trim_quotes(raw_token))

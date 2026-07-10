@@ -85,7 +85,8 @@ impl LogStoreConfig {
         id: &str,
     ) -> Result<ValidationLogCapture, LogError> {
         let path = self.capture_path(id)?;
-        read_json_if_exists(&path)?.ok_or_else(|| LogError::CaptureNotFound(id.to_string()))
+        read_json_if_exists(&path)?
+            .ok_or_else(|| LogError::CaptureNotFound(id.to_string()))
     }
 
     /// Query stored captures, sorted by `captured_at` descending (newest first).
@@ -107,7 +108,9 @@ impl LogStoreConfig {
             true
         });
 
-        captures.sort_by(|a, b| b.captured_at.cmp(&a.captured_at).then(a.id.cmp(&b.id)));
+        captures.sort_by(|a, b| {
+            b.captured_at.cmp(&a.captured_at).then(a.id.cmp(&b.id))
+        });
 
         if let Some(limit) = query.limit {
             captures.truncate(limit);
@@ -131,7 +134,8 @@ impl LogStoreConfig {
         id: &str,
     ) -> Result<RuntimeLogSession, LogError> {
         let path = self.runtime_session_path(id)?;
-        read_json_if_exists(&path)?.ok_or_else(|| LogError::RuntimeSessionNotFound(id.to_string()))
+        read_json_if_exists(&path)?
+            .ok_or_else(|| LogError::RuntimeSessionNotFound(id.to_string()))
     }
 
     /// Query runtime log sessions, sorted by `started_at` descending (newest first).
@@ -142,9 +146,13 @@ impl LogStoreConfig {
         let mut sessions: Vec<RuntimeLogSession> =
             self.read_dir_json(&self.runtime_sessions_dir()?)?;
 
-        sessions.retain(|session| Self::matches_runtime_session_query(session, query));
+        sessions.retain(|session| {
+            Self::matches_runtime_session_query(session, query)
+        });
 
-        sessions.sort_by(|a, b| b.started_at.cmp(&a.started_at).then(a.id.cmp(&b.id)));
+        sessions.sort_by(|a, b| {
+            b.started_at.cmp(&a.started_at).then(a.id.cmp(&b.id))
+        });
 
         if let Some(limit) = query.limit {
             sessions.truncate(limit);
@@ -251,8 +259,9 @@ impl LogStoreConfig {
         if self.root.as_os_str().is_empty() {
             return Err(LogError::EmptyRoot);
         }
-        validate_segment(&self.workspace_slug)
-            .map_err(|_| LogError::InvalidWorkspaceSlug(self.workspace_slug.clone()))?;
+        validate_segment(&self.workspace_slug).map_err(|_| {
+            LogError::InvalidWorkspaceSlug(self.workspace_slug.clone())
+        })?;
         Ok(self.root.join(&self.workspace_slug))
     }
 
@@ -268,7 +277,8 @@ impl LogStoreConfig {
         &self,
         id: &str,
     ) -> Result<PathBuf, LogError> {
-        validate_segment(id).map_err(|_| LogError::InvalidId(id.to_string()))?;
+        validate_segment(id)
+            .map_err(|_| LogError::InvalidId(id.to_string()))?;
         Ok(self.captures_dir()?.join(format!("{id}.json")))
     }
 
@@ -276,7 +286,8 @@ impl LogStoreConfig {
         &self,
         id: &str,
     ) -> Result<PathBuf, LogError> {
-        validate_segment(id).map_err(|_| LogError::InvalidId(id.to_string()))?;
+        validate_segment(id)
+            .map_err(|_| LogError::InvalidId(id.to_string()))?;
         Ok(self.runtime_sessions_dir()?.join(format!("{id}.json")))
     }
 
@@ -286,13 +297,13 @@ impl LogStoreConfig {
     ) -> Result<Vec<T>, LogError> {
         let entries = match fs::read_dir(dir) {
             Ok(entries) => entries,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(source) => {
+            Err(err) if err.kind() == ErrorKind::NotFound =>
+                return Ok(Vec::new()),
+            Err(source) =>
                 return Err(LogError::Io {
                     path: dir.to_path_buf(),
                     source,
-                })
-            },
+                }),
         };
 
         let mut items = Vec::new();
@@ -323,9 +334,11 @@ fn write_json<T: serde::Serialize>(
             source,
         })?;
     }
-    let json = serde_json::to_string_pretty(value).map_err(|source| LogError::Serialize {
-        path: path.to_path_buf(),
-        source,
+    let json = serde_json::to_string_pretty(value).map_err(|source| {
+        LogError::Serialize {
+            path: path.to_path_buf(),
+            source,
+        }
     })?;
     fs::write(path, json).map_err(|source| LogError::Io {
         path: path.to_path_buf(),
@@ -333,20 +346,23 @@ fn write_json<T: serde::Serialize>(
     })
 }
 
-fn read_json_if_exists<T: DeserializeOwned>(path: &Path) -> Result<Option<T>, LogError> {
+fn read_json_if_exists<T: DeserializeOwned>(
+    path: &Path
+) -> Result<Option<T>, LogError> {
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(source) => {
+        Err(source) =>
             return Err(LogError::Io {
                 path: path.to_path_buf(),
                 source,
-            })
-        },
+            }),
     };
-    let value = serde_json::from_slice(&bytes).map_err(|source| LogError::Deserialize {
-        path: path.to_path_buf(),
-        source,
+    let value = serde_json::from_slice(&bytes).map_err(|source| {
+        LogError::Deserialize {
+            path: path.to_path_buf(),
+            source,
+        }
     })?;
     Ok(Some(value))
 }
@@ -357,7 +373,8 @@ fn validate_segment(segment: &str) -> Result<(), ()> {
     if segment.is_empty() || segment == "." || segment == ".." {
         return Err(());
     }
-    if segment.contains('/') || segment.contains('\\') || segment.contains("..") {
+    if segment.contains('/') || segment.contains('\\') || segment.contains("..")
+    {
         return Err(());
     }
     if segment

@@ -59,7 +59,11 @@ pub(super) async fn handle_health_check(
 
     let workflow = match WorkflowModel::build(
         &store,
-        store.list(None, None, None).map_err(|e| storage_err(e, &request_id)).ok().unwrap_or_default(),
+        store
+            .list(None, None, None)
+            .map_err(|e| storage_err(e, &request_id))
+            .ok()
+            .unwrap_or_default(),
         all_edges.clone(),
     ) {
         Ok(w) => w,
@@ -69,10 +73,7 @@ pub(super) async fn handle_health_check(
     let tickets_checked = tickets
         .iter()
         .filter(|ticket| {
-            !matches!(
-                ticket.state.as_deref(),
-                Some("done") | Some("cancelled")
-            )
+            !matches!(ticket.state.as_deref(), Some("done") | Some("cancelled"))
         })
         .count();
     let findings: Vec<serde_json::Value> = report
@@ -230,5 +231,3 @@ fn load_live_tickets(
         .filter_map(|id| store.get_indexed(id).ok().flatten())
         .collect()
 }
-
-

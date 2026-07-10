@@ -63,12 +63,11 @@ impl TicketStore {
         self.index.insert_ticket(&refreshed)?;
         let body = TicketFs::read_description(&refreshed.path);
         let created_at_str = refreshed.created_at.to_rfc3339();
-        let effort_str = saved_extra.get("effort")
-            .and_then(|v| match v {
-                serde_json::Value::String(s) => Some(s.clone()),
-                serde_json::Value::Number(n) => Some(n.to_string()),
-                _ => None,
-            });
+        let effort_str = saved_extra.get("effort").and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        });
         self.with_search_repair(|| {
             self.search.upsert(
                 id,
@@ -83,8 +82,13 @@ impl TicketStore {
         let state_progressed = self.state_rank_for_type(
             &refreshed.type_id,
             refreshed.state.as_deref(),
-        ) > self.state_rank_for_type(&refreshed.type_id, previous_state.as_deref());
-        self.refresh_workflow_facts_for_roots(&[*id], state_progressed, Utc::now())?;
+        ) > self
+            .state_rank_for_type(&refreshed.type_id, previous_state.as_deref());
+        self.refresh_workflow_facts_for_roots(
+            &[*id],
+            state_progressed,
+            Utc::now(),
+        )?;
         Ok(())
     }
 
@@ -124,12 +128,11 @@ impl TicketStore {
         self.index.insert_ticket(&refreshed)?;
         let body = TicketFs::read_description(&refreshed.path);
         let created_at_str = refreshed.created_at.to_rfc3339();
-        let effort_str = patch.get("effort")
-            .and_then(|v| match v {
-                serde_json::Value::String(s) => Some(s.clone()),
-                serde_json::Value::Number(n) => Some(n.to_string()),
-                _ => None,
-            });
+        let effort_str = patch.get("effort").and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        });
         self.with_search_repair(|| {
             self.search.upsert(
                 id,
@@ -144,8 +147,13 @@ impl TicketStore {
         let state_progressed = self.state_rank_for_type(
             &refreshed.type_id,
             refreshed.state.as_deref(),
-        ) > self.state_rank_for_type(&refreshed.type_id, previous_state.as_deref());
-        self.refresh_workflow_facts_for_roots(&[*id], state_progressed, Utc::now())?;
+        ) > self
+            .state_rank_for_type(&refreshed.type_id, previous_state.as_deref());
+        self.refresh_workflow_facts_for_roots(
+            &[*id],
+            state_progressed,
+            Utc::now(),
+        )?;
 
         let updated_manifest = TicketFs::read(&refreshed.path)?;
         let new_rev = TicketFs::append_history(
@@ -175,15 +183,22 @@ impl TicketStore {
             return Ok((manifest, vec![]));
         }
 
-        let schema = self.schema_registry.get(&indexed.type_id).ok_or_else(|| {
-            StorageError::Other(format!("no schema for type '{}'", indexed.type_id))
-        })?;
-        let path = schema.find_path(current_state, target_state).ok_or_else(|| {
-            StorageError::Other(format!(
-                "no path from '{}' to '{}'",
-                current_state, target_state
-            ))
-        })?;
+        let schema =
+            self.schema_registry.get(&indexed.type_id).ok_or_else(|| {
+                StorageError::Other(format!(
+                    "no schema for type '{}'",
+                    indexed.type_id
+                ))
+            })?;
+        let path =
+            schema
+                .find_path(current_state, target_state)
+                .ok_or_else(|| {
+                    StorageError::Other(format!(
+                        "no path from '{}' to '{}'",
+                        current_state, target_state
+                    ))
+                })?;
 
         let empty_patch = BTreeMap::new();
         let (final_state, transition_states) = path

@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use serde_json::Value;
 
 use crate::{
@@ -151,7 +154,9 @@ pub fn build_session_audit_report(
             turn_count: record.turns.len(),
             assistant_turn_count,
             empty_assistant_turn_count,
-            event_count: events.map(|value| value.events.len()).unwrap_or_default(),
+            event_count: events
+                .map(|value| value.events.len())
+                .unwrap_or_default(),
             assistant_tool_plan_count,
             tool_execution_result_count,
             ambiguous_sync_terminal_count,

@@ -1,7 +1,9 @@
-use std::collections::BTreeSet;
-use std::path::{
-    Path,
-    PathBuf,
+use std::{
+    collections::BTreeSet,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
 use serde_json::{
@@ -9,9 +11,7 @@ use serde_json::{
     json,
 };
 
-use spec_api::{
-    SpecStore,
-};
+use spec_api::SpecStore;
 
 use crate::cli::{
     CliRunError,
@@ -33,10 +33,8 @@ pub(super) fn dispatch(
 
     let index_root =
         resolve_index_root(index_root_override, workspace_root_override);
-    let default_workspace_root = resolve_workspace_root(
-        &index_root,
-        workspace_root_override,
-    );
+    let default_workspace_root =
+        resolve_workspace_root(&index_root, workspace_root_override);
 
     if matches!(command, SpecCommandCli::Init) {
         let store = SpecStore::init(&index_root)?;
@@ -63,11 +61,7 @@ pub(super) fn dispatch(
     if command_mutates(&command) {
         dispatch_mutating(command, &mut store, &default_workspace_root)
     } else {
-        dispatch_read_only(
-            command,
-            &store,
-            &default_workspace_root,
-        )
+        dispatch_read_only(command, &store, &default_workspace_root)
     }
 }
 
@@ -76,8 +70,10 @@ fn require_explicit_workspace_for_create(
     index_root_override: Option<&Path>,
     workspace_root_override: Option<&Path>,
 ) -> Result<(), CliRunError> {
-    if matches!(command, SpecCommandCli::Create(_) | SpecCommandCli::Bootstrap(_))
-        && index_root_override.is_none()
+    if matches!(
+        command,
+        SpecCommandCli::Create(_) | SpecCommandCli::Bootstrap(_)
+    ) && index_root_override.is_none()
         && workspace_root_override.is_none()
     {
         return Err(CliRunError::BadRequest(
@@ -203,8 +199,7 @@ fn resolve_workspace_root(
     }
 
     memory_api::workspace::resolve_workspace_root_from_store_root(
-        index_root,
-        ".spec",
+        index_root, ".spec",
     )
 }
 
@@ -233,7 +228,6 @@ fn register_descendant_scan_roots(
 
     Ok(reindex)
 }
-
 
 #[cfg(test)]
 #[path = "dispatch_tests.rs"]

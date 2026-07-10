@@ -32,7 +32,6 @@ use super::{
     make_store,
 };
 
-
 #[tokio::test]
 async fn search_list_uses_persisted_updated_at() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -133,7 +132,10 @@ async fn search_list_drops_unresolved_tantivy_only_hits() {
         serde_json::from_slice(&bytes).expect("json body");
     let items = payload["items"].as_array().expect("items array");
 
-    assert!(items.is_empty(), "unresolved search-only hits must be dropped");
+    assert!(
+        items.is_empty(),
+        "unresolved search-only hits must be dropped"
+    );
 }
 
 #[tokio::test]
@@ -421,4 +423,3 @@ async fn state_only_list_filters_items() {
     assert_eq!(items[0]["id"].as_str(), Some(ready_id.as_str()));
     assert_eq!(items[0]["state"].as_str(), Some("ready"));
 }
-

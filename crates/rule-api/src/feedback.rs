@@ -16,8 +16,8 @@ use std::{
 
 #[path = "feedback_io.rs"]
 mod feedback_io;
-use feedback_io::*;
 use chrono::Utc;
+use feedback_io::*;
 use serde::{
     Deserialize,
     Serialize,
@@ -138,9 +138,8 @@ impl FromStr for FeedbackAuthorKind {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.trim().to_ascii_lowercase().as_str() {
             "human" => Ok(Self::Human),
-            "privileged-agent" | "privileged_agent" | "agent" => {
-                Ok(Self::PrivilegedAgent)
-            },
+            "privileged-agent" | "privileged_agent" | "agent" =>
+                Ok(Self::PrivilegedAgent),
             other => Err(format!(
                 "invalid feedback author kind '{other}', expected human or privileged-agent"
             )),
@@ -655,7 +654,6 @@ pub struct EntityFeedbackStore {
     root: PathBuf,
     workspace_slug: String,
 }
-
 
 #[path = "feedback_store.rs"]
 mod feedback_store;

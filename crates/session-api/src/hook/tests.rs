@@ -133,7 +133,9 @@ fn transcript_reader_maps_visible_messages_into_payload() {
     let result_event = payload
         .events
         .iter()
-        .find(|event| event.event_type.as_deref() == Some("tool.execution_result"))
+        .find(|event| {
+            event.event_type.as_deref() == Some("tool.execution_result")
+        })
         .expect("expected synthesized tool.execution_result event");
     assert_eq!(result_event.tool_name.as_deref(), Some("read_file"));
     assert_eq!(
@@ -284,7 +286,9 @@ fn transcript_reader_does_not_mark_ambiguous_sync_terminal_without_signals() {
     let result_event = payload
         .events
         .iter()
-        .find(|event| event.event_type.as_deref() == Some("tool.execution_result"))
+        .find(|event| {
+            event.event_type.as_deref() == Some("tool.execution_result")
+        })
         .expect("expected tool.execution_result event");
     assert_eq!(result_event.tool_name.as_deref(), Some("run_in_terminal"));
     assert_eq!(
@@ -365,7 +369,9 @@ fn transcript_normalization_and_prompt_pack_tool_result_consistency() {
     let result_event = payload
         .events
         .iter()
-        .find(|event| event.event_type.as_deref() == Some("tool.execution_result"))
+        .find(|event| {
+            event.event_type.as_deref() == Some("tool.execution_result")
+        })
         .expect("expected synthesized tool.execution_result event");
     assert_eq!(
         result_event

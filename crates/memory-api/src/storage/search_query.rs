@@ -20,8 +20,7 @@ pub(super) fn build_schema() -> (Schema, SearchFields) {
         builder.add_text_field("ticket_type", STRING | STORED | FAST);
     let created_at =
         builder.add_text_field("created_at", STRING | STORED | FAST);
-    let effort =
-        builder.add_i64_field("effort", INDEXED | STORED | FAST);
+    let effort = builder.add_i64_field("effort", INDEXED | STORED | FAST);
     let schema = builder.build();
     (
         schema,
@@ -106,9 +105,12 @@ pub(super) fn compare_expr_to_query(
             substring_query_for_fields(text, &[field])
                 .unwrap_or_else(|| Box::new(AllQuery)),
         (CompareOp::Exists, _) => exists_query(field),
-        (CompareOp::Gt, _) | (CompareOp::Gte, _) | (CompareOp::Lt, _) | (CompareOp::Lte, _) | (CompareOp::Range, _) => {
-            build_range_query(field, field_name, fields, op, value)
-        }
+        (CompareOp::Gt, _)
+        | (CompareOp::Gte, _)
+        | (CompareOp::Lt, _)
+        | (CompareOp::Lte, _)
+        | (CompareOp::Range, _) =>
+            build_range_query(field, field_name, fields, op, value),
         _ => Box::new(AllQuery),
     }
 }
@@ -121,12 +123,18 @@ pub(super) fn build_range_query(
     value: &ValueExpr,
 ) -> Box<dyn tantivy::query::Query> {
     use crate::model::query::CompareOp;
-    use tantivy::query::{RangeQuery, EmptyQuery};
     use std::ops::Bound;
+    use tantivy::query::{
+        EmptyQuery,
+        RangeQuery,
+    };
 
     let get_term = |val_str: &str| -> Option<Term> {
         if field == fields.effort {
-            val_str.parse::<i64>().ok().map(|val| Term::from_field_i64(field, val))
+            val_str
+                .parse::<i64>()
+                .ok()
+                .map(|val| Term::from_field_i64(field, val))
         } else {
             Some(Term::from_field_text(field, val_str))
         }
@@ -149,7 +157,7 @@ pub(super) fn build_range_query(
                 &Bound::Excluded(term),
                 &Bound::Unbounded,
             ))
-        }
+        },
         (CompareOp::Gte, ValueExpr::Text(text)) => {
             let Some(term) = get_term(text) else {
                 return Box::new(EmptyQuery);
@@ -160,7 +168,7 @@ pub(super) fn build_range_query(
                 &Bound::Included(term),
                 &Bound::Unbounded,
             ))
-        }
+        },
         (CompareOp::Lt, ValueExpr::Text(text)) => {
             let Some(term) = get_term(text) else {
                 return Box::new(EmptyQuery);
@@ -171,7 +179,7 @@ pub(super) fn build_range_query(
                 &Bound::Unbounded,
                 &Bound::Excluded(term),
             ))
-        }
+        },
         (CompareOp::Lte, ValueExpr::Text(text)) => {
             let Some(term) = get_term(text) else {
                 return Box::new(EmptyQuery);
@@ -182,7 +190,7 @@ pub(super) fn build_range_query(
                 &Bound::Unbounded,
                 &Bound::Included(term),
             ))
-        }
+        },
         (CompareOp::Range, ValueExpr::Range { start, end }) => {
             let Some(start_term) = get_term(start) else {
                 return Box::new(EmptyQuery);
@@ -196,7 +204,7 @@ pub(super) fn build_range_query(
                 &Bound::Included(start_term),
                 &Bound::Included(end_term),
             ))
-        }
+        },
         _ => Box::new(EmptyQuery),
     }
 }
@@ -343,16 +351,21 @@ pub(super) fn field_expr_to_query(
     match value {
         ValueExpr::Text(text) if key == "title" =>
             title_field_query(text, fields),
-        ValueExpr::Text(text) if key == "id" =>
-            id_field_query(text, fields),
+        ValueExpr::Text(text) if key == "id" => id_field_query(text, fields),
         ValueExpr::Text(text) => term_query(field, text),
         ValueExpr::Range { .. } => {
             if let Some(field_name) = tantivy_field_name_for_key(key) {
-                build_range_query(field, field_name, fields, crate::model::query::CompareOp::Range, value)
+                build_range_query(
+                    field,
+                    field_name,
+                    fields,
+                    crate::model::query::CompareOp::Range,
+                    value,
+                )
             } else {
                 Box::new(AllQuery)
             }
-        }
+        },
         ValueExpr::Empty => Box::new(AllQuery),
     }
 }
@@ -442,4 +455,3 @@ pub(super) fn not_expr_to_query(
         (Occur::MustNot, expr_to_query(expr, fields, index)),
     ]))
 }
-

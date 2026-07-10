@@ -14,8 +14,10 @@ use std::{
 use chrono::Utc;
 use ticket_api::{
     model::edge::EdgeRecord,
-    storage::indexed::IndexedTicket,
-    storage::TicketStore,
+    storage::{
+        TicketStore,
+        indexed::IndexedTicket,
+    },
 };
 use uuid::Uuid;
 
@@ -191,7 +193,8 @@ fn reports_dependency_convergence_findings() {
 fn reports_policy_excluded_workspace_references() {
     let repo = TestDir::new("audit-ticket-graph-policy-excluded");
     let excluded_workspace = repo.path().join("excluded-workspace");
-    fs::create_dir_all(&excluded_workspace).expect("create excluded workspace root");
+    fs::create_dir_all(&excluded_workspace)
+        .expect("create excluded workspace root");
     fs::write(excluded_workspace.join(".ticket-ignore"), "")
         .expect("write marker");
 

@@ -259,12 +259,12 @@ fn is_mcp_wired_cell(
     operation: &str,
 ) -> bool {
     match domain {
-        "ticket" => ["create", "get", "search", "update", "delete"]
-            .contains(&operation),
+        "ticket" =>
+            ["create", "get", "search", "update", "delete"].contains(&operation),
         "spec" => ["create", "get", "search", "update", "delete", "scan"]
             .contains(&operation),
-        "rule" => ["create", "get", "search", "update", "scan"]
-            .contains(&operation),
+        "rule" =>
+            ["create", "get", "search", "update", "scan"].contains(&operation),
         _ => false,
     }
 }
@@ -528,11 +528,7 @@ fn executions_are_persisted_in_the_workspace_test_store() {
 fn subprocess_probe_persists_full_failure_bundle_fields() {
     let run = run_ticket_get_mcp_subprocess_failure_probe()
         .expect("subprocess probe run should execute");
-    assert_eq!(
-        run.records.len(),
-        1,
-        "probe run should emit one record"
-    );
+    assert_eq!(run.records.len(), 1, "probe run should emit one record");
 
     let record = &run.records[0];
     assert_eq!(
@@ -550,10 +546,7 @@ fn subprocess_probe_persists_full_failure_bundle_fields() {
         "probe should classify cargo invalid subcommand as non_zero_exit"
     );
 
-    assert_eq!(
-        bundle["invocation"]["executable"].as_str(),
-        Some("cargo")
-    );
+    assert_eq!(bundle["invocation"]["executable"].as_str(), Some("cargo"));
     assert_eq!(
         bundle["invocation"]["args"][0].as_str(),
         Some("definitely-not-a-valid-subcommand")
@@ -665,8 +658,9 @@ fn subprocess_probe_persists_full_failure_bundle_fields() {
     let persisted_detail = persisted
         .detail
         .expect("persisted execution should include detail bundle");
-    let persisted_bundle: serde_json::Value = serde_json::from_str(&persisted_detail)
-        .expect("persisted detail should remain parseable json bundle");
+    let persisted_bundle: serde_json::Value =
+        serde_json::from_str(&persisted_detail)
+            .expect("persisted detail should remain parseable json bundle");
     assert_eq!(
         persisted_bundle["linkage"]["test_execution_id"].as_str(),
         Some(record.execution_id.as_str()),
@@ -732,7 +726,8 @@ fn subprocess_spawn_probe_reports_spawn_failure_bundle() {
     assert!(
         bundle["message"]
             .as_str()
-            .map(|msg| msg.contains("spawn ticket-mcp stdio sentinel process failed"))
+            .map(|msg| msg
+                .contains("spawn ticket-mcp stdio sentinel process failed"))
             .unwrap_or(false),
         "spawn probe should preserve spawn failure message"
     );

@@ -299,11 +299,10 @@ pub fn error_output(
                     message
                 )
             }),
-        Some(MachineOutputFormat::Toon) => {
+        Some(MachineOutputFormat::Toon) =>
             toon_format::encode_default(&json!(error)).unwrap_or_else(|_| {
                 format!("code: invalid_request\nmessage: {message}")
-            })
-        },
+            }),
         None => message.to_string(),
     }
 }
@@ -313,8 +312,8 @@ pub fn render_machine_output(
     format: MachineOutputFormat,
 ) -> Result<String, String> {
     match format {
-        MachineOutputFormat::Json => serde_json::to_string_pretty(payload)
-            .map_err(|err| err.to_string()),
+        MachineOutputFormat::Json =>
+            serde_json::to_string_pretty(payload).map_err(|err| err.to_string()),
         MachineOutputFormat::Toon =>
             toon_format::encode_default(payload).map_err(|err| err.to_string()),
     }
@@ -333,7 +332,8 @@ pub fn machine_output_format(
     }
 }
 
-pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat> {
+pub fn requested_machine_output_format_from_args() -> Option<MachineOutputFormat>
+{
     machine_output_format(
         std::env::args().any(|arg| arg == "--json"),
         std::env::args().any(|arg| arg == "--toon"),

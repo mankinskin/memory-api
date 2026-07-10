@@ -79,13 +79,19 @@ fn assert_visibility_surfaces_agree(
     for id in &known_ids {
         if expected_ids.contains(id) {
             let _indexed = store.get_indexed(id).unwrap().unwrap();
-            assert!(store.get(id).is_ok(), "visible ticket {id} should be readable");
+            assert!(
+                store.get(id).is_ok(),
+                "visible ticket {id} should be readable"
+            );
         } else {
             assert!(
                 store.get_indexed(id).unwrap().is_none(),
                 "hidden ticket {id} should not remain indexed"
             );
-            assert!(store.get(id).is_err(), "hidden ticket {id} should not be readable");
+            assert!(
+                store.get(id).is_err(),
+                "hidden ticket {id} should not be readable"
+            );
         }
     }
 }
@@ -121,10 +127,9 @@ fn assert_ticket_title_and_state(
     );
 }
 
-
-mod workflow_tests;
-mod scan_visibility_tests;
-mod scan_reconcile_tests;
-mod recovery_tests;
-mod update_regression_tests;
 mod policy_tests;
+mod recovery_tests;
+mod scan_reconcile_tests;
+mod scan_visibility_tests;
+mod update_regression_tests;
+mod workflow_tests;

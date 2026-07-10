@@ -164,7 +164,8 @@ fn listed_ticket_summaries(
     input: &ListTicketsInput,
 ) -> Result<Vec<TicketSummary>, ticket_api::error::StorageError> {
     let limit = input.limit.map(|value| value.min(1000));
-    let tickets = store.list(input.state.as_deref(), input.type_id.as_deref(), limit)?;
+    let tickets =
+        store.list(input.state.as_deref(), input.type_id.as_deref(), limit)?;
     let model = ticket_api::workflow::WorkflowModel::build(
         store,
         tickets.clone(),

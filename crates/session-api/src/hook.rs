@@ -358,10 +358,9 @@ fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
         let captured_event = event.captured_event();
         events.push(captured_event);
 
-        if let Some(result_event) = build_tool_execution_result_event(
-            &event,
-            context,
-        ) {
+        if let Some(result_event) =
+            build_tool_execution_result_event(&event, context)
+        {
             events.push(result_event);
         }
 
@@ -622,9 +621,7 @@ fn build_tool_execution_result_event(
                 .get("type")
                 .and_then(serde_json::Value::as_str)
                 .or_else(|| {
-                    error
-                        .get("name")
-                        .and_then(serde_json::Value::as_str)
+                    error.get("name").and_then(serde_json::Value::as_str)
                 })
         })
         .map(ToString::to_string)
@@ -658,9 +655,11 @@ fn build_tool_execution_result_event(
         "result_code".to_string(),
         serde_json::Value::String(result_code.to_string()),
     );
-    normalized.insert("has_spill".to_string(), serde_json::Value::Bool(has_spill));
+    normalized
+        .insert("has_spill".to_string(), serde_json::Value::Bool(has_spill));
     if let Some(name) = tool_name.clone() {
-        normalized.insert("tool_name".to_string(), serde_json::Value::String(name));
+        normalized
+            .insert("tool_name".to_string(), serde_json::Value::String(name));
     }
     if let Some(arguments) = tool_arguments.clone() {
         normalized.insert("arguments".to_string(), arguments);
@@ -672,7 +671,8 @@ fn build_tool_execution_result_event(
         );
     }
     if let Some(summary) = summary.clone() {
-        normalized.insert("summary".to_string(), serde_json::Value::String(summary));
+        normalized
+            .insert("summary".to_string(), serde_json::Value::String(summary));
     }
     if let Some(pointer) = spill_pointer.clone() {
         normalized.insert(
@@ -724,7 +724,9 @@ fn build_tool_execution_result_event(
 }
 
 fn extract_tool_result_summary(data: &serde_json::Value) -> Option<String> {
-    let candidates = ["summary", "output", "stdout", "stderr", "message", "content"];
+    let candidates = [
+        "summary", "output", "stdout", "stderr", "message", "content",
+    ];
     let value = candidates
         .iter()
         .filter_map(|key| data.get(*key))
@@ -959,13 +961,14 @@ fn normalize_embedded_json_strings(value: Value) -> Value {
         Value::Object(entries) => Value::Object(
             entries
                 .into_iter()
-                .map(|(key, value)| (key, normalize_embedded_json_strings(value)))
+                .map(|(key, value)| {
+                    (key, normalize_embedded_json_strings(value))
+                })
                 .collect(),
         ),
-        Value::String(text) =>
-            parse_stringified_json_value(&text)
-                .map(normalize_embedded_json_strings)
-                .unwrap_or(Value::String(text)),
+        Value::String(text) => parse_stringified_json_value(&text)
+            .map(normalize_embedded_json_strings)
+            .unwrap_or(Value::String(text)),
         other => other,
     }
 }
@@ -977,8 +980,7 @@ fn parse_stringified_json_value(text: &str) -> Option<Value> {
     }
 
     // De-stringify JSON payloads that were double-encoded upstream.
-    let starts_like_json =
-        trimmed.starts_with('{') || trimmed.starts_with('[');
+    let starts_like_json = trimmed.starts_with('{') || trimmed.starts_with('[');
     if !starts_like_json {
         return None;
     }

@@ -58,10 +58,8 @@ pub(super) fn resolve_workspace_root(
 ) -> Option<PathBuf> {
     workspace_root_override
         .map(|path| {
-            let store_root = memory_api::workspace::resolve_store_root_from(
-                path,
-                ".rule",
-            );
+            let store_root =
+                memory_api::workspace::resolve_store_root_from(path, ".rule");
             memory_api::workspace::resolve_workspace_root_from_store_root(
                 &store_root,
                 ".rule",
@@ -226,12 +224,8 @@ mod tests {
         std::fs::create_dir_all(repo.join(".rule")).unwrap();
         std::fs::create_dir_all(child.join(".rule")).unwrap();
 
-        let resolved = resolve_index_root_from(
-            None,
-            Some(&child),
-            None,
-            Some(&repo),
-        );
+        let resolved =
+            resolve_index_root_from(None, Some(&child), None, Some(&repo));
 
         assert_eq!(resolved, child.join(".rule"));
     }

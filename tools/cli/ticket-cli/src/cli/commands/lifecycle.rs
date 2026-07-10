@@ -4,8 +4,10 @@ use serde_json::{
 };
 use uuid::Uuid;
 
-use ticket_api::storage::TicketStore;
-use ticket_api::workspace;
+use ticket_api::{
+    storage::TicketStore,
+    workspace,
+};
 
 use crate::cli::{
     CancelArgs,
@@ -101,36 +103,45 @@ pub(crate) fn cmd_move(
     })?;
     tracing::Span::current().record(
         "mode",
-        if global_dry_run || args.dry_run { "plan" } else { "execute" },
+        if global_dry_run || args.dry_run {
+            "plan"
+        } else {
+            "execute"
+        },
     );
-    let to_workspace_root = args.to_workspace_root.as_deref().ok_or_else(|| {
-        CliRunError::BadRequest(
-            "move requires --to-workspace-root in plan/execute mode".to_string(),
-        )
-    })?;
+    let to_workspace_root =
+        args.to_workspace_root.as_deref().ok_or_else(|| {
+            CliRunError::BadRequest(
+                "move requires --to-workspace-root in plan/execute mode"
+                    .to_string(),
+            )
+        })?;
 
     let ticket_id = super::resolve_uuid_prefix(id, store)?;
     tracing::Span::current().record("ticket_id", ticket_id.to_string());
-    let requested_workspace_root = workspace::canonicalize_workspace_root_strict(
-        std::path::Path::new(to_workspace_root),
-    )
-    .map_err(|error| {
-        CliRunError::BadRequest(format!(
-            "workspace root canonicalization failed for '{}': {error}",
-            to_workspace_root.display()
+    let requested_workspace_root =
+        workspace::canonicalize_workspace_root_strict(std::path::Path::new(
+            to_workspace_root,
         ))
-    })?;
+        .map_err(|error| {
+            CliRunError::BadRequest(format!(
+                "workspace root canonicalization failed for '{}': {error}",
+                to_workspace_root.display()
+            ))
+        })?;
 
     let target_store_root = workspace::resolve_store_root_from(
         &requested_workspace_root,
         workspace::TICKET_INDEX_DIR,
     );
-    let target_workspace_root = workspace::resolve_workspace_root_from_store_root(
-        &target_store_root,
-        workspace::TICKET_INDEX_DIR,
-    );
+    let target_workspace_root =
+        workspace::resolve_workspace_root_from_store_root(
+            &target_store_root,
+            workspace::TICKET_INDEX_DIR,
+        );
 
-    let report = store.plan_move_preflight(&ticket_id, &target_workspace_root)?;
+    let report =
+        store.plan_move_preflight(&ticket_id, &target_workspace_root)?;
     let dry_run = global_dry_run || args.dry_run;
 
     if dry_run || !report.supported() {
@@ -153,7 +164,8 @@ pub(crate) fn cmd_move(
     }
 
     let outcome = store.execute_move_with_journal(&report)?;
-    tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
+    tracing::Span::current()
+        .record("journal_id", outcome.journal.id.to_string());
     tracing::debug!(
         target: "ticket_cli::transport",
         ticket_id = %ticket_id,
@@ -203,7 +215,9 @@ fn parse_move_journal_uuid(
 ) -> Result<Uuid, CliRunError> {
     let value = value.expect("mode-specific UUID should exist");
     value.parse::<Uuid>().map_err(|error| {
-        CliRunError::BadRequest(format!("invalid {mode_flag} journal UUID: {error}"))
+        CliRunError::BadRequest(format!(
+            "invalid {mode_flag} journal UUID: {error}"
+        ))
     })
 }
 
@@ -213,9 +227,11 @@ fn handle_move_resume(
 ) -> Result<Value, CliRunError> {
     tracing::Span::current().record("mode", "resume");
     validate_move_mode_args(args, "--resume")?;
-    let journal_id = parse_move_journal_uuid(args.resume.as_deref(), "--resume")?;
+    let journal_id =
+        parse_move_journal_uuid(args.resume.as_deref(), "--resume")?;
     let outcome = store.resume_move_with_journal(journal_id)?;
-    tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
+    tracing::Span::current()
+        .record("journal_id", outcome.journal.id.to_string());
     tracing::debug!(
         target: "ticket_cli::transport",
         journal_id = %outcome.journal.id,
@@ -238,9 +254,11 @@ fn handle_move_rollback(
 ) -> Result<Value, CliRunError> {
     tracing::Span::current().record("mode", "rollback");
     validate_move_mode_args(args, "--rollback")?;
-    let journal_id = parse_move_journal_uuid(args.rollback.as_deref(), "--rollback")?;
+    let journal_id =
+        parse_move_journal_uuid(args.rollback.as_deref(), "--rollback")?;
     let outcome = store.rollback_move_with_journal(journal_id)?;
-    tracing::Span::current().record("journal_id", outcome.journal.id.to_string());
+    tracing::Span::current()
+        .record("journal_id", outcome.journal.id.to_string());
     tracing::debug!(
         target: "ticket_cli::transport",
         journal_id = %outcome.journal.id,
@@ -258,7 +276,7 @@ fn handle_move_rollback(
 }
 
 fn move_plan_json(
-    report: &ticket_api::storage::move_planner::MovePreflightReport,
+    report: &ticket_api::storage::move_planner::MovePreflightReport
 ) -> Result<Value, CliRunError> {
     Ok(json!({
         "supported": report.supported(),
@@ -281,7 +299,9 @@ fn move_plan_json(
     }))
 }
 
-fn move_outcome_json(outcome: &ticket_api::storage::move_execution::MoveExecutionOutcome) -> Value {
+fn move_outcome_json(
+    outcome: &ticket_api::storage::move_execution::MoveExecutionOutcome
+) -> Value {
     json!({
         "resumed": outcome.resumed,
         "rolled_back": outcome.rolled_back,
@@ -311,7 +331,9 @@ fn recovery_hint() -> Value {
     })
 }
 
-fn normalize_display_path(path: &std::path::Path) -> Result<String, CliRunError> {
+fn normalize_display_path(
+    path: &std::path::Path
+) -> Result<String, CliRunError> {
     memory_api::workspace::normalize_path_for_display_strict(path).map_err(
         |error| {
             CliRunError::BadRequest(format!(
@@ -414,7 +436,10 @@ mod tests {
     use std::process::Command;
     use tempfile::tempdir;
 
-    fn run_git(repo_root: &std::path::Path, args: &[&str]) {
+    fn run_git(
+        repo_root: &std::path::Path,
+        args: &[&str],
+    ) {
         let status = Command::new("git")
             .current_dir(repo_root)
             .args(args)

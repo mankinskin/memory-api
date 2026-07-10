@@ -1,7 +1,5 @@
 use std::{
-    collections::{
-        BTreeSet,
-    },
+    collections::BTreeSet,
     path::{
         Path,
         PathBuf,
@@ -42,9 +40,8 @@ pub(crate) fn cmd_sync_generated(
         spec.id,
         default_workspace_root,
     );
-    let artifacts = store
-        .get_generated_artifacts(&args.id)?
-        .ok_or_else(|| {
+    let artifacts =
+        store.get_generated_artifacts(&args.id)?.ok_or_else(|| {
             CliRunError::BadRequest(format!(
                 "spec '{}' does not declare generated artifacts",
                 args.id
@@ -55,7 +52,8 @@ pub(crate) fn cmd_sync_generated(
     let mut generated = Vec::new();
 
     if let Some(target) = artifacts.body.as_ref() {
-        let rules = collect_rules_for_target(&rule_store, &workspace_root, target)?;
+        let rules =
+            collect_rules_for_target(&rule_store, &workspace_root, target)?;
         let snippets = rules_as_snippets(&rules);
         store.update_generated_body(&args.id, &snippets)?;
         generated.push(json!({
@@ -67,7 +65,8 @@ pub(crate) fn cmd_sync_generated(
     }
 
     for (name, target) in &artifacts.sections {
-        let rules = collect_rules_for_target(&rule_store, &workspace_root, target)?;
+        let rules =
+            collect_rules_for_target(&rule_store, &workspace_root, target)?;
         let snippets = rules_as_snippets(&rules);
         store.update_generated_section(&args.id, name, &snippets)?;
         generated.push(json!({
@@ -80,11 +79,8 @@ pub(crate) fn cmd_sync_generated(
 
     // Reuse the normal manifest update path so body-backed search results and
     // history handling stay aligned with the rest of spec-cli.
-    let refreshed = store.update(
-        &args.id,
-        std::collections::BTreeMap::new(),
-        None,
-    )?;
+    let refreshed =
+        store.update(&args.id, std::collections::BTreeMap::new(), None)?;
 
     Ok(json!({
         "command": "sync_generated",
@@ -96,9 +92,7 @@ pub(crate) fn cmd_sync_generated(
     }))
 }
 
-fn open_rule_store(
-    workspace_root: &Path,
-) -> Result<RuleStore, CliRunError> {
+fn open_rule_store(workspace_root: &Path) -> Result<RuleStore, CliRunError> {
     let mut store = RuleStore::open(workspace_root)?;
     let mut known_scan_roots = store
         .entity_store()
@@ -143,7 +137,7 @@ fn resolve_config_path(
 }
 
 fn rules_as_snippets(
-    rules: &[RuleManifest],
+    rules: &[RuleManifest]
 ) -> Vec<GeneratedMarkdownSnippet<'_>> {
     rules
         .iter()
@@ -194,9 +188,7 @@ fn workspace_root_for_indexed_spec(
         .or_else(|| workspace_root_from_spec_path(spec_path))
 }
 
-fn workspace_root_from_scan_root(
-    scan_root: &Path,
-) -> Option<PathBuf> {
+fn workspace_root_from_scan_root(scan_root: &Path) -> Option<PathBuf> {
     let parent = scan_root.parent()?;
     if parent.file_name().and_then(|name| name.to_str()) == Some(".spec") {
         parent.parent().map(Path::to_path_buf)
@@ -205,13 +197,11 @@ fn workspace_root_from_scan_root(
     }
 }
 
-fn workspace_root_from_store_root(
-    store_root: &Path,
-) -> Option<PathBuf> {
-    let workspace_root = memory_api::workspace::resolve_workspace_root_from_store_root(
-        store_root,
-        ".spec",
-    );
+fn workspace_root_from_store_root(store_root: &Path) -> Option<PathBuf> {
+    let workspace_root =
+        memory_api::workspace::resolve_workspace_root_from_store_root(
+            store_root, ".spec",
+        );
     if workspace_root.as_os_str().is_empty() {
         None
     } else {
@@ -219,12 +209,9 @@ fn workspace_root_from_store_root(
     }
 }
 
-fn workspace_root_from_spec_path(
-    spec_path: &Path,
-) -> Option<PathBuf> {
+fn workspace_root_from_spec_path(spec_path: &Path) -> Option<PathBuf> {
     spec_path.ancestors().find_map(|ancestor| {
-        if ancestor.file_name().and_then(|name| name.to_str())
-            == Some(".spec")
+        if ancestor.file_name().and_then(|name| name.to_str()) == Some(".spec")
         {
             ancestor.parent().map(Path::to_path_buf)
         } else {

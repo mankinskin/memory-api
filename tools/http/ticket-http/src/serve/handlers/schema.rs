@@ -147,12 +147,12 @@ pub async fn list_schemas(
     Extension(rid): Extension<RequestIdExt>,
     Query(params): Query<SchemaQuery>,
 ) -> Response {
-    let (workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
 
     let registry = store.schema_registry();
     let types: Vec<TypeSchema> = registry
@@ -179,12 +179,12 @@ pub async fn get_schema(
     Path(type_id): Path<String>,
     Query(params): Query<SchemaQuery>,
 ) -> Response {
-    let (workspace, store) =
-        match state.resolve_public_workspace_request(&params.workspace, &rid.0)
-        {
-            Ok(resolved) => resolved,
-            Err(response) => return response,
-        };
+    let (workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
 
     let registry = store.schema_registry();
     match registry.get(&type_id) {

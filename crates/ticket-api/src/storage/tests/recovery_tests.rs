@@ -23,10 +23,15 @@ fn open_or_init_profiled_reports_bootstrap_scan_timings() {
     let _ = fs::remove_file(index_root.join("tickets.db-wal"));
     let _ = fs::remove_dir_all(index_root.join("search_index"));
 
-    let (rebuilt, report) = TicketStore::open_or_init_profiled(dir.path()).unwrap();
+    let (rebuilt, report) =
+        TicketStore::open_or_init_profiled(dir.path()).unwrap();
 
     assert!(report.initialized_store);
-    assert!(report.phase_timings_ms.contains_key("open_or_init_total_ms"));
+    assert!(
+        report
+            .phase_timings_ms
+            .contains_key("open_or_init_total_ms")
+    );
     assert!(report.phase_timings_ms.contains_key("open_sqlite_index_ms"));
     assert!(report.phase_timings_ms.contains_key("open_search_index_ms"));
     assert!(!report.scan_reports.is_empty());
@@ -146,8 +151,8 @@ fn scan_force_backfills_legacy_db_only_edges_into_ticket_manifests() {
         )
         .unwrap();
 
-    let legacy_index = RedbIndexStore::open(&store.index_root.join("tickets.db"))
-        .unwrap();
+    let legacy_index =
+        RedbIndexStore::open(&store.index_root.join("tickets.db")).unwrap();
     legacy_index
         .insert_edge(&EdgeRecord {
             from: source_id,
@@ -234,4 +239,3 @@ fn scan_force_does_not_restore_removed_dependency_edges() {
 
     assert!(rebuilt.edges_from(&source_id).unwrap().is_empty());
 }
-

@@ -20,7 +20,7 @@ use crate::cli::{
 };
 
 fn read_fields_file(
-    path: &std::path::Path,
+    path: &std::path::Path
 ) -> Result<BTreeMap<String, Value>, CliRunError> {
     let content = std::fs::read_to_string(path).map_err(|e| {
         CliRunError::BadRequest(format!("cannot read fields-file: {e}"))

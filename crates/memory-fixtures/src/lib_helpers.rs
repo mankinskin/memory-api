@@ -44,7 +44,9 @@ pub(super) fn run_git(
     Ok(())
 }
 
-pub(super) fn read_manifest(path: &Path) -> Result<FixtureManifest, FixtureError> {
+pub(super) fn read_manifest(
+    path: &Path
+) -> Result<FixtureManifest, FixtureError> {
     let text = fs::read_to_string(path).map_err(|source| FixtureError::Io {
         path: path.to_path_buf(),
         source,
@@ -55,7 +57,9 @@ pub(super) fn read_manifest(path: &Path) -> Result<FixtureManifest, FixtureError
     })
 }
 
-pub(super) fn seed_representative_data(workspace_root: &Path) -> Result<(), FixtureError> {
+pub(super) fn seed_representative_data(
+    workspace_root: &Path
+) -> Result<(), FixtureError> {
     seed_generated_tickets(workspace_root, 24)?;
     seed_rule_store(workspace_root)?;
     seed_session_store(workspace_root)?;
@@ -69,12 +73,15 @@ pub(super) fn seed_ticket_perf_scenario(
     fixture: &LoadedFixture,
     options: TicketPerfFixtureOptions,
 ) -> Result<(Vec<String>, Vec<String>, Vec<PathBuf>), FixtureError> {
-    let root_store = fixture
-        .store_root("ticket-root")
-        .ok_or_else(|| FixtureError::MissingFixtureRoot(fixture.workspace_root.join(".ticket")))?;
-    let submodule_store = fixture
-        .store_root("ticket-submodule-a")
-        .ok_or_else(|| FixtureError::MissingFixtureRoot(fixture.workspace_root.join("submodule-a/.ticket")))?;
+    let root_store = fixture.store_root("ticket-root").ok_or_else(|| {
+        FixtureError::MissingFixtureRoot(fixture.workspace_root.join(".ticket"))
+    })?;
+    let submodule_store =
+        fixture.store_root("ticket-submodule-a").ok_or_else(|| {
+            FixtureError::MissingFixtureRoot(
+                fixture.workspace_root.join("submodule-a/.ticket"),
+            )
+        })?;
 
     let root_ticket_ids = seed_perf_ticket_batch(
         &root_store.join("tickets"),
@@ -95,7 +102,11 @@ pub(super) fn seed_ticket_perf_scenario(
         options,
     )?;
 
-    Ok((root_ticket_ids, submodule_ticket_ids, tracked_reference_files))
+    Ok((
+        root_ticket_ids,
+        submodule_ticket_ids,
+        tracked_reference_files,
+    ))
 }
 
 pub(super) fn seed_perf_ticket_batch(
@@ -150,12 +161,15 @@ pub(super) fn seed_tracked_reference_files(
     submodule_ticket_ids: &[String],
     options: TicketPerfFixtureOptions,
 ) -> Result<Vec<PathBuf>, FixtureError> {
-    let mut tracked_files = Vec::with_capacity(options.tracked_reference_file_count);
+    let mut tracked_files =
+        Vec::with_capacity(options.tracked_reference_file_count);
 
     for index in 0..options.tracked_reference_file_count {
         let (path, source_prefix, ids) = if index % 2 == 0 {
             (
-                workspace_root.join("docs").join(format!("perf-move-root-{index:02}.md")),
+                workspace_root
+                    .join("docs")
+                    .join(format!("perf-move-root-{index:02}.md")),
                 "submodule-a/.ticket/tickets",
                 submodule_ticket_ids,
             )
@@ -179,8 +193,11 @@ pub(super) fn seed_tracked_reference_files(
         }
         if !root_ticket_ids.is_empty() {
             body.push_str("\n## Mixed root references\n");
-            for ref_index in 0..options.references_per_file.min(root_ticket_ids.len()) {
-                let ticket_id = &root_ticket_ids[(index + ref_index) % root_ticket_ids.len()];
+            for ref_index in
+                0..options.references_per_file.min(root_ticket_ids.len())
+            {
+                let ticket_id = &root_ticket_ids
+                    [(index + ref_index) % root_ticket_ids.len()];
                 body.push_str(&format!(
                     "- root {ref_index:02}: .ticket/tickets/{ticket_id}/ticket.toml\n"
                 ));
@@ -194,12 +211,16 @@ pub(super) fn seed_tracked_reference_files(
     Ok(tracked_files)
 }
 
-pub(super) fn commit_perf_fixture_changes(fixture: &LoadedFixture) -> Result<(), FixtureError> {
+pub(super) fn commit_perf_fixture_changes(
+    fixture: &LoadedFixture
+) -> Result<(), FixtureError> {
     for worktree in &fixture.manifest.worktrees {
         if worktree.kind != "submodule" {
             continue;
         }
-        let path = fixture.workspace_root.join(worktree.relative_path.replace('\\', "/"));
+        let path = fixture
+            .workspace_root
+            .join(worktree.relative_path.replace('\\', "/"));
         git_commit_if_dirty(&path, "perf fixture load")?;
     }
     git_commit_if_dirty(&fixture.workspace_root, "perf fixture load")
@@ -275,7 +296,9 @@ pub(super) fn seed_generated_tickets(
     Ok(())
 }
 
-pub(super) fn seed_rule_store(workspace_root: &Path) -> Result<(), FixtureError> {
+pub(super) fn seed_rule_store(
+    workspace_root: &Path
+) -> Result<(), FixtureError> {
     let rule_dir =
         workspace_root.join(".rule/rules/00000000-0000-0000-0000-0000000000c1");
     fs::create_dir_all(&rule_dir).map_err(|source| FixtureError::Io {
@@ -293,7 +316,9 @@ pub(super) fn seed_rule_store(workspace_root: &Path) -> Result<(), FixtureError>
     Ok(())
 }
 
-pub(super) fn seed_session_store(workspace_root: &Path) -> Result<(), FixtureError> {
+pub(super) fn seed_session_store(
+    workspace_root: &Path
+) -> Result<(), FixtureError> {
     let session_dir =
         workspace_root.join(".session/sessions/default/fixture-session");
     fs::create_dir_all(&session_dir).map_err(|source| FixtureError::Io {
@@ -340,7 +365,9 @@ pub(super) fn seed_session_store(workspace_root: &Path) -> Result<(), FixtureErr
     Ok(())
 }
 
-pub(super) fn seed_test_store(workspace_root: &Path) -> Result<(), FixtureError> {
+pub(super) fn seed_test_store(
+    workspace_root: &Path
+) -> Result<(), FixtureError> {
     let specs_dir = workspace_root.join(".test-domain/default/specs");
     let executions_dir = workspace_root.join(".test-domain/default/executions");
     fs::create_dir_all(&specs_dir).map_err(|source| FixtureError::Io {
@@ -392,7 +419,9 @@ pub(super) fn seed_test_store(workspace_root: &Path) -> Result<(), FixtureError>
     Ok(())
 }
 
-pub(super) fn seed_log_store(workspace_root: &Path) -> Result<(), FixtureError> {
+pub(super) fn seed_log_store(
+    workspace_root: &Path
+) -> Result<(), FixtureError> {
     let captures_dir = workspace_root.join(".log/default/captures");
     fs::create_dir_all(&captures_dir).map_err(|source| FixtureError::Io {
         path: captures_dir.clone(),
@@ -419,7 +448,9 @@ pub(super) fn seed_log_store(workspace_root: &Path) -> Result<(), FixtureError> 
     Ok(())
 }
 
-pub(super) fn seed_audit_inputs(workspace_root: &Path) -> Result<(), FixtureError> {
+pub(super) fn seed_audit_inputs(
+    workspace_root: &Path
+) -> Result<(), FixtureError> {
     write_text(
         &workspace_root.join("src/fixture_module.rs"),
         "pub fn fixture_indexed_symbol() -> &'static str { \"fixture\" }\n",
@@ -505,4 +536,3 @@ pub(super) fn is_runtime_artifact(name: &std::ffi::OsStr) -> bool {
         || name.ends_with(".db-wal")
         || name.ends_with(".db-shm")
 }
-

@@ -1,6 +1,8 @@
 use std::{
-    collections::HashMap,
-    collections::HashSet,
+    collections::{
+        HashMap,
+        HashSet,
+    },
     path::{
         Path,
         PathBuf,
@@ -325,9 +327,9 @@ impl RedbIndexStore {
         let mut map = HashMap::with_capacity(ids.len());
         for row in rows {
             let (id_str, bytes) = row?;
-            let id: Uuid = id_str
-                .parse()
-                .map_err(|e: uuid::Error| StorageError::Serialization(e.to_string()))?;
+            let id: Uuid = id_str.parse().map_err(|e: uuid::Error| {
+                StorageError::Serialization(e.to_string())
+            })?;
             let facts: WorkflowFacts = bincode::deserialize(&bytes)
                 .map_err(|e| StorageError::Serialization(e.to_string()))?;
             map.insert(id, facts);
@@ -610,9 +612,18 @@ fn migrate_scan_roots_metadata(conn: &Connection) -> Result<(), StorageError> {
     };
 
     let additions: [(&str, &str); 3] = [
-        ("source", "ALTER TABLE {t} ADD COLUMN source TEXT NOT NULL DEFAULT 'discovered'"),
-        ("policy_decision", "ALTER TABLE {t} ADD COLUMN policy_decision TEXT NOT NULL DEFAULT 'included'"),
-        ("workspace_root", "ALTER TABLE {t} ADD COLUMN workspace_root TEXT"),
+        (
+            "source",
+            "ALTER TABLE {t} ADD COLUMN source TEXT NOT NULL DEFAULT 'discovered'",
+        ),
+        (
+            "policy_decision",
+            "ALTER TABLE {t} ADD COLUMN policy_decision TEXT NOT NULL DEFAULT 'included'",
+        ),
+        (
+            "workspace_root",
+            "ALTER TABLE {t} ADD COLUMN workspace_root TEXT",
+        ),
     ];
 
     for (column, template) in additions {

@@ -44,6 +44,6 @@ pub use move_kernel::{
     MoveResult,
 };
 pub use watcher::{
-    run_watch_loop,
     WatchHandle,
+    run_watch_loop,
 };

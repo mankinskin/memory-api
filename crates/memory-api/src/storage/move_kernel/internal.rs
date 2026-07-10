@@ -27,7 +27,8 @@ pub(super) fn build_reference_visibility<D: MoveDomain + ?Sized>(
 
     let mut visibility = Vec::new();
     for related_entity_id in inbound.iter().chain(outbound.iter()).copied() {
-        let visible_from_destination = domain.entity_indexed_in(target_store_root, &related_entity_id)?;
+        let visible_from_destination =
+            domain.entity_indexed_in(target_store_root, &related_entity_id)?;
         let direction = if outbound.contains(&related_entity_id) {
             MoveReferenceDirection::Outbound
         } else {
@@ -93,7 +94,7 @@ pub(super) fn collect_candidate_reference_files(
     files: &mut BTreeSet<PathBuf>,
 ) {
     match git_tracked_path_reference_files(git_root, resolved_source_path) {
-        Ok(found) => {
+        Ok(found) =>
             for file in found {
                 let candidate = git_root.join(file);
                 if is_persistent_move_reference_file(
@@ -104,9 +105,9 @@ pub(super) fn collect_candidate_reference_files(
                 ) {
                     files.insert(candidate);
                 }
-            }
-        },
-        Err(reason) => blockers.push(MoveBlocker::PathReferenceScanUnavailable { reason }),
+            },
+        Err(reason) =>
+            blockers.push(MoveBlocker::PathReferenceScanUnavailable { reason }),
     }
 }
 
@@ -125,9 +126,9 @@ pub(super) fn advance_phase_planned(
     journal.phase = MoveExecutionPhase::Locked;
     span.record("phase", phase_name(&journal.phase));
     journal.updated_at = Utc::now();
-    journal
-        .steps
-        .push("acquired source/target store locks and move entity lock".to_string());
+    journal.steps.push(
+        "acquired source/target store locks and move entity lock".to_string(),
+    );
     persist_journal(journal_root, journal)?;
     tracing::debug!(
         target: MOVE_TRACE_TARGET,
@@ -151,7 +152,10 @@ pub(super) fn advance_phase_locked(
     }
     let started = Instant::now();
     if journal.source_entity_path.exists() {
-        fs::rename(&journal.source_entity_path, &journal.destination_entity_path)?;
+        fs::rename(
+            &journal.source_entity_path,
+            &journal.destination_entity_path,
+        )?;
     }
     record_phase_timing(journal, "rename_entity_ms", started.elapsed());
     journal.phase = MoveExecutionPhase::Moved;
@@ -178,14 +182,17 @@ pub(super) fn advance_phase_moved<D: MoveDomain + ?Sized>(
         return Ok(());
     }
 
-    if journal.rewritten_path_files.is_empty() && journal.manual_followups.is_empty() {
+    if journal.rewritten_path_files.is_empty()
+        && journal.manual_followups.is_empty()
+    {
         let started = Instant::now();
         let (rewritten, followups) = rewrite_path_references(plan)?;
         record_phase_timing(journal, "rewrite_path_refs_ms", started.elapsed());
         if !rewritten.is_empty() {
-            journal
-                .steps
-                .push(format!("rewrote {} tracked path reference files", rewritten.len()));
+            journal.steps.push(format!(
+                "rewrote {} tracked path reference files",
+                rewritten.len()
+            ));
         }
         if !followups.is_empty() {
             journal.steps.push(format!(
@@ -199,9 +206,15 @@ pub(super) fn advance_phase_moved<D: MoveDomain + ?Sized>(
 
     if journal.migrated_board_entries.is_empty() {
         let started = Instant::now();
-        journal.migrated_board_entries =
-            domain.migrate_board_history(&journal.target_store_root, &journal.entity_id)?;
-        record_phase_timing(journal, "migrate_board_history_ms", started.elapsed());
+        journal.migrated_board_entries = domain.migrate_board_history(
+            &journal.target_store_root,
+            &journal.entity_id,
+        )?;
+        record_phase_timing(
+            journal,
+            "migrate_board_history_ms",
+            started.elapsed(),
+        );
         if !journal.migrated_board_entries.is_empty() {
             journal.steps.push(format!(
                 "migrated {} historical board rows",
@@ -211,7 +224,10 @@ pub(super) fn advance_phase_moved<D: MoveDomain + ?Sized>(
     }
 
     let started = Instant::now();
-    domain.reconcile_store_touched(&journal.source_store_root, &[journal.entity_id])?;
+    domain.reconcile_store_touched(
+        &journal.source_store_root,
+        &[journal.entity_id],
+    )?;
     record_phase_timing(journal, "scan_source_ms", started.elapsed());
     journal.phase = MoveExecutionPhase::SourceScanned;
     span.record("phase", phase_name(&journal.phase));
@@ -240,7 +256,10 @@ pub(super) fn advance_phase_source_scanned<D: MoveDomain + ?Sized>(
     }
 
     let started = Instant::now();
-    domain.reconcile_store_touched(&journal.target_store_root, &[journal.entity_id])?;
+    domain.reconcile_store_touched(
+        &journal.target_store_root,
+        &[journal.entity_id],
+    )?;
     record_phase_timing(journal, "scan_target_ms", started.elapsed());
     journal.phase = MoveExecutionPhase::TargetScanned;
     span.record("phase", phase_name(&journal.phase));
@@ -268,8 +287,10 @@ pub(super) fn advance_phase_target_scanned<D: MoveDomain + ?Sized>(
     let started = Instant::now();
     let source_path_exists = journal.source_entity_path.exists();
     let destination_path_exists = journal.destination_entity_path.exists();
-    let source_seen = domain.entity_indexed_in(&journal.source_store_root, &journal.entity_id)?;
-    let target_seen = domain.entity_indexed_in(&journal.target_store_root, &journal.entity_id)?;
+    let source_seen = domain
+        .entity_indexed_in(&journal.source_store_root, &journal.entity_id)?;
+    let target_seen = domain
+        .entity_indexed_in(&journal.target_store_root, &journal.entity_id)?;
     record_phase_timing(journal, "validate_move_ms", started.elapsed());
     if source_path_exists || !destination_path_exists {
         return Err(build_post_move_validation_error(
@@ -360,7 +381,10 @@ pub fn collect_lock_paths(
     let mut paths = BTreeSet::new();
     for root in [source_store_root, target_store_root] {
         paths.insert(root.join(MOVE_LOCKS_DIR).join("store.lock"));
-        paths.insert(root.join(MOVE_LOCKS_DIR).join(format!("entity-{}.lock", entity_id)));
+        paths.insert(
+            root.join(MOVE_LOCKS_DIR)
+                .join(format!("entity-{}.lock", entity_id)),
+        );
     }
     paths.into_iter().collect()
 }
@@ -371,7 +395,11 @@ pub(super) fn acquire_lock_set(lock_paths: &[PathBuf]) -> MoveResult<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        match fs::OpenOptions::new().write(true).create_new(true).open(path) {
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+        {
             Ok(_) => acquired.push(path.clone()),
             Err(error) => {
                 release_lock_set(&acquired);
@@ -422,7 +450,9 @@ pub(super) fn phase_name(phase: &MoveExecutionPhase) -> &'static str {
     }
 }
 
-pub(super) fn restore_rewritten_path(rewrite: &MovePathRewrite) -> MoveResult<()> {
+pub(super) fn restore_rewritten_path(
+    rewrite: &MovePathRewrite
+) -> MoveResult<()> {
     if let Some(previous_content) = &rewrite.previous_content {
         fs::write(&rewrite.path, previous_content.as_bytes())?;
         return Ok(());
@@ -439,13 +469,16 @@ pub(super) fn restore_rewritten_path(rewrite: &MovePathRewrite) -> MoveResult<()
 
         let mut restored = current_content.clone();
         for replacement in rewrite.replacements.iter().rev() {
-            restored = restored.replace(&replacement.after, &replacement.before);
+            restored =
+                restored.replace(&replacement.after, &replacement.before);
         }
         fs::write(&rewrite.path, restored.as_bytes())?;
         return Ok(());
     }
 
-    if path_buf_is_empty(&rewrite.repo_root) || path_buf_is_empty(&rewrite.repo_relative_path) {
+    if path_buf_is_empty(&rewrite.repo_root)
+        || path_buf_is_empty(&rewrite.repo_relative_path)
+    {
         return Err(MoveError::Domain(format!(
             "journal rewrite record for {} is missing rollback metadata",
             normalize_slashes(&rewrite.path)
@@ -455,38 +488,53 @@ pub(super) fn restore_rewritten_path(rewrite: &MovePathRewrite) -> MoveResult<()
     git_restore_tracked_path(&rewrite.repo_root, &rewrite.repo_relative_path)
 }
 
-pub(super) fn recovery_hint_for_phase(phase: &MoveExecutionPhase) -> &'static str {
+pub(super) fn recovery_hint_for_phase(
+    phase: &MoveExecutionPhase
+) -> &'static str {
     match phase {
-        MoveExecutionPhase::Planned | MoveExecutionPhase::Locked => {
-            "run resume_move to continue execution"
-        },
+        MoveExecutionPhase::Planned | MoveExecutionPhase::Locked =>
+            "run resume_move to continue execution",
         MoveExecutionPhase::Moved
         | MoveExecutionPhase::SourceScanned
-        | MoveExecutionPhase::TargetScanned => {
-            "run rollback_move for safety, or resume_move to retry"
-        },
-        MoveExecutionPhase::Validated | MoveExecutionPhase::RolledBack => "no recovery action needed",
+        | MoveExecutionPhase::TargetScanned =>
+            "run rollback_move for safety, or resume_move to retry",
+        MoveExecutionPhase::Validated | MoveExecutionPhase::RolledBack =>
+            "no recovery action needed",
     }
 }
 
 pub(super) fn rewrite_path_references(
-    plan: &MovePlan,
+    plan: &MovePlan
 ) -> MoveResult<(Vec<MovePathRewrite>, Vec<MoveManualFollowup>)> {
     let old_abs = normalize_slashes(&plan.source_entity_path);
     let new_abs = normalize_slashes(&plan.destination_entity_path);
 
     let mut relative_pairs = Vec::new();
     if let (Ok(old_rel), Ok(new_rel)) = (
-        safe_strip_prefix(&plan.source_entity_path, &plan.source_git_worktree_root),
-        safe_strip_prefix(&plan.destination_entity_path, &plan.source_git_worktree_root),
+        safe_strip_prefix(
+            &plan.source_entity_path,
+            &plan.source_git_worktree_root,
+        ),
+        safe_strip_prefix(
+            &plan.destination_entity_path,
+            &plan.source_git_worktree_root,
+        ),
     ) {
-        relative_pairs.push((normalize_slashes(&old_rel), normalize_slashes(&new_rel)));
+        relative_pairs
+            .push((normalize_slashes(&old_rel), normalize_slashes(&new_rel)));
     }
     if let (Ok(old_rel), Ok(new_rel)) = (
-        safe_strip_prefix(&plan.source_entity_path, &plan.target_git_worktree_root),
-        safe_strip_prefix(&plan.destination_entity_path, &plan.target_git_worktree_root),
+        safe_strip_prefix(
+            &plan.source_entity_path,
+            &plan.target_git_worktree_root,
+        ),
+        safe_strip_prefix(
+            &plan.destination_entity_path,
+            &plan.target_git_worktree_root,
+        ),
     ) {
-        relative_pairs.push((normalize_slashes(&old_rel), normalize_slashes(&new_rel)));
+        relative_pairs
+            .push((normalize_slashes(&old_rel), normalize_slashes(&new_rel)));
     }
 
     let mut rewritten = Vec::new();
@@ -506,7 +554,8 @@ pub(super) fn rewrite_path_references(
         let Ok(previous_content) = String::from_utf8(bytes) else {
             followups.push(MoveManualFollowup {
                 path: file_path,
-                reason: "binary or non-utf8 content requires manual rewrite".to_string(),
+                reason: "binary or non-utf8 content requires manual rewrite"
+                    .to_string(),
             });
             continue;
         };
@@ -594,7 +643,9 @@ pub(super) fn journal_path(
     store_root: &Path,
     id: Uuid,
 ) -> PathBuf {
-    store_root.join(MOVE_JOURNALS_DIR).join(format!("{}.json", id))
+    store_root
+        .join(MOVE_JOURNALS_DIR)
+        .join(format!("{}.json", id))
 }
 
 /// Persist a move journal under the store root's `move-journals/` directory.
@@ -606,8 +657,8 @@ pub fn persist_journal(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let payload =
-        serde_json::to_vec_pretty(journal).map_err(|error| MoveError::Domain(error.to_string()))?;
+    let payload = serde_json::to_vec_pretty(journal)
+        .map_err(|error| MoveError::Domain(error.to_string()))?;
     fs::write(path, payload).map_err(MoveError::Io)
 }
 
@@ -616,8 +667,10 @@ pub fn load_journal(
     store_root: &Path,
     id: Uuid,
 ) -> MoveResult<MoveJournal> {
-    let payload = fs::read(journal_path(store_root, id)).map_err(MoveError::Io)?;
-    serde_json::from_slice(&payload).map_err(|error| MoveError::Domain(error.to_string()))
+    let payload =
+        fs::read(journal_path(store_root, id)).map_err(MoveError::Io)?;
+    serde_json::from_slice(&payload)
+        .map_err(|error| MoveError::Domain(error.to_string()))
 }
 
 pub(super) fn classify_git_worktree_topology(
@@ -638,7 +691,12 @@ pub(super) fn classify_git_worktree_topology(
 
 pub(super) fn git_toplevel(path: &Path) -> Result<PathBuf, String> {
     let output = Command::new("git")
-        .args(["-C", &path.to_string_lossy(), "rev-parse", "--show-toplevel"])
+        .args([
+            "-C",
+            &path.to_string_lossy(),
+            "rev-parse",
+            "--show-toplevel",
+        ])
         .output()
         .map_err(|error| error.to_string())?;
 
@@ -667,12 +725,21 @@ pub(super) fn git_tracked_path_reference_files(
     let mut files = BTreeSet::new();
     for candidate in candidates {
         let output = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "grep", "-nF", "--full-name", &candidate])
+            .args([
+                "-C",
+                &repo_root.to_string_lossy(),
+                "grep",
+                "-nF",
+                "--full-name",
+                &candidate,
+            ])
             .output()
             .map_err(|error| error.to_string())?;
 
         if !output.status.success() && output.status.code() != Some(1) {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+            return Err(String::from_utf8_lossy(&output.stderr)
+                .trim()
+                .to_string());
         }
 
         for line in String::from_utf8_lossy(&output.stdout).lines() {
@@ -720,7 +787,9 @@ pub(super) fn tracked_repo_for_file<'a>(
         candidates.push((target_repo_root, relative));
     }
 
-    candidates.sort_by_key(|(_, relative)| std::cmp::Reverse(relative.components().count()));
+    candidates.sort_by_key(|(_, relative)| {
+        std::cmp::Reverse(relative.components().count())
+    });
     candidates.into_iter().next()
 }
 
@@ -754,7 +823,10 @@ pub(super) fn git_restore_tracked_path(
     Ok(())
 }
 
-pub(super) fn safe_strip_prefix(path: &Path, prefix: &Path) -> Result<PathBuf, std::path::StripPrefixError> {
+pub(super) fn safe_strip_prefix(
+    path: &Path,
+    prefix: &Path,
+) -> Result<PathBuf, std::path::StripPrefixError> {
     let p_norm = PathBuf::from(crate::workspace::normalize_slashes(path));
     let s_norm = PathBuf::from(crate::workspace::normalize_slashes(prefix));
     p_norm.strip_prefix(&s_norm).map(|p| p.to_path_buf())

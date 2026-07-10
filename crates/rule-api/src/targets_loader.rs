@@ -335,4 +335,3 @@ pub(super) fn load_render_target_config_inner(
     }
     result
 }
-

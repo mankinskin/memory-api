@@ -14,13 +14,13 @@ use crate::{
     model::{
         edge::EdgeRecord,
         filesystem::{
-        ParseDiagnostic,
-        PersistedScanRoot,
-        PolicyDecision,
-        ScanRoot,
-        ScanRootMetadata,
-        ScanRootSource,
-        TICKET_MANIFEST_FILE,
+            ParseDiagnostic,
+            PersistedScanRoot,
+            PolicyDecision,
+            ScanRoot,
+            ScanRootMetadata,
+            ScanRootSource,
+            TICKET_MANIFEST_FILE,
         },
     },
     storage::{
@@ -130,14 +130,16 @@ impl TicketStore {
         &self,
         workspace_root: &Path,
     ) -> Result<ScanReport, StorageError> {
-        let policy = crate::workspace_policy::load_workspace_policy(workspace_root);
+        let policy =
+            crate::workspace_policy::load_workspace_policy(workspace_root);
 
-        let allowed = crate::workspace::discover_workspace_scan_roots_with_policy(
-            workspace_root,
-            crate::workspace::TICKET_INDEX_DIR,
-            "tickets",
-            &policy,
-        );
+        let allowed =
+            crate::workspace::discover_workspace_scan_roots_with_policy(
+                workspace_root,
+                crate::workspace::TICKET_INDEX_DIR,
+                "tickets",
+                &policy,
+            );
         let allowed_paths: HashSet<std::path::PathBuf> = allowed
             .iter()
             .map(|root| self.resolve_scan_root_path(&root.path))
@@ -275,13 +277,18 @@ impl TicketStore {
 
         for id in unique_ids {
             let existing = self.get_indexed(&id)?;
-            let entry = resolve_known_ticket_entry(id, existing.as_ref(), &roots)?;
+            let entry =
+                resolve_known_ticket_entry(id, existing.as_ref(), &roots)?;
             match entry {
                 Some(entry) => {
                     integrated += 1;
-                    if let Some(update) = integrate_entry(&self.index, entry, false)? {
+                    if let Some(update) =
+                        integrate_entry(&self.index, entry, false)?
+                    {
                         *phase_timings_ms
-                            .entry("integration.description_read_ms".to_string())
+                            .entry(
+                                "integration.description_read_ms".to_string(),
+                            )
                             .or_insert(0) += update.description_read_ms;
                         indexed_updates.push(update.indexed);
                         edge_updates.extend(update.edges);
@@ -289,14 +296,15 @@ impl TicketStore {
                         workflow_root_ids.insert(id);
                     }
                 },
-                None => {
+                None =>
                     if let Some(ticket) = existing {
-                        diagnostics.push(stale_reconciliation_diagnostic(&ticket, &roots));
+                        diagnostics.push(stale_reconciliation_diagnostic(
+                            &ticket, &roots,
+                        ));
                         stale_ids.push(id);
                         workflow_root_ids.insert(id);
                         pruned += 1;
-                    }
-                },
+                    },
             }
         }
 
@@ -336,11 +344,12 @@ impl TicketStore {
         let workflow_started = Instant::now();
         let mut roots = workflow_root_ids.into_iter().collect::<Vec<_>>();
         roots.sort_unstable();
-        let workflow_timings = self.refresh_workflow_facts_for_roots_with_timings(
-            &roots,
-            false,
-            Utc::now(),
-        )?;
+        let workflow_timings = self
+            .refresh_workflow_facts_for_roots_with_timings(
+                &roots,
+                false,
+                Utc::now(),
+            )?;
         merge_phase_totals(&mut phase_timings_ms, workflow_timings);
         record_phase_timing(
             &mut phase_timings_ms,
@@ -487,11 +496,9 @@ impl TicketStore {
             for entry in entries {
                 let entry_id = entry.id;
                 disk_ids.insert(entry_id);
-                if let Some(update) = integrate_entry(
-                    &self.index,
-                    entry,
-                    reindex,
-                )? {
+                if let Some(update) =
+                    integrate_entry(&self.index, entry, reindex)?
+                {
                     *phase_timings_ms
                         .entry("integration.description_read_ms".to_string())
                         .or_insert(0) += update.description_read_ms;
@@ -543,10 +550,8 @@ impl TicketStore {
         let prune_started = Instant::now();
         for ticket in self.index.list_tickets()? {
             if !disk_ids.contains(&ticket.id) {
-                diagnostics.push(stale_reconciliation_diagnostic(
-                    &ticket,
-                    &roots,
-                ));
+                diagnostics
+                    .push(stale_reconciliation_diagnostic(&ticket, &roots));
                 stale_ids.push(ticket.id);
                 workflow_root_ids.insert(ticket.id);
                 pruned += 1;
@@ -572,10 +577,7 @@ impl TicketStore {
                 Utc::now(),
             )?
         };
-        merge_phase_totals(
-            &mut phase_timings_ms,
-            workflow_timings,
-        );
+        merge_phase_totals(&mut phase_timings_ms, workflow_timings);
         record_phase_timing(
             &mut phase_timings_ms,
             "rebuild_workflow_facts_ms",
@@ -601,7 +603,7 @@ impl TicketStore {
     }
 
     fn backfill_file_backed_edges_from_index(
-        &self,
+        &self
     ) -> Result<(), StorageError> {
         for edge in self.index.list_all_edges()? {
             if !is_file_backed_edge_kind(&edge.kind) {
@@ -649,11 +651,7 @@ impl TicketStore {
             path: path.to_path_buf(),
             manifest,
         };
-        let update = integrate_entry(
-            &self.index,
-            entry,
-            true,
-        )?;
+        let update = integrate_entry(&self.index, entry, true)?;
         if let Some(update) = update {
             self.index.upsert_tickets_batch(&[update.indexed])?;
             self.index.insert_edges_batch(&update.edges)?;
@@ -663,7 +661,6 @@ impl TicketStore {
         Ok(true)
     }
 }
-
 
 #[path = "scan_helpers.rs"]
 mod scan_helpers;

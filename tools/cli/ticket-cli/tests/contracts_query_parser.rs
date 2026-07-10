@@ -89,8 +89,7 @@ fn parse_or_groups_into_disjunction_of_and_clauses() {
 
 #[test]
 fn parse_dash_prefix_as_not_expression() {
-    let expr = parse_query("status:open -assigned:bob")
-        .expect("query parses");
+    let expr = parse_query("status:open -assigned:bob").expect("query parses");
 
     match expr {
         Expr::And(parts) => {
@@ -103,9 +102,12 @@ fn parse_dash_prefix_as_not_expression() {
 
 #[test]
 fn parse_or_without_rhs_fails() {
-    let err = parse_query("status:open OR")
-        .expect_err("dangling OR should fail");
-    assert!(err.to_string().contains("OR must separate two query expressions"));
+    let err =
+        parse_query("status:open OR").expect_err("dangling OR should fail");
+    assert!(
+        err.to_string()
+            .contains("OR must separate two query expressions")
+    );
 }
 
 #[test]
@@ -126,15 +128,18 @@ fn parse_contains_operator_tilde_and_star_aliases() {
     for token in ["title:~login", "title:*login*"] {
         let expr = parse_query(token).expect("contains query parses");
         match expr {
-            Expr::And(parts) => assert!(matches!(
-                parts[0],
-                Expr::Compare {
-                    ref key,
-                    op: CompareOp::Contains,
-                    value: ValueExpr::Text(ref v),
-                }
-                if key == "title" && v == "login"
-            ), "unexpected expr for {token}"),
+            Expr::And(parts) => assert!(
+                matches!(
+                    parts[0],
+                    Expr::Compare {
+                        ref key,
+                        op: CompareOp::Contains,
+                        value: ValueExpr::Text(ref v),
+                    }
+                    if key == "title" && v == "login"
+                ),
+                "unexpected expr for {token}"
+            ),
             _ => panic!("expected Expr::And for {token}"),
         }
     }
@@ -155,7 +160,9 @@ fn parse_comparison_operators_pick_longest_prefix() {
                 Expr::Compare { key, op, value } => {
                     assert_eq!(key, "created", "key for {token}");
                     assert_eq!(*op, want_op, "op for {token}");
-                    assert!(matches!(value, ValueExpr::Text(v) if v == want_val));
+                    assert!(
+                        matches!(value, ValueExpr::Text(v) if v == want_val)
+                    );
                 },
                 other => panic!("expected Compare for {token}, got {other:?}"),
             },
@@ -188,7 +195,10 @@ fn parse_negated_exists_is_not_over_exists() {
         Expr::And(parts) => match &parts[0] {
             Expr::Not(inner) => assert!(matches!(
                 **inner,
-                Expr::Compare { op: CompareOp::Exists, .. }
+                Expr::Compare {
+                    op: CompareOp::Exists,
+                    ..
+                }
             )),
             other => panic!("expected Not(Exists), got {other:?}"),
         },
@@ -198,8 +208,8 @@ fn parse_negated_exists_is_not_over_exists() {
 
 #[test]
 fn parse_range_stays_field_range() {
-    let expr =
-        parse_query("created:[2026-01-01 TO 2026-12-31]").expect("range parses");
+    let expr = parse_query("created:[2026-01-01 TO 2026-12-31]")
+        .expect("range parses");
     match expr {
         Expr::And(parts) => match &parts[0] {
             Expr::Field {
@@ -218,7 +228,8 @@ fn parse_range_stays_field_range() {
 
 #[test]
 fn parse_dotted_dynamic_path_normalizes_to_flat_key() {
-    let expr = parse_query("x.feature.story_points:8").expect("deep path parses");
+    let expr =
+        parse_query("x.feature.story_points:8").expect("deep path parses");
     match expr {
         Expr::And(parts) => assert!(matches!(
             parts[0],

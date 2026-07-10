@@ -242,7 +242,12 @@ mod tests {
     fn bug_schema_uses_bug_type_id() {
         let schema = bug_schema();
         assert_eq!(schema.type_id, BUG_TYPE_ID);
-        assert!(schema.required_states.iter().any(|state| state == "in-review"));
+        assert!(
+            schema
+                .required_states
+                .iter()
+                .any(|state| state == "in-review")
+        );
     }
 
     #[test]

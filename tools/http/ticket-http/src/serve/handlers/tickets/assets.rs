@@ -48,14 +48,11 @@ pub async fn list_ticket_files(
     Path(id): Path<Uuid>,
     Query(params): Query<TicketIdParam>,
 ) -> Response {
-    let (workspace, store) = match resolve_workspace_request(
-        &state,
-        &params.workspace,
-        &rid.0,
-    ) {
-        Ok(resolved) => resolved,
-        Err(response) => return response,
-    };
+    let (workspace, store) =
+        match resolve_workspace_request(&state, &params.workspace, &rid.0) {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
@@ -112,14 +109,11 @@ pub async fn get_ticket_asset(
     Path(id): Path<Uuid>,
     Query(params): Query<TicketAssetParam>,
 ) -> Response {
-    let (workspace, store) = match resolve_workspace_request(
-        &state,
-        &params.workspace,
-        &rid.0,
-    ) {
-        Ok(resolved) => resolved,
-        Err(response) => return response,
-    };
+    let (workspace, store) =
+        match resolve_workspace_request(&state, &params.workspace, &rid.0) {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();

@@ -19,12 +19,12 @@
 //! daily).  This is the primary path for capturing the "ticket serialization
 //! error" family of failures.
 
+use memory_api::runtime::init_transport_tracing;
 use ticket_api::storage::store::TicketStore;
 use ticket_http::serve::{
     ServeConfig,
     WorkspaceRegistry,
 };
-use memory_api::runtime::init_transport_tracing;
 
 fn main() {
     let mut port: u16 = 4000;

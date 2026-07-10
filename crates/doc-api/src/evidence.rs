@@ -151,7 +151,9 @@ mod tests {
                 related_rule_ids: vec!["rule-generated-guidance".to_string()],
                 links: DocEvidenceLinks {
                     spec_ids: vec!["spec-docs".to_string()],
-                    acceptance_criterion_ids: vec!["criterion-docs".to_string()],
+                    acceptance_criterion_ids: vec![
+                        "criterion-docs".to_string(),
+                    ],
                     ticket_ids: vec!["ticket-docs".to_string()],
                 },
             },
@@ -176,7 +178,8 @@ mod tests {
         ];
 
         let json = serde_json::to_string_pretty(&records).unwrap();
-        let reparsed: Vec<DocEvidenceRecord> = serde_json::from_str(&json).unwrap();
+        let reparsed: Vec<DocEvidenceRecord> =
+            serde_json::from_str(&json).unwrap();
 
         assert_eq!(reparsed, records);
         assert!(json.contains("authored-doc-check"));
@@ -223,7 +226,9 @@ mod tests {
             title: "Manual verification".to_string(),
             kind: DocEvidenceKind::ManualVerificationStep,
             status: DocEvidenceStatus::Satisfied,
-            detail: Some("Reviewer confirmed coverage in generated README".to_string()),
+            detail: Some(
+                "Reviewer confirmed coverage in generated README".to_string(),
+            ),
             document_paths: vec!["README.md".into()],
             related_rule_ids: Vec::new(),
             links: DocEvidenceLinks {

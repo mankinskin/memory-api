@@ -80,7 +80,9 @@ fn generates_benchmark_scale_ticket_variant() {
 fn git_fixture_initializes_root_and_submodule_worktrees() {
     let fixture = match materialize_git_fixture() {
         Ok(fixture) => fixture,
-        Err(FixtureError::Git { detail, .. }) if detail.contains("os error 2") => {
+        Err(FixtureError::Git { detail, .. })
+            if detail.contains("os error 2") =>
+        {
             // git not installed in this environment; skip.
             return;
         },
@@ -91,8 +93,9 @@ fn git_fixture_initializes_root_and_submodule_worktrees() {
     assert!(fixture.workspace_root.join("submodule-a/.git").exists());
     assert!(fixture.workspace_root.join("submodule-b/.git").exists());
 
-    let modules = fs::read_to_string(fixture.workspace_root.join(".gitmodules"))
-        .expect("read .gitmodules");
+    let modules =
+        fs::read_to_string(fixture.workspace_root.join(".gitmodules"))
+            .expect("read .gitmodules");
     assert!(modules.contains("path = submodule-a"));
     assert!(modules.contains("path = submodule-b"));
 
@@ -108,13 +111,14 @@ fn git_fixture_initializes_root_and_submodule_worktrees() {
 
 #[test]
 fn materializes_ticket_perf_fixture_with_reference_heavy_files() {
-    let perf = materialize_fixture_with_ticket_perf_load(TicketPerfFixtureOptions {
-        root_generated_ticket_count: 24,
-        submodule_generated_ticket_count: 12,
-        tracked_reference_file_count: 6,
-        references_per_file: 8,
-    })
-    .expect("perf fixture should load");
+    let perf =
+        materialize_fixture_with_ticket_perf_load(TicketPerfFixtureOptions {
+            root_generated_ticket_count: 24,
+            submodule_generated_ticket_count: 12,
+            tracked_reference_file_count: 6,
+            references_per_file: 8,
+        })
+        .expect("perf fixture should load");
 
     assert_eq!(perf.root_ticket_ids.len(), 24);
     assert_eq!(perf.submodule_ticket_ids.len(), 12);

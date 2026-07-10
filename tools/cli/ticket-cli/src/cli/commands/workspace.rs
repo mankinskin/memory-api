@@ -35,16 +35,10 @@ pub(crate) fn cmd_workspace(
     match args.command {
         WorkspaceCommand::Policy(policy_args) =>
             cmd_workspace_policy(policy_args, &workspace_root),
-        WorkspaceCommand::Ignore(pattern_args) => cmd_workspace_patterns(
-            "ignore",
-            pattern_args,
-            &workspace_root,
-        ),
-        WorkspaceCommand::Include(pattern_args) => cmd_workspace_patterns(
-            "include",
-            pattern_args,
-            &workspace_root,
-        ),
+        WorkspaceCommand::Ignore(pattern_args) =>
+            cmd_workspace_patterns("ignore", pattern_args, &workspace_root),
+        WorkspaceCommand::Include(pattern_args) =>
+            cmd_workspace_patterns("include", pattern_args, &workspace_root),
         WorkspaceCommand::Rescan { apply_policy } =>
             cmd_workspace_rescan(apply_policy, store, &workspace_root),
     }

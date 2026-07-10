@@ -328,7 +328,8 @@ async fn next_tickets_prefers_more_dependees_before_newer_candidates() {
 }
 
 #[tokio::test]
-async fn next_tickets_prefer_recently_actionable_candidates_and_surface_timing_metadata() {
+async fn next_tickets_prefer_recently_actionable_candidates_and_surface_timing_metadata()
+ {
     let (tmp, server) = make_sandbox();
 
     let recently_actionable;
@@ -401,7 +402,10 @@ async fn next_tickets_prefer_recently_actionable_candidates_and_surface_timing_m
     let json: Value = serde_json::from_str(&text).expect("valid json");
     let items = json["items"].as_array().expect("items array");
 
-    assert!(items.len() >= 2, "expected at least two candidates: {items:?}");
+    assert!(
+        items.len() >= 2,
+        "expected at least two candidates: {items:?}"
+    );
     assert_eq!(
         items[0]["id"].as_str(),
         Some(recently_actionable.to_string().as_str())
@@ -488,7 +492,10 @@ async fn next_tickets_promote_convergence_before_unrelated_ready_candidates() {
     let json: Value = serde_json::from_str(&text).expect("valid json");
     let items = json["items"].as_array().expect("items array");
 
-    assert!(items.len() >= 2, "expected at least two candidates: {items:?}");
+    assert!(
+        items.len() >= 2,
+        "expected at least two candidates: {items:?}"
+    );
     assert_eq!(
         items[0]["id"].as_str(),
         Some(lagging_prerequisite.to_string().as_str())

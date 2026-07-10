@@ -16,9 +16,8 @@ pub(super) fn resolve_note_kind(
         (Some(_), Some(kind)) => Ok(Some(kind)),
         (Some(_), None) => Ok(Some(FeedbackNoteKind::Note)),
         (None, None) => Ok(None),
-        (None, Some(_)) => {
-            Err("feedback note kind requires feedback note text".to_string())
-        },
+        (None, Some(_)) =>
+            Err("feedback note kind requires feedback note text".to_string()),
     }
 }
 
@@ -64,10 +63,7 @@ where
     }
 
     let file = fs::File::open(path).map_err(|err| {
-        format!(
-            "failed to open feedback core log {}: {err}",
-            path.display()
-        )
+        format!("failed to open feedback core log {}: {err}", path.display())
     })?;
     let reader = BufReader::new(file);
     let mut items = Vec::new();
@@ -187,4 +183,3 @@ pub(super) fn rewrite_ndjson<T: Serialize>(
         )
     })
 }
-

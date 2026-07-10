@@ -4,8 +4,10 @@
 //! quantitative latency measurements that can be compared against
 //! per-operation maximum-latency budgets.
 
-use std::collections::BTreeMap;
-use std::path::Path;
+use std::{
+    collections::BTreeMap,
+    path::Path,
+};
 
 use chrono::{
     DateTime,
@@ -145,11 +147,13 @@ impl BudgetTable {
     /// file does not exist so ingest can run without a budget config.
     pub fn load(path: &Path) -> Result<Self, TestError> {
         match std::fs::read_to_string(path) {
-            Ok(text) => toml::from_str(&text).map_err(|err| TestError::BudgetParse {
-                path: path.to_path_buf(),
-                detail: err.to_string(),
-            }),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Ok(text) =>
+                toml::from_str(&text).map_err(|err| TestError::BudgetParse {
+                    path: path.to_path_buf(),
+                    detail: err.to_string(),
+                }),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound =>
+                Ok(Self::default()),
             Err(source) => Err(TestError::Io {
                 path: path.to_path_buf(),
                 source,
@@ -214,19 +218,27 @@ pub fn ingest_criterion_estimates(
     domain: impl Into<String>,
     executed_at: DateTime<Utc>,
 ) -> Result<BenchmarkExecution, TestError> {
-    let text =
-        std::fs::read_to_string(estimates_path).map_err(|source| TestError::Io {
+    let text = std::fs::read_to_string(estimates_path).map_err(|source| {
+        TestError::Io {
             path: estimates_path.to_path_buf(),
             source,
-        })?;
+        }
+    })?;
     let estimates: CriterionEstimates =
-        serde_json::from_str(&text).map_err(|err| TestError::CriterionIngest {
-            path: estimates_path.to_path_buf(),
-            detail: err.to_string(),
+        serde_json::from_str(&text).map_err(|err| {
+            TestError::CriterionIngest {
+                path: estimates_path.to_path_buf(),
+                detail: err.to_string(),
+            }
         })?;
 
-    let mut execution =
-        BenchmarkExecution::new(id, benchmark_name, operation, domain, executed_at);
+    let mut execution = BenchmarkExecution::new(
+        id,
+        benchmark_name,
+        operation,
+        domain,
+        executed_at,
+    );
     execution.mean_ns = round_ns(estimates.mean.point_estimate);
     execution.median_ns = round_ns(estimates.median.point_estimate);
     execution.std_dev_ns = round_ns(estimates.std_dev.point_estimate);
@@ -250,12 +262,20 @@ mod tests {
     use super::*;
 
     fn at() -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(2026, 6, 28, 12, 0, 0).single().unwrap()
+        Utc.with_ymd_and_hms(2026, 6, 28, 12, 0, 0)
+            .single()
+            .unwrap()
     }
 
     #[test]
     fn apply_budget_flags_over_budget_on_mean() {
-        let mut exec = BenchmarkExecution::new("b1", "fixture_scan", "scan", "ticket", at());
+        let mut exec = BenchmarkExecution::new(
+            "b1",
+            "fixture_scan",
+            "scan",
+            "ticket",
+            at(),
+        );
         exec.run_id = Some("run-1".to_string());
         exec.links.ticket_ids = vec!["ticket-1".to_string()];
         exec.mean_ns = 120_000_000;
@@ -288,13 +308,20 @@ mod tests {
     #[test]
     fn budget_table_load_missing_file_is_empty() {
         let dir = TempDir::new().unwrap();
-        let table = BudgetTable::load(&dir.path().join("budgets.toml")).unwrap();
+        let table =
+            BudgetTable::load(&dir.path().join("budgets.toml")).unwrap();
         assert!(table.budgets.is_empty());
     }
 
     #[test]
     fn interoperability_contract_requires_run_grouping_and_traceability() {
-        let mut exec = BenchmarkExecution::new("b1", "fixture_scan", "scan", "ticket", at());
+        let mut exec = BenchmarkExecution::new(
+            "b1",
+            "fixture_scan",
+            "scan",
+            "ticket",
+            at(),
+        );
         let gaps = exec.interoperability_gaps();
         assert!(gaps.contains(&"missing run_id"));
         assert!(gaps.contains(&"missing spec, acceptance, or ticket links"));
@@ -356,7 +383,12 @@ mod tests {
         .unwrap();
 
         let mut exec = ingest_criterion_estimates(
-            &path, "exec-bench-2", "get_by_id", "get", "ticket", at(),
+            &path,
+            "exec-bench-2",
+            "get_by_id",
+            "get",
+            "ticket",
+            at(),
         )
         .unwrap();
 

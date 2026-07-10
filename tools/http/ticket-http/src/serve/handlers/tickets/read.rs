@@ -1,8 +1,6 @@
-use std::{
-    collections::{
-        BTreeMap,
-        HashMap,
-    },
+use std::collections::{
+    BTreeMap,
+    HashMap,
 };
 
 use axum::{
@@ -37,7 +35,9 @@ use crate::serve::{
     registry::ResolvedIndexedTicket,
 };
 
-fn effort_from_fields(fields: &BTreeMap<String, serde_json::Value>) -> Option<u64> {
+fn effort_from_fields(
+    fields: &BTreeMap<String, serde_json::Value>
+) -> Option<u64> {
     fields
         .get("effort")
         .and_then(serde_json::Value::as_str)
@@ -63,14 +63,11 @@ pub async fn list_tickets(
     Extension(rid): Extension<RequestIdExt>,
     Query(params): Query<WorkspaceParam>,
 ) -> Response {
-    let (workspace, store) = match resolve_workspace_request(
-        &state,
-        &params.workspace,
-        &rid.0,
-    ) {
-        Ok(resolved) => resolved,
-        Err(response) => return response,
-    };
+    let (workspace, store) =
+        match resolve_workspace_request(&state, &params.workspace, &rid.0) {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
@@ -143,10 +140,7 @@ fn collect_search_ticket_summaries(
     let results = store
         .search_tickets(query, search_limit)
         .map_err(|e| storage_err(e, request_id))?;
-    let ids = results
-        .iter()
-        .map(|result| result.id)
-        .collect::<Vec<_>>();
+    let ids = results.iter().map(|result| result.id).collect::<Vec<_>>();
     let resolved = resolve_tickets(state, workspace, &ids, request_id)?;
 
     let mut items = Vec::with_capacity(results.len());
@@ -184,7 +178,9 @@ fn collect_search_ticket_summaries(
             );
             continue;
         };
-        if state_filter.map_or(true, |state| summary.state.as_deref() == Some(state)) {
+        if state_filter
+            .map_or(true, |state| summary.state.as_deref() == Some(state))
+        {
             items.push(summary);
         }
         if items.len() >= requested_limit {
@@ -205,17 +201,15 @@ fn collect_list_ticket_summaries(
     let items = store
         .list(state_filter, None, Some(requested_limit))
         .map_err(|e| storage_err(e, request_id))?;
-    let ids = items
-        .iter()
-        .map(|ticket| ticket.id)
-        .collect::<Vec<_>>();
+    let ids = items.iter().map(|ticket| ticket.id).collect::<Vec<_>>();
     let resolved = resolve_tickets(state, workspace, &ids, request_id)?;
 
     let mut summaries = Vec::with_capacity(items.len());
     for ticket in items {
         let resolved_ticket = resolved.get(&ticket.id);
-        let local_ticket_ref = ticket_ref_from_indexed(store, workspace, &ticket)
-            .map_err(|e| storage_err(e, request_id))?;
+        let local_ticket_ref =
+            ticket_ref_from_indexed(store, workspace, &ticket)
+                .map_err(|e| storage_err(e, request_id))?;
         let summary = if should_prefer_local_ticket(
             store,
             workspace,
@@ -223,7 +217,8 @@ fn collect_list_ticket_summaries(
             Some(&local_ticket_ref),
             resolved_ticket,
         ) {
-            let mut summary = ticket_summary_from_indexed(local_ticket_ref, &ticket);
+            let mut summary =
+                ticket_summary_from_indexed(local_ticket_ref, &ticket);
             summary.effort = store
                 .get(&ticket.id)
                 .ok()
@@ -262,14 +257,11 @@ pub async fn get_ticket(
     Path(id): Path<Uuid>,
     Query(params): Query<TicketIdParam>,
 ) -> Response {
-    let (workspace, store) = match resolve_workspace_request(
-        &state,
-        &params.workspace,
-        &rid.0,
-    ) {
-        Ok(resolved) => resolved,
-        Err(response) => return response,
-    };
+    let (workspace, store) =
+        match resolve_workspace_request(&state, &params.workspace, &rid.0) {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
@@ -322,14 +314,11 @@ pub async fn get_ticket_description(
     Path(id): Path<Uuid>,
     Query(params): Query<TicketIdParam>,
 ) -> Response {
-    let (workspace, store) = match resolve_workspace_request(
-        &state,
-        &params.workspace,
-        &rid.0,
-    ) {
-        Ok(resolved) => resolved,
-        Err(response) => return response,
-    };
+    let (workspace, store) =
+        match resolve_workspace_request(&state, &params.workspace, &rid.0) {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
@@ -372,14 +361,11 @@ pub async fn get_ticket_history(
     Path(id): Path<Uuid>,
     Query(params): Query<TicketIdParam>,
 ) -> Response {
-    let (workspace, store) = match resolve_workspace_request(
-        &state,
-        &params.workspace,
-        &rid.0,
-    ) {
-        Ok(resolved) => resolved,
-        Err(response) => return response,
-    };
+    let (workspace, store) =
+        match resolve_workspace_request(&state, &params.workspace, &rid.0) {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
@@ -491,7 +477,9 @@ fn ticket_summary_from_indexed(
     }
 }
 
-fn ticket_summary_from_resolved(ticket: &ResolvedIndexedTicket) -> TicketSummary {
+fn ticket_summary_from_resolved(
+    ticket: &ResolvedIndexedTicket
+) -> TicketSummary {
     let effort = ticket
         .store
         .get(&ticket.ticket.id)

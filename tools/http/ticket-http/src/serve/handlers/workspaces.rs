@@ -154,7 +154,9 @@ mod tests {
     #[tokio::test]
     async fn list_workspaces_returns_distinct_ids_for_duplicate_basenames() {
         let root = tempfile::tempdir().expect("tempdir");
-        let parent_store = Arc::new(TicketStore::init(root.path()).expect("open parent store"));
+        let parent_store = Arc::new(
+            TicketStore::init(root.path()).expect("open parent store"),
+        );
         parent_store
             .add_scan_root(ticket_api::model::filesystem::ScanRoot {
                 path: root.path().join("tickets"),
@@ -164,8 +166,10 @@ mod tests {
 
         let left_dir = root.path().join("alpha").join("shared").join(".ticket");
         let right_dir = root.path().join("beta").join("shared").join(".ticket");
-        std::fs::create_dir_all(left_dir.join("tickets")).expect("create left dir");
-        std::fs::create_dir_all(right_dir.join("tickets")).expect("create right dir");
+        std::fs::create_dir_all(left_dir.join("tickets"))
+            .expect("create left dir");
+        std::fs::create_dir_all(right_dir.join("tickets"))
+            .expect("create right dir");
         TicketStore::init(&left_dir).expect("open left store");
         TicketStore::init(&right_dir).expect("open right store");
 
@@ -201,6 +205,10 @@ mod tests {
 
         assert_eq!(shared.len(), 2);
         assert_ne!(shared[0].name, shared[1].name);
-        assert!(shared.iter().all(|workspace| workspace.name.starts_with("shared--")));
+        assert!(
+            shared
+                .iter()
+                .all(|workspace| workspace.name.starts_with("shared--"))
+        );
     }
 }

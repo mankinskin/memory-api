@@ -48,17 +48,11 @@ fn audit_collects_findings_and_prunes_stale_index_entries() {
             assert!(report.metrics.coverage.line_percent.is_some());
         },
         TrialStatus::Unavailable => {
-            assert!(
-                report
-                    .findings
-                    .iter()
-                    .any(|finding| {
-                        finding.id == "coverage_tool_missing"
-                            || finding.id
-                                == "coverage_nested_invocation_skipped"
-                            || finding.id == "coverage_profraw_missing"
-                    })
-            );
+            assert!(report.findings.iter().any(|finding| {
+                finding.id == "coverage_tool_missing"
+                    || finding.id == "coverage_nested_invocation_skipped"
+                    || finding.id == "coverage_profraw_missing"
+            }));
         },
         TrialStatus::Failed => {
             panic!(

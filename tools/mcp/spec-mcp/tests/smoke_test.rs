@@ -381,7 +381,9 @@ async fn spec_tree_and_health() {
     // Tree all roots
     let result = server
         .spec_tree(Parameters(TreeInput {
-            workspace: None, id: None }))
+            workspace: None,
+            id: None,
+        }))
         .await
         .expect("spec_tree roots");
     let json = extract_json(result);
@@ -422,7 +424,9 @@ async fn spec_scan_and_add_root() {
     // Scan (non-force)
     let result = server
         .spec_scan(Parameters(ScanInput {
-            workspace: None, force: false }))
+            workspace: None,
+            force: false,
+        }))
         .await
         .expect("spec_scan");
     let json = extract_json(result);

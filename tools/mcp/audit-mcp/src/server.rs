@@ -129,7 +129,10 @@ impl AuditServer {
         }
     }
 
-    fn repo_root(&self, repo_root: Option<PathBuf>) -> PathBuf {
+    fn repo_root(
+        &self,
+        repo_root: Option<PathBuf>,
+    ) -> PathBuf {
         repo_root.unwrap_or_else(|| self.base_dir.clone())
     }
 
@@ -161,7 +164,6 @@ impl AuditServer {
 
         config
     }
-
 }
 
 #[tool_router]
@@ -225,7 +227,10 @@ impl AuditServer {
         let _guard = self.audit_lock.lock().await;
         let repo_root = self.repo_root(input.repo_root);
         let audit_id = input.id.parse::<Uuid>().map_err(|error| {
-            McpError::invalid_params(format!("invalid audit UUID: {error}"), None)
+            McpError::invalid_params(
+                format!("invalid audit UUID: {error}"),
+                None,
+            )
         })?;
         let target_workspace_root = PathBuf::from(input.to_workspace_root);
         let report = RepositoryIndex::open(&repo_root)
@@ -255,7 +260,10 @@ impl AuditServer {
         let _guard = self.audit_lock.lock().await;
         let repo_root = self.repo_root(input.repo_root);
         let audit_id = input.id.parse::<Uuid>().map_err(|error| {
-            McpError::invalid_params(format!("invalid audit UUID: {error}"), None)
+            McpError::invalid_params(
+                format!("invalid audit UUID: {error}"),
+                None,
+            )
         })?;
         let target_workspace_root = PathBuf::from(input.to_workspace_root);
         let index = RepositoryIndex::open(&repo_root)
@@ -265,7 +273,8 @@ impl AuditServer {
             .map_err(|err| McpError::internal_error(err.to_string(), None))?;
         if !report.supported() {
             return Err(McpError::invalid_params(
-                "move preflight blocked; run audit_move_preflight for details".to_string(),
+                "move preflight blocked; run audit_move_preflight for details"
+                    .to_string(),
                 None,
             ));
         }
@@ -296,7 +305,10 @@ impl AuditServer {
         let _guard = self.audit_lock.lock().await;
         let repo_root = self.repo_root(input.repo_root);
         let journal = input.id.parse::<Uuid>().map_err(|error| {
-            McpError::invalid_params(format!("invalid journal id: {error}"), None)
+            McpError::invalid_params(
+                format!("invalid journal id: {error}"),
+                None,
+            )
         })?;
         let outcome = RepositoryIndex::open(&repo_root)
             .map_err(|err| McpError::internal_error(err.to_string(), None))?
@@ -325,7 +337,10 @@ impl AuditServer {
         let _guard = self.audit_lock.lock().await;
         let repo_root = self.repo_root(input.repo_root);
         let journal = input.id.parse::<Uuid>().map_err(|error| {
-            McpError::invalid_params(format!("invalid journal id: {error}"), None)
+            McpError::invalid_params(
+                format!("invalid journal id: {error}"),
+                None,
+            )
         })?;
         let outcome = RepositoryIndex::open(&repo_root)
             .map_err(|err| McpError::internal_error(err.to_string(), None))?

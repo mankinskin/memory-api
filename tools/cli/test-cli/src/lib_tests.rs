@@ -13,8 +13,16 @@ fn store_args(dir: &TempDir) -> Vec<String> {
 #[test]
 fn parses_record_command() {
     let cli = parse_cli_from([
-        "test", "record", "--id", "exec-1", "--spec-id", "vt-a", "--outcome", "passed",
-        "--ticket", "ticket-1",
+        "test",
+        "record",
+        "--id",
+        "exec-1",
+        "--spec-id",
+        "vt-a",
+        "--outcome",
+        "passed",
+        "--ticket",
+        "ticket-1",
     ])
     .expect("parse record");
     assert_eq!(cli.workspace_slug, "default");
@@ -31,9 +39,8 @@ fn parses_record_command() {
 
 #[test]
 fn json_and_toon_conflict() {
-    let result = parse_cli_from([
-        "test", "--json", "--toon", "get", "--id", "exec-1",
-    ]);
+    let result =
+        parse_cli_from(["test", "--json", "--toon", "get", "--id", "exec-1"]);
     assert!(result.is_err());
 }
 
@@ -44,8 +51,15 @@ fn record_then_list_round_trips_through_store() {
     let mut spec_args = store_args(&dir);
     spec_args.extend(
         [
-            "record-spec", "--id", "vt-core", "--title", "Core tests", "--command",
-            "cargo test -p ticket-vscode-core", "--ticket", "ticket-parity",
+            "record-spec",
+            "--id",
+            "vt-core",
+            "--title",
+            "Core tests",
+            "--command",
+            "cargo test -p ticket-vscode-core",
+            "--ticket",
+            "ticket-parity",
         ]
         .map(String::from),
     );
@@ -54,8 +68,18 @@ fn record_then_list_round_trips_through_store() {
     let mut exec_args = store_args(&dir);
     exec_args.extend(
         [
-            "record", "--id", "exec-core", "--spec-id", "vt-core", "--outcome", "passed",
-            "--detail", "16 passed", "--executed-at", "2026-06-15T12:00:00Z", "--ticket",
+            "record",
+            "--id",
+            "exec-core",
+            "--spec-id",
+            "vt-core",
+            "--outcome",
+            "passed",
+            "--detail",
+            "16 passed",
+            "--executed-at",
+            "2026-06-15T12:00:00Z",
+            "--ticket",
             "ticket-parity",
         ]
         .map(String::from),
@@ -63,7 +87,9 @@ fn record_then_list_round_trips_through_store() {
     run(parse_cli_from(exec_args).unwrap()).expect("record execution");
 
     let mut list_args = store_args(&dir);
-    list_args.extend(["--json", "list", "--ticket", "ticket-parity"].map(String::from));
+    list_args.extend(
+        ["--json", "list", "--ticket", "ticket-parity"].map(String::from),
+    );
     let output = run(parse_cli_from(list_args).unwrap()).expect("list");
 
     match output {
@@ -72,7 +98,10 @@ fn record_then_list_round_trips_through_store() {
             assert_eq!(value["executions"][0]["id"], "exec-core");
             assert_eq!(value["executions"][0]["outcome"], "passed");
         },
-        other => panic!("unexpected output variant: {}", matches!(other, CliOutput::Text(_))),
+        other => panic!(
+            "unexpected output variant: {}",
+            matches!(other, CliOutput::Text(_))
+        ),
     }
 }
 
@@ -83,8 +112,17 @@ fn log_record_then_logs_round_trips_through_store() {
     let mut record_args = store_args(&dir);
     record_args.extend(
         [
-            "--json", "log-record", "--id", "cap-1", "--execution", "exec-1",
-            "--kind", "stderr", "--locator", "target/test-logs/x.log", "--ticket",
+            "--json",
+            "log-record",
+            "--id",
+            "cap-1",
+            "--execution",
+            "exec-1",
+            "--kind",
+            "stderr",
+            "--locator",
+            "target/test-logs/x.log",
+            "--ticket",
             "ticket-1",
         ]
         .map(String::from),
@@ -92,7 +130,8 @@ fn log_record_then_logs_round_trips_through_store() {
     run(parse_cli_from(record_args).unwrap()).expect("record log capture");
 
     let mut logs_args = store_args(&dir);
-    logs_args.extend(["--json", "logs", "--execution", "exec-1"].map(String::from));
+    logs_args
+        .extend(["--json", "logs", "--execution", "exec-1"].map(String::from));
     let output = run(parse_cli_from(logs_args).unwrap()).expect("list logs");
 
     match output {
@@ -101,7 +140,10 @@ fn log_record_then_logs_round_trips_through_store() {
             assert_eq!(value["captures"][0]["id"], "cap-1");
             assert_eq!(value["captures"][0]["kind"], "stderr");
         },
-        other => panic!("unexpected output variant: {}", matches!(other, CliOutput::Text(_))),
+        other => panic!(
+            "unexpected output variant: {}",
+            matches!(other, CliOutput::Text(_))
+        ),
     }
 }
 
@@ -112,7 +154,13 @@ fn audit_reports_failed_and_slow_counts() {
     let mut spec_args = store_args(&dir);
     spec_args.extend(
         [
-            "record-spec", "--id", "vt-a", "--title", "A", "--slow-threshold-ms", "10",
+            "record-spec",
+            "--id",
+            "vt-a",
+            "--title",
+            "A",
+            "--slow-threshold-ms",
+            "10",
         ]
         .map(String::from),
     );
@@ -121,8 +169,17 @@ fn audit_reports_failed_and_slow_counts() {
     let mut fail_args = store_args(&dir);
     fail_args.extend(
         [
-            "record", "--id", "exec-fail", "--spec-id", "vt-a", "--outcome", "failed",
-            "--duration-ms", "50", "--executed-at", "2026-06-15T12:00:00Z",
+            "record",
+            "--id",
+            "exec-fail",
+            "--spec-id",
+            "vt-a",
+            "--outcome",
+            "failed",
+            "--duration-ms",
+            "50",
+            "--executed-at",
+            "2026-06-15T12:00:00Z",
         ]
         .map(String::from),
     );
@@ -138,7 +195,10 @@ fn audit_reports_failed_and_slow_counts() {
             assert_eq!(value["slow_count"], 1);
             assert_eq!(value["failed"][0]["id"], "exec-fail");
         },
-        other => panic!("unexpected output variant: {}", matches!(other, CliOutput::Text(_))),
+        other => panic!(
+            "unexpected output variant: {}",
+            matches!(other, CliOutput::Text(_))
+        ),
     }
 }
 
@@ -185,14 +245,17 @@ fn run_passes_records_execution_and_capture() {
     assert!(contents.contains("harness-ok"));
 
     let mut list_args = store_args(&dir);
-    list_args.extend(["--json", "list", "--ticket", "ticket-1"].map(String::from));
+    list_args
+        .extend(["--json", "list", "--ticket", "ticket-1"].map(String::from));
     let listed = run_value(list_args);
     assert_eq!(listed["count"], 1);
     assert_eq!(listed["executions"][0]["id"], "run-1-vt-a");
     assert!(listed["executions"][0]["duration_ms"].is_number());
 
     let mut logs_args = store_args(&dir);
-    logs_args.extend(["--json", "logs", "--execution", "run-1-vt-a"].map(String::from));
+    logs_args.extend(
+        ["--json", "logs", "--execution", "run-1-vt-a"].map(String::from),
+    );
     let logs = run_value(logs_args);
     assert_eq!(logs["count"], 1);
     assert_eq!(logs["captures"][0]["id"], "run-1-vt-a-log");

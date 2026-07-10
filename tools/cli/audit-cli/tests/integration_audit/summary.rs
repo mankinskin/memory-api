@@ -73,7 +73,10 @@ fn summary_groups_findings_by_crate_and_supports_cli_output() {
     .expect("parse summary cli");
 
     match run(cli).expect("run summary cli") {
-        CliOutput::Machine(value, audit_cli::cli::MachineOutputFormat::Json) => {
+        CliOutput::Machine(
+            value,
+            audit_cli::cli::MachineOutputFormat::Json,
+        ) => {
             assert_eq!(value["by"], "crate");
             assert_eq!(value["total_findings"], report.findings.len());
             assert!(value["groups"].as_array().is_some_and(|groups| {

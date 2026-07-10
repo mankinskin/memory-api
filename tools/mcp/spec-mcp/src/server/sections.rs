@@ -26,11 +26,15 @@ impl SpecServer {
             store
                 .add_section(&input.id, &input.name, &input.content)
                 .map_err(Self::spec_err)?;
-            Self::json_result_with_scope(json!({
-                "status": "ok",
-                "spec": input.id,
-                "section": input.name,
-            }), index_root, workspace.as_deref())
+            Self::json_result_with_scope(
+                json!({
+                    "status": "ok",
+                    "spec": input.id,
+                    "section": input.name,
+                }),
+                index_root,
+                workspace.as_deref(),
+            )
         })
         .await
     }
@@ -43,12 +47,16 @@ impl SpecServer {
         self.with_store(workspace.as_deref(), |store, index_root| {
             let sections =
                 store.list_sections(&input.id).map_err(Self::spec_err)?;
-            Self::json_result_with_scope(json!({
-                "status": "ok",
-                "spec": input.id,
-                "count": sections.len(),
-                "sections": sections,
-            }), index_root, workspace.as_deref())
+            Self::json_result_with_scope(
+                json!({
+                    "status": "ok",
+                    "spec": input.id,
+                    "count": sections.len(),
+                    "sections": sections,
+                }),
+                index_root,
+                workspace.as_deref(),
+            )
         })
         .await
     }
@@ -79,12 +87,16 @@ impl SpecServer {
                     None,
                 )
             })?;
-            Self::json_result_with_scope(json!({
-                "status": "ok",
-                "spec": input.id,
-                "section": input.name,
-                "content": content,
-            }), index_root, workspace.as_deref())
+            Self::json_result_with_scope(
+                json!({
+                    "status": "ok",
+                    "spec": input.id,
+                    "section": input.name,
+                    "content": content,
+                }),
+                index_root,
+                workspace.as_deref(),
+            )
         })
         .await
     }
@@ -98,11 +110,15 @@ impl SpecServer {
             store
                 .delete_section(&input.id, &input.name)
                 .map_err(Self::spec_err)?;
-            Self::json_result_with_scope(json!({
-                "status": "ok",
-                "spec": input.id,
-                "section": input.name,
-            }), index_root, workspace.as_deref())
+            Self::json_result_with_scope(
+                json!({
+                    "status": "ok",
+                    "spec": input.id,
+                    "section": input.name,
+                }),
+                index_root,
+                workspace.as_deref(),
+            )
         })
         .await
     }
@@ -114,13 +130,17 @@ impl SpecServer {
         let workspace = input.workspace.clone();
         self.with_store(workspace.as_deref(), |store, index_root| {
             let report = store.scan(input.force).map_err(Self::spec_err)?;
-            Self::json_result_with_scope(json!({
-                "status": "ok",
-                "force": input.force,
-                "integrated": report.integrated,
-                "pruned": report.pruned,
-                "diagnostics_count": report.diagnostics.len(),
-            }), index_root, workspace.as_deref())
+            Self::json_result_with_scope(
+                json!({
+                    "status": "ok",
+                    "force": input.force,
+                    "integrated": report.integrated,
+                    "pruned": report.pruned,
+                    "diagnostics_count": report.diagnostics.len(),
+                }),
+                index_root,
+                workspace.as_deref(),
+            )
         })
         .await
     }
@@ -145,11 +165,15 @@ impl SpecServer {
                     label: label.clone(),
                 })
                 .map_err(Self::storage_err)?;
-            Self::json_result_with_scope(json!({
-                "status": "ok",
-                "path": path,
-                "label": label,
-            }), index_root, workspace.as_deref())
+            Self::json_result_with_scope(
+                json!({
+                    "status": "ok",
+                    "path": path,
+                    "label": label,
+                }),
+                index_root,
+                workspace.as_deref(),
+            )
         })
         .await
     }

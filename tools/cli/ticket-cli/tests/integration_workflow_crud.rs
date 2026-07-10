@@ -567,7 +567,10 @@ fn unlink_reports_error_when_source_ticket_folder_is_missing_fixture() {
             && edge["to"] == id_b
             && edge["kind"] == "depends_on"
     });
-    assert!(!still_present, "edge should be removed from global edge set");
+    assert!(
+        !still_present,
+        "edge should be removed from global edge set"
+    );
 }
 
 #[test]

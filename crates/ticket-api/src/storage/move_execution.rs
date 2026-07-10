@@ -13,9 +13,9 @@ use crate::{
     error::StorageError,
     storage::{
         move_planner::{
-            from_move_error,
             MovePreflightReport,
             TicketMoveDomain,
+            from_move_error,
         },
         store::TicketStore,
     },
@@ -55,7 +55,6 @@ impl TicketStore {
         move_kernel::rollback_move(&domain, journal_id).map_err(from_move_error)
     }
 }
-
 
 #[cfg(test)]
 #[path = "move_execution_tests.rs"]

@@ -99,60 +99,65 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
     assert!(human.contains(&format!("ticket_id: {older_more_dependees}")));
     assert!(!human.contains("DEPENDEES"));
     assert!(!human.contains(first_created_at));
-        let show = s.ticket_json(&["board", "show"]);
-        assert_eq!(show["status"], "ok");
+    let show = s.ticket_json(&["board", "show"]);
+    assert_eq!(show["status"], "ok");
 
-        // --- typed struct assertions (Finding 2) ---
-        // Deserialise the recommended_next array into `NextTicketEntry` values so
-        // that the compiler catches any field-name or type changes at build time
-        // rather than at runtime via string matching.
-        let entries: Vec<NextTicketEntry> =
-            serde_json::from_value(show["recommended_next"].clone())
-                .expect("recommended_next should deserialise into Vec<NextTicketEntry>");
-        assert!(entries.len() >= 2, "expected at least 2 recommended entries");
-        assert_eq!(
-            entries[0],
-            NextTicketEntry {
-                ticket_id: older_more_dependees.clone(),
-                state: Some("ready".into()),
-                priority: "high".into(),
-                effort: None,
-                dependee_count: 2,
-                dependency_count: 0,
-            }
-        );
-        assert_eq!(
-            entries[1],
-            NextTicketEntry {
-                ticket_id: newer_fewer_dependees.clone(),
-                state: Some("ready".into()),
-                priority: "high".into(),
-                effort: None,
-                dependee_count: 0,
-                dependency_count: 0,
-            }
-        );
+    // --- typed struct assertions (Finding 2) ---
+    // Deserialise the recommended_next array into `NextTicketEntry` values so
+    // that the compiler catches any field-name or type changes at build time
+    // rather than at runtime via string matching.
+    let entries: Vec<NextTicketEntry> = serde_json::from_value(
+        show["recommended_next"].clone(),
+    )
+    .expect("recommended_next should deserialise into Vec<NextTicketEntry>");
+    assert!(
+        entries.len() >= 2,
+        "expected at least 2 recommended entries"
+    );
+    assert_eq!(
+        entries[0],
+        NextTicketEntry {
+            ticket_id: older_more_dependees.clone(),
+            state: Some("ready".into()),
+            priority: "high".into(),
+            effort: None,
+            dependee_count: 2,
+            dependency_count: 0,
+        }
+    );
+    assert_eq!(
+        entries[1],
+        NextTicketEntry {
+            ticket_id: newer_fewer_dependees.clone(),
+            state: Some("ready".into()),
+            priority: "high".into(),
+            effort: None,
+            dependee_count: 0,
+            dependency_count: 0,
+        }
+    );
 
-        // --- human rendering spot-checks ---
-        // These verify that the human output is formatted correctly; the
-        // data content is already covered by the typed assertions above.
-        let first_created_at = show["recommended_next"][0]["created_at"]
-            .as_str()
-            .expect("board show should preserve created_at");
-        let pretty_created_at = format_expected_board_created_at(first_created_at);
-        let human = show["human"].as_str().unwrap();
-        assert!(human.contains(&format!(
-            "#1  {}  Alpha older blocker",
-            &older_more_dependees[..8]
-        )));
-        assert!(human.contains(&format!("created_at: {pretty_created_at}")));
-        assert!(human.contains(&format!("ticket_id: {older_more_dependees}")));
-        assert!(!human.contains("DEPENDEES"));
-        assert!(!human.contains(first_created_at));
+    // --- human rendering spot-checks ---
+    // These verify that the human output is formatted correctly; the
+    // data content is already covered by the typed assertions above.
+    let first_created_at = show["recommended_next"][0]["created_at"]
+        .as_str()
+        .expect("board show should preserve created_at");
+    let pretty_created_at = format_expected_board_created_at(first_created_at);
+    let human = show["human"].as_str().unwrap();
+    assert!(human.contains(&format!(
+        "#1  {}  Alpha older blocker",
+        &older_more_dependees[..8]
+    )));
+    assert!(human.contains(&format!("created_at: {pretty_created_at}")));
+    assert!(human.contains(&format!("ticket_id: {older_more_dependees}")));
+    assert!(!human.contains("DEPENDEES"));
+    assert!(!human.contains(first_created_at));
 }
 
 #[test]
-fn next_and_board_prefer_recently_actionable_candidates_and_surface_timing_metadata() {
+fn next_and_board_prefer_recently_actionable_candidates_and_surface_timing_metadata()
+ {
     let s = Sandbox::new();
     assert_eq!(s.ticket_json(&["init"])["status"], "ok");
     let recently_actionable = create_ticket(&s, "Alpha recently actionable");
@@ -170,12 +175,8 @@ fn next_and_board_prefer_recently_actionable_candidates_and_surface_timing_metad
     }
 
     for state in ["ready", "in-implementation", "in-review"] {
-        let updated = s.ticket_json(&[
-            "update",
-            &transient_blocker,
-            "--to-state",
-            state,
-        ]);
+        let updated =
+            s.ticket_json(&["update", &transient_blocker, "--to-state", state]);
         assert_eq!(updated["status"], "ok");
     }
 
@@ -196,7 +197,10 @@ fn next_and_board_prefer_recently_actionable_candidates_and_surface_timing_metad
     let next = s.ticket_json(&["next"]);
     assert_eq!(next["status"], "ok");
     let items = next["items"].as_array().unwrap();
-    assert!(items.len() >= 2, "expected at least two candidates: {items:?}");
+    assert!(
+        items.len() >= 2,
+        "expected at least two candidates: {items:?}"
+    );
     assert_eq!(items[0]["id"], recently_actionable.as_str());
     assert_eq!(items[1]["id"], steadier_newer.as_str());
     assert!(items[0]["became_actionable_at"].as_str().is_some());
@@ -223,12 +227,8 @@ fn next_and_board_promote_convergence_before_unrelated_ready_work() {
     let unrelated_ready = create_ticket(&s, "Unrelated ready work");
     let advanced_dependent = create_ticket(&s, "Advanced dependent");
 
-    let unrelated_ready_state = s.ticket_json(&[
-        "update",
-        &unrelated_ready,
-        "--to-state",
-        "ready",
-    ]);
+    let unrelated_ready_state =
+        s.ticket_json(&["update", &unrelated_ready, "--to-state", "ready"]);
     assert_eq!(unrelated_ready_state["status"], "ok");
 
     for state in ["ready", "in-implementation", "in-review"] {
@@ -261,12 +261,12 @@ fn next_and_board_promote_convergence_before_unrelated_ready_work() {
     let next = s.ticket_json(&["next"]);
     assert_eq!(next["status"], "ok");
     let next_items = next["items"].as_array().unwrap();
-    assert!(next_items.len() >= 2, "expected two next items: {next_items:?}");
-    assert_eq!(next_items[0]["id"], lagging_prerequisite.as_str());
-    assert_eq!(
-        next_items[0]["max_affected_dependent_state"],
-        "in-review"
+    assert!(
+        next_items.len() >= 2,
+        "expected two next items: {next_items:?}"
     );
+    assert_eq!(next_items[0]["id"], lagging_prerequisite.as_str());
+    assert_eq!(next_items[0]["max_affected_dependent_state"], "in-review");
     assert_eq!(next_items[0]["affected_reverse_dependent_reach"], 1);
     assert_eq!(next_items[0]["dependency_state_gap"], 3);
     assert_eq!(next_items[1]["id"], unrelated_ready.as_str());

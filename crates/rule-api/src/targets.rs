@@ -1,6 +1,7 @@
 use std::{
     collections::{
         HashMap,
+        HashSet,
     },
     fs,
     path::{
@@ -8,7 +9,6 @@ use std::{
         PathBuf,
     },
 };
-use std::collections::HashSet;
 
 use serde::{
     Deserialize,
@@ -47,7 +47,6 @@ pub use targets_model::{
     RenderTargetFilter,
     RenderTargetNode,
 };
-
 
 pub fn collect_target_rules(
     store: &RuleStore,
@@ -100,9 +99,9 @@ pub fn explain_target(
     })
 }
 
-
 #[path = "targets_query.rs"]
 mod targets_query;
+pub(crate) use targets_query::directory_target_config_error;
 use targets_query::*;
 pub use targets_query::{
     TargetConfigError,
@@ -111,4 +110,3 @@ pub use targets_query::{
     render_target_by_selector,
     resolve_render_target_output,
 };
-pub(crate) use targets_query::directory_target_config_error;

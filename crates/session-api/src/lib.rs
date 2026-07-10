@@ -6,7 +6,6 @@ pub mod move_domain;
 pub mod peek;
 pub mod store;
 
-pub use error::SessionError;
 pub use audit::{
     SessionAuditFinding,
     SessionAuditMetrics,
@@ -15,6 +14,7 @@ pub use audit::{
     SessionAuditSeverity,
     SessionAuditToolCount,
 };
+pub use error::SessionError;
 pub use hook::{
     CopilotHookEvent,
     CopilotHookMessage,
@@ -26,7 +26,6 @@ pub use hook::{
 };
 pub use model::{
     SESSION_SCHEMA_VERSION,
-    default_session_schema_version,
     SessionLinks,
     SessionMetadata,
     SessionRecord,
@@ -36,6 +35,7 @@ pub use model::{
     SessionWorktreeAllocationMode,
     SessionWorktreeAssignment,
     SessionWorktreeStatus,
+    default_session_schema_version,
 };
 pub use peek::{
     DEFAULT_PROMPT_SUMMARIZE_THRESHOLD_CHARS,

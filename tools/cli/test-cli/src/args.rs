@@ -265,7 +265,8 @@ impl From<LogKindArg> for ValidationLogKind {
             LogKindArg::Stdout => ValidationLogKind::Stdout,
             LogKindArg::Stderr => ValidationLogKind::Stderr,
             LogKindArg::CombinedOutput => ValidationLogKind::CombinedOutput,
-            LogKindArg::StructuredSummary => ValidationLogKind::StructuredSummary,
+            LogKindArg::StructuredSummary =>
+                ValidationLogKind::StructuredSummary,
         }
     }
 }

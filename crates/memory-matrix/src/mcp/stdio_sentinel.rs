@@ -1,13 +1,24 @@
 use super::*;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::{
+    io::{
+        Read,
+        Write,
+    },
+    path::{
+        Path,
+        PathBuf,
+    },
+    process::{
+        Command,
+        Stdio,
+    },
+};
 
 pub(super) const STDIO_TAIL_BYTES: usize = 2048;
 const ALLOWED_ENV_SELECTOR_KEYS: &[&str] = &["TICKET_INDEX_ROOT"];
 
 fn filter_env_selectors(
-    env_selectors: &serde_json::Map<String, serde_json::Value>,
+    env_selectors: &serde_json::Map<String, serde_json::Value>
 ) -> serde_json::Map<String, serde_json::Value> {
     let mut filtered = serde_json::Map::new();
     for key in ALLOWED_ENV_SELECTOR_KEYS {
@@ -24,9 +35,7 @@ pub(super) fn classify_stdio_read_error(
 ) -> &'static str {
     match status_code {
         Some(code) if code != 0 => "non_zero_exit",
-        _ if err_kind == std::io::ErrorKind::UnexpectedEof => {
-            "unexpected_eof"
-        },
+        _ if err_kind == std::io::ErrorKind::UnexpectedEof => "unexpected_eof",
         _ => "io_read_failure",
     }
 }
@@ -59,12 +68,10 @@ pub(super) fn dispatch_mcp_subprocess_failure_probe(
     }
 
     let mut client = match operation {
-        "get" => {
-            StdioMcpClient::spawn_ticket_mcp_nonzero_exit_probe(ctx, metadata)?
-        },
-        "spawn_fail" => {
-            StdioMcpClient::spawn_ticket_mcp_spawn_failure_probe(ctx, metadata)?
-        },
+        "get" =>
+            StdioMcpClient::spawn_ticket_mcp_nonzero_exit_probe(ctx, metadata)?,
+        "spawn_fail" =>
+            StdioMcpClient::spawn_ticket_mcp_spawn_failure_probe(ctx, metadata)?,
         _ => {
             return blocked(format!(
                 "mcp subprocess failure probe supports only ticket.get and ticket.spawn_fail, got {domain}.{operation}"
@@ -112,9 +119,7 @@ impl StdioMcpClient {
         let mut env_selectors = serde_json::Map::new();
         env_selectors.insert(
             "TICKET_INDEX_ROOT".to_string(),
-            serde_json::Value::String(
-                store_root.to_string_lossy().to_string(),
-            ),
+            serde_json::Value::String(store_root.to_string_lossy().to_string()),
         );
 
         Self::spawn_with_config(
@@ -136,16 +141,12 @@ impl StdioMcpClient {
         let store_root = ctx.store_root(".ticket");
 
         let executable = "cargo".to_string();
-        let args = vec![
-            "definitely-not-a-valid-subcommand".to_string(),
-        ];
+        let args = vec!["definitely-not-a-valid-subcommand".to_string()];
 
         let mut env_selectors = serde_json::Map::new();
         env_selectors.insert(
             "TICKET_INDEX_ROOT".to_string(),
-            serde_json::Value::String(
-                store_root.to_string_lossy().to_string(),
-            ),
+            serde_json::Value::String(store_root.to_string_lossy().to_string()),
         );
 
         Self::spawn_with_config(
@@ -172,9 +173,7 @@ impl StdioMcpClient {
         let mut env_selectors = serde_json::Map::new();
         env_selectors.insert(
             "TICKET_INDEX_ROOT".to_string(),
-            serde_json::Value::String(
-                store_root.to_string_lossy().to_string(),
-            ),
+            serde_json::Value::String(store_root.to_string_lossy().to_string()),
         );
 
         Self::spawn_with_config(
@@ -409,7 +408,7 @@ impl Drop for StdioMcpClient {
 }
 
 pub(super) fn extract_stdio_tool_json(
-    result: &serde_json::Value,
+    result: &serde_json::Value
 ) -> Result<serde_json::Value, String> {
     let text = result["content"]
         .as_array()
@@ -455,15 +454,16 @@ pub(super) fn dispatch_ticket_mcp_stdio_sentinel_get(
             }
         }),
     )?;
-    let create_json = extract_stdio_tool_json(&create_result).map_err(|err| {
-        client.failure_bundle(
-            "parse_decode_error",
-            "tools/call#create_ticket",
-            &err,
-            "",
-            "",
-        )
-    })?;
+    let create_json =
+        extract_stdio_tool_json(&create_result).map_err(|err| {
+            client.failure_bundle(
+                "parse_decode_error",
+                "tools/call#create_ticket",
+                &err,
+                "",
+                "",
+            )
+        })?;
     if create_json["status"].as_str().unwrap_or_default() != "ok" {
         return Err(client.failure_bundle(
             "protocol_sentinel_mismatch",

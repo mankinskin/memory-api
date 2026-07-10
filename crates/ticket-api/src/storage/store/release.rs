@@ -1,10 +1,4 @@
-use std::collections::BTreeMap;
-use serde::{
-    Deserialize,
-    Serialize,
-};
-use serde_json::Value;
-use uuid::Uuid;
+use super::TicketStore;
 use crate::{
     error::{
         ProtocolError,
@@ -16,7 +10,13 @@ use crate::{
         indexed::IndexedTicket,
     },
 };
-use super::TicketStore;
+use serde::{
+    Deserialize,
+    Serialize,
+};
+use serde_json::Value;
+use std::collections::BTreeMap;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationResultOutcome {

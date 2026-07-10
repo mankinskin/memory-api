@@ -2,8 +2,7 @@ use super::*;
 
 #[test]
 fn test_new_spec_manifest() {
-    let m =
-        SpecManifest::new("ticket-api/store", "TicketStore", "ticket-api");
+    let m = SpecManifest::new("ticket-api/store", "TicketStore", "ticket-api");
     assert_eq!(m.slug(), Some("ticket-api/store"));
     assert_eq!(m.title(), Some("TicketStore"));
     assert_eq!(m.component(), Some("ticket-api"));
@@ -12,8 +11,7 @@ fn test_new_spec_manifest() {
 
 #[test]
 fn test_serde_round_trip() {
-    let m =
-        SpecManifest::new("ticket-api/store", "TicketStore", "ticket-api");
+    let m = SpecManifest::new("ticket-api/store", "TicketStore", "ticket-api");
     let toml_str = toml::to_string_pretty(&m).unwrap();
     let m2: SpecManifest = toml::from_str(&toml_str).unwrap();
     assert_eq!(m2.slug(), Some("ticket-api/store"));

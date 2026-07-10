@@ -41,7 +41,7 @@ enum StorageErrClass {
 }
 
 fn classify_storage_error(
-    error: ticket_api::error::StorageError,
+    error: ticket_api::error::StorageError
 ) -> StorageErrClass {
     if is_client_storage_err(&error) {
         StorageErrClass::Client(error)
@@ -97,21 +97,13 @@ fn client_storage_err(
         },
         StorageError::Validation(error) => {
             tracing::debug!(request_id = %rid, error = %error, "ticket validation failed");
-            ApiError::new(
-                "ticket.validation_failed",
-                error.to_string(),
-                rid,
-            )
-            .into_response_with_status(StatusCode::UNPROCESSABLE_ENTITY)
+            ApiError::new("ticket.validation_failed", error.to_string(), rid)
+                .into_response_with_status(StatusCode::UNPROCESSABLE_ENTITY)
         },
         StorageError::QueryParse(error) => {
             tracing::debug!(request_id = %rid, error = %error, "query parse error");
-            ApiError::bad_request(
-                "query.invalid",
-                error.to_string(),
-                rid,
-            )
-            .into_response_with_status(StatusCode::BAD_REQUEST)
+            ApiError::bad_request("query.invalid", error.to_string(), rid)
+                .into_response_with_status(StatusCode::BAD_REQUEST)
         },
         StorageError::LeaseConflict { ticket, holder } => {
             tracing::warn!(
@@ -142,21 +134,13 @@ fn client_storage_err(
         },
         StorageError::SchemaMismatch(error) => {
             tracing::warn!(request_id = %rid, error = %error, "schema mismatch");
-            ApiError::new(
-                "storage.schema_mismatch",
-                error.to_string(),
-                rid,
-            )
-            .into_response_with_status(StatusCode::CONFLICT)
+            ApiError::new("storage.schema_mismatch", error.to_string(), rid)
+                .into_response_with_status(StatusCode::CONFLICT)
         },
         StorageError::Protocol(error) => {
             tracing::warn!(request_id = %rid, error = %error, "protocol error");
-            ApiError::new(
-                error.code(),
-                error.to_string(),
-                rid,
-            )
-            .into_response_with_status(StatusCode::UNPROCESSABLE_ENTITY)
+            ApiError::new(error.code(), error.to_string(), rid)
+                .into_response_with_status(StatusCode::UNPROCESSABLE_ENTITY)
         },
         StorageError::WorkspaceNotFound { path } => {
             tracing::warn!(
@@ -267,12 +251,8 @@ fn server_storage_err(
         },
         StorageError::Other(message) => {
             tracing::error!(request_id = %rid, message = %message, "ticket storage error");
-            ApiError::new(
-                "storage.error",
-                message,
-                rid,
-            )
-            .into_response_with_status(StatusCode::INTERNAL_SERVER_ERROR)
+            ApiError::new("storage.error", message, rid)
+                .into_response_with_status(StatusCode::INTERNAL_SERVER_ERROR)
         },
         _ => unreachable!("server classification mismatch"),
     }
@@ -292,7 +272,6 @@ pub fn task_join_err(
     )
     .into_response_with_status(StatusCode::INTERNAL_SERVER_ERROR)
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -260,9 +260,7 @@ fn sync_targets_refuses_zero_match_writes_before_touching_outputs() {
         rendering::sync_targets_payload(&mut store, &config_path, false, false)
             .unwrap_err();
 
-    assert!(err
-        .to_string()
-        .contains("matched zero rules"));
+    assert!(err.to_string().contains("matched zero rules"));
     assert!(!dir.path().join("generated/AGENTS.md").exists());
     assert!(!dir.path().join("generated/memory-api-AGENTS.md").exists());
 }
@@ -316,7 +314,9 @@ fn store_index_writes_catalog_then_check_is_clean_and_detects_drift() {
     assert!(agent_hook.exists());
 
     let readme_text = fs::read_to_string(&readme).unwrap();
-    assert!(readme_text.starts_with("<!-- rule-catalog:file generated=true -->"));
+    assert!(
+        readme_text.starts_with("<!-- rule-catalog:file generated=true -->")
+    );
     assert!(readme_text.contains("## shared/agent-rules"));
     assert!(readme_text.contains("<!-- rule-catalog:entry id="));
     assert!(readme_text.contains("digest="));
@@ -336,8 +336,5 @@ fn store_index_writes_catalog_then_check_is_clean_and_detects_drift() {
         &index_root,
     );
     assert!(drift.is_err(), "check must fail on drift");
-    assert!(drift
-        .unwrap_err()
-        .to_string()
-        .contains("out of date"));
+    assert!(drift.unwrap_err().to_string().contains("out of date"));
 }

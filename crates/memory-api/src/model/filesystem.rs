@@ -22,7 +22,9 @@ pub struct ScanRoot {
 }
 
 /// Provenance of a persisted scan root.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum ScanRootSource {
     /// Added by automatic workspace discovery.
@@ -53,7 +55,9 @@ impl ScanRootSource {
 }
 
 /// Whether a persisted scan root is included or ignored by policy.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum PolicyDecision {
     /// Root participates in scan and query.

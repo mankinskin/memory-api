@@ -1,18 +1,18 @@
 use super::*;
+use mcp_rule::dispatch_rule_mcp;
+use mcp_spec::dispatch_spec_mcp;
 use mcp_ticket::{
     dispatch_ticket_mcp,
     ensure_status_ok,
     extract_mcp_json,
 };
-use mcp_rule::dispatch_rule_mcp;
-use mcp_spec::dispatch_spec_mcp;
 
-#[path = "mcp/mcp_ticket.rs"]
-mod mcp_ticket;
-#[path = "mcp/mcp_spec.rs"]
-mod mcp_spec;
 #[path = "mcp/mcp_rule.rs"]
 mod mcp_rule;
+#[path = "mcp/mcp_spec.rs"]
+mod mcp_spec;
+#[path = "mcp/mcp_ticket.rs"]
+mod mcp_ticket;
 #[path = "mcp/stdio_sentinel.rs"]
 mod stdio_sentinel;
 #[cfg(test)]
@@ -21,12 +21,12 @@ mod tests;
 use stdio_sentinel::dispatch_ticket_mcp_stdio_sentinel_get;
 #[cfg(test)]
 use stdio_sentinel::{
+    STDIO_TAIL_BYTES,
     build_failure_bundle,
     classify_stdio_read_error,
     extract_stdio_tool_json,
     tail_from_bytes,
     validate_sentinel_ticket_id,
-    STDIO_TAIL_BYTES,
 };
 
 pub(super) fn dispatch_mcp_subprocess_failure_probe(
@@ -36,10 +36,7 @@ pub(super) fn dispatch_mcp_subprocess_failure_probe(
     metadata: Option<&DispatchMetadata>,
 ) -> CellResult {
     stdio_sentinel::dispatch_mcp_subprocess_failure_probe(
-        domain,
-        operation,
-        ctx,
-        metadata,
+        domain, operation, ctx, metadata,
     )
 }
 
@@ -58,4 +55,3 @@ pub(super) fn dispatch_mcp(
         )),
     }
 }
-

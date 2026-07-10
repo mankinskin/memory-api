@@ -149,8 +149,8 @@ fn blockers_text_output_shows_nested_tree_and_frontier_summary() {
         String::from_utf8_lossy(&out.stderr),
     );
 
-    let stdout =
-        String::from_utf8(out.stdout).expect("blockers stdout should be valid UTF-8");
+    let stdout = String::from_utf8(out.stdout)
+        .expect("blockers stdout should be valid UTF-8");
 
     assert!(stdout.contains("blockers ok"));
     assert!(stdout.contains("frontier_count: 2"));
@@ -263,8 +263,8 @@ fn blockers_reports_empty_leaf_cleanly_in_json_and_text() {
         String::from_utf8_lossy(&out.stderr),
     );
 
-    let stdout =
-        String::from_utf8(out.stdout).expect("blockers leaf stdout should be valid UTF-8");
+    let stdout = String::from_utf8(out.stdout)
+        .expect("blockers leaf stdout should be valid UTF-8");
 
     assert!(stdout.contains("blockers ok"));
     assert!(stdout.contains("frontier_count: 1"));
@@ -323,4 +323,3 @@ fn unblocked_by_reports_empty_leaf_cleanly_in_json_and_text() {
     assert!(!stdout.contains("[root]"));
     assert!(!stdout.contains("[frontier_items]"));
 }
-

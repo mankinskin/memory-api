@@ -44,10 +44,7 @@ pub(super) fn run(
     let tickets_checked = tickets
         .iter()
         .filter(|ticket| {
-            !matches!(
-                ticket.state.as_deref(),
-                Some("done") | Some("cancelled")
-            )
+            !matches!(ticket.state.as_deref(), Some("done") | Some("cancelled"))
         })
         .count();
 
@@ -229,5 +226,3 @@ fn matches_filters(
         actual.as_deref() == Some(expected.as_str())
     })
 }
-
-

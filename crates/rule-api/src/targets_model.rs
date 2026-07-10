@@ -503,7 +503,8 @@ impl RenderTargetDefinition {
         schemas: &HashMap<String, RenderTargetSchema>,
         defaults: &RawTargetDefaults,
     ) -> Result<RenderTarget, TargetConfigError> {
-        let explicit_path_like_output = self.path_scope.is_some() || self.scope.is_some();
+        let explicit_path_like_output =
+            self.path_scope.is_some() || self.scope.is_some();
         let (repo_scope, file_kind, path_scope) = resolve_scope_fields(
             &self.name,
             self.repo_scope,

@@ -1,7 +1,5 @@
 use serde_json::Value;
-use ticket_api::model::{
-    edge::EdgeRecord,
-};
+use ticket_api::model::edge::EdgeRecord;
 use uuid::Uuid;
 
 use super::{
@@ -86,7 +84,8 @@ impl TicketServer {
             );
         }
         if description_updated {
-            response.insert("description_updated".to_string(), Value::Bool(true));
+            response
+                .insert("description_updated".to_string(), Value::Bool(true));
         }
 
         Self::json_result(&Value::Object(response))
@@ -147,11 +146,12 @@ impl TicketServer {
         input: CreateTicketInput,
     ) -> Result<CallToolResult, McpError> {
         let extra = parse_field_patch(Some(input.fields.clone()), None)?;
-        let workspace = ticket_api::workspace::validate_explicit_workspace_selector(
-            Some(&input.workspace),
-        )
-        .map_err(|err| McpError::invalid_params(err.to_string(), None))?
-        .to_string();
+        let workspace =
+            ticket_api::workspace::validate_explicit_workspace_selector(Some(
+                &input.workspace,
+            ))
+            .map_err(|err| McpError::invalid_params(err.to_string(), None))?
+            .to_string();
         let type_id = input.type_id;
         let title = input.title;
         let state = input.state;
@@ -246,7 +246,8 @@ impl TicketServer {
         let kind = input.kind;
 
         self.with_store_ext(&workspace.clone(), move |store| {
-            let edge = resolve_edge_for_remove(&from_str, &to_str, &kind, store)?;
+            let edge =
+                resolve_edge_for_remove(&from_str, &to_str, &kind, store)?;
             store.remove_edge(edge.clone()).map_err(Self::store_err)?;
             Self::json_result(&serde_json::json!({
                 "workspace": workspace,
@@ -307,9 +308,7 @@ impl TicketServer {
             let mut removed = 0usize;
             if strategy.mutates() {
                 for edge in &candidates {
-                    store
-                        .remove_edge(edge.clone())
-                        .map_err(Self::store_err)?;
+                    store.remove_edge(edge.clone()).map_err(Self::store_err)?;
                     removed += 1;
                 }
             }

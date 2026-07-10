@@ -212,7 +212,12 @@ mod tests {
         store
     }
 
-    fn write_entity(root: &Path, id: Uuid, title: &str, body: &str) -> PathBuf {
+    fn write_entity(
+        root: &Path,
+        id: Uuid,
+        title: &str,
+        body: &str,
+    ) -> PathBuf {
         let folder = root.join("entities").join(id.to_string());
         fs::create_dir_all(&folder).unwrap();
         let manifest = format!(

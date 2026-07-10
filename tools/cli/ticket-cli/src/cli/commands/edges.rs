@@ -151,7 +151,8 @@ fn resolve_unlink_to(
         return Ok(parsed);
     }
 
-    if !(trimmed.len() >= 8 && trimmed.chars().all(|ch| ch.is_ascii_hexdigit())) {
+    if !(trimmed.len() >= 8 && trimmed.chars().all(|ch| ch.is_ascii_hexdigit()))
+    {
         return Err(CliRunError::BadRequest(format!(
             "invalid UUID '{selector}': expected full UUID or hex prefix (>= 8 chars)"
         )));
@@ -501,11 +502,7 @@ fn ticket_exists(
     store: &TicketStore,
     ticket_id: Uuid,
 ) -> bool {
-    store
-        .get_indexed(&ticket_id)
-        .ok()
-        .flatten()
-        .is_some()
+    store.get_indexed(&ticket_id).ok().flatten().is_some()
 }
 
 use super::resolve_uuid_prefix;

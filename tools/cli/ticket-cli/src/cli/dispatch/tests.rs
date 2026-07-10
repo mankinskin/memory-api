@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use super::*;
-use ticket_api::storage::index::RedbIndexStore;
 use crate::cli::{
     IdArgs,
     ListArgs,
@@ -9,10 +8,11 @@ use crate::cli::{
     TextArgs,
 };
 use tempfile::tempdir;
+use ticket_api::storage::index::RedbIndexStore;
 use uuid::Uuid;
 
-fn create_nested_ticket_fixture(
-) -> (tempfile::TempDir, PathBuf, PathBuf, String) {
+fn create_nested_ticket_fixture()
+-> (tempfile::TempDir, PathBuf, PathBuf, String) {
     let dir = tempdir().unwrap();
     let repo = dir.path().join("repo");
     let child = repo.join("memory-api");
@@ -37,11 +37,10 @@ fn create_nested_ticket_fixture(
 
 #[test]
 fn dry_run_payload_is_returned_for_mutating_command() {
-    let payload =
-        dry_run_command_payload(&TicketCommandCli::Delete(IdArgs {
-            id: Uuid::new_v4().to_string(),
-        }))
-        .expect("delete should be dry-runnable");
+    let payload = dry_run_command_payload(&TicketCommandCli::Delete(IdArgs {
+        id: Uuid::new_v4().to_string(),
+    }))
+    .expect("delete should be dry-runnable");
     assert_eq!(payload["dry_run"], json!(true));
     assert_eq!(payload["command"], json!("delete"));
 }
@@ -60,12 +59,8 @@ fn resolve_index_root_prefers_explicit_workspace_root() {
     std::fs::create_dir_all(repo.join(".ticket")).unwrap();
     std::fs::create_dir_all(child.join(".ticket")).unwrap();
 
-    let resolved = resolve_index_root_from(
-        None,
-        Some(&child),
-        None,
-        Some(&repo),
-    );
+    let resolved =
+        resolve_index_root_from(None, Some(&child), None, Some(&repo));
 
     assert_eq!(resolved, child.join(".ticket"));
 }

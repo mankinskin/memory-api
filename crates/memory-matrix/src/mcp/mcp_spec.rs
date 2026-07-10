@@ -82,9 +82,9 @@ async fn spec_mcp_create(
         .await
         .map_err(|err| format!("mcp spec create verification failed: {err}"))?;
     let json = extract_mcp_json(result)?;
-    let _ = json["spec"]["id"]
-        .as_str()
-        .ok_or_else(|| "mcp spec create verification missing spec.id".to_string())?;
+    let _ = json["spec"]["id"].as_str().ok_or_else(|| {
+        "mcp spec create verification missing spec.id".to_string()
+    })?;
     Ok(Cell::Passed)
 }
 

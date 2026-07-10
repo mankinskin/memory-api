@@ -52,7 +52,9 @@ pub fn parse_effort(value: &str) -> Option<u64> {
     None
 }
 
-pub(super) fn read_priorities(tickets: &[IndexedTicket]) -> HashMap<Uuid, String> {
+pub(super) fn read_priorities(
+    tickets: &[IndexedTicket]
+) -> HashMap<Uuid, String> {
     tickets
         .iter()
         .filter_map(|ticket| {
@@ -128,7 +130,8 @@ pub(super) fn unresolved_dependency_map(
         if edge.kind != "depends_on" {
             continue;
         }
-        if !tickets.contains_key(&edge.from) || !tickets.contains_key(&edge.to) {
+        if !tickets.contains_key(&edge.from) || !tickets.contains_key(&edge.to)
+        {
             continue;
         }
         let is_resolved = tickets
@@ -136,7 +139,10 @@ pub(super) fn unresolved_dependency_map(
             .map(|ticket| is_done_state(ticket.state.as_deref()))
             .unwrap_or(false);
         if !is_resolved {
-            unresolved.entry(edge.from).or_insert_with(Vec::new).push(edge.to);
+            unresolved
+                .entry(edge.from)
+                .or_insert_with(Vec::new)
+                .push(edge.to);
         }
     }
     unresolved
@@ -152,7 +158,10 @@ pub(super) fn reverse_map(
             && tickets.contains_key(&edge.from)
             && tickets.contains_key(&edge.to)
         {
-            reverse_map.entry(edge.to).or_insert_with(Vec::new).push(edge.from);
+            reverse_map
+                .entry(edge.to)
+                .or_insert_with(Vec::new)
+                .push(edge.from);
         }
     }
     reverse_map
@@ -169,7 +178,8 @@ pub(super) fn compute_metrics(
     tickets
         .keys()
         .map(|ticket_id| {
-            let transitive_ids = reverse_dependents_for(*ticket_id, reverse_map);
+            let transitive_ids =
+                reverse_dependents_for(*ticket_id, reverse_map);
             let affected_ids: Vec<Uuid> = transitive_ids
                 .iter()
                 .filter(|dependent_id| {
@@ -200,21 +210,31 @@ pub(super) fn compute_metrics(
                         .and_then(|value| state_index.get(value).copied())
                 })
                 .unwrap_or(0);
-            let (max_affected_dependent_state, max_affected_dependent_state_index) =
-                match max_affected {
-                    Some((state, index)) => (state, Some(index)),
-                    None => (None, None),
-                };
-            let facts = workflow_facts.get(ticket_id).cloned().unwrap_or_default();
+            let (
+                max_affected_dependent_state,
+                max_affected_dependent_state_index,
+            ) = match max_affected {
+                Some((state, index)) => (state, Some(index)),
+                None => (None, None),
+            };
+            let facts =
+                workflow_facts.get(ticket_id).cloned().unwrap_or_default();
 
             (
                 *ticket_id,
                 TicketConvergenceMetrics {
-                    dependency_count: dependency_counts.get(ticket_id).copied().unwrap_or(0),
-                    immediate_dependees: dependee_counts.get(ticket_id).copied().unwrap_or(0),
+                    dependency_count: dependency_counts
+                        .get(ticket_id)
+                        .copied()
+                        .unwrap_or(0),
+                    immediate_dependees: dependee_counts
+                        .get(ticket_id)
+                        .copied()
+                        .unwrap_or(0),
                     transitive_reverse_dependents: transitive_ids.len(),
                     affected_reverse_dependent_reach: affected_ids.len(),
-                    max_affected_dependent_state: max_affected_dependent_state.clone(),
+                    max_affected_dependent_state: max_affected_dependent_state
+                        .clone(),
                     max_affected_dependent_state_index,
                     dependency_state_gap: max_affected_dependent_state_index
                         .map(|index| index.saturating_sub(ticket_state_index))
@@ -289,7 +309,8 @@ pub(super) fn compute_dependency_state_inversions(
             continue;
         }
 
-        let prerequisite_metrics = metrics.get(&prerequisite.id).cloned().unwrap_or_default();
+        let prerequisite_metrics =
+            metrics.get(&prerequisite.id).cloned().unwrap_or_default();
         inversions
             .entry(dependent.id)
             .or_insert_with(Vec::new)
@@ -300,9 +321,12 @@ pub(super) fn compute_dependency_state_inversions(
                 prerequisite_id: prerequisite.id,
                 prerequisite_title: prerequisite.title.clone(),
                 prerequisite_state: prerequisite.state.clone(),
-                dependency_state_gap: dependent_index.saturating_sub(prerequisite_index),
-                affected_reverse_dependent_reach: prerequisite_metrics.affected_reverse_dependent_reach,
-                transitive_reverse_dependents: prerequisite_metrics.transitive_reverse_dependents,
+                dependency_state_gap: dependent_index
+                    .saturating_sub(prerequisite_index),
+                affected_reverse_dependent_reach: prerequisite_metrics
+                    .affected_reverse_dependent_reach,
+                transitive_reverse_dependents: prerequisite_metrics
+                    .transitive_reverse_dependents,
             });
     }
 
@@ -329,7 +353,9 @@ pub(super) fn is_done_state(state: Option<&str>) -> bool {
 
 pub(super) fn is_candidate_state(state: Option<&str>) -> bool {
     state
-        .map(|value| !DONE_STATES.contains(&value) && !PAUSED_STATES.contains(&value))
+        .map(|value| {
+            !DONE_STATES.contains(&value) && !PAUSED_STATES.contains(&value)
+        })
         .unwrap_or(true)
 }
 

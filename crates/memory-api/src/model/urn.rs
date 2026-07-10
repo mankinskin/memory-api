@@ -17,8 +17,10 @@
 //! trait defines the cross-store lookup interface store crates implement to
 //! turn a [`Urn`] into a concrete entity.
 
-use std::fmt;
-use std::str::FromStr;
+use std::{
+    fmt,
+    str::FromStr,
+};
 
 use serde::{
     Deserialize,
@@ -307,7 +309,8 @@ mod tests {
 
     #[test]
     fn serde_roundtrip() {
-        let urn = Urn::new("default", ContentKind::Spec, Uuid::new_v4()).unwrap();
+        let urn =
+            Urn::new("default", ContentKind::Spec, Uuid::new_v4()).unwrap();
         let json = serde_json::to_string(&urn).unwrap();
         let back: Urn = serde_json::from_str(&json).unwrap();
         assert_eq!(urn, back);

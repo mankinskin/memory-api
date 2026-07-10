@@ -44,7 +44,8 @@ impl TicketServer {
                 all_edges.clone(),
             )
             .map_err(Self::store_err)?;
-            let report = collect_findings(store, &tickets, &all_edges, &workflow);
+            let report =
+                collect_findings(store, &tickets, &all_edges, &workflow);
             let tickets_checked = tickets
                 .iter()
                 .filter(|ticket| {
@@ -203,5 +204,3 @@ fn direction_matches(
         _ => true,
     }
 }
-
-

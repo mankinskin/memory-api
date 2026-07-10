@@ -252,12 +252,16 @@ fn peek_prompt_pack_reports_guarded_entries() {
     assert_eq!(pack["entries"].as_array().unwrap().len(), 3);
 
     let entries = pack["entries"].as_array().unwrap();
-    assert!(entries
-        .iter()
-        .any(|entry| entry["reason"] == "artifact-pointer-detected"));
-    assert!(entries
-        .iter()
-        .any(|entry| entry["reason"] == "oversized-content"));
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry["reason"] == "artifact-pointer-detected")
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry["reason"] == "oversized-content")
+    );
 }
 
 #[test]

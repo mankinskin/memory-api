@@ -51,7 +51,18 @@ use uuid::Uuid;
 ///
 /// This enum is stable: adding a variant is a non-breaking extension. Removing
 /// or renaming a variant is a breaking change that requires a migration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ContentKind {
     /// A ticket (issue, task, bug, or epic).
@@ -82,7 +93,18 @@ pub enum ContentKind {
 ///
 /// Direction: the relation is read as "this entry *relation_kind* the referenced entry".
 /// For example, `RelationKind::DependsOn` means "this entry depends on the referenced entry".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum RelationKind {
     /// The referenced entry is the hierarchical parent of this entry.

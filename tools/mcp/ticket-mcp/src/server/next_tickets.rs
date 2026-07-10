@@ -1,11 +1,9 @@
 use std::collections::HashSet;
 
 use serde_json::Value;
-use ticket_api::{
-    workflow::{
-        WorkflowModel,
-        apply_board_filter,
-    },
+use ticket_api::workflow::{
+    WorkflowModel,
+    apply_board_filter,
 };
 use uuid::Uuid;
 
@@ -60,17 +58,20 @@ impl TicketServer {
                     .as_deref()
                     .map(|r| Self::resolve_uuid_with(store, r))
                     .transpose()?;
-                let root_scope = root_id
-                    .and_then(|rid| model.root_blocker_scope(rid).map(|scope| (rid, scope)));
-                let root_remaining_blockers =
-                    root_scope.as_ref().map(|(_, scope)| scope.remaining_blockers.clone());
+                let root_scope = root_id.and_then(|rid| {
+                    model.root_blocker_scope(rid).map(|scope| (rid, scope))
+                });
+                let root_remaining_blockers = root_scope
+                    .as_ref()
+                    .map(|(_, scope)| scope.remaining_blockers.clone());
 
                 let candidate_scope = intersect_option_scopes(
                     filtered_scope,
                     root_remaining_blockers,
                 );
 
-                let mut candidates = model.actionable_candidate_ids(candidate_scope.as_ref());
+                let mut candidates =
+                    model.actionable_candidate_ids(candidate_scope.as_ref());
                 model.sort_candidate_ids(&mut candidates);
                 let board_filtered =
                     apply_board_filter(candidates, board_snap.as_ref(), false);
@@ -79,7 +80,7 @@ impl TicketServer {
                 match limit {
                     Some(limit) => candidates.truncate(limit),
                     None if root_scope.is_none() => candidates.truncate(20),
-                    None => {}
+                    None => {},
                 }
 
                 let empty_satisfied = HashSet::new();
@@ -92,18 +93,23 @@ impl TicketServer {
                         })
                     })
                 });
-                let (reachable_dependencies, blocked_dependencies, remaining_blocker_count, blocker_tree, frontier_count) =
-                    if let Some((_, scope)) = root_scope {
-                        (
-                            Some(scope.reachable_dependencies),
-                            Some(scope.blocked_dependencies),
-                            Some(scope.remaining_blockers.len()),
-                            Some(tree_item(scope.tree, &model, &empty_satisfied)),
-                            Some(full_frontier_count),
-                        )
-                    } else {
-                        (None, None, None, None, None)
-                    };
+                let (
+                    reachable_dependencies,
+                    blocked_dependencies,
+                    remaining_blocker_count,
+                    blocker_tree,
+                    frontier_count,
+                ) = if let Some((_, scope)) = root_scope {
+                    (
+                        Some(scope.reachable_dependencies),
+                        Some(scope.blocked_dependencies),
+                        Some(scope.remaining_blockers.len()),
+                        Some(tree_item(scope.tree, &model, &empty_satisfied)),
+                        Some(full_frontier_count),
+                    )
+                } else {
+                    (None, None, None, None, None)
+                };
 
                 Ok((
                     ranked_items(&candidates, &model, &empty_satisfied),
@@ -147,9 +153,8 @@ fn intersect_option_scopes(
     b: Option<HashSet<Uuid>>,
 ) -> Option<HashSet<Uuid>> {
     match (a, b) {
-        (Some(set_a), Some(set_b)) => {
-            Some(set_a.intersection(&set_b).copied().collect())
-        }
+        (Some(set_a), Some(set_b)) =>
+            Some(set_a.intersection(&set_b).copied().collect()),
         (Some(set_a), None) => Some(set_a),
         (None, Some(set_b)) => Some(set_b),
         (None, None) => None,
@@ -238,4 +243,3 @@ fn tree_item(
             .collect::<Vec<_>>(),
     })
 }
-

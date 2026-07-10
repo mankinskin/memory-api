@@ -1,6 +1,8 @@
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::Path;
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::Path,
+};
 
 use chrono::Utc;
 use serde_json::{
@@ -9,6 +11,8 @@ use serde_json::{
 };
 
 use ticket_api::{
+    TICKET_INDEX_AGENT_HOOK_PATH,
+    TicketCatalogSource,
     error::StorageError,
     generate_ticket_catalog,
     storage::{
@@ -16,8 +20,6 @@ use ticket_api::{
         ticket_fs::TicketFs,
     },
     workspace,
-    TICKET_INDEX_AGENT_HOOK_PATH,
-    TicketCatalogSource,
 };
 
 use crate::cli::{
@@ -32,8 +34,8 @@ use crate::cli::{
     ReadyOverviewArgs,
     ScanArgs,
     ServeCliArgs,
-    StoreIndexArgs,
     StatusArgs,
+    StoreIndexArgs,
     UnblockedByArgs,
     WatchArgs,
 };
@@ -146,7 +148,8 @@ pub(crate) fn cmd_store_index(
 
     for ticket in indexed {
         let manifest = TicketFs::read(&ticket.path)?;
-        let description = TicketFs::read_description(&ticket.path).unwrap_or_default();
+        let description =
+            TicketFs::read_description(&ticket.path).unwrap_or_default();
         let source_path = memory_api::index_generator::to_relative_slash(
             &workspace_root,
             &ticket.path.join("ticket.toml"),
@@ -205,10 +208,11 @@ pub(crate) fn cmd_store_index(
         &sidecar_toon,
         read_existing(&sidecar_path).as_deref(),
     );
-    let agent_hook_out = memory_api::generated_markdown::prepare_generated_output(
-        &artifacts.agent_hook_markdown,
-        read_existing(&agent_hook_path).as_deref(),
-    );
+    let agent_hook_out =
+        memory_api::generated_markdown::prepare_generated_output(
+            &artifacts.agent_hook_markdown,
+            read_existing(&agent_hook_path).as_deref(),
+        );
 
     let planned = [
         (&readme_path, &readme_out),
@@ -247,7 +251,8 @@ pub(crate) fn cmd_store_index(
             fs::create_dir_all(parent)
                 .map_err(memory_api::error::StorageError::Io)?;
         }
-        fs::write(path, content).map_err(memory_api::error::StorageError::Io)?;
+        fs::write(path, content)
+            .map_err(memory_api::error::StorageError::Io)?;
         written.push(display_path(path));
     }
 

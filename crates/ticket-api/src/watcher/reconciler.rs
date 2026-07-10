@@ -314,9 +314,8 @@ mod tests {
     #[test]
     fn find_ticket_root_returns_uuid_ancestor() {
         let dir = tempdir().unwrap();
-        let ticket_dir = dir
-            .path()
-            .join("123e4567-e89b-12d3-a456-426614174000");
+        let ticket_dir =
+            dir.path().join("123e4567-e89b-12d3-a456-426614174000");
         let nested = ticket_dir.join("child").join("ticket.toml");
         std::fs::create_dir_all(nested.parent().unwrap()).unwrap();
 

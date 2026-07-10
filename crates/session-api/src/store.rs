@@ -14,9 +14,10 @@ use serde::{
 };
 
 use crate::{
+    CopilotHookPayload,
+    SESSION_SCHEMA_VERSION,
     SessionAuditReport,
     SessionAuditSelector,
-    CopilotHookPayload,
     SessionCaptureRequest,
     SessionError,
     SessionLinks,
@@ -26,7 +27,6 @@ use crate::{
     SessionWorktreeAllocationMode,
     SessionWorktreeAssignment,
     SessionWorktreeStatus,
-    SESSION_SCHEMA_VERSION,
     audit::build_session_audit_report,
     hook::{
         CopilotHookEvent,
@@ -303,11 +303,10 @@ impl SessionStoreConfig {
 
             let replace = match newest.as_ref() {
                 None => true,
-                Some(current) => {
+                Some(current) =>
                     record.captured_at > current.captured_at
                         || (record.captured_at == current.captured_at
-                            && record.session_id < current.session_id)
-                },
+                            && record.session_id < current.session_id),
             };
             if replace {
                 newest = Some(record);
@@ -684,7 +683,6 @@ impl SessionStorePlan {
         Ok(self.paths.clone())
     }
 }
-
 
 #[path = "store_helpers.rs"]
 mod store_helpers;
