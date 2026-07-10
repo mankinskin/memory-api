@@ -1,0 +1,6 @@
+id = "6e7f9bd6-80e8-4f0d-86d9-128eb257eb32"
+created_at = "2026-07-10T12:31:46.794701100+00:00"
+title = "[rule-cli] sync-targets: incremental work + normalized path output"
+state = "done"
+depends_on = ["2dc02b9b-7e94-4cb4-82c4-83e4359792cb", "45f5f58e-4a6e-40b9-bf03-1bc9dc5ca43d", "69b38924-485a-41fb-bdc8-1423b5d82cc2"]
+type = "tracker-improvement"

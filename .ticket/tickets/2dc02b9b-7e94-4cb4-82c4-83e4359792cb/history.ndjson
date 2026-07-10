@@ -1,0 +1,4 @@
+{"rev":1,"ts":"2026-07-10T12:31:46.772607600+00:00","fields":{"state":"new","title":"[rule-cli] Normalize path separators in sync-targets output","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-10T12:39:30.777529600+00:00","fields":{"state":"in-implementation","title":"[rule-cli] Normalize path separators in sync-targets output","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-07-10T12:45:06.960527700+00:00","fields":{"state":"in-review","title":"[rule-cli] Normalize path separators in sync-targets output","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-07-10T12:45:12.292810400+00:00","fields":{"state":"done","title":"[rule-cli] Normalize path separators in sync-targets output","type":"tracker-improvement"}}

@@ -1,0 +1,7 @@
+id = "9c7c0655-436c-4cd8-a3d3-2d893f1d865c"
+created_at = "2026-07-10T12:31:11.462003200+00:00"
+title = "rule-cli sync-targets: incremental work and normalized path output"
+state = "draft"
+component = "rule-cli"
+slug = "rule-cli/sync-targets/incremental-and-normalized-paths"
+type = "specification"

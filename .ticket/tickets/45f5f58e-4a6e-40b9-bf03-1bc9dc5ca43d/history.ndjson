@@ -1,0 +1,4 @@
+{"rev":1,"ts":"2026-07-10T12:31:46.985358600+00:00","fields":{"state":"new","title":"[memory-api] Incremental entity-store scan (mtime/hash short-circuit)","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-10T13:03:21.122528200+00:00","fields":{"state":"in-implementation","title":"[memory-api] Incremental entity-store scan (mtime/hash short-circuit)","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-07-10T13:16:25.917881900+00:00","fields":{"state":"in-review","title":"[memory-api] Incremental entity-store scan (mtime/hash short-circuit)","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-07-10T13:16:29.751843400+00:00","fields":{"state":"done","title":"[memory-api] Incremental entity-store scan (mtime/hash short-circuit)","type":"tracker-improvement"}}
