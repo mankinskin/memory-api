@@ -649,10 +649,16 @@ pub(super) fn journal_path(
 }
 
 /// Persist a move journal under the store root's `move-journals/` directory.
+///
+/// Enforces the journal-backed operation interoperability contract at this
+/// persistence boundary: a journal missing authoritative identity, replay/
+/// rollback lineage, or deterministic mutation payload ownership is rejected
+/// and never written to disk.
 pub fn persist_journal(
     store_root: &Path,
     journal: &MoveJournal,
 ) -> MoveResult<()> {
+    journal.validate_interoperability_contract()?;
     let path = journal_path(store_root, journal.id);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -830,4 +836,72 @@ pub(super) fn safe_strip_prefix(
     let p_norm = PathBuf::from(crate::workspace::normalize_slashes(path));
     let s_norm = PathBuf::from(crate::workspace::normalize_slashes(prefix));
     p_norm.strip_prefix(&s_norm).map(|p| p.to_path_buf())
+}
+
+#[cfg(test)]
+mod persist_journal_contract_tests {
+    use super::*;
+
+    fn journal_with_id(id: Uuid) -> MoveJournal {
+        MoveJournal {
+            id,
+            entity_id: Uuid::new_v4(),
+            source_store_root: PathBuf::from("/stores/source"),
+            target_store_root: PathBuf::from("/stores/target"),
+            source_entity_path: PathBuf::from("/stores/source/entity"),
+            destination_entity_path: PathBuf::from("/stores/target/entity"),
+            phase: MoveExecutionPhase::Planned,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            steps: vec!["created move journal".to_string()],
+            rollback_steps: vec!["rename destination back to source".to_string()],
+            lock_paths: Vec::new(),
+            migrated_board_entries: Vec::new(),
+            rewritten_path_files: Vec::new(),
+            manual_followups: Vec::new(),
+            phase_timings_ms: std::collections::BTreeMap::new(),
+            failure: None,
+            next_recovery_step: None,
+        }
+    }
+
+    #[test]
+    fn persist_journal_rejects_non_compliant_journal_and_writes_nothing() {
+        let store = tempfile::tempdir().expect("temp store root");
+        let id = Uuid::new_v4();
+        let mut journal = journal_with_id(id);
+        // Strip deterministic mutation payload ownership + operation identity.
+        journal.entity_id = Uuid::nil();
+        journal.source_store_root = PathBuf::new();
+
+        let error = persist_journal(store.path(), &journal)
+            .expect_err("non-compliant journal must be rejected at persistence");
+        match error {
+            MoveError::Domain(detail) => assert!(
+                detail.contains(MoveJournal::INTEROP_CONTRACT_MARKER),
+                "unexpected detail: {detail}"
+            ),
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+
+        assert!(
+            !journal_path(store.path(), id).exists(),
+            "rejected journal must not be written to disk"
+        );
+    }
+
+    #[test]
+    fn persist_journal_writes_compliant_journal() {
+        let store = tempfile::tempdir().expect("temp store root");
+        let id = Uuid::new_v4();
+        let journal = journal_with_id(id);
+
+        persist_journal(store.path(), &journal)
+            .expect("compliant journal must persist");
+
+        assert!(
+            journal_path(store.path(), id).exists(),
+            "compliant journal must be written to disk"
+        );
+    }
 }
