@@ -21,6 +21,9 @@ pub enum TestError {
     #[error("benchmark execution not found: {0}")]
     BenchmarkNotFound(String),
 
+    #[error("interoperability contract violation for {record_kind}: {detail}")]
+    InteroperabilityContract { record_kind: String, detail: String },
+
     #[error("failed to parse budget table {path}: {detail}")]
     BudgetParse { path: PathBuf, detail: String },
 

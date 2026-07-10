@@ -32,6 +32,8 @@ pub struct BenchmarkExecution {
     /// Domain the operation belongs to, e.g. `ticket`.
     pub domain: String,
     pub executed_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     pub mean_ns: u64,
     pub median_ns: u64,
     pub std_dev_ns: u64,
@@ -61,6 +63,7 @@ impl BenchmarkExecution {
             operation: operation.into(),
             domain: domain.into(),
             executed_at,
+            run_id: None,
             mean_ns: 0,
             median_ns: 0,
             std_dev_ns: 0,
@@ -85,6 +88,35 @@ impl BenchmarkExecution {
             Some(budget) => self.mean_ns > budget,
             None => false,
         };
+    }
+
+    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+        let mut gaps = Vec::new();
+        if self.domain.trim().is_empty() {
+            gaps.push("missing domain");
+        }
+        if self.operation.trim().is_empty() {
+            gaps.push("missing operation");
+        }
+        if self.run_id.as_deref().is_none() {
+            gaps.push("missing run_id");
+        }
+        if !self.links.has_traceability_links() {
+            gaps.push("missing spec, acceptance, or ticket links");
+        }
+        gaps
+    }
+
+    pub fn validate_interoperability_contract(&self) -> Result<(), TestError> {
+        let gaps = self.interoperability_gaps();
+        if gaps.is_empty() {
+            return Ok(());
+        }
+
+        Err(TestError::InteroperabilityContract {
+            record_kind: "benchmark-execution".to_string(),
+            detail: gaps.join(", "),
+        })
     }
 }
 
@@ -224,6 +256,8 @@ mod tests {
     #[test]
     fn apply_budget_flags_over_budget_on_mean() {
         let mut exec = BenchmarkExecution::new("b1", "fixture_scan", "scan", "ticket", at());
+        exec.run_id = Some("run-1".to_string());
+        exec.links.ticket_ids = vec!["ticket-1".to_string()];
         exec.mean_ns = 120_000_000;
 
         exec.apply_budget(Some(100_000_000));
@@ -256,6 +290,18 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let table = BudgetTable::load(&dir.path().join("budgets.toml")).unwrap();
         assert!(table.budgets.is_empty());
+    }
+
+    #[test]
+    fn interoperability_contract_requires_run_grouping_and_traceability() {
+        let mut exec = BenchmarkExecution::new("b1", "fixture_scan", "scan", "ticket", at());
+        let gaps = exec.interoperability_gaps();
+        assert!(gaps.contains(&"missing run_id"));
+        assert!(gaps.contains(&"missing spec, acceptance, or ticket links"));
+
+        exec.run_id = Some("run-1".to_string());
+        exec.links.ticket_ids = vec!["ticket-1".to_string()];
+        assert!(exec.validate_interoperability_contract().is_ok());
     }
 
     #[test]

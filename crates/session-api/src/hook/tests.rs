@@ -2,8 +2,10 @@ use chrono::TimeZone;
 use pretty_assertions::assert_eq;
 
 use crate::{
+    PromptPackOptions,
     SessionError,
     SessionRole,
+    peek_prompt_pack,
 };
 
 use super::{
@@ -266,7 +268,7 @@ fn transcript_reader_retags_tool_only_assistant_messages() {
 }
 
 #[test]
-fn transcript_reader_marks_ambiguous_sync_terminal_completion() {
+fn transcript_reader_does_not_mark_ambiguous_sync_terminal_without_signals() {
     let transcript = r#"{"id":"evt-start","type":"session.start","timestamp":"2026-06-02T23:06:54.049Z","data":{"sessionId":"session-terminal","producer":"copilot-agent"}}
 {"id":"evt-1","type":"user.message","timestamp":"2026-06-02T23:07:00.000Z","data":{"content":"Run sync command"}}
 {"id":"evt-2","type":"tool.execution_start","timestamp":"2026-06-02T23:07:01.000Z","data":{"toolCallId":"call-rt-1","toolName":"run_in_terminal","arguments":{"mode":"sync","command":"cargo test"}}}
@@ -291,6 +293,46 @@ fn transcript_reader_marks_ambiguous_sync_terminal_completion() {
             .as_ref()
             .and_then(|json| json.get("blocker"))
             .and_then(serde_json::Value::as_str),
+        None
+    );
+    assert_eq!(
+        result_event
+            .data_json
+            .as_ref()
+            .and_then(|json| json.get("lifecycle_state"))
+            .and_then(serde_json::Value::as_str),
+        None
+    );
+}
+
+#[test]
+fn transcript_reader_marks_ambiguous_sync_terminal_with_background_signal() {
+    let transcript = r#"{"id":"evt-start","type":"session.start","timestamp":"2026-06-02T23:06:54.049Z","data":{"sessionId":"session-terminal-bg","producer":"copilot-agent"}}
+{"id":"evt-1","type":"user.message","timestamp":"2026-06-02T23:07:00.000Z","data":{"content":"Run sync command"}}
+{"id":"evt-2","type":"tool.execution_start","timestamp":"2026-06-02T23:07:01.000Z","data":{"toolCallId":"call-rt-2","toolName":"run_in_terminal","arguments":{"mode":"sync","command":"cargo test"}}}
+{"id":"evt-3","type":"tool.execution_complete","timestamp":"2026-06-02T23:07:03.000Z","data":{"toolCallId":"call-rt-2","success":true,"message":"Command timed out and moved to background"}}"#;
+
+    let payload = copilot_payload_from_transcript_reader(
+        std::io::Cursor::new(transcript),
+        "default",
+        Some("stop".to_string()),
+    )
+    .unwrap();
+
+    let result_event = payload
+        .events
+        .iter()
+        .find(|event| {
+            event.event_type.as_deref() == Some("tool.execution_result")
+        })
+        .expect("expected tool.execution_result event");
+    assert_eq!(result_event.tool_name.as_deref(), Some("run_in_terminal"));
+    assert_eq!(
+        result_event
+            .data_json
+            .as_ref()
+            .and_then(|json| json.get("blocker"))
+            .and_then(serde_json::Value::as_str),
         Some("sync-terminal-state-ambiguous")
     );
     assert_eq!(
@@ -301,4 +343,55 @@ fn transcript_reader_marks_ambiguous_sync_terminal_completion() {
             .and_then(serde_json::Value::as_str),
         Some("background-ambiguous")
     );
+}
+
+#[test]
+fn transcript_normalization_and_prompt_pack_tool_result_consistency() {
+    let transcript = r#"{"id":"evt-start","type":"session.start","timestamp":"2026-06-02T23:06:54.049Z","data":{"sessionId":"session-cross-boundary","producer":"copilot-agent"}}
+{"id":"evt-1","type":"user.message","timestamp":"2026-06-02T23:07:00.000Z","data":{"content":"Continue hardening prompt compactness"}}
+{"id":"evt-2","type":"assistant.message","timestamp":"2026-06-02T23:07:01.000Z","data":{"messageId":"m-1","content":"I will gather context and verify ticket drift status."}}
+{"id":"evt-3","type":"assistant.message","timestamp":"2026-06-02T23:07:02.000Z","data":{"messageId":"m-2","content":"Now I am checking spec and validation anchors."}}
+{"id":"evt-4","type":"assistant.message","timestamp":"2026-06-02T23:07:03.000Z","data":{"messageId":"m-3","content":"Durable finding: hook ambiguity should require explicit signals."}}
+{"id":"evt-5","type":"tool.execution_start","timestamp":"2026-06-02T23:07:04.000Z","data":{"toolCallId":"call-rt-3","toolName":"run_in_terminal","arguments":{"mode":"sync","command":"cargo test"}}}
+{"id":"evt-6","type":"tool.execution_complete","timestamp":"2026-06-02T23:07:05.000Z","data":{"toolCallId":"call-rt-3","success":true}}"#;
+
+    let payload = copilot_payload_from_transcript_reader(
+        std::io::Cursor::new(transcript),
+        "default",
+        Some("stop".to_string()),
+    )
+    .unwrap();
+
+    let result_event = payload
+        .events
+        .iter()
+        .find(|event| event.event_type.as_deref() == Some("tool.execution_result"))
+        .expect("expected synthesized tool.execution_result event");
+    assert_eq!(
+        result_event
+            .data_json
+            .as_ref()
+            .and_then(|json| json.get("blocker"))
+            .and_then(serde_json::Value::as_str),
+        None
+    );
+
+    let record = SessionCaptureRequest::copilot(payload)
+        .into_record()
+        .expect("payload should map into session record");
+    let pack = peek_prompt_pack(
+        &record,
+        PromptPackOptions {
+            preview_chars: 80,
+            summarize_threshold_chars: 120,
+        },
+    );
+
+    assert_eq!(pack.total_turns, 4);
+    assert_eq!(pack.dropped_turns, 0);
+    assert_eq!(pack.entries.len(), 4);
+    assert!(pack.entries.iter().any(|entry| {
+        entry.preview.contains("Durable finding")
+            && entry.reason == "durable-content"
+    }));
 }

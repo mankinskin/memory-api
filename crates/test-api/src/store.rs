@@ -119,6 +119,7 @@ impl TestStoreConfig {
         &self,
         execution: &ValidationExecution,
     ) -> Result<PathBuf, TestError> {
+        execution.validate_interoperability_contract()?;
         let path = self.execution_path(&execution.id)?;
         write_json(&path, execution)?;
         self.prune_execution_runs(2)?;
@@ -254,6 +255,7 @@ impl TestStoreConfig {
         &self,
         benchmark: &BenchmarkExecution,
     ) -> Result<PathBuf, TestError> {
+        benchmark.validate_interoperability_contract()?;
         let path = self.benchmark_path(&benchmark.id)?;
         write_json(&path, benchmark)?;
         Ok(path)

@@ -40,6 +40,12 @@ fn records_and_reads_execution() {
         ticket_ids: vec!["ticket-parity".to_string()],
         ..Default::default()
     };
+    exec.provenance = ValidationProvenance {
+        domain: Some("ticket".to_string()),
+        operation: Some("get".to_string()),
+        run_id: Some("run-1".to_string()),
+        ..Default::default()
+    };
 
     cfg.record_execution(&exec).unwrap();
     assert_eq!(cfg.get_execution("exec-1").unwrap(), exec);
@@ -92,6 +98,10 @@ fn lists_executions_filtered_by_ticket_and_outcome() {
     };
     let mut other = ValidationExecution::passed("exec-other", "vt-a", at(3));
     other.duration_ms = Some(15);
+    other.links = ValidationLinks {
+        ticket_ids: vec!["ticket-y".to_string()],
+        ..Default::default()
+    };
     other.provenance = ValidationProvenance {
         domain: Some("ticket".to_string()),
         operation: Some("search".to_string()),
@@ -169,14 +179,23 @@ fn record_execution_keeps_only_newest_two_runs() {
     let cfg = config(&dir);
 
     let mut run1 = ValidationExecution::passed("exec-run1", "vt-a", at(1));
+    run1.links.ticket_ids = vec!["ticket-run".to_string()];
+    run1.provenance.domain = Some("test".to_string());
+    run1.provenance.operation = Some("run".to_string());
     run1.provenance.run_id = Some("run-1".to_string());
     cfg.record_execution(&run1).unwrap();
 
     let mut run2 = ValidationExecution::passed("exec-run2", "vt-a", at(2));
+    run2.links.ticket_ids = vec!["ticket-run".to_string()];
+    run2.provenance.domain = Some("test".to_string());
+    run2.provenance.operation = Some("run".to_string());
     run2.provenance.run_id = Some("run-2".to_string());
     cfg.record_execution(&run2).unwrap();
 
     let mut run3 = ValidationExecution::passed("exec-run3", "vt-a", at(3));
+    run3.links.ticket_ids = vec!["ticket-run".to_string()];
+    run3.provenance.domain = Some("test".to_string());
+    run3.provenance.operation = Some("run".to_string());
     run3.provenance.run_id = Some("run-3".to_string());
     cfg.record_execution(&run3).unwrap();
 
@@ -224,14 +243,20 @@ fn records_and_queries_benchmarks_by_domain_and_over_budget() {
     let cfg = config(&dir);
 
     let mut get = BenchmarkExecution::new("bench-get", "get_by_id", "get", "ticket", at(1));
+    get.run_id = Some("bench-run-1".to_string());
+    get.links.ticket_ids = vec!["ticket-bench".to_string()];
     get.mean_ns = 75_000_000;
     get.apply_budget(Some(50_000_000));
 
     let mut scan = BenchmarkExecution::new("bench-scan", "scan_root", "scan", "ticket", at(2));
+    scan.run_id = Some("bench-run-1".to_string());
+    scan.links.ticket_ids = vec!["ticket-bench".to_string()];
     scan.mean_ns = 400_000_000;
     scan.apply_budget(Some(1_000_000_000));
 
-    let spec_search = BenchmarkExecution::new("bench-search", "search_q", "search", "spec", at(3));
+    let mut spec_search = BenchmarkExecution::new("bench-search", "search_q", "search", "spec", at(3));
+    spec_search.run_id = Some("bench-run-2".to_string());
+    spec_search.links.ticket_ids = vec!["ticket-bench".to_string()];
 
     cfg.record_benchmark(&get).unwrap();
     cfg.record_benchmark(&scan).unwrap();
@@ -274,5 +299,33 @@ fn missing_benchmark_reports_not_found() {
     assert!(matches!(
         cfg.get_benchmark("nope"),
         Err(TestError::BenchmarkNotFound(_))
+    ));
+}
+
+#[test]
+fn record_benchmark_rejects_missing_interoperability_contract_fields() {
+    use crate::benchmark::BenchmarkExecution;
+
+    let dir = TempDir::new().unwrap();
+    let cfg = config(&dir);
+
+    let bench = BenchmarkExecution::new("bench-missing", "scan_root", "scan", "ticket", at(1));
+
+    assert!(matches!(
+        cfg.record_benchmark(&bench),
+        Err(TestError::InteroperabilityContract { .. })
+    ));
+}
+
+#[test]
+fn record_execution_rejects_missing_interoperability_contract_fields() {
+    let dir = TempDir::new().unwrap();
+    let cfg = config(&dir);
+
+    let exec = ValidationExecution::passed("exec-missing", "vt-core-tests", at(1));
+
+    assert!(matches!(
+        cfg.record_execution(&exec),
+        Err(TestError::InteroperabilityContract { .. })
     ));
 }

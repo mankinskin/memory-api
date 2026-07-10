@@ -50,6 +50,12 @@ pub struct ValidationLinks {
 }
 
 impl ValidationLinks {
+    pub fn has_traceability_links(&self) -> bool {
+        !self.spec_ids.is_empty()
+            || !self.acceptance_criterion_ids.is_empty()
+            || !self.ticket_ids.is_empty()
+    }
+
     pub fn links_to_spec(
         &self,
         spec_id: &str,
@@ -269,6 +275,35 @@ impl ValidationExecution {
         log_id: &str,
     ) -> bool {
         self.links.links_to_log(log_id)
+    }
+
+    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+        let mut gaps = Vec::new();
+        if self.provenance.domain.as_deref().is_none() {
+            gaps.push("missing provenance.domain");
+        }
+        if self.provenance.operation.as_deref().is_none() {
+            gaps.push("missing provenance.operation");
+        }
+        if self.provenance.run_id.as_deref().is_none() {
+            gaps.push("missing provenance.run_id");
+        }
+        if !self.links.has_traceability_links() {
+            gaps.push("missing spec, acceptance, or ticket links");
+        }
+        gaps
+    }
+
+    pub fn validate_interoperability_contract(&self) -> Result<(), TestError> {
+        let gaps = self.interoperability_gaps();
+        if gaps.is_empty() {
+            return Ok(());
+        }
+
+        Err(TestError::InteroperabilityContract {
+            record_kind: "validation-execution".to_string(),
+            detail: gaps.join(", "),
+        })
     }
 }
 

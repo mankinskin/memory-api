@@ -2,19 +2,25 @@
 
 # Summary
 
-This spec drafts the design for a real transport matrix covering CLI, HTTP, and MCP surfaces across the in-scope memory-api domains.
+This spec defines the transport-matrix and benchmark policy for `memory-api` domains using the lightest identity model that still ties durable evidence back to spec compliance.
 
 ## Behavior Story
 
-This spec drafts the design for a real transport matrix covering CLI, HTTP, and MCP surfaces across the in-scope memory-api domains.
+The repository should be able to prove CLI, MCP, and HTTP behavior where those surfaces exist, reuse the same operation inventory for correctness and performance, and route evidence into durable stores without inventing a new executable taxonomy too early.
 
 ## Provided Surface Contracts
 
-- Define provided contracts for this behavior slice.
+- One canonical transport matrix spans correctness cells, benchmark runs, and durable evidence capture.
+- `cell_id` remains the stable per-operation identity for matrix and benchmark cells.
+- Existing evidence primitives stay primary: `ValidationSpec`, `ValidationExecution`, benchmark records in `test-api`, and companion `log-api` artifacts when runs emit durable runtime evidence.
+- Only minimal extra metadata may be added where needed to join matrix runs, benchmark runs, and spec-compliance status: fixture identity, transport, domain, operation, run grouping, and linked evidence ids.
+- Missing domain or transport coverage must remain explicit `Blocked` evidence, not silent omission.
+- `log-api` is not itself a matrix domain in this spec. It is the companion evidence store for runtime-log artifacts emitted by matrix or benchmark runs, so its role must be declared explicitly rather than silently omitted.
 
 ## Required Validation
 
-- Triangulate behavior with executable checks, natural-language clauses, and code/schema/API references when available.
+- Triangulate behavior with executable checks, natural-language clauses, and code, schema, or API references when available.
+- Validate at least one existing matrix command and one benchmark command against the lightweight evidence contract below before adding new harness shapes.
 
 ## Related Implementation Tickets
 
@@ -55,6 +61,8 @@ Current validation is still uneven:
 - Domains: ticket, spec, rule, session, test, audit, and any HTTP surface already present for a domain.
 - Operations: create, get, search/list, update, move/scan where applicable.
 - Transports: cli, http, mcp.
+
+`log-api` is intentionally outside the domain axis for this matrix because the matrix measures transport-visible correctness and performance operations for the primary domain stores. `log-api` participates as a companion evidence destination when those runs produce durable runtime-log artifacts.
 
 ## Concrete execution plan
 
@@ -98,8 +106,37 @@ Notes:
 
 - If a transport is absent for a domain, matrix cells must be emitted as `Blocked` with explicit reason text.
 - HTTP cells are only required where domain HTTP servers already exist.
+- `log-api` coverage is still required, but as evidence-routing behavior rather than as an additional matrix domain. Missing required `log_ids` or companion runtime-log capture for runs that claim such evidence should be treated as explicit blocked or failing evidence, not silent omission.
 
 ## Benchmark protocol
+
+## Lightweight evidence contract
+
+This policy does not introduce a new executable-anchor taxonomy yet. It reuses existing validation and benchmark records, then adds only the smallest metadata needed to connect evidence back to matrix cells and spec compliance.
+
+Required durable identity and linkage:
+
+- `cell_id`: stable operation identity such as `ticket.create.mcp`
+- `command`: stored on the owning `ValidationSpec` or benchmark harness spec rather than a new parallel identity object
+- `fixture_profile`: stable fixture family or workspace topology label
+- `transport`, `domain`, `operation`, and `run_id`: recorded on each execution or benchmark record
+- `spec_ids` and `acceptance_criterion_ids`: reused wherever the run is evidence for contract compliance
+- `log_ids` or other evidence ids only when a run emits companion runtime artifacts that must be queryable durably
+- `budget_policy` or budget result only for benchmark-bearing runs
+
+### Grounded examples from existing evidence
+
+| Suite or run family | Current command | Current durable evidence | What is already good | Smallest gap to close |
+| --- | --- | --- | --- | --- |
+| `vt-cross-domain-matrix` | `cargo test -p memory-matrix` | `ValidationSpec` + `ValidationExecution` + linked log id `exec-vt-cross-domain-matrix-20260628-log` | Stable command, duration, transport evidence, and linked runtime log already exist | Persist one canonical `fixture_profile` and ensure `cell_id` stays stable across reruns |
+| `vt-bench-matrix` | `cargo run -p memory-matrix --bin bench-matrix` | `ValidationSpec` plus `BenchmarkExecution` ingest and budget enforcement in `test-api` | Benchmark runs already distinguish operation, domain, and budget status | Reuse the same `cell_id` and require explicit spec-compliance links plus optional companion log ids where runtime evidence matters |
+
+### Minimal metadata gaps blocking full unification
+
+- The matrix already defines `cell_id`, but fixture identity still needs one canonical durable field.
+- `ValidationExecution` captures duration, transport, operation, and `run_id`; policy must require those fields consistently instead of adding a new wrapper object.
+- `BenchmarkExecution` captures numeric results and budgets; policy must only add explicit compliance and companion-evidence links where missing.
+- Sentinel subprocess runs, direct dispatch cells, and Criterion-backed runs all remain valid as long as they expose the same minimal evidence fields.
 
 ### Commands (baseline)
 
@@ -114,7 +151,8 @@ Notes:
 
 - Emit one row per `cell_id` with:
 	- `transport`, `domain`, `operation`, `iterations`, `p50_ms`, `p95_ms`, `max_ms`, `budget_ms`, `outcome`.
-- Persist to test-api executions and link the evidence ids from benchmark and matrix tickets.
+- Persist correctness rows through `ValidationExecution` and benchmark rows through the existing benchmark execution records.
+- Where a run emits logs or other durable artifacts, link those evidence ids instead of embedding a second identity layer.
 
 ## CI lane design
 
@@ -128,9 +166,10 @@ Notes:
 
 - At least one supported transport cell exists for every required domain operation.
 - Every supported transport kind has at least one real-process sentinel cell.
-- Every matrix/benchmark record is keyed by canonical `cell_id` and includes typed provenance.
+- Every matrix or benchmark record is keyed by canonical `cell_id` and reuses existing durable evidence primitives rather than a new anchor taxonomy.
 - Benchmark artifacts report percentiles and budget comparisons per operation.
-- CI fast/large lanes are documented and reproducible from one command each.
+- Evidence needed for spec compliance reuses `spec_ids`, `acceptance_criterion_ids`, `run_id`, and companion evidence links instead of inventing a heavier identity envelope.
+- CI fast and large lanes are documented and reproducible from one command each.
 
 ## Transport strategy
 
@@ -155,6 +194,7 @@ Notes:
 - The matrix should have a single documented command or harness entrypoint.
 - Each execution should be captured with typed provenance, transport, duration, and fixture identity.
 - The benchmark ticket should be able to reference matrix evidence instead of re-deriving the transport set.
+- The benchmark policy should reject new suite shapes unless they declare how existing validation and benchmark records will carry `cell_id`, fixture identity, compliance links, and evidence routing.
 
 ## Implementation order
 

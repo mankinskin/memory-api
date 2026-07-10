@@ -97,20 +97,6 @@ fn seed_compaction_session(
                 event_meta: None,
             },
             CopilotHookMessage {
-                role: SessionRole::Assistant,
-                content: "I will run the command and check terminal status output.".to_string(),
-                tool_name: None,
-                captured_at: None,
-                event_meta: None,
-            },
-            CopilotHookMessage {
-                role: SessionRole::Assistant,
-                content: "Now I will run the command and check terminal status output.".to_string(),
-                tool_name: None,
-                captured_at: None,
-                event_meta: None,
-            },
-            CopilotHookMessage {
                 role: SessionRole::Tool,
                 content: format!("inline payload: {}", "x".repeat(800)),
                 tool_name: Some("run_in_terminal".to_string()),
@@ -259,11 +245,11 @@ fn peek_prompt_pack_reports_guarded_entries() {
         "120",
     ]);
 
-    assert_eq!(pack["total_turns"], 7);
-    assert_eq!(pack["dropped_turns"], 3);
+    assert_eq!(pack["total_turns"], 5);
+    assert_eq!(pack["dropped_turns"], 2);
     assert_eq!(pack["reference_only_turns"], 1);
     assert_eq!(pack["summarized_turns"], 1);
-    assert_eq!(pack["entries"].as_array().unwrap().len(), 4);
+    assert_eq!(pack["entries"].as_array().unwrap().len(), 3);
 
     let entries = pack["entries"].as_array().unwrap();
     assert!(entries
@@ -272,4 +258,34 @@ fn peek_prompt_pack_reports_guarded_entries() {
     assert!(entries
         .iter()
         .any(|entry| entry["reason"] == "oversized-content"));
+}
+
+#[test]
+fn peek_prompt_pack_meets_quantitative_compactness_gate() {
+    let dir = tempdir().unwrap();
+    let store_root = dir.path().join(".session");
+    let store_root_str = store_root.to_string_lossy().to_string();
+    let config =
+        SessionStoreConfig::new(store_root.clone(), "default".to_string());
+    seed_compaction_session(&config, "sess-gate", "agent-gate");
+
+    let pack = run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "peek-prompt-pack",
+        "--session-id",
+        "sess-gate",
+        "--summarize-threshold-chars",
+        "120",
+    ]);
+
+    let total = pack["total_turns"].as_u64().unwrap();
+    let dropped = pack["dropped_turns"].as_u64().unwrap();
+    let included = pack["entries"].as_array().unwrap().len() as u64;
+
+    assert_eq!(total, 5);
+    assert!(dropped >= 2);
+    assert!(included <= 3);
 }

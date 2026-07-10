@@ -3,7 +3,9 @@ use chrono::Utc;
 use test_api::{
     TestStoreConfig,
     ValidationExecution,
+    ValidationLinks,
     ValidationOutcome,
+    ValidationProvenance,
 };
 
 use crate::matrix::{
@@ -24,11 +26,22 @@ impl TestDomain {
 
     fn execution(
         id: &str,
+        operation: &str,
         outcome: ValidationOutcome,
     ) -> ValidationExecution {
         let mut execution =
             ValidationExecution::new(id, "vt-test-domain", outcome, Utc::now());
         execution.duration_ms = Some(1);
+        execution.links = ValidationLinks {
+            ticket_ids: vec!["ticket-memory-matrix".to_string()],
+            ..Default::default()
+        };
+        execution.provenance = ValidationProvenance {
+            domain: Some("test".to_string()),
+            operation: Some(operation.to_string()),
+            run_id: Some("matrix-test-domain".to_string()),
+            ..Default::default()
+        };
         execution
     }
 }
@@ -46,6 +59,7 @@ impl DomainOps for TestDomain {
         config
             .record_execution(&Self::execution(
                 "matrix-create",
+                "create",
                 ValidationOutcome::Passed,
             ))
             .map_err(|err| err.to_string())?;
@@ -96,12 +110,14 @@ impl DomainOps for TestDomain {
         config
             .record_execution(&Self::execution(
                 "matrix-update",
+                "update",
                 ValidationOutcome::Passed,
             ))
             .map_err(|err| err.to_string())?;
         config
             .record_execution(&Self::execution(
                 "matrix-update",
+                "update",
                 ValidationOutcome::Failed,
             ))
             .map_err(|err| err.to_string())?;

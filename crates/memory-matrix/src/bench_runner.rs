@@ -55,6 +55,7 @@ pub fn ingest_bench_results(
     let table =
         BudgetTable::load(budgets_path).map_err(|err| err.to_string())?;
     let now = Utc::now();
+    let run_id = format!("bench-matrix-{}", now.to_rfc3339());
     let mut report = BenchReport::default();
 
     for (domain, operation) in cells() {
@@ -75,6 +76,7 @@ pub fn ingest_bench_results(
             now,
         )
         .map_err(|err| err.to_string())?;
+        execution.run_id = Some(run_id.clone());
         execution.apply_budget(table.budget_ns(domain, operation));
         execution.links = ValidationLinks {
             ticket_ids: vec![ticket_id.to_string()],

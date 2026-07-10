@@ -106,6 +106,28 @@ fn links_connect_specs_tickets_doc_evidence_and_future_logs() {
 }
 
 #[test]
+fn execution_interoperability_contract_requires_operation_run_and_traceability() {
+    let mut execution =
+        ValidationExecution::passed("exec-interop", "validation-spec-1", sample_time());
+
+    let gaps = execution.interoperability_gaps();
+    assert!(gaps.contains(&"missing provenance.domain"));
+    assert!(gaps.contains(&"missing provenance.operation"));
+    assert!(gaps.contains(&"missing provenance.run_id"));
+    assert!(gaps.contains(&"missing spec, acceptance, or ticket links"));
+
+    execution.links.ticket_ids = vec!["ticket-guidance".to_string()];
+    execution.provenance = ValidationProvenance {
+        domain: Some("ticket".to_string()),
+        operation: Some("get".to_string()),
+        run_id: Some("run-1".to_string()),
+        ..Default::default()
+    };
+
+    assert!(execution.validate_interoperability_contract().is_ok());
+}
+
+#[test]
 fn over_budget_helper_uses_duration_against_threshold() {
     let mut spec = ValidationSpec::new("validation-spec-1", "Budgeted validation");
     spec.slow_threshold_ms = Some(100);
