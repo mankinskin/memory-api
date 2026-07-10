@@ -359,6 +359,20 @@ impl RuntimeLogSession {
         }
         gaps
     }
+
+    pub fn validate_interoperability_contract(
+        &self
+    ) -> Result<(), crate::LogError> {
+        let gaps = self.interoperability_gaps();
+        if gaps.is_empty() {
+            return Ok(());
+        }
+
+        Err(crate::LogError::InteroperabilityContract {
+            record_kind: "runtime-log-session".to_string(),
+            detail: gaps.join(", "),
+        })
+    }
 }
 
 impl RuntimeLogSession {

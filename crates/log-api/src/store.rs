@@ -123,6 +123,7 @@ impl LogStoreConfig {
         &self,
         session: &RuntimeLogSession,
     ) -> Result<PathBuf, LogError> {
+        session.validate_interoperability_contract()?;
         let path = self.runtime_session_path(&session.id)?;
         write_json(&path, session)?;
         Ok(path)

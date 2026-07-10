@@ -149,6 +149,23 @@ fn records_and_reads_runtime_session() {
 }
 
 #[test]
+fn record_runtime_session_rejects_missing_interoperability_links() {
+    let dir = TempDir::new().unwrap();
+    let cfg = config(&dir);
+    let mut session = runtime_session("session-interop", 1);
+    session.links = RuntimeLogLinks::default();
+
+    assert!(matches!(
+        cfg.record_runtime_session(&session),
+        Err(LogError::InteroperabilityContract { .. })
+    ));
+    assert!(matches!(
+        cfg.get_runtime_session("session-interop"),
+        Err(LogError::RuntimeSessionNotFound(_))
+    ));
+}
+
+#[test]
 fn missing_runtime_session_reports_not_found() {
     let dir = TempDir::new().unwrap();
     let cfg = config(&dir);

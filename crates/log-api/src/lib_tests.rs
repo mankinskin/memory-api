@@ -6,6 +6,7 @@ use test_api::{
 };
 
 use super::{
+    LogError,
     RuntimeLogFormat,
     RuntimeLogLinks,
     RuntimeLogSession,
@@ -182,6 +183,7 @@ fn runtime_sessions_round_trip_through_serde() {
     assert!(reparsed.links.links_to_journal("journal-1"));
     assert!(reparsed.links.links_to_graph_operation("graph-op-1"));
     assert!(reparsed.interoperability_gaps().is_empty());
+    assert!(reparsed.validate_interoperability_contract().is_ok());
 }
 
 #[test]
@@ -201,4 +203,9 @@ fn runtime_session_interoperability_contract_requires_correlation_links() {
     assert!(gaps.contains(&"missing operation"));
     assert!(gaps.contains(&"missing run_id"));
     assert!(gaps.contains(&"missing execution, benchmark, journal, agent-session, or graph-operation links"));
+
+    assert!(matches!(
+        session.validate_interoperability_contract(),
+        Err(LogError::InteroperabilityContract { .. })
+    ));
 }
