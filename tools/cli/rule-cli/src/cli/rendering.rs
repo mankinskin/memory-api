@@ -1,6 +1,10 @@
 use std::{
+    collections::HashMap,
     fs,
-    path::Path,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
 use memory_api::generated_markdown::GeneratedMarkdownSnippet;
@@ -107,9 +111,13 @@ pub(super) fn ensure_generated_output_matches(
 pub(super) fn write_generated_output(
     output: &Path,
     rendered: &str,
-) -> Result<(), CliRunError> {
+) -> Result<bool, CliRunError> {
     let existing = fs::read_to_string(output).ok();
     let prepared = prepare_generated_output(rendered, existing.as_deref());
+
+    if existing.as_deref() == Some(prepared.as_str()) {
+        return Ok(false);
+    }
 
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent).map_err(|err| {
@@ -125,7 +133,8 @@ pub(super) fn write_generated_output(
             "write generated file {}: {err}",
             output.display()
         ))
-    })
+    })?;
+    Ok(true)
 }
 
 pub(super) fn generate_target_payload(
@@ -194,21 +203,26 @@ fn rules_as_snippets(
         .collect()
 }
 
-fn open_spec_store_for_artifact(
-    artifact_path: &Path
-) -> Result<SpecStore, CliRunError> {
-    let workspace_root = artifact_path
+fn spec_workspace_root(artifact_path: &Path) -> Result<PathBuf, CliRunError> {
+    artifact_path
         .ancestors()
         .find(|ancestor| {
             ancestor.file_name().and_then(|name| name.to_str()) == Some(".spec")
         })
         .and_then(Path::parent)
+        .map(Path::to_path_buf)
         .ok_or_else(|| {
             CliRunError::BadRequest(format!(
                 "spec-doc target output must live under .spec/specs/**: {}",
                 artifact_path.display()
             ))
-        })?;
+        })
+}
+
+fn open_spec_store_for_artifact(
+    artifact_path: &Path
+) -> Result<SpecStore, CliRunError> {
+    let workspace_root = spec_workspace_root(artifact_path)?;
 
     let mut store = SpecStore::open(&workspace_root)
         .map_err(|error| CliRunError::BadRequest(error.to_string()))?;
@@ -216,6 +230,35 @@ fn open_spec_store_for_artifact(
         .scan(false)
         .map_err(|error| CliRunError::BadRequest(error.to_string()))?;
     Ok(store)
+}
+
+/// Caches one [`SpecStore`] per distinct spec workspace root so a single
+/// sync-targets run opens and scans each store at most once, even when many
+/// spec-doc targets resolve into the same workspace.
+#[derive(Default)]
+struct SpecStoreCache {
+    stores: HashMap<PathBuf, SpecStore>,
+}
+
+impl SpecStoreCache {
+    fn store_for(
+        &mut self,
+        artifact_path: &Path,
+    ) -> Result<&mut SpecStore, CliRunError> {
+        let workspace_root = spec_workspace_root(artifact_path)?;
+        if !self.stores.contains_key(&workspace_root) {
+            let mut store = SpecStore::open(&workspace_root)
+                .map_err(|error| CliRunError::BadRequest(error.to_string()))?;
+            store
+                .scan(false)
+                .map_err(|error| CliRunError::BadRequest(error.to_string()))?;
+            self.stores.insert(workspace_root.clone(), store);
+        }
+        Ok(self
+            .stores
+            .get_mut(&workspace_root)
+            .expect("store inserted above"))
+    }
 }
 
 fn ensure_spec_generated_output_matches(
@@ -256,21 +299,34 @@ pub(super) fn sync_targets_payload(
 ) -> Result<SyncTargetsPayload, CliRunError> {
     let config = load_render_target_config(config_path)?;
 
-    ensure_no_zero_match_targets(store, config_path, &config, dry_run, check)?;
+    // Collect the rules for every target exactly once, then reuse the same
+    // Vec for zero-match validation and rendering (single collection pass).
+    let mut target_rules = Vec::with_capacity(config.targets.len());
+    for target in &config.targets {
+        let output = resolve_render_target_output(config_path, target);
+        let rules = collect_target_rules(store, target)?;
+        target_rules.push((target, output, rules));
+    }
+
+    ensure_no_zero_match_targets(&target_rules, dry_run, check)?;
 
     let previous = store.list_generated_targets(config_path)?;
     let current_outputs = current_output_keys(config_path, &config);
 
+    let mut spec_cache = SpecStoreCache::default();
     let mut generated = Vec::new();
-    for target in &config.targets {
+    for (target, output, rules) in &target_rules {
         generated.push(sync_target_payload_entry(
             store,
             config_path,
             target,
+            output,
+            rules,
             &previous,
             &current_outputs,
             dry_run,
             check,
+            &mut spec_cache,
         )?);
     }
 
@@ -310,9 +366,7 @@ pub(super) fn sync_targets_payload(
 }
 
 fn ensure_no_zero_match_targets(
-    store: &RuleStore,
-    config_path: &Path,
-    config: &RenderTargetConfig,
+    target_rules: &[(&RenderTarget, PathBuf, Vec<RuleManifest>)],
     dry_run: bool,
     check: bool,
 ) -> Result<(), CliRunError> {
@@ -320,23 +374,13 @@ fn ensure_no_zero_match_targets(
         return Ok(());
     }
 
-    let zero_matches =
-        config
-            .targets
-            .iter()
-            .filter_map(|target| {
-                let output = resolve_render_target_output(config_path, target);
-                match collect_target_rules(store, target) {
-                    Ok(rules) if rules.is_empty() => Some(Ok(format!(
-                        "{} -> {}",
-                        target.name,
-                        output.display()
-                    ))),
-                    Ok(_) => None,
-                    Err(error) => Some(Err(CliRunError::from(error))),
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+    let zero_matches = target_rules
+        .iter()
+        .filter(|(_, _, rules)| rules.is_empty())
+        .map(|(target, output, _)| {
+            format!("{} -> {}", target.name, output.display())
+        })
+        .collect::<Vec<_>>();
 
     if zero_matches.is_empty() {
         Ok(())
@@ -368,14 +412,17 @@ fn sync_target_payload_entry(
     store: &mut RuleStore,
     config_path: &Path,
     target: &RenderTarget,
+    output: &Path,
+    rules: &[RuleManifest],
     previous: &[GeneratedTargetRecord],
     current_outputs: &std::collections::HashSet<String>,
     dry_run: bool,
     check: bool,
+    spec_cache: &mut SpecStoreCache,
 ) -> Result<Value, CliRunError> {
-    let output = resolve_render_target_output(config_path, target);
-    let payload =
-        generate_target_payload(store, target, dry_run, check, &output)?;
+    let outcome = render_and_write_sync_target(
+        target, rules, output, dry_run, check, spec_cache,
+    )?;
 
     if !dry_run && !check {
         maybe_remove_previous_generated_target(
@@ -383,24 +430,121 @@ fn sync_target_payload_entry(
             target,
             previous,
             current_outputs,
-            &output,
+            output,
             config_path,
         )?;
         if !is_spec_doc_target(target) {
-            store.upsert_generated_target(
-                config_path,
-                &target.name,
-                &output,
-            )?;
+            store.upsert_generated_target(config_path, &target.name, output)?;
         }
     }
 
     Ok(json!({
         "target": target.name,
-        "output": output,
-        "count": payload.count,
-        "content": payload.content,
+        "output": display_path(output),
+        "count": outcome.count,
+        "changed": outcome.changed,
+        "content": outcome.content,
     }))
+}
+
+struct SyncTargetOutcome {
+    count: usize,
+    changed: bool,
+    content: Option<String>,
+}
+
+/// Render a single sync target from pre-collected rules, reusing the shared
+/// [`SpecStoreCache`] for spec-doc targets, and skip writing when the prepared
+/// output already byte-matches the existing file.
+fn render_and_write_sync_target(
+    target: &RenderTarget,
+    rules: &[RuleManifest],
+    output: &Path,
+    dry_run: bool,
+    check: bool,
+    spec_cache: &mut SpecStoreCache,
+) -> Result<SyncTargetOutcome, CliRunError> {
+    if rules.is_empty() && !dry_run && !check {
+        return Err(CliRunError::BadRequest(format!(
+            "refusing to write generated output {} for target {}: matched zero rules",
+            output.display(),
+            target.name,
+        )));
+    }
+
+    if is_spec_doc_target(target) {
+        let snippets = rules_as_snippets(rules);
+        let rendered = render_generated_document(&snippets);
+        let store = spec_cache.store_for(output)?;
+        let matches = store
+            .generated_artifact_matches(output, &snippets)
+            .map_err(|error| CliRunError::BadRequest(error.to_string()))?;
+
+        if check {
+            if !matches {
+                return Err(CliRunError::BadRequest(format!(
+                    "generated output differs from {}",
+                    output.display()
+                )));
+            }
+        } else if !dry_run && !matches {
+            store
+                .sync_generated_artifact(output, &snippets)
+                .map_err(|error| CliRunError::BadRequest(error.to_string()))?;
+        }
+
+        return Ok(SyncTargetOutcome {
+            count: rules.len(),
+            changed: !matches,
+            content: dry_run.then_some(rendered),
+        });
+    }
+
+    let rendered = render_markdown_file(rules);
+
+    if check {
+        ensure_generated_output_matches(output, &rendered)?;
+        return Ok(SyncTargetOutcome {
+            count: rules.len(),
+            changed: false,
+            content: None,
+        });
+    }
+
+    let existing = fs::read_to_string(output).ok();
+    let prepared = prepare_generated_output(&rendered, existing.as_deref());
+    let changed = existing.as_deref() != Some(prepared.as_str());
+
+    if !dry_run && changed {
+        write_prepared_output(output, &prepared)?;
+    }
+
+    Ok(SyncTargetOutcome {
+        count: rules.len(),
+        changed,
+        content: dry_run.then_some(rendered),
+    })
+}
+
+fn write_prepared_output(
+    output: &Path,
+    prepared: &str,
+) -> Result<(), CliRunError> {
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent).map_err(|err| {
+            CliRunError::BadRequest(format!(
+                "create {}: {err}",
+                parent.display()
+            ))
+        })?;
+    }
+
+    fs::write(output, prepared).map_err(|err| {
+        CliRunError::BadRequest(format!(
+            "write generated file {}: {err}",
+            output.display()
+        ))
+    })
 }
 
 fn maybe_remove_previous_generated_target(
@@ -461,6 +605,12 @@ fn stable_output_key(path: &Path) -> String {
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
         .replace('\\', "/")
+}
+
+/// Render a path for emitted payload fields with forward-slash separators on
+/// all hosts, without canonicalizing (preserves the caller-provided path shape).
+pub(super) fn display_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn config_root(config_path: &Path) -> &Path {

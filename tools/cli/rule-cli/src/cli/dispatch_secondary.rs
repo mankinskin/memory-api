@@ -33,7 +33,7 @@ pub(super) fn generate_file_command(
         "repo_scope": args.repo_scope,
         "path_scope": args.path_scope,
         "section": args.section,
-        "output": args.output,
+        "output": args.output.as_deref().map(display_path),
         "dry_run": args.dry_run,
         "check": args.check,
         "content": args.dry_run.then_some(rendered),
@@ -60,7 +60,7 @@ pub(super) fn generate_target_command(
     Ok(json!({
         "status": "ok",
         "target": target.name,
-        "output": output,
+        "output": display_path(&output),
         "count": payload.count,
         "file_kind": target.file_kind,
         "repo_scope": target.repo_scope,
@@ -85,7 +85,7 @@ pub(super) fn explain_target_command(
     Ok(json!({
         "status": "ok",
         "target": target.name,
-        "output": output,
+        "output": display_path(&output),
         "outline": outline,
     }))
 }
@@ -100,7 +100,7 @@ pub(super) fn sync_targets_command(
 
     Ok(json!({
         "status": "ok",
-        "config": args.config,
+        "config": display_path(&args.config),
         "generated": payload.generated,
         "removed": payload.removed,
         "dry_run": args.dry_run,
@@ -224,7 +224,7 @@ pub(super) fn benchmark_targets_command(
         "status": "ok",
         "command": "benchmark-targets",
         "iterations": args.iterations,
-        "config": args.config,
+        "config": display_path(&args.config),
         "operation": format!("{:?}", args.operation),
         "runs": runs,
     }))

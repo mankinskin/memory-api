@@ -59,6 +59,7 @@ use super::{
     },
     importing::import_file,
     rendering::{
+        display_path,
         ensure_generated_output_matches,
         generate_target_payload,
         sync_targets_payload,

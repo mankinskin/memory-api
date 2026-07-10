@@ -271,6 +271,18 @@ impl EntityStore {
         let all_roots: Vec<&ScanRoot> =
             std::iter::once(&default_root).chain(roots.iter()).collect();
 
+        // On an incremental (non-reindex) scan, load the per-entity manifest
+        // fingerprints recorded by the previous scan so unchanged entities can
+        // skip the manifest read + metadata re-integration entirely. A forced
+        // reindex ignores the previous fingerprints and re-integrates every
+        // entity from scratch.
+        let previous_fingerprints = if reindex {
+            std::collections::HashMap::new()
+        } else {
+            self.load_scan_fingerprints()
+        };
+        let mut current_fingerprints = std::collections::HashMap::new();
+
         let mut integrated = 0usize;
         let mut diagnostics = Vec::new();
         let mut disk_ids = std::collections::HashSet::new();
@@ -279,13 +291,40 @@ impl EntityStore {
             if !root.path.exists() {
                 continue;
             }
-            let (entries, diags) = self.fs.scan_root(&root.path)?;
+            let (candidates, diags) =
+                self.fs.scan_root_candidates(&root.path)?;
             diagnostics.extend(diags);
 
-            for entry in entries {
-                disk_ids.insert(entry.id);
-                self.integrate_entry(entry, reindex)?;
-                integrated += 1;
+            for candidate in candidates {
+                disk_ids.insert(candidate.id);
+
+                let unchanged = !reindex
+                    && candidate.manifest_mtime.is_some()
+                    && previous_fingerprints.get(&candidate.id)
+                        == candidate.manifest_mtime.as_ref()
+                    && self.index.get_ticket(&candidate.id)?.is_some();
+
+                if unchanged {
+                    if let Some(mtime) = candidate.manifest_mtime {
+                        current_fingerprints.insert(candidate.id, mtime);
+                    }
+                    continue;
+                }
+
+                match self.fs.load_scan_entry(
+                    candidate.path.clone(),
+                    candidate.id,
+                ) {
+                    Ok(Some(entry)) => {
+                        self.integrate_entry(entry, reindex)?;
+                        integrated += 1;
+                        if let Some(mtime) = candidate.manifest_mtime {
+                            current_fingerprints.insert(candidate.id, mtime);
+                        }
+                    },
+                    Ok(None) => {},
+                    Err(diag) => diagnostics.push(diag),
+                }
             }
         }
 
@@ -300,11 +339,47 @@ impl EntityStore {
             }
         }
 
+        self.save_scan_fingerprints(&current_fingerprints);
+
         Ok(ScanReport {
             integrated,
             pruned,
             diagnostics,
         })
+    }
+
+    fn scan_fingerprint_path(&self) -> PathBuf {
+        self.index_root.join("scan_fingerprints.json")
+    }
+
+    /// Load the per-entity manifest fingerprints recorded by the previous scan.
+    /// A missing or unreadable/corrupt sidecar yields an empty map, which is
+    /// safe: every entity is then treated as changed and re-integrated.
+    fn load_scan_fingerprints(
+        &self
+    ) -> std::collections::HashMap<Uuid, u128> {
+        let Ok(content) = std::fs::read_to_string(self.scan_fingerprint_path())
+        else {
+            return std::collections::HashMap::new();
+        };
+        serde_json::from_str(&content).unwrap_or_default()
+    }
+
+    /// Persist the per-entity manifest fingerprints observed in this scan.
+    /// Best-effort: a write failure only forfeits the next scan's skip
+    /// optimization, so it must never fail the scan itself.
+    fn save_scan_fingerprints(
+        &self,
+        fingerprints: &std::collections::HashMap<Uuid, u128>,
+    ) {
+        let Ok(serialized) = serde_json::to_string(fingerprints) else {
+            return;
+        };
+        let path = self.scan_fingerprint_path();
+        let tmp = path.with_extension("json.tmp");
+        if std::fs::write(&tmp, serialized).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
     }
 
     /// Re-integrate a single entity folder into the metadata index **and** the
@@ -750,5 +825,55 @@ mod tests {
         let ids: Vec<Uuid> = results.iter().map(|r| r.id).collect();
         assert!(ids.contains(&id1));
         assert!(ids.contains(&id2));
+    }
+
+    #[test]
+    fn scan_skips_unchanged_entities_across_consecutive_scans() {
+        use crate::model::entity::EntityManifest;
+        use serde_json::json;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let store = EntityStore::open(tmp.path(), test_fs()).unwrap();
+        let entity_dir = tmp.path().join("entities");
+        std::fs::create_dir_all(&entity_dir).unwrap();
+
+        let mut ids = Vec::new();
+        for n in 0..3 {
+            let id = Uuid::new_v4();
+            let mut manifest = EntityManifest::new(id, Utc::now());
+            manifest.extra.insert("type".into(), json!("rule-entry"));
+            manifest
+                .extra
+                .insert("title".into(), json!(format!("Entity {n}")));
+            manifest.extra.insert("state".into(), json!("ready"));
+            store.fs.create(&manifest, &entity_dir, Some("body")).unwrap();
+            ids.push(id);
+        }
+
+        // Forced reindex integrates every entity and records fingerprints.
+        let first = store.scan(true).unwrap();
+        assert_eq!(first.integrated, 3);
+
+        // A subsequent incremental scan with no filesystem changes must not
+        // re-integrate any entity (AC5: no per-entity re-integration).
+        let second = store.scan(false).unwrap();
+        assert_eq!(
+            second.integrated, 0,
+            "unchanged entities must be skipped on repeat scan"
+        );
+
+        // Touching one manifest re-integrates exactly that entity.
+        let changed_manifest =
+            entity_dir.join(ids[0].to_string()).join("entity.toml");
+        // Guarantee a distinct mtime even on coarse-resolution filesystems.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let body = std::fs::read_to_string(&changed_manifest).unwrap();
+        std::fs::write(&changed_manifest, format!("{body}\n")).unwrap();
+
+        let third = store.scan(false).unwrap();
+        assert_eq!(
+            third.integrated, 1,
+            "only the changed entity re-integrates"
+        );
     }
 }

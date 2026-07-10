@@ -483,3 +483,142 @@ fn move_command_dry_run_returns_supported_preflight_plan() {
     assert_eq!(payload["mode"], "plan");
     assert_eq!(payload["supported"], true);
 }
+
+#[test]
+fn sync_targets_emits_forward_slash_path_fields() {
+    let dir = tempdir().unwrap();
+    let workspace_root = dir.path().join("repo");
+    fs::create_dir_all(&workspace_root).unwrap();
+
+    let mut store = RuleStore::init(&workspace_root).unwrap();
+    let mut rule = RuleManifest::new(
+        "context-engine/agents/overview",
+        "Overview",
+        "AGENTS",
+        "overview",
+        "Document repository conventions.",
+    );
+    rule.set_repo_scopes(["context-engine"]);
+    rule.set_path_scopes(["docs/AGENTS.md"]);
+    rule.set_order_key(10);
+    store.create(&rule, None).unwrap();
+    drop(store);
+
+    let config_path = workspace_root.join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: context-engine-agents\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    path_scope: docs/AGENTS.md\n",
+            "    output_path: docs/AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::SyncTargets(SyncTargetsArgs {
+            config: config_path,
+            dry_run: false,
+            check: false,
+        }),
+        &workspace_root,
+    )
+    .unwrap();
+
+    let config_field = payload["config"].as_str().unwrap();
+    assert!(
+        !config_field.contains('\\'),
+        "config path must use forward slashes: {config_field}"
+    );
+
+    let outputs = payload["generated"].as_array().unwrap();
+    assert!(!outputs.is_empty());
+    for entry in outputs {
+        let output = entry["output"].as_str().unwrap();
+        assert!(
+            !output.contains('\\'),
+            "generated output path must use forward slashes: {output}"
+        );
+    }
+
+    for entry in payload["removed"].as_array().unwrap() {
+        let output = entry["output"].as_str().unwrap();
+        assert!(
+            !output.contains('\\'),
+            "removed output path must use forward slashes: {output}"
+        );
+    }
+}
+
+#[test]
+fn sync_targets_reports_changed_flag_and_skips_unchanged_writes() {
+    let dir = tempdir().unwrap();
+    let workspace_root = dir.path().join("repo");
+    fs::create_dir_all(&workspace_root).unwrap();
+
+    let mut store = RuleStore::init(&workspace_root).unwrap();
+    let mut rule = RuleManifest::new(
+        "context-engine/agents/overview",
+        "Overview",
+        "AGENTS",
+        "overview",
+        "Document repository conventions.",
+    );
+    rule.set_repo_scopes(["context-engine"]);
+    rule.set_path_scopes(["docs/AGENTS.md"]);
+    rule.set_order_key(10);
+    store.create(&rule, None).unwrap();
+    drop(store);
+
+    let config_path = workspace_root.join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: context-engine-agents\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    path_scope: docs/AGENTS.md\n",
+            "    output_path: docs/AGENTS.md\n",
+        ),
+    )
+    .unwrap();
+
+    let first = dispatch::dispatch(
+        RuleCommandCli::SyncTargets(SyncTargetsArgs {
+            config: config_path.clone(),
+            dry_run: false,
+            check: false,
+        }),
+        &workspace_root,
+    )
+    .unwrap();
+    assert_eq!(first["generated"][0]["changed"], true);
+
+    let output_path = workspace_root.join("docs").join("AGENTS.md");
+    let mtime_after_first =
+        fs::metadata(&output_path).unwrap().modified().unwrap();
+
+    // Second sync with identical inputs must not rewrite the file.
+    let second = dispatch::dispatch(
+        RuleCommandCli::SyncTargets(SyncTargetsArgs {
+            config: config_path,
+            dry_run: false,
+            check: false,
+        }),
+        &workspace_root,
+    )
+    .unwrap();
+    assert_eq!(second["generated"][0]["changed"], false);
+
+    let mtime_after_second =
+        fs::metadata(&output_path).unwrap().modified().unwrap();
+    assert_eq!(
+        mtime_after_first, mtime_after_second,
+        "unchanged target must not be rewritten"
+    );
+}
+

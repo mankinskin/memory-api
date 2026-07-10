@@ -39,3 +39,7 @@ packages/
 .spec/search_index/
 .ticket/tickets.redb
 .ticket/search_index/
+
+# Incremental scan fingerprints (derived runtime state; rebuilt on scan)
+scan_fingerprints.json
+scan_fingerprints.json.tmp

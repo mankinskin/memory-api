@@ -59,6 +59,16 @@ pub struct EntityScanEntry {
     pub manifest: EntityManifest,
 }
 
+/// A lightweight scan candidate: the entity id, its folder path, and the
+/// manifest file's last-modified fingerprint (nanoseconds since the UNIX
+/// epoch), captured **without** reading or parsing the manifest. Used by the
+/// incremental scan to short-circuit re-integration of unchanged entities.
+pub struct EntityCandidate {
+    pub id: Uuid,
+    pub path: PathBuf,
+    pub manifest_mtime: Option<u128>,
+}
+
 /// Generic filesystem operations for entity folders.
 ///
 /// Each entity lives in a folder named by its UUID:
@@ -219,7 +229,56 @@ impl EntityFs {
         Ok((valid, diags))
     }
 
-    fn load_scan_entry(
+    /// Enumerate scan candidates under `scan_root` without reading or parsing
+    /// manifests. For each valid entity folder this captures the manifest's
+    /// last-modified fingerprint so the caller can skip re-parsing unchanged
+    /// entities. Missing-manifest folders are reported as diagnostics, matching
+    /// [`Self::scan_root`].
+    pub fn scan_root_candidates(
+        &self,
+        scan_root: &Path,
+    ) -> Result<(Vec<EntityCandidate>, Vec<ParseDiagnostic>), StorageError>
+    {
+        let mut candidates = Vec::new();
+        let mut diags = Vec::new();
+
+        let Some(read_dir) = read_scan_root(scan_root)? else {
+            return Ok((candidates, diags));
+        };
+
+        for entry in read_dir.flatten() {
+            let Some((path, id)) = scan_candidate(entry.path()) else {
+                continue;
+            };
+
+            let manifest_path = path.join(self.config.manifest_file);
+            if !manifest_path.exists() {
+                diags.push(ParseDiagnostic {
+                    path: manifest_path,
+                    reason: format!("missing {}", self.config.manifest_file),
+                });
+                continue;
+            }
+
+            let manifest_mtime = fs::metadata(&manifest_path)
+                .ok()
+                .and_then(|meta| meta.modified().ok())
+                .and_then(|time| {
+                    time.duration_since(std::time::UNIX_EPOCH).ok()
+                })
+                .map(|delta| delta.as_nanos());
+
+            candidates.push(EntityCandidate {
+                id,
+                path,
+                manifest_mtime,
+            });
+        }
+
+        Ok((candidates, diags))
+    }
+
+    pub(crate) fn load_scan_entry(
         &self,
         path: PathBuf,
         id: Uuid,

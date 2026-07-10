@@ -78,7 +78,7 @@ impl RuleServer {
                 "repo_scope": input.repo_scope,
                 "path_scope": input.path_scope,
                 "section": input.section,
-                "output_path": input.output_path,
+                "output_path": input.output_path.as_deref().map(|p| display_path(Path::new(p))),
                 "dry_run": input.dry_run,
                 "check": input.check,
                 "content": input.dry_run.then_some(rendered),
@@ -110,7 +110,7 @@ impl RuleServer {
             Self::json_result(&json!({
                 "status": "ok",
                 "target": input.target,
-                "output_path": output,
+                "output_path": display_path(&output),
                 "count": payload.count,
                 "file_kind": target.file_kind,
                 "repo_scope": target.repo_scope,
@@ -141,7 +141,7 @@ impl RuleServer {
             Self::json_result(&json!({
                 "status": "ok",
                 "target": input.target,
-                "output_path": output,
+                "output_path": display_path(&output),
                 "outline": outline,
             }))
         })
@@ -279,6 +279,12 @@ fn generate_target_payload(
 
 fn is_spec_doc_target(target: &RenderTarget) -> bool {
     target.file_kind == "spec-doc"
+}
+
+/// Render a path for emitted payload fields with forward-slash separators on
+/// all hosts, without canonicalizing.
+fn display_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn rules_as_snippets(
