@@ -4,6 +4,7 @@ title = "[spec][P5] Ticket integration — link specs to tickets, track refineme
 state = "ready"
 component = "spec-api"
 depends_on = ["7599ed31-598e-458e-8651-9bfe6c57ffd9", "ab47648c-d1f8-4ad5-a652-08ef97f76ccd"]
+effort = "2000"
 phase = "5"
 priority = "medium"
 type = "tracker-improvement"

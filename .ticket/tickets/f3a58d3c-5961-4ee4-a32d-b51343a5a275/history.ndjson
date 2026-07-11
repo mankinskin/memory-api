@@ -1,1 +1,2 @@
 {"rev":1,"ts":"2026-07-10T23:06:04.799433+00:00","fields":{"state":"new","title":"[ticket-api] Dangling-edge health check must resolve cross-store URN references (eliminate false positives)","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-11T12:48:25.719102900+00:00","fields":{"effort":"1800","state":"new","title":"[ticket-api] Dangling-edge health check must resolve cross-store URN references (eliminate false positives)","type":"tracker-improvement"}}

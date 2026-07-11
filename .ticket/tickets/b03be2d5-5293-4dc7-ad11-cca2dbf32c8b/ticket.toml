@@ -4,6 +4,7 @@ title = "[spec][P5] Cross-entity edges — spec depends_on ticket, ticket implem
 state = "ready"
 component = "memory-api"
 depends_on = ["7599ed31-598e-458e-8651-9bfe6c57ffd9", "e0b3e9a8-bd43-472a-8222-f8c5e3321dbd"]
+effort = "2000"
 phase = "5"
 priority = "medium"
 type = "tracker-improvement"
