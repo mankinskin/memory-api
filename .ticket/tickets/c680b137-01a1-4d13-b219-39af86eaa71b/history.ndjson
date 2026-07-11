@@ -1,0 +1,4 @@
+{"rev":1,"ts":"2026-07-10T23:06:04.602185900+00:00","fields":{"state":"new","title":"[ticket-api] Promote health_check to a ticket-api call with CLI/MCP/HTTP transport parity","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-10T23:13:45.303481800+00:00","fields":{"state":"new","title":"[ticket-api] Promote health_check to a ticket-api call with CLI/MCP/HTTP transport parity","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-07-11T00:17:44.927789600+00:00","fields":{"depends_on":["f3a58d3c-5961-4ee4-a32d-b51343a5a275"],"state":"new","title":"[ticket-api] Promote health_check to a ticket-api call with CLI/MCP/HTTP transport parity","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-07-11T00:17:45.020805500+00:00","fields":{"depends_on":["835b332b-8c1f-4423-bf21-4fac7aa7c8f7","f3a58d3c-5961-4ee4-a32d-b51343a5a275"],"state":"new","title":"[ticket-api] Promote health_check to a ticket-api call with CLI/MCP/HTTP transport parity","type":"tracker-improvement"}}

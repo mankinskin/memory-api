@@ -1,6 +1,0 @@
-id = "ed8eb348-d8ad-419c-9f32-aff662e740f3"
-created_at = "2026-07-05T22:52:00.438487500+00:00"
-title = "[audit-roadmap][ticket_graph][batch-2][chunk-2] memory-api orphan convergence (14)"
-state = "new"
-depends_on = ["6f8bcf0a-c5e3-423c-b3cd-190a5bb0b18f", "72bad0e5-2f5d-4731-8cc6-8d4b167418dd", "77629631-8076-4fca-9640-316583ff290c", "79efa73e-62d8-4c91-b0b5-b1ad79262efa", "830de529-2818-49fd-a792-3b59dd99a748", "8affb65d-605b-4225-819a-af951e0bd318", "959c94bd-4a42-47d6-bee4-a12332a23b52", "995c5394-e892-4b33-870b-f53c2cff9e05", "a76c72e6-0bb9-48ef-be43-37c72ad89002", "a7d6ba2d-ea15-498f-9195-6ee775ea69a4", "b0056fa6-bdb3-40a6-acfb-9c96dd1ca82f", "b00b945b-045f-4124-9c69-ea15346b144f", "b2392ff7-6b7f-4b48-99b7-adf1142a3fc0", "b458cba7-54b1-45d8-8c86-17b920416b8b"]
-type = "tracker-improvement"

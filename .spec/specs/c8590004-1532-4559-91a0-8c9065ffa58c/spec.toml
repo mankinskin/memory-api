@@ -1,0 +1,7 @@
+id = "c8590004-1532-4559-91a0-8c9065ffa58c"
+created_at = "2026-07-10T22:35:05.279002+00:00"
+title = "Spec-contract v2 — motivation, dependent expectation, computed guards, and positions"
+state = "draft"
+component = "spec-api"
+slug = "memory-api/spec-api/spec-contract-v2"
+type = "specification"

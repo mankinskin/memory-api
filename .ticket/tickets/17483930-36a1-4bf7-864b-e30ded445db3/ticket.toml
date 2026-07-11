@@ -1,0 +1,7 @@
+id = "17483930-36a1-4bf7-864b-e30ded445db3"
+created_at = "2026-07-10T22:33:43.722163600+00:00"
+title = "[content-materialization][rule-api] G-B: Rust code-design policy — typed errors, trait contracts, trait inheritance"
+state = "new"
+depends_on = ["7c281aec-092c-448d-bf26-94522e07b4e8", "fa6e2c19-5fd8-4305-90c7-f1f4bea8df36"]
+effort = "2000"
+type = "tracker-improvement"

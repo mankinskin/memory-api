@@ -1,0 +1,7 @@
+id = "7f7ef435-0504-40cf-8d6c-dd96477a0223"
+created_at = "2026-07-10T22:33:44.016214300+00:00"
+title = "[content-materialization][workspace] G-E: De-submodularize — real dependency imports instead of nested submodules (gated)"
+state = "new"
+depends_on = ["17483930-36a1-4bf7-864b-e30ded445db3", "5d4078fa-d7eb-4f0d-bf84-e21029f5ad5d", "633a38b8-7200-4979-9ce9-8c296ccc78bd", "6875dff6-7191-46aa-9358-9567430969f1"]
+effort = "3500"
+type = "tracker-improvement"
