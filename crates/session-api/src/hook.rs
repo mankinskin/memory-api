@@ -138,17 +138,28 @@ impl SessionCaptureRequest {
         }
 
         let captured_at = payload.captured_at;
+        let session_model = payload.model.clone();
         let turns: Vec<SessionTurn> = payload
             .messages
             .into_iter()
             .enumerate()
-            .map(|(sequence, message)| SessionTurn {
-                sequence,
-                role: message.role,
-                content: message.content,
-                captured_at: message.captured_at.unwrap_or(captured_at),
-                tool_name: message.tool_name,
-                event_meta: message.event_meta,
+            .map(|(sequence, message)| {
+                // Attribute the active model to model-produced turns. User and
+                // tool turns leave `model` as `None` and inherit the
+                // session-level model in `SessionMetadata::model`.
+                let model = match message.role {
+                    SessionRole::Assistant => session_model.clone(),
+                    _ => None,
+                };
+                SessionTurn {
+                    sequence,
+                    role: message.role,
+                    content: message.content,
+                    captured_at: message.captured_at.unwrap_or(captured_at),
+                    tool_name: message.tool_name,
+                    model,
+                    event_meta: message.event_meta,
+                }
             })
             .collect();
         let started_at = turns

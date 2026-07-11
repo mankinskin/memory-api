@@ -372,6 +372,7 @@ mod tests {
             content: content.to_string(),
             captured_at: Utc::now(),
             tool_name: None,
+            model: None,
             event_meta: None,
         }
     }

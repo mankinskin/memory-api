@@ -63,6 +63,15 @@ fn capture_request_maps_hook_payload_into_session_record() {
     assert_eq!(record.metadata.ticket_id, None);
     assert_eq!(record.metadata.worktree, None);
     assert_eq!(record.turns.len(), 2);
+    assert_eq!(
+        record.turns[0].model, None,
+        "user turn should inherit the session-level model, not carry its own"
+    );
+    assert_eq!(
+        record.turns[1].model.as_deref(),
+        Some("GPT-5.4"),
+        "assistant turn should record the active model"
+    );
     assert!(record.links.links_to_ticket("ticket-session"));
     assert!(record.has_turns());
 }

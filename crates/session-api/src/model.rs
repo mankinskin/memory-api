@@ -84,6 +84,12 @@ pub struct SessionTurn {
     pub captured_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_name: Option<String>,
+    /// Active model that produced this turn, when known. `None` means the turn
+    /// inherits the session-level model in [`SessionMetadata::model`]. This lets
+    /// mid-session model routing (a large model delegating to cheaper ones) be
+    /// observed at turn granularity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event_meta: Option<SessionTurnEventMeta>,
 }
@@ -222,6 +228,7 @@ mod tests {
                 content: "Summarize the test failures".to_string(),
                 captured_at: sample_time(),
                 tool_name: None,
+                model: Some("GPT-5.4".to_string()),
                 event_meta: Some(SessionTurnEventMeta {
                     event_id: Some("evt-1".to_string()),
                     parent_event_id: None,
@@ -247,6 +254,11 @@ mod tests {
         let reparsed: SessionRecord = serde_json::from_str(&json).unwrap();
 
         assert_eq!(reparsed, record);
+        assert_eq!(
+            record.turns[0].model.as_deref(),
+            Some("GPT-5.4"),
+            "per-turn model should round-trip"
+        );
         assert!(record.links.links_to_ticket("ticket-1"));
         assert!(record.links.links_to_spec("spec-1"));
     }
