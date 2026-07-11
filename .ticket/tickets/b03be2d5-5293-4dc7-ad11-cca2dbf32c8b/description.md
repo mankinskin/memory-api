@@ -18,3 +18,6 @@ Since specs and tickets share the same workspace, edges can reference UUIDs from
 - [ ] Validation checks target existence in correct store
 - [ ] Cross-entity edges queryable from either direction
 - [ ] Cycle detection works across entity types
+
+## Coordination (added 2026-07-11)
+The cross-store resolution surface here overlaps with `f3a58d3c` "[memory-api] Cross-store edge health: shared resolver + policy-aware parent-workspace warning". Both build on the same base-memory-api primitives (`Urn`/`UrnResolver` in model/urn.rs, `discover_stores` in discovery.rs, `WorkspacePolicy`). Reuse ONE shared resolver/classifier from base memory-api — do not fork a second cross-store lookup. This ticket adds cross-ENTITY-TYPE resolution (spec↔ticket within a workspace); `f3a58d3c` adds cross-WORKSPACE health classification (OK / parent-workspace warning / dangling error). Keep them aligned on the shared resolver.

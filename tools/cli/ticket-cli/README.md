@@ -15,7 +15,6 @@ Use `ticket` for local ticket CRUD, dependency graphs, ready-work discovery, boa
 - `create`, `get`, `update`, `close`, `cancel`, `delete`, `list`, `search`: maintain tickets and state transitions.
 - `link`, `unlink`, `links`, `subgraph`, `topgraph`: inspect and manage dependency edges.
 - `status`, `ready-overview`, `next`, `health`: discover unblocked work and inspect workflow risks.
-- `claim`, `unclaim`, `leases`: manage per-ticket work leases (`unclaim --agent <id>` uses owner/stale release semantics and can clear orphaned stale leases).
 - `board ...`: inspect and coordinate active work on the draft board.
 - `exec`, `batch`, `export-command-schema`: drive the command surface from automation.
 - `serve`: expose the ticket HTTP API directly from the CLI.
