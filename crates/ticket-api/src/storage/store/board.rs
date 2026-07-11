@@ -61,6 +61,30 @@ impl TicketStore {
         self.index.remove_lease(ticket_id)
     }
 
+    /// Release the lease on `ticket_id` subject to ownership rules: the holder
+    /// may always release its own lease, and any caller may release a stale
+    /// (expired) lease. Releasing a ticket with no active lease is a no-op. A
+    /// live lease held by a different agent is rejected with `LeaseConflict`.
+    pub fn release_lease(
+        &self,
+        ticket_id: &Uuid,
+        requester: &str,
+    ) -> Result<(), StorageError> {
+        match self.index.get_lease(ticket_id)? {
+            None => Ok(()),
+            Some(lease) => {
+                if lease.working_by == requester || lease.is_expired() {
+                    self.index.remove_lease(ticket_id)
+                } else {
+                    Err(StorageError::LeaseConflict {
+                        ticket: *ticket_id,
+                        holder: lease.working_by,
+                    })
+                }
+            },
+        }
+    }
+
     pub fn list_leases(&self) -> Result<Vec<LeaseInfo>, StorageError> {
         self.index.list_active_leases()
     }

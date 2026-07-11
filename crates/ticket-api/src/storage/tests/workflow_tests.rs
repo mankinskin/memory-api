@@ -371,3 +371,44 @@ fn update_guards_transition_ahead_of_dependency_state() {
         )
         .unwrap();
 }
+
+#[test]
+fn release_lease_enforces_owner_and_stale_rules() {
+    use crate::error::StorageError;
+
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let ticket = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Leased ticket"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    // The holder may release its own live lease.
+    store.claim(&ticket, "agent-a", 3600, Some("work")).unwrap();
+    store.release_lease(&ticket, "agent-a").unwrap();
+    assert!(store.list_leases().unwrap().is_empty());
+
+    // A different agent may not release a live lease held by someone else.
+    store.claim(&ticket, "agent-a", 3600, Some("work")).unwrap();
+    let err = store.release_lease(&ticket, "agent-b").unwrap_err();
+    assert!(
+        matches!(err, StorageError::LeaseConflict { .. }),
+        "expected LeaseConflict, got {err:?}"
+    );
+    store.release_lease(&ticket, "agent-a").unwrap();
+
+    // Any agent may release a stale (expired) lease.
+    store.claim(&ticket, "agent-a", 0, Some("work")).unwrap();
+    store.release_lease(&ticket, "agent-b").unwrap();
+    assert!(store.list_leases().unwrap().is_empty());
+
+    // Releasing a ticket with no active lease is a no-op.
+    store.release_lease(&ticket, "agent-b").unwrap();
+}
