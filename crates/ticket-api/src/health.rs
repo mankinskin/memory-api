@@ -252,24 +252,6 @@ fn append_dependency_state_findings(
         return;
     }
 
-    if let Some(unresolved) = workflow.unresolved_dependencies(&ticket.id) {
-        report.record(
-            "unblocked_with_deps",
-            base_finding(
-                ticket,
-                "unblocked_with_deps",
-                "info",
-                format!(
-                    "Ticket is '{state}' but has {} unresolved dependency/ies — may need state review.",
-                    unresolved.len()
-                ),
-                vec![
-                    "Move the ticket to a blocked or earlier state, or resolve the remaining dependencies first.".to_string(),
-                ],
-            ),
-        );
-    }
-
     for inversion in workflow
         .dependency_state_inversions(&ticket.id)
         .into_iter()

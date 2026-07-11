@@ -141,22 +141,6 @@ fn append_dependency_state_finding(
         return;
     }
 
-    if let Some(unresolved) = context.workflow.unresolved_dependencies(&ticket.id) {
-        record_finding(
-            summary,
-            findings,
-            "unblocked_with_deps",
-            json!({
-                "ticket_id": ticket.id,
-                "short_id": short_id,
-                "title": title,
-                "check": "unblocked_with_deps",
-                "severity": "info",
-                "message": format!("Ticket is '{state}' but has {} unresolved dependency/ies - may need state review.", unresolved.len()),
-            }),
-        );
-    }
-
     for inversion in context
         .workflow
         .dependency_state_inversions(&ticket.id)

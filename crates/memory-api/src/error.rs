@@ -55,6 +55,15 @@ pub enum StorageError {
     WorkspaceNotFound { path: std::path::PathBuf },
     #[error("dependency cycle detected between entities")]
     DependencyCycle,
+    #[error(
+        "dependency not progressed: cannot move ticket {ticket} to '{target_state}' because dependency {dependency} is only at '{dependency_state}'"
+    )]
+    DependencyNotProgressed {
+        ticket: Uuid,
+        target_state: String,
+        dependency: Uuid,
+        dependency_state: String,
+    },
     #[error("search index error: {0}")]
     SearchIndex(String),
     #[error("parse diagnostic: {path}: {reason}", path = path.display())]

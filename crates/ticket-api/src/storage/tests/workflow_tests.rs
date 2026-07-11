@@ -235,3 +235,139 @@ fn workflow_facts_follow_depends_on_edge_removal() {
     assert!(updated.became_actionable_at.is_some());
     assert!(updated.last_blocker_progress_at.is_none());
 }
+
+#[test]
+fn update_guards_transition_ahead_of_dependency_state() {
+    use crate::error::StorageError;
+
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let blocker = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Guard blocker"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let dependent = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Guard dependent"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    store
+        .add_edge(EdgeRecord {
+            from: dependent,
+            to: blocker,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap();
+
+    // ready -> ready (equal rank) is allowed.
+    store
+        .update(&dependent, BTreeMap::new(), Some(&[]), Some("ready"), None, None)
+        .unwrap();
+
+    // Advancing the dependent past the blocker (still 'ready') is rejected.
+    let err = store
+        .update(
+            &dependent,
+            BTreeMap::new(),
+            Some(&[]),
+            Some("in-implementation"),
+            None,
+            None,
+        )
+        .unwrap_err();
+    assert!(
+        matches!(err, StorageError::DependencyNotProgressed { .. }),
+        "expected DependencyNotProgressed, got {err:?}"
+    );
+
+    // Once the blocker advances, the dependent may match its progress.
+    store
+        .update(
+            &blocker,
+            BTreeMap::new(),
+            Some(&[]),
+            Some("in-implementation"),
+            None,
+            None,
+        )
+        .unwrap();
+    store
+        .update(
+            &dependent,
+            BTreeMap::new(),
+            Some(&[]),
+            Some("in-implementation"),
+            None,
+            None,
+        )
+        .unwrap();
+
+    // A terminal (done) dependency no longer caps the dependent's progress.
+    store.close(&blocker, "done", None).unwrap();
+    store
+        .update(
+            &dependent,
+            BTreeMap::new(),
+            Some(&[]),
+            Some("in-review"),
+            None,
+            None,
+        )
+        .unwrap();
+
+    // Cancelling is always permitted regardless of dependency progress.
+    let gate = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Cancel gate"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let abandoned = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Abandoned dependent"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    store
+        .add_edge(EdgeRecord {
+            from: abandoned,
+            to: gate,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap();
+    store
+        .update(
+            &abandoned,
+            BTreeMap::new(),
+            Some(&[]),
+            Some("cancelled"),
+            None,
+            None,
+        )
+        .unwrap();
+}

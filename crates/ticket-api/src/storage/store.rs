@@ -603,6 +603,8 @@ impl TicketStore {
                 ))
             })?;
 
+        self.enforce_dependency_progress(indexed, target_state)?;
+
         let mut path = Vec::new();
         let mut from = current_state.to_string();
         let mut checkpoints: Vec<String> = transition_states.to_vec();
@@ -645,6 +647,48 @@ impl TicketStore {
         }
 
         Ok(path)
+    }
+
+    /// Guard: a ticket may not advance further along the state schema than any
+    /// of its unresolved `depends_on` targets. Terminal (`done`/`cancelled`)
+    /// dependencies are treated as satisfied, cross-store dependencies that are
+    /// not locally resolvable are skipped, and cancelling a ticket is always
+    /// permitted regardless of dependency progress.
+    fn enforce_dependency_progress(
+        &self,
+        indexed: &IndexedTicket,
+        target_state: &str,
+    ) -> Result<(), StorageError> {
+        if target_state == "cancelled" {
+            return Ok(());
+        }
+        let target_rank =
+            self.state_rank_for_type(&indexed.type_id, Some(target_state));
+        for edge in self.edges_from(&indexed.id)? {
+            if edge.kind != "depends_on" {
+                continue;
+            }
+            let Some(dependency) = self.get_indexed(&edge.to)? else {
+                continue;
+            };
+            let dependency_state = dependency.state.as_deref();
+            if matches!(dependency_state, Some("done") | Some("cancelled")) {
+                continue;
+            }
+            let dependency_rank =
+                self.state_rank_for_type(&dependency.type_id, dependency_state);
+            if target_rank > dependency_rank {
+                return Err(StorageError::DependencyNotProgressed {
+                    ticket: indexed.id,
+                    target_state: target_state.to_string(),
+                    dependency: edge.to,
+                    dependency_state: dependency_state
+                        .unwrap_or("new")
+                        .to_string(),
+                });
+            }
+        }
+        Ok(())
     }
 }
 
