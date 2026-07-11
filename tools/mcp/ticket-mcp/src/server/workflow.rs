@@ -80,6 +80,7 @@ impl TicketServer {
                 "board_history",
                 "board_check_in",
                 "board_check_out",
+                "board_release_lease",
                 "board_heartbeat",
                 "board_configure",
                 "board_clean_preview",
@@ -190,6 +191,10 @@ impl TicketServer {
                     "description": "Remove agent from the draftboard for a ticket",
                     "required": ["workspace", "ticket_id"],
                     "optional": ["agent_id", "reason"],
+                },
+                "board_release_lease": {
+                    "description": "Release a ticket lease with owner/stale safety semantics",
+                    "required": ["workspace", "ticket_id", "requester"],
                 },
                 "board_heartbeat": {
                     "description": "Refresh TTL for a board entry (requires full entry UUID)",

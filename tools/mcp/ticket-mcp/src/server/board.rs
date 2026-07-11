@@ -114,6 +114,41 @@ impl TicketServer {
         .await
     }
 
+    pub(crate) async fn board_release_lease_tool(
+        &self,
+        input: BoardReleaseLeaseInput,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+        let ticket_id_str = input.ticket_id;
+        let requester = input.requester;
+
+        self.with_store_ext(&workspace.clone(), move |store| {
+            let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
+            store
+                .release_lease(&ticket_id, &requester)
+                .map_err(|error| match error {
+                    ticket_api::error::StorageError::LeaseConflict {
+                        ticket,
+                        holder,
+                    } => McpError::invalid_params(
+                        format!(
+                            "lease conflict: ticket {ticket} is held by {holder}"
+                        ),
+                        None,
+                    ),
+                    other => Self::store_err(other),
+                })?;
+
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "status": "ok",
+                "ticket_id": ticket_id,
+                "requester": requester,
+            }))
+        })
+        .await
+    }
+
     pub(crate) async fn board_heartbeat_tool(
         &self,
         input: BoardHeartbeatInput,

@@ -332,6 +332,13 @@ pub struct BoardCheckOutInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct BoardReleaseLeaseInput {
+    pub workspace: String,
+    pub ticket_id: String,
+    pub requester: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct BoardHeartbeatInput {
     pub workspace: String,
     pub entry_id: String,

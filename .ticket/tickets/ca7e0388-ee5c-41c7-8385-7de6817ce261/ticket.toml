@@ -1,5 +1,5 @@
 id = "ca7e0388-ee5c-41c7-8385-7de6817ce261"
 created_at = "2026-07-11T11:53:32.091297300+00:00"
 title = "[ticket-api] Lease-release capability — owner/stale release semantics + transport parity + orphaned-lease cleanup"
-state = "new"
+state = "done"
 type = "tracker-improvement"

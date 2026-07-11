@@ -412,3 +412,40 @@ fn release_lease_enforces_owner_and_stale_rules() {
     // Releasing a ticket with no active lease is a no-op.
     store.release_lease(&ticket, "agent-b").unwrap();
 }
+
+#[test]
+fn board_check_out_releases_orphaned_lease_when_entry_is_missing() {
+    use crate::storage::board::BoardError;
+
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let ticket = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Orphaned lease ticket"),
+            Some("ready"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    store
+        .board_check_in(&ticket, "agent-a", 0, "work", vec![])
+        .unwrap();
+    assert_eq!(store.list_leases().unwrap().len(), 1);
+
+    let preview = store.board_clean_preview(true).unwrap();
+    assert_eq!(preview.entry_ids.len(), 1);
+    store.board_clean_apply(&preview.token, true).unwrap();
+
+    let err = store
+        .board_check_out(&ticket, "agent-a", Some("cleanup orphan"))
+        .unwrap_err();
+    assert!(
+        matches!(err, BoardError::NotCheckedIn { .. }),
+        "expected NotCheckedIn, got {err:?}"
+    );
+    assert!(store.list_leases().unwrap().is_empty());
+}

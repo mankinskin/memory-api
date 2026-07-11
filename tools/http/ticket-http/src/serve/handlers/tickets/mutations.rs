@@ -45,6 +45,8 @@ use super::types::{
     MoveTicketResponse,
     MutationResponse,
     MutationWorkspaceParam,
+    ReleaseLeaseBody,
+    ReleaseLeaseResponse,
     RevertTicketBody,
     TicketDetail,
     UpdateTicketBody,
@@ -234,6 +236,56 @@ pub async fn close_ticket(
     })
     .await
     .unwrap_or_else(|_| task_join_err(&request_id, "ticket close request"))
+}
+
+/// `POST /api/tickets/{id}/release-lease?workspace=<name>`
+///
+/// Release a ticket lease using owner/stale semantics.
+pub async fn release_ticket_lease(
+    State(state): State<AppState>,
+    Extension(rid): Extension<RequestIdExt>,
+    Path(id): Path<Uuid>,
+    Query(params): Query<MutationWorkspaceParam>,
+    Json(body): Json<ReleaseLeaseBody>,
+) -> Response {
+    let (workspace, store) = match state
+        .resolve_public_workspace_request(&params.workspace, &rid.0)
+    {
+        Ok(resolved) => resolved,
+        Err(response) => return response,
+    };
+
+    let requester = body.requester;
+    let request_id = rid.0.clone();
+    let task_request_id = request_id.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let request_id = task_request_id.clone();
+        let workspace = workspace.clone();
+
+        if let Err(e) = store.release_lease(&id, &requester) {
+            return storage_err(e, &request_id);
+        }
+
+        let ticket_ref = match ticket_ref_for_id(&store, &workspace, &id) {
+            Ok(ticket_ref) => ticket_ref,
+            Err(e) => return storage_err(e, &request_id),
+        };
+
+        Json(ReleaseLeaseResponse {
+            request_id,
+            active_workspace: workspace.clone(),
+            workspace,
+            id: id.to_string(),
+            ticket_ref,
+            requester,
+        })
+        .into_response()
+    })
+    .await
+    .unwrap_or_else(|_| {
+        task_join_err(&request_id, "ticket release-lease request")
+    })
 }
 
 /// `POST /api/tickets/{id}/cancel?workspace=<name>`

@@ -123,14 +123,14 @@ impl TicketStore {
             ticket_id,
             agent_id,
             handoff_reason,
-        )?;
+        );
 
-        match self.unclaim(ticket_id) {
+        match self.release_lease(ticket_id, agent_id) {
             Ok(_) | Err(StorageError::NotFound(_)) => {},
             Err(error) => return Err(BoardError::Storage(error)),
         }
 
-        Ok(entry)
+        entry
     }
 
     pub fn board_heartbeat(

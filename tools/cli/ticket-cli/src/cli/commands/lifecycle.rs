@@ -396,14 +396,23 @@ pub(crate) fn cmd_unclaim(
     let entry = snap.entries.iter().find(|e| {
         e.ticket_id == id && e.status == ticket_api::BoardEntryStatus::Active
     });
+    let requester = args
+        .agent_id
+        .clone()
+        .or_else(|| entry.map(|e| e.agent_id.clone()))
+        .unwrap_or_else(|| "cli".to_string());
+
     if let Some(e) = entry {
         store.board_check_out(&id, &e.agent_id, args.reason.as_deref())?;
     }
+    store.release_lease(&id, &requester)?;
+
     Ok(json!({
         "command": "unclaim",
         "status": "ok",
         "id": id,
         "title": title,
+        "requester": requester,
         "reason": args.reason,
     }))
 }

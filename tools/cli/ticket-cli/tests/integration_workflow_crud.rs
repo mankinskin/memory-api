@@ -288,6 +288,46 @@ fn claim_conflict_and_unclaim_cycle() {
     assert_eq!(reclaim["working_by"], "agent-2");
 }
 
+#[test]
+fn unclaim_clears_stale_orphaned_lease_without_board_entry() {
+    let s = Sandbox::new();
+    let id = create_ticket(&s, "Orphaned lease cleanup");
+
+    let claim = s.ticket_json(&[
+        "claim",
+        &id,
+        "--agent",
+        "agent-1",
+        "--ttl-secs",
+        "0",
+    ]);
+    assert_eq!(claim["status"], "ok");
+
+    let preview = s.ticket_json(&["board", "clean", "preview", "--include-stale"]);
+    let token = preview["token"]
+        .as_str()
+        .expect("clean preview token must be present")
+        .to_string();
+
+    let apply = s.ticket_json(&[
+        "board",
+        "clean",
+        "apply",
+        &token,
+        "--include-stale",
+    ]);
+    assert_eq!(apply["status"], "ok");
+
+    let leases_before = s.ticket_json(&["leases"]);
+    assert_eq!(leases_before["count"].as_u64().unwrap(), 1);
+
+    let unclaim = s.ticket_json(&["unclaim", &id]);
+    assert_eq!(unclaim["status"], "ok");
+
+    let leases_after = s.ticket_json(&["leases"]);
+    assert_eq!(leases_after["count"].as_u64().unwrap(), 0);
+}
+
 // ---------------------------------------------------------------------------
 // Batch
 // ---------------------------------------------------------------------------

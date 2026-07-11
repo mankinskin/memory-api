@@ -502,6 +502,17 @@ impl TicketServer {
     }
 
     #[tool(
+        name = "board_release_lease",
+        description = "Release a ticket lease using owner/stale semantics: the requester may always release its own lease, any requester may release stale leases, and live leases held by others return a lease-conflict error."
+    )]
+    pub async fn board_release_lease(
+        &self,
+        Parameters(input): Parameters<BoardReleaseLeaseInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.board_release_lease_tool(input).await
+    }
+
+    #[tool(
         name = "board_heartbeat",
         description = "Refresh the TTL for a board entry to prevent it from going stale. Returns the updated entry with a refreshed last_heartbeat timestamp."
     )]

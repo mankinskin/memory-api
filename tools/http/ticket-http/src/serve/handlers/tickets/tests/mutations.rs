@@ -24,9 +24,11 @@ use super::{
         CreateTicketBody,
         MoveTicketBody,
         MutationWorkspaceParam,
+        ReleaseLeaseBody,
         UpdateTicketBody,
         create_ticket,
         move_ticket,
+        release_ticket_lease,
         update_ticket,
     },
     make_state,
@@ -214,6 +216,102 @@ async fn update_ticket_transitions_state() {
     let payload: serde_json::Value =
         serde_json::from_slice(&bytes).expect("json");
     assert_eq!(payload["ticket"]["fields"]["state"], "ready");
+}
+
+#[tokio::test]
+async fn release_ticket_lease_clears_stale_orphaned_lease() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = make_store(dir.path());
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Lease cleanup"),
+            Some("ready"),
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .expect("create");
+
+    store
+        .board_check_in(&id, "agent-a", 0, "work", vec![])
+        .expect("check in");
+    let preview = store
+        .board_clean_preview(true)
+        .expect("clean preview include stale");
+    store
+        .board_clean_apply(&preview.token, true)
+        .expect("clean apply include stale");
+    assert_eq!(store.list_leases().expect("leases").len(), 1);
+
+    let state = make_state(Arc::clone(&store));
+    let workspace = state.registry.primary_workspace_name().to_string();
+
+    let response = release_ticket_lease(
+        State(state),
+        Extension(RequestIdExt("rid-release".to_string())),
+        Path(id),
+        Query(MutationWorkspaceParam {
+            workspace: workspace.clone(),
+        }),
+        Json(ReleaseLeaseBody {
+            requester: "maintenance-bot".to_string(),
+        }),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(store.list_leases().expect("leases").is_empty());
+
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(payload["workspace"], workspace);
+    assert_eq!(payload["id"], id.to_string());
+    assert_eq!(payload["requester"], "maintenance-bot");
+}
+
+#[tokio::test]
+async fn release_ticket_lease_returns_conflict_for_live_other_holder() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = make_store(dir.path());
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Lease conflict"),
+            Some("ready"),
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .expect("create");
+    store
+        .claim(&id, "agent-a", 3600, Some("work"))
+        .expect("claim");
+
+    let state = make_state(Arc::clone(&store));
+    let workspace = state.registry.primary_workspace_name().to_string();
+
+    let response = release_ticket_lease(
+        State(state),
+        Extension(RequestIdExt("rid-conflict".to_string())),
+        Path(id),
+        Query(MutationWorkspaceParam {
+            workspace,
+        }),
+        Json(ReleaseLeaseBody {
+            requester: "agent-b".to_string(),
+        }),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
 }
 
 #[tokio::test]

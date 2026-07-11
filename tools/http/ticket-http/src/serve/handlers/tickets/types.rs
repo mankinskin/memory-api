@@ -147,6 +147,11 @@ pub struct RevertTicketBody {
 }
 
 #[derive(Deserialize)]
+pub struct ReleaseLeaseBody {
+    pub requester: String,
+}
+
+#[derive(Deserialize)]
 pub struct MoveTicketBody {
     pub to_workspace_root: String,
     #[serde(default)]
@@ -182,6 +187,16 @@ pub struct MoveTicketResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outcome: Option<serde_json::Value>,
     pub recovery: serde_json::Value,
+}
+
+#[derive(Serialize)]
+pub struct ReleaseLeaseResponse {
+    pub request_id: String,
+    pub active_workspace: String,
+    pub workspace: String,
+    pub id: String,
+    pub ticket_ref: TicketRef,
+    pub requester: String,
 }
 
 #[derive(Serialize)]

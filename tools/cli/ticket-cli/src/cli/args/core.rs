@@ -81,6 +81,10 @@ pub struct ClaimArgs {
 pub struct UnclaimArgs {
     /// Ticket UUID or 8+ character hex prefix.
     pub id: String,
+    /// Requester identity used for owner/stale release rules.
+    /// If omitted, defaults to the active board agent when present.
+    #[arg(long = "agent")]
+    pub agent_id: Option<String>,
     #[arg(long)]
     pub reason: Option<String>,
 }

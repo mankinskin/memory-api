@@ -78,6 +78,10 @@ pub fn build_router(state: AppState) -> Router {
             post(handlers::tickets::close_ticket),
         )
         .route(
+            "/api/tickets/{id}/release-lease",
+            post(handlers::tickets::release_ticket_lease),
+        )
+        .route(
             "/api/tickets/{id}/cancel",
             post(handlers::tickets::cancel_ticket),
         )
