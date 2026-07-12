@@ -33,6 +33,45 @@ pub struct GeneratedMarkdownConfig<'a> {
     pub skip_provenance_for_yaml_frontmatter: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParsedGeneratedMarkdownEntry {
+    pub id: String,
+    pub slug: Option<String>,
+    pub body: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParsedGeneratedMarkdownArtifact {
+    pub entries: Vec<ParsedGeneratedMarkdownEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ParseGeneratedMarkdownError {
+    MissingGeneratedFileComment,
+    MalformedEntryComment(String),
+    NoEntriesFound,
+}
+
+impl std::fmt::Display for ParseGeneratedMarkdownError {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self {
+            Self::MissingGeneratedFileComment => write!(
+                f,
+                "input is not a generated artifact (missing generated file comment)"
+            ),
+            Self::MalformedEntryComment(line) =>
+                write!(f, "malformed generated entry comment: {line}"),
+            Self::NoEntriesFound =>
+                write!(f, "generated artifact contains no entry comments"),
+        }
+    }
+}
+
+impl std::error::Error for ParseGeneratedMarkdownError {}
+
 impl<'a> GeneratedMarkdownConfig<'a> {
     pub fn new<I, E>(
         file_comment: I,
@@ -117,6 +156,163 @@ pub fn prepare_generated_output(
     existing
         .map(|text| apply_existing_line_endings(&normalized, text))
         .unwrap_or(normalized)
+}
+
+pub fn parse_generated_artifact(
+    content: &str,
+    config: &GeneratedMarkdownConfig<'_>,
+) -> Result<ParsedGeneratedMarkdownArtifact, ParseGeneratedMarkdownError> {
+    let normalized = normalize_newlines_to_lf(content);
+    let mut remainder = normalized.as_str();
+    let frontmatter = if config.skip_provenance_for_yaml_frontmatter {
+        if let Some((frontmatter, rest)) = split_yaml_frontmatter(remainder) {
+            remainder = rest;
+            Some(frontmatter.trim_end().to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    remainder = remainder.trim_start_matches('\n');
+    if !remainder.starts_with(config.file_comment.as_ref()) {
+        return Err(ParseGeneratedMarkdownError::MissingGeneratedFileComment);
+    }
+
+    remainder = &remainder[config.file_comment.len()..];
+    let markers = parse_entry_markers(remainder, &config.entry_prefix)?;
+    if markers.is_empty() {
+        return Err(ParseGeneratedMarkdownError::NoEntriesFound);
+    }
+
+    let mut entries = Vec::with_capacity(markers.len());
+    for (index, marker) in markers.iter().enumerate() {
+        let body_end = markers
+            .get(index + 1)
+            .map(|next| next.line_start)
+            .unwrap_or(remainder.len());
+        let mut body = remainder[marker.body_start..body_end]
+            .trim_end()
+            .to_string();
+        if index == 0 {
+            if let Some(frontmatter) = frontmatter.as_deref() {
+                body = reattach_frontmatter(frontmatter, &body);
+            }
+        }
+
+        entries.push(ParsedGeneratedMarkdownEntry {
+            id: marker.id.clone(),
+            slug: marker.slug.clone(),
+            body,
+        });
+    }
+
+    Ok(ParsedGeneratedMarkdownArtifact { entries })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EntryMarker {
+    line_start: usize,
+    body_start: usize,
+    id: String,
+    slug: Option<String>,
+}
+
+fn parse_entry_markers(
+    content: &str,
+    entry_prefix: &str,
+) -> Result<Vec<EntryMarker>, ParseGeneratedMarkdownError> {
+    let mut markers = Vec::new();
+    let mut cursor = 0usize;
+
+    while cursor <= content.len() {
+        let line_end_rel = content[cursor..]
+            .find('\n')
+            .map(|offset| offset + cursor)
+            .unwrap_or(content.len());
+        let line = &content[cursor..line_end_rel];
+        if let Some((id, slug)) = parse_entry_marker_line(line, entry_prefix)? {
+            let body_start = if line_end_rel < content.len() {
+                line_end_rel + 1
+            } else {
+                line_end_rel
+            };
+            markers.push(EntryMarker {
+                line_start: cursor,
+                body_start,
+                id,
+                slug,
+            });
+        }
+
+        if line_end_rel == content.len() {
+            break;
+        }
+        cursor = line_end_rel + 1;
+    }
+
+    Ok(markers)
+}
+
+fn parse_entry_marker_line(
+    line: &str,
+    entry_prefix: &str,
+) -> Result<Option<(String, Option<String>)>, ParseGeneratedMarkdownError> {
+    let trimmed = line.trim();
+    if !trimmed.starts_with("<!--") || !trimmed.ends_with("-->") {
+        return Ok(None);
+    }
+
+    let inner = trimmed
+        .trim_start_matches("<!--")
+        .trim_end_matches("-->")
+        .trim();
+    if !inner.starts_with(entry_prefix) {
+        return Ok(None);
+    }
+
+    let attrs = inner[entry_prefix.len()..].trim();
+    if attrs.is_empty() {
+        return Err(ParseGeneratedMarkdownError::MalformedEntryComment(
+            line.to_string(),
+        ));
+    }
+
+    let mut id = None;
+    let mut slug = None;
+    for token in attrs.split_whitespace() {
+        if let Some(value) = token.strip_prefix("id=") {
+            if value.is_empty() {
+                return Err(ParseGeneratedMarkdownError::MalformedEntryComment(
+                    line.to_string(),
+                ));
+            }
+            id = Some(value.to_string());
+        } else if let Some(value) = token.strip_prefix("slug=") {
+            if !value.is_empty() {
+                slug = Some(value.to_string());
+            }
+        }
+    }
+
+    let Some(id) = id else {
+        return Err(ParseGeneratedMarkdownError::MalformedEntryComment(
+            line.to_string(),
+        ));
+    };
+    Ok(Some((id, slug)))
+}
+
+fn reattach_frontmatter(
+    frontmatter: &str,
+    body: &str,
+) -> String {
+    if body.is_empty() {
+        format!("{}\n", frontmatter.trim_end())
+    } else {
+        format!("{}\n{}", frontmatter.trim_end(), body)
+    }
 }
 
 fn split_yaml_frontmatter(body: &str) -> Option<(&str, &str)> {
@@ -226,8 +422,10 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::{
+        ParseGeneratedMarkdownError,
         GeneratedMarkdownConfig,
         GeneratedMarkdownSnippet,
+        parse_generated_artifact,
         prepare_generated_output,
         render_markdown_file,
     };
@@ -306,5 +504,54 @@ mod tests {
             prepare_generated_output("first\r\nsecond\r\nthird\n", None);
 
         assert_eq!(prepared, "first\nsecond\nthird\n");
+    }
+
+    #[test]
+    fn parse_generated_artifact_restores_frontmatter_to_first_entry() {
+        let rendered = render_markdown_file(
+            &[GeneratedMarkdownSnippet::new(
+                "prompt",
+                Some("context-engine/prompts/spec"),
+                "---\nname: spec\n---\nCreate a new spec entry.\n",
+            )],
+            &rule_like_config(),
+        );
+
+        let parsed = parse_generated_artifact(&rendered, &rule_like_config())
+            .expect("parse generated artifact");
+        assert_eq!(parsed.entries.len(), 1);
+        assert_eq!(parsed.entries[0].id, "prompt");
+        assert_eq!(
+            parsed.entries[0].body,
+            "---\nname: spec\n---\nCreate a new spec entry."
+        );
+    }
+
+    #[test]
+    fn parse_generated_artifact_rejects_non_generated_file() {
+        let error =
+            parse_generated_artifact("# not generated", &rule_like_config())
+                .expect_err("must fail");
+        assert_eq!(
+            error,
+            ParseGeneratedMarkdownError::MissingGeneratedFileComment
+        );
+    }
+
+    #[test]
+    fn parse_generated_artifact_handles_crlf_input_and_trimmed_bodies() {
+        let input = concat!(
+            "<!-- generated:file true -->\r\n\r\n",
+            "<!-- generated:entry id=one slug=shared/a -->\r\n",
+            "alpha\r\n\r\n",
+            "<!-- generated:entry id=two slug=shared/b -->\r\n",
+            "beta\r\n",
+        );
+
+        let parsed = parse_generated_artifact(input, &rule_like_config())
+            .expect("parse generated artifact");
+        assert_eq!(parsed.entries.len(), 2);
+        assert_eq!(parsed.entries[0].body, "alpha");
+        assert_eq!(parsed.entries[1].body, "beta");
     }
 }

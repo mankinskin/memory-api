@@ -53,6 +53,8 @@ pub enum RuleCommandCli {
     ExplainTarget(ExplainTargetArgs),
     #[command(name = "sync-targets")]
     SyncTargets(SyncTargetsArgs),
+    #[command(name = "sync-rules")]
+    SyncRules(SyncRulesArgs),
     #[command(name = "benchmark-targets")]
     BenchmarkTargets(BenchmarkTargetsArgs),
     List(ListArgs),
@@ -217,6 +219,16 @@ pub struct ExplainTargetArgs {
 pub struct SyncTargetsArgs {
     #[arg(long)]
     pub config: PathBuf,
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+    #[arg(long, default_value_t = false)]
+    pub check: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct SyncRulesArgs {
+    #[arg(long)]
+    pub file: PathBuf,
     #[arg(long, default_value_t = false)]
     pub dry_run: bool,
     #[arg(long, default_value_t = false)]

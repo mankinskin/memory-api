@@ -322,6 +322,81 @@ fn generate_target_supports_dot_prefixed_prompt_tree_output() {
 }
 
 #[test]
+fn sync_rules_round_trip_preserves_frontmatter_for_generated_target() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut rule = RuleManifest::new(
+        "context-engine/agents/roast/roast-agent",
+        "Roast Agent",
+        "AGENTS",
+        "roast-agent",
+        "---\nname: Roast Agent\nuser-invocable: true\n---\nOriginal roast body.\n",
+    );
+    rule.set_repo_scopes(["context-engine"]);
+    rule.set_path_scopes([".agents/agents/roast.agent.md"]);
+    rule.set_order_key(10);
+    let id = store.create(&rule, None).unwrap();
+
+    let config_path = dir.path().join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: roast-agent\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    path_scope: .agents/agents/roast.agent.md\n",
+            "    output_path: .agents/agents/roast.agent.md\n",
+        ),
+    )
+    .unwrap();
+
+    dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_path.clone(),
+            target: "roast-agent".to_string(),
+            dry_run: false,
+            check: false,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    let output = dir.path().join(".agents").join("agents").join("roast.agent.md");
+    let edited = fs::read_to_string(&output)
+        .unwrap()
+        .replace("Original roast body.", "Edited roast body from generated artifact.");
+    fs::write(&output, edited).unwrap();
+
+    dispatch::dispatch(
+        RuleCommandCli::SyncRules(SyncRulesArgs {
+            file: output.clone(),
+            dry_run: false,
+            check: false,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    dispatch::dispatch(
+        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
+            config: config_path,
+            target: "roast-agent".to_string(),
+            dry_run: false,
+            check: true,
+        }),
+        dir.path(),
+    )
+    .unwrap();
+
+    let reopened = RuleStore::open(dir.path()).unwrap();
+    let synced = reopened.get(&id.to_string()).unwrap();
+    let body = synced.body().unwrap();
+    assert!(body.starts_with("---\nname: Roast Agent\nuser-invocable: true\n---\n"));
+    assert!(body.contains("Edited roast body from generated artifact."));
+}
+
+#[test]
 fn repo_spec_prompt_target_matches_expectation_oriented_contract() {
     let prompt_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()

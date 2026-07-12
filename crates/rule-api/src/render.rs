@@ -2,6 +2,9 @@ use crate::manifest::RuleManifest;
 use memory_api::generated_markdown::{
     GeneratedMarkdownConfig,
     GeneratedMarkdownSnippet,
+    ParseGeneratedMarkdownError,
+    ParsedGeneratedMarkdownArtifact,
+    parse_generated_artifact as shared_parse_generated_artifact,
     prepare_generated_output as shared_prepare_generated_output,
     render_markdown_file as shared_render_markdown_file,
 };
@@ -29,6 +32,16 @@ pub fn prepare_generated_output(
     existing: Option<&str>,
 ) -> String {
     shared_prepare_generated_output(rendered, existing)
+}
+
+pub fn parse_generated_artifact(
+    content: &str
+) -> Result<ParsedGeneratedMarkdownArtifact, ParseGeneratedMarkdownError> {
+    let config = GeneratedMarkdownConfig::new(
+        GENERATED_FILE_COMMENT,
+        GENERATED_ENTRY_PREFIX,
+    );
+    shared_parse_generated_artifact(content, &config)
 }
 
 fn rule_to_generated_snippet(

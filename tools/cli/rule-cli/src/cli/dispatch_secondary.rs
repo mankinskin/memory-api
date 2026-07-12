@@ -108,6 +108,13 @@ pub(super) fn sync_targets_command(
     }))
 }
 
+pub(super) fn sync_rules_command(
+    store: &mut RuleStore,
+    args: SyncRulesArgs,
+) -> Result<Value, CliRunError> {
+    sync_rules_file(store, &args)
+}
+
 pub(super) fn benchmark_targets_command(
     _store: &mut RuleStore,
     args: BenchmarkTargetsArgs,

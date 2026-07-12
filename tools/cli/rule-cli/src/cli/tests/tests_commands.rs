@@ -145,6 +145,252 @@ fn parse_sync_targets_command() {
 }
 
 #[test]
+fn parse_sync_rules_command() {
+    let cli = parse_cli_from([
+        "rule",
+        "sync-rules",
+        "--file",
+        ".agents/agents/roast.agent.md",
+        "--dry-run",
+    ])
+    .unwrap();
+
+    match cli.command {
+        RuleCommandCli::SyncRules(args) => {
+            assert_eq!(
+                args.file,
+                PathBuf::from(".agents/agents/roast.agent.md")
+            );
+            assert!(args.dry_run);
+            assert!(!args.check);
+        },
+        _ => panic!("expected sync-rules command"),
+    }
+}
+
+#[test]
+fn sync_rules_rejects_non_generated_file_input() {
+    let dir = tempdir().unwrap();
+    let index_root = dir.path().join(".rule");
+    RuleStore::init(&index_root).unwrap();
+
+    let input = dir.path().join("notes.md");
+    fs::write(&input, "# plain markdown").unwrap();
+
+    let error = dispatch::dispatch(
+        RuleCommandCli::SyncRules(SyncRulesArgs {
+            file: input,
+            dry_run: false,
+            check: false,
+        }),
+        &index_root,
+    )
+    .expect_err("sync-rules should reject non-generated file");
+
+    match error {
+        CliRunError::BadRequest(message) => {
+            assert!(message.contains("not a generated artifact"));
+        },
+        other => panic!("unexpected error: {other:?}"),
+    }
+}
+
+#[test]
+fn sync_rules_uses_marker_id_as_authoritative_and_ignores_slug_edits() {
+    let dir = tempdir().unwrap();
+    let index_root = dir.path().join(".rule");
+    let mut store = RuleStore::init(&index_root).unwrap();
+    let rule = sample_rule(
+        "shared/agents/reverse-sync",
+        "Reverse Sync",
+        "reverse-sync",
+        "Original body.",
+        10,
+    );
+    let id = store.create(&rule, None).unwrap();
+
+    let input = dir.path().join("generated.md");
+    fs::write(
+        &input,
+        format!(
+            concat!(
+                "<!-- rule-api:file generated=true -->\n\n",
+                "<!-- rule-api:entry id={} slug=edited/slug -->\n",
+                "Updated from generated artifact.\n",
+            ),
+            id
+        ),
+    )
+    .unwrap();
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::SyncRules(SyncRulesArgs {
+            file: input,
+            dry_run: false,
+            check: false,
+        }),
+        &index_root,
+    )
+    .unwrap();
+
+    assert_eq!(payload["changed"], 1);
+    assert_eq!(payload["items"][0]["slug_mismatch"], true);
+
+    let reopened = RuleStore::open(&index_root).unwrap();
+    let updated = reopened.get(&id.to_string()).unwrap();
+    assert_eq!(updated.body(), Some("Updated from generated artifact."));
+}
+
+#[test]
+fn sync_rules_check_reports_drift_without_writing() {
+    let dir = tempdir().unwrap();
+    let index_root = dir.path().join(".rule");
+    let mut store = RuleStore::init(&index_root).unwrap();
+    let rule = sample_rule(
+        "shared/agents/check-mode",
+        "Check Mode",
+        "check-mode",
+        "Original body.",
+        10,
+    );
+    let id = store.create(&rule, None).unwrap();
+
+    let input = dir.path().join("generated.md");
+    fs::write(
+        &input,
+        format!(
+            concat!(
+                "<!-- rule-api:file generated=true -->\n\n",
+                "<!-- rule-api:entry id={} slug=shared/agents/check-mode -->\n",
+                "Changed body.\n",
+            ),
+            id
+        ),
+    )
+    .unwrap();
+
+    let error = dispatch::dispatch(
+        RuleCommandCli::SyncRules(SyncRulesArgs {
+            file: input,
+            dry_run: false,
+            check: true,
+        }),
+        &index_root,
+    )
+    .expect_err("check mode should report drift");
+
+    match error {
+        CliRunError::BadRequest(message) => {
+            assert!(message.contains("drift"));
+        },
+        other => panic!("unexpected error: {other:?}"),
+    }
+
+    let reopened = RuleStore::open(&index_root).unwrap();
+    let unchanged = reopened.get(&id.to_string()).unwrap();
+    assert_eq!(unchanged.body(), Some("Original body."));
+}
+
+#[test]
+fn sync_rules_unknown_id_error_keeps_existing_entries_unchanged() {
+    let dir = tempdir().unwrap();
+    let index_root = dir.path().join(".rule");
+    let mut store = RuleStore::init(&index_root).unwrap();
+    let rule = sample_rule(
+        "shared/agents/atomicity",
+        "Atomicity",
+        "atomicity",
+        "Original body.",
+        10,
+    );
+    let id = store.create(&rule, None).unwrap();
+
+    let input = dir.path().join("generated.md");
+    fs::write(
+        &input,
+        format!(
+            concat!(
+                "<!-- rule-api:file generated=true -->\n\n",
+                "<!-- rule-api:entry id={} slug=shared/agents/atomicity -->\n",
+                "Changed body.\n\n",
+                "<!-- rule-api:entry id=00000000-0000-0000-0000-000000000999 slug=missing/rule -->\n",
+                "Missing body.\n",
+            ),
+            id
+        ),
+    )
+    .unwrap();
+
+    let error = dispatch::dispatch(
+        RuleCommandCli::SyncRules(SyncRulesArgs {
+            file: input,
+            dry_run: false,
+            check: false,
+        }),
+        &index_root,
+    )
+    .expect_err("must fail with orphan ids");
+
+    match error {
+        CliRunError::BadRequest(message) => {
+            assert!(message.contains("orphan generated entry ids"));
+        },
+        other => panic!("unexpected error: {other:?}"),
+    }
+
+    let reopened = RuleStore::open(&index_root).unwrap();
+    let unchanged = reopened.get(&id.to_string()).unwrap();
+    assert_eq!(unchanged.body(), Some("Original body."));
+}
+
+#[test]
+fn sync_rules_rejects_spec_doc_entries() {
+    let dir = tempdir().unwrap();
+    let index_root = dir.path().join(".rule");
+    let mut store = RuleStore::init(&index_root).unwrap();
+    let mut rule = RuleManifest::new(
+        "memory-api/recurring-principles/summary",
+        "Summary",
+        "spec-doc",
+        "summary",
+        "## Summary\ntext\n",
+    );
+    rule.set_repo_scopes(["memory-api"]);
+    let id = store.create(&rule, None).unwrap();
+
+    let input = dir.path().join("generated.md");
+    fs::write(
+        &input,
+        format!(
+            concat!(
+                "<!-- rule-api:file generated=true -->\n\n",
+                "<!-- rule-api:entry id={} slug=memory-api/recurring-principles/summary -->\n",
+                "## Summary\nchanged\n",
+            ),
+            id
+        ),
+    )
+    .unwrap();
+
+    let error = dispatch::dispatch(
+        RuleCommandCli::SyncRules(SyncRulesArgs {
+            file: input,
+            dry_run: false,
+            check: false,
+        }),
+        &index_root,
+    )
+    .expect_err("spec-doc reverse-sync must be rejected");
+
+    match error {
+        CliRunError::BadRequest(message) => {
+            assert!(message.contains("spec-doc"));
+        },
+        other => panic!("unexpected error: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_global_workspace_root() {
     let cli = parse_cli_from([
         "rule",

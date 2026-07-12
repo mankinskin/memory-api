@@ -45,6 +45,7 @@ use super::{
     ScanArgs,
     SearchArgs,
     StoreIndexArgs,
+    SyncRulesArgs,
     SyncTargetsArgs,
     UpdateArgs,
     helpers::{
@@ -57,7 +58,10 @@ use super::{
         rule_json,
         rule_summary_json,
     },
-    importing::import_file,
+    importing::{
+        import_file,
+        sync_rules_file,
+    },
     rendering::{
         display_path,
         ensure_generated_output_matches,
@@ -132,6 +136,7 @@ fn bootstrap_rule_store(
             | RuleCommandCli::GenerateTarget(_)
             | RuleCommandCli::ExplainTarget(_)
             | RuleCommandCli::SyncTargets(_)
+            | RuleCommandCli::SyncRules(_)
             | RuleCommandCli::BenchmarkTargets(_)
             | RuleCommandCli::List(_)
             | RuleCommandCli::Search(_)
@@ -164,6 +169,7 @@ fn dispatch_secondary(
         RuleCommandCli::ExplainTarget(args) =>
             explain_target_command(store, args),
         RuleCommandCli::SyncTargets(args) => sync_targets_command(store, args),
+        RuleCommandCli::SyncRules(args) => sync_rules_command(store, args),
         RuleCommandCli::BenchmarkTargets(args) =>
             benchmark_targets_command(store, args),
         RuleCommandCli::List(args) => list_command(store, args),

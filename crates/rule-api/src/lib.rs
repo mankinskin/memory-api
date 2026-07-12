@@ -45,8 +45,13 @@ pub use manifest::{
 };
 pub use render::{
     GENERATED_FILE_COMMENT,
+    parse_generated_artifact,
     prepare_generated_output,
     render_markdown_file,
+};
+pub use memory_api::generated_markdown::{
+    ParseGeneratedMarkdownError,
+    ParsedGeneratedMarkdownArtifact,
 };
 pub use store::{
     RuleFilter,
