@@ -19,5 +19,11 @@ The first implementation dumped all ring edges into `rule-api::ring`, forcing a 
 - Ticket-entity feedback closes the coverage gap.
 - New work attaches to feedback-api b1e9e744 and program umbrella 8a90a63c (root store) rather than duplicating.
 
+## Activation gate — 'Close' vs 'Redistribute' (added 2026-07-12 verification)
+Redistribution + unit tests satisfy **'redistribute'**, NOT **'close'**. Verified 2026-07-12: 3 of 4 ring edges (recompute_spec_verified_state, mine_transcript_for_rule_confusion, ingest_frontend_feedback) have ZERO production callers — only re-exports + `#[test]` references; only missing-rule fires (rule-cli dispatch). A redistributed loop of dead code is still dead code.
+- **'Close' requires ≥1 live end-to-end firing per ring edge** (execution→verified, transcript-mining, frontend-ingest, missing-rule) invoked from a **registered transport or hook — not a unit test** — each with a recorded .test execution.
+- This ticket now **depends_on 6b0002bf** ([feedback-api][activation] discovery/collection/analyzer wiring). G-D cannot reach `done` until activation lands a live firing per edge.
+- If activation is deferred, **rename this ticket to "Redistribute ring edges"** and let 6b0002bf carry closure.
+
 ## State note
-Cross-store dependency edge G-D -> 8a90a63c (root-store program umbrella) could not be re-added from the memory-api store (entity-not-found); tracked as documentation-only traceability pending cross-workspace edge tooling.
+Cross-store dependency edge G-D -> 8a90a63c (root-store program umbrella): add it from the ROOT workspace (`--workspace default`), since 8a90a63c-0a07-439f-90e8-9124212b2dc8 is not resolvable from the memory-api store (entity-not-found). Prefer this over documentation-only traceability.

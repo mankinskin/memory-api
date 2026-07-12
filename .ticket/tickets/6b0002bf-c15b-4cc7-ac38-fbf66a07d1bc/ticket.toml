@@ -1,0 +1,9 @@
+id = "6b0002bf-c15b-4cc7-ac38-fbf66a07d1bc"
+created_at = "2026-07-12T18:42:29.887235600+00:00"
+title = "[feedback-api][activation] Wire feedback discovery, collection, and analyzer loop (ring activation)"
+state = "new"
+component = "feedback-api"
+depends_on = ["fb6aa078-1f8b-4a76-99bd-3a26190b1208"]
+effort = "2200"
+priority = "high"
+type = "tracker-improvement"
