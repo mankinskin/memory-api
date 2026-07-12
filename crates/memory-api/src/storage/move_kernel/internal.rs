@@ -877,10 +877,20 @@ mod persist_journal_contract_tests {
         let error = persist_journal(store.path(), &journal)
             .expect_err("non-compliant journal must be rejected at persistence");
         match error {
-            MoveError::Domain(detail) => assert!(
-                detail.contains(MoveJournal::INTEROP_CONTRACT_MARKER),
-                "unexpected detail: {detail}"
-            ),
+            MoveError::InteroperabilityContract {
+                artifact_class,
+                detail,
+            } => {
+                assert_eq!(artifact_class, "move-journal");
+                assert!(
+                    detail.contains("missing authoritative operation identity"),
+                    "unexpected detail: {detail}"
+                );
+                assert!(
+                    detail.contains("missing source store root"),
+                    "unexpected detail: {detail}"
+                );
+            }
             other => panic!("unexpected error variant: {other:?}"),
         }
 

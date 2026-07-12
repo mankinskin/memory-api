@@ -50,6 +50,12 @@ fn from_move_error(error: MoveError) -> SpecError {
         MoveError::Io(io) => SpecError::Storage(StorageError::Io(io)),
         MoveError::Domain(message) =>
             SpecError::Storage(StorageError::Other(message)),
+        MoveError::InteroperabilityContract {
+            artifact_class,
+            detail,
+        } => SpecError::Storage(StorageError::Other(format!(
+            "interoperability contract violation for {artifact_class}: {detail}"
+        ))),
     }
 }
 

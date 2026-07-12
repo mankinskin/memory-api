@@ -41,6 +41,12 @@ fn from_move_error(error: MoveError) -> AuditError {
     match error {
         MoveError::Io(io) => AuditError::Move(io.to_string()),
         MoveError::Domain(message) => AuditError::Move(message),
+        MoveError::InteroperabilityContract {
+            artifact_class,
+            detail,
+        } => AuditError::Move(format!(
+            "interoperability contract violation for {artifact_class}: {detail}"
+        )),
     }
 }
 

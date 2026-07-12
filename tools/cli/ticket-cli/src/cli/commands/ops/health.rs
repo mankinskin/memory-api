@@ -13,6 +13,7 @@ use serde_json::{
 use ticket_api::{
     health::collect_findings,
     model::edge::EdgeRecord,
+    query_helpers::apply_field_filters,
     storage::{
         indexed::IndexedTicket,
         store::TicketStore,
@@ -69,13 +70,26 @@ fn scoped_tickets(
     store: &TicketStore,
     all_edges: &[EdgeRecord],
 ) -> Result<Vec<IndexedTicket>, CliRunError> {
-    if args.stdin {
+    if !args.ids.is_empty() {
+        explicit_tickets(store, &args.ids)
+    } else if args.stdin {
         stdin_tickets(store)
     } else if args.all {
         Ok(store.list(None, None, None)?)
     } else {
         root_scope_tickets(args, store, all_edges)
     }
+}
+
+fn explicit_tickets(
+    store: &TicketStore,
+    ids: &[String],
+) -> Result<Vec<IndexedTicket>, CliRunError> {
+    let resolved = ids
+        .iter()
+        .map(|id| super::super::resolve_uuid_prefix(id, store))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(load_live_tickets(store, &resolved))
 }
 
 fn stdin_tickets(
@@ -196,33 +210,4 @@ fn load_live_tickets(
     ids.iter()
         .filter_map(|id| store.get_indexed(id).ok().flatten())
         .collect()
-}
-
-fn apply_field_filters(
-    tickets: Vec<IndexedTicket>,
-    field_filters: &[(String, String)],
-) -> Vec<IndexedTicket> {
-    if field_filters.is_empty() {
-        return tickets;
-    }
-
-    tickets
-        .into_iter()
-        .filter(|ticket| matches_filters(ticket, field_filters))
-        .collect()
-}
-
-fn matches_filters(
-    ticket: &IndexedTicket,
-    field_filters: &[(String, String)],
-) -> bool {
-    field_filters.iter().all(|(key, expected)| {
-        let actual = match key.as_str() {
-            "state" => ticket.state.as_deref().map(String::from),
-            "type" => Some(ticket.type_id.clone()),
-            "title" => ticket.title.clone(),
-            _ => None,
-        };
-        actual.as_deref() == Some(expected.as_str())
-    })
 }

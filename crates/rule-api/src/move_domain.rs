@@ -48,6 +48,12 @@ fn from_move_error(error: MoveError) -> RuleError {
         MoveError::Io(io) => RuleError::Storage(StorageError::Io(io)),
         MoveError::Domain(message) =>
             RuleError::Storage(StorageError::Other(message)),
+        MoveError::InteroperabilityContract {
+            artifact_class,
+            detail,
+        } => RuleError::Storage(StorageError::Other(format!(
+            "interoperability contract violation for {artifact_class}: {detail}"
+        ))),
     }
 }
 

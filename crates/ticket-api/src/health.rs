@@ -12,6 +12,16 @@ use std::{
 use serde::Serialize;
 use uuid::Uuid;
 
+use memory_api::{
+    ContentKind,
+    cross_store_edges::{
+        CrossStoreEdgeClassifier,
+        EdgeReferenceResolution,
+        cross_workspace_edge_instructions,
+        cross_workspace_edge_message,
+    },
+};
+
 use crate::{
     model::edge::EdgeRecord,
     storage::{
@@ -92,6 +102,21 @@ pub fn collect_findings(
     all_edges: &[EdgeRecord],
     workflow: &WorkflowModel,
 ) -> HealthReport {
+    let policy = crate::workspace_policy::load_workspace_policy(
+        &memory_api::workspace::resolve_workspace_root_from_store_root(
+            &memory_api::workspace::resolve_store_root_from(
+                &store.index_root,
+                memory_api::workspace::TICKET_INDEX_DIR,
+            ),
+            memory_api::workspace::TICKET_INDEX_DIR,
+        ),
+    );
+    let edge_classifier = CrossStoreEdgeClassifier::for_store(
+        &store.index_root,
+        ContentKind::Ticket,
+        policy,
+    );
+
     let done_ids = tickets
         .iter()
         .filter(|t| {
@@ -106,7 +131,14 @@ pub fn collect_findings(
         if done_ids.contains(&ticket.id) {
             continue;
         }
-        append_ticket_findings(store, ticket, all_edges, workflow, &mut report);
+        append_ticket_findings(
+            store,
+            ticket,
+            all_edges,
+            workflow,
+            edge_classifier.as_ref(),
+            &mut report,
+        );
     }
     report
 }
@@ -118,13 +150,20 @@ fn append_ticket_findings(
     ticket: &IndexedTicket,
     all_edges: &[EdgeRecord],
     workflow: &WorkflowModel,
+    edge_classifier: Option<&CrossStoreEdgeClassifier>,
     report: &mut HealthReport,
 ) {
     append_effort_estimation_findings(ticket, workflow, report);
     append_description_findings(ticket, report);
     append_title_finding(ticket, report);
     append_dependency_state_findings(ticket, workflow, report);
-    append_dangling_edge_findings(store, ticket, all_edges, report);
+    append_dangling_edge_findings(
+        store,
+        ticket,
+        all_edges,
+        edge_classifier,
+        report,
+    );
 }
 
 fn append_effort_estimation_findings(
@@ -296,6 +335,7 @@ fn append_dangling_edge_findings(
     store: &TicketStore,
     ticket: &IndexedTicket,
     all_edges: &[EdgeRecord],
+    edge_classifier: Option<&CrossStoreEdgeClassifier>,
     report: &mut HealthReport,
 ) {
     for edge in all_edges {
@@ -307,6 +347,33 @@ fn append_dangling_edge_findings(
         if target_exists {
             continue;
         }
+
+        if let Some(classifier) = edge_classifier {
+            match classifier.classify(edge.to) {
+                EdgeReferenceResolution::Ok => continue,
+                EdgeReferenceResolution::CrossWorkspaceEdge {
+                    target_workspace_root,
+                    ..
+                } => {
+                    report.record(
+                        "cross_workspace_edge",
+                        base_finding(
+                            ticket,
+                            "cross_workspace_edge",
+                            "warning",
+                            cross_workspace_edge_message(
+                                edge.to,
+                                &target_workspace_root,
+                            ),
+                            cross_workspace_edge_instructions(),
+                        ),
+                    );
+                    continue;
+                },
+                EdgeReferenceResolution::DanglingEdge => {},
+            }
+        }
+
         report.record(
             "dangling_edge",
             base_finding(
@@ -380,8 +447,14 @@ impl Default for HealthFinding {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::{
+        collections::BTreeMap,
+        fs,
+    };
 
+    use memory_api::workspace_policy::{
+        WORKSPACE_POLICY_FILE,
+    };
     use tempfile::tempdir;
 
     use crate::{
@@ -669,5 +742,91 @@ mod tests {
             finding.message.contains("effort estimation"),
             "message must mention effort estimation"
         );
+    }
+
+    #[test]
+    fn cross_workspace_dependency_is_warning_not_dangling_error() {
+        let dir = tempdir().unwrap();
+        let root_repo = dir.path().join("repo");
+        let child_repo = root_repo.join("child");
+        fs::create_dir_all(&child_repo).unwrap();
+
+        let parent_store =
+            TicketStore::init(&root_repo.join(".ticket")).unwrap();
+        let child_store =
+            TicketStore::init(&child_repo.join(".ticket")).unwrap();
+
+        fs::create_dir_all(child_repo.join(".ticket")).unwrap();
+        fs::write(
+            child_repo
+                .join(".ticket")
+                .join(WORKSPACE_POLICY_FILE),
+            "include_descendants = true\ninclude_ancestors = true\ndeny_external_paths = true\n",
+        )
+        .unwrap();
+
+        let parent_id = parent_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Parent prerequisite"),
+                Some("ready"),
+                extra_with_effort("1200"),
+                None,
+                Some("This description is definitely long enough to pass the 50-character threshold."),
+            )
+            .unwrap();
+        assert!(
+            parent_store
+                .get_indexed(&parent_id)
+                .unwrap()
+                .unwrap()
+                .path
+                .join("ticket.toml")
+                .is_file()
+        );
+
+        let child_id = child_store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Child ticket"),
+                Some("ready"),
+                extra_with_effort("800"),
+                None,
+                Some("This description is definitely long enough to pass the 50-character threshold."),
+            )
+            .unwrap();
+
+        let classifier = memory_api::cross_store_edges::CrossStoreEdgeClassifier::for_store(
+            &child_store.index_root,
+            memory_api::ContentKind::Ticket,
+            crate::workspace_policy::load_workspace_policy(&child_repo),
+        )
+        .unwrap();
+        assert!(matches!(
+            classifier.classify(parent_id),
+            memory_api::cross_store_edges::EdgeReferenceResolution::CrossWorkspaceEdge { .. }
+        ));
+
+        let tickets = child_store.list(None, None, None).unwrap();
+        let edges = vec![crate::model::edge::EdgeRecord {
+            from: child_id,
+            to: parent_id,
+            kind: "depends_on".to_string(),
+            created_at: chrono::Utc::now(),
+        }];
+        let workflow =
+            WorkflowModel::build(&child_store, tickets.clone(), Vec::new())
+                .unwrap();
+        let report =
+            super::collect_findings(&child_store, &tickets, &edges, &workflow);
+
+        assert!(report.findings.iter().any(|f| {
+            f.ticket_id == child_id && f.check == "cross_workspace_edge"
+        }));
+        assert!(!report.findings.iter().any(|f| {
+            f.ticket_id == child_id && f.check == "dangling_edge"
+        }));
     }
 }

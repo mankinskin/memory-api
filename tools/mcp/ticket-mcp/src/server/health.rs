@@ -6,6 +6,10 @@ use std::collections::{
 use ticket_api::{
     health::collect_findings,
     model::edge::EdgeRecord,
+    query_helpers::{
+        apply_field_filters,
+        parse_where_filters,
+    },
     storage::indexed::IndexedTicket,
     workflow::WorkflowModel,
 };
@@ -21,11 +25,13 @@ impl TicketServer {
         ids: &[String],
         depth: Option<usize>,
         direction: Option<&str>,
+        where_clauses: &[String],
     ) -> Result<CallToolResult, McpError> {
         let workspace = workspace.to_owned();
         let root = root.map(str::to_owned);
         let ids = ids.to_owned();
         let direction = direction.map(str::to_owned);
+        let where_clauses = where_clauses.to_owned();
 
         self.with_store_ext(&workspace.clone(), move |store| {
             let all_edges = store.list_all_edges().map_err(Self::store_err)?;
@@ -38,6 +44,10 @@ impl TicketServer {
                 direction.as_deref(),
                 &all_edges,
             )?;
+            let filters = parse_where_filters(&where_clauses).map_err(|message| {
+                McpError::invalid_params(message, None)
+            })?;
+            let tickets = apply_field_filters(tickets, &filters);
             let workflow = WorkflowModel::build(
                 store,
                 store.list(None, None, None).map_err(Self::store_err)?,

@@ -132,6 +132,8 @@ pub struct HealthCheckInput {
     pub depth: Option<usize>,
     #[serde(default)]
     pub direction: Option<String>,
+    #[serde(default)]
+    pub r#where: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]

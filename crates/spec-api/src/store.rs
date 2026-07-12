@@ -17,6 +17,13 @@ use tracing::field::Empty;
 use uuid::Uuid;
 
 use memory_api::{
+    ContentKind,
+    cross_store_edges::{
+        CrossStoreEdgeClassifier,
+        EdgeReferenceResolution,
+        cross_workspace_edge_message,
+        short_id8,
+    },
     error::StorageError,
     generated_markdown::{
         GeneratedMarkdownConfig,
@@ -496,7 +503,7 @@ impl SpecStore {
         id_or_slug: &str,
     ) -> Result<SpecHealthReport, SpecError> {
         let spec = self.get(id_or_slug)?;
-        Ok(Self::build_health_report([spec]))
+        Ok(self.build_health_report([spec])?)
     }
 
     pub fn health_all(&self) -> Result<SpecHealthReport, SpecError> {
@@ -505,26 +512,81 @@ impl SpecStore {
             .iter()
             .filter_map(|indexed| self.get(&indexed.id.to_string()).ok())
             .collect::<Vec<_>>();
-        Ok(Self::build_health_report(specs))
+        self.build_health_report(specs)
     }
 
     fn build_health_report(
-        specs: impl IntoIterator<Item = SpecManifest>
-    ) -> SpecHealthReport {
+        &self,
+        specs: impl IntoIterator<Item = SpecManifest>,
+    ) -> Result<SpecHealthReport, SpecError> {
         let specs = specs.into_iter().collect::<Vec<_>>();
-        let issues = specs
+        let mut issues = specs
             .iter()
             .flat_map(|spec| {
                 spec.health_issues()
                     .into_iter()
                     .map(|issue| SpecHealthFinding { id: spec.id, issue })
             })
-            .collect();
+            .collect::<Vec<_>>();
 
-        SpecHealthReport {
+        let policy = memory_api::workspace_policy::load_workspace_policy(
+            &memory_api::workspace::resolve_workspace_root_from_store_root(
+                &memory_api::workspace::resolve_store_root_from(
+                    &self.inner.index_root,
+                    SPEC_INDEX_DIR,
+                ),
+                SPEC_INDEX_DIR,
+            ),
+        );
+        let edge_classifier = CrossStoreEdgeClassifier::for_store(
+            &self.inner.index_root,
+            ContentKind::Spec,
+            policy,
+        );
+
+        if let Some(classifier) = edge_classifier.as_ref() {
+            let all_edges = self.inner.list_all_edges().map_err(SpecError::Storage)?;
+            for spec in &specs {
+                for edge in all_edges
+                    .iter()
+                    .filter(|edge| edge.kind == "depends_on" && edge.from == spec.id)
+                {
+                    if self.inner.get_indexed(&edge.to)?.is_some() {
+                        continue;
+                    }
+                    match classifier.classify(edge.to) {
+                        EdgeReferenceResolution::Ok => {},
+                        EdgeReferenceResolution::CrossWorkspaceEdge {
+                            target_workspace_root,
+                            ..
+                        } => issues.push(SpecHealthFinding {
+                            id: spec.id,
+                            issue: format!(
+                                "cross_workspace_edge: {}",
+                                cross_workspace_edge_message(
+                                    edge.to,
+                                    &target_workspace_root,
+                                )
+                            ),
+                        }),
+                        EdgeReferenceResolution::DanglingEdge => {
+                            issues.push(SpecHealthFinding {
+                                id: spec.id,
+                                issue: format!(
+                                    "dangling_edge: depends_on edge points to {} which is missing.",
+                                    short_id8(edge.to)
+                                ),
+                            })
+                        },
+                    }
+                }
+            }
+        }
+
+        Ok(SpecHealthReport {
             specs_checked: specs.len(),
             issues,
-        }
+        })
     }
 
     pub fn update(

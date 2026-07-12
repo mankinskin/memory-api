@@ -17,6 +17,11 @@ use axum::{
 use ticket_api::{
     health::collect_findings,
     model::edge::EdgeRecord,
+    query_helpers::{
+        apply_field_filters,
+        parse_where_filters,
+        resolve_uuid_with_prefix,
+    },
     storage::{
         indexed::IndexedTicket,
         store::TicketStore,
@@ -56,6 +61,18 @@ pub(super) async fn handle_health_check(
             Ok(tickets) => tickets,
             Err(response) => return response,
         };
+    let field_filters = match parse_where_filters(&params.where_clauses) {
+        Ok(filters) => filters,
+        Err(message) => {
+            return viewer_api::error::ApiError::bad_request(
+                "invalid_where",
+                message,
+                &request_id,
+            )
+            .into_response_with_status(StatusCode::BAD_REQUEST);
+        },
+    };
+    let tickets = apply_field_filters(tickets, &field_filters);
 
     let workflow = match WorkflowModel::build(
         &store,
@@ -109,11 +126,28 @@ fn tickets_in_scope(
     all_edges: &[EdgeRecord],
     request_id: &str,
 ) -> Result<Vec<IndexedTicket>, Response> {
+    if !params.ids.is_empty() {
+        return explicit_tickets(store, &params.ids, request_id);
+    }
     if params.all.unwrap_or(false) {
         list_all_tickets(store, request_id)
     } else {
         root_scope_tickets(store, params, all_edges, request_id)
     }
+}
+
+fn explicit_tickets(
+    store: &TicketStore,
+    ids: &[String],
+    request_id: &str,
+) -> Result<Vec<IndexedTicket>, Response> {
+    let mut resolved = Vec::new();
+    for id in ids {
+        let uuid = resolve_uuid_with_prefix(store, id)
+            .map_err(|error| storage_err(error, request_id))?;
+        resolved.push(uuid);
+    }
+    Ok(load_live_tickets(store, &resolved))
 }
 
 fn list_all_tickets(
@@ -231,3 +265,4 @@ fn load_live_tickets(
         .filter_map(|id| store.get_indexed(id).ok().flatten())
         .collect()
 }
+

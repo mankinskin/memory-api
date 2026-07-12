@@ -150,7 +150,7 @@ impl TicketServer {
                 "health_check": {
                     "description": "Run health checks on tickets (descriptions, titles, deps, edges)",
                     "required": ["workspace"],
-                    "optional": ["root", "all", "ids", "depth", "direction"],
+                    "optional": ["root", "all", "ids", "depth", "direction", "where"],
                 },
                 "next_tickets": {
                     "description": "List unblocked ready tickets ordered by workflow progress, priority, and dependee count for worker agents",

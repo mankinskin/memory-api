@@ -116,46 +116,8 @@ impl TicketServer {
         store: &TicketStore,
         value: &str,
     ) -> Result<Uuid, McpError> {
-        if let Ok(id) = value.parse::<Uuid>() {
-            return Ok(id);
-        }
-
-        let trimmed = value.trim();
-        if trimmed.len() >= 8
-            && trimmed.chars().all(|ch| ch.is_ascii_hexdigit())
-        {
-            let tickets =
-                store.list(None, None, None).map_err(Self::store_err)?;
-            let prefix_lower = trimmed.to_ascii_lowercase();
-            let matches: Vec<Uuid> = tickets
-                .iter()
-                .filter(|ticket| {
-                    ticket.id.simple().to_string().starts_with(&prefix_lower)
-                })
-                .map(|ticket| ticket.id)
-                .collect();
-
-            return match matches.len() {
-                1 => Ok(matches[0]),
-                0 => Err(McpError::invalid_params(
-                    format!("no ticket found matching prefix '{trimmed}'"),
-                    None,
-                )),
-                count => Err(McpError::invalid_params(
-                    format!(
-                        "ambiguous prefix '{trimmed}': matches {count} tickets"
-                    ),
-                    None,
-                )),
-            };
-        }
-
-        Err(McpError::invalid_params(
-            format!(
-                "invalid UUID '{value}': expected full UUID or hex prefix (>= 8 chars)"
-            ),
-            None,
-        ))
+        ticket_api::query_helpers::resolve_uuid_with_prefix(store, value)
+            .map_err(Self::store_err)
     }
 
     async fn with_store<T>(
@@ -310,6 +272,7 @@ impl TicketServer {
             &input.ids,
             input.depth,
             input.direction.as_deref(),
+            &input.r#where,
         )
         .await
     }

@@ -395,6 +395,7 @@ async fn health_findings_parity_across_http_and_mcp() {
             &[],  // ids
             None, // depth
             None, // direction
+            &[],  // where
         )
         .await
         .expect("MCP run_health_checks");

@@ -4,6 +4,10 @@ use super::*;
 pub enum MoveError {
     Io(std::io::Error),
     Domain(String),
+    InteroperabilityContract {
+        artifact_class: &'static str,
+        detail: String,
+    },
 }
 
 impl std::fmt::Display for MoveError {
@@ -14,6 +18,13 @@ impl std::fmt::Display for MoveError {
         match self {
             MoveError::Io(error) => write!(f, "{error}"),
             MoveError::Domain(message) => write!(f, "{message}"),
+            MoveError::InteroperabilityContract {
+                artifact_class,
+                detail,
+            } => write!(
+                f,
+                "interoperability contract violation for {artifact_class}: {detail}"
+            ),
         }
     }
 }
@@ -476,11 +487,6 @@ pub struct MoveOutcome {
 }
 
 impl MoveJournal {
-    /// Marker prefix used by the journal interoperability-contract violation
-    /// message so callers and tests can match the failure deterministically.
-    pub const INTEROP_CONTRACT_MARKER: &'static str =
-        "interoperability contract violation for move-journal";
-
     /// Return the interoperability-contract gaps for this journal-backed
     /// operation.
     ///
@@ -517,20 +523,19 @@ impl MoveJournal {
 
     /// Validate the journal-backed operation interoperability contract.
     ///
-    /// Returns [`MoveError::Domain`] carrying [`Self::INTEROP_CONTRACT_MARKER`]
-    /// when a required identity, lineage, or mutation-payload-ownership field is
-    /// missing. This is enforced at the journal persistence boundary so a
-    /// non-compliant journal is never written to disk.
+    /// Returns [`MoveError::InteroperabilityContract`] when a required
+    /// identity, lineage, or mutation-payload-ownership field is missing. This
+    /// is enforced at the journal persistence boundary so a non-compliant
+    /// journal is never written to disk.
     pub fn validate_interoperability_contract(&self) -> MoveResult<()> {
         let gaps = self.interoperability_gaps();
         if gaps.is_empty() {
             return Ok(());
         }
-        Err(MoveError::Domain(format!(
-            "{}: {}",
-            Self::INTEROP_CONTRACT_MARKER,
-            gaps.join(", ")
-        )))
+        Err(MoveError::InteroperabilityContract {
+            artifact_class: "move-journal",
+            detail: gaps.join(", "),
+        })
     }
 }
 
@@ -577,9 +582,12 @@ mod interoperability_contract_tests {
             .validate_interoperability_contract()
             .expect_err("nil operation identity must fail the contract");
         match error {
-            MoveError::Domain(detail) => {
+            MoveError::InteroperabilityContract {
+                artifact_class,
+                detail,
+            } => {
                 assert!(
-                    detail.contains(MoveJournal::INTEROP_CONTRACT_MARKER),
+                    artifact_class == "move-journal",
                     "unexpected detail: {detail}"
                 );
                 assert!(

@@ -189,7 +189,7 @@ pub struct TopgraphArgs {
 #[derive(Debug, Args)]
 pub struct HealthArgs {
     /// Root ticket UUID or 8+ character hex prefix. Checks the subgraph rooted here.
-    #[arg(required_unless_present_any = ["all", "stdin"])]
+    #[arg(required_unless_present_any = ["all", "stdin", "ids"])]
     pub root: Option<String>,
     /// Check all tickets instead of a subgraph.
     #[arg(long, default_value_t = false)]
@@ -197,6 +197,9 @@ pub struct HealthArgs {
     /// Read newline-delimited ticket UUIDs from stdin instead of traversing a subgraph.
     #[arg(long, default_value_t = false)]
     pub stdin: bool,
+    /// Explicit ticket IDs (UUID or 8+ prefix). Can be repeated.
+    #[arg(long = "id")]
+    pub ids: Vec<String>,
     /// Maximum traversal depth when walking the subgraph (default: 0 = single ticket; max: 8).
     #[arg(long, default_value = "0")]
     pub depth: usize,

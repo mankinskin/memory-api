@@ -4,6 +4,7 @@ pub mod execution;
 pub mod health;
 pub mod model;
 pub mod output;
+pub mod query_helpers;
 pub mod storage;
 pub mod store_index;
 pub mod watcher;

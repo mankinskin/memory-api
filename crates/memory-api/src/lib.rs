@@ -1,3 +1,4 @@
+pub mod cross_store_edges;
 pub mod discovery;
 pub mod error;
 pub mod generated_markdown;

@@ -56,6 +56,12 @@ pub(crate) fn from_move_error(error: MoveError) -> StorageError {
     match error {
         MoveError::Io(io) => StorageError::Io(io),
         MoveError::Domain(message) => StorageError::Other(message),
+        MoveError::InteroperabilityContract {
+            artifact_class,
+            detail,
+        } => StorageError::Other(format!(
+            "interoperability contract violation for {artifact_class}: {detail}"
+        )),
     }
 }
 

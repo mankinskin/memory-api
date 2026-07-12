@@ -6,7 +6,11 @@ use std::{
 
 use memory_api::{
     generated_markdown::GeneratedMarkdownSnippet,
-    model::filesystem::ScanRoot,
+    model::{
+        edge::EdgeRecord,
+        filesystem::ScanRoot,
+    },
+    workspace_policy::WORKSPACE_POLICY_FILE,
 };
 use serde_json::Value;
 use tempfile::TempDir;
@@ -220,6 +224,62 @@ fn health_reports_missing_and_satisfied_contract_requirements() {
 
     let report = store.health(&id.to_string()).unwrap();
     assert_eq!(report.issues_count(), 0);
+}
+
+#[test]
+fn health_reports_cross_workspace_and_dangling_depends_on_edges() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path().join("repo");
+    let child_repo = repo.join("child");
+    fs::create_dir_all(&child_repo).unwrap();
+
+    fs::create_dir_all(child_repo.join(".ticket")).unwrap();
+    fs::write(
+        child_repo
+            .join(".ticket")
+            .join(WORKSPACE_POLICY_FILE),
+        "include_descendants = true\ninclude_ancestors = true\ndeny_external_paths = true\n",
+    )
+    .unwrap();
+
+    let mut parent_store = SpecStore::init(&repo.join(".spec")).unwrap();
+    let mut child_store = SpecStore::init(&child_repo.join(".spec")).unwrap();
+
+    let parent = make_spec("root/parent", "Parent");
+    let parent_id = parent_store.create(&parent, "body", None).unwrap();
+
+    let child = make_spec("child/dependent", "Dependent");
+    let child_id = child_store.create(&child, "body", None).unwrap();
+
+    child_store
+        .entity_store()
+        .add_edge(EdgeRecord {
+            from: child_id,
+            to: parent_id,
+            kind: "depends_on".to_string(),
+            created_at: chrono::Utc::now(),
+        })
+        .unwrap();
+
+    let missing_id = uuid::Uuid::new_v4();
+    child_store
+        .entity_store()
+        .add_edge(EdgeRecord {
+            from: child_id,
+            to: missing_id,
+            kind: "depends_on".to_string(),
+            created_at: chrono::Utc::now(),
+        })
+        .unwrap();
+
+    let report = child_store.health(&child_id.to_string()).unwrap();
+    assert!(report.issues.iter().any(|issue| {
+        issue.id == child_id
+            && issue.issue.starts_with("cross_workspace_edge:")
+    }));
+    assert!(report.issues.iter().any(|issue| {
+        issue.id == child_id && issue.issue.starts_with("dangling_edge:")
+    }));
 }
 
 #[test]

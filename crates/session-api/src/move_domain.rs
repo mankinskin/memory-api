@@ -39,6 +39,12 @@ fn from_move_error(error: MoveError) -> SessionError {
     match error {
         MoveError::Io(io) => SessionError::Move(io.to_string()),
         MoveError::Domain(message) => SessionError::Move(message),
+        MoveError::InteroperabilityContract {
+            artifact_class,
+            detail,
+        } => SessionError::Move(format!(
+            "interoperability contract violation for {artifact_class}: {detail}"
+        )),
     }
 }
 

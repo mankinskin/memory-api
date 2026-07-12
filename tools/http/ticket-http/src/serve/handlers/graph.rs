@@ -144,9 +144,13 @@ pub struct HealthCheckQuery {
     pub root: Option<Uuid>,
     #[serde(default)]
     pub all: Option<bool>,
+    #[serde(default)]
+    pub ids: Vec<String>,
     #[serde(default = "default_health_depth")]
     pub depth: usize,
     pub direction: Option<String>,
+    #[serde(default, rename = "where")]
+    pub where_clauses: Vec<String>,
 }
 
 fn default_health_depth() -> usize {
