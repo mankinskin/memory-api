@@ -1,0 +1,1 @@
+{"rev":1,"ts":"2026-07-12T04:11:51.680130700+00:00","fields":{"component":"feedback-api","slug":"feedback-api/contract/v2","state":"draft","title":"[feedback-api] Contract v2 — first-class crate, unified FeedbackEntry schema, and persisted ring semantics","type":"specification"}}

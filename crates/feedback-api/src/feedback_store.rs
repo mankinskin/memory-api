@@ -94,6 +94,30 @@ impl EntityFeedbackStore {
         Ok(event)
     }
 
+    pub fn record_entry(
+        &self,
+        entry: FeedbackEntry,
+    ) -> Result<FeedbackEntry, String> {
+        self.ensure_workspace_urn(&entry.target)?;
+        append_ndjson(&self.entries_path(), &entry)?;
+        Ok(entry)
+    }
+
+    pub fn entries_for(
+        &self,
+        urn: &EntityUrn,
+    ) -> Result<Vec<FeedbackEntry>, String> {
+        self.ensure_workspace_urn(urn)?;
+        let mut entries: Vec<FeedbackEntry> = read_ndjson::<FeedbackEntry>(&self.entries_path())?
+            .into_iter()
+            .filter(|item| &item.target == urn)
+            .collect();
+        entries.sort_by(|left, right| {
+            left.provenance.executed_at.cmp(&right.provenance.executed_at)
+        });
+        Ok(entries)
+    }
+
     /// Apply a retention policy to the persisted usage and rating logs using
     /// the current time as the age reference.
     pub fn apply_retention(
@@ -105,8 +129,7 @@ impl EntityFeedbackStore {
 
     /// Apply a retention policy relative to an explicit reference time. The
     /// logs are rewritten in chronological order, keeping only events allowed
-    /// by the policy. Applying the same policy twice removes nothing on the
-    /// second pass.
+    /// by the policy. Applying the same policy twice removes nothing.
     pub fn apply_retention_at(
         &self,
         policy: &RetentionPolicy,
@@ -193,6 +216,10 @@ impl EntityFeedbackStore {
 
     pub(super) fn rating_events_path(&self) -> PathBuf {
         self.feedback_dir().join(FEEDBACK_CORE_RATING_FILE)
+    }
+
+    pub(super) fn entries_path(&self) -> PathBuf {
+        self.feedback_dir().join(FEEDBACK_ENTRY_FILE)
     }
 
     fn ensure_workspace_urn(

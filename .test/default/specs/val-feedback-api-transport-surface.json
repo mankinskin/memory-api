@@ -1,0 +1,15 @@
+{
+  "id": "val-feedback-api-transport-surface",
+  "title": "Feedback transport surface validation",
+  "command": "cargo build -p feedback-cli -p feedback-mcp -p feedback-http",
+  "detail": "Validates transport adapters expose ingest, inbox/query, mine, and summary paths with feedback-api backing store.",
+  "links": {
+    "spec_ids": [
+      "17fc536c-f08f-4b5f-b6ba-a7bcf1dc4898"
+    ],
+    "ticket_ids": [
+      "5d4078fa-d7eb-4f0d-bf84-e21029f5ad5d",
+      "b1e9e744-aeac-474a-91d9-07e3a362dc76"
+    ]
+  }
+}

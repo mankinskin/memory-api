@@ -1,4 +1,3 @@
-
 use super::*;
 
 #[test]
@@ -316,4 +315,33 @@ fn retention_keeps_most_recent_events_by_count() {
     // The two most recent (chronologically last) events survive.
     assert_eq!(kept[0].timestamp, "2025-01-04T00:00:00+00:00");
     assert_eq!(kept[1].timestamp, "2025-01-05T00:00:00+00:00");
+}
+
+#[test]
+fn feedback_entry_round_trip_records_schema_and_status() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = EntityFeedbackStore::new(dir.path(), "memory-api").unwrap();
+    let urn = EntityUrn::rule("memory-api", "rule-entry").unwrap();
+
+    let entry = FeedbackEntry::new(
+        FeedbackSource::System,
+        urn.clone(),
+        Some(FeedbackRating::Mixed),
+        Some("Needs stronger examples".to_string()),
+        Some(FeedbackNoteKind::Suggestion),
+        FeedbackProvenance::new(
+            Some("session-1".to_string()),
+            Some("copilot".to_string()),
+            None,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    store.record_entry(entry).unwrap();
+    let loaded = store.entries_for(&urn).unwrap();
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].schema_version, FEEDBACK_SCHEMA_VERSION);
+    assert_eq!(loaded[0].status, FeedbackStatus::New);
+    assert_eq!(loaded[0].source, FeedbackSource::System);
 }

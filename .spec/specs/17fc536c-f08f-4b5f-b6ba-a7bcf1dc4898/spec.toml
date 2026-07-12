@@ -1,0 +1,7 @@
+id = "17fc536c-f08f-4b5f-b6ba-a7bcf1dc4898"
+created_at = "2026-07-12T04:11:51.638332400+00:00"
+title = "[feedback-api] Contract v2 — first-class crate, unified FeedbackEntry schema, and persisted ring semantics"
+state = "draft"
+component = "feedback-api"
+slug = "feedback-api/contract/v2"
+type = "specification"

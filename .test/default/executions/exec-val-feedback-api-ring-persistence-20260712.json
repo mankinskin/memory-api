@@ -1,0 +1,21 @@
+{
+  "id": "exec-val-feedback-api-ring-persistence-20260712",
+  "validation_spec_id": "val-feedback-api-ring-persistence",
+  "outcome": "passed",
+  "executed_at": "2026-07-12T04:14:07.527667700Z",
+  "detail": "cargo test -p rule-api => 70 passed",
+  "links": {
+    "spec_ids": [
+      "17fc536c-f08f-4b5f-b6ba-a7bcf1dc4898"
+    ],
+    "ticket_ids": [
+      "5d4078fa-d7eb-4f0d-bf84-e21029f5ad5d"
+    ]
+  },
+  "provenance": {
+    "domain": "rule-api",
+    "operation": "ring-persistence",
+    "transport": "cli",
+    "run_id": "feedback-rebuild-20260712"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "id": "val-feedback-api-store-roundtrip",
+  "title": "Feedback API store round-trip validation",
+  "command": "cargo test -p feedback-api",
+  "detail": "Validates ingest/write/read round-trip behavior for feedback entries, usage, and rating records.",
+  "links": {
+    "spec_ids": [
+      "17fc536c-f08f-4b5f-b6ba-a7bcf1dc4898"
+    ],
+    "ticket_ids": [
+      "fb6aa078-1f8b-4a76-99bd-3a26190b1208",
+      "5d4078fa-d7eb-4f0d-bf84-e21029f5ad5d"
+    ]
+  }
+}
