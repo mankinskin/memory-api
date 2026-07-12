@@ -169,6 +169,73 @@ fn parse_sync_rules_command() {
 }
 
 #[test]
+fn parse_missing_rule_command() {
+    let cli = parse_cli_from([
+        "rule",
+        "missing-rule",
+        "query without coverage",
+        "--context-tag",
+        "policy",
+        "--context-tag",
+        "session",
+        "--workspace-slug",
+        "default",
+    ])
+    .unwrap();
+
+    match cli.command {
+        RuleCommandCli::MissingRule(args) => {
+            assert_eq!(args.query, "query without coverage");
+            assert_eq!(args.context_tags, vec!["policy", "session"]);
+            assert_eq!(args.workspace_slug, "default");
+            assert!(!args.has_matching_rule);
+        },
+        _ => panic!("expected missing-rule command"),
+    }
+}
+
+#[test]
+fn missing_rule_command_relays_signal_to_ticket_and_feedback_stores() {
+    let dir = tempdir().unwrap();
+    let workspace_root = dir.path().join("workspace");
+    let rule_index_root = workspace_root.join(".rule");
+    RuleStore::init(&rule_index_root).unwrap();
+
+    let payload = dispatch::dispatch(
+        RuleCommandCli::MissingRule(MissingRuleArgs {
+            query: "rule coverage gap".to_string(),
+            context_tags: vec!["policy".to_string()],
+            workspace_slug: "default".to_string(),
+            has_matching_rule: false,
+        }),
+        &rule_index_root,
+    )
+    .unwrap();
+
+    assert_eq!(payload["status"], "ok");
+    assert_eq!(payload["edge"], "missing-rule");
+    assert_eq!(payload["signal_emitted"], true);
+    assert_eq!(payload["ticket_created"], true);
+
+    let ticket_id = payload["ticket_id"].as_str().unwrap();
+    let ticket_store_root =
+        memory_api::workspace::resolve_store_root_from(&workspace_root, ".ticket");
+    let ticket_store =
+        ticket_api::storage::TicketStore::open_or_init(&ticket_store_root).unwrap();
+    let parsed_id = uuid::Uuid::parse_str(ticket_id).unwrap();
+    assert!(ticket_store.get(&parsed_id).is_ok());
+
+    let feedback_store_root =
+        memory_api::workspace::resolve_store_root_from(&workspace_root, ".feedback");
+    let feedback_store =
+        feedback_api::EntityFeedbackStore::new(feedback_store_root, "default").unwrap();
+    let ticket_urn =
+        feedback_api::EntityUrn::ticket("default", ticket_id.to_string()).unwrap();
+    let entries = feedback_store.entries_for(&ticket_urn).unwrap();
+    assert_eq!(entries.len(), 1);
+}
+
+#[test]
 fn sync_rules_rejects_non_generated_file_input() {
     let dir = tempdir().unwrap();
     let index_root = dir.path().join(".rule");

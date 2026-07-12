@@ -57,6 +57,8 @@ pub enum RuleCommandCli {
     SyncRules(SyncRulesArgs),
     #[command(name = "benchmark-targets")]
     BenchmarkTargets(BenchmarkTargetsArgs),
+    #[command(name = "missing-rule")]
+    MissingRule(MissingRuleArgs),
     List(ListArgs),
     Search(SearchArgs),
     Scan(ScanArgs),
@@ -173,6 +175,21 @@ pub struct FeedbackArgs {
     pub session_id: Option<String>,
     #[arg(long = "agent-or-user-id")]
     pub agent_or_user_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct MissingRuleArgs {
+    /// Situation query text that produced no rule matches.
+    pub query: String,
+    /// Optional tags to carry into missing-rule ticket creation.
+    #[arg(long = "context-tag")]
+    pub context_tags: Vec<String>,
+    /// Effective feedback workspace slug (defaults to `default`).
+    #[arg(long = "workspace-slug", default_value = "default")]
+    pub workspace_slug: String,
+    /// Mark that a rule did match; command becomes a no-op signal pass-through.
+    #[arg(long, default_value_t = false)]
+    pub has_matching_rule: bool,
 }
 
 #[derive(Debug, Args)]

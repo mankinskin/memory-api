@@ -7,6 +7,7 @@ use std::{
     },
 };
 
+use feedback_api::EntityFeedbackStore;
 use memory_api::model::filesystem::ScanRoot;
 use rule_api::{
     FeedbackNoteKind,
@@ -40,6 +41,7 @@ use super::{
     IdArgs,
     ImportFileArgs,
     ListArgs,
+    MissingRuleArgs,
     MoveArgs,
     RuleCommandCli,
     ScanArgs,
@@ -110,6 +112,8 @@ pub(super) fn dispatch_with_workspace_root(
         RuleCommandCli::Feedback(args) => feedback_command(&mut store, args),
         RuleCommandCli::Scan(args) =>
             scan_command(&mut store, args, index_root, workspace_root_override),
+        RuleCommandCli::MissingRule(args) =>
+            missing_rule_command(index_root, args),
         RuleCommandCli::Move(args) => move_command(&store, args),
         RuleCommandCli::Init => unreachable!("Init handled before store open"),
         other => dispatch_secondary(other, &mut store, index_root),
@@ -184,9 +188,64 @@ fn dispatch_secondary(
         | RuleCommandCli::Update(_)
         | RuleCommandCli::Feedback(_)
         | RuleCommandCli::Scan(_)
+        | RuleCommandCli::MissingRule(_)
         | RuleCommandCli::Move(_)
         | RuleCommandCli::Init => unreachable!("handled in primary dispatch"),
     }
+}
+
+fn missing_rule_command(
+    index_root: &Path,
+    args: MissingRuleArgs,
+) -> Result<Value, CliRunError> {
+    let signal = rule_api::emit_missing_rule_match_signal(
+        args.query,
+        &args.context_tags,
+        args.has_matching_rule,
+    );
+
+    let Some(signal) = signal else {
+        return Ok(json!({
+            "status": "ok",
+            "edge": "missing-rule",
+            "action": "noop",
+            "reason": "matching-rule-present",
+        }));
+    };
+
+    let workspace_root = index_root.parent().ok_or_else(|| {
+        CliRunError::BadRequest("invalid rule index root".to_string())
+    })?;
+    let ticket_store_root =
+        memory_api::workspace::resolve_store_root_from(workspace_root, ".ticket");
+    let feedback_store_root =
+        memory_api::workspace::resolve_store_root_from(workspace_root, ".feedback");
+
+    let ticket_store = ticket_api::storage::TicketStore::open_or_init(&ticket_store_root)
+        .map_err(|err| CliRunError::BadRequest(err.to_string()))?;
+    let feedback_store = EntityFeedbackStore::new(
+        &feedback_store_root,
+        args.workspace_slug,
+    )
+    .map_err(CliRunError::BadRequest)?;
+
+    let ticket_id = ticket_api::handle_missing_rule_match(
+        &ticket_store,
+        &feedback_store,
+        &signal.query,
+        &signal.context_tags,
+        signal.has_matching_rule,
+        None,
+    )
+    .map_err(CliRunError::BadRequest)?;
+
+    Ok(json!({
+        "status": "ok",
+        "edge": "missing-rule",
+        "signal_emitted": true,
+        "ticket_created": ticket_id.is_some(),
+        "ticket_id": ticket_id.map(|id| id.to_string()),
+    }))
 }
 
 fn discover_child_scan_roots(
