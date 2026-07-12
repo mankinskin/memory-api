@@ -1,6 +1,6 @@
 id = "7c281aec-092c-448d-bf26-94522e07b4e8"
 created_at = "2026-07-10T22:33:43.639783500+00:00"
 title = "[content-materialization][memory-api] G-B.1 retro-fix: typed MoveError variant for interoperability-contract violation (replace string marker)"
-state = "in-review"
+state = "done"
 effort = "1500"
 type = "tracker-improvement"

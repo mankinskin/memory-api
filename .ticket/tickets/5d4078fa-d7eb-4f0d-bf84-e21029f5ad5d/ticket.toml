@@ -1,6 +1,13 @@
 id = "5d4078fa-d7eb-4f0d-bf84-e21029f5ad5d"
 created_at = "2026-07-10T22:33:44.173880700+00:00"
 title = "[content-materialization][feedback-api] G-D: Close the feedback ring — execution→verified, transcript mining, missing-rule tickets, ticket-entity feedback"
-state = "new"
+state = "ready"
 effort = "3000"
+depends_on = [
+    "fa6e2c19-5fd8-4305-90c7-f1f4bea8df36",
+    "633a38b8-7200-4979-9ce9-8c296ccc78bd",
+    "6875dff6-7191-46aa-9358-9567430969f1",
+    "b1e9e744-aeac-474a-91d9-07e3a362dc76",
+    "8a90a63c-0a07-439f-90e8-9124212b2dc8"
+]
 type = "tracker-improvement"

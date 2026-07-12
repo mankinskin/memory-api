@@ -1,7 +1,7 @@
 id = "633a38b8-7200-4979-9ce9-8c296ccc78bd"
 created_at = "2026-07-10T22:33:43.860326400+00:00"
 title = "[content-materialization][spec-api] G-A: Spec-contract v2 — motivation, dependent-expectation, computed guards, positions"
-state = "new"
+state = "done"
 depends_on = ["c680b137-01a1-4d13-b219-39af86eaa71b"]
 effort = "2500"
 type = "tracker-improvement"

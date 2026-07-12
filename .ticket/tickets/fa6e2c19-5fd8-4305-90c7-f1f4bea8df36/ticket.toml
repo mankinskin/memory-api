@@ -1,6 +1,6 @@
 id = "fa6e2c19-5fd8-4305-90c7-f1f4bea8df36"
 created_at = "2026-07-10T22:33:44.095391100+00:00"
 title = "[content-materialization][memory-api] G-B.2 retro-fix: trait-based interoperability contract (replace runtime validate_interoperability_contract)"
-state = "new"
+state = "done"
 effort = "2500"
 type = "tracker-improvement"
