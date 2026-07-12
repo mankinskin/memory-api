@@ -1,0 +1,14 @@
+{
+  "id": "val-feedback-api-ring-persistence",
+  "title": "Feedback ring persistence validation",
+  "command": "cargo test -p feedback-api -p spec-api -p session-api -p rule-api && cargo test -p ticket-api missing_rule",
+  "detail": "Validates distributed ring handlers persist feedback records in their owning domains (frontend ingestion in feedback-api, execution recompute in spec-api, transcript mining in session-api, no-match signaling seam in rule-api, and missing-rule follow-up in ticket-api).",
+  "links": {
+    "spec_ids": [
+      "17fc536c-f08f-4b5f-b6ba-a7bcf1dc4898"
+    ],
+    "ticket_ids": [
+      "5d4078fa-d7eb-4f0d-bf84-e21029f5ad5d"
+    ]
+  }
+}

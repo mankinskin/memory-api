@@ -1,0 +1,22 @@
+{
+  "id": "exec-val-feedback-api-transport-surface-20260712-ring-redistribution",
+  "validation_spec_id": "val-feedback-api-transport-surface",
+  "outcome": "passed",
+  "executed_at": "2026-07-12T16:29:21.689728500Z",
+  "detail": "cargo build (workspace) succeeded, including feedback-cli, feedback-mcp, and feedback-http targets",
+  "links": {
+    "spec_ids": [
+      "17fc536c-f08f-4b5f-b6ba-a7bcf1dc4898"
+    ],
+    "ticket_ids": [
+      "5d4078fa-d7eb-4f0d-bf84-e21029f5ad5d",
+      "b1e9e744-aeac-474a-91d9-07e3a362dc76"
+    ]
+  },
+  "provenance": {
+    "domain": "feedback-transports",
+    "operation": "adapter-build",
+    "transport": "cli",
+    "run_id": "ring-redistribution-20260712"
+  }
+}

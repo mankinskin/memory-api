@@ -1,0 +1,22 @@
+{
+  "id": "exec-val-feedback-api-store-roundtrip-20260712-ring-redistribution",
+  "validation_spec_id": "val-feedback-api-store-roundtrip",
+  "outcome": "passed",
+  "executed_at": "2026-07-12T16:29:21.689905800Z",
+  "detail": "cargo test -p feedback-api (13 passed) after moving frontend ingestion edge into feedback-api",
+  "links": {
+    "spec_ids": [
+      "17fc536c-f08f-4b5f-b6ba-a7bcf1dc4898"
+    ],
+    "ticket_ids": [
+      "5d4078fa-d7eb-4f0d-bf84-e21029f5ad5d",
+      "fb6aa078-1f8b-4a76-99bd-3a26190b1208"
+    ]
+  },
+  "provenance": {
+    "domain": "feedback-api",
+    "operation": "store-roundtrip",
+    "transport": "cli",
+    "run_id": "ring-redistribution-20260712"
+  }
+}

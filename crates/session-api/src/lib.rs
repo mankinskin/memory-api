@@ -5,6 +5,7 @@ pub mod model;
 pub mod move_domain;
 pub mod peek;
 pub mod store;
+pub mod transcript_feedback;
 
 pub use audit::{
     SessionAuditFinding,
@@ -61,4 +62,8 @@ pub use store::{
     SessionStorePlan,
     SessionWorktreeCheckInReceipt,
     SessionWorktreeCheckInRequest,
+};
+pub use transcript_feedback::{
+    MiningFeedbackResult,
+    mine_transcript_for_rule_confusion,
 };

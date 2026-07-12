@@ -4,22 +4,16 @@ pub mod feedback;
 pub mod import;
 pub mod manifest;
 pub mod move_domain;
+pub mod no_match;
 pub mod render;
-pub mod ring;
 pub mod store;
 pub mod store_index;
 pub mod targets;
 pub mod workspace;
 
-pub use ring::{
-    parse_guards_from_markdown,
-    recompute_spec_verified_state,
-    mine_transcript_for_rule_confusion,
-    handle_missing_rule_match,
-    process_frontend_feedback,
-    MiningFeedbackResult,
-    SituationQuery,
-    FrontendFeedbackSubmission,
+pub use no_match::{
+    MissingRuleMatchSignal,
+    emit_missing_rule_match_signal,
 };
 
 pub use default_schema::{

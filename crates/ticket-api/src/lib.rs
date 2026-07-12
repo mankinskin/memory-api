@@ -3,6 +3,7 @@ pub mod error;
 pub mod execution;
 pub mod health;
 pub mod model;
+pub mod missing_rule;
 pub mod output;
 pub mod query_helpers;
 pub mod storage;
@@ -34,4 +35,9 @@ pub use store_index::{
     TicketCatalogArtifacts,
     TicketCatalogSource,
     generate_ticket_catalog,
+};
+
+pub use missing_rule::{
+    SituationQuery,
+    handle_missing_rule_match,
 };

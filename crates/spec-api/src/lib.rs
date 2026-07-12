@@ -6,6 +6,7 @@ pub mod move_domain;
 pub mod slug;
 pub mod store;
 pub mod store_index;
+pub mod verification;
 pub mod workspace;
 
 pub use memory_api::generated_markdown::GeneratedMarkdownSnippet;
@@ -47,5 +48,9 @@ pub use store_index::{
     SpecCatalogArtifacts,
     SpecCatalogSource,
     generate_spec_catalog,
+};
+pub use verification::{
+    parse_guards_from_markdown,
+    recompute_spec_verified_state,
 };
 pub use workspace::workspace_recovery_hint;
