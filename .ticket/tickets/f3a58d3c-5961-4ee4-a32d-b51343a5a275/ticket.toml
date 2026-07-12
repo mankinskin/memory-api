@@ -1,6 +1,6 @@
 id = "f3a58d3c-5961-4ee4-a32d-b51343a5a275"
 created_at = "2026-07-10T23:06:04.743064+00:00"
 title = "[memory-api] Cross-store edge health: shared resolver + policy-aware parent-workspace warning (parity across all stores)"
-state = "ready"
+state = "done"
 effort = "3500"
 type = "tracker-improvement"
