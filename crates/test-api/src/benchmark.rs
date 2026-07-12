@@ -21,6 +21,9 @@ use serde::{
 use crate::{
     TestError,
     ValidationLinks,
+    InteroperableArtifact,
+    TraceableArtifact,
+    IdentifiableArtifact,
 };
 
 /// A single benchmark measurement for one operation, optionally compared
@@ -91,8 +94,21 @@ impl BenchmarkExecution {
             None => false,
         };
     }
+}
 
-    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+impl IdentifiableArtifact for BenchmarkExecution {
+    type Id = str;
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+}
+
+impl InteroperableArtifact for BenchmarkExecution {
+    fn artifact_class(&self) -> &'static str {
+        "benchmark-execution"
+    }
+
+    fn interoperability_gaps(&self) -> Vec<&'static str> {
         let mut gaps = Vec::new();
         if self.domain.trim().is_empty() {
             gaps.push("missing domain");
@@ -108,6 +124,27 @@ impl BenchmarkExecution {
         }
         gaps
     }
+}
+
+impl TraceableArtifact for BenchmarkExecution {
+    fn domain(&self) -> Option<&str> {
+        Some(&self.domain)
+    }
+    fn operation(&self) -> Option<&str> {
+        Some(&self.operation)
+    }
+    fn run_id(&self) -> Option<&str> {
+        self.run_id.as_deref()
+    }
+    fn has_traceability_links(&self) -> bool {
+        self.links.has_traceability_links()
+    }
+}
+
+impl BenchmarkExecution {
+    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+        <Self as InteroperableArtifact>::interoperability_gaps(self)
+    }
 
     pub fn validate_interoperability_contract(&self) -> Result<(), TestError> {
         let gaps = self.interoperability_gaps();
@@ -116,7 +153,7 @@ impl BenchmarkExecution {
         }
 
         Err(TestError::InteroperabilityContract {
-            record_kind: "benchmark-execution".to_string(),
+            record_kind: <Self as InteroperableArtifact>::artifact_class(self).to_string(),
             detail: gaps.join(", "),
         })
     }

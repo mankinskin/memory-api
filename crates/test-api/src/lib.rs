@@ -9,9 +9,11 @@ use serde::{
 
 mod benchmark;
 mod error;
+mod interoperability;
 mod store;
 mod store_index;
 
+pub use interoperability::{InteroperableArtifact, IdentifiableArtifact, TraceableArtifact};
 pub use benchmark::{
     BenchmarkExecution,
     BenchmarkQuery,
@@ -293,8 +295,21 @@ impl ValidationExecution {
     ) -> bool {
         self.links.links_to_log(log_id)
     }
+}
 
-    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+impl IdentifiableArtifact for ValidationExecution {
+    type Id = str;
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+}
+
+impl InteroperableArtifact for ValidationExecution {
+    fn artifact_class(&self) -> &'static str {
+        "validation-execution"
+    }
+
+    fn interoperability_gaps(&self) -> Vec<&'static str> {
         let mut gaps = Vec::new();
         if self.provenance.domain.as_deref().is_none() {
             gaps.push("missing provenance.domain");
@@ -310,6 +325,27 @@ impl ValidationExecution {
         }
         gaps
     }
+}
+
+impl TraceableArtifact for ValidationExecution {
+    fn domain(&self) -> Option<&str> {
+        self.provenance.domain.as_deref()
+    }
+    fn operation(&self) -> Option<&str> {
+        self.provenance.operation.as_deref()
+    }
+    fn run_id(&self) -> Option<&str> {
+        self.provenance.run_id.as_deref()
+    }
+    fn has_traceability_links(&self) -> bool {
+        self.links.has_traceability_links()
+    }
+}
+
+impl ValidationExecution {
+    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+        <Self as InteroperableArtifact>::interoperability_gaps(self)
+    }
 
     pub fn validate_interoperability_contract(&self) -> Result<(), TestError> {
         let gaps = self.interoperability_gaps();
@@ -318,7 +354,7 @@ impl ValidationExecution {
         }
 
         Err(TestError::InteroperabilityContract {
-            record_kind: "validation-execution".to_string(),
+            record_kind: <Self as InteroperableArtifact>::artifact_class(self).to_string(),
             detail: gaps.join(", "),
         })
     }

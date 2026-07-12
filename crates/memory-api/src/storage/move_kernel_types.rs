@@ -1,4 +1,5 @@
 use super::*;
+use test_api::InteroperableArtifact;
 
 #[derive(Debug)]
 pub enum MoveError {
@@ -486,16 +487,12 @@ pub struct MoveOutcome {
     pub rolled_back: bool,
 }
 
-impl MoveJournal {
-    /// Return the interoperability-contract gaps for this journal-backed
-    /// operation.
-    ///
-    /// A journal is the authoritative record of an operation and must carry
-    /// authoritative identity, replay/rollback lineage, and deterministic
-    /// mutation payload ownership before it is persisted. Outward links to
-    /// tests or logs stay optional and are intentionally not required here so
-    /// journal authority never moves elsewhere.
-    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+impl InteroperableArtifact for MoveJournal {
+    fn artifact_class(&self) -> &'static str {
+        "move-journal"
+    }
+
+    fn interoperability_gaps(&self) -> Vec<&'static str> {
         let mut gaps = Vec::new();
         if self.id.is_nil() {
             gaps.push("missing authoritative journal identity");
@@ -520,6 +517,20 @@ impl MoveJournal {
         }
         gaps
     }
+}
+
+impl MoveJournal {
+    /// Return the interoperability-contract gaps for this journal-backed
+    /// operation.
+    ///
+    /// A journal is the authoritative record of an operation and must carry
+    /// authoritative identity, replay/rollback lineage, and deterministic
+    /// mutation payload ownership before it is persisted. Outward links to
+    /// tests or logs stay optional and are intentionally not required here so
+    /// journal authority never moves elsewhere.
+    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+        <Self as InteroperableArtifact>::interoperability_gaps(self)
+    }
 
     /// Validate the journal-backed operation interoperability contract.
     ///
@@ -533,7 +544,7 @@ impl MoveJournal {
             return Ok(());
         }
         Err(MoveError::InteroperabilityContract {
-            artifact_class: "move-journal",
+            artifact_class: <Self as InteroperableArtifact>::artifact_class(self),
             detail: gaps.join(", "),
         })
     }

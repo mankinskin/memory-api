@@ -1,4 +1,5 @@
 use super::*;
+use test_api::InteroperableArtifact;
 
 pub(super) fn resolve_target_git_root_or_block(
     target_workspace_root: &Path,
@@ -658,6 +659,10 @@ pub fn persist_journal(
     store_root: &Path,
     journal: &MoveJournal,
 ) -> MoveResult<()> {
+    // Compile-time check that MoveJournal implements InteroperableArtifact
+    fn assert_interoperable<T: InteroperableArtifact>() {}
+    assert_interoperable::<MoveJournal>();
+
     journal.validate_interoperability_contract()?;
     let path = journal_path(store_root, journal.id);
     if let Some(parent) = path.parent() {

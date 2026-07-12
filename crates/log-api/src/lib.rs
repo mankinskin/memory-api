@@ -9,6 +9,9 @@ use serde::{
 use test_api::{
     ValidationExecution,
     ValidationLinks,
+    InteroperableArtifact,
+    IdentifiableArtifact,
+    TraceableArtifact,
 };
 
 mod error;
@@ -94,8 +97,19 @@ impl From<ValidationLinks> for ValidationLogLinks {
     }
 }
 
-impl ValidationLogCapture {
-    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+impl IdentifiableArtifact for ValidationLogCapture {
+    type Id = str;
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+}
+
+impl InteroperableArtifact for ValidationLogCapture {
+    fn artifact_class(&self) -> &'static str {
+        "validation-log-capture"
+    }
+
+    fn interoperability_gaps(&self) -> Vec<&'static str> {
         let mut gaps = Vec::new();
         if self.validation_execution_id.trim().is_empty() {
             gaps.push("missing validation_execution_id");
@@ -104,6 +118,12 @@ impl ValidationLogCapture {
             gaps.push("missing execution link");
         }
         gaps
+    }
+}
+
+impl ValidationLogCapture {
+    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+        <Self as InteroperableArtifact>::interoperability_gaps(self)
     }
 
     pub fn validate_interoperability_contract(
@@ -115,7 +135,7 @@ impl ValidationLogCapture {
         }
 
         Err(crate::LogError::InteroperabilityContract {
-            record_kind: "validation-log-capture".to_string(),
+            record_kind: <Self as InteroperableArtifact>::artifact_class(self).to_string(),
             detail: gaps.join(", "),
         })
     }
@@ -345,8 +365,19 @@ pub struct RuntimeLogSession {
     pub links: RuntimeLogLinks,
 }
 
-impl RuntimeLogSession {
-    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+impl IdentifiableArtifact for RuntimeLogSession {
+    type Id = str;
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+}
+
+impl InteroperableArtifact for RuntimeLogSession {
+    fn artifact_class(&self) -> &'static str {
+        "runtime-log-session"
+    }
+
+    fn interoperability_gaps(&self) -> Vec<&'static str> {
         let mut gaps = Vec::new();
         if self.operation.as_deref().is_none() {
             gaps.push("missing operation");
@@ -359,6 +390,28 @@ impl RuntimeLogSession {
         }
         gaps
     }
+}
+
+impl TraceableArtifact for RuntimeLogSession {
+    fn domain(&self) -> Option<&str> {
+        // RuntimeLogSession carries no explicit domain field.
+        None
+    }
+    fn operation(&self) -> Option<&str> {
+        self.operation.as_deref()
+    }
+    fn run_id(&self) -> Option<&str> {
+        self.run_id.as_deref()
+    }
+    fn has_traceability_links(&self) -> bool {
+        self.links.has_correlation_links()
+    }
+}
+
+impl RuntimeLogSession {
+    pub fn interoperability_gaps(&self) -> Vec<&'static str> {
+        <Self as InteroperableArtifact>::interoperability_gaps(self)
+    }
 
     pub fn validate_interoperability_contract(
         &self
@@ -369,7 +422,7 @@ impl RuntimeLogSession {
         }
 
         Err(crate::LogError::InteroperabilityContract {
-            record_kind: "runtime-log-session".to_string(),
+            record_kind: <Self as InteroperableArtifact>::artifact_class(self).to_string(),
             detail: gaps.join(", "),
         })
     }

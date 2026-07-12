@@ -19,6 +19,8 @@ use crate::{
     ValidationExecution,
     ValidationOutcome,
     ValidationSpec,
+    TraceableArtifact,
+    IdentifiableArtifact,
     benchmark::{
         BenchmarkExecution,
         BenchmarkQuery,
@@ -121,6 +123,10 @@ impl TestStoreConfig {
         &self,
         execution: &ValidationExecution,
     ) -> Result<PathBuf, TestError> {
+        // Compile-time check that ValidationExecution implements TraceableArtifact + IdentifiableArtifact
+        fn assert_interoperable<T: TraceableArtifact + IdentifiableArtifact<Id = str>>() {}
+        assert_interoperable::<ValidationExecution>();
+
         execution.validate_interoperability_contract()?;
         let path = self.execution_path(&execution.id)?;
         write_json(&path, execution)?;
@@ -262,6 +268,10 @@ impl TestStoreConfig {
         &self,
         benchmark: &BenchmarkExecution,
     ) -> Result<PathBuf, TestError> {
+        // Compile-time check that BenchmarkExecution implements TraceableArtifact + IdentifiableArtifact
+        fn assert_interoperable<T: TraceableArtifact + IdentifiableArtifact<Id = str>>() {}
+        assert_interoperable::<BenchmarkExecution>();
+
         benchmark.validate_interoperability_contract()?;
         let path = self.benchmark_path(&benchmark.id)?;
         write_json(&path, benchmark)?;
