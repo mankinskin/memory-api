@@ -5,10 +5,22 @@ pub mod import;
 pub mod manifest;
 pub mod move_domain;
 pub mod render;
+pub mod ring;
 pub mod store;
 pub mod store_index;
 pub mod targets;
 pub mod workspace;
+
+pub use ring::{
+    parse_guards_from_markdown,
+    recompute_spec_verified_state,
+    mine_transcript_for_rule_confusion,
+    handle_missing_rule_match,
+    process_frontend_feedback,
+    MiningFeedbackResult,
+    SituationQuery,
+    FrontendFeedbackSubmission,
+};
 
 pub use default_schema::{
     RULE_ENTRY_SCHEMA_TOML,
