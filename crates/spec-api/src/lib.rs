@@ -50,6 +50,7 @@ pub use store_index::{
     generate_spec_catalog,
 };
 pub use verification::{
+    SpecVerificationOutcome,
     parse_guards_from_markdown,
     recompute_spec_verified_state,
 };

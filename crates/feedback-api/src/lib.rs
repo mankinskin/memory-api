@@ -31,7 +31,7 @@ pub use frontend::{
     ingest_frontend_feedback,
 };
 
-pub const FEEDBACK_SCHEMA_VERSION: u32 = 1;
+pub const FEEDBACK_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -235,6 +235,11 @@ impl FromStr for FeedbackAuthorKind {
     }
 }
 
+/// Provenance attached to a [`FeedbackEntry`], identifying where the entry
+/// came from and, for mined/ingested entries, exactly which session turn and
+/// tool call it backtraces to. `turn_sequence` and `tool_call_id` are `None`
+/// for hand-authored feedback (CLI/MCP/frontend submissions) that has no
+/// originating session turn.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeedbackProvenance {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -242,6 +247,14 @@ pub struct FeedbackProvenance {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
     pub executed_at: String,
+    /// Sequence number of the captured `SessionTurn` this entry backtraces
+    /// to, when the entry was mined or ingested from a session transcript.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_sequence: Option<usize>,
+    /// Captured `tool_call_id` of the originating tool call, when the entry
+    /// backtraces to a specific tool invocation within a session turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 impl FeedbackProvenance {
@@ -254,7 +267,37 @@ impl FeedbackProvenance {
             session_id: normalize_optional(session_id),
             author: normalize_optional(author),
             executed_at: executed_at.unwrap_or_else(|| Utc::now().to_rfc3339()),
+            turn_sequence: None,
+            tool_call_id: None,
         })
+    }
+
+    /// Construct provenance backtraceable to a specific captured session
+    /// turn and/or tool call.
+    ///
+    /// Callers extract `turn_sequence` and `tool_call_id` from captured
+    /// session data (`SessionTurn::sequence` /
+    /// `SessionTurnEventMeta::tool_call_id`, or the equivalent fields on a
+    /// captured tool-execution event); this crate intentionally does not
+    /// depend on `session-api`'s types to avoid a dependency cycle
+    /// (`session-api` already depends on `feedback-api`).
+    ///
+    /// `turn_sequence` is `None` when the backtrace originates from a
+    /// captured tool-execution event rather than a numbered `SessionTurn`
+    /// (real captured transcripts record tool call/result pairs as session
+    /// events, not as turns) — the entry is still fully backtraceable via
+    /// `tool_call_id` in that case.
+    pub fn from_session_turn(
+        session_id: Option<String>,
+        author: Option<String>,
+        executed_at: Option<String>,
+        turn_sequence: Option<usize>,
+        tool_call_id: Option<String>,
+    ) -> Result<Self, String> {
+        let mut provenance = Self::new(session_id, author, executed_at)?;
+        provenance.turn_sequence = turn_sequence;
+        provenance.tool_call_id = normalize_optional(tool_call_id);
+        Ok(provenance)
     }
 }
 

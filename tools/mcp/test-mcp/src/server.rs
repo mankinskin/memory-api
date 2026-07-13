@@ -129,16 +129,40 @@ pub struct RecordExecutionInput {
 pub struct GetSpecInput {
     /// Validation spec id to fetch.
     pub id: String,
+    /// Concrete workspace path, repo root, .test store path, or path inside
+    /// that store. When omitted, searches every `.test` store discoverable
+    /// from the server's workspace root.
+    #[serde(default)]
+    pub workspace: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetExecutionInput {
     /// Validation execution id to fetch.
     pub id: String,
+    /// Concrete workspace path, repo root, .test store path, or path inside
+    /// that store. When omitted, searches every `.test` store discoverable
+    /// from the server's workspace root.
+    #[serde(default)]
+    pub workspace: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListSpecsInput {
+    /// Concrete workspace path, repo root, .test store path, or path inside
+    /// that store. When omitted, aggregates every `.test` store discoverable
+    /// from the server's workspace root.
+    #[serde(default)]
+    pub workspace: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListExecutionsInput {
+    /// Concrete workspace path, repo root, .test store path, or path inside
+    /// that store. When omitted, aggregates every `.test` store discoverable
+    /// from the server's workspace root.
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Only return executions linked to this ticket id.
     #[serde(default)]
     pub ticket_id: Option<String>,
@@ -219,6 +243,77 @@ impl TestServer {
             store_root,
             self.workspace_slug.clone(),
         ))
+    }
+
+    /// Every `.test` store discoverable from the server's workspace root,
+    /// deduped, with the server's own fixed store listed first. Used by read
+    /// tools when no explicit `workspace` argument is supplied, so evidence
+    /// recorded to a nested store (e.g. `memory-api/.test`) via an explicit
+    /// `workspace` on write remains discoverable from the aggregated root.
+    fn discover_configs(&self) -> Vec<TestStoreConfig> {
+        let workspace_root =
+            memory_api::workspace::resolve_workspace_root_from_store_root(
+                &self.store_root,
+                ".test",
+            );
+
+        let mut seen = std::collections::BTreeSet::new();
+        let mut configs = Vec::new();
+
+        if seen.insert(self.store_root.clone()) {
+            configs.push(self.config());
+        }
+
+        for root in memory_api::workspace::discover_workspace_store_roots(
+            &workspace_root,
+            ".test",
+            "executions",
+        ) {
+            if seen.insert(root.clone()) {
+                configs.push(TestStoreConfig::new(
+                    root,
+                    self.workspace_slug.clone(),
+                ));
+            }
+        }
+
+        configs
+    }
+
+    /// Resolve store configs for a read tool: a single explicit store when
+    /// `workspace` is supplied, otherwise every discoverable store.
+    fn configs_for_optional_workspace(
+        &self,
+        workspace: Option<&str>,
+    ) -> Result<Vec<TestStoreConfig>, McpError> {
+        match workspace {
+            Some(selector) => Ok(vec![self.config_for_workspace(selector)?]),
+            None => Ok(self.discover_configs()),
+        }
+    }
+
+    /// Merge-sort executions gathered from multiple stores using the same
+    /// ordering as `TestStoreConfig::list_executions`.
+    fn merge_sort_executions(
+        mut executions: Vec<ValidationExecution>,
+        sort: ExecutionSort,
+    ) -> Vec<ValidationExecution> {
+        match sort {
+            ExecutionSort::NewestFirst => {
+                executions.sort_by(|a, b| {
+                    b.executed_at.cmp(&a.executed_at).then(a.id.cmp(&b.id))
+                });
+            },
+            ExecutionSort::SlowestFirst => {
+                executions.sort_by(|a, b| {
+                    b.duration_ms
+                        .cmp(&a.duration_ms)
+                        .then(b.executed_at.cmp(&a.executed_at))
+                        .then(a.id.cmp(&b.id))
+                });
+            },
+        }
+        executions
     }
 
     fn json_result<T: Serialize>(
@@ -387,8 +482,16 @@ impl TestServer {
         &self,
         Parameters(input): Parameters<GetSpecInput>,
     ) -> Result<CallToolResult, McpError> {
-        let spec = self.config().get_spec(&input.id).map_err(Self::test_err)?;
-        Self::json_result(&spec)
+        let configs =
+            self.configs_for_optional_workspace(input.workspace.as_deref())?;
+        let mut last_err = TestError::SpecNotFound(input.id.clone());
+        for config in &configs {
+            match config.get_spec(&input.id) {
+                Ok(spec) => return Self::json_result(&spec),
+                Err(err) => last_err = err,
+            }
+        }
+        Err(Self::test_err(last_err))
     }
 
     #[tool(
@@ -399,19 +502,36 @@ impl TestServer {
         &self,
         Parameters(input): Parameters<GetExecutionInput>,
     ) -> Result<CallToolResult, McpError> {
-        let execution = self
-            .config()
-            .get_execution(&input.id)
-            .map_err(Self::test_err)?;
-        Self::json_result(&execution)
+        let configs =
+            self.configs_for_optional_workspace(input.workspace.as_deref())?;
+        let mut last_err = TestError::ExecutionNotFound(input.id.clone());
+        for config in &configs {
+            match config.get_execution(&input.id) {
+                Ok(execution) => return Self::json_result(&execution),
+                Err(err) => last_err = err,
+            }
+        }
+        Err(Self::test_err(last_err))
     }
 
     #[tool(
         name = "test_list_specs",
-        description = "List all validation specs, sorted by id."
+        description = "List all validation specs, sorted by id. Aggregates across every discoverable `.test` store unless `workspace` pins to one."
     )]
-    pub async fn test_list_specs(&self) -> Result<CallToolResult, McpError> {
-        let specs = self.config().list_specs().map_err(Self::test_err)?;
+    pub async fn test_list_specs(
+        &self,
+        Parameters(input): Parameters<ListSpecsInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let configs =
+            self.configs_for_optional_workspace(input.workspace.as_deref())?;
+        let mut by_id: std::collections::BTreeMap<String, ValidationSpec> =
+            std::collections::BTreeMap::new();
+        for config in &configs {
+            for spec in config.list_specs().map_err(Self::test_err)? {
+                by_id.entry(spec.id.clone()).or_insert(spec);
+            }
+        }
+        let specs: Vec<_> = by_id.into_values().collect();
         Self::json_result(&serde_json::json!({
             "count": specs.len(),
             "specs": specs,
@@ -420,7 +540,7 @@ impl TestServer {
 
     #[tool(
         name = "test_list_executions",
-        description = "Query validation executions by ticket id, validation spec id, and/or outcome (newest first)."
+        description = "Query validation executions by ticket id, validation spec id, and/or outcome (newest first). Aggregates across every discoverable `.test` store unless `workspace` pins to one."
     )]
     pub async fn test_list_executions(
         &self,
@@ -442,12 +562,25 @@ impl TestServer {
             transport: input.transport,
             run_id: input.run_id,
             sort,
-            limit: input.limit,
+            limit: None,
         };
-        let executions = self
-            .config()
-            .list_executions(&query)
-            .map_err(Self::test_err)?;
+        let configs =
+            self.configs_for_optional_workspace(input.workspace.as_deref())?;
+        let mut seen_ids = std::collections::BTreeSet::new();
+        let mut executions = Vec::new();
+        for config in &configs {
+            for execution in
+                config.list_executions(&query).map_err(Self::test_err)?
+            {
+                if seen_ids.insert(execution.id.clone()) {
+                    executions.push(execution);
+                }
+            }
+        }
+        let mut executions = Self::merge_sort_executions(executions, sort);
+        if let Some(limit) = input.limit {
+            executions.truncate(limit);
+        }
         Self::json_result(&serde_json::json!({
             "count": executions.len(),
             "executions": executions,
@@ -550,6 +683,7 @@ mod tests {
 
         let listed = server
             .test_list_executions(Parameters(ListExecutionsInput {
+                workspace: None,
                 ticket_id: Some("ticket-parity".to_string()),
                 validation_spec_id: None,
                 outcome: None,
@@ -566,7 +700,10 @@ mod tests {
             .expect("list executions");
         assert!(!listed.is_error.unwrap_or(false));
 
-        let specs = server.test_list_specs().await.expect("list specs");
+        let specs = server
+            .test_list_specs(Parameters(ListSpecsInput { workspace: None }))
+            .await
+            .expect("list specs");
         assert!(!specs.is_error.unwrap_or(false));
     }
 
@@ -611,8 +748,163 @@ mod tests {
         let result = server
             .test_get_spec(Parameters(GetSpecInput {
                 id: "missing".to_string(),
+                workspace: None,
             }))
             .await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn list_executions_aggregates_nested_descendant_store() {
+        let dir = tempdir().unwrap();
+        let workspace_root = dir.path();
+        let root_store = workspace_root.join(".test");
+        let nested_workspace = workspace_root.join("nested");
+        std::fs::create_dir_all(&nested_workspace).unwrap();
+
+        // Server launched with its fixed root at the workspace root.
+        let server = TestServer::new(root_store.clone(), "default".to_string());
+
+        // Record straight into the root store.
+        server
+            .test_record_execution(Parameters(RecordExecutionInput {
+                workspace: root_store.display().to_string(),
+                id: "exec-root".to_string(),
+                validation_spec_id: "vt-root".to_string(),
+                outcome: "passed".to_string(),
+                executed_at: Some("2026-07-13T00:00:00Z".to_string()),
+                duration_ms: None,
+                throughput: None,
+                detail: None,
+                ticket_ids: vec!["ticket-x".to_string()],
+                spec_ids: vec![],
+                acceptance_criterion_ids: vec![],
+                doc_evidence_ids: vec![],
+                log_ids: vec![],
+                source_path: None,
+                test_id: None,
+                domain: Some("test-mcp".to_string()),
+                operation: Some("aggregation-test".to_string()),
+                transport: Some("in-process".to_string()),
+                run_id: Some("run-root".to_string()),
+            }))
+            .await
+            .expect("record root execution");
+
+        // Record into a nested descendant store via an explicit workspace,
+        // mirroring how a submodule-scoped caller records evidence today.
+        let nested_store = nested_workspace.join(".test");
+        server
+            .test_record_execution(Parameters(RecordExecutionInput {
+                workspace: nested_store.display().to_string(),
+                id: "exec-nested".to_string(),
+                validation_spec_id: "vt-nested".to_string(),
+                outcome: "passed".to_string(),
+                executed_at: Some("2026-07-14T00:00:00Z".to_string()),
+                duration_ms: None,
+                throughput: None,
+                detail: None,
+                ticket_ids: vec!["ticket-x".to_string()],
+                spec_ids: vec![],
+                acceptance_criterion_ids: vec![],
+                doc_evidence_ids: vec![],
+                log_ids: vec![],
+                source_path: None,
+                test_id: None,
+                domain: Some("test-mcp".to_string()),
+                operation: Some("aggregation-test".to_string()),
+                transport: Some("in-process".to_string()),
+                run_id: Some("run-nested".to_string()),
+            }))
+            .await
+            .expect("record nested execution");
+
+        assert!(nested_workspace.join(".test").is_dir());
+
+        // Reading with no explicit workspace must aggregate both stores.
+        let result = server
+            .test_list_executions(Parameters(ListExecutionsInput {
+                workspace: None,
+                ticket_id: Some("ticket-x".to_string()),
+                validation_spec_id: None,
+                outcome: None,
+                min_duration_ms: None,
+                max_duration_ms: None,
+                domain: None,
+                operation: None,
+                transport: None,
+                run_id: None,
+                sort: Some("newest-first".to_string()),
+                limit: None,
+            }))
+            .await
+            .expect("list executions");
+        let text = result.content[0].as_text().unwrap().text.clone();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(parsed["count"], 2);
+        let ids: Vec<&str> = parsed["executions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|exec| exec["id"].as_str().unwrap())
+            .collect();
+        // newest-first: exec-nested (2026-07-14) before exec-root (2026-07-13).
+        assert_eq!(ids, vec!["exec-nested", "exec-root"]);
+
+        // A limit is applied after the global merge, not per store.
+        let limited = server
+            .test_list_executions(Parameters(ListExecutionsInput {
+                workspace: None,
+                ticket_id: Some("ticket-x".to_string()),
+                validation_spec_id: None,
+                outcome: None,
+                min_duration_ms: None,
+                max_duration_ms: None,
+                domain: None,
+                operation: None,
+                transport: None,
+                run_id: None,
+                sort: Some("newest-first".to_string()),
+                limit: Some(1),
+            }))
+            .await
+            .expect("list executions limited");
+        let text = limited.content[0].as_text().unwrap().text.clone();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(parsed["count"], 1);
+        assert_eq!(parsed["executions"][0]["id"], "exec-nested");
+
+        // Pinning to the nested workspace explicitly must exclude the root.
+        let pinned = server
+            .test_list_executions(Parameters(ListExecutionsInput {
+                workspace: Some(nested_workspace.display().to_string()),
+                ticket_id: Some("ticket-x".to_string()),
+                validation_spec_id: None,
+                outcome: None,
+                min_duration_ms: None,
+                max_duration_ms: None,
+                domain: None,
+                operation: None,
+                transport: None,
+                run_id: None,
+                sort: None,
+                limit: None,
+            }))
+            .await
+            .expect("list executions pinned");
+        let text = pinned.content[0].as_text().unwrap().text.clone();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(parsed["count"], 1);
+        assert_eq!(parsed["executions"][0]["id"], "exec-nested");
+
+        // get_execution with no workspace must also find the nested record.
+        let fetched = server
+            .test_get_execution(Parameters(GetExecutionInput {
+                id: "exec-nested".to_string(),
+                workspace: None,
+            }))
+            .await
+            .expect("get nested execution");
+        assert!(!fetched.is_error.unwrap_or(false));
     }
 }

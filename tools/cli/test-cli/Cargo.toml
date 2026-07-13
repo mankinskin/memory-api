@@ -16,6 +16,7 @@ path = "src/lib.rs"
 test-api = { path = "../../../crates/test-api" }
 log-api = { path = "../../../crates/log-api" }
 memory-api = { path = "../../../crates/memory-api" }
+spec-api = { path = "../../../crates/spec-api" }
 
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }

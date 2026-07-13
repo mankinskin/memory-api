@@ -345,3 +345,68 @@ fn feedback_entry_round_trip_records_schema_and_status() {
     assert_eq!(loaded[0].status, FeedbackStatus::New);
     assert_eq!(loaded[0].source, FeedbackSource::System);
 }
+
+#[test]
+fn feedback_provenance_round_trips_turn_and_tool_call_refs() {
+    let provenance = FeedbackProvenance::from_session_turn(
+        Some("session-42".to_string()),
+        Some("session-api/structured-miner".to_string()),
+        None,
+        Some(7),
+        Some("call-7".to_string()),
+    )
+    .unwrap();
+
+    assert_eq!(provenance.session_id.as_deref(), Some("session-42"));
+    assert_eq!(provenance.turn_sequence, Some(7));
+    assert_eq!(provenance.tool_call_id.as_deref(), Some("call-7"));
+
+    let json = serde_json::to_string(&provenance).unwrap();
+    let round_tripped: FeedbackProvenance = serde_json::from_str(&json).unwrap();
+    assert_eq!(round_tripped, provenance);
+}
+
+#[test]
+fn feedback_provenance_deserializes_pre_v2_records_without_turn_refs() {
+    // Pre-existing on-disk records predate `turn_sequence`/`tool_call_id`;
+    // both fields must default to `None` rather than fail deserialization.
+    let legacy_json = r#"{"session_id":"session-1","author":"copilot","executed_at":"2025-01-01T00:00:00Z"}"#;
+    let provenance: FeedbackProvenance = serde_json::from_str(legacy_json).unwrap();
+
+    assert_eq!(provenance.session_id.as_deref(), Some("session-1"));
+    assert_eq!(provenance.turn_sequence, None);
+    assert_eq!(provenance.tool_call_id, None);
+}
+
+#[test]
+fn mined_entry_asserts_populated_backtrace_refs() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = EntityFeedbackStore::new(dir.path(), "memory-api").unwrap();
+    let urn = EntityUrn::rule("memory-api", "rule-entry").unwrap();
+
+    let provenance = FeedbackProvenance::from_session_turn(
+        Some("session-mined-1".to_string()),
+        Some("session-api/structured-miner".to_string()),
+        None,
+        Some(3),
+        Some("call-3".to_string()),
+    )
+    .unwrap();
+
+    let entry = FeedbackEntry::new(
+        FeedbackSource::TranscriptMined,
+        urn.clone(),
+        None,
+        Some("failed tool call detected".to_string()),
+        Some(FeedbackNoteKind::Note),
+        provenance,
+    )
+    .unwrap();
+
+    store.record_entry(entry).unwrap();
+    let loaded = store.entries_for(&urn).unwrap();
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].provenance.session_id.as_deref(), Some("session-mined-1"));
+    assert_eq!(loaded[0].provenance.turn_sequence, Some(3));
+    assert_eq!(loaded[0].provenance.tool_call_id.as_deref(), Some("call-3"));
+}

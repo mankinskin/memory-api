@@ -1,6 +1,8 @@
 mod args;
 mod handlers;
 
+use std::path::PathBuf;
+
 use clap::Parser;
 use serde_json::{
     Value,
@@ -89,8 +91,12 @@ pub fn run(cli: TestCli) -> Result<CliOutput, CliRunError> {
         ),
     };
     let log_config = LogStoreConfig::new(log_root, cli.workspace_slug.clone());
+    let spec_root = resolve_spec_root(
+        &store_root,
+        cli.workspace_root.as_deref(),
+    );
 
-    let payload = dispatch(&config, &log_config, cli.command)?;
+    let payload = dispatch(&config, &log_config, &spec_root, cli.command)?;
 
     match machine_output_format(cli.json, cli.toon) {
         Some(format) => Ok(CliOutput::Machine(payload, format)),
@@ -101,6 +107,7 @@ pub fn run(cli: TestCli) -> Result<CliOutput, CliRunError> {
 fn dispatch(
     config: &TestStoreConfig,
     log_config: &LogStoreConfig,
+    spec_root: &PathBuf,
     command: TestCommand,
 ) -> Result<Value, CliRunError> {
     match command {
@@ -108,7 +115,7 @@ fn dispatch(
         | TestCommand::Record(_)
         | TestCommand::LogRecord(_)
         | TestCommand::Run(_) =>
-            dispatch_recording(config, log_config, command),
+            dispatch_recording(config, log_config, spec_root, command),
         TestCommand::GetSpec(_)
         | TestCommand::Get(_)
         | TestCommand::ListSpecs
@@ -119,6 +126,21 @@ fn dispatch(
         | TestCommand::Benchmarks(_)
         | TestCommand::Summary
         | TestCommand::Audit => dispatch_reporting(config, command),
+    }
+}
+
+fn resolve_spec_root(
+    store_root: &std::path::Path,
+    workspace_root: Option<&std::path::Path>,
+) -> PathBuf {
+    match store_root.parent() {
+        Some(parent) => parent.join(".spec"),
+        None => workspace::resolve_requested_store_root(
+            None,
+            workspace_root,
+            None,
+            ".spec",
+        ),
     }
 }
 

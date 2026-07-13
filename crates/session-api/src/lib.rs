@@ -1,5 +1,6 @@
 pub mod audit;
 pub mod error;
+pub mod follow_up;
 pub mod hook;
 pub mod model;
 pub mod move_domain;
@@ -16,6 +17,13 @@ pub use audit::{
     SessionAuditToolCount,
 };
 pub use error::SessionError;
+pub use follow_up::{
+    FollowUpSynthesisOutcome,
+    FollowUpTicketDraft,
+    build_follow_up_ticket_draft,
+    follow_up_ticket_id,
+    synthesize_follow_up_ticket,
+};
 pub use hook::{
     CopilotHookEvent,
     CopilotHookMessage,
@@ -64,6 +72,16 @@ pub use store::{
     SessionWorktreeCheckInRequest,
 };
 pub use transcript_feedback::{
-    MiningFeedbackResult,
-    mine_transcript_for_rule_confusion,
+    EntityDiscoveryQueue,
+    ExplicitIngestionArgs,
+    FailedToolCallMapping,
+    FeedbackSignalKind,
+    StructuredFeedbackSignal,
+    UnmappedReason,
+    discover_entities_from_signals,
+    map_failed_tool_call_to_entity,
+    mine_explicit_ingestion_signals,
+    mine_failed_tool_call_signals,
+    mine_structured_feedback_signals,
+    recover_feedback_entry_from_signal,
 };

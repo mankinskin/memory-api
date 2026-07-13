@@ -79,6 +79,12 @@ fn record_then_list_round_trips_through_store() {
             "16 passed",
             "--executed-at",
             "2026-06-15T12:00:00Z",
+            "--domain",
+            "test",
+            "--operation",
+            "record",
+            "--run-id",
+            "run-core",
             "--ticket",
             "ticket-parity",
         ]
@@ -180,6 +186,14 @@ fn audit_reports_failed_and_slow_counts() {
             "50",
             "--executed-at",
             "2026-06-15T12:00:00Z",
+            "--domain",
+            "test",
+            "--operation",
+            "record",
+            "--run-id",
+            "run-audit",
+            "--ticket",
+            "ticket-audit",
         ]
         .map(String::from),
     );
@@ -225,6 +239,10 @@ fn run_passes_records_execution_and_capture() {
             "vt-a",
             "--run-id",
             "run-1",
+            "--domain",
+            "test",
+            "--operation",
+            "run",
             "--log-dir",
             log_dir.to_string_lossy().as_ref(),
             "--ticket",
@@ -275,6 +293,12 @@ fn run_failure_maps_to_failed_outcome() {
             "exit 3",
             "--spec-id",
             "vt-fail",
+            "--domain",
+            "test",
+            "--operation",
+            "run",
+            "--run-id",
+            "run-fail",
             "--log-dir",
             log_dir.to_string_lossy().as_ref(),
         ]
@@ -284,7 +308,7 @@ fn run_failure_maps_to_failed_outcome() {
 
     assert_eq!(value["outcome"], "failed");
     assert_eq!(value["exit_code"], 3);
-    assert_eq!(value["execution_id"], "vt-fail");
+    assert_eq!(value["execution_id"], "run-fail-vt-fail");
 }
 
 #[test]
@@ -316,6 +340,12 @@ fn run_flags_over_budget_against_spec_threshold() {
             "echo slow",
             "--spec-id",
             "vt-slow",
+            "--domain",
+            "test",
+            "--operation",
+            "run",
+            "--run-id",
+            "run-slow",
             "--log-dir",
             log_dir.to_string_lossy().as_ref(),
         ]

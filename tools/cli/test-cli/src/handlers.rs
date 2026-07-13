@@ -2,6 +2,8 @@ use chrono::{
     DateTime,
     Utc,
 };
+use std::path::Path;
+
 use serde_json::{
     Value,
     json,
@@ -13,6 +15,11 @@ use log_api::{
     ValidationLogCapture,
     ValidationLogKind,
     ValidationLogLinks,
+};
+use spec_api::{
+    SpecStore,
+    SpecVerificationOutcome,
+    recompute_spec_verified_state,
 };
 use test_api::{
     BenchmarkQuery,
@@ -34,6 +41,7 @@ use crate::{
 pub(crate) fn dispatch_recording(
     config: &TestStoreConfig,
     log_config: &LogStoreConfig,
+    spec_root: &Path,
     command: TestCommand,
 ) -> Result<Value, CliRunError> {
     match command {
@@ -82,12 +90,20 @@ pub(crate) fn dispatch_recording(
                 run_id: args.run_id,
             };
             let path = config.record_execution(&execution)?;
+            let (verified_spec_ids, spec_verification) =
+                recompute_linked_specs(
+                    spec_root,
+                    config,
+                    &execution.links.spec_ids,
+                );
             to_value(&json!({
                 "status": "recorded",
                 "kind": "validation-execution",
                 "id": execution.id,
                 "outcome": execution.outcome,
                 "path": path,
+                "verified_spec_ids": verified_spec_ids,
+                "spec_verification": spec_verification,
             }))
         },
         TestCommand::LogRecord(args) => {
@@ -114,7 +130,7 @@ pub(crate) fn dispatch_recording(
                 "path": path,
             }))
         },
-        TestCommand::Run(args) => run_harness(config, log_config, args),
+        TestCommand::Run(args) => run_harness(config, log_config, spec_root, args),
         _ => unreachable!("handled in recording dispatch"),
     }
 }
@@ -248,6 +264,7 @@ pub(crate) fn dispatch_reporting(
 pub(crate) fn run_harness(
     config: &TestStoreConfig,
     log_config: &LogStoreConfig,
+    spec_root: &Path,
     args: RunArgs,
 ) -> Result<Value, CliRunError> {
     use std::{
@@ -347,6 +364,8 @@ pub(crate) fn run_harness(
         run_id: args.run_id.clone(),
     };
     let execution_path = config.record_execution(&execution)?;
+    let (verified_spec_ids, spec_verification) =
+        recompute_linked_specs(spec_root, config, &execution.links.spec_ids);
 
     let capture = ValidationLogCapture {
         id: capture_id.clone(),
@@ -384,7 +403,93 @@ pub(crate) fn run_harness(
         "log_locator": locator,
         "execution_path": execution_path,
         "capture_path": capture_path,
+        "verified_spec_ids": verified_spec_ids,
+        "spec_verification": spec_verification,
     }))
+}
+
+fn recompute_linked_specs(
+    spec_root: &Path,
+    test_store: &TestStoreConfig,
+    spec_ids: &[String],
+) -> (Vec<String>, Vec<Value>) {
+    if spec_ids.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+
+    let mut spec_store = match SpecStore::open_or_init(spec_root) {
+        Ok(store) => store,
+        Err(error) => {
+            let reports = spec_ids
+                .iter()
+                .map(|spec_id| {
+                    json!({
+                        "spec_id": spec_id,
+                        "status": "error",
+                        "error": format!(
+                            "failed to open spec store at {}: {}",
+                            spec_root.display(),
+                            error
+                        ),
+                    })
+                })
+                .collect();
+            return (Vec::new(), reports);
+        },
+    };
+
+    let mut verified_spec_ids = Vec::new();
+    let mut reports = Vec::new();
+
+    for spec_id in spec_ids {
+        let report = match recompute_spec_verified_state(
+            &mut spec_store,
+            test_store,
+            None,
+            spec_id,
+        ) {
+            Ok(outcome) => {
+                if outcome.is_verified() {
+                    verified_spec_ids.push(spec_id.clone());
+                }
+                spec_outcome_json(spec_id, &outcome)
+            },
+            Err(error) => json!({
+                "spec_id": spec_id,
+                "status": "error",
+                "error": error,
+            }),
+        };
+        reports.push(report);
+    }
+
+    (verified_spec_ids, reports)
+}
+
+/// Render a single spec verification outcome as an actionable JSON report.
+///
+/// The `status` label distinguishes `no-guards`, `pending`, `failed`,
+/// `verified`, and `error`, and pending/failed reports carry the specific
+/// guard ids responsible so the result is directly actionable.
+fn spec_outcome_json(
+    spec_id: &str,
+    outcome: &SpecVerificationOutcome,
+) -> Value {
+    let mut report = json!({
+        "spec_id": spec_id,
+        "status": outcome.label(),
+    });
+    match outcome {
+        SpecVerificationOutcome::Pending { missing_guards } => {
+            report["missing_guards"] = json!(missing_guards);
+        },
+        SpecVerificationOutcome::Failed { failed_guards } => {
+            report["failed_guards"] = json!(failed_guards);
+        },
+        SpecVerificationOutcome::NoGuards
+        | SpecVerificationOutcome::Verified => {},
+    }
+    report
 }
 
 pub(crate) fn parse_timestamp(
