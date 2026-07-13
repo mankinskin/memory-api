@@ -474,12 +474,17 @@ impl TestStoreConfig {
         let executions: Vec<ValidationExecution> =
             self.read_dir_json(&self.executions_dir()?)?;
 
-        let mut newest_by_run: BTreeMap<String, chrono::DateTime<chrono::Utc>> =
-            BTreeMap::new();
+        let mut newest_by_spec_run: BTreeMap<
+            String,
+            BTreeMap<String, chrono::DateTime<chrono::Utc>>,
+        > = BTreeMap::new();
         for execution in &executions {
             let Some(run_id) = execution.provenance.run_id.as_ref() else {
                 continue;
             };
+            let newest_by_run = newest_by_spec_run
+                .entry(execution.validation_spec_id.clone())
+                .or_default();
             match newest_by_run.get(run_id) {
                 Some(existing) if *existing >= execution.executed_at => {},
                 _ => {
@@ -488,24 +493,33 @@ impl TestStoreConfig {
             }
         }
 
-        if newest_by_run.len() <= keep_runs {
-            return Ok(());
+        let mut stale_spec_runs: HashSet<(String, String)> = HashSet::new();
+        for (spec_id, newest_by_run) in newest_by_spec_run {
+            if newest_by_run.len() <= keep_runs {
+                continue;
+            }
+
+            let mut runs: Vec<(String, chrono::DateTime<chrono::Utc>)> =
+                newest_by_run.into_iter().collect();
+            runs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+            stale_spec_runs.extend(
+                runs.into_iter()
+                    .skip(keep_runs)
+                    .map(|(run_id, _)| (spec_id.clone(), run_id)),
+            );
         }
 
-        let mut runs: Vec<(String, chrono::DateTime<chrono::Utc>)> =
-            newest_by_run.into_iter().collect();
-        runs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-        let stale_runs: HashSet<String> = runs
-            .into_iter()
-            .skip(keep_runs)
-            .map(|(run, _)| run)
-            .collect();
+        if stale_spec_runs.is_empty() {
+            return Ok(());
+        }
 
         for execution in executions {
             let Some(run_id) = execution.provenance.run_id.as_ref() else {
                 continue;
             };
-            if !stale_runs.contains(run_id) {
+            if !stale_spec_runs
+                .contains(&(execution.validation_spec_id.clone(), run_id.clone()))
+            {
                 continue;
             }
             let path = self.execution_path(&execution.id)?;

@@ -210,6 +210,37 @@ fn record_execution_keeps_only_newest_two_runs() {
 }
 
 #[test]
+fn record_execution_prunes_runs_per_spec_not_globally() {
+    let dir = TempDir::new().unwrap();
+    let cfg = config(&dir);
+
+    let mut a = ValidationExecution::passed("exec-a", "vt-a", at(1));
+    a.links.ticket_ids = vec!["ticket-a".to_string()];
+    a.provenance.domain = Some("test".to_string());
+    a.provenance.operation = Some("run".to_string());
+    a.provenance.run_id = Some("run-a".to_string());
+    cfg.record_execution(&a).unwrap();
+
+    let mut b = ValidationExecution::passed("exec-b", "vt-b", at(2));
+    b.links.ticket_ids = vec!["ticket-b".to_string()];
+    b.provenance.domain = Some("test".to_string());
+    b.provenance.operation = Some("run".to_string());
+    b.provenance.run_id = Some("run-b".to_string());
+    cfg.record_execution(&b).unwrap();
+
+    let mut c = ValidationExecution::passed("exec-c", "vt-c", at(3));
+    c.links.ticket_ids = vec!["ticket-c".to_string()];
+    c.provenance.domain = Some("test".to_string());
+    c.provenance.operation = Some("run".to_string());
+    c.provenance.run_id = Some("run-c".to_string());
+    cfg.record_execution(&c).unwrap();
+
+    assert_eq!(cfg.get_execution("exec-a").unwrap().id, "exec-a");
+    assert_eq!(cfg.get_execution("exec-b").unwrap().id, "exec-b");
+    assert_eq!(cfg.get_execution("exec-c").unwrap().id, "exec-c");
+}
+
+#[test]
 fn rejects_path_traversal_ids() {
     let dir = TempDir::new().unwrap();
     let cfg = config(&dir);
