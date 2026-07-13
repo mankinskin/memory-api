@@ -1,0 +1,18 @@
+{
+  "id": "exec-vt-feedback-provenance-backtrace-20260713",
+  "validation_spec_id": "vt-feedback-provenance-backtrace",
+  "outcome": "passed",
+  "executed_at": "2026-07-13T23:14:27.389123100Z",
+  "detail": "cargo test -p feedback-api: 16 passed, 0 failed. Covers FEEDBACK_SCHEMA_VERSION 1->2, FeedbackProvenance::from_session_turn, and round-trip/pre-v2-compat tests for turn_sequence/tool_call_id backtrace refs (feedback_provenance_round_trips_turn_and_tool_call_refs, feedback_provenance_deserializes_pre_v2_records_without_turn_refs, mined_entry_asserts_populated_backtrace_refs).",
+  "links": {
+    "ticket_ids": [
+      "a7601cb7-6c92-4891-aa55-07ab46125bb8"
+    ]
+  },
+  "provenance": {
+    "domain": "feedback-api",
+    "operation": "cargo-test",
+    "transport": "cli",
+    "run_id": "run-review-remediation-20260714"
+  }
+}

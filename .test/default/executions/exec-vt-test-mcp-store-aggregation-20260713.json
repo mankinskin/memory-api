@@ -1,0 +1,18 @@
+{
+  "id": "exec-vt-test-mcp-store-aggregation-20260713",
+  "validation_spec_id": "vt-test-mcp-store-aggregation",
+  "outcome": "passed",
+  "executed_at": "2026-07-13T23:14:27.403033900Z",
+  "detail": "cargo test -p test-mcp: 4 passed, 0 failed (record_spec_then_execution_and_query, invalid_outcome_is_rejected, missing_spec_reports_not_found, list_executions_aggregates_nested_descendant_store). New test records evidence into both a root .test store and a nested descendant .test store, confirms omitted workspace aggregates both (newest-first order, dedup by id), confirms limit applies after global merge (not per-store), and confirms explicit workspace still pins to a single store. cargo build --workspace: clean.",
+  "links": {
+    "ticket_ids": [
+      "905d05ae-b367-44f8-9988-a671702d8a32"
+    ]
+  },
+  "provenance": {
+    "domain": "test-mcp",
+    "operation": "cargo-test",
+    "transport": "cli",
+    "run_id": "run-review-remediation-20260714"
+  }
+}

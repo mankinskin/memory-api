@@ -1,0 +1,11 @@
+{
+  "id": "vt-test-mcp-store-aggregation",
+  "title": "test-mcp: read-tool aggregation across discoverable .test stores",
+  "command": "cargo test -p test-mcp",
+  "detail": "Covers test-mcp read-tool aggregation across discoverable .test stores (list_executions/list_specs/get_execution/get_spec), explicit-workspace pinning to a single store, and post-merge sort+limit correctness.",
+  "links": {
+    "ticket_ids": [
+      "905d05ae-b367-44f8-9988-a671702d8a32"
+    ]
+  }
+}

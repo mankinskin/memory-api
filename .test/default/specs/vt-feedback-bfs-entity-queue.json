@@ -1,0 +1,11 @@
+{
+  "id": "vt-feedback-bfs-entity-queue",
+  "title": "Deterministic BFS entity discovery queue for structured feedback mining",
+  "command": "cargo test -p session-api transcript_feedback",
+  "detail": "Deterministic, order-preserving, deduplicated EntityDiscoveryQueue + discover_entities_from_signals: entities are enqueued in first-discovery order across a session's signals, a given EntityUrn is enqueued at most once, and later re-references are deduped rather than reprocessed. Documented as the acceptable \"mine only entities detected at the beginning\" alternative since today's signal kinds (ExplicitIngestion target, FailedToolCall resolved mapping) reference at most one entity each with no further related entities to expand into.",
+  "links": {
+    "ticket_ids": [
+      "3fa60398-3154-46ee-aca5-8d87541bac1e"
+    ]
+  }
+}

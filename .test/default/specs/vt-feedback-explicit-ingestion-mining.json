@@ -1,0 +1,11 @@
+{
+  "id": "vt-feedback-explicit-ingestion-mining",
+  "title": "Explicit feedback-ingestion tool-call mining from structured session events",
+  "command": "cargo test -p session-api transcript_feedback",
+  "detail": "Grounds the captured tool-name schema against real .session/sessions/* transcripts (confirmed: real sessions have zero role=tool SessionTurns across 61 files/2670 turns; tool call/result metadata lives in the separate CopilotHookEvent 'tool.execution_result' events, not turns). Adds ExplicitIngestion signal mining over events (matching feedback_ingest tool-name suffix, parsing tool_arguments_json verbatim), and a recover_feedback_entry_from_signal builder that only persists when the live call did not already succeed (avoiding duplicate entries). No SessionTurn.content inspection anywhere.",
+  "links": {
+    "ticket_ids": [
+      "b4954d6c-0451-49ed-8939-11f6568558f5"
+    ]
+  }
+}

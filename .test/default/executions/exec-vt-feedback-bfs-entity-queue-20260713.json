@@ -1,0 +1,18 @@
+{
+  "id": "exec-vt-feedback-bfs-entity-queue-20260713",
+  "validation_spec_id": "vt-feedback-bfs-entity-queue",
+  "outcome": "passed",
+  "executed_at": "2026-07-13T23:14:27.343677200Z",
+  "detail": "cargo test -p session-api transcript_feedback: 18 passed, 0 failed (16 pre-existing + 2 new: discovers_entities_in_first_seen_order_deduped_across_a_session covering a 6-signal multi-entity session with 3 duplicate references to one ticket and an unmapped signal, plus a direct EntityDiscoveryQueue dedup unit test). cargo build --workspace: clean. [Re-recorded 2026-07-14 after this evidence was silently deleted by test-api's prune_execution_runs(2) global keep-2-runs policy during unrelated writes; see ticket for the pruning bug.]",
+  "links": {
+    "ticket_ids": [
+      "3fa60398-3154-46ee-aca5-8d87541bac1e"
+    ]
+  },
+  "provenance": {
+    "domain": "session-api",
+    "operation": "cargo-test",
+    "transport": "cli",
+    "run_id": "run-review-remediation-20260714"
+  }
+}

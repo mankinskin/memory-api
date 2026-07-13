@@ -1,0 +1,12 @@
+{
+  "id": "vt-feedback-ring-robust-model",
+  "title": "Feedback ring: structured-metadata miner + typed spec verification outcomes",
+  "command": "cargo test -p session-api transcript_feedback && cargo test -p spec-api verification",
+  "detail": "Guards the robust-model rework: (1) transcript miner detects failed tool calls from structured metadata only (no text heuristics), (2) spec verified-state recompute returns typed SpecVerificationOutcome (NoGuards/Pending/Failed/Verified) instead of collapsed Ok(false).",
+  "links": {
+    "ticket_ids": [
+      "6b0002bf-c15b-4cc7-ac38-fbf66a07d1bc",
+      "5d4078fa-d7eb-4f0d-bf84-e21029f5ad5d"
+    ]
+  }
+}

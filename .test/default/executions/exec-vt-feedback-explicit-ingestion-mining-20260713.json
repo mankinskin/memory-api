@@ -1,0 +1,18 @@
+{
+  "id": "exec-vt-feedback-explicit-ingestion-mining-20260713",
+  "validation_spec_id": "vt-feedback-explicit-ingestion-mining",
+  "outcome": "passed",
+  "executed_at": "2026-07-13T23:14:27.330118600Z",
+  "detail": "cargo test -p session-api transcript_feedback: 18 passed, 0 failed. Covers event-based mine_explicit_ingestion_signals/detects_explicit_ingestion_tool_call_from_events, recover_feedback_entry_from_signal gating on tool_success/rating (recovers_feedback_entry_for_failed_ingestion_call, does_not_duplicate_a_successfully_persisted_ingestion_call, skips_recovery_when_required_arguments_are_missing). Grounded on real transcript analysis: real sessions have zero role:tool turns, so mining reads CopilotHookEvent tool.execution_result events, not transcript turns.",
+  "links": {
+    "ticket_ids": [
+      "b4954d6c-0451-49ed-8939-11f6568558f5"
+    ]
+  },
+  "provenance": {
+    "domain": "session-api",
+    "operation": "cargo-test",
+    "transport": "cli",
+    "run_id": "run-review-remediation-20260714"
+  }
+}

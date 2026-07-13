@@ -1,0 +1,1 @@
+{"rev":1,"ts":"2026-07-13T23:16:20.619571100+00:00","fields":{"component":"test-api","effort":"600","priority":"critical","state":"new","title":"[test-api] prune_execution_runs silently deletes unrelated ticket-linked evidence (global keep-2-runs policy)","type":"tracker-improvement"}}

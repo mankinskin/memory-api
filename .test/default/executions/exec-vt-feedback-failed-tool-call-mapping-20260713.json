@@ -1,0 +1,18 @@
+{
+  "id": "exec-vt-feedback-failed-tool-call-mapping-20260713",
+  "validation_spec_id": "vt-feedback-failed-tool-call-mapping",
+  "outcome": "passed",
+  "executed_at": "2026-07-13T23:14:27.278286200Z",
+  "detail": "cargo test -p session-api transcript_feedback: 18 passed, 0 failed. Covers map_failed_tool_call_to_entity policy (maps_id_keyed_method_to_ticket_entity, maps_ticket_id_keyed_method_to_ticket_entity, unknown_tool_failure_is_unmapped_unknown_tool) and event-based mine_failed_tool_call_signals with resolved FailedToolCallMapping (mines_failed_tool_call_signal_with_resolved_mapping_from_events, ignores_successful_calls_when_mining_failed_tool_call_signals). Policy grounded against real transcript data: 115 failures out of 5031 tool.execution_result events across 61 sessions; never guesses (UnmappedReason::{UnknownTool,NoEntityIdArgument,AmbiguousMultipleCandidates,NoSupportedEntityStore} for non-confident cases).",
+  "links": {
+    "ticket_ids": [
+      "16e112a7-5ab0-45a5-87c8-7d89d07ffd16"
+    ]
+  },
+  "provenance": {
+    "domain": "session-api",
+    "operation": "cargo-test",
+    "transport": "cli",
+    "run_id": "run-review-remediation-20260714"
+  }
+}

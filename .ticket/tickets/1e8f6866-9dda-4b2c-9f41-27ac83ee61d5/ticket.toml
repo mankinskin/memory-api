@@ -1,0 +1,8 @@
+id = "1e8f6866-9dda-4b2c-9f41-27ac83ee61d5"
+created_at = "2026-07-13T23:16:20.574326500+00:00"
+title = "[test-api] prune_execution_runs silently deletes unrelated ticket-linked evidence (global keep-2-runs policy)"
+state = "new"
+component = "test-api"
+effort = "600"
+priority = "critical"
+type = "tracker-improvement"

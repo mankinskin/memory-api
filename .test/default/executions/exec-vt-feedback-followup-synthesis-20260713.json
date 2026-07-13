@@ -1,0 +1,18 @@
+{
+  "id": "exec-vt-feedback-followup-synthesis-20260713",
+  "validation_spec_id": "vt-feedback-followup-synthesis",
+  "outcome": "passed",
+  "executed_at": "2026-07-13T23:14:27.236050900Z",
+  "detail": "cargo test -p session-api follow_up: 5 passed, 0 failed (synthesis_is_idempotent_across_reruns, plus drafting/gating tests: helpful ratings and failed live calls are skipped, only successful non-helpful ExplicitIngestion signals synthesize a follow-up). Re-enabled behind a backtraceable description format (session/tool-call/event-id backtrace + dedupe key) and idempotent UUIDv5 ticket keying wired into the Stop hook. cargo build --workspace: clean. [Re-recorded 2026-07-14 after this evidence was silently deleted by test-api's prune_execution_runs(2) global keep-2-runs policy during unrelated writes; see ticket for the pruning bug.]",
+  "links": {
+    "ticket_ids": [
+      "3d4c4739-3138-40be-947d-556e5f7de53a"
+    ]
+  },
+  "provenance": {
+    "domain": "session-api",
+    "operation": "cargo-test",
+    "transport": "cli",
+    "run_id": "run-review-remediation-20260714"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "vt-feedback-provenance-backtrace",
+  "title": "FeedbackProvenance session/turn/tool-call backtrace refs",
+  "command": "cargo test -p feedback-api",
+  "detail": "Validates FeedbackProvenance::from_session_turn threads turn_sequence + tool_call_id, serde round-trips the extended shape, pre-v2 records deserialize with defaulted None refs, and a mined FeedbackEntry recorded through EntityFeedbackStore preserves populated session_id/turn_sequence/tool_call_id.",
+  "links": {
+    "ticket_ids": [
+      "a7601cb7-6c92-4891-aa55-07ab46125bb8"
+    ]
+  }
+}

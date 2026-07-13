@@ -1,0 +1,11 @@
+{
+  "id": "vt-feedback-failed-tool-call-mapping",
+  "title": "Failed-tool-call to entity mapping and recording policy",
+  "command": "cargo test -p session-api transcript_feedback",
+  "detail": "Grounds the failed-tool-call to entity mapping policy against real .session/sessions/* transcripts (115 failed tool.execution_result events out of 5031, across 61 sessions). Typed FailedToolCallMapping::{Entity, Unmapped} with explicit UnmappedReason variants (UnknownTool, NoEntityIdArgument, AmbiguousMultipleCandidates, NoSupportedEntityStore). Adds an event-based mine_failed_tool_call_signals miner (the turn-based one never fires on real data: 0 of 2670 captured turns across 61 sessions have role=tool).",
+  "links": {
+    "ticket_ids": [
+      "16e112a7-5ab0-45a5-87c8-7d89d07ffd16"
+    ]
+  }
+}

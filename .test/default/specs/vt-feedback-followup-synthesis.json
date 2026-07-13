@@ -1,0 +1,11 @@
+{
+  "id": "vt-feedback-followup-synthesis",
+  "title": "Backtraceable follow-up ticket format + re-enabled synthesis",
+  "command": "cargo test -p session-api follow_up",
+  "detail": "Backtraceable, verifiable follow-up ticket format + re-enabled synthesis in the stop-hook. Gated on ExplicitIngestion signals only (successful live feedback_ingest call + not-helpful/mixed rating) — documented rationale for excluding bare FailedToolCall signals from synthesis. Idempotent dedupe via a deterministic UUIDv5 ticket id derived from session_id+tool_call_id (the id itself is the dedupe key; no separate index needed). Draft description links session/tool-call/event backtrace + cross-reference guidance to the live-persisted FeedbackEntry + a validation-execution reminder.",
+  "links": {
+    "ticket_ids": [
+      "3d4c4739-3138-40be-947d-556e5f7de53a"
+    ]
+  }
+}
