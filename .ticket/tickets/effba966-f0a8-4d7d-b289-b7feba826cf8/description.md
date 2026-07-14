@@ -1,25 +1,40 @@
-# Umbrella: Dynamic Session Bootstrapping & Context Routing
+# Epic: Dynamic Session Bootstrapping and Durable Workflow Context
 
-Tracking ticket for redesigning the agent workflow from always-on static metacognition into just-in-time, session-scoped context curation. Source: `DESIGN_SESSION_BOOTSTRAPPING.md`. Contract: spec `memory-api/session-api/dynamic-session-bootstrapping` (8c880efc).
+Redesign agent startup and continuation around a durable logical session workspace rather than always-on static context or transcript replay.
 
-## Resolved decisions
-D1 agent-carried session id + resume · D2 cross-store URN references · D3 client-side rendering · D4 flush per pin + create dir on init · D5 hard-linked auto-pin only · D6 headers-only rendering · D7 remove always-on instructions (bootstrapper-only) · D8 no mode · D9 usage counting + feedback.
+## Product contract
 
-## Sequenced roadmap (prerequisites first)
-1. **Cross-store references (robust) — BEFORE bootstrapping.**
-   - default store prerequisites [82d6ada4 URN resolver] and [6bd67a7a multi-store discovery] are done.
-   - memory-api hard-link prerequisites `b03be2d5` cross-entity edges and `f00291a3` ticket↔spec integration are now the concrete remaining cascade prerequisites and should be tracked explicitly from the cascade ticket.
-2. **Full feedback-api program — BEFORE bootstrapping.**
-   - foundational curation slices [c7542933 feedback-api CORE curation surface] and [9c95c1e4 event ingestion, metadata normalization, and retention policy] are done.
-   - runtime bootstrapping still waits on the broader [b1e9e744 feedback inbox, metadata indexing, and deep search] program and its remaining child slices.
-3. **Design & contract** — afa00b5c (resolved contract; close when review is complete).
-4. **session-api runtime model** — 412964a3 (depends on design + URN resolver + the full feedback-api program).
-5. **Cascade context gathering** — d8f76965 (ready for refinement now; do not implement before the hard-link tickets are done and the rule-link shape is finalized).
-6. **CLI + MCP surfaces** — 6b2dc497 (depends on runtime + cascade + rating surface).
-7. **Rule rendering redesign** — b4a8dc5e (depends on CLI/MCP).
+A workspace session carries:
 
-## Children
-afa00b5c · b1e9e744 · c7542933 · 412964a3 · d8f76965 · 6b2dc497 · b4a8dc5e (epic closes when all required slices reach done; cascade remains blocked on hard-link completion even after refinement begins).
+- a durable `workspace_session_id` spanning handoffs;
+- distinct linked capture `run_id` values per agent execution;
+- pinned ticket, spec, and rule URNs;
+- a mutable workflow graph containing ticket-backed and session-only nodes;
+- live ticket-state resolution;
+- terminal and Mermaid roadmap rendering;
+- structured handoff records and exact resume commands;
+- explicit graph-gated finish.
 
-## Key risk — hard-link completeness
-The ticket-store boundary is no longer the main issue here. The remaining risk is that cascade still depends on structured hard links that are not fully delivered yet: `b03be2d5` and `f00291a3` must land, and the rule-entry link shape still needs to be finalized so cascade follows concrete edges instead of inferred text references.
+Feedback usage/rating emission is an optional integration and cannot block context or workflow persistence.
+
+## Sequenced roadmap
+
+1. **Design and addressing foundations — done.** Frozen bootstrap decisions `afa00b5c`; URN resolver `82d6ada4`; multi-store discovery `6bd67a7a`.
+2. **Runtime pinned context — next implementation leaf.** `412964a3` adds durable workspace identity, run lineage, pin/unpin/read/view, and optional feedback sink behavior.
+3. **Durable workflow core.** `70cd7056` persists and mutates ticket-backed plus session-only workflow nodes and edges.
+4. **Parallel workflow consumers.** `cc4b0289` renders terminal/Mermaid graphs; `0647a212` persists handoffs, resumes new runs, and enforces finish gates.
+5. **CLI/MCP surfaces.** `6b2dc497` exposes context, workflow, rendering, handoff/resume, and finish commands.
+6. **Generated handoff guidance.** `9577b114` requires every `/handoff` to carry the durable ID and exact resume flow.
+7. **Cascade auto-discovery.** `d8f76965` remains optional follow-up work blocked on structured hard links `b03be2d5` and `f00291a3`; manual pin/workflow commands do not wait for it.
+8. **Minimal selective loading.** `b4a8dc5e` follows the usable CLI/MCP context surface.
+
+## Planning and review cleanup
+
+- Parent contract: `8c880efc-7083-4e1d-bf06-96b8254be913`.
+- Durable workflow contract: `c677182e-90da-4ac3-8b94-9e2e97c825cf`.
+- Runtime and handoff child specs must use aligned-structure v2 and accurate implementation positions.
+- Core feedback `c7542933` has implementation and focused validation recorded and should complete independent review; ingestion/full feedback work is outside this epic's critical path.
+
+## Done when
+
+The session API can initialize or resume a durable workspace, manage pinned entities and an evolving roadmap, render the roadmap in terminal or Mermaid form, persist a structured handoff, resume under a new linked run, and reject finish until required work and validation gates are satisfied. Generated `/handoff` guidance always carries the durable workspace ID and exact resume command.

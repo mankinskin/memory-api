@@ -2,6 +2,6 @@ id = "effba966-f0a8-4d7d-b289-b7feba826cf8"
 created_at = "2026-06-26T18:09:04.045975900+00:00"
 title = "[session-bootstrap][epic] Dynamic session bootstrapping & context routing redesign"
 state = "new"
-depends_on = ["412964a3-e1c3-47da-94ad-268ff20441c0", "6b2dc497-188c-44f5-9106-bf35deecb7a1", "afa00b5c-c736-4d75-b157-d3e9ce90d819", "b1e9e744-aeac-474a-91d9-07e3a362dc76", "b4a8dc5e-9d80-4fea-bb42-0c30aba0ecd6", "c7542933-3052-45c8-99e6-3e09f40cc9b9", "d8f76965-1ff3-4a0a-bb24-773b9637fae4"]
+depends_on = ["0647a212-9d2e-4943-9627-f854ce3f14c4", "412964a3-e1c3-47da-94ad-268ff20441c0", "6b1edff1-bc32-40c7-b3a9-fb1292b0213f", "6b2dc497-188c-44f5-9106-bf35deecb7a1", "70cd7056-c342-4433-ad60-5bc798f61aa6", "9577b114-ec11-431b-8740-c488bef05fc9", "afa00b5c-c736-4d75-b157-d3e9ce90d819", "b4a8dc5e-9d80-4fea-bb42-0c30aba0ecd6", "cc4b0289-b6fd-412f-a97a-497f05f572f4", "d8f76965-1ff3-4a0a-bb24-773b9637fae4"]
 effort = "8000"
 type = "tracker-improvement"

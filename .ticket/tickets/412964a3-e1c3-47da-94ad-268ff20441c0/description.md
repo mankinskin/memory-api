@@ -1,25 +1,38 @@
-# session-api: runtime cognitive-workspace model
+# session-api: runtime cognitive-workspace foundation
 
-Extend `session-api` (`memory-api/crates/session-api`) from a write/archive store into a read/runtime store.
+Extend `session-api` from a write/archive store into the durable read/runtime foundation used by pinned context and the session workflow.
 
 ## Decisions baked in
-- **D1/D9 resume:** `init_context(session_id)` is load-or-create + idempotent; later turns resume and keep mutating. Creates the session dir on init (**D4**).
-- **D2 URNs:** pinned entities are stored as cross-store URNs `ce://<ws>/<store>/<id>`.
-- **D4 persistence:** flush `session_context.json` per mutation.
-- **D6 headers-only:** `render_view` returns short headers (urn, type, title|slug, relation, reason), never full bodies.
-- **D8 no mode:** no `current_mode`; general chat = empty pins.
-- **D9 usage:** each `pin` emits one usage event into the feedback-api program's curation model.
+
+- A durable `workspace_session_id` identifies the logical workspace across handoffs.
+- Each agent execution uses a distinct `run_id` with optional predecessor linkage; handoff reuses the workspace ID, not the outgoing run ID.
+- Pinned entities are cross-store URNs.
+- Context mutations are file-backed and flushed before returning.
+- `render_view` returns short headers only; bodies are fetched explicitly.
+- No `current_mode`; an empty context is valid.
+- Feedback usage/rating emission is optional through an injected sink and cannot fail context mutation.
 
 ## Scope
-- Add `session_context.json` alongside `session.json`/`transcript.json` without breaking the capture/archive path.
-- Core ops: `init_context`, `pin`, `unpin`, `read_context`, `render_view`.
-- Focused unit tests incl. a regression proving the capture path output is byte-identical.
 
-## Depends on
-- Design ticket (schema/ADRs frozen).
-- [82d6ada4 URN cross-store resolver] — context stores entity refs as URNs.
-- [c7542933 feedback-api CORE curation surface] and [9c95c1e4 feedback ingestion/retention baseline] provide the foundational event model.
-- [b1e9e744 feedback-api full program] remains the gating dependency for session bootstrapping, so runtime work starts only after the broader feedback track is in place.
+- Add durable runtime context alongside existing capture artifacts without breaking capture/archive behavior.
+- Core ops: initialize/resume workspace context, pin, unpin, read context, and render pinned headers.
+- Persist workspace/run lineage needed by downstream workflow and handoff slices.
+- Focused unit tests, including byte-identity regressions for the existing capture path.
 
-## Spec
-`memory-api/session-api/runtime-session-context` (709f067a).
+## Dependencies
+
+- Frozen design contract `afa00b5c-c736-4d75-b157-d3e9ce90d819`.
+- URN resolver `82d6ada4-ac35-45a7-9df6-7b7501d58e70`.
+
+Feedback-api tickets are no longer hard dependencies. A feedback adapter may be integrated when available, but durable context must work without it.
+
+## Downstream
+
+- Durable workflow persistence `70cd7056-c342-4433-ad60-5bc798f61aa6`.
+- CLI/MCP surfaces `6b2dc497-188c-44f5-9106-bf35deecb7a1`.
+- Cascade gathering `d8f76965-1ff3-4a0a-bb24-773b9637fae4`.
+
+## Specs
+
+- Runtime context `709f067a-21b6-41b6-8879-3cacef4bacaf`.
+- Durable workflow `c677182e-90da-4ac3-8b94-9e2e97c825cf`.

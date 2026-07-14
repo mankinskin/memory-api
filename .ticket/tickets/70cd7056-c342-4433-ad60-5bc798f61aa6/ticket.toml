@@ -1,0 +1,9 @@
+id = "70cd7056-c342-4433-ad60-5bc798f61aa6"
+created_at = "2026-07-14T00:18:57.461009100+00:00"
+title = "[session-api] Durable session workflow persistence and mutation"
+state = "done"
+component = "session-api"
+depends_on = ["412964a3-e1c3-47da-94ad-268ff20441c0"]
+effort = "3200"
+priority = "high"
+type = "tracker-improvement"

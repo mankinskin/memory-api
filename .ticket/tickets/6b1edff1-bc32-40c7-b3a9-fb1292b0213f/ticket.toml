@@ -1,0 +1,7 @@
+id = "6b1edff1-bc32-40c7-b3a9-fb1292b0213f"
+created_at = "2026-07-14T13:13:47.860419600+00:00"
+title = "[session-api][remediation] Authoritative finish, live ticket state, atomic durability, and CLI contract"
+state = "in-review"
+effort = "4000"
+priority = "high"
+type = "tracker-improvement"
