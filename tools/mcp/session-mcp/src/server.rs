@@ -554,6 +554,21 @@ impl SessionServer {
     }
 
     #[tool(
+        name = "session_runtime_render_instructions",
+        description = "Render a focused instruction set from the workspace session's pinned rule URNs."
+    )]
+    pub async fn session_runtime_render_instructions(
+        &self,
+        Parameters(input): Parameters<RuntimeViewInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let render = self
+            .config_for_workspace(&input.workspace)?
+            .render_pinned_rule_instructions(&input.workspace_session_id)
+            .map_err(Self::session_err)?;
+        Self::json_result(&serde_json::json!({"render": render}))
+    }
+
+    #[tool(
         name = "session_workflow_add_node",
         description = "Add a node to the durable session workflow graph."
     )]
@@ -1080,6 +1095,51 @@ mod tests {
             .await
             .expect("lookup");
         assert!(!lookup.is_error.unwrap_or(false));
+    }
+
+    #[tokio::test]
+    async fn runtime_render_instructions_returns_only_pinned_rules() {
+        let dir = tempdir().unwrap();
+        let session_root = dir.path().join(".session");
+        let config = SessionStoreConfig::new(&session_root, "default");
+        let init = config
+            .init_runtime_context(Default::default())
+            .expect("init runtime");
+        let mut rule_store =
+            rule_api::RuleStore::open_or_init(&dir.path().join(".rule"))
+                .expect("rule store");
+        let rule = rule_api::RuleManifest::new(
+            "session/mcp/render",
+            "MCP render",
+            ".instructions",
+            "mcp-render",
+            "Pinned MCP guidance.",
+        );
+        let rule_id = rule_store.create(&rule, None).expect("create rule");
+        config
+            .pin_runtime_entity(
+                &init.context.workspace_session_id,
+                &format!("ce://default/rules/{rule_id}"),
+                None,
+                None,
+            )
+            .expect("pin rule");
+        let server = SessionServer::new(session_root.clone(), "default".into());
+
+        let result = server
+            .session_runtime_render_instructions(Parameters(RuntimeViewInput {
+                workspace: session_root.display().to_string(),
+                workspace_session_id: init.context.workspace_session_id,
+            }))
+            .await
+            .expect("render instructions");
+        let payload = extract_json(result);
+        assert!(
+            payload["render"]
+                .as_str()
+                .unwrap()
+                .contains("Pinned MCP guidance.")
+        );
     }
 
     #[tokio::test]

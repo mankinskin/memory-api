@@ -70,6 +70,7 @@ use crate::{
         peek_turn_range,
     },
 };
+use rule_api::RuleStore;
 use test_api::{
     ExecutionQuery,
     TestStoreConfig,
@@ -648,6 +649,31 @@ impl SessionStoreConfig {
             Err(err) => return Err(err),
         };
 
+        if !created_workspace
+            && self
+                .runtime_paths_for_workspace(&workspace_session_id)?
+                .finish_path
+                .exists()
+        {
+            if request.force_new_run || request.predecessor_run_id.is_some() {
+                return Err(SessionError::WorkspaceFinished {
+                    workspace_session_id,
+                });
+            }
+
+            let run = context.active_run().cloned().ok_or_else(|| {
+                SessionError::RuntimeContextNotFound {
+                    workspace_session_id: workspace_session_id.clone(),
+                }
+            })?;
+            return Ok(SessionRuntimeInitResult {
+                context,
+                run,
+                created_workspace: false,
+                created_run: false,
+            });
+        }
+
         if !created_workspace {
             let predecessor = request
                 .predecessor_run_id
@@ -752,10 +778,9 @@ impl SessionStoreConfig {
     /// Acquire an exclusive lock over a workspace runtime context for the duration
     /// of a read-modify-write mutation. This prevents two concurrent mutations from
     /// both reading the same context and silently clobbering each other's write.
-    /// The lock is a `create_new` lock file, which is atomic on Windows and Unix.
-    /// A stale lock left behind by a crashed process is reclaimed once it exceeds
-    /// [`RUNTIME_LOCK_STALE_SECS`]; a live conflict fails fast with an explicit
-    /// [`SessionError::RuntimeMutationConflict`].
+    /// The lock is an OS-held exclusive file lock. The lock file remains in place
+    /// between owners so releasing one file handle cannot unlink the inode used by
+    /// a successor. The operating system releases the lock if the process exits.
     fn acquire_runtime_lock(
         &self,
         workspace_session_id: &str,
@@ -769,43 +794,27 @@ impl SessionStoreConfig {
         })?;
         let lock_path = paths.workspace_dir.join(".context.lock");
 
-        for _ in 0..2 {
-            match fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&lock_path)
-            {
-                Ok(mut file) => {
-                    use std::io::Write;
-                    let _ = file
-                        .write_all(chrono::Utc::now().to_rfc3339().as_bytes());
-                    let _ = file.sync_all();
-                    return Ok(RuntimeMutationLock {
-                        lock_path: lock_path.clone(),
-                    });
-                },
-                Err(source) if source.kind() == ErrorKind::AlreadyExists => {
-                    if runtime_lock_is_stale(&lock_path) {
-                        // Reclaim a lock abandoned by a crashed process, then retry.
-                        let _ = fs::remove_file(&lock_path);
-                        continue;
-                    }
-                    return Err(SessionError::RuntimeMutationConflict {
-                        workspace_session_id: workspace_session_id.to_string(),
-                    });
-                },
-                Err(source) => {
-                    return Err(SessionError::Io {
-                        path: lock_path.clone(),
-                        source,
-                    });
-                },
-            }
-        }
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&lock_path)
+            .map_err(|source| SessionError::Io {
+                path: lock_path.clone(),
+                source,
+            })?;
 
-        Err(SessionError::RuntimeMutationConflict {
-            workspace_session_id: workspace_session_id.to_string(),
-        })
+        match file.try_lock() {
+            Ok(()) => Ok(RuntimeMutationLock { file }),
+            Err(fs::TryLockError::WouldBlock) =>
+                Err(SessionError::RuntimeMutationConflict {
+                    workspace_session_id: workspace_session_id.to_string(),
+                }),
+            Err(fs::TryLockError::Error(source)) => Err(SessionError::Io {
+                path: lock_path,
+                source,
+            }),
+        }
     }
 
     pub fn pin_runtime_entity(
@@ -912,6 +921,51 @@ impl SessionStoreConfig {
             pinned_count: pinned_headers.len(),
             pinned_headers,
         })
+    }
+
+    pub fn render_pinned_rule_instructions(
+        &self,
+        workspace_session_id: &str,
+    ) -> Result<String, SessionError> {
+        let context = self.read_runtime_context(workspace_session_id)?;
+        let rule_store = RuleStore::open(&sibling_store_root(
+            &self.root, ".rule",
+        ))
+        .map_err(|error| {
+            SessionError::InvalidHookInput(format!(
+                "rule store unavailable: {error}"
+            ))
+        })?;
+        let mut rules = Vec::new();
+
+        for pin in context
+            .pinned_entities
+            .iter()
+            .filter(|pin| pin.kind == SessionPinnedEntityKind::Rule)
+        {
+            let parsed = parse_entity_urn(&pin.urn)?;
+            if parsed.workspace_slug != self.workspace_slug {
+                return Err(SessionError::InvalidHookInput(format!(
+                    "unsupported cross-workspace rule routing: URN workspace `{}` does not match session workspace `{}` ({})",
+                    parsed.workspace_slug, self.workspace_slug, pin.urn
+                )));
+            }
+            let rule = rule_store.get(&parsed.entity_id).map_err(|error| {
+                SessionError::InvalidHookInput(format!(
+                    "pinned rule {} could not be resolved: {error}",
+                    pin.urn
+                ))
+            })?;
+            rules.push(rule);
+        }
+
+        rules.sort_by_key(|rule| {
+            (
+                rule.order_key().unwrap_or_default(),
+                rule.slug().unwrap_or("").to_string(),
+            )
+        });
+        Ok(rule_api::render_markdown_file(&rules))
     }
 
     pub fn workflow_add_node(
@@ -1971,41 +2025,14 @@ fn sibling_store_root(
     session_store_root.join(sibling_store_dir)
 }
 
-/// Runtime mutation locks older than this are treated as abandoned by a crashed
-/// process and reclaimed. Mutations are short read-modify-write critical sections,
-/// so a lock held longer than this almost certainly outlived its owner.
-const RUNTIME_LOCK_STALE_SECS: i64 = 30;
-
-/// RAII guard that releases the runtime mutation lock file on drop.
+/// RAII guard that releases the runtime mutation lock on drop.
 struct RuntimeMutationLock {
-    lock_path: PathBuf,
+    file: fs::File,
 }
 
 impl Drop for RuntimeMutationLock {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.lock_path);
-    }
-}
-
-fn runtime_lock_is_stale(lock_path: &Path) -> bool {
-    // Prefer the timestamp written into the lock file; fall back to the file's
-    // modified time. If neither can be read, treat the lock as stale so a corrupt
-    // lock cannot permanently wedge the workspace.
-    if let Ok(contents) = fs::read_to_string(lock_path) {
-        if let Ok(written) =
-            chrono::DateTime::parse_from_rfc3339(contents.trim())
-        {
-            let age = chrono::Utc::now()
-                .signed_duration_since(written.with_timezone(&chrono::Utc));
-            return age.num_seconds() >= RUNTIME_LOCK_STALE_SECS;
-        }
-    }
-    match fs::metadata(lock_path).and_then(|meta| meta.modified()) {
-        Ok(modified) => modified
-            .elapsed()
-            .map(|age| age.as_secs() as i64 >= RUNTIME_LOCK_STALE_SECS)
-            .unwrap_or(true),
-        Err(_) => true,
+        let _ = self.file.unlock();
     }
 }
 

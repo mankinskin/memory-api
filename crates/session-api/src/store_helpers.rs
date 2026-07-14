@@ -45,22 +45,26 @@ pub(super) fn write_json<T: Serialize>(
         })?;
     }
 
-    // `std::fs::rename` is an atomic replace on every platform this store runs on:
-    // on Unix it is `rename(2)`, and on Windows it maps to `MoveFileExW` with
-    // `MOVEFILE_REPLACE_EXISTING`, which atomically swaps the destination inode.
-    // A single rename therefore has no crash window — the destination path always
-    // resolves to either the old durable file or the fully-written new one, never
-    // to a missing file. (An earlier Windows-only "move aside to a backup, then
-    // promote the temp" dance was removed: it wrongly assumed Windows rename cannot
-    // overwrite, and it opened a crash interval during which the destination was
-    // absent and the previous state survived only under an unreferenced backup.)
+    // The temp file is fully written and synced before replacement. Replacement
+    // semantics are those of `std::fs::rename` on the current platform; on error,
+    // the previous destination is left untouched. This does not claim that Windows
+    // replacement or the final directory entry is power-loss durable.
     fs::rename(&tmp_path, path).map_err(|source| SessionError::Io {
         path: path.to_path_buf(),
         source,
     })?;
 
-    if let Ok(parent_dir) = fs::File::open(parent) {
-        let _ = parent_dir.sync_all();
+    #[cfg(unix)]
+    {
+        let parent_dir =
+            fs::File::open(parent).map_err(|source| SessionError::Io {
+                path: parent.to_path_buf(),
+                source,
+            })?;
+        parent_dir.sync_all().map_err(|source| SessionError::Io {
+            path: parent.to_path_buf(),
+            source,
+        })?;
     }
 
     Ok(())

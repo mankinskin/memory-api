@@ -78,6 +78,8 @@ pub enum SessionCommand {
     Unpin(UnpinArgs),
     /// Read headers-only runtime context view.
     View(ViewArgs),
+    /// Render the focused instruction set from pinned rule URNs.
+    RenderInstructions(ViewArgs),
     /// Canonical nested workflow commands (`session workflow <subcommand>`).
     Workflow {
         #[command(subcommand)]
@@ -450,6 +452,11 @@ fn dispatch(
             let view =
                 config.view_runtime_context(&args.workspace_session_id)?;
             to_value(&view)
+        },
+        SessionCommand::RenderInstructions(args) => {
+            let render = config
+                .render_pinned_rule_instructions(&args.workspace_session_id)?;
+            to_value(&json!({"render": render}))
         },
         SessionCommand::Workflow { command } =>
             handle_workflow_command(&config, command),
@@ -977,6 +984,67 @@ mod tests {
             },
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_render_instructions() {
+        let cli = parse_cli_from([
+            "session",
+            "render-instructions",
+            "--workspace-session-id",
+            "ws-1",
+        ])
+        .expect("parse render-instructions");
+
+        match cli.command {
+            SessionCommand::RenderInstructions(args) => {
+                assert_eq!(args.workspace_session_id, "ws-1");
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn render_instructions_dispatches_focused_rule_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_root = dir.path().join(".session");
+        let config = SessionStoreConfig::new(&session_root, "default");
+        let init = config
+            .init_runtime_context(SessionRuntimeInitRequest::default())
+            .unwrap();
+        let mut rule_store =
+            rule_api::RuleStore::open_or_init(&dir.path().join(".rule"))
+                .unwrap();
+        let rule = rule_api::RuleManifest::new(
+            "session/cli/render",
+            "CLI render",
+            ".instructions",
+            "cli-render",
+            "Pinned CLI guidance.",
+        );
+        let rule_id = rule_store.create(&rule, None).unwrap();
+        config
+            .pin_runtime_entity(
+                &init.context.workspace_session_id,
+                &format!("ce://default/rules/{rule_id}"),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let payload = dispatch(
+            &config,
+            SessionCommand::RenderInstructions(ViewArgs {
+                workspace_session_id: init.context.workspace_session_id,
+            }),
+        )
+        .unwrap();
+        assert!(
+            payload["render"]
+                .as_str()
+                .unwrap()
+                .contains("Pinned CLI guidance.")
+        );
     }
 
     #[test]

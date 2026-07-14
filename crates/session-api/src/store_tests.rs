@@ -917,6 +917,98 @@ fn context_view_returns_headers_only() {
 }
 
 #[test]
+fn pinned_rule_render_contains_only_rule_pins_in_canonical_order() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+    let mut rule_store =
+        rule_api::RuleStore::open_or_init(&store_root.join(".rule")).unwrap();
+
+    let mut later = rule_api::RuleManifest::new(
+        "session/render/later",
+        "Later",
+        ".instructions",
+        "later",
+        "Later guidance.",
+    );
+    later.set_order_key(20);
+    let later_id = rule_store.create(&later, None).unwrap();
+    let mut earlier = rule_api::RuleManifest::new(
+        "session/render/earlier",
+        "Earlier",
+        ".instructions",
+        "earlier",
+        "Earlier guidance.",
+    );
+    earlier.set_order_key(10);
+    let earlier_id = rule_store.create(&earlier, None).unwrap();
+
+    config
+        .pin_runtime_entity(
+            &workspace_id,
+            &format!("ce://context-engine/rules/{later_id}"),
+            None,
+            None,
+        )
+        .unwrap();
+    config
+        .pin_runtime_entity(
+            &workspace_id,
+            "ce://context-engine/tickets/11111111-1111-4111-8111-111111111111",
+            None,
+            None,
+        )
+        .unwrap();
+    config
+        .pin_runtime_entity(
+            &workspace_id,
+            &format!("ce://context-engine/rules/{earlier_id}"),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let rendered = config
+        .render_pinned_rule_instructions(&workspace_id)
+        .unwrap();
+    assert!(rendered.contains("Earlier guidance."));
+    assert!(rendered.contains("Later guidance."));
+    assert!(!rendered.contains("11111111-1111-4111-8111-111111111111"));
+    assert!(
+        rendered.find("Earlier guidance.").unwrap()
+            < rendered.find("Later guidance.").unwrap()
+    );
+}
+
+#[test]
+fn pinned_rule_render_fails_for_missing_rule() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    rule_api::RuleStore::open_or_init(&store_root.join(".rule")).unwrap();
+    config
+        .pin_runtime_entity(
+            &init.context.workspace_session_id,
+            "ce://context-engine/rules/22222222-2222-4222-8222-222222222222",
+            None,
+            None,
+        )
+        .unwrap();
+
+    let error = config
+        .render_pinned_rule_instructions(&init.context.workspace_session_id)
+        .unwrap_err();
+    assert!(matches!(error, SessionError::InvalidHookInput(_)));
+}
+
+#[test]
 fn context_capture_persistence_isolation_is_byte_stable() {
     let tempdir = TempDir::new().unwrap();
     let config =
@@ -1558,6 +1650,30 @@ impl SessionTicketStateResolver for FixedStateResolver {
     }
 }
 
+struct BlockingTerminalResolver {
+    urn: String,
+    entered: std::sync::mpsc::Sender<()>,
+    release: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+}
+
+impl SessionTicketStateResolver for BlockingTerminalResolver {
+    fn resolve_ticket_state(
+        &self,
+        ticket_urn: &str,
+    ) -> Result<Option<String>, String> {
+        if ticket_urn != self.urn {
+            return Err(format!("unexpected urn: {ticket_urn}"));
+        }
+        self.entered.send(()).map_err(|error| error.to_string())?;
+        self.release
+            .lock()
+            .map_err(|error| error.to_string())?
+            .recv()
+            .map_err(|error| error.to_string())?;
+        Ok(Some("done".to_string()))
+    }
+}
+
 fn test_store_for(store_root: &std::path::Path) -> test_api::TestStoreConfig {
     test_api::TestStoreConfig::new(store_root.join(".test"), "context-engine")
 }
@@ -2033,10 +2149,11 @@ fn finished_workspace_rejects_all_mutations() {
     assert!(matches!(pin_err, SessionError::WorkspaceFinished { .. }));
 }
 
-/// High: a live concurrent mutation lock prevents a second mutation from
-/// silently overwriting, while a stale lock is reclaimed.
+/// A live lock cannot be stolen solely because its metadata is older than the
+/// former 30-second stale threshold, and releasing it preserves the stable lock
+/// file used by successor owners.
 #[test]
-fn concurrent_mutation_lock_blocks_live_and_reclaims_stale() {
+fn aged_live_lock_blocks_second_owner_and_releases_safely() {
     let tempdir = TempDir::new().unwrap();
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root, "context-engine");
@@ -2048,16 +2165,113 @@ fn concurrent_mutation_lock_blocks_live_and_reclaims_stale() {
     let paths = config.runtime_paths_for_workspace(&workspace_id).unwrap();
     let lock_path = paths.workspace_dir.join(".context.lock");
 
-    // Simulate a live concurrent holder with a fresh timestamp.
-    std::fs::write(&lock_path, chrono::Utc::now().to_rfc3339()).unwrap();
-    let conflict = config
+    let formerly_stale =
+        (chrono::Utc::now() - chrono::Duration::seconds(31)).to_rfc3339();
+    std::fs::write(&lock_path, formerly_stale).unwrap();
+    let first_owner = config.acquire_runtime_lock(&workspace_id).unwrap();
+
+    let conflict = match config.acquire_runtime_lock(&workspace_id) {
+        Ok(_) => panic!("a second owner acquired the aged live lock"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        conflict,
+        SessionError::RuntimeMutationConflict { .. }
+    ));
+
+    drop(first_owner);
+    let successor = config.acquire_runtime_lock(&workspace_id).unwrap();
+    assert!(lock_path.exists());
+    drop(successor);
+    assert!(lock_path.exists());
+
+    let final_owner = config.acquire_runtime_lock(&workspace_id).unwrap();
+    drop(final_owner);
+}
+
+#[cfg(windows)]
+#[test]
+fn failed_windows_replacement_preserves_previous_bytes() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let tempdir = TempDir::new().unwrap();
+    let path = tempdir.path().join("durable.json");
+    super::write_json(&path, &serde_json::json!({ "version": "old" })).unwrap();
+    let previous = std::fs::read(&path).unwrap();
+
+    let destination = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .share_mode(0x0000_0001 | 0x0000_0002)
+        .open(&path)
+        .unwrap();
+
+    let error = super::write_json(
+        &path,
+        &serde_json::json!({ "version": "replacement" }),
+    )
+    .unwrap_err();
+    assert!(matches!(error, SessionError::Io { .. }));
+    assert_eq!(std::fs::read(&path).unwrap(), previous);
+    drop(destination);
+}
+
+#[test]
+fn finish_excludes_mutation_init_and_resume_until_terminal_commit() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+    let predecessor_run_id = init.run.run_id;
+    let ticket_urn =
+        "ce://context-engine/tickets/66666666-6666-4666-8666-666666666666";
+
+    config
         .workflow_add_node(
             &workspace_id,
             SessionWorkflowNodeDraft {
-                node_id: Some("locked-node".to_string()),
+                node_id: Some("terminal-ticket".to_string()),
+                kind: SessionWorkflowNodeKind::Ticket,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "terminal ticket".to_string(),
+                ticket_urn: Some(ticket_urn.to_string()),
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+
+    let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let finish_config = config.clone();
+    let finish_workspace_id = workspace_id.clone();
+    let finish_thread = std::thread::spawn(move || {
+        let resolver = BlockingTerminalResolver {
+            urn: ticket_urn.to_string(),
+            entered: entered_tx,
+            release: std::sync::Mutex::new(release_rx),
+        };
+        finish_config.finish_workflow(
+            &finish_workspace_id,
+            vec![],
+            vec![],
+            Some(&resolver),
+        )
+    });
+
+    entered_rx.recv().unwrap();
+
+    let mutation_error = config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("racing-mutation".to_string()),
                 kind: SessionWorkflowNodeKind::Action,
                 requirement: SessionWorkflowNodeRequirement::Optional,
-                title: "blocked by live lock".to_string(),
+                title: "must not interleave".to_string(),
                 ticket_urn: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,
@@ -2065,34 +2279,42 @@ fn concurrent_mutation_lock_blocks_live_and_reclaims_stale() {
         )
         .unwrap_err();
     assert!(matches!(
-        conflict,
+        mutation_error,
         SessionError::RuntimeMutationConflict { .. }
     ));
 
-    // A stale lock (old timestamp) is reclaimed and the mutation proceeds.
-    let stale =
-        (chrono::Utc::now() - chrono::Duration::seconds(120)).to_rfc3339();
-    std::fs::write(&lock_path, stale).unwrap();
-    let recovered = config
-        .workflow_add_node(
-            &workspace_id,
-            SessionWorkflowNodeDraft {
-                node_id: Some("recovered-node".to_string()),
-                kind: SessionWorkflowNodeKind::Action,
-                requirement: SessionWorkflowNodeRequirement::Optional,
-                title: "proceeds after stale reclaim".to_string(),
-                ticket_urn: None,
-                cached_ticket_title: None,
-                validation_spec_id: None,
-            },
-        )
-        .unwrap();
+    let init_error = config
+        .init_runtime_context(SessionRuntimeInitRequest {
+            workspace_session_id: Some(workspace_id.clone()),
+            predecessor_run_id: None,
+            force_new_run: false,
+        })
+        .unwrap_err();
+    assert!(matches!(
+        init_error,
+        SessionError::RuntimeMutationConflict { .. }
+    ));
+
+    let resume_error = config
+        .resume_workspace_context(&workspace_id, &predecessor_run_id)
+        .unwrap_err();
+    assert!(matches!(
+        resume_error,
+        SessionError::RuntimeMutationConflict { .. }
+    ));
+
+    release_tx.send(()).unwrap();
+    let finished = finish_thread.join().unwrap().unwrap();
+    assert!(!finished.already_finished);
+
+    let context = config.read_runtime_context(&workspace_id).unwrap();
+    assert_eq!(context.runs.len(), 1);
     assert!(
-        recovered
+        context
             .workflow
             .nodes
             .iter()
-            .any(|node| node.node_id == "recovered-node")
+            .all(|node| node.node_id != "racing-mutation")
     );
 }
 
@@ -2158,6 +2380,29 @@ fn finished_workspace_rejects_resume_run_creation() {
     assert!(matches!(force_err, SessionError::WorkspaceFinished { .. }));
 }
 
+#[test]
+fn finished_workspace_plain_init_is_read_only_and_byte_stable() {
+    let (config, workspace_id, _tempdir) = finished_workspace();
+    let paths = config.runtime_paths_for_workspace(&workspace_id).unwrap();
+    let active_path = config.active_workspace_session_path().unwrap();
+    let context_before = std::fs::read(&paths.context_path).unwrap();
+    let active_before = std::fs::read(&active_path).unwrap();
+
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest {
+            workspace_session_id: Some(workspace_id.clone()),
+            predecessor_run_id: None,
+            force_new_run: false,
+        })
+        .unwrap();
+
+    assert!(!init.created_workspace);
+    assert!(!init.created_run);
+    assert_eq!(init.context.workspace_session_id, workspace_id);
+    assert_eq!(std::fs::read(&paths.context_path).unwrap(), context_before);
+    assert_eq!(std::fs::read(active_path).unwrap(), active_before);
+}
+
 /// High: the finished-workspace check runs *under* the mutation lock. When a
 /// finished workspace also has a live lock held, the mutation must fail with a
 /// lock conflict (lock acquired first) rather than the finished error — proving
@@ -2166,10 +2411,7 @@ fn finished_workspace_rejects_resume_run_creation() {
 fn finished_check_runs_under_mutation_lock() {
     let (config, workspace_id, _tempdir) = finished_workspace();
 
-    let paths = config.runtime_paths_for_workspace(&workspace_id).unwrap();
-    let lock_path = paths.workspace_dir.join(".context.lock");
-    // A fresh live lock held by a hypothetical concurrent holder.
-    std::fs::write(&lock_path, chrono::Utc::now().to_rfc3339()).unwrap();
+    let _lock = config.acquire_runtime_lock(&workspace_id).unwrap();
 
     let err = config
         .workflow_add_node(
