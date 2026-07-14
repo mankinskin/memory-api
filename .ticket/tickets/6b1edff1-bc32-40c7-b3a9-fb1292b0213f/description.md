@@ -74,6 +74,34 @@ Maintainability findings (file-size splits for store.rs/store_tests.rs/lib.rs/se
 CLI dispatch complexity, coverage-evidence gap) are noted as follow-up quality debt and do
 not block action 8.
 
+## Independent review correction (2026-07-14)
+
+The remediation remains in review. The earlier audit follow-up overstates completion in
+four places:
+
+1. **Live-lock reclamation is unsafe.** `.context.lock` is considered stale solely by
+   age after 30 seconds. A legitimate finish can exceed that threshold while resolving
+   ticket/test authorities, allowing another process to delete the live lock, enter the
+   critical section, and later have its replacement lock removed by the original guard.
+   Replace age-only reclamation with an ownership- and liveness-safe cross-platform
+   locking protocol; a guard must remove only the lock instance it owns.
+2. **Finished workspace init is not immutable.** Plain idempotent init does not call the
+   finished-workspace guard unless forcing or linking a run. It still updates timestamps
+   and rewrites `context.json` and `active_workspace_session.json`. Ordinary init after
+   finish must be read-only or rejected.
+3. **Race coverage is not yet discriminating.** `finished_check_runs_under_mutation_lock`
+   proves check ordering/error precedence but does not create a real finish/mutation
+   interleaving or hold a live lock beyond the stale threshold. Add deterministic
+   concurrency tests, including ownership-safe release.
+4. **Durability claims exceed evidence.** A single `fs::rename` removes the previous
+   explicit delete-before-rename interval, but the Windows replace-existing and
+   power-loss guarantee remains unproven, and parent-directory sync failures are ignored.
+   Either use a proven primitive and platform-specific failure tests or narrow the spec
+   and ticket claims to the behavior actually established.
+
+Action 8 and epic closure remain blocked until these items are implemented, focused tests
+pass, and spec/evidence claims are reconciled.
+
 ## Traceability
 
 - Epic: effba966-f0a8-4d7d-b289-b7feba826cf8
