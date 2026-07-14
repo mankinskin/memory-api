@@ -18,7 +18,14 @@ use session_api::{
     PromptPackOptions,
     SessionError,
     SessionQuery,
+    SessionRuntimeInitRequest,
     SessionStoreConfig,
+    SessionValidationGate,
+    SessionWorkflowEdgeKind,
+    SessionWorkflowNodeDraft,
+    SessionWorkflowNodeKind,
+    SessionWorkflowNodeRequirement,
+    SessionWorkflowNodeStatus,
     SessionWorktreeCheckInRequest,
 };
 
@@ -61,6 +68,37 @@ pub struct SessionCli {
 
 #[derive(Debug, Subcommand)]
 pub enum SessionCommand {
+    /// Initialize or resume durable runtime workspace context.
+    Init(InitArgs),
+    /// Resume an existing workspace with a new linked run id.
+    Resume(ResumeArgs),
+    /// Pin an entity URN into runtime context.
+    Pin(PinArgs),
+    /// Unpin an entity URN from runtime context.
+    Unpin(UnpinArgs),
+    /// Read headers-only runtime context view.
+    View(ViewArgs),
+    /// Canonical nested workflow commands (`session workflow <subcommand>`).
+    Workflow {
+        #[command(subcommand)]
+        command: WorkflowCommand,
+    },
+    /// Add a workflow node.
+    WorkflowAddNode(WorkflowAddNodeArgs),
+    /// Link two workflow nodes.
+    WorkflowAddEdge(WorkflowAddEdgeArgs),
+    /// Update workflow node status.
+    WorkflowSetStatus(WorkflowSetStatusArgs),
+    /// Promote a workflow node to a ticket-backed node.
+    WorkflowPromote(WorkflowPromoteArgs),
+    /// Render workflow as terminal output.
+    WorkflowRenderTerminal(ViewArgs),
+    /// Render workflow as Mermaid flowchart output.
+    WorkflowRenderMermaid(ViewArgs),
+    /// Persist a structured handoff record and render handoff summary.
+    Handoff(HandoffArgs),
+    /// Explicitly finish a workflow with required gates.
+    Finish(FinishArgs),
     /// Check a session into its authoritative worktree assignment.
     CheckIn(CheckInArgs),
     /// Look up the worktree assignment for a session.
@@ -75,6 +113,24 @@ pub enum SessionCommand {
     PeekSkeleton(PeekSkeletonArgs),
     /// Peek a prompt-facing compact view of a session transcript.
     PeekPromptPack(PeekPromptPackArgs),
+}
+
+/// Canonical nested workflow subcommands. These mirror the flat
+/// `workflow-*` variants, which are retained as compatibility aliases.
+#[derive(Debug, Subcommand)]
+pub enum WorkflowCommand {
+    /// Add a workflow node.
+    AddNode(WorkflowAddNodeArgs),
+    /// Link two workflow nodes.
+    AddEdge(WorkflowAddEdgeArgs),
+    /// Update workflow node status.
+    SetStatus(WorkflowSetStatusArgs),
+    /// Promote a workflow node to a ticket-backed node.
+    Promote(WorkflowPromoteArgs),
+    /// Render workflow as terminal output.
+    RenderTerminal(ViewArgs),
+    /// Render workflow as Mermaid flowchart output.
+    RenderMermaid(ViewArgs),
 }
 
 #[derive(Debug, Args)]
@@ -179,6 +235,127 @@ pub struct MoveArgs {
     pub rollback: Option<String>,
 }
 
+#[derive(Debug, Args)]
+pub struct InitArgs {
+    #[arg(long)]
+    pub workspace_session_id: Option<String>,
+    #[arg(long)]
+    pub predecessor_run_id: Option<String>,
+    #[arg(long, default_value_t = false)]
+    pub force_new_run: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ResumeArgs {
+    #[arg(long)]
+    pub workspace_session_id: String,
+    #[arg(long)]
+    pub predecessor_run_id: String,
+}
+
+#[derive(Debug, Args)]
+pub struct PinArgs {
+    #[arg(long)]
+    pub workspace_session_id: String,
+    #[arg(long)]
+    pub entity_urn: String,
+    #[arg(long)]
+    pub relation: Option<String>,
+    #[arg(long)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UnpinArgs {
+    #[arg(long)]
+    pub workspace_session_id: String,
+    #[arg(long)]
+    pub entity_urn: String,
+}
+
+#[derive(Debug, Args)]
+pub struct ViewArgs {
+    #[arg(long)]
+    pub workspace_session_id: String,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkflowAddNodeArgs {
+    #[arg(long)]
+    pub workspace_session_id: String,
+    #[arg(long)]
+    pub node_id: Option<String>,
+    #[arg(long)]
+    pub kind: String,
+    #[arg(long)]
+    pub requirement: String,
+    #[arg(long)]
+    pub title: String,
+    #[arg(long)]
+    pub ticket_urn: Option<String>,
+    #[arg(long)]
+    pub cached_ticket_title: Option<String>,
+    #[arg(long)]
+    pub validation_spec_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkflowAddEdgeArgs {
+    #[arg(long)]
+    pub workspace_session_id: String,
+    #[arg(long)]
+    pub from: String,
+    #[arg(long)]
+    pub to: String,
+    #[arg(long)]
+    pub kind: String,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkflowSetStatusArgs {
+    #[arg(long)]
+    pub workspace_session_id: String,
+    #[arg(long)]
+    pub node_id: String,
+    #[arg(long)]
+    pub status: String,
+    #[arg(long)]
+    pub deferred_reason: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkflowPromoteArgs {
+    #[arg(long)]
+    pub workspace_session_id: String,
+    #[arg(long)]
+    pub node_id: String,
+    #[arg(long)]
+    pub ticket_urn: String,
+    #[arg(long)]
+    pub cached_ticket_title: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct HandoffArgs {
+    #[arg(long)]
+    pub workspace_session_id: String,
+    /// JSON array of validation gates.
+    #[arg(long)]
+    pub validation_json: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct FinishArgs {
+    #[arg(long)]
+    pub workspace_session_id: String,
+    /// JSON array of validation gates.
+    #[arg(long)]
+    pub validation_json: Option<String>,
+    /// Optional-node ids explicitly deferred.
+    #[arg(long = "defer-node")]
+    pub deferred_optional_node_ids: Vec<String>,
+}
+
 // ── output helpers ──────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -237,6 +414,79 @@ fn dispatch(
     command: SessionCommand,
 ) -> Result<Value, CliRunError> {
     match command {
+        SessionCommand::Init(args) => {
+            let result =
+                config.init_runtime_context(SessionRuntimeInitRequest {
+                    workspace_session_id: args.workspace_session_id,
+                    predecessor_run_id: args.predecessor_run_id,
+                    force_new_run: args.force_new_run,
+                })?;
+            to_value(&result)
+        },
+        SessionCommand::Resume(args) => {
+            let result = config.resume_workspace_context(
+                &args.workspace_session_id,
+                &args.predecessor_run_id,
+            )?;
+            to_value(&result)
+        },
+        SessionCommand::Pin(args) => {
+            let context = config.pin_runtime_entity(
+                &args.workspace_session_id,
+                &args.entity_urn,
+                args.relation,
+                args.reason,
+            )?;
+            to_value(&context)
+        },
+        SessionCommand::Unpin(args) => {
+            let context = config.unpin_runtime_entity(
+                &args.workspace_session_id,
+                &args.entity_urn,
+            )?;
+            to_value(&context)
+        },
+        SessionCommand::View(args) => {
+            let view =
+                config.view_runtime_context(&args.workspace_session_id)?;
+            to_value(&view)
+        },
+        SessionCommand::Workflow { command } =>
+            handle_workflow_command(&config, command),
+        SessionCommand::WorkflowAddNode(args) =>
+            handle_workflow_command(&config, WorkflowCommand::AddNode(args)),
+        SessionCommand::WorkflowAddEdge(args) =>
+            handle_workflow_command(&config, WorkflowCommand::AddEdge(args)),
+        SessionCommand::WorkflowSetStatus(args) =>
+            handle_workflow_command(&config, WorkflowCommand::SetStatus(args)),
+        SessionCommand::WorkflowPromote(args) =>
+            handle_workflow_command(&config, WorkflowCommand::Promote(args)),
+        SessionCommand::WorkflowRenderTerminal(args) =>
+            handle_workflow_command(
+                &config,
+                WorkflowCommand::RenderTerminal(args),
+            ),
+        SessionCommand::WorkflowRenderMermaid(args) => handle_workflow_command(
+            &config,
+            WorkflowCommand::RenderMermaid(args),
+        ),
+        SessionCommand::Handoff(args) => {
+            let result = config.create_handoff_result(
+                &args.workspace_session_id,
+                parse_validation_gates(args.validation_json.as_deref())?,
+                None,
+            )?;
+            to_value(&result)
+        },
+        SessionCommand::Finish(args) => {
+            let result = config.finish_workflow(
+                &args.workspace_session_id,
+                parse_validation_gates(args.validation_json.as_deref())?,
+                args.deferred_optional_node_ids,
+                None,
+            )?;
+            to_value(&result)
+        },
         SessionCommand::CheckIn(args) => {
             let receipt =
                 config.check_in_worktree(SessionWorktreeCheckInRequest {
@@ -288,6 +538,136 @@ fn dispatch(
             )?;
             to_value(&pack)
         },
+    }
+}
+
+/// Shared handler for canonical nested (`session workflow <subcommand>`) and
+/// flat (`session workflow-<subcommand>`) command forms.
+fn handle_workflow_command(
+    config: &SessionStoreConfig,
+    command: WorkflowCommand,
+) -> Result<Value, CliRunError> {
+    match command {
+        WorkflowCommand::AddNode(args) => {
+            let context = config.workflow_add_node(
+                &args.workspace_session_id,
+                SessionWorkflowNodeDraft {
+                    node_id: args.node_id,
+                    kind: parse_node_kind(&args.kind)?,
+                    requirement: parse_requirement(&args.requirement)?,
+                    title: args.title,
+                    ticket_urn: args.ticket_urn,
+                    cached_ticket_title: args.cached_ticket_title,
+                    validation_spec_id: args.validation_spec_id,
+                },
+            )?;
+            to_value(&context)
+        },
+        WorkflowCommand::AddEdge(args) => {
+            let context = config.workflow_add_edge(
+                &args.workspace_session_id,
+                &args.from,
+                &args.to,
+                parse_edge_kind(&args.kind)?,
+            )?;
+            to_value(&context)
+        },
+        WorkflowCommand::SetStatus(args) => {
+            let context = config.workflow_update_node_status(
+                &args.workspace_session_id,
+                &args.node_id,
+                parse_node_status(&args.status)?,
+                args.deferred_reason,
+            )?;
+            to_value(&context)
+        },
+        WorkflowCommand::Promote(args) => {
+            let context = config.workflow_promote_node_to_ticket(
+                &args.workspace_session_id,
+                &args.node_id,
+                &args.ticket_urn,
+                args.cached_ticket_title,
+            )?;
+            to_value(&context)
+        },
+        WorkflowCommand::RenderTerminal(args) => {
+            let rendered = config
+                .workflow_render_terminal(&args.workspace_session_id, None)?;
+            to_value(&json!({"render": rendered}))
+        },
+        WorkflowCommand::RenderMermaid(args) => {
+            let rendered = config
+                .workflow_render_mermaid(&args.workspace_session_id, None)?;
+            to_value(&json!({"render": rendered}))
+        },
+    }
+}
+
+fn parse_validation_gates(
+    raw: Option<&str>
+) -> Result<Vec<SessionValidationGate>, CliRunError> {
+    let Some(raw) = raw else {
+        return Ok(vec![]);
+    };
+    serde_json::from_str::<Vec<SessionValidationGate>>(raw).map_err(|err| {
+        CliRunError::BadRequest(format!(
+            "invalid --validation-json payload: {err}"
+        ))
+    })
+}
+
+fn parse_node_kind(
+    value: &str
+) -> Result<SessionWorkflowNodeKind, CliRunError> {
+    match value {
+        "ticket" => Ok(SessionWorkflowNodeKind::Ticket),
+        "action" => Ok(SessionWorkflowNodeKind::Action),
+        "decision" => Ok(SessionWorkflowNodeKind::Decision),
+        "checkpoint" => Ok(SessionWorkflowNodeKind::Checkpoint),
+        "validation" => Ok(SessionWorkflowNodeKind::Validation),
+        _ => Err(CliRunError::BadRequest(format!(
+            "invalid workflow node kind: {value}"
+        ))),
+    }
+}
+
+fn parse_requirement(
+    value: &str
+) -> Result<SessionWorkflowNodeRequirement, CliRunError> {
+    match value {
+        "required" => Ok(SessionWorkflowNodeRequirement::Required),
+        "optional" => Ok(SessionWorkflowNodeRequirement::Optional),
+        _ => Err(CliRunError::BadRequest(format!(
+            "invalid workflow requirement: {value}"
+        ))),
+    }
+}
+
+fn parse_edge_kind(
+    value: &str
+) -> Result<SessionWorkflowEdgeKind, CliRunError> {
+    match value {
+        "depends-on" | "depends_on" => Ok(SessionWorkflowEdgeKind::DependsOn),
+        "order" => Ok(SessionWorkflowEdgeKind::Order),
+        _ => Err(CliRunError::BadRequest(format!(
+            "invalid workflow edge kind: {value}"
+        ))),
+    }
+}
+
+fn parse_node_status(
+    value: &str
+) -> Result<SessionWorkflowNodeStatus, CliRunError> {
+    match value {
+        "pending" => Ok(SessionWorkflowNodeStatus::Pending),
+        "in-progress" | "in_progress" =>
+            Ok(SessionWorkflowNodeStatus::InProgress),
+        "blocked" => Ok(SessionWorkflowNodeStatus::Blocked),
+        "done" => Ok(SessionWorkflowNodeStatus::Done),
+        "deferred" => Ok(SessionWorkflowNodeStatus::Deferred),
+        _ => Err(CliRunError::BadRequest(format!(
+            "invalid workflow status: {value}"
+        ))),
     }
 }
 
@@ -535,6 +915,7 @@ mod tests {
         CopilotHookPayload,
         SessionCaptureRequest,
         SessionRole,
+        SessionRuntimeInitRequest,
     };
     use std::process::Command;
     use tempfile::tempdir;
@@ -566,6 +947,80 @@ mod tests {
             },
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_canonical_nested_workflow_add_node() {
+        let cli = parse_cli_from([
+            "session",
+            "workflow",
+            "add-node",
+            "--workspace-session-id",
+            "ws-1",
+            "--kind",
+            "action",
+            "--requirement",
+            "required",
+            "--title",
+            "do the thing",
+        ])
+        .expect("parse nested workflow add-node");
+
+        match cli.command {
+            SessionCommand::Workflow {
+                command: WorkflowCommand::AddNode(args),
+            } => {
+                assert_eq!(args.workspace_session_id, "ws-1");
+                assert_eq!(args.kind, "action");
+                assert_eq!(args.requirement, "required");
+                assert_eq!(args.title, "do the thing");
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_flat_workflow_add_node_alias() {
+        let cli = parse_cli_from([
+            "session",
+            "workflow-add-node",
+            "--workspace-session-id",
+            "ws-1",
+            "--kind",
+            "action",
+            "--requirement",
+            "required",
+            "--title",
+            "do the thing",
+        ])
+        .expect("parse flat workflow-add-node alias");
+
+        match cli.command {
+            SessionCommand::WorkflowAddNode(args) => {
+                assert_eq!(args.workspace_session_id, "ws-1");
+                assert_eq!(args.title, "do the thing");
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_canonical_nested_workflow_render_terminal() {
+        let cli = parse_cli_from([
+            "session",
+            "workflow",
+            "render-terminal",
+            "--workspace-session-id",
+            "ws-1",
+        ])
+        .expect("parse nested workflow render-terminal");
+
+        assert!(matches!(
+            cli.command,
+            SessionCommand::Workflow {
+                command: WorkflowCommand::RenderTerminal(_),
+            }
+        ));
     }
 
     #[test]
@@ -701,6 +1156,41 @@ mod tests {
         assert_eq!(
             target_config.read_session(session_id).unwrap().session_id,
             session_id
+        );
+    }
+
+    #[test]
+    fn handoff_reference_completeness_includes_durable_identity_fields() {
+        let temp = tempdir().unwrap();
+        let config = SessionStoreConfig::new(
+            temp.path().join(".session"),
+            "default".to_string(),
+        );
+
+        let init = config
+            .init_runtime_context(SessionRuntimeInitRequest::default())
+            .expect("init runtime context");
+        let workspace_session_id = init.context.workspace_session_id;
+
+        let rendered = config
+            .render_handoff_terminal(
+                &workspace_session_id,
+                vec![session_api::SessionValidationGate {
+                    validation_spec_id: "val-handoff-reference-completeness"
+                        .to_string(),
+                    required: true,
+                    outcome: Some("passed".to_string()),
+                }],
+                None,
+            )
+            .expect("render handoff");
+
+        assert!(rendered.contains("workspace_session_id:"));
+        assert!(rendered.contains("outgoing_run_id:"));
+        assert!(rendered.contains("handoff "));
+        assert!(
+            rendered
+                .contains("resume: session-cli resume --workspace-session-id")
         );
     }
 }

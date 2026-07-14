@@ -62,7 +62,8 @@ fn run() -> Result<(), SessionError> {
     let config =
         SessionStoreConfig::new(store_root.clone(), args.workspace_slug);
 
-    let plan = config.capture_copilot_transcript(transcript_path, args.trigger)?;
+    let plan =
+        config.capture_copilot_transcript(transcript_path, args.trigger)?;
     report_structured_feedback_signals(&plan);
     synthesize_follow_up_tickets(
         &plan,
@@ -147,11 +148,18 @@ fn report_structured_feedback_signals(plan: &SessionStorePlan) {
     match serde_json::to_string(&signals) {
         Ok(json) => eprintln!(
             "[copilot-capture-hook] structured feedback signals for session {}: {} total ({} failed tool calls, {} explicit ingestions) {}",
-            plan.record.session_id, signals.len(), failed_tool_calls, explicit_ingestions, json
+            plan.record.session_id,
+            signals.len(),
+            failed_tool_calls,
+            explicit_ingestions,
+            json
         ),
         Err(error) => eprintln!(
             "[copilot-capture-hook] structured feedback signals for session {}: {} total ({} failed tool calls, {} explicit ingestions); summary serialization failed: {error}",
-            plan.record.session_id, signals.len(), failed_tool_calls, explicit_ingestions
+            plan.record.session_id,
+            signals.len(),
+            failed_tool_calls,
+            explicit_ingestions
         ),
     }
 }

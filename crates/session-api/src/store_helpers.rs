@@ -4,16 +4,66 @@ pub(super) fn write_json<T: Serialize>(
     path: &Path,
     value: &T,
 ) -> Result<(), SessionError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| SessionError::InvalidStorePath(path.to_path_buf()))?;
+    fs::create_dir_all(parent).map_err(|source| SessionError::Io {
+        path: parent.to_path_buf(),
+        source,
+    })?;
+
     let encoded = serde_json::to_vec_pretty(value).map_err(|source| {
         SessionError::Serialize {
             path: path.to_path_buf(),
             source,
         }
     })?;
-    fs::write(path, encoded).map_err(|source| SessionError::Io {
+
+    let tmp_path = parent.join(format!(
+        ".{}.tmp-{}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("session"),
+        uuid::Uuid::new_v4()
+    ));
+
+    {
+        let mut file =
+            fs::File::create(&tmp_path).map_err(|source| SessionError::Io {
+                path: tmp_path.clone(),
+                source,
+            })?;
+        use std::io::Write;
+        file.write_all(&encoded)
+            .map_err(|source| SessionError::Io {
+                path: tmp_path.clone(),
+                source,
+            })?;
+        file.sync_all().map_err(|source| SessionError::Io {
+            path: tmp_path.clone(),
+            source,
+        })?;
+    }
+
+    // `std::fs::rename` is an atomic replace on every platform this store runs on:
+    // on Unix it is `rename(2)`, and on Windows it maps to `MoveFileExW` with
+    // `MOVEFILE_REPLACE_EXISTING`, which atomically swaps the destination inode.
+    // A single rename therefore has no crash window — the destination path always
+    // resolves to either the old durable file or the fully-written new one, never
+    // to a missing file. (An earlier Windows-only "move aside to a backup, then
+    // promote the temp" dance was removed: it wrongly assumed Windows rename cannot
+    // overwrite, and it opened a crash interval during which the destination was
+    // absent and the previous state survived only under an unreferenced backup.)
+    fs::rename(&tmp_path, path).map_err(|source| SessionError::Io {
         path: path.to_path_buf(),
         source,
-    })
+    })?;
+
+    if let Ok(parent_dir) = fs::File::open(parent) {
+        let _ = parent_dir.sync_all();
+    }
+
+    Ok(())
 }
 
 pub(super) fn read_json<T: DeserializeOwned>(

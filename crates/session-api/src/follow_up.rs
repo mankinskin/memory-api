@@ -95,10 +95,14 @@ pub fn build_follow_up_ticket_draft(
     }
     let target = EntityUrn::from_str(target_raw)?;
 
-    let tool_call_id =
-        signal.tool_call_id.clone().unwrap_or_else(|| "unknown".to_string());
-    let event_id =
-        signal.event_id.clone().unwrap_or_else(|| "unknown".to_string());
+    let tool_call_id = signal
+        .tool_call_id
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+    let event_id = signal
+        .event_id
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
     let dedupe_key = format!("feedback-followup/{session_id}/{tool_call_id}");
 
     let title = format!(
@@ -251,9 +255,11 @@ mod tests {
             None,
         );
 
-        assert!(build_follow_up_ticket_draft(&signal, "session-1")
-            .unwrap()
-            .is_none());
+        assert!(
+            build_follow_up_ticket_draft(&signal, "session-1")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -267,9 +273,11 @@ mod tests {
             None,
         );
 
-        assert!(build_follow_up_ticket_draft(&signal, "session-1")
-            .unwrap()
-            .is_none());
+        assert!(
+            build_follow_up_ticket_draft(&signal, "session-1")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -282,9 +290,11 @@ mod tests {
         );
         signal.kind = FeedbackSignalKind::FailedToolCall;
 
-        assert!(build_follow_up_ticket_draft(&signal, "session-1")
-            .unwrap()
-            .is_none());
+        assert!(
+            build_follow_up_ticket_draft(&signal, "session-1")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -298,8 +308,9 @@ mod tests {
             "not-helpful",
             Some("confusing wording"),
         );
-        let draft =
-            build_follow_up_ticket_draft(&signal, "session-1").unwrap().unwrap();
+        let draft = build_follow_up_ticket_draft(&signal, "session-1")
+            .unwrap()
+            .unwrap();
 
         let first =
             synthesize_follow_up_ticket(&ticket_store, &draft, None).unwrap();
@@ -310,10 +321,7 @@ mod tests {
         // Re-running against the same signal/session must not duplicate.
         let second =
             synthesize_follow_up_ticket(&ticket_store, &draft, None).unwrap();
-        assert_eq!(
-            second,
-            FollowUpSynthesisOutcome::AlreadyExists(first_id)
-        );
+        assert_eq!(second, FollowUpSynthesisOutcome::AlreadyExists(first_id));
 
         let manifest = ticket_store.get(&first_id).unwrap();
         let title = manifest

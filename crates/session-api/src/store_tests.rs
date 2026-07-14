@@ -1,4 +1,3 @@
-
 use chrono::TimeZone;
 use pretty_assertions::assert_eq;
 use tempfile::TempDir;
@@ -15,7 +14,14 @@ use crate::{
     SessionError,
     SessionQuery,
     SessionRole,
+    SessionRuntimeInitRequest,
     SessionStoreConfig,
+    SessionTicketStateResolver,
+    SessionWorkflowEdgeKind,
+    SessionWorkflowNodeDraft,
+    SessionWorkflowNodeKind,
+    SessionWorkflowNodeRequirement,
+    SessionWorkflowNodeStatus,
     SessionWorktreeAllocationMode,
     SessionWorktreeCheckInRequest,
     SessionWorktreeStatus,
@@ -760,4 +766,1424 @@ fn session_audit_supports_latest_and_explicit_session_selectors() {
     assert_eq!(latest.metrics.ambiguous_sync_terminal_count, 1);
     assert_eq!(explicit.session_id, "session-old");
     assert_eq!(explicit.metrics.assistant_tool_plan_count, 1);
+}
+
+#[test]
+fn context_schema_init_is_idempotent_without_forcing_a_new_run() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    let first = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let second = config
+        .init_runtime_context(SessionRuntimeInitRequest {
+            workspace_session_id: Some(
+                first.context.workspace_session_id.clone(),
+            ),
+            predecessor_run_id: None,
+            force_new_run: false,
+        })
+        .unwrap();
+
+    assert!(first.created_workspace);
+    assert!(first.created_run);
+    assert!(!second.created_workspace);
+    assert!(!second.created_run);
+    assert_eq!(
+        first.context.workspace_session_id,
+        second.context.workspace_session_id
+    );
+    assert_eq!(first.context.active_run_id, second.context.active_run_id);
+    assert_eq!(second.context.runs.len(), 1);
+}
+
+#[test]
+fn run_lineage_init_resume_creates_distinct_linked_run() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    let first = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let resumed = config
+        .init_runtime_context(SessionRuntimeInitRequest {
+            workspace_session_id: Some(
+                first.context.workspace_session_id.clone(),
+            ),
+            predecessor_run_id: Some(first.context.active_run_id.clone()),
+            force_new_run: true,
+        })
+        .unwrap();
+
+    assert_eq!(
+        first.context.workspace_session_id,
+        resumed.context.workspace_session_id
+    );
+    assert_ne!(first.context.active_run_id, resumed.context.active_run_id);
+    assert_eq!(resumed.context.runs.len(), 2);
+    assert_eq!(
+        resumed.run.predecessor_run_id.as_deref(),
+        Some(first.context.active_run_id.as_str())
+    );
+}
+
+#[test]
+fn context_pin_unpin_is_idempotent_and_persistent() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+    let urn = "ce://default/tickets/effba966-f0a8-4d7d-b289-b7feba826cf8";
+
+    let pinned_once = config
+        .pin_runtime_entity(
+            &workspace_id,
+            urn,
+            Some("primary-focus".to_string()),
+            Some("epic context".to_string()),
+        )
+        .unwrap();
+    let pinned_twice = config
+        .pin_runtime_entity(&workspace_id, urn, None, None)
+        .unwrap();
+
+    assert_eq!(pinned_once.pinned_entities.len(), 1);
+    assert_eq!(pinned_twice.pinned_entities.len(), 1);
+
+    let loaded = config.read_runtime_context(&workspace_id).unwrap();
+    assert_eq!(loaded.pinned_entities.len(), 1);
+
+    let unpinned_once =
+        config.unpin_runtime_entity(&workspace_id, urn).unwrap();
+    let unpinned_twice =
+        config.unpin_runtime_entity(&workspace_id, urn).unwrap();
+    assert!(unpinned_once.pinned_entities.is_empty());
+    assert!(unpinned_twice.pinned_entities.is_empty());
+}
+
+#[test]
+fn context_pin_rejects_malformed_entity_urn_segments() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+
+    let error = config
+        .pin_runtime_entity(
+            &init.context.workspace_session_id,
+            "ce:///tickets/",
+            None,
+            None,
+        )
+        .unwrap_err();
+
+    assert!(matches!(error, SessionError::InvalidEntityUrn(_)));
+}
+
+#[test]
+fn context_view_returns_headers_only() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    config
+        .pin_runtime_entity(
+            &workspace_id,
+            "ce://default/specs/709f067a-21b6-41b6-8879-3cacef4bacaf",
+            Some("guard".to_string()),
+            Some("runtime contract".to_string()),
+        )
+        .unwrap();
+
+    let view = config.view_runtime_context(&workspace_id).unwrap();
+    let json = serde_json::to_string(&view).unwrap();
+
+    assert_eq!(view.pinned_count, 1);
+    assert!(json.contains("pinned_headers"));
+    assert!(!json.contains("body"));
+    assert!(!json.contains("content"));
+}
+
+#[test]
+fn context_capture_persistence_isolation_is_byte_stable() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    let capture = config
+        .persist_capture(sample_request(
+            "session-isolation",
+            Some("conversation-isolation"),
+            sample_time(),
+            &["capture first"],
+        ))
+        .unwrap();
+    let manifest_before = std::fs::read(&capture.paths.manifest_path).unwrap();
+    let transcript_before =
+        std::fs::read(&capture.paths.transcript_path).unwrap();
+
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+    config
+        .pin_runtime_entity(
+            &workspace_id,
+            "ce://default/rules/084fd4e6-660b-4227-a13e-514edf44e393",
+            Some("handoff".to_string()),
+            None,
+        )
+        .unwrap();
+
+    let manifest_after = std::fs::read(&capture.paths.manifest_path).unwrap();
+    let transcript_after =
+        std::fs::read(&capture.paths.transcript_path).unwrap();
+    assert_eq!(manifest_before, manifest_after);
+    assert_eq!(transcript_before, transcript_after);
+
+    let runtime_paths =
+        config.runtime_paths_for_workspace(&workspace_id).unwrap();
+    let runtime_before = std::fs::read(&runtime_paths.context_path).unwrap();
+
+    config
+        .persist_capture(sample_request(
+            "session-isolation",
+            Some("conversation-isolation"),
+            sample_time_later(),
+            &["capture first", "capture second"],
+        ))
+        .unwrap();
+
+    let runtime_after = std::fs::read(&runtime_paths.context_path).unwrap();
+    assert_eq!(runtime_before, runtime_after);
+}
+
+struct MockTicketResolver {
+    missing_urn: String,
+}
+
+impl SessionTicketStateResolver for MockTicketResolver {
+    fn resolve_ticket_state(
+        &self,
+        ticket_urn: &str,
+    ) -> Result<Option<String>, String> {
+        if ticket_urn == self.missing_urn {
+            Err("ticket not found".to_string())
+        } else {
+            Ok(Some("in-review".to_string()))
+        }
+    }
+}
+
+#[test]
+fn workflow_persists_mutation_and_reload() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    let after_ticket = config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("node-ticket".to_string()),
+                kind: SessionWorkflowNodeKind::Ticket,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "Implement runtime model".to_string(),
+                ticket_urn: Some(
+                    "ce://default/tickets/412964a3-e1c3-47da-94ad-268ff20441c0"
+                        .to_string(),
+                ),
+                cached_ticket_title: Some(
+                    "Runtime session context".to_string(),
+                ),
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(after_ticket.workflow.nodes.len(), 1);
+
+    let after_action = config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("node-action".to_string()),
+                kind: SessionWorkflowNodeKind::Action,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "Write workflow tests".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(after_action.workflow.nodes.len(), 2);
+
+    let linked = config
+        .workflow_add_edge(
+            &workspace_id,
+            "node-action",
+            "node-ticket",
+            SessionWorkflowEdgeKind::DependsOn,
+        )
+        .unwrap();
+    assert_eq!(linked.workflow.edges.len(), 1);
+
+    let updated = config
+        .workflow_update_node_status(
+            &workspace_id,
+            "node-action",
+            SessionWorkflowNodeStatus::Done,
+            None,
+        )
+        .unwrap();
+    assert_eq!(
+        updated
+            .workflow
+            .nodes
+            .iter()
+            .find(|node| node.node_id == "node-action")
+            .unwrap()
+            .status,
+        SessionWorkflowNodeStatus::Done
+    );
+
+    let reloaded = config.read_runtime_context(&workspace_id).unwrap();
+    assert_eq!(reloaded.workflow.nodes.len(), 2);
+    assert_eq!(reloaded.workflow.edges.len(), 1);
+}
+
+#[test]
+fn workflow_promotion_preserves_node_identity() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("node-temp".to_string()),
+                kind: SessionWorkflowNodeKind::Action,
+                requirement: SessionWorkflowNodeRequirement::Optional,
+                title: "Investigate follow-up".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+
+    let promoted = config
+        .workflow_promote_node_to_ticket(
+            &workspace_id,
+            "node-temp",
+            "ce://default/tickets/70cd7056-c342-4433-ad60-5bc798f61aa6",
+            Some("Workflow persistence".to_string()),
+        )
+        .unwrap();
+
+    let node = promoted
+        .workflow
+        .nodes
+        .iter()
+        .find(|node| node.node_id == "node-temp")
+        .unwrap();
+    assert_eq!(node.kind, SessionWorkflowNodeKind::Ticket);
+    assert_eq!(
+        node.ticket_urn.as_deref(),
+        Some("ce://default/tickets/70cd7056-c342-4433-ad60-5bc798f61aa6")
+    );
+}
+
+#[test]
+fn workflow_ticket_node_rejects_non_ticket_urn() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+
+    let error = config
+        .workflow_add_node(
+            &init.context.workspace_session_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("node-ticket".to_string()),
+                kind: SessionWorkflowNodeKind::Ticket,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "bad type".to_string(),
+                ticket_urn: Some(
+                    "ce://default/specs/709f067a-21b6-41b6-8879-3cacef4bacaf"
+                        .to_string(),
+                ),
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap_err();
+
+    assert!(matches!(error, SessionError::InvalidHookInput(_)));
+}
+
+#[test]
+fn workflow_snapshot_resolves_live_state_and_emits_missing_diagnostics() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("node-live".to_string()),
+                kind: SessionWorkflowNodeKind::Ticket,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "Existing ticket".to_string(),
+                ticket_urn: Some(
+                    "ce://default/tickets/412964a3-e1c3-47da-94ad-268ff20441c0"
+                        .to_string(),
+                ),
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    let missing_urn =
+        "ce://default/tickets/deadbeef-dead-beef-dead-beefdeadbeef";
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("node-missing".to_string()),
+                kind: SessionWorkflowNodeKind::Ticket,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "Missing ticket".to_string(),
+                ticket_urn: Some(missing_urn.to_string()),
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+
+    let snapshot = config
+        .workflow_snapshot(
+            &workspace_id,
+            Some(&MockTicketResolver {
+                missing_urn: missing_urn.to_string(),
+            }),
+        )
+        .unwrap();
+
+    assert!(
+        snapshot
+            .resolutions
+            .iter()
+            .any(|item| item.node_id == "node-live"
+                && item.live_ticket_state.as_deref() == Some("in-review"))
+    );
+    assert!(
+        snapshot
+            .diagnostics
+            .iter()
+            .any(|diag| diag.node_id == "node-missing"
+                && diag.code == "ticket-state-unavailable")
+    );
+}
+
+#[test]
+fn workflow_render_outputs_are_deterministic_and_escaped() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("node-a".to_string()),
+                kind: SessionWorkflowNodeKind::Action,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "Run \"workflow\" check".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("node-b".to_string()),
+                kind: SessionWorkflowNodeKind::Ticket,
+                requirement: SessionWorkflowNodeRequirement::Optional,
+                title: "Ticket fallback".to_string(),
+                ticket_urn: Some(
+                    "ce://default/tickets/deadbeef-dead-beef-dead-beefdeadbeef"
+                        .to_string(),
+                ),
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    config
+        .workflow_add_edge(
+            &workspace_id,
+            "node-a",
+            "node-b",
+            SessionWorkflowEdgeKind::DependsOn,
+        )
+        .unwrap();
+
+    let resolver = MockTicketResolver {
+        missing_urn:
+            "ce://default/tickets/deadbeef-dead-beef-dead-beefdeadbeef"
+                .to_string(),
+    };
+
+    let terminal_first = config
+        .workflow_render_terminal(&workspace_id, Some(&resolver))
+        .unwrap();
+    let terminal_second = config
+        .workflow_render_terminal(&workspace_id, Some(&resolver))
+        .unwrap();
+    assert_eq!(terminal_first, terminal_second);
+    assert!(terminal_first.contains("ticket-state-unavailable"));
+    assert!(terminal_first.contains("node-a"));
+    assert!(terminal_first.contains("blockers=node-b"));
+
+    let mermaid_first = config
+        .workflow_render_mermaid(&workspace_id, Some(&resolver))
+        .unwrap();
+    let mermaid_second = config
+        .workflow_render_mermaid(&workspace_id, Some(&resolver))
+        .unwrap();
+    assert_eq!(mermaid_first, mermaid_second);
+    assert!(mermaid_first.starts_with("flowchart TD\n"));
+    assert!(mermaid_first.contains("Run \\\"workflow\\\" check"));
+    assert!(mermaid_first.contains("-->|depends_on|"));
+}
+
+#[test]
+fn workflow_render_is_read_only_for_runtime_persistence() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("node-read-only".to_string()),
+                kind: SessionWorkflowNodeKind::Checkpoint,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "render check".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+
+    let runtime_paths =
+        config.runtime_paths_for_workspace(&workspace_id).unwrap();
+    let before = std::fs::read(&runtime_paths.context_path).unwrap();
+
+    let _ = config
+        .workflow_render_terminal(&workspace_id, None)
+        .unwrap();
+    let _ = config.workflow_render_mermaid(&workspace_id, None).unwrap();
+
+    let after = std::fs::read(&runtime_paths.context_path).unwrap();
+    assert_eq!(before, after);
+}
+
+#[test]
+fn handoff_persists_before_render_and_resume_links_new_run() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    let _rendered = config
+        .render_handoff_terminal(
+            &workspace_id,
+            vec![crate::SessionValidationGate {
+                validation_spec_id: "val-session-handoff-continuity"
+                    .to_string(),
+                required: true,
+                outcome: Some("passed".to_string()),
+            }],
+            None,
+        )
+        .unwrap();
+
+    let paths = config.runtime_paths_for_workspace(&workspace_id).unwrap();
+    let handoff_files = std::fs::read_dir(&paths.handoffs_dir)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(handoff_files.len(), 1);
+
+    let handoff_path = handoff_files[0].path();
+    let handoff: crate::SessionHandoffRecord =
+        serde_json::from_slice(&std::fs::read(handoff_path).unwrap()).unwrap();
+    assert_eq!(handoff.workspace_session_id, workspace_id);
+    assert_eq!(handoff.outgoing_run_id, init.context.active_run_id);
+    assert!(handoff.resume_command.contains(&workspace_id));
+    assert!(handoff.resume_command.contains(&handoff.outgoing_run_id));
+
+    let resumed = config
+        .resume_workspace_context(&workspace_id, &handoff.outgoing_run_id)
+        .unwrap();
+    assert_eq!(resumed.context.workspace_session_id, workspace_id);
+    assert_ne!(resumed.run.run_id, handoff.outgoing_run_id);
+    assert_eq!(
+        resumed.run.predecessor_run_id.as_deref(),
+        Some(handoff.outgoing_run_id.as_str())
+    );
+}
+
+#[test]
+fn workflow_finish_enforces_gates_and_is_idempotent() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("required-node".to_string()),
+                kind: SessionWorkflowNodeKind::Action,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "must finish".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("optional-node".to_string()),
+                kind: SessionWorkflowNodeKind::Checkpoint,
+                requirement: SessionWorkflowNodeRequirement::Optional,
+                title: "may defer".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+
+    let blocked = config.finish_workflow(
+        &workspace_id,
+        vec![crate::SessionValidationGate {
+            validation_spec_id: "val-session-workflow-finish".to_string(),
+            required: true,
+            outcome: Some("passed".to_string()),
+        }],
+        vec![],
+        None,
+    );
+    assert!(matches!(
+        blocked,
+        Err(crate::SessionError::FinishBlocked { .. })
+    ));
+
+    config
+        .workflow_update_node_status(
+            &workspace_id,
+            "required-node",
+            SessionWorkflowNodeStatus::Done,
+            None,
+        )
+        .unwrap();
+    config
+        .workflow_update_node_status(
+            &workspace_id,
+            "optional-node",
+            SessionWorkflowNodeStatus::Deferred,
+            Some("not needed for this handoff".to_string()),
+        )
+        .unwrap();
+
+    let blocked_validation = config.finish_workflow(
+        &workspace_id,
+        vec![crate::SessionValidationGate {
+            validation_spec_id: "val-session-workflow-finish".to_string(),
+            required: true,
+            outcome: Some("failed".to_string()),
+        }],
+        vec!["optional-node".to_string()],
+        None,
+    );
+    assert!(matches!(
+        blocked_validation,
+        Err(crate::SessionError::FinishBlocked { .. })
+    ));
+
+    let finished = config
+        .finish_workflow(
+            &workspace_id,
+            vec![crate::SessionValidationGate {
+                validation_spec_id: "val-session-workflow-finish".to_string(),
+                required: true,
+                outcome: Some("passed".to_string()),
+            }],
+            vec!["optional-node".to_string()],
+            None,
+        )
+        .unwrap();
+    assert!(!finished.already_finished);
+
+    let finished_again = config
+        .finish_workflow(
+            &workspace_id,
+            vec![crate::SessionValidationGate {
+                validation_spec_id: "val-session-workflow-finish".to_string(),
+                required: true,
+                outcome: Some("passed".to_string()),
+            }],
+            vec!["optional-node".to_string()],
+            None,
+        )
+        .unwrap();
+    assert!(finished_again.already_finished);
+    assert_eq!(finished_again.record.run_id, finished.record.run_id);
+}
+
+#[test]
+fn workflow_finish_blocks_when_required_validation_guard_is_missing() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("required-validation".to_string()),
+                kind: SessionWorkflowNodeKind::Validation,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "must pass".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: Some(
+                    "val-session-workflow-finish".to_string(),
+                ),
+            },
+        )
+        .unwrap();
+    config
+        .workflow_update_node_status(
+            &workspace_id,
+            "required-validation",
+            SessionWorkflowNodeStatus::Done,
+            None,
+        )
+        .unwrap();
+
+    let error = config
+        .finish_workflow(&workspace_id, vec![], vec![], None)
+        .unwrap_err();
+    assert!(matches!(error, SessionError::FinishBlocked { .. }));
+}
+
+// ── Remediation regression coverage ─────────────────────────────────────────
+
+/// A resolver returning a caller-controlled state for a specific URN.
+struct FixedStateResolver {
+    urn: String,
+    state: Option<String>,
+}
+
+impl SessionTicketStateResolver for FixedStateResolver {
+    fn resolve_ticket_state(
+        &self,
+        ticket_urn: &str,
+    ) -> Result<Option<String>, String> {
+        if ticket_urn == self.urn {
+            Ok(self.state.clone())
+        } else {
+            Err(format!("unexpected urn: {ticket_urn}"))
+        }
+    }
+}
+
+fn test_store_for(store_root: &std::path::Path) -> test_api::TestStoreConfig {
+    test_api::TestStoreConfig::new(store_root.join(".test"), "context-engine")
+}
+
+fn seed_validation_spec(
+    store: &test_api::TestStoreConfig,
+    spec_id: &str,
+) {
+    store
+        .record_spec(&test_api::ValidationSpec::new(spec_id, spec_id))
+        .unwrap();
+}
+
+fn seed_execution(
+    store: &test_api::TestStoreConfig,
+    exec_id: &str,
+    spec_id: &str,
+    outcome: test_api::ValidationOutcome,
+) {
+    let mut execution = test_api::ValidationExecution::new(
+        exec_id,
+        spec_id,
+        outcome,
+        chrono::Utc::now(),
+    );
+    execution.provenance.domain = Some("session-api".to_string());
+    execution.provenance.operation = Some("workflow-finish".to_string());
+    execution.provenance.run_id = Some("remediation-test-run".to_string());
+    execution.links.spec_ids = vec![spec_id.to_string()];
+    store.record_execution(&execution).unwrap();
+}
+
+fn add_required_validation_node(
+    config: &SessionStoreConfig,
+    workspace_id: &str,
+    spec_id: &str,
+) {
+    config
+        .workflow_add_node(
+            workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("required-validation".to_string()),
+                kind: SessionWorkflowNodeKind::Validation,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "authoritative gate".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: Some(spec_id.to_string()),
+            },
+        )
+        .unwrap();
+    config
+        .workflow_update_node_status(
+            workspace_id,
+            "required-validation",
+            SessionWorkflowNodeStatus::Done,
+            None,
+        )
+        .unwrap();
+}
+
+/// Critical: a caller submitting `passed` cannot override an authoritative
+/// `failed` execution recorded in test-api.
+#[test]
+fn workflow_finish_rejects_caller_passed_when_authoritative_failed() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    let spec_id = "val-remediation-authority";
+    let test_store = test_store_for(&store_root);
+    seed_validation_spec(&test_store, spec_id);
+    seed_execution(
+        &test_store,
+        "exec-authority-failed",
+        spec_id,
+        test_api::ValidationOutcome::Failed,
+    );
+
+    add_required_validation_node(&config, &workspace_id, spec_id);
+
+    let error = config
+        .finish_workflow(
+            &workspace_id,
+            vec![crate::SessionValidationGate {
+                validation_spec_id: spec_id.to_string(),
+                required: true,
+                outcome: Some("passed".to_string()),
+            }],
+            vec![],
+            None,
+        )
+        .unwrap_err();
+    assert!(matches!(error, SessionError::FinishBlocked { .. }));
+}
+
+/// Critical: a caller submitting `passed` cannot substitute for a missing
+/// authoritative execution record.
+#[test]
+fn workflow_finish_rejects_caller_passed_when_no_execution_exists() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    let spec_id = "val-remediation-missing-exec";
+    let test_store = test_store_for(&store_root);
+    seed_validation_spec(&test_store, spec_id);
+    // Intentionally record no execution.
+
+    add_required_validation_node(&config, &workspace_id, spec_id);
+
+    let error = config
+        .finish_workflow(
+            &workspace_id,
+            vec![crate::SessionValidationGate {
+                validation_spec_id: spec_id.to_string(),
+                required: true,
+                outcome: Some("passed".to_string()),
+            }],
+            vec![],
+            None,
+        )
+        .unwrap_err();
+    assert!(matches!(error, SessionError::FinishBlocked { .. }));
+}
+
+/// Positive control: finish succeeds only when the authoritative execution is
+/// `passed`, regardless of caller-provided outcomes.
+#[test]
+fn workflow_finish_accepts_authoritative_passed_execution() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    let spec_id = "val-remediation-passed";
+    let test_store = test_store_for(&store_root);
+    seed_validation_spec(&test_store, spec_id);
+    seed_execution(
+        &test_store,
+        "exec-authority-passed",
+        spec_id,
+        test_api::ValidationOutcome::Passed,
+    );
+
+    add_required_validation_node(&config, &workspace_id, spec_id);
+
+    // Caller omits any gate; authority alone certifies the outcome.
+    let finished = config
+        .finish_workflow(&workspace_id, vec![], vec![], None)
+        .unwrap();
+    assert!(!finished.already_finished);
+    assert!(finished.record.validation.iter().any(|gate| {
+        gate.validation_spec_id == spec_id
+            && gate.outcome.as_deref() == Some("passed")
+    }));
+}
+
+/// Critical: a ticket node marked locally `Done` must not certify completion
+/// when the live ticket state is non-terminal.
+#[test]
+fn workflow_finish_rejects_local_done_when_live_ticket_non_terminal() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root, "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    let ticket_urn =
+        "ce://context-engine/tickets/11111111-1111-4111-8111-111111111111";
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("ticket-node".to_string()),
+                kind: SessionWorkflowNodeKind::Ticket,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "ticket-backed".to_string(),
+                ticket_urn: Some(ticket_urn.to_string()),
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    // Local status is Done, but live state below is non-terminal.
+    config
+        .workflow_update_node_status(
+            &workspace_id,
+            "ticket-node",
+            SessionWorkflowNodeStatus::Done,
+            None,
+        )
+        .unwrap();
+
+    let resolver = FixedStateResolver {
+        urn: ticket_urn.to_string(),
+        state: Some("in-implementation".to_string()),
+    };
+    let error = config
+        .finish_workflow(&workspace_id, vec![], vec![], Some(&resolver))
+        .unwrap_err();
+    assert!(matches!(error, SessionError::FinishBlocked { .. }));
+
+    // Positive control: a live terminal state permits finish.
+    let terminal = FixedStateResolver {
+        urn: ticket_urn.to_string(),
+        state: Some("done".to_string()),
+    };
+    let finished = config
+        .finish_workflow(&workspace_id, vec![], vec![], Some(&terminal))
+        .unwrap();
+    assert!(!finished.already_finished);
+}
+
+/// High: production path — the real default resolver blocks finish when a
+/// required ticket node references a non-terminal live ticket.
+#[test]
+fn workflow_finish_production_path_blocks_non_terminal_ticket() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    let ticket_id =
+        uuid::Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap();
+    let ticket_store = ticket_api::storage::TicketStore::open_or_init(
+        &store_root.join(".ticket"),
+    )
+    .unwrap();
+    ticket_store
+        .create(
+            Some(ticket_id),
+            "tracker-improvement",
+            Some("live ticket"),
+            Some("in-implementation"),
+            std::collections::BTreeMap::new(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let ticket_urn = format!("ce://context-engine/tickets/{ticket_id}");
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("ticket-node".to_string()),
+                kind: SessionWorkflowNodeKind::Ticket,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "live ticket".to_string(),
+                ticket_urn: Some(ticket_urn),
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    config
+        .workflow_update_node_status(
+            &workspace_id,
+            "ticket-node",
+            SessionWorkflowNodeStatus::Done,
+            None,
+        )
+        .unwrap();
+
+    // resolver=None exercises the real default resolver + store layout.
+    let error = config
+        .finish_workflow(&workspace_id, vec![], vec![], None)
+        .unwrap_err();
+    assert!(matches!(error, SessionError::FinishBlocked { .. }));
+}
+
+/// High: production path — an absent required ticket resolves to an unavailable
+/// diagnostic that blocks finish (fail closed).
+#[test]
+fn workflow_finish_production_path_blocks_missing_ticket() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    // Initialize an empty ticket store so the resolver can open it, but the
+    // referenced ticket does not exist.
+    ticket_api::storage::TicketStore::open_or_init(&store_root.join(".ticket"))
+        .unwrap();
+
+    let ticket_urn =
+        "ce://context-engine/tickets/33333333-3333-4333-8333-333333333333";
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("ticket-node".to_string()),
+                kind: SessionWorkflowNodeKind::Ticket,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "missing ticket".to_string(),
+                ticket_urn: Some(ticket_urn.to_string()),
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    config
+        .workflow_update_node_status(
+            &workspace_id,
+            "ticket-node",
+            SessionWorkflowNodeStatus::Done,
+            None,
+        )
+        .unwrap();
+
+    let error = config
+        .finish_workflow(&workspace_id, vec![], vec![], None)
+        .unwrap_err();
+    let SessionError::FinishBlocked { reason } = error else {
+        panic!("expected FinishBlocked, got {error:?}");
+    };
+    assert!(
+        reason.contains("unavailable"),
+        "expected unavailable diagnostic, got: {reason}"
+    );
+}
+
+/// High: cross-workspace ticket routing is rejected explicitly rather than
+/// silently resolved against the wrong store.
+#[test]
+fn workflow_finish_rejects_cross_workspace_ticket_routing() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    ticket_api::storage::TicketStore::open_or_init(&store_root.join(".ticket"))
+        .unwrap();
+
+    // URN addresses a different workspace than the session's `context-engine`.
+    let ticket_urn =
+        "ce://other-workspace/tickets/44444444-4444-4444-8444-444444444444";
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("ticket-node".to_string()),
+                kind: SessionWorkflowNodeKind::Ticket,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "cross-workspace".to_string(),
+                ticket_urn: Some(ticket_urn.to_string()),
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    config
+        .workflow_update_node_status(
+            &workspace_id,
+            "ticket-node",
+            SessionWorkflowNodeStatus::Done,
+            None,
+        )
+        .unwrap();
+
+    let error = config
+        .finish_workflow(&workspace_id, vec![], vec![], None)
+        .unwrap_err();
+    let SessionError::FinishBlocked { reason } = error else {
+        panic!("expected FinishBlocked, got {error:?}");
+    };
+    assert!(
+        reason.contains("cross-workspace") || reason.contains("unavailable"),
+        "expected routing rejection, got: {reason}"
+    );
+}
+
+/// High: finished workspaces are immutable — every workflow/pin mutation is
+/// rejected after finish.
+#[test]
+fn finished_workspace_rejects_all_mutations() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root, "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("seed-node".to_string()),
+                kind: SessionWorkflowNodeKind::Action,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "seed".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    config
+        .workflow_update_node_status(
+            &workspace_id,
+            "seed-node",
+            SessionWorkflowNodeStatus::Done,
+            None,
+        )
+        .unwrap();
+
+    let finished = config
+        .finish_workflow(&workspace_id, vec![], vec![], None)
+        .unwrap();
+    assert!(!finished.already_finished);
+
+    // Adding a node after finish is rejected.
+    let add_err = config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("post-finish-node".to_string()),
+                kind: SessionWorkflowNodeKind::Action,
+                requirement: SessionWorkflowNodeRequirement::Optional,
+                title: "should be rejected".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap_err();
+    assert!(matches!(add_err, SessionError::WorkspaceFinished { .. }));
+
+    // Updating a node status after finish is rejected.
+    let status_err = config
+        .workflow_update_node_status(
+            &workspace_id,
+            "seed-node",
+            SessionWorkflowNodeStatus::InProgress,
+            None,
+        )
+        .unwrap_err();
+    assert!(matches!(status_err, SessionError::WorkspaceFinished { .. }));
+
+    // Pinning after finish is rejected.
+    let pin_err = config
+        .pin_runtime_entity(
+            &workspace_id,
+            "ce://context-engine/tickets/55555555-5555-4555-8555-555555555555",
+            None,
+            None,
+        )
+        .unwrap_err();
+    assert!(matches!(pin_err, SessionError::WorkspaceFinished { .. }));
+}
+
+/// High: a live concurrent mutation lock prevents a second mutation from
+/// silently overwriting, while a stale lock is reclaimed.
+#[test]
+fn concurrent_mutation_lock_blocks_live_and_reclaims_stale() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root, "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    let paths = config.runtime_paths_for_workspace(&workspace_id).unwrap();
+    let lock_path = paths.workspace_dir.join(".context.lock");
+
+    // Simulate a live concurrent holder with a fresh timestamp.
+    std::fs::write(&lock_path, chrono::Utc::now().to_rfc3339()).unwrap();
+    let conflict = config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("locked-node".to_string()),
+                kind: SessionWorkflowNodeKind::Action,
+                requirement: SessionWorkflowNodeRequirement::Optional,
+                title: "blocked by live lock".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap_err();
+    assert!(matches!(
+        conflict,
+        SessionError::RuntimeMutationConflict { .. }
+    ));
+
+    // A stale lock (old timestamp) is reclaimed and the mutation proceeds.
+    let stale =
+        (chrono::Utc::now() - chrono::Duration::seconds(120)).to_rfc3339();
+    std::fs::write(&lock_path, stale).unwrap();
+    let recovered = config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("recovered-node".to_string()),
+                kind: SessionWorkflowNodeKind::Action,
+                requirement: SessionWorkflowNodeRequirement::Optional,
+                title: "proceeds after stale reclaim".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    assert!(
+        recovered
+            .workflow
+            .nodes
+            .iter()
+            .any(|node| node.node_id == "recovered-node")
+    );
+}
+
+/// Helper: create a workspace with one required Action node marked done and
+/// then finish it, returning the config and workspace id for immutability tests.
+fn finished_workspace() -> (SessionStoreConfig, String, TempDir) {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root, "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("seed-node".to_string()),
+                kind: SessionWorkflowNodeKind::Action,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "seed".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap();
+    config
+        .workflow_update_node_status(
+            &workspace_id,
+            "seed-node",
+            SessionWorkflowNodeStatus::Done,
+            None,
+        )
+        .unwrap();
+    let finished = config
+        .finish_workflow(&workspace_id, vec![], vec![], None)
+        .unwrap();
+    assert!(!finished.already_finished);
+    (config, workspace_id, tempdir)
+}
+
+/// High: resume/init lineage updates are immutable after finish. Appending a
+/// new run to a finished workspace must be rejected under the lock, not
+/// silently drift the run lineage of a terminal workspace.
+#[test]
+fn finished_workspace_rejects_resume_run_creation() {
+    let (config, workspace_id, _tempdir) = finished_workspace();
+
+    let resume_err = config
+        .resume_workspace_context(&workspace_id, "any-predecessor")
+        .unwrap_err();
+    assert!(matches!(resume_err, SessionError::WorkspaceFinished { .. }));
+
+    let force_err = config
+        .init_runtime_context(SessionRuntimeInitRequest {
+            workspace_session_id: Some(workspace_id.clone()),
+            predecessor_run_id: None,
+            force_new_run: true,
+        })
+        .unwrap_err();
+    assert!(matches!(force_err, SessionError::WorkspaceFinished { .. }));
+}
+
+/// High: the finished-workspace check runs *under* the mutation lock. When a
+/// finished workspace also has a live lock held, the mutation must fail with a
+/// lock conflict (lock acquired first) rather than the finished error — proving
+/// the ordering that closes the finish-versus-mutation race.
+#[test]
+fn finished_check_runs_under_mutation_lock() {
+    let (config, workspace_id, _tempdir) = finished_workspace();
+
+    let paths = config.runtime_paths_for_workspace(&workspace_id).unwrap();
+    let lock_path = paths.workspace_dir.join(".context.lock");
+    // A fresh live lock held by a hypothetical concurrent holder.
+    std::fs::write(&lock_path, chrono::Utc::now().to_rfc3339()).unwrap();
+
+    let err = config
+        .workflow_add_node(
+            &workspace_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("post-finish-locked".to_string()),
+                kind: SessionWorkflowNodeKind::Action,
+                requirement: SessionWorkflowNodeRequirement::Optional,
+                title: "blocked".to_string(),
+                ticket_urn: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .unwrap_err();
+    assert!(matches!(err, SessionError::RuntimeMutationConflict { .. }));
 }

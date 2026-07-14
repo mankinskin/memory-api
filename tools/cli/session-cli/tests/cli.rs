@@ -293,3 +293,82 @@ fn peek_prompt_pack_meets_quantitative_compactness_gate() {
     assert!(dropped >= 2);
     assert!(included <= 3);
 }
+
+#[test]
+fn workflow_nested_and_flat_forms_are_equivalent() {
+    let dir = tempdir().unwrap();
+    let store_root = dir.path().join(".session");
+    let store_root_str = store_root.to_string_lossy().to_string();
+    let workspace_id = "ws-cli-equivalence";
+
+    run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "init",
+        "--workspace-session-id",
+        workspace_id,
+    ]);
+
+    // Canonical nested form.
+    run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "workflow",
+        "add-node",
+        "--workspace-session-id",
+        workspace_id,
+        "--node-id",
+        "nested-node",
+        "--kind",
+        "action",
+        "--requirement",
+        "optional",
+        "--title",
+        "added via nested form",
+    ]);
+
+    // Flat compatibility alias.
+    let after_flat = run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "workflow-add-node",
+        "--workspace-session-id",
+        workspace_id,
+        "--node-id",
+        "flat-node",
+        "--kind",
+        "action",
+        "--requirement",
+        "optional",
+        "--title",
+        "added via flat alias",
+    ]);
+
+    let node_ids = after_flat["workflow"]["nodes"]
+        .as_array()
+        .expect("nodes array")
+        .iter()
+        .map(|node| node["node_id"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    assert!(node_ids.contains(&"nested-node".to_string()));
+    assert!(node_ids.contains(&"flat-node".to_string()));
+
+    // Both render subcommands resolve through the shared handler.
+    let rendered = run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "workflow",
+        "render-terminal",
+        "--workspace-session-id",
+        workspace_id,
+    ]);
+    assert!(rendered["render"].as_str().unwrap().contains("nested-node"));
+}

@@ -76,9 +76,7 @@ pub enum FeedbackSignalKind {
 /// tool was invoked with). Fields are `Option` because a captured call may
 /// be missing an optional argument, or the argument may not have serialized
 /// as a plain string; no value here is inferred or guessed.
-#[derive(
-    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExplicitIngestionArgs {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
@@ -102,9 +100,7 @@ pub struct ExplicitIngestionArgs {
 /// Every field is sourced from captured metadata so a downstream consumer can
 /// trace the signal back to the exact turn and/or tool call that produced
 /// it.
-#[derive(
-    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StructuredFeedbackSignal {
     /// What kind of structured signal was detected.
     pub kind: FeedbackSignalKind,
@@ -181,7 +177,10 @@ fn detect_signal(turn: &SessionTurn) -> Option<StructuredFeedbackSignal> {
 pub fn mine_explicit_ingestion_signals(
     events: &[CopilotHookEvent]
 ) -> Vec<StructuredFeedbackSignal> {
-    events.iter().filter_map(detect_explicit_ingestion).collect()
+    events
+        .iter()
+        .filter_map(detect_explicit_ingestion)
+        .collect()
 }
 
 fn detect_explicit_ingestion(
@@ -296,8 +295,12 @@ pub enum UnmappedReason {
 /// `ticket-mcp` methods whose single-ticket identifier argument is named
 /// `ticket_id`, grounded against captured argument keys on real failed
 /// calls.
-const TICKET_ID_KEYED_METHODS: &[&str] =
-    &["board_check_in", "board_check_out", "board_update_files", "board_rename_file"];
+const TICKET_ID_KEYED_METHODS: &[&str] = &[
+    "board_check_in",
+    "board_check_out",
+    "board_update_files",
+    "board_rename_file",
+];
 
 /// `ticket-mcp` methods whose single-ticket identifier argument is named
 /// `id`, grounded against captured argument keys on real failed calls.
@@ -354,7 +357,10 @@ pub fn map_failed_tool_call_to_entity(
             reason: UnmappedReason::AmbiguousMultipleCandidates,
         };
     }
-    if NO_SUPPORTED_STORE_METHODS.iter().any(|m| tool_name.ends_with(m)) {
+    if NO_SUPPORTED_STORE_METHODS
+        .iter()
+        .any(|m| tool_name.ends_with(m))
+    {
         return FailedToolCallMapping::Unmapped {
             reason: UnmappedReason::NoSupportedEntityStore,
         };
@@ -365,9 +371,15 @@ pub fn map_failed_tool_call_to_entity(
         };
     }
 
-    let id_key = if TICKET_ID_KEYED_METHODS.iter().any(|m| tool_name.ends_with(m)) {
+    let id_key = if TICKET_ID_KEYED_METHODS
+        .iter()
+        .any(|m| tool_name.ends_with(m))
+    {
         Some("ticket_id")
-    } else if TICKET_ID_ALIAS_KEYED_METHODS.iter().any(|m| tool_name.ends_with(m)) {
+    } else if TICKET_ID_ALIAS_KEYED_METHODS
+        .iter()
+        .any(|m| tool_name.ends_with(m))
+    {
         Some("id")
     } else {
         None
@@ -718,13 +730,10 @@ mod tests {
 
         let mut wrong_event_type =
             feedback_ingest_result_event(Some(false), ingest_arguments());
-        wrong_event_type.event_type =
-            Some("tool.execution_start".to_string());
+        wrong_event_type.event_type = Some("tool.execution_start".to_string());
 
-        let signals = mine_explicit_ingestion_signals(&[
-            other_tool,
-            wrong_event_type,
-        ]);
+        let signals =
+            mine_explicit_ingestion_signals(&[other_tool, wrong_event_type]);
 
         assert!(signals.is_empty());
     }
@@ -888,8 +897,7 @@ mod tests {
 
     #[test]
     fn unknown_tool_failure_is_unmapped_unknown_tool() {
-        let mapping =
-            map_failed_tool_call_to_entity(None, None, "memory-api");
+        let mapping = map_failed_tool_call_to_entity(None, None, "memory-api");
 
         assert_eq!(
             mapping,
@@ -1020,11 +1028,7 @@ mod tests {
 
         assert_eq!(
             discovered,
-            vec![
-                t1,
-                EntityUrn::rule("memory-api", "r1").unwrap(),
-                t2,
-            ]
+            vec![t1, EntityUrn::rule("memory-api", "r1").unwrap(), t2,]
         );
     }
 

@@ -29,7 +29,14 @@ use session_api::{
     DEFAULT_SKELETON_PREVIEW_CHARS,
     SessionError,
     SessionQuery,
+    SessionRuntimeInitRequest,
     SessionStoreConfig,
+    SessionValidationGate,
+    SessionWorkflowEdgeKind,
+    SessionWorkflowNodeDraft,
+    SessionWorkflowNodeKind,
+    SessionWorkflowNodeRequirement,
+    SessionWorkflowNodeStatus,
     SessionWorktreeCheckInRequest,
 };
 
@@ -114,6 +121,137 @@ pub struct SessionMoveJournalInput {
     pub id: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RuntimeInitInput {
+    pub workspace: String,
+    #[serde(default)]
+    pub workspace_session_id: Option<String>,
+    #[serde(default)]
+    pub predecessor_run_id: Option<String>,
+    #[serde(default)]
+    pub force_new_run: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RuntimeResumeInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+    pub predecessor_run_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RuntimePinInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+    pub entity_urn: String,
+    #[serde(default)]
+    pub relation: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RuntimeUnpinInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+    pub entity_urn: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RuntimeViewInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WorkflowAddNodeInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+    #[serde(default)]
+    pub node_id: Option<String>,
+    pub kind: String,
+    pub requirement: String,
+    pub title: String,
+    #[serde(default)]
+    pub ticket_urn: Option<String>,
+    #[serde(default)]
+    pub cached_ticket_title: Option<String>,
+    #[serde(default)]
+    pub validation_spec_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WorkflowAddEdgeInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+    pub from: String,
+    pub to: String,
+    pub kind: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WorkflowSetStatusInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+    pub node_id: String,
+    pub status: String,
+    #[serde(default)]
+    pub deferred_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WorkflowPromoteInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+    pub node_id: String,
+    pub ticket_urn: String,
+    #[serde(default)]
+    pub cached_ticket_title: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WorkflowRenderInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RuntimeHandoffInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+    #[serde(default)]
+    pub validation: Vec<ValidationGateInput>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RuntimeFinishInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+    #[serde(default)]
+    pub validation: Vec<ValidationGateInput>,
+    #[serde(default)]
+    pub deferred_optional_node_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ValidationGateInput {
+    pub validation_spec_id: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub outcome: Option<String>,
+}
+
+impl From<ValidationGateInput> for SessionValidationGate {
+    fn from(value: ValidationGateInput) -> Self {
+        Self {
+            validation_spec_id: value.validation_spec_id,
+            required: value.required,
+            outcome: value.outcome,
+        }
+    }
+}
+
 // ── Server ───────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -179,11 +317,15 @@ impl SessionServer {
             | SessionError::EmptyWorktreePath
             | SessionError::EmptyWorktreeBranch
             | SessionError::InvalidSessionId(_)
+            | SessionError::InvalidWorkspaceSessionId(_)
+            | SessionError::InvalidEntityUrn(_)
             | SessionError::InvalidWorkspaceSlug(_)
             | SessionError::MissingWorktreeAssignment { .. }
             | SessionError::SessionOwnershipMismatch { .. }
             | SessionError::WorktreeConflict { .. }
             | SessionError::CrossSessionReuseRequiresAdopt { .. }
+            | SessionError::RuntimeContextNotFound { .. }
+            | SessionError::FinishBlocked { .. }
             | SessionError::Move(_) =>
                 McpError::invalid_params(err.to_string(), None),
             _ =>
@@ -262,10 +404,310 @@ fn path_display(path: &std::path::Path) -> Result<String, McpError> {
     })
 }
 
+fn parse_node_kind(value: &str) -> Result<SessionWorkflowNodeKind, McpError> {
+    match value {
+        "ticket" => Ok(SessionWorkflowNodeKind::Ticket),
+        "action" => Ok(SessionWorkflowNodeKind::Action),
+        "decision" => Ok(SessionWorkflowNodeKind::Decision),
+        "checkpoint" => Ok(SessionWorkflowNodeKind::Checkpoint),
+        "validation" => Ok(SessionWorkflowNodeKind::Validation),
+        _ => Err(McpError::invalid_params(
+            format!("invalid workflow node kind: {value}"),
+            None,
+        )),
+    }
+}
+
+fn parse_requirement(
+    value: &str
+) -> Result<SessionWorkflowNodeRequirement, McpError> {
+    match value {
+        "required" => Ok(SessionWorkflowNodeRequirement::Required),
+        "optional" => Ok(SessionWorkflowNodeRequirement::Optional),
+        _ => Err(McpError::invalid_params(
+            format!("invalid workflow requirement: {value}"),
+            None,
+        )),
+    }
+}
+
+fn parse_edge_kind(value: &str) -> Result<SessionWorkflowEdgeKind, McpError> {
+    match value {
+        "depends-on" | "depends_on" => Ok(SessionWorkflowEdgeKind::DependsOn),
+        "order" => Ok(SessionWorkflowEdgeKind::Order),
+        _ => Err(McpError::invalid_params(
+            format!("invalid workflow edge kind: {value}"),
+            None,
+        )),
+    }
+}
+
+fn parse_node_status(
+    value: &str
+) -> Result<SessionWorkflowNodeStatus, McpError> {
+    match value {
+        "pending" => Ok(SessionWorkflowNodeStatus::Pending),
+        "in-progress" | "in_progress" =>
+            Ok(SessionWorkflowNodeStatus::InProgress),
+        "blocked" => Ok(SessionWorkflowNodeStatus::Blocked),
+        "done" => Ok(SessionWorkflowNodeStatus::Done),
+        "deferred" => Ok(SessionWorkflowNodeStatus::Deferred),
+        _ => Err(McpError::invalid_params(
+            format!("invalid workflow status: {value}"),
+            None,
+        )),
+    }
+}
+
 // ── Tool implementations ──────────────────────────────────────────────────────
 
 #[tool_router]
 impl SessionServer {
+    #[tool(
+        name = "session_runtime_init",
+        description = "Initialize or resume durable runtime context for a workspace session."
+    )]
+    pub async fn session_runtime_init(
+        &self,
+        Parameters(input): Parameters<RuntimeInitInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self
+            .config_for_workspace(&input.workspace)?
+            .init_runtime_context(SessionRuntimeInitRequest {
+                workspace_session_id: input.workspace_session_id,
+                predecessor_run_id: input.predecessor_run_id,
+                force_new_run: input.force_new_run,
+            })
+            .map_err(Self::session_err)?;
+        Self::json_result(&result)
+    }
+
+    #[tool(
+        name = "session_runtime_resume",
+        description = "Resume an existing durable workspace session using predecessor run lineage."
+    )]
+    pub async fn session_runtime_resume(
+        &self,
+        Parameters(input): Parameters<RuntimeResumeInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self
+            .config_for_workspace(&input.workspace)?
+            .resume_workspace_context(
+                &input.workspace_session_id,
+                &input.predecessor_run_id,
+            )
+            .map_err(Self::session_err)?;
+        Self::json_result(&result)
+    }
+
+    #[tool(
+        name = "session_runtime_pin",
+        description = "Pin an entity URN into runtime workspace context."
+    )]
+    pub async fn session_runtime_pin(
+        &self,
+        Parameters(input): Parameters<RuntimePinInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let context = self
+            .config_for_workspace(&input.workspace)?
+            .pin_runtime_entity(
+                &input.workspace_session_id,
+                &input.entity_urn,
+                input.relation,
+                input.reason,
+            )
+            .map_err(Self::session_err)?;
+        Self::json_result(&context)
+    }
+
+    #[tool(
+        name = "session_runtime_unpin",
+        description = "Unpin an entity URN from runtime workspace context."
+    )]
+    pub async fn session_runtime_unpin(
+        &self,
+        Parameters(input): Parameters<RuntimeUnpinInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let context = self
+            .config_for_workspace(&input.workspace)?
+            .unpin_runtime_entity(
+                &input.workspace_session_id,
+                &input.entity_urn,
+            )
+            .map_err(Self::session_err)?;
+        Self::json_result(&context)
+    }
+
+    #[tool(
+        name = "session_runtime_view",
+        description = "Read headers-only runtime workspace context view."
+    )]
+    pub async fn session_runtime_view(
+        &self,
+        Parameters(input): Parameters<RuntimeViewInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let view = self
+            .config_for_workspace(&input.workspace)?
+            .view_runtime_context(&input.workspace_session_id)
+            .map_err(Self::session_err)?;
+        Self::json_result(&view)
+    }
+
+    #[tool(
+        name = "session_workflow_add_node",
+        description = "Add a node to the durable session workflow graph."
+    )]
+    pub async fn session_workflow_add_node(
+        &self,
+        Parameters(input): Parameters<WorkflowAddNodeInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let context = self
+            .config_for_workspace(&input.workspace)?
+            .workflow_add_node(
+                &input.workspace_session_id,
+                SessionWorkflowNodeDraft {
+                    node_id: input.node_id,
+                    kind: parse_node_kind(&input.kind)?,
+                    requirement: parse_requirement(&input.requirement)?,
+                    title: input.title,
+                    ticket_urn: input.ticket_urn,
+                    cached_ticket_title: input.cached_ticket_title,
+                    validation_spec_id: input.validation_spec_id,
+                },
+            )
+            .map_err(Self::session_err)?;
+        Self::json_result(&context)
+    }
+
+    #[tool(
+        name = "session_workflow_add_edge",
+        description = "Add a directed edge between workflow nodes."
+    )]
+    pub async fn session_workflow_add_edge(
+        &self,
+        Parameters(input): Parameters<WorkflowAddEdgeInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let context = self
+            .config_for_workspace(&input.workspace)?
+            .workflow_add_edge(
+                &input.workspace_session_id,
+                &input.from,
+                &input.to,
+                parse_edge_kind(&input.kind)?,
+            )
+            .map_err(Self::session_err)?;
+        Self::json_result(&context)
+    }
+
+    #[tool(
+        name = "session_workflow_set_status",
+        description = "Update workflow node status and optional deferred reason."
+    )]
+    pub async fn session_workflow_set_status(
+        &self,
+        Parameters(input): Parameters<WorkflowSetStatusInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let context = self
+            .config_for_workspace(&input.workspace)?
+            .workflow_update_node_status(
+                &input.workspace_session_id,
+                &input.node_id,
+                parse_node_status(&input.status)?,
+                input.deferred_reason,
+            )
+            .map_err(Self::session_err)?;
+        Self::json_result(&context)
+    }
+
+    #[tool(
+        name = "session_workflow_promote",
+        description = "Promote a workflow node to a ticket-backed node while preserving identity."
+    )]
+    pub async fn session_workflow_promote(
+        &self,
+        Parameters(input): Parameters<WorkflowPromoteInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let context = self
+            .config_for_workspace(&input.workspace)?
+            .workflow_promote_node_to_ticket(
+                &input.workspace_session_id,
+                &input.node_id,
+                &input.ticket_urn,
+                input.cached_ticket_title,
+            )
+            .map_err(Self::session_err)?;
+        Self::json_result(&context)
+    }
+
+    #[tool(
+        name = "session_workflow_render_terminal",
+        description = "Render the workflow graph as deterministic terminal text."
+    )]
+    pub async fn session_workflow_render_terminal(
+        &self,
+        Parameters(input): Parameters<WorkflowRenderInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let render = self
+            .config_for_workspace(&input.workspace)?
+            .workflow_render_terminal(&input.workspace_session_id, None)
+            .map_err(Self::session_err)?;
+        Self::json_result(&serde_json::json!({"render": render}))
+    }
+
+    #[tool(
+        name = "session_workflow_render_mermaid",
+        description = "Render the workflow graph as deterministic Mermaid flowchart text."
+    )]
+    pub async fn session_workflow_render_mermaid(
+        &self,
+        Parameters(input): Parameters<WorkflowRenderInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let render = self
+            .config_for_workspace(&input.workspace)?
+            .workflow_render_mermaid(&input.workspace_session_id, None)
+            .map_err(Self::session_err)?;
+        Self::json_result(&serde_json::json!({"render": render}))
+    }
+
+    #[tool(
+        name = "session_handoff",
+        description = "Persist structured handoff record before rendering handoff summary."
+    )]
+    pub async fn session_handoff(
+        &self,
+        Parameters(input): Parameters<RuntimeHandoffInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self
+            .config_for_workspace(&input.workspace)?
+            .create_handoff_result(
+                &input.workspace_session_id,
+                input.validation.into_iter().map(Into::into).collect(),
+                None,
+            )
+            .map_err(Self::session_err)?;
+        Self::json_result(&result)
+    }
+
+    #[tool(
+        name = "session_finish",
+        description = "Explicitly finish workflow, enforcing required node and validation gates."
+    )]
+    pub async fn session_finish(
+        &self,
+        Parameters(input): Parameters<RuntimeFinishInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self
+            .config_for_workspace(&input.workspace)?
+            .finish_workflow(
+                &input.workspace_session_id,
+                input.validation.into_iter().map(Into::into).collect(),
+                input.deferred_optional_node_ids,
+                None,
+            )
+            .map_err(Self::session_err)?;
+        Self::json_result(&result)
+    }
+
     #[tool(
         name = "session_check_in",
         description = "Check a session into its authoritative worktree assignment and return the resolved receipt."

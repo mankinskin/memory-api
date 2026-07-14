@@ -22,6 +22,12 @@ pub enum SessionError {
     #[error("workspace slug contains invalid path characters: {0}")]
     InvalidWorkspaceSlug(String),
 
+    #[error("workspace session id contains invalid path characters: {0}")]
+    InvalidWorkspaceSessionId(String),
+
+    #[error("invalid pinned entity URN: {0}")]
+    InvalidEntityUrn(String),
+
     #[error("session owner id cannot be empty")]
     MissingOwnerId,
 
@@ -71,6 +77,26 @@ pub enum SessionError {
 
     #[error("session data was not found at {path}")]
     NotFound { path: PathBuf },
+
+    #[error(
+        "runtime context for workspace session {workspace_session_id} was not found"
+    )]
+    RuntimeContextNotFound { workspace_session_id: String },
+
+    #[error("session finish is blocked: {reason}")]
+    FinishBlocked { reason: String },
+
+    #[error(
+        "workspace session {workspace_session_id} is finished and immutable; \
+         a mutation was rejected"
+    )]
+    WorkspaceFinished { workspace_session_id: String },
+
+    #[error(
+        "concurrent mutation conflict for workspace session {workspace_session_id}: \
+         another mutation holds the runtime lock"
+    )]
+    RuntimeMutationConflict { workspace_session_id: String },
 
     #[error("no persisted sessions were found under {root}")]
     NoSessionsFound { root: PathBuf },
