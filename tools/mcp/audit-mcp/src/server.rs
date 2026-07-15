@@ -363,6 +363,11 @@ impl AuditServer {
 impl ServerHandler for AuditServer {
     fn get_info(&self) -> rmcp::model::ServerInfo {
         rmcp::model::ServerInfo {
+            server_info: rmcp::model::Implementation {
+                name: env!("CARGO_PKG_NAME").to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                ..Default::default()
+            },
             instructions: Some(
                 "Use audit for the full report, audit_summary for grouped issue counts, or audit_move_* for move preflight/apply/resume/rollback.".
                     to_string(),

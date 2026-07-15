@@ -976,6 +976,11 @@ impl SessionServer {
 impl ServerHandler for SessionServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
+            server_info: Implementation {
+                name: env!("CARGO_PKG_NAME").to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                ..Default::default()
+            },
             instructions: Some(
                 "session-mcp provides direct access to the session store. Use named tools for session worktree check-in, lookup, query, move, and transcript peeking."
                     .to_string(),

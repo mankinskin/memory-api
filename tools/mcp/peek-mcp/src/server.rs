@@ -169,6 +169,11 @@ impl PeekServer {
 impl ServerHandler for PeekServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
+            server_info: Implementation {
+                name: env!("CARGO_PKG_NAME").to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                ..Default::default()
+            },
             instructions: Some(
                 "peek-mcp provides named token-bounded inspection tools backed by peek-api. Use peek_read, peek_grep, peek_count, and peek_skeleton instead of reimplementing file inspection in transport code."
                     .to_string(),

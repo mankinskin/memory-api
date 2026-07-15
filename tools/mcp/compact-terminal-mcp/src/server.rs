@@ -430,6 +430,11 @@ Patterns:
 impl ServerHandler for CompactTerminalServer {
     fn get_info(&self) -> rmcp::model::ServerInfo {
         rmcp::model::ServerInfo {
+            server_info: rmcp::model::Implementation {
+                name: env!("CARGO_PKG_NAME").to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                ..Default::default()
+            },
             instructions: Some(
                 "Compact terminal MCP. Use run() for all shell commands. \
                  Long outputs are truncated inline and stored in a transient file. \

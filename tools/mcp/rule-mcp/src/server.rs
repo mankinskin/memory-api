@@ -364,6 +364,11 @@ impl RuleServer {
 impl ServerHandler for RuleServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
+            server_info: Implementation {
+                name: env!("CARGO_PKG_NAME").to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                ..Default::default()
+            },
             instructions: Some(
                 "rule-mcp provides direct access to the rule store. No HTTP backend required. Use named tools for rule operations."
                     .to_string(),

@@ -217,10 +217,16 @@ impl FeedbackServer {
 impl ServerHandler for FeedbackServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
+            server_info: Implementation {
+                name: env!("CARGO_PKG_NAME").to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                ..Default::default()
+            },
             instructions: Some(
                 "Feedback MCP server. Use feedback_ingest, feedback_inbox/query, feedback_mine, and feedback_summary tools."
                     .to_string(),
             ),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
         }
     }
@@ -235,4 +241,16 @@ pub async fn run_mcp_server(
         .await?;
     service.waiting().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn advertises_tools_capability() {
+        let server = FeedbackServer::new(PathBuf::new(), "default".to_string());
+
+        assert!(server.get_info().capabilities.tools.is_some());
+    }
 }
