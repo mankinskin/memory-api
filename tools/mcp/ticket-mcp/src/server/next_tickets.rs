@@ -243,3 +243,97 @@ fn tree_item(
             .collect::<Vec<_>>(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use serde_json::Value;
+    use ticket_api::{
+        model::filesystem::ScanRoot,
+        storage::store::TicketStore,
+    };
+
+    use super::*;
+
+    fn result_json(result: &CallToolResult) -> Value {
+        let text = result
+            .content
+            .iter()
+            .find_map(|content| {
+                if let rmcp::model::RawContent::Text(text) = &content.raw {
+                    Some(text.text.as_str())
+                } else {
+                    None
+                }
+            })
+            .expect("text content");
+        serde_json::from_str(text).expect("valid JSON")
+    }
+
+    #[tokio::test]
+    async fn next_tickets_uses_parent_workspace_index_for_child_tickets() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let parent = TicketStore::init(temp.path()).expect("parent store");
+        let child_root = temp.path().join("child").join(".ticket");
+        let child = TicketStore::init(&child_root).expect("child store");
+        let blocker_id = child
+            .create(
+                None,
+                "tracker-improvement",
+                Some("child workspace prerequisite"),
+                Some("new"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create child ticket");
+        let tracker_id = child
+            .create(
+                None,
+                "tracker-improvement",
+                Some("child workspace tracker"),
+                Some("new"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create child tracker");
+        child
+            .add_edge(ticket_api::model::edge::EdgeRecord {
+                from: tracker_id,
+                to: blocker_id,
+                kind: "depends_on".to_string(),
+                created_at: chrono::Utc::now(),
+            })
+            .expect("add dependency edge");
+        parent
+            .add_scan_root(ScanRoot {
+                path: child_root.join("tickets"),
+                label: "child".to_string(),
+            })
+            .expect("register child scan root");
+        parent.scan(true).expect("scan child store");
+
+        let server = TicketServer::new(temp.path().to_path_buf());
+        let result = server
+            .next_tickets_tool(NextTicketsInput {
+                workspace: temp.path().display().to_string(),
+                limit: None,
+                filter: None,
+                root: Some(tracker_id.to_string()),
+            })
+            .await
+            .expect("resolve child ticket through parent workspace");
+        let json = result_json(&result);
+
+        assert_eq!(
+            json["scope"]["root"].as_str(),
+            Some(tracker_id.to_string().as_str())
+        );
+        assert_eq!(
+            json["items"][0]["id"].as_str(),
+            Some(blocker_id.to_string().as_str())
+        );
+    }
+}

@@ -97,6 +97,17 @@ impl TicketServer {
             Path::new(workspace),
             ticket_api::workspace::TICKET_INDEX_DIR,
         );
+        let resolved = ticket_api::workspace::canonicalize_workspace_root_strict(
+            &resolved,
+        )
+        .map_err(|error| {
+            McpError::invalid_params(
+                format!(
+                    "invalid workspace '{workspace}': failed to canonicalize ticket store root: {error}"
+                ),
+                None,
+            )
+        })?;
         if resolved.file_name().and_then(|name| name.to_str())
             == Some(ticket_api::workspace::TICKET_INDEX_DIR)
             || Self::is_ticket_store_root(&resolved)
