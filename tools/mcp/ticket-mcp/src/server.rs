@@ -120,6 +120,35 @@ impl TicketServer {
             .map_err(Self::store_err)
     }
 
+    fn resolve_uuid_for_read(
+        store: &TicketStore,
+        value: &str,
+    ) -> Result<Uuid, McpError> {
+        match ticket_api::query_helpers::resolve_uuid_with_prefix(store, value) {
+            Ok(id) => Ok(id),
+            Err(ticket_api::error::StorageError::Other(message))
+                if message.starts_with("no ticket found matching prefix") =>
+            {
+                let searched = store
+                    .list_scan_roots()
+                    .map_err(Self::store_err)?
+                    .into_iter()
+                    .map(|root| root.path.display().to_string())
+                    .collect::<Vec<_>>();
+                let searched = if searched.is_empty() {
+                    store.index_root.display().to_string()
+                } else {
+                    searched.join(", ")
+                };
+                Err(McpError::invalid_params(
+                    format!("{message}; searched workspaces: {searched}"),
+                    None,
+                ))
+            }
+            Err(error) => Err(Self::store_err(error)),
+        }
+    }
+
     async fn with_store<T>(
         &self,
         workspace: &str,

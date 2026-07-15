@@ -1,0 +1,8 @@
+id = "3fd3aaff-b0d9-494b-8bbb-802d71140d59"
+created_at = "2026-07-15T20:48:01.967404500+00:00"
+title = "ticket-mcp read workspace resolution"
+state = "draft"
+component = "ticket-mcp"
+scope = "public"
+slug = "ticket-mcp/read-workspace-resolution"
+type = "specification"

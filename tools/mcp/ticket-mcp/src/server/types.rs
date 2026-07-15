@@ -76,7 +76,8 @@ pub struct ListTicketsInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct TicketRefInput {
-    pub workspace: String,
+    #[serde(default)]
+    pub workspace: Option<String>,
     pub id: String,
 }
 

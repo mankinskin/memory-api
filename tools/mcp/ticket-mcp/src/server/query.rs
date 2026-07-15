@@ -62,11 +62,11 @@ impl TicketServer {
         &self,
         input: TicketRefInput,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
+        let workspace = input.workspace.unwrap_or_else(|| "default".to_string());
         let id_str = input.id;
 
         self.with_store_ext(&workspace.clone(), move |store| {
-            let id = Self::resolve_uuid_with(store, &id_str)?;
+            let id = Self::resolve_uuid_for_read(store, &id_str)?;
             let path = store
                 .get_indexed(&id)
                 .map_err(Self::store_err)?
@@ -89,11 +89,11 @@ impl TicketServer {
         &self,
         input: TicketRefInput,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace;
+        let workspace = input.workspace.unwrap_or_else(|| "default".to_string());
         let id_str = input.id;
 
         self.with_store_ext(&workspace.clone(), move |store| {
-            let id = Self::resolve_uuid_with(store, &id_str)?;
+            let id = Self::resolve_uuid_for_read(store, &id_str)?;
             let indexed = store
                 .get_indexed(&id)
                 .map_err(Self::store_err)?
@@ -230,7 +230,7 @@ mod tests {
 
         let result = server
             .get_ticket_tool(TicketRefInput {
-                workspace: "default".to_string(),
+                workspace: None,
                 id: id.to_string(),
             })
             .await
@@ -244,6 +244,65 @@ mod tests {
             Some(indexed.path.display().to_string().as_str())
         );
         assert!(json["ticket"]["fields"].get("type").is_none());
+    }
+
+    #[tokio::test]
+    async fn get_ticket_tool_reads_an_indexed_descendant_from_parent_workspace() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let parent = TicketStore::init(dir.path()).expect("parent store");
+        let child_root = dir.path().join("child").join(".ticket");
+        let child = TicketStore::init(&child_root).expect("child store");
+        let id = child
+            .create(
+                None,
+                "tracker-improvement",
+                Some("descendant ticket"),
+                Some("new"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create child ticket");
+        parent
+            .add_scan_root(ticket_api::model::filesystem::ScanRoot {
+                path: child_root.join("tickets"),
+                label: "child".to_string(),
+            })
+            .expect("register child scan root");
+        parent.scan(true).expect("scan child store");
+
+        let server = TicketServer::new(dir.path().to_path_buf());
+        let result = server
+            .get_ticket_tool(TicketRefInput {
+                workspace: None,
+                id: id.to_string(),
+            })
+            .await
+            .expect("get indexed descendant ticket");
+        let json: Value = serde_json::from_str(&extract_text(&result))
+            .expect("valid json");
+
+        assert_eq!(json["ticket"]["id"].as_str(), Some(id.to_string().as_str()));
+    }
+
+    #[tokio::test]
+    async fn get_ticket_tool_reports_searched_workspaces_when_prefix_is_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = TicketStore::init(dir.path()).expect("open store");
+        let expected_root = store.index_root.display().to_string();
+        drop(store);
+        let server = TicketServer::new(dir.path().to_path_buf());
+
+        let error = server
+            .get_ticket_tool(TicketRefInput {
+                workspace: None,
+                id: "deadbeef".to_string(),
+            })
+            .await
+            .expect_err("missing prefix should fail");
+
+        assert!(error.to_string().contains("searched workspaces"));
+        assert!(error.to_string().contains(&expected_root));
     }
 
     #[tokio::test]
