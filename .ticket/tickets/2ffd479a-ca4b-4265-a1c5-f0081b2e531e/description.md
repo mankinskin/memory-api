@@ -1,13 +1,19 @@
 ## Problem
-`ticket-mcp` accepts an explicit checkout path but opens only that local `.ticket` store. Read tools thereby lose descendant tickets even though the canonical `default` workspace aggregates descendant stores. The observed failure is `next_tickets` and graph reads cannot resolve child-owned ticket IDs when invoked with the repository root path.
+`ticket-mcp` accepted an explicit checkout path but did not refresh its root workspace policy at startup. A root `.ticket` index could therefore omit child stores that its `workspace-policy.toml` explicitly enabled. Separately, read-only root selectors such as `next_tickets.root` used the mutation-style UUID resolver, so misses lacked the canonical scan-root diagnostics.
 
 ## Acceptance Criteria
 - Every MCP operation that accepts `workspace` resolves a concrete root path through one canonical policy.
-- Explicit ancestor workspace paths retain the aggregate descendant-read behavior used by `default` for read/query, workflow, graph, health, and board operations.
+- Explicit ancestor workspace paths retain aggregate descendant-read behavior for read/query, workflow, graph, and health operations.
 - Mutation targeting remains explicitly local and does not silently write to an ancestor or descendant store.
 - `next_tickets` resolves and ranks a child-owned ticket when called through the canonical parent workspace.
-- Focused MCP integration tests cover `next_tickets` and at least one representative query/graph operation with a descendant ticket.
+- Read-only ID/root misses report every resolved scan root searched.
 - Existing `default` and explicit child-store behavior remains compatible.
 
 ## Solution Design
-Audit `TicketServer::resolve_workspace_root` and all tool entrypoints. Introduce or use the ticket-api canonical workspace resolver at the server boundary so compatible read semantics are applied consistently. Keep mutation helpers on the strict local-store path. Add regression coverage using a parent store with a registered child scan root.
+`ticket-mcp` now calls `TicketStore::reapply_workspace_policy` when it opens its configured store, using the canonical workspace root derived from that `.ticket` directory. Read-only selectors in `next_tickets`, graph traversal, and health checks use `resolve_uuid_for_read`, while mutation paths retain the strict mutation resolver. The authoritative behavior is recorded in spec `3fd3aaff-b0d9-494b-8bbb-802d71140d59`.
+
+## Validation
+- `cargo test -p ticket-mcp next_tickets_` passed: 7 tests.
+- `cargo test -p ticket-mcp` passed: 20 tests.
+- VS Code diagnostics reported no errors in the five edited Rust files.
+- `git diff --check` passed.

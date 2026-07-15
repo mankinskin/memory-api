@@ -1,9 +1,11 @@
-use ticket_mcp::server;
+use ticket_mcp::server::{
+    self,
+    open_canonical_store,
+};
 
 use std::path::PathBuf;
 
 use memory_api::runtime::init_transport_tracing;
-use ticket_api::storage::store::TicketStore;
 
 #[tokio::main]
 async fn main() {
@@ -16,7 +18,7 @@ async fn main() {
             path
         });
 
-    let store = TicketStore::open(&index_root).unwrap_or_else(|e| {
+    let store = open_canonical_store(&index_root).unwrap_or_else(|e| {
         eprintln!(
             "Failed to open ticket store at {}: {e}",
             index_root.display()

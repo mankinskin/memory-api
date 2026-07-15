@@ -80,7 +80,7 @@ impl TicketServer {
         };
 
         self.with_store_ext(&request.workspace.clone(), move |store| {
-            let root = Self::resolve_uuid_with(store, &request.root_str)?;
+            let root = Self::resolve_uuid_for_read(store, &request.root_str)?;
             let all_edges = store.list_all_edges().map_err(Self::store_err)?;
             let traversal = traverse_graph(store, root, &all_edges, &request)?;
             let stats = SubgraphStats {

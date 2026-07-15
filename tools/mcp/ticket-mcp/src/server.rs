@@ -44,6 +44,18 @@ pub struct TicketServer {
     store_lock: Arc<Mutex<()>>,
 }
 
+pub fn open_canonical_store(
+    index_root: &Path,
+) -> Result<TicketStore, ticket_api::error::StorageError> {
+    let store = TicketStore::open(index_root)?;
+    let workspace_root = ticket_api::workspace::resolve_workspace_root_from_store_root(
+        &store.index_root,
+        ticket_api::workspace::TICKET_INDEX_DIR,
+    );
+    store.reapply_workspace_policy(&workspace_root)?;
+    Ok(store)
+}
+
 impl TicketServer {
     pub fn new(index_root: PathBuf) -> Self {
         Self {

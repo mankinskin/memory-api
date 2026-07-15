@@ -119,7 +119,7 @@ fn explicit_tickets(
     let mut tickets = Vec::new();
 
     for id_str in ids {
-        let id = TicketServer::resolve_uuid_with(store, id_str)?;
+        let id = TicketServer::resolve_uuid_for_read(store, id_str)?;
         if let Some(ticket) =
             store.get_indexed(&id).map_err(TicketServer::store_err)?
         {
@@ -137,7 +137,7 @@ fn root_scope_tickets(
     direction: &str,
     all_edges: &[EdgeRecord],
 ) -> Result<Vec<IndexedTicket>, McpError> {
-    let root_id = TicketServer::resolve_uuid_with(store, root_str)?;
+    let root_id = TicketServer::resolve_uuid_for_read(store, root_str)?;
     let scope_ids =
         collect_scope_ids(root_id, depth_limit, direction, all_edges);
 

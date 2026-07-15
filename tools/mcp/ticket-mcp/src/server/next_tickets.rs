@@ -56,7 +56,7 @@ impl TicketServer {
 
                 let root_id = root
                     .as_deref()
-                    .map(|r| Self::resolve_uuid_with(store, r))
+                    .map(|r| Self::resolve_uuid_for_read(store, r))
                     .transpose()?;
                 let root_scope = root_id.and_then(|rid| {
                     model.root_blocker_scope(rid).map(|scope| (rid, scope))
@@ -272,10 +272,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn next_tickets_uses_parent_workspace_index_for_child_tickets() {
+    async fn next_tickets_startup_policy_discovers_child_tickets() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let parent = TicketStore::init(temp.path()).expect("parent store");
-        let child_root = temp.path().join("child").join(".ticket");
+        let workspace_root = temp.path().join("workspace");
+        let parent_root = workspace_root.join(".ticket");
+        let parent = TicketStore::init(&parent_root).expect("parent store");
+        let child_root = workspace_root.join("child").join(".ticket");
         let child = TicketStore::init(&child_root).expect("child store");
         let blocker_id = child
             .create(
@@ -307,18 +309,17 @@ mod tests {
                 created_at: chrono::Utc::now(),
             })
             .expect("add dependency edge");
-        parent
-            .add_scan_root(ScanRoot {
-                path: child_root.join("tickets"),
-                label: "child".to_string(),
-            })
-            .expect("register child scan root");
-        parent.scan(true).expect("scan child store");
+        drop(child);
+        drop(parent);
 
-        let server = TicketServer::new(temp.path().to_path_buf());
+        let store = open_canonical_store(&parent_root)
+            .expect("apply workspace policy at MCP startup");
+        drop(store);
+
+        let server = TicketServer::new(parent_root);
         let result = server
             .next_tickets_tool(NextTicketsInput {
-                workspace: temp.path().display().to_string(),
+                workspace: workspace_root.display().to_string(),
                 limit: None,
                 filter: None,
                 root: Some(tracker_id.to_string()),
@@ -334,6 +335,45 @@ mod tests {
         assert_eq!(
             json["items"][0]["id"].as_str(),
             Some(blocker_id.to_string().as_str())
+        );
+    }
+
+    #[tokio::test]
+    async fn next_tickets_missing_root_reports_all_scanned_workspaces() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let parent = TicketStore::init(temp.path()).expect("parent store");
+        let child_root = temp.path().join("child").join(".ticket");
+        TicketStore::init(&child_root).expect("child store");
+        parent
+            .add_scan_root(ScanRoot {
+                path: child_root.join("tickets"),
+                label: "child".to_string(),
+            })
+            .expect("register child scan root");
+        let parent_root = parent.index_root.clone();
+        drop(parent);
+
+        let server = TicketServer::new(parent_root);
+        let error = server
+            .next_tickets_tool(NextTicketsInput {
+                workspace: temp.path().display().to_string(),
+                limit: None,
+                filter: None,
+                root: Some("deadbeef".to_string()),
+            })
+            .await
+            .expect_err("missing root should fail");
+
+        assert!(error.to_string().contains("searched workspaces"));
+        let diagnostic = error.to_string();
+        let child_scan_root = child_root
+            .join("tickets")
+            .display()
+            .to_string()
+            .replace('\\', "/");
+        assert!(
+            diagnostic.contains(&child_scan_root),
+            "missing child scan root in diagnostic: {diagnostic}"
         );
     }
 }
