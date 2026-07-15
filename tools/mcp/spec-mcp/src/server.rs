@@ -384,6 +384,11 @@ impl SpecServer {
 impl ServerHandler for SpecServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
+            server_info: Implementation {
+                name: env!("CARGO_PKG_NAME").to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                ..Default::default()
+            },
             instructions: Some(
                 "spec-mcp provides direct access to the spec store. No HTTP backend required. Use named tools for spec operations."
                     .to_string(),

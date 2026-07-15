@@ -554,6 +554,11 @@ impl TicketServer {
 impl ServerHandler for TicketServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
+            server_info: Implementation {
+                name: env!("CARGO_PKG_NAME").to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                ..Default::default()
+            },
             instructions: Some(
                 "ticket-mcp provides direct access to the ticket store. No HTTP backend required. Use named tools for ticket operations."
                     .to_string(),

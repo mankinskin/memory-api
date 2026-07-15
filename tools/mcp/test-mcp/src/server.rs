@@ -594,6 +594,11 @@ impl TestServer {
 impl ServerHandler for TestServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
+            server_info: Implementation {
+                name: env!("CARGO_PKG_NAME").to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                ..Default::default()
+            },
             instructions: Some(
                 "test-mcp provides direct access to the test-result store (test-api). Use named \
                  tools to record validation specs and executions, fetch them by id, and query \
