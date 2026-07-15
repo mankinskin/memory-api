@@ -1,40 +1,13 @@
-# [design][test] Browser and TypeScript result integration with test-api
+# Completed design
 
-# Goal
+Created `.spec/specs/9e823b76-cd60-4689-b772-649ebb3a34a1/` defining the repository-native subprocess runner, structured reporter/result adapter, provenance, retry/outcome, blocked-capability, artifact, wasm-pack, and benchmark mappings.
 
-Choose and document how Playwright, TypeScript-authored checks, browser artifacts, and wasm-pack browser tests become first-class ValidationExecution and BenchmarkExecution evidence instead of remaining isolated npm/stdout reports.
+## Evidence
 
-This is a design ticket. Implementation belongs in follow-up tickets and the viewer-platform umbrella `956485ad`.
+- `spec health 9e823b76-cd60-4689-b772-649ebb3a34a1`: passed with zero findings.
+- `spec refs validate 9e823b76-cd60-4689-b772-649ebb3a34a1`: passed.
+- Local test-api ticket health for the follow-up dependency: passed with zero findings.
 
-# Decisions required
+## Follow-up
 
-- Select the runner boundary: invoke repository-native npm/Playwright/wasm-pack commands from the validation harness rather than embedding a JS runtime unless evidence demonstrates embedding is necessary.
-- Select the result adapter: prefer a thin structured reporter/adapter that emits the test-api schema over scraping human-oriented console output.
-- Define provenance for source file, test ID/title, project/browser profile, command, commit, correlation ID, transport, retry, and artifact paths.
-- Map Playwright statuses and infrastructure failures to passed/failed/blocked without turning retries into false passes.
-- Map screenshots, traces, videos, frontend/backend logs, environment manifests, and benchmark output to durable artifact references.
-- Define fast PR, release-browser, nightly performance/soak, and hardware/on-demand profiles.
-- Represent wasm-pack browser tests and benchmark samples without conflating unit-test success with performance-budget success.
-
-# Acceptance criteria
-
-- [ ] A short design note chooses the runner and adapter architecture with rationale and rejected alternatives.
-- [ ] The provenance model covers correlation ID, source test, environment profile, retry, transport, and artifact identity.
-- [ ] Playwright, wasm-pack, and benchmark outcomes have explicit mappings to test-api records.
-- [ ] Follow-up implementation tickets are created and linked to `956485ad`.
-- [ ] Artifact retention and missing-capability/blocked behavior are specified.
-- [ ] The design composes with `9202bc21` correlated logs and `0556ed59` CI lanes.
-
-# Work steps
-
-1. Inspect test-api execution/benchmark schemas and existing reporter extension points.
-2. Prototype one Playwright structured result payload and one wasm-pack payload.
-3. Compare thin reporter, generic subprocess adapter, and embedded-runtime alternatives.
-4. Specify provenance and artifact lifecycle.
-5. Create implementation tickets and link exact validation guards/specs.
-
-# Non-goals
-
-- Replacing Playwright with a custom browser driver.
-- Parsing human console output when a structured reporter is available.
-- Running all browser/performance work in the fast PR lane.
+`8f364a0c-35ab-4faa-b49a-20d98b6f2905` owns the adapter implementation and depends on this design. The spec links the umbrella `956485ad`; cross-store edge insertion through the aggregated index is currently blocked because the new memory-api ticket has not yet appeared in `default` discovery.

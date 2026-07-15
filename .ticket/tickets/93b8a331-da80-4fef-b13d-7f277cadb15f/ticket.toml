@@ -1,7 +1,7 @@
 id = "93b8a331-da80-4fef-b13d-7f277cadb15f"
 created_at = "2026-06-28T19:32:27.607559400+00:00"
 title = "[design][test] Browser & TypeScript automated test integration strategy (design session)"
-state = "new"
+state = "done"
 component = "test-api"
 effort = "2200"
 phase = "design"
