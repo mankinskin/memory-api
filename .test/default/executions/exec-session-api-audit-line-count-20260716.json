@@ -1,0 +1,19 @@
+{
+  "id": "exec-session-api-audit-line-count-20260716",
+  "validation_spec_id": "vt-session-api-audit-line-count",
+  "outcome": "failed",
+  "executed_at": "2026-07-16T18:21:48.420796700Z",
+  "detail": "Supersedes an invalid non-default audit result. Canonical mcp_audit-mcp_audit at the repository default file-length limit reports seven session-api line_count findings: transcript_feedback.rs (1000), hook.rs (726), peek.rs (665), model.rs (567), store/helpers/storage.rs (518), bin/copilot-capture-hook.rs (516), and hook/tests.rs (412).",
+  "links": {
+    "ticket_ids": [
+      "d8cb1b87-48a2-4a99-b741-48cfaed44711"
+    ]
+  },
+  "provenance": {
+    "source_path": "crates/session-api/src",
+    "domain": "session-api",
+    "operation": "default-audit-line-count-remediation",
+    "transport": "in-process",
+    "run_id": "52e1cdc9-d4b9-4c8d-8316-615151b909c8"
+  }
+}

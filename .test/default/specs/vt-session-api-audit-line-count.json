@@ -1,0 +1,11 @@
+{
+  "id": "vt-session-api-audit-line-count",
+  "title": "Session API library and default file-length audit",
+  "command": "cargo test -p session-api --lib && audit",
+  "detail": "Validate the session-api library suite and the canonical repository audit at its default 400-line file-length limit. No max_file_lines override is permitted.",
+  "links": {
+    "ticket_ids": [
+      "d8cb1b87-48a2-4a99-b741-48cfaed44711"
+    ]
+  }
+}

@@ -39,9 +39,21 @@ use serde_json::Value;
 
 use crate::{
     CopilotHookEvent,
-    SessionRole,
-    SessionTurn,
 };
+
+mod entity_discovery;
+mod event_outcomes;
+mod turn_signals;
+
+pub use entity_discovery::{
+    EntityDiscoveryQueue,
+    discover_entities_from_signals,
+};
+use event_outcomes::{
+    canonicalize_outcome_events,
+    is_tool_execution_outcome,
+};
+pub use turn_signals::mine_structured_feedback_signals;
 
 /// Tool name suffix identifying the `feedback-mcp` `feedback_ingest` tool.
 /// Captured `tool_name` values are session-scoped and prefixed by the
@@ -130,39 +142,6 @@ pub struct StructuredFeedbackSignal {
     /// call to a feedback target entity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mapping: Option<FailedToolCallMapping>,
-}
-
-/// Extract structured feedback signals from a session's turns.
-///
-/// This is a pure, side-effect-free classification over structured metadata.
-/// It performs no store writes and creates no tickets; callers decide how to
-/// act on the returned signals.
-pub fn mine_structured_feedback_signals(
-    turns: &[SessionTurn]
-) -> Vec<StructuredFeedbackSignal> {
-    turns.iter().filter_map(detect_signal).collect()
-}
-
-fn detect_signal(turn: &SessionTurn) -> Option<StructuredFeedbackSignal> {
-    let meta = turn.event_meta.as_ref()?;
-
-    // Only structured tool outcomes are trusted. A `tool_success` of `false`
-    // is an explicit failure flag recorded at capture time; no natural-language
-    // interpretation is involved.
-    if turn.role != SessionRole::Tool || meta.tool_success != Some(false) {
-        return None;
-    }
-
-    Some(StructuredFeedbackSignal {
-        kind: FeedbackSignalKind::FailedToolCall,
-        sequence: Some(turn.sequence),
-        tool_name: turn.tool_name.clone(),
-        tool_call_id: meta.tool_call_id.clone(),
-        event_id: meta.event_id.clone(),
-        tool_success: meta.tool_success,
-        ingestion: None,
-        mapping: None,
-    })
 }
 
 /// Extract explicit feedback-ingestion signals from a session's captured
@@ -447,58 +426,6 @@ fn detect_failed_tool_call(
     })
 }
 
-fn is_tool_execution_outcome(event_type: Option<&str>) -> bool {
-    matches!(
-        event_type,
-        Some("tool.execution_result")
-            | Some("tool_execution_result")
-            | Some("tool.execution_complete")
-            | Some("tool_execution_complete")
-    )
-}
-
-fn canonicalize_outcome_events(
-    events: &[CopilotHookEvent]
-) -> Vec<CopilotHookEvent> {
-    let mut complete_tool_calls = std::collections::BTreeSet::<String>::new();
-    for event in events {
-        if is_tool_execution_complete(event.event_type.as_deref()) {
-            if let Some(tool_call_id) = event.tool_call_id.as_ref() {
-                complete_tool_calls.insert(tool_call_id.clone());
-            }
-        }
-    }
-
-    let mut normalized = Vec::with_capacity(events.len());
-    for event in events {
-        if is_tool_execution_result(event.event_type.as_deref())
-            && event
-                .tool_call_id
-                .as_ref()
-                .is_some_and(|id| complete_tool_calls.contains(id))
-        {
-            continue;
-        }
-        normalized.push(event.clone());
-    }
-
-    normalized
-}
-
-fn is_tool_execution_complete(event_type: Option<&str>) -> bool {
-    matches!(
-        event_type,
-        Some("tool.execution_complete") | Some("tool_execution_complete")
-    )
-}
-
-fn is_tool_execution_result(event_type: Option<&str>) -> bool {
-    matches!(
-        event_type,
-        Some("tool.execution_result") | Some("tool_execution_result")
-    )
-}
-
 /// Build a backtraceable [`FeedbackEntry`] recovering an `ExplicitIngestion`
 /// signal whose live `feedback_ingest` call did **not** successfully
 /// persist.
@@ -562,99 +489,16 @@ pub fn recover_feedback_entry_from_signal(
     Ok(Some(entry))
 }
 
-/// Deterministic, order-preserving, deduplicated discovery queue of feedback
-/// target entities.
-///
-/// Entities are enqueued in first-discovery order; a given [`EntityUrn`] is
-/// enqueued at most once (first discovery wins — later re-references of the
-/// same entity are deduped rather than reprocessed). This is the
-/// deterministic breadth-first iteration the structured feedback ring
-/// requires: process signals in a fixed order, and append newly-discovered
-/// entities to the queue as they are found, never revisiting one already
-/// seen.
-///
-/// Today's signal kinds (`ExplicitIngestion`'s `target`, `FailedToolCall`'s
-/// resolved [`FailedToolCallMapping::Entity`]) each reference at most one
-/// entity directly, with no further related entities to expand into — so
-/// this is currently the documented acceptable alternative of "mine only
-/// the entities detected at the beginning" rather than a multi-level BFS
-/// traversal. The queue abstraction is kept independent of any particular
-/// signal kind so a future signal that discovers *related* entities (for
-/// example a ticket's `depends_on` links) can enqueue onto it without
-/// changing the ordering/dedup contract relied on here.
-#[derive(Debug, Default)]
-pub struct EntityDiscoveryQueue {
-    seen: std::collections::HashSet<EntityUrn>,
-    order: Vec<EntityUrn>,
-}
-
-impl EntityDiscoveryQueue {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Enqueue an entity if it has not been seen before. Returns `true` if
-    /// this was a new entity (now queued), `false` if it was already
-    /// discovered and is therefore skipped.
-    pub fn enqueue(
-        &mut self,
-        urn: EntityUrn,
-    ) -> bool {
-        if self.seen.insert(urn.clone()) {
-            self.order.push(urn);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Consume the queue, returning discovered entities in first-discovery
-    /// order.
-    pub fn into_ordered(self) -> Vec<EntityUrn> {
-        self.order
-    }
-}
-
-/// Discover the distinct feedback target entities referenced by a session's
-/// structured feedback signals, in deterministic first-discovery order.
-///
-/// This is a pure function over already-mined signals (see
-/// [`mine_failed_tool_call_signals`] and [`mine_explicit_ingestion_signals`])
-/// — it performs no store writes and creates no tickets.
-pub fn discover_entities_from_signals(
-    signals: &[StructuredFeedbackSignal]
-) -> Vec<EntityUrn> {
-    let mut queue = EntityDiscoveryQueue::new();
-    for signal in signals {
-        for urn in entity_refs(signal) {
-            queue.enqueue(urn);
-        }
-    }
-    queue.into_ordered()
-}
-
-fn entity_refs(signal: &StructuredFeedbackSignal) -> Vec<EntityUrn> {
-    let mut refs = Vec::new();
-    if let Some(FailedToolCallMapping::Entity { urn }) = &signal.mapping {
-        refs.push(urn.clone());
-    }
-    if let Some(target_urn) = signal
-        .ingestion
-        .as_ref()
-        .and_then(|args| args.target.as_deref())
-        .and_then(|raw| EntityUrn::from_str(raw).ok())
-    {
-        refs.push(target_urn);
-    }
-    refs
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
 
     use super::*;
-    use crate::SessionTurnEventMeta;
+    use crate::{
+        SessionRole,
+        SessionTurn,
+        SessionTurnEventMeta,
+    };
 
     fn tool_turn(
         sequence: usize,
