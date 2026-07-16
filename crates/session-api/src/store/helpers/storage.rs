@@ -1,4 +1,9 @@
 use super::*;
+use events::{
+    canonicalize_captured_events,
+    captured_event_key,
+};
+use links::extend_unique;
 
 pub(super) fn write_json<T: Serialize>(
     path: &Path,
@@ -231,17 +236,6 @@ pub(super) fn merge_links(
     merged
 }
 
-pub(super) fn extend_unique(
-    target: &mut Vec<String>,
-    incoming: Vec<String>,
-) {
-    for value in incoming {
-        if !target.iter().any(|existing| existing == &value) {
-            target.push(value);
-        }
-    }
-}
-
 pub(super) fn merge_events(
     existing: Option<PersistedSessionEvents>,
     incoming: Option<PersistedSessionEvents>,
@@ -286,122 +280,6 @@ pub(super) fn merge_events(
             Ok(Some(existing))
         },
     }
-}
-
-pub(super) fn captured_event_key(event: &CopilotHookEvent) -> String {
-    if let Some(id) = &event.event_id {
-        return format!("id:{id}");
-    }
-
-    format!(
-        "type:{}|ts:{}|msg:{}|call:{}|turn:{}|tool:{}|ok:{}|reason:{}|req:{}|args:{}|data:{}",
-        event.event_type.as_deref().unwrap_or(""),
-        event
-            .captured_at
-            .map(|ts| ts.to_rfc3339())
-            .unwrap_or_default(),
-        event.message_id.as_deref().unwrap_or(""),
-        event.tool_call_id.as_deref().unwrap_or(""),
-        event.turn_id.as_deref().unwrap_or(""),
-        event.tool_name.as_deref().unwrap_or(""),
-        event
-            .tool_success
-            .map(|ok| ok.to_string())
-            .unwrap_or_default(),
-        event.reasoning_text.as_deref().unwrap_or(""),
-        json_fingerprint(&event.tool_requests_json),
-        json_fingerprint(&event.tool_arguments_json),
-        json_fingerprint(&event.data_json),
-    )
-}
-
-pub(super) fn canonicalize_captured_events(
-    events: Vec<CopilotHookEvent>
-) -> Vec<CopilotHookEvent> {
-    let mut complete_ids = std::collections::BTreeSet::<String>::new();
-    let mut normalized_results =
-        std::collections::BTreeMap::<String, serde_json::Map<String, serde_json::Value>>::new();
-
-    for event in &events {
-        if is_tool_execution_complete(event.event_type.as_deref()) {
-            if let Some(tool_call_id) = event.tool_call_id.as_ref() {
-                complete_ids.insert(tool_call_id.clone());
-            }
-        }
-        if is_tool_execution_result(event.event_type.as_deref()) {
-            let Some(tool_call_id) = event.tool_call_id.as_ref() else {
-                continue;
-            };
-            let Some(serde_json::Value::Object(data)) = event.data_json.as_ref() else {
-                continue;
-            };
-            normalized_results
-                .entry(tool_call_id.clone())
-                .or_insert_with(|| data.clone());
-        }
-    }
-
-    let mut canonical = Vec::with_capacity(events.len());
-    for mut event in events {
-        if is_tool_execution_result(event.event_type.as_deref()) {
-            if event
-                .tool_call_id
-                .as_ref()
-                .is_some_and(|tool_call_id| complete_ids.contains(tool_call_id))
-            {
-                continue;
-            }
-        }
-
-        if is_tool_execution_complete(event.event_type.as_deref()) {
-            if let Some(tool_call_id) = event.tool_call_id.as_ref() {
-                if let Some(result_data) = normalized_results.get(tool_call_id) {
-                    merge_result_data_into_event(&mut event, result_data);
-                }
-            }
-        }
-
-        canonical.push(event);
-    }
-
-    canonical
-}
-
-fn is_tool_execution_complete(event_type: Option<&str>) -> bool {
-    matches!(
-        event_type,
-        Some("tool.execution_complete") | Some("tool_execution_complete")
-    )
-}
-
-fn is_tool_execution_result(event_type: Option<&str>) -> bool {
-    matches!(
-        event_type,
-        Some("tool.execution_result") | Some("tool_execution_result")
-    )
-}
-
-fn merge_result_data_into_event(
-    event: &mut CopilotHookEvent,
-    result_data: &serde_json::Map<String, serde_json::Value>,
-) {
-    match event.data_json.as_mut() {
-        Some(serde_json::Value::Object(existing)) => {
-            for (key, value) in result_data {
-                existing.entry(key.clone()).or_insert_with(|| value.clone());
-            }
-        },
-        _ => {
-            event.data_json = Some(serde_json::Value::Object(result_data.clone()));
-        },
-    }
-}
-
-fn json_fingerprint(value: &Option<serde_json::Value>) -> String {
-    value
-        .as_ref()
-        .and_then(|v| serde_json::to_string(v).ok())
-        .unwrap_or_default()
 }
 
 pub(super) fn merge_transcript(

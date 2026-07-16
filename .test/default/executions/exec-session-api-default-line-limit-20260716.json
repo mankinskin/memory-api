@@ -1,0 +1,18 @@
+{
+  "id": "exec-session-api-default-line-limit-20260716",
+  "validation_spec_id": "vt-session-api-default-line-limit",
+  "outcome": "passed",
+  "executed_at": "2026-07-16T21:17:11.205986700Z",
+  "detail": "cargo test -p session-api --lib: 99 passed; cargo test -p session-api --bin copilot-capture-hook: 5 passed; canonical unparameterized audit returned zero session-api line_count findings. Final parent sizes: model.rs 396, store/helpers/storage.rs 396, bin/copilot-capture-hook.rs 311.",
+  "links": {
+    "ticket_ids": [
+      "d8cb1b87-48a2-4a99-b741-48cfaed44711"
+    ]
+  },
+  "provenance": {
+    "domain": "session-api",
+    "operation": "line-count-remediation",
+    "transport": "cli",
+    "run_id": "1dba0304-00a9-4e02-88cb-9c958785af55"
+  }
+}

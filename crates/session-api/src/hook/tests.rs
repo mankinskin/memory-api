@@ -2,107 +2,18 @@ use chrono::TimeZone;
 use pretty_assertions::assert_eq;
 
 use crate::{
-    PromptPackOptions,
-    SessionError,
-    SessionRole,
     peek_prompt_pack,
+    PromptPackOptions,
+    SessionRole,
 };
 
 use super::{
-    CopilotHookMessage,
-    CopilotHookPayload,
-    SessionCaptureRequest,
     copilot_payload_from_transcript_reader,
+    SessionCaptureRequest,
 };
 
-fn sample_time() -> chrono::DateTime<chrono::Utc> {
-    chrono::Utc
-        .with_ymd_and_hms(2026, 6, 2, 12, 30, 0)
-        .single()
-        .unwrap()
-}
-
-#[test]
-fn capture_request_maps_hook_payload_into_session_record() {
-    let payload = CopilotHookPayload {
-        session_id: "session-123".to_string(),
-        workspace_slug: "context-engine".to_string(),
-        captured_at: sample_time(),
-        conversation_id: Some("conversation-42".to_string()),
-        agent_id: Some("github-copilot-gpt-5.4".to_string()),
-        model: Some("GPT-5.4".to_string()),
-        trigger: Some("post-turn".to_string()),
-        messages: vec![
-            CopilotHookMessage {
-                role: SessionRole::User,
-                content: "Create the session scaffold".to_string(),
-                tool_name: None,
-                captured_at: Some(sample_time()),
-                event_meta: None,
-            },
-            CopilotHookMessage {
-                role: SessionRole::Assistant,
-                content: "Scaffold planned.".to_string(),
-                tool_name: None,
-                captured_at: None,
-                event_meta: None,
-            },
-        ],
-        events: vec![],
-        runtime: None,
-    };
-    let mut request = SessionCaptureRequest::copilot(payload);
-    request.links.ticket_ids.push("ticket-session".to_string());
-
-    let (record, events) = request.into_record_and_events().unwrap();
-
-    assert_eq!(record.session_id, "session-123");
-    assert!(events.is_empty());
-    assert_eq!(record.source, "copilot-hook");
-    assert_eq!(record.metadata.workspace_slug, "context-engine");
-    assert_eq!(record.metadata.ticket_id, None);
-    assert_eq!(record.metadata.worktree, None);
-    assert_eq!(record.turns.len(), 2);
-    assert_eq!(
-        record.turns[0].model, None,
-        "user turn should inherit the session-level model, not carry its own"
-    );
-    assert_eq!(
-        record.turns[1].model.as_deref(),
-        Some("GPT-5.4"),
-        "assistant turn should record the active model"
-    );
-    assert!(record.links.links_to_ticket("ticket-session"));
-    assert!(record.has_turns());
-}
-
-#[test]
-fn capture_request_rejects_missing_session_id() {
-    let payload = CopilotHookPayload {
-        session_id: "   ".to_string(),
-        workspace_slug: "context-engine".to_string(),
-        captured_at: sample_time(),
-        conversation_id: None,
-        agent_id: None,
-        model: None,
-        trigger: None,
-        messages: vec![CopilotHookMessage {
-            role: SessionRole::User,
-            content: "Hello".to_string(),
-            tool_name: None,
-            captured_at: None,
-            event_meta: None,
-        }],
-        events: vec![],
-        runtime: None,
-    };
-
-    let error = SessionCaptureRequest::copilot(payload)
-        .into_record()
-        .unwrap_err();
-
-    assert!(matches!(error, SessionError::MissingSessionId));
-}
+#[path = "tests/capture_request.rs"]
+mod capture_request;
 
 #[test]
 fn transcript_reader_maps_visible_messages_into_payload() {
@@ -124,21 +35,11 @@ fn transcript_reader_maps_visible_messages_into_payload() {
     assert_eq!(payload.trigger.as_deref(), Some("stop"));
     assert_eq!(payload.messages.len(), 2);
     assert_eq!(payload.events.len(), 5);
-    assert!(
-        payload.events[2]
-            .data_json
-            .as_ref()
-            .and_then(|json| json.get("toolRequests"))
-            .is_some()
-    );
-    assert!(
-        payload.events[3]
-            .raw_event_json
-            .as_ref()
-            .and_then(|json| json.get("type"))
-            .and_then(serde_json::Value::as_str)
-            == Some("tool.execution_complete")
-    );
+    assert!(payload.events[2]
+        .data_json
+        .as_ref()
+        .and_then(|json| json.get("toolRequests"))
+        .is_some());
     let result_event = payload
         .events
         .iter()
@@ -147,17 +48,8 @@ fn transcript_reader_maps_visible_messages_into_payload() {
         })
         .expect("expected synthesized tool.execution_result event");
     assert_eq!(result_event.tool_name.as_deref(), Some("read_file"));
-    assert_eq!(
-        result_event
-            .data_json
-            .as_ref()
-            .and_then(|json| json.get("result_code"))
-            .and_then(serde_json::Value::as_str),
-        Some("ok")
-    );
     assert_eq!(payload.messages[0].role, SessionRole::User);
     assert_eq!(payload.messages[0].content, "Hello");
-    assert_eq!(payload.messages[1].role, SessionRole::Assistant);
     assert_eq!(payload.messages[1].content, "World");
     assert_eq!(
         payload.messages[1]

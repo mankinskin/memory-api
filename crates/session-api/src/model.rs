@@ -20,6 +20,36 @@ pub fn default_runtime_context_schema_version() -> u32 {
     RUNTIME_CONTEXT_SCHEMA_VERSION
 }
 
+mod workflow;
+
+pub use handoff::{
+    SessionFinishRecord,
+    SessionFinishResult,
+    SessionHandoffRecord,
+    SessionHandoffResult,
+};
+pub use links::SessionLinks;
+pub use pin_feedback::SessionPinFeedbackSink;
+pub use workflow::{
+    SessionTicketStateResolver,
+    SessionValidationGate,
+    SessionWorkflowDiagnostic,
+    SessionWorkflowEdge,
+    SessionWorkflowEdgeKind,
+    SessionWorkflowGraph,
+    SessionWorkflowNode,
+    SessionWorkflowNodeDraft,
+    SessionWorkflowNodeKind,
+    SessionWorkflowNodeRequirement,
+    SessionWorkflowNodeResolution,
+    SessionWorkflowNodeStatus,
+    SessionWorkflowSnapshot,
+};
+
+mod handoff;
+mod links;
+mod pin_feedback;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SessionPinnedEntityKind {
@@ -136,207 +166,6 @@ pub struct SessionRuntimeView {
     pub pinned_count: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pinned_headers: Vec<SessionPinnedEntityHeader>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SessionWorkflowNodeKind {
-    Ticket,
-    Action,
-    Decision,
-    Checkpoint,
-    Validation,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SessionWorkflowNodeRequirement {
-    Required,
-    Optional,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SessionWorkflowNodeStatus {
-    Pending,
-    InProgress,
-    Blocked,
-    Done,
-    Deferred,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SessionWorkflowEdgeKind {
-    DependsOn,
-    Order,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionWorkflowNode {
-    pub node_id: String,
-    pub kind: SessionWorkflowNodeKind,
-    pub requirement: SessionWorkflowNodeRequirement,
-    pub status: SessionWorkflowNodeStatus,
-    pub title: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ticket_urn: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cached_ticket_title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deferred_reason: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub validation_spec_id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionWorkflowEdge {
-    pub from: String,
-    pub to: String,
-    pub kind: SessionWorkflowEdgeKind,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionWorkflowGraph {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub nodes: Vec<SessionWorkflowNode>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub edges: Vec<SessionWorkflowEdge>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionWorkflowNodeDraft {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub node_id: Option<String>,
-    pub kind: SessionWorkflowNodeKind,
-    pub requirement: SessionWorkflowNodeRequirement,
-    pub title: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ticket_urn: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cached_ticket_title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub validation_spec_id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionWorkflowNodeResolution {
-    pub node_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub live_ticket_state: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionWorkflowDiagnostic {
-    pub node_id: String,
-    pub code: String,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionWorkflowSnapshot {
-    pub workflow: SessionWorkflowGraph,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub resolutions: Vec<SessionWorkflowNodeResolution>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub diagnostics: Vec<SessionWorkflowDiagnostic>,
-}
-
-pub trait SessionTicketStateResolver {
-    fn resolve_ticket_state(
-        &self,
-        ticket_urn: &str,
-    ) -> Result<Option<String>, String>;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionValidationGate {
-    pub validation_spec_id: String,
-    #[serde(default)]
-    pub required: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub outcome: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionHandoffRecord {
-    pub handoff_id: String,
-    pub workspace_session_id: String,
-    pub outgoing_run_id: String,
-    pub created_at: DateTime<Utc>,
-    pub resume_command: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub pinned_entities: Vec<SessionPinnedEntityHeader>,
-    pub workflow: SessionWorkflowSnapshot,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub validation: Vec<SessionValidationGate>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionHandoffResult {
-    pub record: SessionHandoffRecord,
-    pub record_path: String,
-    pub render: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionFinishRecord {
-    pub workspace_session_id: String,
-    pub run_id: String,
-    pub finished_at: DateTime<Utc>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub deferred_optional_node_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub validation: Vec<SessionValidationGate>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionFinishResult {
-    pub record: SessionFinishRecord,
-    pub already_finished: bool,
-}
-
-pub trait SessionPinFeedbackSink {
-    fn record_pin_usage(
-        &self,
-        workspace_session_id: &str,
-        run_id: &str,
-        entity_urn: &str,
-    ) -> Result<(), String>;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub struct SessionLinks {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub ticket_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub spec_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub doc_evidence_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub log_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub runtime_session_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub runtime_run_id: Option<String>,
-}
-
-impl SessionLinks {
-    pub fn links_to_ticket(
-        &self,
-        ticket_id: &str,
-    ) -> bool {
-        self.ticket_ids.iter().any(|id| id == ticket_id)
-    }
-
-    pub fn links_to_spec(
-        &self,
-        spec_id: &str,
-    ) -> bool {
-        self.spec_ids.iter().any(|id| id == spec_id)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

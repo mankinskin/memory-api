@@ -1,0 +1,11 @@
+{
+  "id": "vt-session-api-default-line-limit",
+  "title": "Session API default line-limit remediation",
+  "command": "rtk cargo test -p session-api --lib && rtk cargo test -p session-api --bin copilot-capture-hook; canonical audit default max_file_lines=400",
+  "detail": "Verifies session-api behavior and that canonical audit reports no session-api line_count findings above the default 400-line threshold.",
+  "links": {
+    "ticket_ids": [
+      "d8cb1b87-48a2-4a99-b741-48cfaed44711"
+    ]
+  }
+}
