@@ -1,0 +1,199 @@
+impl SessionStoreConfig {
+
+
+    pub fn new(
+        root: impl Into<PathBuf>,
+        workspace_slug: impl Into<String>,
+    ) -> Self {
+        Self {
+            root: root.into(),
+            workspace_slug: workspace_slug.into(),
+        }
+    }
+
+    pub fn paths_for(
+        &self,
+        record: &SessionRecord,
+    ) -> Result<SessionStorePaths, SessionError> {
+        self.paths_for_session_id(&record.session_id)
+    }
+
+    pub fn capture_copilot_hook(
+        &self,
+        payload: CopilotHookPayload,
+    ) -> Result<SessionStorePlan, SessionError> {
+        self.persist_capture(SessionCaptureRequest::copilot(payload))
+    }
+
+    pub fn capture_copilot_transcript(
+        &self,
+        transcript_path: impl AsRef<Path>,
+        trigger: impl Into<String>,
+    ) -> Result<SessionStorePlan, SessionError> {
+        let payload = copilot_payload_from_transcript_path(
+            transcript_path,
+            self.workspace_slug.clone(),
+            Some(trigger.into()),
+        )?;
+
+        self.capture_copilot_hook(payload)
+    }
+
+    pub fn read_session(
+        &self,
+        session_id: &str,
+    ) -> Result<SessionRecord, SessionError> {
+        let paths = self.paths_for_session_id(session_id)?;
+        let manifest: PersistedSessionManifest =
+            read_json(&paths.manifest_path)?;
+        ensure_supported_schema_version(
+            &paths.manifest_path,
+            manifest.schema_version,
+        )?;
+        let transcript: PersistedSessionTranscript =
+            read_json(&paths.transcript_path)?;
+        ensure_supported_schema_version(
+            &paths.transcript_path,
+            transcript.schema_version,
+        )?;
+
+        Ok(SessionRecord {
+            schema_version: manifest.schema_version,
+            session_id: manifest.session_id,
+            source: manifest.source,
+            started_at: manifest.started_at,
+            captured_at: manifest.captured_at,
+            metadata: manifest.metadata,
+            turns: transcript.turns,
+            links: manifest.links,
+        })
+    }
+
+    pub fn query_sessions(
+        &self,
+        query: &SessionQuery,
+    ) -> Result<Vec<SessionRecord>, SessionError> {
+        let sessions_root = self.sessions_root()?;
+        if !sessions_root.exists() {
+            return Ok(vec![]);
+        }
+
+        let mut records = vec![];
+        for entry in
+            fs::read_dir(&sessions_root).map_err(|source| SessionError::Io {
+                path: sessions_root.clone(),
+                source,
+            })?
+        {
+            let entry = entry.map_err(|source| SessionError::Io {
+                path: sessions_root.clone(),
+                source,
+            })?;
+            let file_type =
+                entry.file_type().map_err(|source| SessionError::Io {
+                    path: entry.path(),
+                    source,
+                })?;
+
+            if !file_type.is_dir() {
+                continue;
+            }
+
+            let session_id = entry.file_name().to_string_lossy().into_owned();
+            let record = self.read_session(&session_id)?;
+            if session_matches_query(&record, query) {
+                records.push(record);
+            }
+        }
+
+        records.sort_by(|left, right| {
+            right
+                .captured_at
+                .cmp(&left.captured_at)
+                .then_with(|| left.session_id.cmp(&right.session_id))
+        });
+
+        if let Some(limit) = query.limit {
+            records.truncate(limit);
+        }
+
+        Ok(records)
+    }
+
+    pub fn latest_session_id(&self) -> Result<Option<String>, SessionError> {
+        let sessions_root = self.sessions_root()?;
+        if !sessions_root.exists() {
+            return Ok(None);
+        }
+
+        let mut newest: Option<SessionRecord> = None;
+        for entry in
+            fs::read_dir(&sessions_root).map_err(|source| SessionError::Io {
+                path: sessions_root.clone(),
+                source,
+            })?
+        {
+            let entry = entry.map_err(|source| SessionError::Io {
+                path: sessions_root.clone(),
+                source,
+            })?;
+            let file_type =
+                entry.file_type().map_err(|source| SessionError::Io {
+                    path: entry.path(),
+                    source,
+                })?;
+            if !file_type.is_dir() {
+                continue;
+            }
+
+            let session_id = entry.file_name().to_string_lossy().into_owned();
+            let record = match self.read_session(&session_id) {
+                Ok(record) => record,
+                Err(SessionError::NotFound { .. }) => continue,
+                Err(SessionError::Deserialize { .. }) => continue,
+                Err(err) => return Err(err),
+            };
+
+            let replace = match newest.as_ref() {
+                None => true,
+                Some(current) =>
+                    record.captured_at > current.captured_at
+                        || (record.captured_at == current.captured_at
+                            && record.session_id < current.session_id),
+            };
+            if replace {
+                newest = Some(record);
+            }
+        }
+
+        Ok(newest.map(|record| record.session_id))
+    }
+
+    pub fn session_audit(
+        &self,
+        selector: SessionAuditSelector,
+    ) -> Result<SessionAuditReport, SessionError> {
+        let session_id = match selector {
+            SessionAuditSelector::SessionId(session_id) => session_id,
+            SessionAuditSelector::Latest => self.latest_session_id()?.ok_or(
+                SessionError::NoSessionsFound {
+                    root: self.sessions_root()?,
+                },
+            )?,
+        };
+
+        let record = self.read_session(&session_id)?;
+        let paths = self.paths_for_session_id(&session_id)?;
+        let events: Option<PersistedSessionEvents> =
+            read_json_if_exists(&paths.events_path)?;
+        if let Some(events) = &events {
+            ensure_supported_schema_version(
+                &paths.events_path,
+                events.schema_version,
+            )?;
+        }
+
+        Ok(build_session_audit_report(&record, events.as_ref()))
+    }
+
+}

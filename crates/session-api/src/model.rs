@@ -45,6 +45,8 @@ pub struct SessionRunLineage {
     pub run_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub predecessor_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub captured_session_id: Option<String>,
     pub started_at: DateTime<Utc>,
 }
 
@@ -53,6 +55,8 @@ pub struct SessionRuntimeContext {
     #[serde(default = "default_runtime_context_schema_version")]
     pub schema_version: u32,
     pub workspace_session_id: String,
+    #[serde(default)]
+    pub session_id: String,
     pub workspace_slug: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -66,6 +70,14 @@ pub struct SessionRuntimeContext {
 }
 
 impl SessionRuntimeContext {
+    pub fn canonical_session_id(&self) -> String {
+        if self.session_id.trim().is_empty() {
+            self.workspace_session_id.clone()
+        } else {
+            self.session_id.clone()
+        }
+    }
+
     pub fn active_run(&self) -> Option<&SessionRunLineage> {
         self.runs
             .iter()
@@ -305,6 +317,10 @@ pub struct SessionLinks {
     pub doc_evidence_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub log_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_run_id: Option<String>,
 }
 
 impl SessionLinks {
@@ -527,6 +543,12 @@ mod tests {
                 spec_ids: vec!["spec-1".to_string()],
                 doc_evidence_ids: vec!["doc-1".to_string()],
                 log_ids: vec!["log-1".to_string()],
+                runtime_session_id: Some(
+                    "03baab6c-0fdb-4ffc-8159-b83066a6283f".to_string(),
+                ),
+                runtime_run_id: Some(
+                    "8cf1255d-7969-4ac2-905a-cbd234dc3eac".to_string(),
+                ),
             },
         };
 

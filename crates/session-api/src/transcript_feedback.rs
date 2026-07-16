@@ -18,9 +18,8 @@
 //! These are separate sources, not an oversight: grounding against real
 //! captured `.session/sessions/*` transcripts shows that tool call/result
 //! pairs are recorded as session **events** (`tool.execution_start` /
-//! `tool.execution_complete`, normalized into a synthesized
-//! `tool.execution_result` event carrying `tool_name`, `tool_call_id`,
-//! `tool_success`, and `tool_arguments_json`), not as `SessionTurn`s — every
+//! `tool.execution_complete`; legacy captures may also include
+//! `tool.execution_result`), not as `SessionTurn`s — every
 //! committed session transcript has zero turns with `role: tool`. A detector
 //! that only inspected `SessionTurn`s would therefore never fire on real
 //! data for tool-call signals; `ExplicitIngestion` mining reads the events
@@ -169,15 +168,15 @@ fn detect_signal(turn: &SessionTurn) -> Option<StructuredFeedbackSignal> {
 /// Extract explicit feedback-ingestion signals from a session's captured
 /// tool-execution events.
 ///
-/// This reads the normalized `tool.execution_result` events (see the module
-/// documentation for why events, not turns, carry this data), matches on the
+/// This reads canonical `tool.execution_complete` events (plus legacy
+/// `tool.execution_result` events; see the module docs), matches on the
 /// captured `feedback_ingest` tool name, and copies the captured arguments
 /// verbatim. This is a pure, side-effect-free classification; it performs no
 /// store writes.
 pub fn mine_explicit_ingestion_signals(
     events: &[CopilotHookEvent]
 ) -> Vec<StructuredFeedbackSignal> {
-    events
+    canonicalize_outcome_events(events)
         .iter()
         .filter_map(detect_explicit_ingestion)
         .collect()
@@ -186,7 +185,7 @@ pub fn mine_explicit_ingestion_signals(
 fn detect_explicit_ingestion(
     event: &CopilotHookEvent
 ) -> Option<StructuredFeedbackSignal> {
-    if event.event_type.as_deref() != Some("tool.execution_result") {
+    if !is_tool_execution_outcome(event.event_type.as_deref()) {
         return None;
     }
     let tool_name = event.tool_name.as_deref()?;
@@ -404,15 +403,16 @@ pub fn map_failed_tool_call_to_entity(
 /// Extract failed-tool-call signals from a session's captured tool-execution
 /// events, with each signal's [`FailedToolCallMapping`] resolved.
 ///
-/// This reads the normalized `tool.execution_result` events — see the module
-/// documentation for why events, not turns, carry this data on real captured
-/// sessions. This is a pure, side-effect-free classification; it performs no
-/// store writes and creates no tickets.
+/// This reads canonical `tool.execution_complete` events (plus legacy
+/// `tool.execution_result`) — see the module docs for why events, not turns,
+/// carry this data on real captured sessions. This is a pure,
+/// side-effect-free classification; it performs no store writes and creates no
+/// tickets.
 pub fn mine_failed_tool_call_signals(
     events: &[CopilotHookEvent],
     workspace_slug: &str,
 ) -> Vec<StructuredFeedbackSignal> {
-    events
+    canonicalize_outcome_events(events)
         .iter()
         .filter_map(|event| detect_failed_tool_call(event, workspace_slug))
         .collect()
@@ -422,7 +422,7 @@ fn detect_failed_tool_call(
     event: &CopilotHookEvent,
     workspace_slug: &str,
 ) -> Option<StructuredFeedbackSignal> {
-    if event.event_type.as_deref() != Some("tool.execution_result") {
+    if !is_tool_execution_outcome(event.event_type.as_deref()) {
         return None;
     }
     if event.tool_success != Some(false) {
@@ -445,6 +445,58 @@ fn detect_failed_tool_call(
         ingestion: None,
         mapping: Some(mapping),
     })
+}
+
+fn is_tool_execution_outcome(event_type: Option<&str>) -> bool {
+    matches!(
+        event_type,
+        Some("tool.execution_result")
+            | Some("tool_execution_result")
+            | Some("tool.execution_complete")
+            | Some("tool_execution_complete")
+    )
+}
+
+fn canonicalize_outcome_events(
+    events: &[CopilotHookEvent]
+) -> Vec<CopilotHookEvent> {
+    let mut complete_tool_calls = std::collections::BTreeSet::<String>::new();
+    for event in events {
+        if is_tool_execution_complete(event.event_type.as_deref()) {
+            if let Some(tool_call_id) = event.tool_call_id.as_ref() {
+                complete_tool_calls.insert(tool_call_id.clone());
+            }
+        }
+    }
+
+    let mut normalized = Vec::with_capacity(events.len());
+    for event in events {
+        if is_tool_execution_result(event.event_type.as_deref())
+            && event
+                .tool_call_id
+                .as_ref()
+                .is_some_and(|id| complete_tool_calls.contains(id))
+        {
+            continue;
+        }
+        normalized.push(event.clone());
+    }
+
+    normalized
+}
+
+fn is_tool_execution_complete(event_type: Option<&str>) -> bool {
+    matches!(
+        event_type,
+        Some("tool.execution_complete") | Some("tool_execution_complete")
+    )
+}
+
+fn is_tool_execution_result(event_type: Option<&str>) -> bool {
+    matches!(
+        event_type,
+        Some("tool.execution_result") | Some("tool_execution_result")
+    )
 }
 
 /// Build a backtraceable [`FeedbackEntry`] recovering an `ExplicitIngestion`
@@ -723,6 +775,33 @@ mod tests {
     }
 
     #[test]
+    fn detects_explicit_ingestion_from_execution_complete_event() {
+        let mut event =
+            feedback_ingest_result_event(Some(false), ingest_arguments());
+        event.event_type = Some("tool.execution_complete".to_string());
+
+        let signals = mine_explicit_ingestion_signals(&[event]);
+
+        assert_eq!(signals.len(), 1);
+        assert_eq!(signals[0].kind, FeedbackSignalKind::ExplicitIngestion);
+    }
+
+    #[test]
+    fn deduplicates_explicit_ingestion_when_complete_and_result_overlap() {
+        let mut complete =
+            feedback_ingest_result_event(Some(false), ingest_arguments());
+        complete.event_type = Some("tool.execution_complete".to_string());
+        let mut result = complete.clone();
+        result.event_id = Some("evt-ingest-2".to_string());
+        result.event_type = Some("tool.execution_result".to_string());
+
+        let signals = mine_explicit_ingestion_signals(&[complete, result]);
+
+        assert_eq!(signals.len(), 1);
+        assert_eq!(signals[0].kind, FeedbackSignalKind::ExplicitIngestion);
+    }
+
+    #[test]
     fn ignores_non_ingest_tool_calls_and_non_result_events() {
         let mut other_tool =
             feedback_ingest_result_event(Some(true), ingest_arguments());
@@ -826,6 +905,37 @@ mod tests {
                 urn: EntityUrn::ticket("memory-api", "abc123").unwrap(),
             }
         );
+    }
+
+    #[test]
+    fn detects_failed_call_from_execution_complete_event() {
+        let mut event = failed_tool_call_event(
+            Some("mcp_rmcp6_board_check_out"),
+            serde_json::json!({ "ticket_id": "abc123" }),
+        );
+        event.event_type = Some("tool.execution_complete".to_string());
+
+        let signals = mine_failed_tool_call_signals(&[event], "memory-api");
+
+        assert_eq!(signals.len(), 1);
+        assert_eq!(signals[0].kind, FeedbackSignalKind::FailedToolCall);
+    }
+
+    #[test]
+    fn deduplicates_failed_call_when_complete_and_result_overlap() {
+        let mut complete = failed_tool_call_event(
+            Some("mcp_rmcp6_board_check_out"),
+            serde_json::json!({ "ticket_id": "abc123" }),
+        );
+        complete.event_type = Some("tool.execution_complete".to_string());
+        let mut result = complete.clone();
+        result.event_id = Some("evt-fail-2".to_string());
+        result.event_type = Some("tool.execution_result".to_string());
+
+        let signals = mine_failed_tool_call_signals(&[complete, result], "memory-api");
+
+        assert_eq!(signals.len(), 1);
+        assert_eq!(signals[0].kind, FeedbackSignalKind::FailedToolCall);
     }
 
     #[test]

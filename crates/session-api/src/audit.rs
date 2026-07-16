@@ -84,13 +84,32 @@ pub fn build_session_audit_report(
     let mut tool_execution_result_count = 0usize;
     let mut ambiguous_sync_terminal_count = 0usize;
     let mut tool_counts = BTreeMap::<String, usize>::new();
+    let mut complete_tool_calls = std::collections::BTreeSet::<String>::new();
+
+    if let Some(events) = events {
+        for event in &events.events {
+            if is_tool_execution_complete(event.event_type.as_deref()) {
+                if let Some(tool_call_id) = event.tool_call_id.as_ref() {
+                    complete_tool_calls.insert(tool_call_id.clone());
+                }
+            }
+        }
+    }
 
     if let Some(events) = events {
         for event in &events.events {
             if event.event_type.as_deref() == Some("assistant.tool_plan") {
                 assistant_tool_plan_count += 1;
             }
-            if event.event_type.as_deref() == Some("tool.execution_result") {
+            if is_tool_execution_outcome(event.event_type.as_deref()) {
+                if is_tool_execution_result(event.event_type.as_deref())
+                    && event
+                        .tool_call_id
+                        .as_ref()
+                        .is_some_and(|id| complete_tool_calls.contains(id))
+                {
+                    continue;
+                }
                 tool_execution_result_count += 1;
                 if event
                     .data_json
@@ -164,4 +183,28 @@ pub fn build_session_audit_report(
         top_tools,
         findings,
     }
+}
+
+fn is_tool_execution_outcome(event_type: Option<&str>) -> bool {
+    matches!(
+        event_type,
+        Some("tool.execution_result")
+            | Some("tool_execution_result")
+            | Some("tool.execution_complete")
+            | Some("tool_execution_complete")
+    )
+}
+
+fn is_tool_execution_complete(event_type: Option<&str>) -> bool {
+    matches!(
+        event_type,
+        Some("tool.execution_complete") | Some("tool_execution_complete")
+    )
+}
+
+fn is_tool_execution_result(event_type: Option<&str>) -> bool {
+    matches!(
+        event_type,
+        Some("tool.execution_result") | Some("tool_execution_result")
+    )
 }

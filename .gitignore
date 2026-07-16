@@ -2,7 +2,19 @@ target/
 agents/tmp/
 node_modules/
 .memory-api/
-.session/
+.session/*
+!.session/sessions/
+!.session/sessions/**
+
+# Session local machine state (never commit)
+.session/local/
+.session/local/**
+.session/**/*.lock
+
+# Capture logs and large event payloads stay local; durable transcript/handoff/finish files stay tracked.
+.session/sessions/**/session-capture-stop.log
+.session/sessions/**/events.json
+.session/sessions/**/runs/**/events.json
 
 # Built frontend assets
 tools/viewer/**/static/

@@ -1,0 +1,278 @@
+use chrono::TimeZone;
+use tempfile::TempDir;
+
+use crate::{
+    CopilotHookMessage,
+    CopilotHookPayload,
+    PersistedSessionEvents,
+    PersistedSessionManifest,
+    PersistedSessionTranscript,
+    SESSION_SCHEMA_VERSION,
+    SessionAuditSelector,
+    SessionCaptureRequest,
+    SessionError,
+    SessionQuery,
+    SessionRole,
+    SessionRuntimeInitRequest,
+    SessionStoreConfig,
+    SessionTicketStateResolver,
+    SessionWorkflowEdgeKind,
+    SessionWorkflowNodeDraft,
+    SessionWorkflowNodeKind,
+    SessionWorkflowNodeRequirement,
+    SessionWorkflowNodeStatus,
+    SessionWorktreeAllocationMode,
+    SessionWorktreeCheckInRequest,
+    SessionWorktreeStatus,
+};
+
+fn sample_time() -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc
+        .with_ymd_and_hms(2026, 6, 2, 13, 0, 0)
+        .single()
+        .unwrap()
+}
+
+fn sample_time_later() -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc
+        .with_ymd_and_hms(2026, 6, 2, 13, 5, 0)
+        .single()
+        .unwrap()
+}
+
+fn sample_payload(
+    session_id: &str,
+    conversation_id: Option<&str>,
+    captured_at: chrono::DateTime<chrono::Utc>,
+    messages: &[&str],
+) -> CopilotHookPayload {
+    CopilotHookPayload {
+        session_id: session_id.to_string(),
+        workspace_slug: "context-engine".to_string(),
+        captured_at,
+        conversation_id: conversation_id.map(str::to_string),
+        agent_id: Some("github-copilot-gpt-5.4".to_string()),
+        model: Some("GPT-5.4".to_string()),
+        trigger: Some("post-turn".to_string()),
+        messages: messages
+            .iter()
+            .enumerate()
+            .map(|(index, content)| CopilotHookMessage {
+                role: if index % 2 == 0 {
+                    SessionRole::User
+                } else {
+                    SessionRole::Assistant
+                },
+                content: (*content).to_string(),
+                tool_name: None,
+                captured_at: None,
+                event_meta: None,
+            })
+            .collect(),
+        events: vec![],
+        runtime: None,
+    }
+}
+
+fn sample_request(
+    session_id: &str,
+    conversation_id: Option<&str>,
+    captured_at: chrono::DateTime<chrono::Utc>,
+    messages: &[&str],
+) -> SessionCaptureRequest {
+    SessionCaptureRequest::copilot(sample_payload(
+        session_id,
+        conversation_id,
+        captured_at,
+        messages,
+    ))
+}
+
+fn sample_worktree_request(
+    session_id: &str,
+    owner_id: &str,
+    ticket_id: &str,
+    worktree_path: std::path::PathBuf,
+    branch: &str,
+) -> SessionWorktreeCheckInRequest {
+    SessionWorktreeCheckInRequest {
+        session_id: session_id.to_string(),
+        owner_id: owner_id.to_string(),
+        ticket_id: ticket_id.to_string(),
+        worktree_path,
+        branch: branch.to_string(),
+        predecessor_session_id: None,
+    }
+}
+
+#[test]
+fn store_plan_uses_session_id_in_paths() {
+    let config = SessionStoreConfig::new(".session", "context-engine");
+    let plan = config
+        .plan_capture(sample_request(
+            "session-abc",
+            Some("conversation-abc"),
+            sample_time(),
+            &["Persist this chat"],
+        ))
+        .unwrap();
+
+    assert_eq!(
+        plan.paths.manifest_path,
+        std::path::PathBuf::from(".session/sessions/session-abc/session.json")
+    );
+    assert_eq!(
+        plan.paths.transcript_path,
+        std::path::PathBuf::from(
+            ".session/sessions/session-abc/transcript.json"
+        )
+    );
+}
+
+#[test]
+fn store_plan_rejects_invalid_path_segments() {
+    let config = SessionStoreConfig::new(".session", "context-engine");
+    let mut request = sample_request(
+        "session-abc",
+        Some("conversation-abc"),
+        sample_time(),
+        &["Persist this chat"],
+    );
+    request.payload.session_id = "session/abc".to_string();
+
+    let error = config.plan_capture(request).unwrap_err();
+
+    assert!(matches!(
+        error,
+        SessionError::InvalidSessionId(ref value) if value == "session/abc"
+    ));
+}
+
+#[test]
+fn persist_capture_writes_manifest_and_transcript_files() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    let plan = config
+        .persist_capture(sample_request(
+            "session-abc",
+            Some("conversation-abc"),
+            sample_time(),
+            &["Persist this chat"],
+        ))
+        .unwrap();
+    let manifest_text =
+        std::fs::read_to_string(&plan.paths.manifest_path).unwrap();
+    let transcript_text =
+        std::fs::read_to_string(&plan.paths.transcript_path).unwrap();
+
+    let manifest: PersistedSessionManifest =
+        serde_json::from_str(&manifest_text).unwrap();
+    let transcript: PersistedSessionTranscript =
+        serde_json::from_str(&transcript_text).unwrap();
+
+    assert_eq!(manifest.session_id, "session-abc");
+    assert_eq!(manifest.metadata.workspace_slug, "context-engine");
+    assert_eq!(transcript.session_id, "session-abc");
+    assert_eq!(transcript.turns.len(), 1);
+    assert_eq!(transcript.turns[0].content, "Persist this chat");
+}
+
+#[test]
+fn persist_capture_appends_only_new_turns_from_later_capture() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    config
+        .persist_capture(sample_request(
+            "session-abc",
+            Some("conversation-abc"),
+            sample_time(),
+            &["first"],
+        ))
+        .unwrap();
+
+    let plan = config
+        .persist_capture(sample_request(
+            "session-abc",
+            Some("conversation-abc"),
+            sample_time_later(),
+            &["first", "second"],
+        ))
+        .unwrap();
+    config
+        .persist_capture(sample_request(
+            "session-abc",
+            Some("conversation-abc"),
+            sample_time_later(),
+            &["first", "second"],
+        ))
+        .unwrap();
+    let transcript_text =
+        std::fs::read_to_string(&plan.paths.transcript_path).unwrap();
+    let transcript: PersistedSessionTranscript =
+        serde_json::from_str(&transcript_text).unwrap();
+
+    assert_eq!(transcript.turns.len(), 2);
+    assert_eq!(transcript.turns[0].content, "first");
+    assert_eq!(transcript.turns[0].captured_at, sample_time());
+    assert_eq!(transcript.turns[1].content, "second");
+    assert_eq!(transcript.turns[1].captured_at, sample_time_later());
+}
+
+#[test]
+fn read_session_reconstructs_persisted_record() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    config
+        .persist_capture(sample_request(
+            "session-abc",
+            Some("conversation-abc"),
+            sample_time(),
+            &["first"],
+        ))
+        .unwrap();
+    config
+        .persist_capture(sample_request(
+            "session-abc",
+            Some("conversation-abc"),
+            sample_time_later(),
+            &["first", "second"],
+        ))
+        .unwrap();
+
+    let record = config.read_session("session-abc").unwrap();
+
+    assert_eq!(record.session_id, "session-abc");
+    assert_eq!(record.started_at, sample_time());
+    assert_eq!(record.captured_at, sample_time_later());
+    assert_eq!(record.turns.len(), 2);
+    assert_eq!(record.turns[0].content, "first");
+    assert_eq!(record.turns[1].content, "second");
+}
+
+#[test]
+fn capture_copilot_hook_persists_payload() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    let plan = config
+        .capture_copilot_hook(sample_payload(
+            "session-hook",
+            Some("conversation-hook"),
+            sample_time(),
+            &["Persist from hook"],
+        ))
+        .unwrap();
+    let record = config.read_session("session-hook").unwrap();
+
+    assert!(plan.paths.manifest_path.exists());
+    assert_eq!(record.session_id, "session-hook");
+    assert_eq!(record.turns.len(), 1);
+    assert_eq!(record.turns[0].content, "Persist from hook");
+}

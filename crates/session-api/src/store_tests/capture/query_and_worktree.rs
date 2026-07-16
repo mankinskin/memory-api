@@ -1,0 +1,311 @@
+
+#[test]
+fn persist_capture_keeps_distinct_id_less_events_using_raw_event_payload() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    let mut first = sample_payload(
+        "session-events",
+        Some("conversation-events"),
+        sample_time(),
+        &["first"],
+    );
+    first.events = vec![crate::CopilotHookEvent {
+        event_id: None,
+        parent_event_id: None,
+        event_type: Some("tool.execution_complete".to_string()),
+        captured_at: Some(sample_time()),
+        turn_id: None,
+        message_id: None,
+        tool_call_id: Some("call-1".to_string()),
+        tool_name: Some("read_file".to_string()),
+        tool_success: Some(true),
+        reasoning_text: None,
+        tool_requests_json: None,
+        tool_arguments_json: Some(serde_json::json!({ "path": "A" })),
+        data_json: Some(serde_json::json!({ "arguments": { "path": "A" } })),
+        raw_event_json: Some(serde_json::json!({
+            "type": "tool.execution_complete",
+            "data": { "arguments": { "path": "A" } }
+        })),
+    }];
+    config
+        .persist_capture(SessionCaptureRequest::copilot(first))
+        .unwrap();
+
+    let mut second = sample_payload(
+        "session-events",
+        Some("conversation-events"),
+        sample_time_later(),
+        &["first", "second"],
+    );
+    second.events = vec![crate::CopilotHookEvent {
+        event_id: None,
+        parent_event_id: None,
+        event_type: Some("tool.execution_complete".to_string()),
+        captured_at: Some(sample_time()),
+        turn_id: None,
+        message_id: None,
+        tool_call_id: Some("call-1".to_string()),
+        tool_name: Some("read_file".to_string()),
+        tool_success: Some(true),
+        reasoning_text: None,
+        tool_requests_json: None,
+        tool_arguments_json: Some(serde_json::json!({ "path": "B" })),
+        data_json: Some(serde_json::json!({ "arguments": { "path": "B" } })),
+        raw_event_json: Some(serde_json::json!({
+            "type": "tool.execution_complete",
+            "data": { "arguments": { "path": "B" } }
+        })),
+    }];
+    let plan = config
+        .persist_capture(SessionCaptureRequest::copilot(second))
+        .unwrap();
+
+    let events_text = std::fs::read_to_string(&plan.paths.events_path).unwrap();
+    let events: PersistedSessionEvents =
+        serde_json::from_str(&events_text).unwrap();
+    assert_eq!(events.events.len(), 2);
+    assert!(events.events.iter().any(|event| {
+        event
+            .raw_event_json
+            .as_ref()
+            .and_then(|json| json.pointer("/data/arguments/path"))
+            .and_then(serde_json::Value::as_str)
+            == Some("A")
+    }));
+    assert!(events.events.iter().any(|event| {
+        event
+            .raw_event_json
+            .as_ref()
+            .and_then(|json| json.pointer("/data/arguments/path"))
+            .and_then(serde_json::Value::as_str)
+            == Some("B")
+    }));
+}
+
+#[test]
+fn query_sessions_filters_by_text_and_metadata() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    config
+        .capture_copilot_hook(sample_payload(
+            "session-alpha",
+            Some("conversation-alpha"),
+            sample_time(),
+            &["Investigate failing test"],
+        ))
+        .unwrap();
+    config
+        .capture_copilot_hook(sample_payload(
+            "session-beta",
+            Some("conversation-beta"),
+            sample_time_later(),
+            &["Document hook query behavior"],
+        ))
+        .unwrap();
+
+    let by_text = config
+        .query_sessions(&SessionQuery {
+            text: Some("hook query".to_string()),
+            ..SessionQuery::default()
+        })
+        .unwrap();
+    let by_conversation = config
+        .query_sessions(&SessionQuery {
+            conversation_id: Some("conversation-alpha".to_string()),
+            ..SessionQuery::default()
+        })
+        .unwrap();
+
+    assert_eq!(by_text.len(), 1);
+    assert_eq!(by_text[0].session_id, "session-beta");
+    assert_eq!(by_conversation.len(), 1);
+    assert_eq!(by_conversation[0].session_id, "session-alpha");
+}
+
+#[test]
+fn capture_copilot_transcript_persists_visible_transcript_messages() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let transcript_path = tempdir.path().join("copilot.jsonl");
+
+    std::fs::write(
+            &transcript_path,
+            concat!(
+                "{\"type\":\"session.start\",\"timestamp\":\"2026-06-02T23:06:54.049Z\",\"data\":{\"sessionId\":\"session-transcript\",\"producer\":\"copilot-agent\",\"startTime\":\"2026-06-02T23:06:54.049Z\"}}\n",
+                "{\"type\":\"user.message\",\"timestamp\":\"2026-06-02T23:07:00.000Z\",\"data\":{\"content\":\"Persist this transcript\"}}\n",
+                "{\"type\":\"assistant.message\",\"timestamp\":\"2026-06-02T23:07:05.000Z\",\"data\":{\"content\":\"Transcript persisted.\"}}\n",
+                "{\"type\":\"assistant.message\",\"timestamp\":\"2026-06-02T23:07:06.000Z\",\"data\":{\"content\":\"\"}}\n"
+            ),
+        )
+        .unwrap();
+
+    let plan = config
+        .capture_copilot_transcript(&transcript_path, "stop")
+        .unwrap();
+    let record = config.read_session("session-transcript").unwrap();
+
+    assert!(plan.paths.manifest_path.exists());
+    assert_eq!(record.session_id, "session-transcript");
+    assert_eq!(record.metadata.trigger.as_deref(), Some("stop"));
+    assert_eq!(record.turns.len(), 2);
+    assert_eq!(record.turns[0].content, "Persist this transcript");
+    assert_eq!(record.turns[1].content, "Transcript persisted.");
+}
+
+#[test]
+fn capture_copilot_transcript_allows_divergent_newer_snapshot() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let transcript_path = tempdir.path().join("copilot.jsonl");
+
+    std::fs::write(
+            &transcript_path,
+            concat!(
+                "{\"type\":\"session.start\",\"timestamp\":\"2026-06-02T23:06:54.049Z\",\"data\":{\"sessionId\":\"session-sync\",\"producer\":\"copilot-agent\",\"startTime\":\"2026-06-02T23:06:54.049Z\"}}\n",
+                "{\"type\":\"user.message\",\"timestamp\":\"2026-06-02T23:07:00.000Z\",\"data\":{\"content\":\"Original prompt\"}}\n",
+                "{\"type\":\"assistant.message\",\"timestamp\":\"2026-06-02T23:07:05.000Z\",\"data\":{\"content\":\"Original response\"}}\n"
+            ),
+        )
+        .unwrap();
+
+    config
+        .capture_copilot_transcript(&transcript_path, "PostToolUse")
+        .unwrap();
+
+    std::fs::write(
+            &transcript_path,
+            concat!(
+                "{\"type\":\"session.start\",\"timestamp\":\"2026-06-02T23:06:54.049Z\",\"data\":{\"sessionId\":\"session-sync\",\"producer\":\"copilot-agent\",\"startTime\":\"2026-06-02T23:06:54.049Z\"}}\n",
+                "{\"type\":\"user.message\",\"timestamp\":\"2026-06-02T23:07:00.000Z\",\"data\":{\"content\":\"Edited prompt\"}}\n",
+                "{\"type\":\"assistant.message\",\"timestamp\":\"2026-06-02T23:07:05.000Z\",\"data\":{\"content\":\"Edited response\"}}\n",
+                "{\"type\":\"assistant.message\",\"timestamp\":\"2026-06-02T23:07:07.000Z\",\"data\":{\"content\":\"Additional message\"}}\n"
+            ),
+        )
+        .unwrap();
+
+    config
+        .capture_copilot_transcript(&transcript_path, "PostToolUse")
+        .unwrap();
+
+    let record = config.read_session("session-sync").unwrap();
+    assert_eq!(record.turns.len(), 3);
+    assert_eq!(record.turns[0].content, "Edited prompt");
+    assert_eq!(record.turns[2].content, "Additional message");
+}
+
+#[test]
+fn check_in_worktree_creates_and_returns_new_assignment() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let worktree_path = tempdir.path().join("worktrees").join("session-a");
+
+    let receipt = config
+        .check_in_worktree(sample_worktree_request(
+            "session-a",
+            "github-copilot",
+            "ticket-a",
+            worktree_path.clone(),
+            "session/session-a",
+        ))
+        .unwrap();
+
+    assert_eq!(receipt.session_id, "session-a");
+    assert_eq!(receipt.owner_id, "github-copilot");
+    assert_eq!(receipt.ticket_id, "ticket-a");
+    assert_eq!(receipt.worktree_path, worktree_path);
+    assert_eq!(receipt.branch, "session/session-a");
+    assert_eq!(receipt.allocation_mode, SessionWorktreeAllocationMode::New);
+    assert_eq!(receipt.status, SessionWorktreeStatus::Active);
+    assert!(receipt.worktree_path.exists());
+}
+
+#[test]
+fn check_in_worktree_reuses_existing_assignment_for_same_session() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let worktree_path = tempdir.path().join("worktrees").join("session-a");
+
+    config
+        .check_in_worktree(sample_worktree_request(
+            "session-a",
+            "github-copilot",
+            "ticket-a",
+            worktree_path.clone(),
+            "session/session-a",
+        ))
+        .unwrap();
+
+    let receipt = config
+        .check_in_worktree(sample_worktree_request(
+            "session-a",
+            "github-copilot",
+            "ticket-a",
+            worktree_path.clone(),
+            "session/session-a",
+        ))
+        .unwrap();
+
+    assert_eq!(
+        receipt.allocation_mode,
+        SessionWorktreeAllocationMode::Reused
+    );
+    assert_eq!(receipt.worktree_path, worktree_path);
+
+    let lookup = config.lookup_worktree("session-a").unwrap();
+    assert_eq!(
+        lookup.allocation_mode,
+        SessionWorktreeAllocationMode::Reused
+    );
+    assert_eq!(lookup.status, SessionWorktreeStatus::Active);
+}
+
+#[test]
+fn check_in_worktree_rotates_for_handoff_and_supersedes_predecessor() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let first_path = tempdir.path().join("worktrees").join("session-a");
+    let second_path = tempdir.path().join("worktrees").join("session-b");
+
+    config
+        .check_in_worktree(sample_worktree_request(
+            "session-a",
+            "github-copilot",
+            "ticket-a",
+            first_path.clone(),
+            "session/session-a",
+        ))
+        .unwrap();
+
+    let mut handoff = sample_worktree_request(
+        "session-b",
+        "github-copilot-2",
+        "ticket-a",
+        second_path.clone(),
+        "session/session-b",
+    );
+    handoff.predecessor_session_id = Some("session-a".to_string());
+
+    let receipt = config.check_in_worktree(handoff).unwrap();
+    let predecessor = config.read_session("session-a").unwrap();
+
+    assert_eq!(
+        receipt.allocation_mode,
+        SessionWorktreeAllocationMode::Rotated
+    );
+    assert_eq!(receipt.predecessor_session_id.as_deref(), Some("session-a"));
+    assert_eq!(receipt.predecessor_path, Some(first_path));
+    assert_eq!(
+        predecessor.metadata.worktree.unwrap().status,
+        SessionWorktreeStatus::Superseded
+    );
+}

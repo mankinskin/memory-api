@@ -1,0 +1,327 @@
+
+#[test]
+fn check_in_worktree_rotates_when_existing_path_is_missing() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let first_path = tempdir.path().join("worktrees").join("session-a");
+    let second_path =
+        tempdir.path().join("worktrees").join("session-a-rotated");
+
+    config
+        .check_in_worktree(sample_worktree_request(
+            "session-a",
+            "github-copilot",
+            "ticket-a",
+            first_path.clone(),
+            "session/session-a",
+        ))
+        .unwrap();
+    std::fs::remove_dir_all(&first_path).unwrap();
+
+    let receipt = config
+        .check_in_worktree(sample_worktree_request(
+            "session-a",
+            "github-copilot",
+            "ticket-a",
+            second_path.clone(),
+            "session/session-a",
+        ))
+        .unwrap();
+
+    assert_eq!(
+        receipt.allocation_mode,
+        SessionWorktreeAllocationMode::Rotated
+    );
+    assert_eq!(receipt.predecessor_session_id, None);
+    assert_eq!(receipt.predecessor_path, Some(first_path));
+    assert_eq!(receipt.worktree_path, second_path);
+    assert!(receipt.worktree_path.exists());
+}
+
+#[test]
+fn cross_session_reuse_requires_adopt_flow() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let shared_path = tempdir.path().join("worktrees").join("session-a");
+
+    config
+        .check_in_worktree(sample_worktree_request(
+            "session-a",
+            "github-copilot",
+            "ticket-a",
+            shared_path.clone(),
+            "session/session-a",
+        ))
+        .unwrap();
+
+    let mut handoff = sample_worktree_request(
+        "session-b",
+        "github-copilot-2",
+        "ticket-a",
+        shared_path.clone(),
+        "session/session-b",
+    );
+    handoff.predecessor_session_id = Some("session-a".to_string());
+
+    let error = config.check_in_worktree(handoff).unwrap_err();
+
+    assert!(matches!(
+        error,
+        SessionError::CrossSessionReuseRequiresAdopt { .. }
+    ));
+}
+
+#[test]
+fn read_session_rejects_unknown_schema_version() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    let plan = config
+        .persist_capture(sample_request(
+            "session-schema",
+            Some("conversation-schema"),
+            sample_time(),
+            &["check schema"],
+        ))
+        .unwrap();
+
+    let mut manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&plan.paths.manifest_path).unwrap(),
+    )
+    .unwrap();
+    manifest["schema_version"] = serde_json::json!(SESSION_SCHEMA_VERSION + 1);
+    std::fs::write(
+        &plan.paths.manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let err = config.read_session("session-schema").unwrap_err();
+    assert!(matches!(err, SessionError::SchemaVersionMismatch { .. }));
+}
+
+#[test]
+fn session_audit_supports_latest_and_explicit_session_selectors() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    let mut older = sample_payload(
+        "session-old",
+        Some("conversation-old"),
+        sample_time(),
+        &["first"],
+    );
+    older.events = vec![crate::CopilotHookEvent {
+        event_id: Some("evt-old-1".to_string()),
+        parent_event_id: None,
+        event_type: Some("assistant.tool_plan".to_string()),
+        captured_at: Some(sample_time()),
+        turn_id: None,
+        message_id: None,
+        tool_call_id: None,
+        tool_name: None,
+        tool_success: None,
+        reasoning_text: None,
+        tool_requests_json: None,
+        tool_arguments_json: None,
+        data_json: Some(serde_json::json!({})),
+        raw_event_json: None,
+    }];
+    config
+        .persist_capture(SessionCaptureRequest::copilot(older))
+        .unwrap();
+
+    let mut newer = sample_payload(
+        "session-new",
+        Some("conversation-new"),
+        sample_time_later(),
+        &["latest"],
+    );
+    newer.events = vec![crate::CopilotHookEvent {
+        event_id: Some("evt-new-1".to_string()),
+        parent_event_id: None,
+        event_type: Some("tool.execution_result".to_string()),
+        captured_at: Some(sample_time_later()),
+        turn_id: None,
+        message_id: None,
+        tool_call_id: Some("call-1".to_string()),
+        tool_name: Some("run_in_terminal".to_string()),
+        tool_success: Some(true),
+        reasoning_text: None,
+        tool_requests_json: None,
+        tool_arguments_json: None,
+        data_json: Some(serde_json::json!({
+            "blocker": "sync-terminal-state-ambiguous"
+        })),
+        raw_event_json: None,
+    }];
+    config
+        .persist_capture(SessionCaptureRequest::copilot(newer))
+        .unwrap();
+
+    let latest = config.session_audit(SessionAuditSelector::Latest).unwrap();
+    let explicit = config
+        .session_audit(SessionAuditSelector::SessionId(
+            "session-old".to_string(),
+        ))
+        .unwrap();
+
+    assert_eq!(latest.session_id, "session-new");
+    assert_eq!(latest.schema_version, SESSION_SCHEMA_VERSION);
+    assert_eq!(latest.metrics.tool_execution_result_count, 1);
+    assert_eq!(latest.metrics.ambiguous_sync_terminal_count, 1);
+    assert_eq!(explicit.session_id, "session-old");
+    assert_eq!(explicit.metrics.assistant_tool_plan_count, 1);
+}
+
+#[test]
+fn context_schema_init_is_idempotent_without_forcing_a_new_run() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    let first = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let second = config
+        .init_runtime_context(SessionRuntimeInitRequest {
+            workspace_session_id: Some(
+                first.context.workspace_session_id.clone(),
+            ),
+            predecessor_run_id: None,
+            force_new_run: false,
+        })
+        .unwrap();
+
+    assert!(first.created_workspace);
+    assert!(first.created_run);
+    assert!(!second.created_workspace);
+    assert!(!second.created_run);
+    assert_eq!(
+        first.context.workspace_session_id,
+        second.context.workspace_session_id
+    );
+    assert_eq!(first.context.active_run_id, second.context.active_run_id);
+    assert_eq!(second.context.runs.len(), 1);
+}
+
+#[test]
+fn run_lineage_init_resume_creates_distinct_linked_run() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    let first = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let resumed = config
+        .init_runtime_context(SessionRuntimeInitRequest {
+            workspace_session_id: Some(
+                first.context.workspace_session_id.clone(),
+            ),
+            predecessor_run_id: Some(first.context.active_run_id.clone()),
+            force_new_run: true,
+        })
+        .unwrap();
+
+    assert_eq!(
+        first.context.workspace_session_id,
+        resumed.context.workspace_session_id
+    );
+    assert_ne!(first.context.active_run_id, resumed.context.active_run_id);
+    assert_eq!(resumed.context.runs.len(), 2);
+    assert_eq!(
+        resumed.run.predecessor_run_id.as_deref(),
+        Some(first.context.active_run_id.as_str())
+    );
+}
+
+#[test]
+fn context_pin_unpin_is_idempotent_and_persistent() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+    let urn = "ce://default/tickets/effba966-f0a8-4d7d-b289-b7feba826cf8";
+
+    let pinned_once = config
+        .pin_runtime_entity(
+            &workspace_id,
+            urn,
+            Some("primary-focus".to_string()),
+            Some("epic context".to_string()),
+        )
+        .unwrap();
+    let pinned_twice = config
+        .pin_runtime_entity(&workspace_id, urn, None, None)
+        .unwrap();
+
+    assert_eq!(pinned_once.pinned_entities.len(), 1);
+    assert_eq!(pinned_twice.pinned_entities.len(), 1);
+
+    let loaded = config.read_runtime_context(&workspace_id).unwrap();
+    assert_eq!(loaded.pinned_entities.len(), 1);
+
+    let unpinned_once =
+        config.unpin_runtime_entity(&workspace_id, urn).unwrap();
+    let unpinned_twice =
+        config.unpin_runtime_entity(&workspace_id, urn).unwrap();
+    assert!(unpinned_once.pinned_entities.is_empty());
+    assert!(unpinned_twice.pinned_entities.is_empty());
+}
+
+#[test]
+fn context_pin_rejects_malformed_entity_urn_segments() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+
+    let error = config
+        .pin_runtime_entity(
+            &init.context.workspace_session_id,
+            "ce:///tickets/",
+            None,
+            None,
+        )
+        .unwrap_err();
+
+    assert!(matches!(error, SessionError::InvalidEntityUrn(_)));
+}
+
+#[test]
+fn context_view_returns_headers_only() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    config
+        .pin_runtime_entity(
+            &workspace_id,
+            "ce://default/specs/709f067a-21b6-41b6-8879-3cacef4bacaf",
+            Some("guard".to_string()),
+            Some("runtime contract".to_string()),
+        )
+        .unwrap();
+
+    let view = config.view_runtime_context(&workspace_id).unwrap();
+    let json = serde_json::to_string(&view).unwrap();
+
+    assert_eq!(view.pinned_count, 1);
+    assert!(json.contains("pinned_headers"));
+    assert!(!json.contains("body"));
+    assert!(!json.contains("content"));
+}
