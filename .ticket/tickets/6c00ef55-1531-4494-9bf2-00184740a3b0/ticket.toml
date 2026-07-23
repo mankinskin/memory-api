@@ -4,6 +4,7 @@ title = "[spec][P4] Skill generation — master index and cross-references"
 state = "ready"
 component = "spec-api"
 depends_on = ["eddf5d2e-e1b6-4ec9-b88f-d50bd192b194"]
+effort = "1200"
 phase = "4"
 priority = "medium"
 type = "tracker-improvement"

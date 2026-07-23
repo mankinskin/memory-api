@@ -4,6 +4,7 @@ title = "[spec][P3] Spec-to-code sync — update specs after implementation chan
 state = "ready"
 component = "spec-api"
 depends_on = ["55a1b302-9b33-4389-8962-65362b9b3eb0"]
+effort = "1200"
 phase = "3"
 priority = "high"
 type = "tracker-improvement"

@@ -4,6 +4,7 @@ title = "[spec][P6] Hierarchical DAG — parent-child spec relationships, no dup
 state = "ready"
 component = "spec-api"
 depends_on = ["ab47648c-d1f8-4ad5-a652-08ef97f76ccd"]
+effort = "1200"
 phase = "6"
 priority = "medium"
 type = "tracker-improvement"

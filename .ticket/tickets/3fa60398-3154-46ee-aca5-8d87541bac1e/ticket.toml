@@ -4,5 +4,6 @@ title = "[feedback-api][signals] Deterministic BFS entity queue for structured f
 state = "in-review"
 component = "feedback-api"
 depends_on = ["16e112a7-5ab0-45a5-87c8-7d89d07ffd16", "b4954d6c-0451-49ed-8939-11f6568558f5"]
+effort = "1200"
 priority = "medium"
 type = "tracker-improvement"

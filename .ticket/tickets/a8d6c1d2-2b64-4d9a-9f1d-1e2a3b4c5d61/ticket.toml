@@ -7,6 +7,7 @@ bootstrap_blocker = "true"
 component = "lease"
 depends_on = ["2a1fa2f2-56ce-45cc-a5d4-915d90e6b7a2"]
 doc_category = "research"
+effort = "1200"
 release_target = "phase-1.5"
 risk_level = "high"
 rollout_stage = "mirror"

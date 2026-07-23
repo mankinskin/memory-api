@@ -4,6 +4,7 @@ title = "[spec][P7] spec-vscode — VS Code extension for browsing specs with ri
 state = "ready"
 component = "spec-vscode"
 depends_on = ["fc18c607-2147-4481-8a44-19bdc754f366"]
+effort = "1200"
 phase = "7"
 priority = "low"
 type = "tracker-improvement"

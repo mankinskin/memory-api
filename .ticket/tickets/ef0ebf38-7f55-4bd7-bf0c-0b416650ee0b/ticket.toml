@@ -5,6 +5,7 @@ state = "in-implementation"
 acceptance_criteria = "1. A shared memory-api workspace helper owns descendant hidden-store discovery and one traversal/skip policy for .ticket, .spec, and .rule. 2. From an ancestor repo root, representative read commands across spec, ticket, and rule resolve child workspaces consistently instead of relying on tool-specific special cases. 3. rule-cli no longer maintains a separate descendant workspace discovery algorithm, and spec no longer relies on a refs-only fallback path. 4. Mutating commands keep explicit target-store semantics rather than silently writing into child workspaces. 5. Focused regressions prove the three CLIs share one descendant-workspace policy."
 component = "memory-api"
 depends_on = ["07836f41-7fa5-4e41-8411-1c7cf8aeee75", "59d96577-09a8-44a7-b0ea-3d51b3a6fb05"]
+effort = "1200"
 implementation_summary = "Added shared memory-api descendant scan-root discovery for .ticket, .spec, and .rule, switched spec and ticket read/query commands to aggregate child workspaces through scan roots, derived spec refs validation roots from the owning spec workspace, and moved rule CLI off its private traversal logic while keeping mutating commands local."
 priority = "high"
 risk_level = "medium"

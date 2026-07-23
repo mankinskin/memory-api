@@ -3,3 +3,4 @@
 {"rev":3,"ts":"2026-07-15T22:01:24.829911800+00:00","fields":{"state":"in-review","title":"[ticket-mcp] Canonicalize workspace resolution across all tools","type":"tracker-improvement"},"author":"github-copilot"}
 {"rev":4,"ts":"2026-07-15T22:26:22.553942100+00:00","fields":{"state":"in-implementation","title":"[ticket-mcp] Canonicalize workspace resolution across all tools","type":"tracker-improvement"},"author":"github-copilot"}
 {"rev":5,"ts":"2026-07-15T22:28:33.985725400+00:00","fields":{"state":"in-review","title":"[ticket-mcp] Canonicalize workspace resolution across all tools","type":"tracker-improvement"}}
+{"rev":6,"ts":"2026-07-23T13:33:14.664846300+00:00","fields":{"effort":"1200","state":"in-review","title":"[ticket-mcp] Canonicalize workspace resolution across all tools","type":"tracker-improvement"},"author":"github-copilot"}

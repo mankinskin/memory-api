@@ -4,6 +4,7 @@ title = "[ticket-cli][ticket-mcp] Expose authoritative ticket folder paths in qu
 state = "in-implementation"
 acceptance_criteria = "ticket get returns the authoritative ticket folder path from indexed metadata; ticket-mcp get_ticket returns the same authoritative path for the same ticket; JSON responses use the on-disk owning ticket folder path rather than a synthesized path; focused CLI/MCP regression coverage locks the contract"
 component = "ticket-cli"
+effort = "1200"
 priority = "high"
 risk_level = "medium"
 tags = "ticket-cli,ticket-mcp,traceability,workspaces"

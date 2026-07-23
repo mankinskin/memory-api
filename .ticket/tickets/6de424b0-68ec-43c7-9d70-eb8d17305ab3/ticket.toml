@@ -4,6 +4,7 @@ title = "[ticket-vscode] Validate Rust/WASM parity across desktop, web, and remo
 state = "in-implementation"
 component = "ticket-vscode"
 depends_on = ["362448d4-ccf1-4b9d-90f3-d4577da83a65", "694d74b4-028b-4602-8090-d6200d577d4a"]
+effort = "1200"
 priority = "high"
 risk_level = "medium"
 type = "tracker-improvement"

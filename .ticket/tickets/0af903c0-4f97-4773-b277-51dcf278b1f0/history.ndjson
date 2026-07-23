@@ -1,2 +1,3 @@
 {"rev":1,"ts":"2026-05-21T12:20:08.612530800+00:00","fields":{"state":"new","title":"Project tracker: ticket API and mutation surfaces","type":"tracker-improvement"}}
 {"rev":2,"ts":"2026-05-21T12:44:41.415926400+00:00","fields":{"state":"new","title":"Project tracker: ticket API and mutation surfaces","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-07-23T13:33:10.068461200+00:00","fields":{"effort":"1200","state":"new","title":"Project tracker: ticket API and mutation surfaces","type":"tracker-improvement"},"author":"github-copilot"}

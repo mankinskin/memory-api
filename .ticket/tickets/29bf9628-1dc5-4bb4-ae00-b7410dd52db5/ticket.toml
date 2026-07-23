@@ -4,6 +4,7 @@ title = "[spec-api] Add direct feedback on spec entities with integration tests"
 state = "new"
 component = "spec-api"
 depends_on = ["88800b2e-74f5-4d65-958a-1423d18072e3"]
+effort = "1200"
 priority = "high"
 risk_level = "medium"
 tags = "spec-api,feedback,integration-tests"

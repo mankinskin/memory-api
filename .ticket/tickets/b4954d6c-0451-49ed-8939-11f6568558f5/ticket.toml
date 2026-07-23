@@ -4,6 +4,7 @@ title = "[feedback-api][ingestion] Mine explicit feedback-ingestion tool calls f
 state = "in-review"
 component = "feedback-api"
 depends_on = ["a7601cb7-6c92-4891-aa55-07ab46125bb8"]
+effort = "1200"
 implementation_summary = "Added event-based mine_explicit_ingestion_signals against CopilotHookEvent tool.execution_result events (real transcripts have zero role:tool turns) plus recover_feedback_entry_from_signal gated on tool_success/rating."
 priority = "high"
 type = "tracker-improvement"

@@ -7,6 +7,7 @@ bootstrap_blocker = "false"
 component = "search"
 depends_on = ["4f2d2a5e-5df1-4bd8-9b65-0d4de0a0a5c1"]
 doc_category = "research"
+effort = "1200"
 risk_level = "medium"
 rollout_stage = "hybrid"
 source_agent_files = "research/20260318_SEARCH_INDEXING_AND_HIGHLIGHTING.md"

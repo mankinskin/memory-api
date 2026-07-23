@@ -4,6 +4,7 @@ title = "[spec][P3] Spec-to-code sync — detect and update references after fil
 state = "ready"
 component = "spec-api"
 depends_on = ["80e25216-7ba9-4fd9-bc80-3311f1d2a604"]
+effort = "1200"
 phase = "3"
 priority = "medium"
 type = "tracker-improvement"

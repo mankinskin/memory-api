@@ -1,1 +1,2 @@
 {"rev":1,"ts":"2026-05-21T11:44:37.600159400+00:00","fields":{"state":"new","title":"Project tracker: ticket query filter correctness","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-23T13:33:08.959712800+00:00","fields":{"effort":"1200","state":"new","title":"Project tracker: ticket query filter correctness","type":"tracker-improvement"},"author":"github-copilot"}

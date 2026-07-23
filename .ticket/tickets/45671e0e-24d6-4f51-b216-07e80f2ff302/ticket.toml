@@ -4,6 +4,7 @@ title = "[spec][P4] Test generation — Rust test stubs and test matrix from spe
 state = "ready"
 component = "spec-api"
 depends_on = ["ab47648c-d1f8-4ad5-a652-08ef97f76ccd"]
+effort = "1200"
 phase = "4"
 priority = "medium"
 type = "tracker-improvement"

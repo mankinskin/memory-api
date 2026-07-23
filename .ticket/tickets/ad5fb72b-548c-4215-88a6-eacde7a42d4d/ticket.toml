@@ -4,6 +4,7 @@ title = "[spec][P4] Spec health check — completeness, staleness, broken refere
 state = "ready"
 component = "spec-api"
 depends_on = ["55a1b302-9b33-4389-8962-65362b9b3eb0", "ab47648c-d1f8-4ad5-a652-08ef97f76ccd"]
+effort = "1200"
 phase = "4"
 priority = "medium"
 type = "tracker-improvement"

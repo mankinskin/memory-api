@@ -1,1 +1,2 @@
 {"rev":1,"ts":"2026-05-11T13:34:34.658732900+00:00","fields":{"component":"rule-api","priority":"high","state":"ready","title":"Generate memory-api README from repo-local rules","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-23T13:33:22.715244400+00:00","fields":{"component":"rule-api","depends_on":["050c5441-1d3a-46bc-9748-cfb7030a93bd","d0ccdb06-db44-464f-846e-9d58c1320fd0"],"effort":"1200","priority":"high","state":"ready","title":"Generate memory-api README from repo-local rules","type":"tracker-improvement"},"author":"github-copilot"}

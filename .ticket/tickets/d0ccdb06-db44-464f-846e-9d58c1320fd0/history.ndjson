@@ -1,1 +1,2 @@
 {"rev":1,"ts":"2026-05-11T13:34:34.467741300+00:00","fields":{"component":"rule-api","priority":"high","state":"ready","title":"Complete memory-api rule-api specs and test links","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-23T13:33:31.497466400+00:00","fields":{"component":"rule-api","effort":"1200","priority":"high","state":"ready","title":"Complete memory-api rule-api specs and test links","type":"tracker-improvement"},"author":"github-copilot"}

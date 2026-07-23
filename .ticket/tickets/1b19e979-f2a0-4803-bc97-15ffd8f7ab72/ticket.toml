@@ -4,6 +4,7 @@ title = "[spec][P8] Bootstrap: write spec files for ticket-http interface"
 state = "ready"
 component = "spec-http"
 depends_on = ["090b6db9-f88e-418b-888e-94641d347432"]
+effort = "1200"
 phase = "8"
 priority = "medium"
 type = "tracker-improvement"

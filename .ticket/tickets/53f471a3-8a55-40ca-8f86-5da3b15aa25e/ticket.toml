@@ -3,4 +3,5 @@ created_at = "2026-05-21T11:44:45.564469500+00:00"
 title = "Project tracker: audit quality backlog"
 state = "new"
 depends_on = ["5ad5ab28-6c81-4916-9574-d2c470e03a31", "95d4f986-b81c-4951-bae5-4227f2d72a6d"]
+effort = "1200"
 type = "tracker-improvement"
