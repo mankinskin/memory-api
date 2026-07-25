@@ -36,6 +36,7 @@ impl TicketServer {
         let patch = parse_field_patch(input.fields, input.field_map)?;
         let description = input.description;
         let author = input.author;
+        let single_hop = input.single_hop;
         let changed_fields = patch.clone();
         let state_transition_requested = to_state.clone();
         let description_updated = description.is_some();
@@ -47,13 +48,14 @@ impl TicketServer {
                     .map_err(Self::store_err)?
                     .and_then(|ticket| ticket.state);
                 let manifest = store
-                    .update(
+                    .update_with_options(
                         &id,
                         patch,
                         Some(transition_states.as_slice()),
                         to_state.as_deref(),
                         description.as_deref(),
                         author.as_deref(),
+                        single_hop,
                     )
                     .map_err(Self::store_err)?;
                 let path = indexed_ticket_path(store, &id)?;

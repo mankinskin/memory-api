@@ -164,6 +164,11 @@ pub struct UpdateTicketInput {
     pub description: Option<String>,
     #[serde(default)]
     pub author: Option<String>,
+    /// Opt out of auto-walking multi-hop transitions. When true, a `to_state`
+    /// that would skip a required waypoint is rejected with recovery guidance
+    /// instead of traversing the intermediate states.
+    #[serde(default)]
+    pub single_hop: bool,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

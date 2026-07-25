@@ -128,6 +128,11 @@ pub struct UpdateTicketBody {
     #[serde(default)]
     pub transition_states: Vec<String>,
     pub description: Option<String>,
+    /// Opt out of auto-walking multi-hop transitions. When true, a `state`
+    /// that would skip a required waypoint is rejected with recovery guidance
+    /// instead of traversing the intermediate states.
+    #[serde(default)]
+    pub single_hop: bool,
 }
 
 #[derive(Deserialize)]

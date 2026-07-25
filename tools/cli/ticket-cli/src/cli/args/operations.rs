@@ -237,6 +237,11 @@ pub struct UpdateArgs {
     pub transition_states: Vec<String>,
     #[arg(long = "to-state")]
     pub to_state: Option<String>,
+    /// Opt out of auto-walking multi-hop transitions. When set, a `--to-state`
+    /// that would skip a required waypoint is rejected with recovery guidance
+    /// instead of traversing the intermediate states.
+    #[arg(long = "single-hop", visible_alias = "strict", default_value_t = false)]
+    pub single_hop: bool,
     #[arg(long = "field")]
     pub fields: Vec<String>,
     /// Revert to the previous history revision (undo the last change).

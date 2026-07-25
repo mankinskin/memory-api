@@ -1,0 +1,18 @@
+{
+  "id": "exec-vt-ticket-transition-recovery-20260725",
+  "validation_spec_id": "vt-ticket-transition-recovery",
+  "outcome": "passed",
+  "executed_at": "2026-07-25T11:15:00Z",
+  "detail": "All green: ticket-api update_regression (blocked forward + reverse multi-step now reject with recovery fields), ticket-cli integration_transition_recovery (3 tests), ticket-mcp integration_update_mcp parity. HTTP inherits rich message via StorageError Display. Pre-existing move_planner/ticket-http registry flakes are unrelated (fail without these changes).",
+  "links": {
+    "ticket_ids": [
+      "fdf53556-2d84-4964-9575-f40032a02e85"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket",
+    "operation": "state-transition",
+    "transport": "cli",
+    "run_id": "b4deeb1e-a866-4247-b49e-41e43fe54a2e"
+  }
+}

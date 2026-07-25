@@ -159,6 +159,7 @@ async fn update_ticket_patches_fields() {
             state: None,
             transition_states: vec![],
             description: None,
+            single_hop: false,
         }),
     )
     .await;
@@ -205,6 +206,7 @@ async fn update_ticket_transitions_state() {
             state: Some("ready".to_string()),
             transition_states: vec![],
             description: None,
+            single_hop: false,
         }),
     )
     .await;

@@ -1,0 +1,11 @@
+{
+  "id": "vt-ticket-transition-recovery",
+  "title": "Ticket state-transition recovery contract (current + allowed-next + intermediate states)",
+  "command": "cargo test -p ticket-api --lib update_regression; cargo test -p ticket-cli --test integration_transition_recovery; cargo test -p ticket-mcp --test integration_update_mcp",
+  "detail": "Verifies a blocked ticket transition (new -> in-implementation) is rejected with a recovery-oriented error naming the current state, allowed next states, and mandatory intermediate waypoints, across ticket-api/ticket-cli/ticket-mcp (HTTP inherits via Display). Also verifies the `transitions` inspection command.",
+  "links": {
+    "ticket_ids": [
+      "fdf53556-2d84-4964-9575-f40032a02e85"
+    ]
+  }
+}

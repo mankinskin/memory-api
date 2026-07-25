@@ -204,7 +204,7 @@ fn update_routes_depends_on_patch_to_canonical_edge_ops() {
 }
 
 #[test]
-fn update_allows_reachable_multi_step_without_transition_states() {
+fn update_auto_walks_reachable_multi_step_by_default() {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();
 
@@ -220,6 +220,9 @@ fn update_allows_reachable_multi_step_without_transition_states() {
         )
         .unwrap();
 
+    // `new -> in-implementation` is reachable only by traversing `ready`.
+    // Without an explicit opt-out, the update auto-walks the path and lands
+    // on the requested target state.
     store
         .update(
             &id,
@@ -236,7 +239,66 @@ fn update_allows_reachable_multi_step_without_transition_states() {
 }
 
 #[test]
-fn update_allows_reachable_reverse_multi_step_without_transition_states() {
+fn update_blocks_reachable_multi_step_under_single_hop_flag() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Reachable multi-step forward"),
+            Some("new"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    // Under the `single_hop` opt-out, `new -> in-implementation` is rejected
+    // with a recovery-oriented error rather than silently walking the path.
+    let err = store
+        .update_with_options(
+            &id,
+            BTreeMap::new(),
+            None,
+            Some("in-implementation"),
+            None,
+            None,
+            true,
+        )
+        .unwrap_err();
+
+    match err {
+        crate::error::StorageError::Validation(
+            crate::error::SchemaValidationError::InvalidTransition {
+                from,
+                to,
+                allowed_next,
+                intermediate,
+            },
+        ) => {
+            assert_eq!(from, "new");
+            assert_eq!(to, "in-implementation");
+            assert!(
+                allowed_next.contains(&"ready".to_string()),
+                "allowed next states should list the legal single-hop targets: {allowed_next:?}"
+            );
+            assert!(
+                intermediate.contains(&"ready".to_string()),
+                "intermediate path should name the mandatory waypoint: {intermediate:?}"
+            );
+        },
+        other => panic!("expected InvalidTransition, got {other:?}"),
+    }
+
+    // The blocked update must not have advanced the ticket.
+    let indexed = store.get_indexed(&id).unwrap().unwrap();
+    assert_eq!(indexed.state.as_deref(), Some("new"));
+}
+
+#[test]
+fn update_auto_walks_reachable_reverse_multi_step_by_default() {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();
 
@@ -258,4 +320,43 @@ fn update_allows_reachable_reverse_multi_step_without_transition_states() {
 
     let indexed = store.get_indexed(&id).unwrap().unwrap();
     assert_eq!(indexed.state.as_deref(), Some("new"));
+}
+
+#[test]
+fn update_blocks_reachable_reverse_multi_step_under_single_hop_flag() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Reachable multi-step reverse"),
+            Some("in-implementation"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let err = store
+        .update_with_options(
+            &id,
+            BTreeMap::new(),
+            None,
+            Some("new"),
+            None,
+            None,
+            true,
+        )
+        .unwrap_err();
+
+    let message = err.to_string();
+    assert!(
+        message.contains("allows next states"),
+        "reverse multi-step block should surface allowed next states: {message}"
+    );
+
+    let indexed = store.get_indexed(&id).unwrap().unwrap();
+    assert_eq!(indexed.state.as_deref(), Some("in-implementation"));
 }

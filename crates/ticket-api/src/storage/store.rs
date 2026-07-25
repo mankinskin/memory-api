@@ -402,6 +402,34 @@ impl TicketStore {
         description: Option<&str>,
         author: Option<&str>,
     ) -> Result<TicketManifest, StorageError> {
+        self.update_with_options(
+            id,
+            patch,
+            transition_states,
+            to_state,
+            description,
+            author,
+            false,
+        )
+    }
+
+    /// Same as [`update`](Self::update) but with an explicit `single_hop`
+    /// opt-out. When `single_hop` is `false` (the default used by [`update`]),
+    /// a reachable multi-hop `to_state` is auto-walked through its required
+    /// intermediate states. When `single_hop` is `true`, a transition that
+    /// would skip a required waypoint is rejected with a recovery-oriented
+    /// [`SchemaValidationError::InvalidTransition`] instead of being walked.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_with_options(
+        &self,
+        id: &Uuid,
+        patch: BTreeMap<String, Value>,
+        transition_states: Option<&[String]>,
+        to_state: Option<&str>,
+        description: Option<&str>,
+        author: Option<&str>,
+        single_hop: bool,
+    ) -> Result<TicketManifest, StorageError> {
         let mut patch = patch;
 
         let mut indexed =
@@ -413,8 +441,12 @@ impl TicketStore {
 
         // Determine the target state and transition path.
         // Priority: to_state > last element of transition_states > current state (no change)
-        let (new_state, transition_path) =
-            self.resolve_update_target(&indexed, transition_states, to_state)?;
+        let (new_state, transition_path) = self.resolve_update_target(
+            &indexed,
+            transition_states,
+            to_state,
+            single_hop,
+        )?;
         let previous_state = indexed.state.clone();
         let updated_manifest = self.apply_manifest_update(
             &indexed.path,
@@ -481,12 +513,14 @@ impl TicketStore {
         indexed: &IndexedTicket,
         transition_states: Option<&[String]>,
         to_state: Option<&str>,
+        single_hop: bool,
     ) -> Result<(Option<String>, Vec<String>), StorageError> {
         if let Some(to) = to_state {
             let path = self.resolve_transition_path(
                 indexed,
                 transition_states.unwrap_or(&[]),
                 to,
+                single_hop,
             )?;
             let final_state =
                 path.last().cloned().unwrap_or_else(|| to.to_string());
@@ -501,6 +535,7 @@ impl TicketStore {
                     indexed,
                     intermediate_steps,
                     final_target,
+                    single_hop,
                 )?;
                 return Ok((Some(final_target.clone()), path));
             }
@@ -590,6 +625,7 @@ impl TicketStore {
         indexed: &IndexedTicket,
         transition_states: &[String],
         target_state: &str,
+        single_hop: bool,
     ) -> Result<Vec<String>, StorageError> {
         let current_state = indexed.state.as_deref().unwrap_or("new");
         if current_state == target_state && transition_states.is_empty() {
@@ -615,16 +651,32 @@ impl TicketStore {
                 continue;
             }
 
-            let segment =
-                schema.find_path(&from, &checkpoint).ok_or_else(|| {
-                    StorageError::Other(format!(
-                        "no path from '{}' to '{}'",
-                        from, checkpoint
-                    ))
-                })?;
-
-            path.extend(segment);
-            from = checkpoint;
+            match schema.find_path(&from, &checkpoint) {
+                // Reachable path. By default auto-walk it, visiting every
+                // required intermediate state. Under the `single_hop` opt-out,
+                // a multi-hop path that would skip a required waypoint is
+                // rejected with recovery guidance instead of being walked.
+                Some(segment) => {
+                    if single_hop && segment.len() > 1 {
+                        return Err(StorageError::Validation(
+                            crate::error::SchemaValidationError::InvalidTransition {
+                                from: from.clone(),
+                                to: checkpoint.clone(),
+                                allowed_next: schema.allowed_next_states(&from),
+                                intermediate: segment,
+                            },
+                        ));
+                    }
+                    path.extend(segment);
+                    from = checkpoint;
+                },
+                // No path exists at all: the target is unreachable from here.
+                None => {
+                    return Err(StorageError::Validation(
+                        schema.invalid_transition_error(&from, &checkpoint),
+                    ));
+                },
+            }
         }
 
         if !schema.required_states.is_empty()

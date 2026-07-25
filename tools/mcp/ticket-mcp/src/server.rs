@@ -218,6 +218,17 @@ impl TicketServer {
     }
 
     #[tool(
+        name = "ticket_capabilities",
+        description = "List the canonical ticket/spec/rule workflows, their required parameters, and nested-root targeting semantics (self-describing capability catalog)."
+    )]
+    pub async fn ticket_capabilities(
+        &self
+    ) -> Result<CallToolResult, McpError> {
+        Self::json_result(
+            &ticket_api::contracts::capability_catalog::capability_catalog(),
+        )
+    }
+    #[tool(
         name = "list_tickets",
         description = "List tickets with optional state/query/limit filters."
     )]
@@ -612,7 +623,7 @@ impl ServerHandler for TicketServer {
                 ..Default::default()
             },
             instructions: Some(
-                "ticket-mcp provides direct access to the ticket store. No HTTP backend required. Use named tools for ticket operations."
+                "ticket-mcp provides direct access to the ticket store. No HTTP backend required. Use named tools for ticket operations. Call ticket_capabilities to discover the canonical ticket/spec/rule workflows, required params, and nested-root targeting."
                     .to_string(),
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),

@@ -5,8 +5,23 @@ use uuid::Uuid;
 pub enum SchemaValidationError {
     #[error("required field missing: {0}")]
     MissingRequiredField(String),
-    #[error("unknown state transition: {from} -> {to}")]
-    InvalidTransition { from: String, to: String },
+    /// A rejected state transition, enriched with recovery guidance: the current
+    /// state, the states legally reachable in a single hop, and (when the target
+    /// is reachable at all) the intermediate states that must be traversed.
+    #[error(
+        "invalid state transition '{from}' -> '{to}'; current state '{from}' allows next states [{allowed}]; {path_hint}",
+        allowed = .allowed_next.join(", "),
+        path_hint = transition_path_hint(.intermediate.as_slice(), .to.as_str()),
+    )]
+    InvalidTransition {
+        from: String,
+        to: String,
+        /// States legally reachable from `from` in a single transition.
+        allowed_next: Vec<String>,
+        /// Ordered intermediate states (ending at `to`) that must be traversed
+        /// to reach `to`. Empty when `to` is unreachable from `from`.
+        intermediate: Vec<String>,
+    },
     #[error("edge kind not allowed: {0}")]
     InvalidEdgeKind(String),
     #[error("required states not visited before '{target}': {missing:?}")]
@@ -14,6 +29,24 @@ pub enum SchemaValidationError {
         target: String,
         missing: Vec<String>,
     },
+}
+
+/// Render the human-readable recovery clause for [`SchemaValidationError::InvalidTransition`].
+///
+/// When `intermediate` names a reachable multi-hop path, this lists the required
+/// waypoints (excluding the target itself). When it is empty the target is
+/// unreachable and this states so.
+fn transition_path_hint(
+    intermediate: &[String],
+    to: &str,
+) -> String {
+    match intermediate.split_last() {
+        Some((_target, waypoints)) if !waypoints.is_empty() => format!(
+            "to reach '{to}', first transition through: {}",
+            waypoints.join(" -> ")
+        ),
+        _ => format!("no direct transition to '{to}' is available"),
+    }
 }
 
 #[derive(Debug, Error)]

@@ -145,6 +145,7 @@ pub async fn update_ticket(
     let transition_states = body.transition_states;
     let to_state = body.state;
     let description = body.description;
+    let single_hop = body.single_hop;
     let author = author_from_headers(&headers);
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
@@ -152,13 +153,14 @@ pub async fn update_ticket(
     tokio::task::spawn_blocking(move || {
         let request_id = task_request_id.clone();
         let workspace = workspace.clone();
-        let manifest = match store.update(
+        let manifest = match store.update_with_options(
             &id,
             patch,
             Some(transition_states.as_slice()),
             to_state.as_deref(),
             description.as_deref(),
             author.as_deref(),
+            single_hop,
         ) {
             Ok(manifest) => manifest,
             Err(e) => return storage_err(e, &request_id),

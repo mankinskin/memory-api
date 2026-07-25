@@ -212,6 +212,7 @@ async fn ticket_mcp_update(
             undo: false,
             description: None,
             author: None,
+            single_hop: false,
         }))
         .await
         .map_err(|err| format!("mcp ticket update call failed: {err}"))?;

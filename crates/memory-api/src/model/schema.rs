@@ -84,6 +84,42 @@ impl EntityTypeSchema {
         })
     }
 
+    /// States legally reachable from `from` in a single transition.
+    ///
+    /// Transitions are traversed undirected (matching [`Self::allows_transition`]
+    /// and [`Self::find_path`]), so this reports every state adjacent to `from`.
+    pub fn allowed_next_states(
+        &self,
+        from: &str,
+    ) -> Vec<String> {
+        let mut states = std::collections::BTreeSet::new();
+        for t in &self.transitions {
+            if t.from == from {
+                states.insert(t.to.clone());
+            }
+            if t.to == from {
+                states.insert(t.from.clone());
+            }
+        }
+        states.into_iter().collect()
+    }
+
+    /// Build a recovery-oriented [`SchemaValidationError::InvalidTransition`] for
+    /// a rejected `from -> to` transition, populating the allowed next states and
+    /// the intermediate path (if any) needed to reach `to`.
+    pub fn invalid_transition_error(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> SchemaValidationError {
+        SchemaValidationError::InvalidTransition {
+            from: from.to_owned(),
+            to: to.to_owned(),
+            allowed_next: self.allowed_next_states(from),
+            intermediate: self.find_path(from, to).unwrap_or_default(),
+        }
+    }
+
     pub fn ensure_transition(
         &self,
         from: &str,
@@ -92,10 +128,7 @@ impl EntityTypeSchema {
         if self.allows_transition(from, to) {
             Ok(())
         } else {
-            Err(SchemaValidationError::InvalidTransition {
-                from: from.to_owned(),
-                to: to.to_owned(),
-            })
+            Err(self.invalid_transition_error(from, to))
         }
     }
 

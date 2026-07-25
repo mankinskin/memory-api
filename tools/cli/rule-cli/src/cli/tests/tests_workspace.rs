@@ -221,6 +221,101 @@ fn sync_targets_prunes_removed_outputs_from_previous_sync() {
 }
 
 #[test]
+fn sync_targets_prunes_decoupled_hand_owned_outputs_without_deleting_them() {
+    let dir = tempdir().unwrap();
+    let mut store = RuleStore::init(dir.path()).unwrap();
+
+    store
+        .create(
+            &sample_rule(
+                "shared/agents/root-readme",
+                "Root README",
+                "root-readme",
+                "Root body.",
+                10,
+            ),
+            None,
+        )
+        .unwrap();
+    store
+        .create(
+            &sample_rule(
+                "shared/agents/instruction",
+                "Instruction",
+                "instruction",
+                "Instruction body.",
+                20,
+            ),
+            None,
+        )
+        .unwrap();
+
+    let config_path = dir.path().join("rule-targets.yaml");
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: root-readme\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    section: root-readme\n",
+            "    output_path: .github/README.md\n",
+            "  - name: instruction\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    section: instruction\n",
+            "    output_path: .agents/instructions/demo.instructions.md\n",
+        ),
+    )
+    .unwrap();
+
+    rendering::sync_targets_payload(&mut store, &config_path, false, false)
+        .unwrap();
+    let instruction_path =
+        dir.path().join(".agents/instructions/demo.instructions.md");
+    assert!(instruction_path.exists());
+
+    // Migrate the generated file to a hand-owned file: strip the generated
+    // marker so it no longer starts with `GENERATED_FILE_COMMENT`.
+    let hand_owned = "---\ndescription: \"Hand-owned.\"\n---\n\nHand body.\n";
+    fs::write(&instruction_path, hand_owned).unwrap();
+
+    // Remove the instruction target from config, leaving it decoupled.
+    fs::write(
+        &config_path,
+        concat!(
+            "targets:\n",
+            "  - name: root-readme\n",
+            "    repo_scope: context-engine\n",
+            "    file_kind: AGENTS\n",
+            "    section: root-readme\n",
+            "    output_path: .github/README.md\n",
+        ),
+    )
+    .unwrap();
+
+    // `--check` must not flag the decoupled hand-owned output.
+    rendering::sync_targets_payload(&mut store, &config_path, false, true)
+        .expect("check tolerates decoupled hand-owned outputs");
+
+    // A real sync prunes the tracking record but keeps the hand-owned file.
+    let payload =
+        rendering::sync_targets_payload(&mut store, &config_path, false, false)
+            .unwrap();
+    assert_eq!(payload.generated.len(), 1);
+    assert_eq!(payload.removed.len(), 1);
+    assert_eq!(payload.removed[0]["decoupled"], serde_json::json!(true));
+    assert!(instruction_path.exists());
+    assert_eq!(fs::read_to_string(&instruction_path).unwrap(), hand_owned);
+
+    // State is now clean: a follow-up sync reports nothing to prune.
+    let payload =
+        rendering::sync_targets_payload(&mut store, &config_path, false, false)
+            .unwrap();
+    assert!(payload.removed.is_empty());
+}
+
+#[test]
 fn sync_targets_refuses_zero_match_writes_before_touching_outputs() {
     let dir = tempdir().unwrap();
     let mut store = RuleStore::init(dir.path()).unwrap();

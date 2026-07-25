@@ -1,0 +1,11 @@
+{
+  "id": "vt-ticket-spec-rule-catalog",
+  "title": "Self-describing ticket/spec/rule capability catalog (CLI + MCP parity)",
+  "command": "cargo test -p ticket-api --lib capability_catalog; cargo test -p ticket-cli --test integration_catalog_cli; cargo test -p ticket-mcp --test integration_capabilities_mcp",
+  "detail": "Verifies one shared catalog lists canonical ticket/spec/rule workflows with required params, nested-root support per workflow, a rule-oriented workflow, and documented parity gaps; the CLI `catalog` command and ticket-MCP `ticket_capabilities` tool emit the same shared catalog so they agree by construction.",
+  "links": {
+    "ticket_ids": [
+      "7d857543-be6b-42ba-8b7e-608b5bd7c046"
+    ]
+  }
+}

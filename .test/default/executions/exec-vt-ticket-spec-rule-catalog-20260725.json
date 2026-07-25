@@ -1,0 +1,18 @@
+{
+  "id": "exec-vt-ticket-spec-rule-catalog-20260725",
+  "validation_spec_id": "vt-ticket-spec-rule-catalog",
+  "outcome": "passed",
+  "executed_at": "2026-07-25T11:16:00Z",
+  "detail": "All green: ticket-api capability_catalog unit tests (4), ticket-cli integration_catalog_cli, ticket-mcp integration_capabilities_mcp (2, incl MCP output byte-equals shared ticket-api catalog so CLI and MCP agree).",
+  "links": {
+    "ticket_ids": [
+      "7d857543-be6b-42ba-8b7e-608b5bd7c046"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket",
+    "operation": "capability-catalog",
+    "transport": "cli",
+    "run_id": "b4deeb1e-a866-4247-b49e-41e43fe54a2e"
+  }
+}

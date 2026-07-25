@@ -175,13 +175,14 @@ pub(crate) fn cmd_update(
     }
 
     let patch = parse_fields_to_json(&args.fields)?;
-    let manifest = store.update(
+    let manifest = store.update_with_options(
         &id,
         patch,
         Some(args.transition_states.as_slice()),
         args.to_state.as_deref(),
         args.description.as_deref(),
         author.as_deref(),
+        args.single_hop,
     )?;
     let title = manifest
         .extra

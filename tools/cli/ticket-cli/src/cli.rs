@@ -130,6 +130,9 @@ pub enum TicketCommandCli {
     /// Export the command namespace/schema for automation clients.
     #[command(name = "export-command-schema")]
     ExportCommandSchema,
+    /// List the canonical ticket/spec/rule workflows, required params, and
+    /// nested-root targeting semantics (self-describing capability catalog).
+    Catalog,
     /// Add a directed edge (dependency/link) between two tickets.
     Link(LinkArgs),
     /// Remove a directed edge between two tickets.
@@ -168,6 +171,9 @@ pub enum TicketCommandCli {
     Attach(AttachArgs),
     /// List assets attached to a ticket.
     Assets(IdArgs),
+    /// Show the legal state-transition graph for a ticket: current state,
+    /// allowed next states, required intermediate/terminal states.
+    Transitions(IdArgs),
     /// Run health checks on a ticket. Use --depth to walk the subgraph.
     Health(HealthArgs),
     /// Generate or check the committed ticket catalog (.ticket README + index.toon + .agents hook).

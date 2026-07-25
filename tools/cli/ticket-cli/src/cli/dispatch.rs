@@ -38,6 +38,7 @@ pub(super) fn dispatch(
     match command {
         TicketCommandCli::ExportCommandSchema =>
             export_command_schema_payload(),
+        TicketCommandCli::Catalog => capability_catalog_payload(),
         TicketCommandCli::Init => cmd_init(
             index_root_override,
             workspace_root_override,
@@ -201,6 +202,15 @@ fn export_command_schema_payload() -> Result<Value, CliRunError> {
     }))
 }
 
+fn capability_catalog_payload() -> Result<Value, CliRunError> {
+    let mut payload = ticket_api::contracts::capability_catalog::capability_catalog();
+    if let Value::Object(map) = &mut payload {
+        map.insert("command".to_string(), json!("catalog"));
+        map.insert("status".to_string(), json!("ok"));
+    }
+    Ok(payload)
+}
+
 fn dispatch_store_backed(
     command: TicketCommandCli,
     index_root_override: Option<&Path>,
@@ -275,6 +285,7 @@ fn command_uses_descendant_scan_roots(command: &TicketCommandCli) -> bool {
             | TicketCommandCli::UnblockedBy(_)
             | TicketCommandCli::Move(_)
             | TicketCommandCli::Assets(_)
+            | TicketCommandCli::Transitions(_)
             | TicketCommandCli::Health(_)
             | TicketCommandCli::StoreIndex(_)
             | TicketCommandCli::Audit
@@ -384,6 +395,7 @@ fn dispatch_store_command(
         | TicketCommandCli::Move(_)
         | TicketCommandCli::Attach(_)
         | TicketCommandCli::Assets(_)
+        | TicketCommandCli::Transitions(_)
         | TicketCommandCli::Health(_)
         | TicketCommandCli::StoreIndex(_)
         | TicketCommandCli::Audit
@@ -392,6 +404,9 @@ fn dispatch_store_command(
         | TicketCommandCli::Workspace(_) =>
             dispatch_store_command_ops(command, store, dry_run),
         TicketCommandCli::ExportCommandSchema | TicketCommandCli::Init => {
+            unreachable!("handled before store dispatch")
+        },
+        TicketCommandCli::Catalog => {
             unreachable!("handled before store dispatch")
         },
     }
@@ -509,7 +524,8 @@ fn dispatch_store_command_ops(
         | TicketCommandCli::Cancel(_)
         | TicketCommandCli::Move(_)
         | TicketCommandCli::Attach(_)
-        | TicketCommandCli::Assets(_) =>
+        | TicketCommandCli::Assets(_)
+        | TicketCommandCli::Transitions(_) =>
             dispatch_store_command_ops_runtime(command, store, dry_run),
         TicketCommandCli::Health(_)
         | TicketCommandCli::StoreIndex(_)
@@ -535,6 +551,8 @@ fn dispatch_store_command_ops_runtime(
             commands::cmd_move(args, &store, dry_run),
         TicketCommandCli::Attach(args) => commands::cmd_attach(args, &store),
         TicketCommandCli::Assets(args) => commands::cmd_assets(args, &store),
+        TicketCommandCli::Transitions(args) =>
+            commands::cmd_transitions(args, &store),
         _ => unreachable!("handled in ops runtime dispatch"),
     }
 }

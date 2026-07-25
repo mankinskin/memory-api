@@ -415,10 +415,6 @@ fn repo_spec_prompt_target_matches_expectation_oriented_contract() {
         agents_dir.file_name().and_then(|name| name.to_str()),
         Some(".agents")
     );
-    let repo_root = agents_dir
-        .parent()
-        .expect("context-engine repo root")
-        .to_path_buf();
     let rendered = fs::read_to_string(&prompt_path).unwrap();
 
     assert!(rendered.contains("intended system properties"));
@@ -430,16 +426,10 @@ fn repo_spec_prompt_target_matches_expectation_oriented_contract() {
         !rendered.contains("captures motivation, intended behavior or scope")
     );
 
-    dispatch::dispatch(
-        RuleCommandCli::GenerateTarget(GenerateTargetArgs {
-            config: repo_root.join("rule-targets.yaml"),
-            target: "context-engine-prompt-spec".to_string(),
-            dry_run: true,
-            check: false,
-        }),
-        &repo_root,
-    )
-    .unwrap();
+    // `.agents/prompts/spec.prompt.md` is hand-owned and no longer produced by
+    // a rule target — the former `context-engine-prompt-spec` generator was
+    // retired when agent prompts were decoupled from the rule system. The
+    // content guard above verifies the hand-owned contract directly.
 }
 
 #[test]

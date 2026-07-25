@@ -194,10 +194,12 @@ impl TicketStore {
             schema
                 .find_path(current_state, target_state)
                 .ok_or_else(|| {
-                    StorageError::Other(format!(
-                        "no path from '{}' to '{}'",
-                        current_state, target_state
-                    ))
+                    StorageError::Validation(
+                        schema.invalid_transition_error(
+                            current_state,
+                            target_state,
+                        ),
+                    )
                 })?;
 
         let empty_patch = BTreeMap::new();

@@ -57,6 +57,7 @@ async fn update_ticket_accepts_sparse_payload_and_returns_minimal_response() {
             undo: false,
             description: None,
             author: None,
+            single_hop: false,
         }))
         .await
         .expect("update ticket");
@@ -69,3 +70,58 @@ async fn update_ticket_accepts_sparse_payload_and_returns_minimal_response() {
     assert!(json.get("changed_fields").is_none());
     assert!(json.get("workspace").is_none());
 }
+
+#[tokio::test]
+async fn update_ticket_blocked_transition_reports_recovery_fields() {
+    let (tmp, server) = make_sandbox();
+    let store = TicketStore::init(tmp.path()).expect("open store");
+    let ticket_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Blocked Transition Ticket"),
+            Some("new"),
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .expect("create ticket");
+
+    // `new -> in-implementation` skips the mandatory `ready` waypoint. Under
+    // the `single_hop` opt-out it must be rejected with the same recovery-field
+    // shape the CLI surfaces.
+    let error = server
+        .update_ticket(Parameters(UpdateTicketInput {
+            workspace: "default".to_string(),
+            id: ticket_id.to_string(),
+            transition_states: vec![],
+            to_state: Some("in-implementation".to_string()),
+            fields: None,
+            field_map: None,
+            undo: false,
+            description: None,
+            author: None,
+            single_hop: true,
+        }))
+        .await
+        .expect_err("blocked transition must return an error");
+
+    let message = error.message.to_string();
+    assert!(
+        message.contains("'new'"),
+        "error should name the current state: {message}"
+    );
+    assert!(
+        message.contains("allows next states"),
+        "error should list allowed next states: {message}"
+    );
+    assert!(
+        message.contains("ready"),
+        "error should name the mandatory intermediate state: {message}"
+    );
+
+    // The blocked transition must not have advanced the ticket.
+    let indexed = store.get_indexed(&ticket_id).expect("indexed").expect("some");
+    assert_eq!(indexed.state.as_deref(), Some("new"));
+}
+

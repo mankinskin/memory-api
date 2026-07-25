@@ -332,11 +332,22 @@ pub(super) fn sync_targets_payload(
 
     let stale = collect_stale_generated_targets(&config, previous);
 
-    if check && !stale.is_empty() {
+    // Split stale (removed-from-config) records by whether their output is
+    // still an orphaned generated artifact that must be cleaned up, versus a
+    // record that is now decoupled — the output was migrated to a hand-owned
+    // file (marker stripped) or deleted. Decoupled records are pruned from the
+    // tracking state without touching the file and never fail `--check`.
+    let (stale_generated, decoupled): (Vec<_>, Vec<_>) = stale
+        .into_iter()
+        .partition(|record| {
+            output_is_orphaned_generated(Path::new(&record.output_path))
+        });
+
+    if check && !stale_generated.is_empty() {
         return Err(CliRunError::BadRequest(format!(
             "stale generated targets remain for {}: {}",
             config_path.display(),
-            stale
+            stale_generated
                 .iter()
                 .map(|record| format!(
                     "{} -> {}",
@@ -348,7 +359,7 @@ pub(super) fn sync_targets_payload(
     }
 
     let mut removed = Vec::new();
-    for record in stale {
+    for record in stale_generated {
         if !dry_run && !check {
             remove_generated_output(
                 Path::new(&record.output_path),
@@ -359,6 +370,20 @@ pub(super) fn sync_targets_payload(
         removed.push(json!({
             "target": record.target_name,
             "output": record.output_path,
+        }));
+    }
+
+    // Prune tracking records for outputs that were decoupled to hand-owned
+    // files (or removed by hand). Drop the state record so future syncs and
+    // `--check` runs stay clean, but never delete the now hand-owned file.
+    for record in decoupled {
+        if !dry_run && !check {
+            store.delete_generated_target(&record.slug)?;
+        }
+        removed.push(json!({
+            "target": record.target_name,
+            "output": record.output_path,
+            "decoupled": true,
         }));
     }
 
@@ -615,6 +640,18 @@ pub(super) fn display_path(path: &Path) -> String {
 
 fn config_root(config_path: &Path) -> &Path {
     config_path.parent().unwrap_or_else(|| Path::new("."))
+}
+
+/// A stale (removed-from-config) generated-target output is an "orphaned
+/// generated artifact" only when the file still exists and carries the
+/// generated marker. Missing files (nothing to clean up) and marker-free files
+/// (decoupled to hand-owned) are pruned from tracking state without file
+/// removal and never fail `--check`.
+fn output_is_orphaned_generated(output: &Path) -> bool {
+    match fs::read_to_string(output) {
+        Ok(existing) => existing.starts_with(GENERATED_FILE_COMMENT),
+        Err(_) => false,
+    }
 }
 
 fn remove_generated_output(
