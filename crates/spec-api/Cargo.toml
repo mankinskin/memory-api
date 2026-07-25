@@ -19,4 +19,4 @@ tracing = "0.1"
 [dev-dependencies]
 pretty_assertions = "1"
 tempfile = "3"
-memory-fixtures = { path = "../memory-fixtures" }
+memory-fixtures = { git = "https://github.com/mankinskin/memory-fixtures", branch = "main" }

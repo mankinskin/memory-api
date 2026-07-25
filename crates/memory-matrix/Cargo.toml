@@ -17,7 +17,7 @@ name = "operation_matrix"
 harness = false
 
 [dependencies]
-memory-fixtures = { path = "../memory-fixtures" }
+memory-fixtures = { git = "https://github.com/mankinskin/memory-fixtures", branch = "main" }
 memory-api = { path = "../memory-api" }
 ticket-api = { path = "../ticket-api" }
 spec-api = { path = "../spec-api" }
