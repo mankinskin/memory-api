@@ -1,254 +1,116 @@
-use std::collections::BTreeMap;
-
-use crate::model::{
-    edge::EdgeKindRule,
-    schema::{
-        FieldSchema,
-        FieldType,
-        TicketTypeSchema,
-        Transition,
-    },
-};
+use crate::model::schema::TicketTypeSchema;
 
 pub const TYPE_ID: &str = "tracker-improvement";
 pub const BUG_TYPE_ID: &str = "bug";
 pub const TASK_TYPE_ID: &str = "task";
 
-/// Returns the hardcoded built-in `tracker-improvement` ticket type schema.
+/// Raw TOML sources for the built-in ticket type schemas, embedded at compile
+/// time from `crates/ticket-api/schemas/`.
 ///
-/// This is the only supported type in Phase 1. Additional types and a full
-/// schema engine are deferred to post-dogfooding.
+/// Schemas are **data**, not code: every built-in type is defined by a TOML file
+/// and parsed generically into a [`TicketTypeSchema`]. To add a new built-in
+/// type, drop a `<type>.toml` file in that directory and add it to this list —
+/// do not hand-build schema structs in Rust.
+const BUILTIN_SCHEMA_TOML: &[(&str, &str)] = &[
+    (
+        TYPE_ID,
+        include_str!("../../schemas/tracker-improvement.toml"),
+    ),
+    (BUG_TYPE_ID, include_str!("../../schemas/bug.toml")),
+    (TASK_TYPE_ID, include_str!("../../schemas/task.toml")),
+];
+
+/// Parse a single embedded built-in schema TOML source.
+///
+/// Panics if the embedded TOML is malformed or its `type_id` does not match the
+/// expected id — both are compile-time invariants verified by the parse tests in
+/// this module.
+fn parse_builtin(
+    expected_type_id: &str,
+    toml_src: &str,
+) -> TicketTypeSchema {
+    let schema: TicketTypeSchema =
+        toml::from_str(toml_src).unwrap_or_else(|e| {
+            panic!("built-in schema '{expected_type_id}.toml' is invalid: {e}")
+        });
+    assert_eq!(
+        schema.type_id, expected_type_id,
+        "built-in schema file for '{expected_type_id}' declares a mismatched type_id"
+    );
+    schema
+}
+
+/// Returns all built-in ticket type schemas, parsed from their embedded TOML
+/// definitions.
+pub fn builtin_schemas() -> Vec<TicketTypeSchema> {
+    BUILTIN_SCHEMA_TOML
+        .iter()
+        .map(|(type_id, toml_src)| parse_builtin(type_id, toml_src))
+        .collect()
+}
+
+/// Returns the built-in `tracker-improvement` ticket type schema.
 pub fn tracker_improvement_schema() -> TicketTypeSchema {
-    let fields: BTreeMap<String, FieldSchema> = [
-        (
-            "title",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: true,
-            },
-        ),
-        (
-            "type",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: true,
-            },
-        ),
-        (
-            "state",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: false,
-            },
-        ),
-        (
-            "component",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: false,
-            },
-        ),
-        (
-            "risk_level",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: false,
-            },
-        ),
-        (
-            "acceptance_criteria",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: false,
-            },
-        ),
-        (
-            "validation_plan",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: false,
-            },
-        ),
-        (
-            "validation_status",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: false,
-            },
-        ),
-        (
-            "validator_id",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: false,
-            },
-        ),
-        (
-            "release_target",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: false,
-            },
-        ),
-        (
-            "release_version",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: false,
-            },
-        ),
-        (
-            "effort",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: false,
-            },
-        ),
-        (
-            "interview_file_type",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: false,
-            },
-        ),
-        (
-            "interview_files",
-            FieldSchema {
-                field_type: FieldType::Json,
-                required: false,
-            },
-        ),
-        (
-            "bootstrap_blocker",
-            FieldSchema {
-                field_type: FieldType::Boolean,
-                required: false,
-            },
-        ),
-        (
-            "rollout_stage",
-            FieldSchema {
-                field_type: FieldType::String,
-                required: false,
-            },
-        ),
-    ]
-    .into_iter()
-    .map(|(k, v)| (k.to_string(), v))
-    .collect();
-
-    let states = vec![
-        "new",
-        "ready",
-        "in-implementation",
-        "in-review",
-        "on-hold",
-        "done",
-        "cancelled",
-    ]
-    .into_iter()
-    .map(str::to_string)
-    .collect();
-
-    let transitions = vec![
-        // new ->
-        ("new", "ready"),
-        ("new", "cancelled"),
-        // ready ->
-        ("ready", "in-implementation"),
-        ("ready", "new"),
-        ("ready", "cancelled"),
-        // in-implementation ->
-        ("in-implementation", "in-review"),
-        ("in-implementation", "cancelled"),
-        // in-review ->
-        ("in-review", "done"),
-        ("in-review", "in-implementation"),
-        ("in-review", "on-hold"),
-        // on-hold ->
-        ("on-hold", "ready"),
-        ("on-hold", "in-implementation"),
-        ("on-hold", "in-review"),
-        ("on-hold", "cancelled"),
-        ("in-review", "cancelled"),
-        ("cancelled", "new"),
-        // ready ->
-        ("ready", "on-hold"),
-        // in-implementation ->
-        ("in-implementation", "on-hold"),
-    ]
-    .into_iter()
-    .map(|(f, t)| Transition {
-        from: f.to_string(),
-        to: t.to_string(),
-    })
-    .collect();
-
-    let mut edge_rules: BTreeMap<String, EdgeKindRule> = BTreeMap::new();
-    edge_rules.insert(
-        "depends_on".to_string(),
-        EdgeKindRule {
-            directed: true,
-            acyclic_enforced: true,
-        },
-    );
-    edge_rules.insert(
-        "linked".to_string(),
-        EdgeKindRule {
-            directed: false,
-            acyclic_enforced: false,
-        },
-    );
-
-    TicketTypeSchema {
-        type_id: TYPE_ID.to_string(),
-        fields,
-        states,
-        transitions,
-        edge_rules,
-        required_states: vec!["in-review".to_string()],
-        terminal_states: vec!["done".to_string()],
-    }
+    schema_for_type(TYPE_ID).expect("tracker-improvement is a built-in type")
 }
 
 /// Returns the built-in `bug` ticket type schema.
-///
-/// Bug tickets share the same workflow and validation requirements as
-/// tracker-improvement tickets, but preserve a dedicated semantic type.
 pub fn bug_schema() -> TicketTypeSchema {
-    let mut schema = tracker_improvement_schema();
-    schema.type_id = BUG_TYPE_ID.to_string();
-    schema
+    schema_for_type(BUG_TYPE_ID).expect("bug is a built-in type")
 }
 
 /// Returns the built-in `task` ticket type schema.
-///
-/// Task tickets share the same workflow and validation requirements as
-/// tracker-improvement tickets, but preserve a dedicated semantic type.
 pub fn task_schema() -> TicketTypeSchema {
-    let mut schema = tracker_improvement_schema();
-    schema.type_id = TASK_TYPE_ID.to_string();
-    schema
+    schema_for_type(TASK_TYPE_ID).expect("task is a built-in type")
 }
 
 /// Returns `true` if the given type ID is a known built-in type.
 pub fn is_builtin_type(type_id: &str) -> bool {
-    type_id == TYPE_ID || type_id == BUG_TYPE_ID || type_id == TASK_TYPE_ID
+    BUILTIN_SCHEMA_TOML.iter().any(|(id, _)| *id == type_id)
 }
 
-/// Resolve a type schema by type ID. Returns `None` for unknown types.
+/// Resolve a built-in type schema by type ID. Returns `None` for unknown types.
 pub fn schema_for_type(type_id: &str) -> Option<TicketTypeSchema> {
-    match type_id {
-        TYPE_ID => Some(tracker_improvement_schema()),
-        BUG_TYPE_ID => Some(bug_schema()),
-        TASK_TYPE_ID => Some(task_schema()),
-        _ => None,
-    }
+    BUILTIN_SCHEMA_TOML
+        .iter()
+        .find(|(id, _)| *id == type_id)
+        .map(|(id, toml_src)| parse_builtin(id, toml_src))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_builtin_schemas_parse() {
+        let schemas = builtin_schemas();
+        assert_eq!(schemas.len(), BUILTIN_SCHEMA_TOML.len());
+        for schema in &schemas {
+            assert!(
+                !schema.states.is_empty(),
+                "{} schema must define states",
+                schema.type_id
+            );
+            assert!(
+                schema.fields.contains_key("title"),
+                "{} schema must define a title field",
+                schema.type_id
+            );
+        }
+    }
+
+    #[test]
+    fn tracker_improvement_schema_parses_from_toml() {
+        let schema = tracker_improvement_schema();
+        assert_eq!(schema.type_id, TYPE_ID);
+        assert!(
+            schema
+                .required_states
+                .iter()
+                .any(|state| state == "in-review")
+        );
+        assert!(schema.terminal_states.iter().any(|state| state == "done"));
+    }
 
     #[test]
     fn bug_schema_uses_bug_type_id() {
@@ -260,13 +122,6 @@ mod tests {
                 .iter()
                 .any(|state| state == "in-review")
         );
-    }
-
-    #[test]
-    fn builtin_type_checks_include_bug() {
-        assert!(is_builtin_type(TYPE_ID));
-        assert!(is_builtin_type(BUG_TYPE_ID));
-        assert!(schema_for_type(BUG_TYPE_ID).is_some());
     }
 
     #[test]
@@ -282,8 +137,13 @@ mod tests {
     }
 
     #[test]
-    fn builtin_type_checks_include_task() {
+    fn builtin_type_checks_cover_all_types() {
+        assert!(is_builtin_type(TYPE_ID));
+        assert!(is_builtin_type(BUG_TYPE_ID));
         assert!(is_builtin_type(TASK_TYPE_ID));
+        assert!(!is_builtin_type("made-up-type"));
+        assert!(schema_for_type(BUG_TYPE_ID).is_some());
         assert!(schema_for_type(TASK_TYPE_ID).is_some());
+        assert!(schema_for_type("made-up-type").is_none());
     }
 }
