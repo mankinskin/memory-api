@@ -234,86 +234,139 @@ impl SessionStoreConfig {
         workspace_session_id: &str,
         draft: SessionWorkflowNodeDraft,
     ) -> Result<SessionRuntimeContext, SessionError> {
-        if draft.title.trim().is_empty() {
-            return Err(SessionError::InvalidHookInput(
-                "workflow node title cannot be empty".to_string(),
-            ));
-        }
+        self.workflow_add_nodes(workspace_session_id, vec![draft])
+    }
 
-        if draft.kind == crate::SessionWorkflowNodeKind::Ticket {
-            let ticket_urn = draft.ticket_urn.as_deref().ok_or_else(|| {
-                SessionError::InvalidHookInput(
-                    "ticket workflow node requires --ticket-urn".to_string(),
-                )
+    pub fn workflow_add_nodes(
+        &self,
+        workspace_session_id: &str,
+        drafts: Vec<SessionWorkflowNodeDraft>,
+    ) -> Result<SessionRuntimeContext, SessionError> {
+        for (index, draft) in drafts.iter().enumerate() {
+            validate_workflow_node_draft(draft).map_err(|error| {
+                indexed_workflow_error("nodes", index, error)
             })?;
-            let parsed = parse_entity_urn(ticket_urn)?;
-            if parsed.kind != SessionPinnedEntityKind::Ticket {
-                return Err(SessionError::InvalidHookInput(format!(
-                    "ticket workflow node requires a ticket URN, got {}",
-                    ticket_urn
-                )));
-            }
-        } else if draft.ticket_urn.is_some() {
-            return Err(SessionError::InvalidHookInput(
-                "only ticket workflow nodes may set ticket_urn".to_string(),
-            ));
-        }
-
-        if draft.kind == crate::SessionWorkflowNodeKind::Spec {
-            let spec_urn = draft.spec_urn.as_deref().ok_or_else(|| {
-                SessionError::InvalidHookInput(
-                    "spec workflow node requires --spec-urn".to_string(),
-                )
-            })?;
-            let parsed = parse_entity_urn(spec_urn)?;
-            if parsed.kind != SessionPinnedEntityKind::Spec {
-                return Err(SessionError::InvalidHookInput(format!(
-                    "spec workflow node requires a spec URN, got {}",
-                    spec_urn
-                )));
-            }
-        } else if draft.spec_urn.is_some() {
-            return Err(SessionError::InvalidHookInput(
-                "only spec workflow nodes may set spec_urn".to_string(),
-            ));
         }
 
         let _lock = self.begin_runtime_mutation(workspace_session_id)?;
         let mut context = self.read_runtime_context(workspace_session_id)?;
-        let node_id = draft
-            .node_id
-            .clone()
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let now = chrono::Utc::now();
+        let mut changed = false;
 
-        if context
-            .workflow
-            .nodes
-            .iter()
-            .any(|node| node.node_id == node_id)
-        {
-            return Ok(context);
+        for draft in drafts {
+            let node_id = draft
+                .node_id
+                .clone()
+                .unwrap_or_else(|| Uuid::new_v4().to_string());
+            if context
+                .workflow
+                .nodes
+                .iter()
+                .any(|node| node.node_id == node_id)
+            {
+                continue;
+            }
+
+            context.workflow.nodes.push(SessionWorkflowNode {
+                node_id,
+                kind: draft.kind,
+                requirement: draft.requirement,
+                status: SessionWorkflowNodeStatus::Pending,
+                title: draft.title,
+                created_at: now,
+                updated_at: now,
+                ticket_urn: draft.ticket_urn,
+                spec_urn: draft.spec_urn,
+                anchor_urn: draft.anchor_urn,
+                category: draft.category,
+                cached_ticket_title: draft.cached_ticket_title,
+                deferred_reason: None,
+                validation_spec_id: draft.validation_spec_id,
+            });
+            changed = true;
         }
 
-        let now = chrono::Utc::now();
-        context.workflow.nodes.push(SessionWorkflowNode {
-            node_id,
-            kind: draft.kind,
-            requirement: draft.requirement,
-            status: SessionWorkflowNodeStatus::Pending,
-            title: draft.title,
-            created_at: now,
-            updated_at: now,
-            ticket_urn: draft.ticket_urn,
-            spec_urn: draft.spec_urn,
-            category: draft.category,
-            cached_ticket_title: draft.cached_ticket_title,
-            deferred_reason: None,
-            validation_spec_id: draft.validation_spec_id,
-        });
-        sort_workflow_graph(&mut context.workflow);
-        context.updated_at = now;
-        self.persist_runtime_context(&context)?;
+        if changed {
+            sort_workflow_graph(&mut context.workflow);
+            context.updated_at = now;
+            self.persist_runtime_context(&context)?;
+        }
         Ok(context)
     }
+}
 
+fn validate_workflow_node_draft(
+    draft: &SessionWorkflowNodeDraft
+) -> Result<(), SessionError> {
+    if draft.title.trim().is_empty() {
+        return Err(SessionError::InvalidHookInput(
+            "workflow node title cannot be empty".to_string(),
+        ));
+    }
+
+    if draft.kind == crate::SessionWorkflowNodeKind::Ticket {
+        let ticket_urn = draft.ticket_urn.as_deref().ok_or_else(|| {
+            SessionError::InvalidHookInput(
+                "ticket workflow node requires --ticket-urn".to_string(),
+            )
+        })?;
+        let parsed = parse_entity_urn(ticket_urn)?;
+        if parsed.kind != SessionPinnedEntityKind::Ticket {
+            return Err(SessionError::InvalidHookInput(format!(
+                "ticket workflow node requires a ticket URN, got {}",
+                ticket_urn
+            )));
+        }
+    } else if draft.ticket_urn.is_some() {
+        return Err(SessionError::InvalidHookInput(
+                "only ticket workflow nodes may set ticket_urn; for a non-gating reference, use anchor_urn or pin the ticket"
+                    .to_string(),
+            ));
+    }
+
+    if draft.kind == crate::SessionWorkflowNodeKind::Spec {
+        let spec_urn = draft.spec_urn.as_deref().ok_or_else(|| {
+            SessionError::InvalidHookInput(
+                "spec workflow node requires --spec-urn".to_string(),
+            )
+        })?;
+        let parsed = parse_entity_urn(spec_urn)?;
+        if parsed.kind != SessionPinnedEntityKind::Spec {
+            return Err(SessionError::InvalidHookInput(format!(
+                "spec workflow node requires a spec URN, got {}",
+                spec_urn
+            )));
+        }
+    } else if draft.spec_urn.is_some() {
+        return Err(SessionError::InvalidHookInput(
+                "only spec workflow nodes may set spec_urn; for a non-gating reference, use anchor_urn or pin the spec"
+                    .to_string(),
+            ));
+    }
+
+    if let Some(anchor_urn) = draft.anchor_urn.as_deref() {
+        let parsed = parse_entity_urn(anchor_urn)?;
+        if !matches!(
+            parsed.kind,
+            SessionPinnedEntityKind::Ticket | SessionPinnedEntityKind::Spec
+        ) {
+            return Err(SessionError::InvalidHookInput(format!(
+                "anchor_urn requires a ticket or spec URN, got {anchor_urn}"
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+pub(super) fn indexed_workflow_error(
+    collection: &str,
+    index: usize,
+    error: SessionError,
+) -> SessionError {
+    let message = match error {
+        SessionError::InvalidHookInput(message) => message,
+        other => other.to_string(),
+    };
+    SessionError::InvalidHookInput(format!("{collection}[{index}]: {message}"))
 }

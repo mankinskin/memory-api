@@ -1,4 +1,3 @@
-
 #[test]
 fn pinned_rule_render_contains_only_rule_pins_in_canonical_order() {
     let tempdir = TempDir::new().unwrap();
@@ -185,6 +184,7 @@ fn workflow_persists_mutation_and_reload() {
                         .to_string(),
                 ),
                 spec_urn: None,
+                anchor_urn: None,
                 category: None,
                 cached_ticket_title: Some(
                     "Runtime session context".to_string(),
@@ -205,7 +205,11 @@ fn workflow_persists_mutation_and_reload() {
                 title: "Write workflow tests".to_string(),
                 ticket_urn: None,
                 spec_urn: None,
-                category: None,
+                anchor_urn: Some(
+                    "ce://default/tickets/412964a3-e1c3-47da-94ad-268ff20441c0"
+                        .to_string(),
+                ),
+                category: Some("review-criterion".to_string()),
                 cached_ticket_title: None,
                 validation_spec_id: None,
             },
@@ -245,6 +249,20 @@ fn workflow_persists_mutation_and_reload() {
     let reloaded = config.read_runtime_context(&workspace_id).unwrap();
     assert_eq!(reloaded.workflow.nodes.len(), 2);
     assert_eq!(reloaded.workflow.edges.len(), 1);
+    let reloaded_action = reloaded
+        .workflow
+        .nodes
+        .iter()
+        .find(|node| node.node_id == "node-action")
+        .unwrap();
+    assert_eq!(
+        reloaded_action.anchor_urn.as_deref(),
+        Some("ce://default/tickets/412964a3-e1c3-47da-94ad-268ff20441c0")
+    );
+    assert_eq!(
+        reloaded_action.category.as_deref(),
+        Some("review-criterion")
+    );
 }
 
 #[test]
@@ -267,6 +285,7 @@ fn workflow_promotion_preserves_node_identity() {
                 title: "Investigate follow-up".to_string(),
                 ticket_urn: None,
                 spec_urn: None,
+                anchor_urn: None,
                 category: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,
@@ -318,6 +337,7 @@ fn workflow_ticket_node_rejects_non_ticket_urn() {
                         .to_string(),
                 ),
                 spec_urn: None,
+                anchor_urn: None,
                 category: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,
@@ -326,4 +346,84 @@ fn workflow_ticket_node_rejects_non_ticket_urn() {
         .unwrap_err();
 
     assert!(matches!(error, SessionError::InvalidHookInput(_)));
+}
+
+#[test]
+fn workflow_batches_are_atomic_and_preserve_duplicate_no_ops() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+    let draft = |node_id: &str, title: &str| SessionWorkflowNodeDraft {
+        node_id: Some(node_id.to_string()),
+        kind: SessionWorkflowNodeKind::Task,
+        requirement: SessionWorkflowNodeRequirement::Optional,
+        title: title.to_string(),
+        ticket_urn: None,
+        spec_urn: None,
+        anchor_urn: None,
+        category: None,
+        cached_ticket_title: None,
+        validation_spec_id: None,
+    };
+
+    let node_error = config
+        .workflow_add_nodes(
+            &workspace_id,
+            vec![draft("a", "first"), draft("bad", " ")],
+        )
+        .unwrap_err();
+    assert!(node_error.to_string().contains("nodes[1]"));
+    assert!(
+        config
+            .read_runtime_context(&workspace_id)
+            .unwrap()
+            .workflow
+            .nodes
+            .is_empty()
+    );
+
+    let nodes = config
+        .workflow_add_nodes(
+            &workspace_id,
+            vec![
+                draft("a", "first"),
+                draft("b", "second"),
+                draft("a", "duplicate"),
+            ],
+        )
+        .unwrap();
+    assert_eq!(nodes.workflow.nodes.len(), 2);
+
+    let edge = |from: &str, to: &str| crate::SessionWorkflowEdge {
+        from: from.to_string(),
+        to: to.to_string(),
+        kind: SessionWorkflowEdgeKind::DependsOn,
+    };
+    let edge_error = config
+        .workflow_add_edges(
+            &workspace_id,
+            vec![edge("a", "b"), edge("a", "missing")],
+        )
+        .unwrap_err();
+    assert!(edge_error.to_string().contains("edges[1]"));
+    assert!(
+        config
+            .read_runtime_context(&workspace_id)
+            .unwrap()
+            .workflow
+            .edges
+            .is_empty()
+    );
+
+    let edges = config
+        .workflow_add_edges(
+            &workspace_id,
+            vec![edge("a", "b"), edge("b", "a"), edge("a", "b")],
+        )
+        .unwrap();
+    assert_eq!(edges.workflow.edges.len(), 2);
 }

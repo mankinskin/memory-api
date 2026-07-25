@@ -78,6 +78,10 @@ pub struct SessionWorkflowNode {
     pub ticket_urn: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spec_urn: Option<String>,
+    /// Optional ticket or spec reference for context. Unlike `ticket_urn` and
+    /// `spec_urn`, this field never participates in finish gating.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_urn: Option<String>,
     /// Open, free-text descriptive classification. No production code branches
     /// on this value; it exists so agents never hit an expressiveness wall for
     /// labels that do not drive behavior.
@@ -117,6 +121,8 @@ pub struct SessionWorkflowNodeDraft {
     pub ticket_urn: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spec_urn: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_urn: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

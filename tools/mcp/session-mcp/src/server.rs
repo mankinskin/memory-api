@@ -32,6 +32,7 @@ use session_api::{
     SessionRuntimeInitRequest,
     SessionStoreConfig,
     SessionValidationGate,
+    SessionWorkflowEdge,
     SessionWorkflowEdgeKind,
     SessionWorkflowNodeDraft,
     SessionWorkflowNodeKind,
@@ -236,7 +237,12 @@ pub struct WorkflowAddNodeInput {
     /// Spec URN for a `spec` behavioral node (mirror of ticket_urn).
     #[serde(default)]
     pub spec_urn: Option<String>,
-    /// Open, free-text descriptive category. No gating logic branches on it.
+    /// Optional ticket or spec URN for context on any node kind. Never gates
+    /// finish; use ticket_urn/spec_urn for their matching behavioral kinds.
+    #[serde(default)]
+    pub anchor_urn: Option<String>,
+    /// Free-text custom label for descriptive nodes. For a custom kind, keep
+    /// kind=`task` and set category; no gating logic branches on this value.
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
@@ -254,6 +260,51 @@ pub struct WorkflowAddEdgeInput {
     /// Edge kind. Legal values: depends-on (alias depends_on), order.
     #[schemars(with = "WorkflowEdgeKindSchema")]
     pub kind: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WorkflowNodeDraftInput {
+    #[serde(default)]
+    pub node_id: Option<String>,
+    #[schemars(with = "WorkflowNodeKindSchema")]
+    pub kind: String,
+    #[schemars(with = "WorkflowRequirementSchema")]
+    pub requirement: String,
+    pub title: String,
+    #[serde(default)]
+    pub ticket_urn: Option<String>,
+    #[serde(default)]
+    pub spec_urn: Option<String>,
+    #[serde(default)]
+    pub anchor_urn: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub cached_ticket_title: Option<String>,
+    #[serde(default)]
+    pub validation_spec_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WorkflowAddNodesInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+    pub nodes: Vec<WorkflowNodeDraftInput>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WorkflowEdgeDraftInput {
+    pub from: String,
+    pub to: String,
+    #[schemars(with = "WorkflowEdgeKindSchema")]
+    pub kind: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WorkflowAddEdgesInput {
+    pub workspace: String,
+    pub workspace_session_id: String,
+    pub edges: Vec<WorkflowEdgeDraftInput>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -518,7 +569,8 @@ fn parse_node_kind(value: &str) -> Result<SessionWorkflowNodeKind, McpError> {
             format!(
                 "invalid workflow node kind: {value}. allowed values: \
                  ticket, validation, spec, task \
-                 (deprecated aliases mapped to task: action, decision, checkpoint)"
+                 (deprecated aliases mapped to task: action, decision, checkpoint); \
+                 for a custom label, use kind=task with category=\"<your-label>\""
             ),
             None,
         )),
@@ -534,7 +586,7 @@ fn parse_requirement(
         _ => Err(McpError::invalid_params(
             format!(
                 "invalid workflow requirement: {value}. allowed values: \
-                 required, optional"
+                 required, optional; did you mean requirement=required?"
             ),
             None,
         )),
@@ -548,7 +600,8 @@ fn parse_edge_kind(value: &str) -> Result<SessionWorkflowEdgeKind, McpError> {
         _ => Err(McpError::invalid_params(
             format!(
                 "invalid workflow edge kind: {value}. allowed values: \
-                 depends-on (alias depends_on), order"
+                 depends-on (alias depends_on), order; \
+                 did you mean kind=depends-on?"
             ),
             None,
         )),
@@ -568,11 +621,23 @@ fn parse_node_status(
         _ => Err(McpError::invalid_params(
             format!(
                 "invalid workflow status: {value}. allowed values: \
-                 pending, in-progress (alias in_progress), blocked, done, deferred"
+                 pending, in-progress (alias in_progress), blocked, done, deferred; \
+                 did you mean status=in-progress?"
             ),
             None,
         )),
     }
+}
+
+fn indexed_mcp_error(
+    collection: &str,
+    index: usize,
+    error: McpError,
+) -> McpError {
+    McpError::invalid_params(
+        format!("{collection}[{index}]: {}", error.message),
+        None,
+    )
 }
 
 /// Build the self-describing session capability catalog.
@@ -604,8 +669,12 @@ fn session_capability_catalog() -> serde_json::Value {
                  "purpose": "Read headers-only pinned-context view."},
                 {"order": 3, "tool": "session_workflow_add_node",
                  "purpose": "Add a durable workflow node (see node kind/requirement enums)."},
+                {"order": 3, "tool": "session_workflow_add_nodes",
+                 "purpose": "Atomically add multiple durable workflow nodes."},
                 {"order": 3, "tool": "session_workflow_add_edge",
                  "purpose": "Link two workflow nodes (see edge kind enum)."},
+                {"order": 3, "tool": "session_workflow_add_edges",
+                 "purpose": "Atomically add multiple workflow edges."},
                 {"order": 3, "tool": "session_workflow_set_status",
                  "purpose": "Update a node status (see status enum)."},
                 {"order": 4, "tool": "session_workflow_render_terminal",
@@ -794,11 +863,50 @@ impl SessionServer {
                     title: input.title,
                     ticket_urn: input.ticket_urn,
                     spec_urn: input.spec_urn,
+                    anchor_urn: input.anchor_urn,
                     category: input.category,
                     cached_ticket_title: input.cached_ticket_title,
                     validation_spec_id: input.validation_spec_id,
                 },
             )
+            .map_err(Self::session_err)?;
+        Self::json_result_with_handle(&input.workspace_session_id, &context)
+    }
+
+    #[tool(
+        name = "session_workflow_add_nodes",
+        description = "Atomically add workflow nodes; errors identify nodes[index]."
+    )]
+    pub async fn session_workflow_add_nodes(
+        &self,
+        Parameters(input): Parameters<WorkflowAddNodesInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let drafts = input
+            .nodes
+            .into_iter()
+            .enumerate()
+            .map(|(index, node)| {
+                Ok(SessionWorkflowNodeDraft {
+                    node_id: node.node_id,
+                    kind: parse_node_kind(&node.kind).map_err(|error| {
+                        indexed_mcp_error("nodes", index, error)
+                    })?,
+                    requirement: parse_requirement(&node.requirement).map_err(
+                        |error| indexed_mcp_error("nodes", index, error),
+                    )?,
+                    title: node.title,
+                    ticket_urn: node.ticket_urn,
+                    spec_urn: node.spec_urn,
+                    anchor_urn: node.anchor_urn,
+                    category: node.category,
+                    cached_ticket_title: node.cached_ticket_title,
+                    validation_spec_id: node.validation_spec_id,
+                })
+            })
+            .collect::<Result<Vec<_>, McpError>>()?;
+        let context = self
+            .config_for_workspace(&input.workspace)?
+            .workflow_add_nodes(&input.workspace_session_id, drafts)
             .map_err(Self::session_err)?;
         Self::json_result_with_handle(&input.workspace_session_id, &context)
     }
@@ -819,6 +927,35 @@ impl SessionServer {
                 &input.to,
                 parse_edge_kind(&input.kind)?,
             )
+            .map_err(Self::session_err)?;
+        Self::json_result_with_handle(&input.workspace_session_id, &context)
+    }
+
+    #[tool(
+        name = "session_workflow_add_edges",
+        description = "Atomically add workflow edges; errors identify edges[index]."
+    )]
+    pub async fn session_workflow_add_edges(
+        &self,
+        Parameters(input): Parameters<WorkflowAddEdgesInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let edges = input
+            .edges
+            .into_iter()
+            .enumerate()
+            .map(|(index, edge)| {
+                Ok(SessionWorkflowEdge {
+                    from: edge.from,
+                    to: edge.to,
+                    kind: parse_edge_kind(&edge.kind).map_err(|error| {
+                        indexed_mcp_error("edges", index, error)
+                    })?,
+                })
+            })
+            .collect::<Result<Vec<_>, McpError>>()?;
+        let context = self
+            .config_for_workspace(&input.workspace)?
+            .workflow_add_edges(&input.workspace_session_id, edges)
             .map_err(Self::session_err)?;
         Self::json_result_with_handle(&input.workspace_session_id, &context)
     }
@@ -1541,18 +1678,34 @@ mod tests {
         assert!(kind_err.message.contains("validation"));
         assert!(kind_err.message.contains("spec"));
         assert!(kind_err.message.contains("task"));
+        assert!(
+            kind_err
+                .message
+                .contains("kind=task with category=\"<your-label>\"")
+        );
 
         let edge_err = parse_edge_kind("nope").unwrap_err();
         assert!(edge_err.message.contains("depends-on"));
         assert!(edge_err.message.contains("order"));
+        assert!(edge_err.message.contains("did you mean kind=depends-on?"));
 
         let status_err = parse_node_status("doing").unwrap_err();
         assert!(status_err.message.contains("in-progress"));
         assert!(status_err.message.contains("deferred"));
+        assert!(
+            status_err
+                .message
+                .contains("did you mean status=in-progress?")
+        );
 
         let req_err = parse_requirement("maybe").unwrap_err();
         assert!(req_err.message.contains("required"));
         assert!(req_err.message.contains("optional"));
+        assert!(
+            req_err
+                .message
+                .contains("did you mean requirement=required?")
+        );
     }
 
     // ── T-HANDLE: init/resume + workflow tools echo workspace_session_id ──────
@@ -1595,6 +1748,7 @@ mod tests {
                 title: "descriptive".to_string(),
                 ticket_urn: None,
                 spec_urn: None,
+                anchor_urn: None,
                 category: Some("note".to_string()),
                 cached_ticket_title: None,
                 validation_spec_id: None,
@@ -1603,6 +1757,117 @@ mod tests {
             .expect("add node");
         let node_payload = extract_json(node);
         assert_eq!(node_payload["workspace_session_id"].as_str(), Some(handle));
+    }
+
+    #[tokio::test]
+    async fn workflow_batch_tools_are_atomic_and_report_array_index() {
+        let dir = tempdir().unwrap();
+        let session_root = dir.path().join(".session");
+        let workspace = session_root.display().to_string();
+        let server =
+            SessionServer::new(session_root.clone(), "default".to_string());
+        let config = server.config_for_workspace(&workspace).unwrap();
+        let init = config
+            .init_runtime_context(SessionRuntimeInitRequest::default())
+            .unwrap();
+        let workspace_session_id = init.context.workspace_session_id;
+        let node = |node_id: &str, kind: &str| WorkflowNodeDraftInput {
+            node_id: Some(node_id.to_string()),
+            kind: kind.to_string(),
+            requirement: "optional".to_string(),
+            title: node_id.to_string(),
+            ticket_urn: None,
+            spec_urn: None,
+            anchor_urn: None,
+            category: None,
+            cached_ticket_title: None,
+            validation_spec_id: None,
+        };
+
+        let node_error = server
+            .session_workflow_add_nodes(Parameters(WorkflowAddNodesInput {
+                workspace: workspace.clone(),
+                workspace_session_id: workspace_session_id.clone(),
+                nodes: vec![node("a", "task"), node("bad", "review-criterion")],
+            }))
+            .await
+            .unwrap_err();
+        assert!(node_error.message.contains("nodes[1]"));
+        assert!(
+            node_error
+                .message
+                .contains("kind=task with category=\"<your-label>\"")
+        );
+        assert!(
+            config
+                .read_runtime_context(&workspace_session_id)
+                .unwrap()
+                .workflow
+                .nodes
+                .is_empty()
+        );
+
+        let node_result = server
+            .session_workflow_add_nodes(Parameters(WorkflowAddNodesInput {
+                workspace: workspace.clone(),
+                workspace_session_id: workspace_session_id.clone(),
+                nodes: vec![node("a", "task"), node("b", "task")],
+            }))
+            .await
+            .unwrap();
+        assert_eq!(
+            extract_json(node_result)["workflow"]["nodes"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+
+        let edge = |from: &str, to: &str, kind: &str| WorkflowEdgeDraftInput {
+            from: from.to_string(),
+            to: to.to_string(),
+            kind: kind.to_string(),
+        };
+        let edge_error = server
+            .session_workflow_add_edges(Parameters(WorkflowAddEdgesInput {
+                workspace: workspace.clone(),
+                workspace_session_id: workspace_session_id.clone(),
+                edges: vec![
+                    edge("a", "b", "depends-on"),
+                    edge("b", "a", "related-to"),
+                ],
+            }))
+            .await
+            .unwrap_err();
+        assert!(edge_error.message.contains("edges[1]"));
+        assert!(edge_error.message.contains("did you mean kind=depends-on?"));
+        assert!(
+            config
+                .read_runtime_context(&workspace_session_id)
+                .unwrap()
+                .workflow
+                .edges
+                .is_empty()
+        );
+
+        let edge_result = server
+            .session_workflow_add_edges(Parameters(WorkflowAddEdgesInput {
+                workspace,
+                workspace_session_id,
+                edges: vec![
+                    edge("a", "b", "depends-on"),
+                    edge("b", "a", "order"),
+                ],
+            }))
+            .await
+            .unwrap();
+        assert_eq!(
+            extract_json(edge_result)["workflow"]["edges"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
     }
 
     // ── T-CATALOG: session lifecycle + enums are discoverable ────────────────

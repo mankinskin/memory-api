@@ -42,6 +42,7 @@ fn finished_check_runs_under_mutation_lock() {
                 title: "blocked".to_string(),
                 ticket_urn: None,
                 spec_urn: None,
+                anchor_urn: None,
                 category: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,

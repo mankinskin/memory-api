@@ -39,6 +39,21 @@ impl SessionStoreConfig {
         to: &str,
         kind: SessionWorkflowEdgeKind,
     ) -> Result<SessionRuntimeContext, SessionError> {
+        self.workflow_add_edges(
+            workspace_session_id,
+            vec![SessionWorkflowEdge {
+                from: from.to_string(),
+                to: to.to_string(),
+                kind,
+            }],
+        )
+    }
+
+    pub fn workflow_add_edges(
+        &self,
+        workspace_session_id: &str,
+        edges: Vec<SessionWorkflowEdge>,
+    ) -> Result<SessionRuntimeContext, SessionError> {
         let _lock = self.begin_runtime_mutation(workspace_session_id)?;
         let mut context = self.read_runtime_context(workspace_session_id)?;
         let known = context
@@ -47,24 +62,35 @@ impl SessionStoreConfig {
             .iter()
             .map(|node| node.node_id.as_str())
             .collect::<std::collections::BTreeSet<_>>();
-        if !known.contains(from) || !known.contains(to) {
-            return Err(SessionError::InvalidHookInput(format!(
-                "cannot link unknown workflow nodes: {from} -> {to}"
-            )));
+        for (index, edge) in edges.iter().enumerate() {
+            if !known.contains(edge.from.as_str())
+                || !known.contains(edge.to.as_str())
+            {
+                return Err(indexed_workflow_error(
+                    "edges",
+                    index,
+                    SessionError::InvalidHookInput(format!(
+                        "cannot link unknown workflow nodes: {} -> {}; add both nodes first",
+                        edge.from, edge.to
+                    )),
+                ));
+            }
         }
 
-        let edge = SessionWorkflowEdge {
-            from: from.to_string(),
-            to: to.to_string(),
-            kind,
-        };
-        if !context
-            .workflow
-            .edges
-            .iter()
-            .any(|existing| existing == &edge)
-        {
+        let mut changed = false;
+        for edge in edges {
+            if context
+                .workflow
+                .edges
+                .iter()
+                .any(|existing| existing == &edge)
+            {
+                continue;
+            }
             context.workflow.edges.push(edge);
+            changed = true;
+        }
+        if changed {
             sort_workflow_graph(&mut context.workflow);
             context.updated_at = chrono::Utc::now();
             self.persist_runtime_context(&context)?;
@@ -322,5 +348,4 @@ impl SessionStoreConfig {
 
         Ok(lines.join("\n"))
     }
-
 }

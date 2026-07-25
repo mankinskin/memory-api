@@ -5,6 +5,7 @@ use clap::{
     Parser,
     Subcommand,
 };
+use serde::Deserialize;
 use serde_json::{
     Value,
     json,
@@ -21,6 +22,7 @@ use session_api::{
     SessionRuntimeInitRequest,
     SessionStoreConfig,
     SessionValidationGate,
+    SessionWorkflowEdge,
     SessionWorkflowEdgeKind,
     SessionWorkflowNodeDraft,
     SessionWorkflowNodeKind,
@@ -87,8 +89,12 @@ pub enum SessionCommand {
     },
     /// Add a workflow node.
     WorkflowAddNode(WorkflowAddNodeArgs),
+    /// Atomically add workflow nodes from a JSON array.
+    WorkflowAddNodes(WorkflowAddNodesArgs),
     /// Link two workflow nodes.
     WorkflowAddEdge(WorkflowAddEdgeArgs),
+    /// Atomically add workflow edges from a JSON array.
+    WorkflowAddEdges(WorkflowAddEdgesArgs),
     /// Update workflow node status.
     WorkflowSetStatus(WorkflowSetStatusArgs),
     /// Promote a workflow node to a ticket-backed node.
@@ -123,8 +129,12 @@ pub enum SessionCommand {
 pub enum WorkflowCommand {
     /// Add a workflow node.
     AddNode(WorkflowAddNodeArgs),
+    /// Atomically add workflow nodes from a JSON array.
+    AddNodes(WorkflowAddNodesArgs),
     /// Link two workflow nodes.
     AddEdge(WorkflowAddEdgeArgs),
+    /// Atomically add workflow edges from a JSON array.
+    AddEdges(WorkflowAddEdgesArgs),
     /// Update workflow node status.
     SetStatus(WorkflowSetStatusArgs),
     /// Promote a workflow node to a ticket-backed node.
@@ -301,6 +311,9 @@ pub struct WorkflowAddNodeArgs {
     /// Spec URN for a `spec` behavioral node (mirror of --ticket-urn).
     #[arg(long)]
     pub spec_urn: Option<String>,
+    /// Optional non-gating ticket or spec reference for any node kind.
+    #[arg(long)]
+    pub anchor_urn: Option<String>,
     /// Open, free-text descriptive category. No gating logic branches on it.
     #[arg(long)]
     pub category: Option<String>,
@@ -320,6 +333,52 @@ pub struct WorkflowAddEdgeArgs {
     pub to: String,
     #[arg(long)]
     pub kind: String,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkflowAddNodesArgs {
+    #[arg(long)]
+    pub workspace_session_id: String,
+    /// JSON array of node drafts.
+    #[arg(long, value_name = "JSON")]
+    pub nodes_json: String,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkflowAddEdgesArgs {
+    #[arg(long)]
+    pub workspace_session_id: String,
+    /// JSON array of edge drafts.
+    #[arg(long, value_name = "JSON")]
+    pub edges_json: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct WorkflowNodeDraftJson {
+    #[serde(default)]
+    node_id: Option<String>,
+    kind: String,
+    requirement: String,
+    title: String,
+    #[serde(default)]
+    ticket_urn: Option<String>,
+    #[serde(default)]
+    spec_urn: Option<String>,
+    #[serde(default)]
+    anchor_urn: Option<String>,
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    cached_ticket_title: Option<String>,
+    #[serde(default)]
+    validation_spec_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WorkflowEdgeDraftJson {
+    from: String,
+    to: String,
+    kind: String,
 }
 
 #[derive(Debug, Args)]
@@ -473,8 +532,12 @@ fn dispatch(
             handle_workflow_command(&config, command),
         SessionCommand::WorkflowAddNode(args) =>
             handle_workflow_command(&config, WorkflowCommand::AddNode(args)),
+        SessionCommand::WorkflowAddNodes(args) =>
+            handle_workflow_command(&config, WorkflowCommand::AddNodes(args)),
         SessionCommand::WorkflowAddEdge(args) =>
             handle_workflow_command(&config, WorkflowCommand::AddEdge(args)),
+        SessionCommand::WorkflowAddEdges(args) =>
+            handle_workflow_command(&config, WorkflowCommand::AddEdges(args)),
         SessionCommand::WorkflowSetStatus(args) =>
             handle_workflow_command(&config, WorkflowCommand::SetStatus(args)),
         SessionCommand::WorkflowPromote(args) =>
@@ -576,11 +639,46 @@ fn handle_workflow_command(
                     title: args.title,
                     ticket_urn: args.ticket_urn,
                     spec_urn: args.spec_urn,
+                    anchor_urn: args.anchor_urn,
                     category: args.category,
                     cached_ticket_title: args.cached_ticket_title,
                     validation_spec_id: args.validation_spec_id,
                 },
             )?;
+            to_value(&context)
+        },
+        WorkflowCommand::AddNodes(args) => {
+            let nodes = serde_json::from_str::<Vec<WorkflowNodeDraftJson>>(
+                &args.nodes_json,
+            )
+            .map_err(|error| {
+                CliRunError::BadRequest(format!(
+                    "invalid --nodes-json payload: {error}"
+                ))
+            })?
+            .into_iter()
+            .enumerate()
+            .map(|(index, node)| {
+                Ok(SessionWorkflowNodeDraft {
+                    node_id: node.node_id,
+                    kind: parse_node_kind(&node.kind).map_err(|error| {
+                        indexed_cli_error("nodes", index, error)
+                    })?,
+                    requirement: parse_requirement(&node.requirement).map_err(
+                        |error| indexed_cli_error("nodes", index, error),
+                    )?,
+                    title: node.title,
+                    ticket_urn: node.ticket_urn,
+                    spec_urn: node.spec_urn,
+                    anchor_urn: node.anchor_urn,
+                    category: node.category,
+                    cached_ticket_title: node.cached_ticket_title,
+                    validation_spec_id: node.validation_spec_id,
+                })
+            })
+            .collect::<Result<Vec<_>, CliRunError>>()?;
+            let context =
+                config.workflow_add_nodes(&args.workspace_session_id, nodes)?;
             to_value(&context)
         },
         WorkflowCommand::AddEdge(args) => {
@@ -590,6 +688,31 @@ fn handle_workflow_command(
                 &args.to,
                 parse_edge_kind(&args.kind)?,
             )?;
+            to_value(&context)
+        },
+        WorkflowCommand::AddEdges(args) => {
+            let edges = serde_json::from_str::<Vec<WorkflowEdgeDraftJson>>(
+                &args.edges_json,
+            )
+            .map_err(|error| {
+                CliRunError::BadRequest(format!(
+                    "invalid --edges-json payload: {error}"
+                ))
+            })?
+            .into_iter()
+            .enumerate()
+            .map(|(index, edge)| {
+                Ok(SessionWorkflowEdge {
+                    from: edge.from,
+                    to: edge.to,
+                    kind: parse_edge_kind(&edge.kind).map_err(|error| {
+                        indexed_cli_error("edges", index, error)
+                    })?,
+                })
+            })
+            .collect::<Result<Vec<_>, CliRunError>>()?;
+            let context =
+                config.workflow_add_edges(&args.workspace_session_id, edges)?;
             to_value(&context)
         },
         WorkflowCommand::SetStatus(args) => {
@@ -650,7 +773,8 @@ fn parse_node_kind(
         _ => Err(CliRunError::BadRequest(format!(
             "invalid workflow node kind: {value}. allowed values: \
              ticket, validation, spec, task \
-             (deprecated aliases mapped to task: action, decision, checkpoint)"
+             (deprecated aliases mapped to task: action, decision, checkpoint); \
+             for a custom label, use kind=task with category=\"<your-label>\""
         ))),
     }
 }
@@ -663,7 +787,7 @@ fn parse_requirement(
         "optional" => Ok(SessionWorkflowNodeRequirement::Optional),
         _ => Err(CliRunError::BadRequest(format!(
             "invalid workflow requirement: {value}. allowed values: \
-             required, optional"
+             required, optional; did you mean requirement=required?"
         ))),
     }
 }
@@ -676,7 +800,8 @@ fn parse_edge_kind(
         "order" => Ok(SessionWorkflowEdgeKind::Order),
         _ => Err(CliRunError::BadRequest(format!(
             "invalid workflow edge kind: {value}. allowed values: \
-             depends-on (alias depends_on), order"
+             depends-on (alias depends_on), order; \
+             did you mean kind=depends-on?"
         ))),
     }
 }
@@ -693,9 +818,22 @@ fn parse_node_status(
         "deferred" => Ok(SessionWorkflowNodeStatus::Deferred),
         _ => Err(CliRunError::BadRequest(format!(
             "invalid workflow status: {value}. allowed values: \
-             pending, in-progress (alias in_progress), blocked, done, deferred"
+             pending, in-progress (alias in_progress), blocked, done, deferred; \
+             did you mean status=in-progress?"
         ))),
     }
+}
+
+fn indexed_cli_error(
+    collection: &str,
+    index: usize,
+    error: CliRunError,
+) -> CliRunError {
+    let message = match error {
+        CliRunError::BadRequest(message) => message,
+        other => other.to_string(),
+    };
+    CliRunError::BadRequest(format!("{collection}[{index}]: {message}"))
 }
 
 fn move_command(
@@ -1021,6 +1159,67 @@ mod tests {
             },
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn workflow_batch_commands_dispatch_atomically() {
+        let dir = tempfile::tempdir().unwrap();
+        let config =
+            SessionStoreConfig::new(dir.path().join(".session"), "default");
+        let init = config
+            .init_runtime_context(SessionRuntimeInitRequest::default())
+            .unwrap();
+        let workspace_session_id = init.context.workspace_session_id;
+
+        let error = handle_workflow_command(
+            &config,
+            WorkflowCommand::AddNodes(WorkflowAddNodesArgs {
+                workspace_session_id: workspace_session_id.clone(),
+                nodes_json: r#"[
+                    {"node_id":"a","kind":"task","requirement":"optional","title":"a"},
+                    {"node_id":"bad","kind":"review-criterion","requirement":"optional","title":"bad"}
+                ]"#
+                .to_string(),
+            }),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("nodes[1]"));
+        assert!(
+            config
+                .read_runtime_context(&workspace_session_id)
+                .unwrap()
+                .workflow
+                .nodes
+                .is_empty()
+        );
+
+        let nodes = handle_workflow_command(
+            &config,
+            WorkflowCommand::AddNodes(WorkflowAddNodesArgs {
+                workspace_session_id: workspace_session_id.clone(),
+                nodes_json: r#"[
+                    {"node_id":"a","kind":"task","requirement":"optional","title":"a"},
+                    {"node_id":"b","kind":"task","requirement":"optional","title":"b"}
+                ]"#
+                .to_string(),
+            }),
+        )
+        .unwrap();
+        assert_eq!(nodes["workflow"]["nodes"].as_array().unwrap().len(), 2);
+
+        let edges = handle_workflow_command(
+            &config,
+            WorkflowCommand::AddEdges(WorkflowAddEdgesArgs {
+                workspace_session_id,
+                edges_json: r#"[
+                    {"from":"a","to":"b","kind":"depends-on"},
+                    {"from":"b","to":"a","kind":"order"}
+                ]"#
+                .to_string(),
+            }),
+        )
+        .unwrap();
+        assert_eq!(edges["workflow"]["edges"].as_array().unwrap().len(), 2);
     }
 
     #[test]
