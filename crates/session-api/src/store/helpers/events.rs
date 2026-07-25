@@ -7,12 +7,18 @@ pub(super) fn captured_event_key(event: &CopilotHookEvent) -> String {
     format!(
         "type:{}|ts:{}|msg:{}|call:{}|turn:{}|tool:{}|ok:{}|reason:{}|req:{}|args:{}|data:{}",
         event.event_type.as_deref().unwrap_or(""),
-        event.captured_at.map(|timestamp| timestamp.to_rfc3339()).unwrap_or_default(),
+        event
+            .captured_at
+            .map(|timestamp| timestamp.to_rfc3339())
+            .unwrap_or_default(),
         event.message_id.as_deref().unwrap_or(""),
         event.tool_call_id.as_deref().unwrap_or(""),
         event.turn_id.as_deref().unwrap_or(""),
         event.tool_name.as_deref().unwrap_or(""),
-        event.tool_success.map(|success| success.to_string()).unwrap_or_default(),
+        event
+            .tool_success
+            .map(|success| success.to_string())
+            .unwrap_or_default(),
         event.reasoning_text.as_deref().unwrap_or(""),
         json_fingerprint(&event.tool_requests_json),
         json_fingerprint(&event.tool_arguments_json),

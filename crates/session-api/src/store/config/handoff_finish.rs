@@ -193,18 +193,27 @@ impl SessionStoreConfig {
             .collect::<BTreeMap<_, _>>();
 
         for node in &context.workflow.nodes {
-            // A required ticket-backed node whose live state could not be resolved
-            // (missing, misrouted, or otherwise unavailable) fails closed with an
-            // explicit unavailable reason instead of a generic "not done".
+            // A required ticket- or spec-backed node whose live state could not
+            // be resolved (missing, misrouted, or otherwise unavailable) fails
+            // closed with an explicit unavailable reason instead of a generic
+            // "not done". Spec gating is symmetric to ticket gating.
             if node.requirement
                 == crate::SessionWorkflowNodeRequirement::Required
-                && node.kind == crate::SessionWorkflowNodeKind::Ticket
+                && matches!(
+                    node.kind,
+                    crate::SessionWorkflowNodeKind::Ticket
+                        | crate::SessionWorkflowNodeKind::Spec
+                )
             {
                 if let Some(message) = diagnostics_by_node.get(&node.node_id) {
+                    let backing = match node.kind {
+                        crate::SessionWorkflowNodeKind::Spec => "spec",
+                        _ => "ticket",
+                    };
                     return Err(SessionError::FinishBlocked {
                         reason: format!(
-                            "required ticket node {} has unavailable live state: {}",
-                            node.node_id, message
+                            "required {} node {} has unavailable live state: {}",
+                            backing, node.node_id, message
                         ),
                     });
                 }

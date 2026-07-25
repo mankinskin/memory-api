@@ -184,6 +184,8 @@ fn workflow_persists_mutation_and_reload() {
                     "ce://default/tickets/412964a3-e1c3-47da-94ad-268ff20441c0"
                         .to_string(),
                 ),
+                spec_urn: None,
+                category: None,
                 cached_ticket_title: Some(
                     "Runtime session context".to_string(),
                 ),
@@ -198,10 +200,12 @@ fn workflow_persists_mutation_and_reload() {
             &workspace_id,
             SessionWorkflowNodeDraft {
                 node_id: Some("node-action".to_string()),
-                kind: SessionWorkflowNodeKind::Action,
+                kind: SessionWorkflowNodeKind::Task,
                 requirement: SessionWorkflowNodeRequirement::Required,
                 title: "Write workflow tests".to_string(),
                 ticket_urn: None,
+                spec_urn: None,
+                category: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,
             },
@@ -258,10 +262,12 @@ fn workflow_promotion_preserves_node_identity() {
             &workspace_id,
             SessionWorkflowNodeDraft {
                 node_id: Some("node-temp".to_string()),
-                kind: SessionWorkflowNodeKind::Action,
+                kind: SessionWorkflowNodeKind::Task,
                 requirement: SessionWorkflowNodeRequirement::Optional,
                 title: "Investigate follow-up".to_string(),
                 ticket_urn: None,
+                spec_urn: None,
+                category: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,
             },
@@ -311,6 +317,8 @@ fn workflow_ticket_node_rejects_non_ticket_urn() {
                     "ce://default/specs/709f067a-21b6-41b6-8879-3cacef4bacaf"
                         .to_string(),
                 ),
+                spec_urn: None,
+                category: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,
             },

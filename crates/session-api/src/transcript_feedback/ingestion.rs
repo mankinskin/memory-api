@@ -11,13 +11,13 @@ use feedback_api::{
 use serde_json::Value;
 
 use super::{
+    ExplicitIngestionArgs,
+    FeedbackSignalKind,
+    StructuredFeedbackSignal,
     event_outcomes::{
         canonicalize_outcome_events,
         is_tool_execution_outcome,
     },
-    ExplicitIngestionArgs,
-    FeedbackSignalKind,
-    StructuredFeedbackSignal,
 };
 use crate::CopilotHookEvent;
 

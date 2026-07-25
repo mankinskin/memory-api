@@ -1,0 +1,18 @@
+{
+  "id": "vt-session-workflow-tooling-fix",
+  "title": "Session workflow tooling fix set: node-kind taxonomy, enum schema/contract, catalog, inline handle",
+  "command": "cargo test -p session-api -p session-mcp -p session-cli",
+  "detail": "Covers: behavioral (ticket/validation/spec) vs descriptive (task/category) node kinds with back-compat aliasing and symmetric required-Spec finish gating; MCP schema advertises workflow enums; parse rejections enumerate allowed values; session_capabilities catalog lists lifecycle + enums; workspace_session_id echoed top-line by init/resume and every workflow/runtime tool. Prompt-replay of the 367ac6a3 runtime_init -> workflow_add_node flow is covered by runtime_init_result_exposes_workspace_session_id_top_line.",
+  "links": {
+    "spec_ids": [
+      "c677182e-90da-4ac3-8b94-9e2e97c825cf"
+    ],
+    "ticket_ids": [
+      "203248cb-0694-481b-a634-ba7d70962750",
+      "7f1ed44f-73f3-40c9-9647-d899c64ec507",
+      "8bb97b73-9dbc-43ee-9939-46b3ddf2612f",
+      "5ad77aba-c7f7-4058-854e-dd0412746c7c",
+      "3eaceaae-254e-4a9f-ab19-c1eed2080931"
+    ]
+  }
+}

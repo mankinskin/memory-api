@@ -40,6 +40,56 @@ use session_api::{
     SessionWorktreeCheckInRequest,
 };
 
+// ── Workflow enum schema advertisement ─────────────────────────────────────
+//
+// The workflow mutation input fields stay typed as `String` so the `parse_*`
+// functions can accept snake_case/kebab-case aliases and return an explicit
+// allowed-values error on rejection. These helper enums exist only to project
+// the legal values into the generated JSON schema via `#[schemars(with = ...)]`,
+// so agents can discover the enum before ever making a call. They mirror the
+// `session-api` enums exactly; `workflow_enum_parity` asserts they do not drift.
+
+/// Legal `session_workflow_add_node.kind` values (behavioral node kinds).
+#[derive(JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+enum WorkflowNodeKindSchema {
+    Ticket,
+    Validation,
+    Spec,
+    Task,
+}
+
+/// Legal `session_workflow_add_node.requirement` values.
+#[derive(JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+enum WorkflowRequirementSchema {
+    Required,
+    Optional,
+}
+
+/// Legal `session_workflow_add_edge.kind` values.
+#[derive(JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+enum WorkflowEdgeKindSchema {
+    DependsOn,
+    Order,
+}
+
+/// Legal `session_workflow_set_status.status` values.
+#[derive(JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+enum WorkflowNodeStatusSchema {
+    Pending,
+    InProgress,
+    Blocked,
+    Done,
+    Deferred,
+}
+
 // ── Input types ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -163,17 +213,32 @@ pub struct RuntimeViewInput {
     pub workspace_session_id: String,
 }
 
+/// No-argument input for the self-describing capability catalog.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+pub struct CapabilitiesInput {}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct WorkflowAddNodeInput {
     pub workspace: String,
     pub workspace_session_id: String,
     #[serde(default)]
     pub node_id: Option<String>,
+    /// Behavioral node kind. Legal values: ticket, validation, spec, task
+    /// (deprecated aliases mapped to task: action, decision, checkpoint).
+    #[schemars(with = "WorkflowNodeKindSchema")]
     pub kind: String,
+    /// Whether the node gates finish. Legal values: required, optional.
+    #[schemars(with = "WorkflowRequirementSchema")]
     pub requirement: String,
     pub title: String,
     #[serde(default)]
     pub ticket_urn: Option<String>,
+    /// Spec URN for a `spec` behavioral node (mirror of ticket_urn).
+    #[serde(default)]
+    pub spec_urn: Option<String>,
+    /// Open, free-text descriptive category. No gating logic branches on it.
+    #[serde(default)]
+    pub category: Option<String>,
     #[serde(default)]
     pub cached_ticket_title: Option<String>,
     #[serde(default)]
@@ -186,6 +251,8 @@ pub struct WorkflowAddEdgeInput {
     pub workspace_session_id: String,
     pub from: String,
     pub to: String,
+    /// Edge kind. Legal values: depends-on (alias depends_on), order.
+    #[schemars(with = "WorkflowEdgeKindSchema")]
     pub kind: String,
 }
 
@@ -194,6 +261,9 @@ pub struct WorkflowSetStatusInput {
     pub workspace: String,
     pub workspace_session_id: String,
     pub node_id: String,
+    /// Node status. Legal values: pending, in-progress (alias in_progress),
+    /// blocked, done, deferred.
+    #[schemars(with = "WorkflowNodeStatusSchema")]
     pub status: String,
     #[serde(default)]
     pub deferred_reason: Option<String>,
@@ -308,6 +378,37 @@ impl SessionServer {
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
+    /// Serialize `value` and guarantee `workspace_session_id` is present as a
+    /// prominent top-line field. `workspace_session_id` is the handle required
+    /// by every workflow/runtime call, so it is always echoed in-band and never
+    /// has to be re-fetched from a spilled resource file.
+    fn json_result_with_handle<T: Serialize>(
+        workspace_session_id: &str,
+        value: &T,
+    ) -> Result<CallToolResult, McpError> {
+        let mut payload = serde_json::to_value(value).map_err(|err| {
+            McpError::internal_error(format!("serialization: {err}"), None)
+        })?;
+        match payload.as_object_mut() {
+            Some(object) => {
+                object.insert(
+                    "workspace_session_id".to_string(),
+                    serde_json::Value::String(workspace_session_id.to_string()),
+                );
+            },
+            None => {
+                payload = serde_json::json!({
+                    "workspace_session_id": workspace_session_id,
+                    "result": payload,
+                });
+            },
+        }
+        let text = serde_json::to_string(&payload).map_err(|err| {
+            McpError::internal_error(format!("serialization: {err}"), None)
+        })?;
+        Ok(CallToolResult::success(vec![Content::text(text)]))
+    }
+
     fn session_err(err: SessionError) -> McpError {
         match &err {
             SessionError::NotFound { .. }
@@ -407,12 +508,18 @@ fn path_display(path: &std::path::Path) -> Result<String, McpError> {
 fn parse_node_kind(value: &str) -> Result<SessionWorkflowNodeKind, McpError> {
     match value {
         "ticket" => Ok(SessionWorkflowNodeKind::Ticket),
-        "action" => Ok(SessionWorkflowNodeKind::Action),
-        "decision" => Ok(SessionWorkflowNodeKind::Decision),
-        "checkpoint" => Ok(SessionWorkflowNodeKind::Checkpoint),
         "validation" => Ok(SessionWorkflowNodeKind::Validation),
+        "spec" => Ok(SessionWorkflowNodeKind::Spec),
+        // `task` is the generic descriptive bucket. The legacy cosmetic kinds
+        // are accepted as back-compat aliases so old call sites keep working.
+        "task" | "action" | "decision" | "checkpoint" =>
+            Ok(SessionWorkflowNodeKind::Task),
         _ => Err(McpError::invalid_params(
-            format!("invalid workflow node kind: {value}"),
+            format!(
+                "invalid workflow node kind: {value}. allowed values: \
+                 ticket, validation, spec, task \
+                 (deprecated aliases mapped to task: action, decision, checkpoint)"
+            ),
             None,
         )),
     }
@@ -425,7 +532,10 @@ fn parse_requirement(
         "required" => Ok(SessionWorkflowNodeRequirement::Required),
         "optional" => Ok(SessionWorkflowNodeRequirement::Optional),
         _ => Err(McpError::invalid_params(
-            format!("invalid workflow requirement: {value}"),
+            format!(
+                "invalid workflow requirement: {value}. allowed values: \
+                 required, optional"
+            ),
             None,
         )),
     }
@@ -436,7 +546,10 @@ fn parse_edge_kind(value: &str) -> Result<SessionWorkflowEdgeKind, McpError> {
         "depends-on" | "depends_on" => Ok(SessionWorkflowEdgeKind::DependsOn),
         "order" => Ok(SessionWorkflowEdgeKind::Order),
         _ => Err(McpError::invalid_params(
-            format!("invalid workflow edge kind: {value}"),
+            format!(
+                "invalid workflow edge kind: {value}. allowed values: \
+                 depends-on (alias depends_on), order"
+            ),
             None,
         )),
     }
@@ -453,16 +566,105 @@ fn parse_node_status(
         "done" => Ok(SessionWorkflowNodeStatus::Done),
         "deferred" => Ok(SessionWorkflowNodeStatus::Deferred),
         _ => Err(McpError::invalid_params(
-            format!("invalid workflow status: {value}"),
+            format!(
+                "invalid workflow status: {value}. allowed values: \
+                 pending, in-progress (alias in_progress), blocked, done, deferred"
+            ),
             None,
         )),
     }
+}
+
+/// Build the self-describing session capability catalog.
+///
+/// This is the discoverable entry point for the durable-workflow lifecycle so
+/// agents do not have to source-dive to learn the canonical flow or the legal
+/// enum values for workflow mutations. It lists the ordered lifecycle steps
+/// (`runtime_init` → `pin`/`view` → `workflow_*` → `render_*` → `handoff`/
+/// `finish`), the handle every workflow call requires, and the enum-valued
+/// parameters mirrored from the `session-api` enums.
+fn session_capability_catalog() -> serde_json::Value {
+    serde_json::json!({
+        "surface": "session-mcp",
+        "handle": {
+            "field": "workspace_session_id",
+            "note": "Required by every workflow/runtime tool. Returned as a \
+                     top-line field by session_runtime_init/session_runtime_resume \
+                     and echoed by every workflow/runtime tool result.",
+        },
+        "lifecycle": {
+            "name": "durable-session-workflow",
+            "nested_roots_supported": true,
+            "steps": [
+                {"order": 1, "tool": "session_runtime_init",
+                 "purpose": "Initialize or resume durable runtime context; returns the workspace_session_id handle."},
+                {"order": 2, "tool": "session_runtime_pin",
+                 "purpose": "Pin a ticket/spec/rule entity URN into runtime context."},
+                {"order": 2, "tool": "session_runtime_view",
+                 "purpose": "Read headers-only pinned-context view."},
+                {"order": 3, "tool": "session_workflow_add_node",
+                 "purpose": "Add a durable workflow node (see node kind/requirement enums)."},
+                {"order": 3, "tool": "session_workflow_add_edge",
+                 "purpose": "Link two workflow nodes (see edge kind enum)."},
+                {"order": 3, "tool": "session_workflow_set_status",
+                 "purpose": "Update a node status (see status enum)."},
+                {"order": 4, "tool": "session_workflow_render_terminal",
+                 "purpose": "Render the workflow graph as terminal text."},
+                {"order": 4, "tool": "session_workflow_render_mermaid",
+                 "purpose": "Render the workflow graph as Mermaid."},
+                {"order": 5, "tool": "session_handoff",
+                 "purpose": "Persist a structured handoff record."},
+                {"order": 5, "tool": "session_finish",
+                 "purpose": "Finish the workflow, enforcing required node and validation gates."},
+            ],
+        },
+        "enums": {
+            "workflow_node_kind": {
+                "tool": "session_workflow_add_node",
+                "param": "kind",
+                "behavioral": ["ticket", "validation", "spec"],
+                "descriptive": ["task"],
+                "deprecated_aliases_mapped_to_task": ["action", "decision", "checkpoint"],
+                "note": "Behavioral kinds gate finish and carry side-data: \
+                         ticket->ticket_urn, spec->spec_urn, validation->validation_spec_id. \
+                         Descriptive nuance belongs in the open `category` field or `title`.",
+            },
+            "workflow_node_requirement": {
+                "tool": "session_workflow_add_node",
+                "param": "requirement",
+                "values": ["required", "optional"],
+            },
+            "workflow_edge_kind": {
+                "tool": "session_workflow_add_edge",
+                "param": "kind",
+                "values": ["depends-on", "order"],
+                "aliases": {"depends_on": "depends-on"},
+            },
+            "workflow_node_status": {
+                "tool": "session_workflow_set_status",
+                "param": "status",
+                "values": ["pending", "in-progress", "blocked", "done", "deferred"],
+                "aliases": {"in_progress": "in-progress"},
+            },
+        },
+    })
 }
 
 // ── Tool implementations ──────────────────────────────────────────────────────
 
 #[tool_router]
 impl SessionServer {
+    #[tool(
+        name = "session_capabilities",
+        description = "List the canonical session lifecycle workflow, its ordered steps, and the enum-valued workflow parameters with their legal values."
+    )]
+    pub async fn session_capabilities(
+        &self,
+        Parameters(_input): Parameters<CapabilitiesInput>,
+    ) -> Result<CallToolResult, McpError> {
+        Self::json_result(&session_capability_catalog())
+    }
+
     #[tool(
         name = "session_runtime_init",
         description = "Initialize or resume durable runtime context for a workspace session."
@@ -479,7 +681,8 @@ impl SessionServer {
                 force_new_run: input.force_new_run,
             })
             .map_err(Self::session_err)?;
-        Self::json_result(&result)
+        let handle = result.context.workspace_session_id.clone();
+        Self::json_result_with_handle(&handle, &result)
     }
 
     #[tool(
@@ -497,7 +700,8 @@ impl SessionServer {
                 &input.predecessor_run_id,
             )
             .map_err(Self::session_err)?;
-        Self::json_result(&result)
+        let handle = result.context.workspace_session_id.clone();
+        Self::json_result_with_handle(&handle, &result)
     }
 
     #[tool(
@@ -517,7 +721,7 @@ impl SessionServer {
                 input.reason,
             )
             .map_err(Self::session_err)?;
-        Self::json_result(&context)
+        Self::json_result_with_handle(&input.workspace_session_id, &context)
     }
 
     #[tool(
@@ -535,7 +739,7 @@ impl SessionServer {
                 &input.entity_urn,
             )
             .map_err(Self::session_err)?;
-        Self::json_result(&context)
+        Self::json_result_with_handle(&input.workspace_session_id, &context)
     }
 
     #[tool(
@@ -550,7 +754,7 @@ impl SessionServer {
             .config_for_workspace(&input.workspace)?
             .view_runtime_context(&input.workspace_session_id)
             .map_err(Self::session_err)?;
-        Self::json_result(&view)
+        Self::json_result_with_handle(&input.workspace_session_id, &view)
     }
 
     #[tool(
@@ -565,7 +769,10 @@ impl SessionServer {
             .config_for_workspace(&input.workspace)?
             .render_pinned_rule_instructions(&input.workspace_session_id)
             .map_err(Self::session_err)?;
-        Self::json_result(&serde_json::json!({"render": render}))
+        Self::json_result_with_handle(
+            &input.workspace_session_id,
+            &serde_json::json!({"render": render}),
+        )
     }
 
     #[tool(
@@ -586,12 +793,14 @@ impl SessionServer {
                     requirement: parse_requirement(&input.requirement)?,
                     title: input.title,
                     ticket_urn: input.ticket_urn,
+                    spec_urn: input.spec_urn,
+                    category: input.category,
                     cached_ticket_title: input.cached_ticket_title,
                     validation_spec_id: input.validation_spec_id,
                 },
             )
             .map_err(Self::session_err)?;
-        Self::json_result(&context)
+        Self::json_result_with_handle(&input.workspace_session_id, &context)
     }
 
     #[tool(
@@ -611,7 +820,7 @@ impl SessionServer {
                 parse_edge_kind(&input.kind)?,
             )
             .map_err(Self::session_err)?;
-        Self::json_result(&context)
+        Self::json_result_with_handle(&input.workspace_session_id, &context)
     }
 
     #[tool(
@@ -631,7 +840,7 @@ impl SessionServer {
                 input.deferred_reason,
             )
             .map_err(Self::session_err)?;
-        Self::json_result(&context)
+        Self::json_result_with_handle(&input.workspace_session_id, &context)
     }
 
     #[tool(
@@ -651,7 +860,7 @@ impl SessionServer {
                 input.cached_ticket_title,
             )
             .map_err(Self::session_err)?;
-        Self::json_result(&context)
+        Self::json_result_with_handle(&input.workspace_session_id, &context)
     }
 
     #[tool(
@@ -666,7 +875,10 @@ impl SessionServer {
             .config_for_workspace(&input.workspace)?
             .workflow_render_terminal(&input.workspace_session_id, None)
             .map_err(Self::session_err)?;
-        Self::json_result(&serde_json::json!({"render": render}))
+        Self::json_result_with_handle(
+            &input.workspace_session_id,
+            &serde_json::json!({"render": render}),
+        )
     }
 
     #[tool(
@@ -681,7 +893,10 @@ impl SessionServer {
             .config_for_workspace(&input.workspace)?
             .workflow_render_mermaid(&input.workspace_session_id, None)
             .map_err(Self::session_err)?;
-        Self::json_result(&serde_json::json!({"render": render}))
+        Self::json_result_with_handle(
+            &input.workspace_session_id,
+            &serde_json::json!({"render": render}),
+        )
     }
 
     #[tool(
@@ -700,7 +915,7 @@ impl SessionServer {
                 None,
             )
             .map_err(Self::session_err)?;
-        Self::json_result(&result)
+        Self::json_result_with_handle(&input.workspace_session_id, &result)
     }
 
     #[tool(
@@ -720,7 +935,7 @@ impl SessionServer {
                 None,
             )
             .map_err(Self::session_err)?;
-        Self::json_result(&result)
+        Self::json_result_with_handle(&input.workspace_session_id, &result)
     }
 
     #[tool(
@@ -982,7 +1197,7 @@ impl ServerHandler for SessionServer {
                 ..Default::default()
             },
             instructions: Some(
-                "session-mcp provides direct access to the session store. Use named tools for session worktree check-in, lookup, query, move, and transcript peeking."
+                "session-mcp provides direct access to the session store. Use named tools for session worktree check-in, lookup, query, move, and transcript peeking. Call session_capabilities to discover the durable-workflow lifecycle (runtime_init -> pin/view -> workflow_* -> render_* -> handoff/finish) and the legal workflow enum values."
                     .to_string(),
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
@@ -1249,5 +1464,189 @@ mod tests {
             target_config.read_session(session_id).unwrap().session_id,
             session_id
         );
+    }
+
+    // ── T-SCHEMA: workflow mutation schemas advertise legal enum values ──────
+
+    #[test]
+    fn workflow_add_node_schema_advertises_kind_and_requirement_enums() {
+        let schema = rmcp::schemars::schema_for!(WorkflowAddNodeInput);
+        let json = serde_json::to_string(&schema).expect("schema json");
+        for value in ["ticket", "validation", "spec", "task"] {
+            assert!(
+                json.contains(&format!("\"{value}\"")),
+                "schema must advertise node kind `{value}`: {json}"
+            );
+        }
+        for value in ["required", "optional"] {
+            assert!(
+                json.contains(&format!("\"{value}\"")),
+                "schema must advertise requirement `{value}`"
+            );
+        }
+    }
+
+    #[test]
+    fn workflow_edge_and_status_schemas_advertise_enums() {
+        let edge = serde_json::to_string(&rmcp::schemars::schema_for!(
+            WorkflowAddEdgeInput
+        ))
+        .unwrap();
+        assert!(edge.contains("\"depends-on\"") && edge.contains("\"order\""));
+
+        let status = serde_json::to_string(&rmcp::schemars::schema_for!(
+            WorkflowSetStatusInput
+        ))
+        .unwrap();
+        for value in ["pending", "in-progress", "blocked", "done", "deferred"] {
+            assert!(
+                status.contains(&format!("\"{value}\"")),
+                "status schema must advertise `{value}`"
+            );
+        }
+    }
+
+    /// The advertised schema enums must match the `session-api` enums exactly.
+    #[test]
+    fn workflow_enum_parity_with_session_api() {
+        // Behavioral + descriptive node kinds serialize to the advertised set.
+        let kinds = [
+            (SessionWorkflowNodeKind::Ticket, "ticket"),
+            (SessionWorkflowNodeKind::Validation, "validation"),
+            (SessionWorkflowNodeKind::Spec, "spec"),
+            (SessionWorkflowNodeKind::Task, "task"),
+        ];
+        for (kind, label) in kinds {
+            assert_eq!(
+                serde_json::to_string(&kind).unwrap(),
+                format!("\"{label}\"")
+            );
+            assert_eq!(parse_node_kind(label).unwrap(), kind);
+        }
+        // Legacy aliases round-trip into the generic Task bucket.
+        for alias in ["action", "decision", "checkpoint"] {
+            assert_eq!(
+                parse_node_kind(alias).unwrap(),
+                SessionWorkflowNodeKind::Task
+            );
+        }
+    }
+
+    // ── T-ERRCONTRACT: rejections enumerate the allowed values ───────────────
+
+    #[test]
+    fn invalid_workflow_values_report_allowed_set() {
+        let kind_err = parse_node_kind("tickett").unwrap_err();
+        assert!(kind_err.message.contains("ticket"));
+        assert!(kind_err.message.contains("validation"));
+        assert!(kind_err.message.contains("spec"));
+        assert!(kind_err.message.contains("task"));
+
+        let edge_err = parse_edge_kind("nope").unwrap_err();
+        assert!(edge_err.message.contains("depends-on"));
+        assert!(edge_err.message.contains("order"));
+
+        let status_err = parse_node_status("doing").unwrap_err();
+        assert!(status_err.message.contains("in-progress"));
+        assert!(status_err.message.contains("deferred"));
+
+        let req_err = parse_requirement("maybe").unwrap_err();
+        assert!(req_err.message.contains("required"));
+        assert!(req_err.message.contains("optional"));
+    }
+
+    // ── T-HANDLE: init/resume + workflow tools echo workspace_session_id ──────
+
+    #[tokio::test]
+    async fn runtime_init_result_exposes_workspace_session_id_top_line() {
+        let dir = tempdir().unwrap();
+        let session_root = dir.path().join(".session");
+        let server =
+            SessionServer::new(session_root.clone(), "default".to_string());
+
+        let result = server
+            .session_runtime_init(Parameters(RuntimeInitInput {
+                workspace: session_root.display().to_string(),
+                workspace_session_id: None,
+                predecessor_run_id: None,
+                force_new_run: false,
+            }))
+            .await
+            .expect("runtime init");
+        let payload = extract_json(result);
+        let handle = payload["workspace_session_id"]
+            .as_str()
+            .expect("top-line workspace_session_id");
+        assert!(!handle.is_empty());
+        // The handle matches the nested context handle (no drift).
+        assert_eq!(
+            payload["context"]["workspace_session_id"].as_str(),
+            Some(handle)
+        );
+
+        // A subsequent workflow call echoes the same handle in its result.
+        let node = server
+            .session_workflow_add_node(Parameters(WorkflowAddNodeInput {
+                workspace: session_root.display().to_string(),
+                workspace_session_id: handle.to_string(),
+                node_id: Some("n1".to_string()),
+                kind: "task".to_string(),
+                requirement: "optional".to_string(),
+                title: "descriptive".to_string(),
+                ticket_urn: None,
+                spec_urn: None,
+                category: Some("note".to_string()),
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            }))
+            .await
+            .expect("add node");
+        let node_payload = extract_json(node);
+        assert_eq!(node_payload["workspace_session_id"].as_str(), Some(handle));
+    }
+
+    // ── T-CATALOG: session lifecycle + enums are discoverable ────────────────
+
+    #[tokio::test]
+    async fn capabilities_lists_session_lifecycle_and_enums() {
+        let dir = tempdir().unwrap();
+        let session_root = dir.path().join(".session");
+        let server =
+            SessionServer::new(session_root.clone(), "default".to_string());
+
+        let result = server
+            .session_capabilities(Parameters(CapabilitiesInput::default()))
+            .await
+            .expect("capabilities");
+        let catalog = extract_json(result);
+
+        assert_eq!(catalog["surface"], "session-mcp");
+        assert_eq!(catalog["handle"]["field"], "workspace_session_id");
+
+        let steps = catalog["lifecycle"]["steps"]
+            .as_array()
+            .expect("lifecycle steps");
+        let tools: Vec<&str> =
+            steps.iter().filter_map(|s| s["tool"].as_str()).collect();
+        for expected in [
+            "session_runtime_init",
+            "session_workflow_add_node",
+            "session_workflow_render_terminal",
+            "session_finish",
+        ] {
+            assert!(
+                tools.contains(&expected),
+                "catalog lifecycle must list {expected}"
+            );
+        }
+
+        let behavioral = catalog["enums"]["workflow_node_kind"]["behavioral"]
+            .as_array()
+            .expect("behavioral kinds");
+        let behavioral: Vec<&str> =
+            behavioral.iter().filter_map(|v| v.as_str()).collect();
+        assert!(behavioral.contains(&"ticket"));
+        assert!(behavioral.contains(&"validation"));
+        assert!(behavioral.contains(&"spec"));
     }
 }

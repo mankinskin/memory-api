@@ -259,6 +259,25 @@ impl SessionStoreConfig {
             ));
         }
 
+        if draft.kind == crate::SessionWorkflowNodeKind::Spec {
+            let spec_urn = draft.spec_urn.as_deref().ok_or_else(|| {
+                SessionError::InvalidHookInput(
+                    "spec workflow node requires --spec-urn".to_string(),
+                )
+            })?;
+            let parsed = parse_entity_urn(spec_urn)?;
+            if parsed.kind != SessionPinnedEntityKind::Spec {
+                return Err(SessionError::InvalidHookInput(format!(
+                    "spec workflow node requires a spec URN, got {}",
+                    spec_urn
+                )));
+            }
+        } else if draft.spec_urn.is_some() {
+            return Err(SessionError::InvalidHookInput(
+                "only spec workflow nodes may set spec_urn".to_string(),
+            ));
+        }
+
         let _lock = self.begin_runtime_mutation(workspace_session_id)?;
         let mut context = self.read_runtime_context(workspace_session_id)?;
         let node_id = draft
@@ -285,6 +304,8 @@ impl SessionStoreConfig {
             created_at: now,
             updated_at: now,
             ticket_urn: draft.ticket_urn,
+            spec_urn: draft.spec_urn,
+            category: draft.category,
             cached_ticket_title: draft.cached_ticket_title,
             deferred_reason: None,
             validation_spec_id: draft.validation_spec_id,

@@ -2,14 +2,14 @@ use chrono::TimeZone;
 use pretty_assertions::assert_eq;
 
 use crate::{
-    peek_prompt_pack,
     PromptPackOptions,
     SessionRole,
+    peek_prompt_pack,
 };
 
 use super::{
-    copilot_payload_from_transcript_reader,
     SessionCaptureRequest,
+    copilot_payload_from_transcript_reader,
 };
 
 #[path = "tests/capture_request.rs"]
@@ -35,11 +35,13 @@ fn transcript_reader_maps_visible_messages_into_payload() {
     assert_eq!(payload.trigger.as_deref(), Some("stop"));
     assert_eq!(payload.messages.len(), 2);
     assert_eq!(payload.events.len(), 5);
-    assert!(payload.events[2]
-        .data_json
-        .as_ref()
-        .and_then(|json| json.get("toolRequests"))
-        .is_some());
+    assert!(
+        payload.events[2]
+            .data_json
+            .as_ref()
+            .and_then(|json| json.get("toolRequests"))
+            .is_some()
+    );
     let result_event = payload
         .events
         .iter()

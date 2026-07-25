@@ -32,14 +32,14 @@ mod ingestion;
 mod turn_signals;
 
 pub use entity_discovery::{
-    discover_entities_from_signals,
     EntityDiscoveryQueue,
+    discover_entities_from_signals,
 };
 pub use failed_tool_calls::{
-    map_failed_tool_call_to_entity,
-    mine_failed_tool_call_signals,
     FailedToolCallMapping,
     UnmappedReason,
+    map_failed_tool_call_to_entity,
+    mine_failed_tool_call_signals,
 };
 pub use ingestion::{
     mine_explicit_ingestion_signals,

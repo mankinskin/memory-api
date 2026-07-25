@@ -16,7 +16,9 @@ pub struct SessionRuntimePaths {
     pub finish_path: PathBuf,
 }
 
-pub(super) fn validate_runtime_workspace_id(value: &str) -> Result<(), SessionError> {
+pub(super) fn validate_runtime_workspace_id(
+    value: &str
+) -> Result<(), SessionError> {
     if value.trim().is_empty() {
         return Err(SessionError::InvalidWorkspaceSessionId(value.to_string()));
     }
@@ -34,7 +36,9 @@ pub(super) struct ParsedEntityUrn {
     pub(super) entity_id: String,
 }
 
-pub(super) fn parse_entity_urn(entity_urn: &str) -> Result<ParsedEntityUrn, SessionError> {
+pub(super) fn parse_entity_urn(
+    entity_urn: &str
+) -> Result<ParsedEntityUrn, SessionError> {
     let trimmed = entity_urn.trim();
     if !trimmed.starts_with("ce://") {
         return Err(SessionError::InvalidEntityUrn(trimmed.to_string()));
@@ -71,4 +75,3 @@ pub(super) fn parse_entity_urn_kind(
 ) -> Result<SessionPinnedEntityKind, SessionError> {
     Ok(parse_entity_urn(entity_urn)?.kind)
 }
-

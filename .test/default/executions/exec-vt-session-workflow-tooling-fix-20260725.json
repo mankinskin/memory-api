@@ -1,0 +1,25 @@
+{
+  "id": "exec-vt-session-workflow-tooling-fix-20260725",
+  "validation_spec_id": "vt-session-workflow-tooling-fix",
+  "outcome": "passed",
+  "executed_at": "2026-07-25T08:44:41.269648300Z",
+  "detail": "Green: session-api 103 store tests (incl. spec_enforcement.rs: required-Spec finish gating, category-does-not-gate, legacy-kind back-compat deserialize); session-mcp 10 tests (schema-advertises-enum, invalid-value-allowed-set, enum-parity, init/add_node echo workspace_session_id, capabilities lists lifecycle+enums); session-cli 11+6 tests. All test result: ok, 0 failed.",
+  "links": {
+    "spec_ids": [
+      "c677182e-90da-4ac3-8b94-9e2e97c825cf"
+    ],
+    "ticket_ids": [
+      "203248cb-0694-481b-a634-ba7d70962750",
+      "7f1ed44f-73f3-40c9-9647-d899c64ec507",
+      "8bb97b73-9dbc-43ee-9939-46b3ddf2612f",
+      "5ad77aba-c7f7-4058-854e-dd0412746c7c",
+      "3eaceaae-254e-4a9f-ab19-c1eed2080931"
+    ]
+  },
+  "provenance": {
+    "domain": "session-api",
+    "operation": "session-workflow-tooling-tests",
+    "transport": "cli",
+    "run_id": "run-session-workflow-tooling-20260725"
+  }
+}

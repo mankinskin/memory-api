@@ -12,8 +12,8 @@ use crate::{
 };
 
 use super::{
-    preview_line,
     DEFAULT_SKELETON_PREVIEW_CHARS,
+    preview_line,
 };
 
 /// Default content length after which turns are summarized.

@@ -16,10 +16,12 @@ fn finished_workspace_rejects_all_mutations() {
             &workspace_id,
             SessionWorkflowNodeDraft {
                 node_id: Some("seed-node".to_string()),
-                kind: SessionWorkflowNodeKind::Action,
+                kind: SessionWorkflowNodeKind::Task,
                 requirement: SessionWorkflowNodeRequirement::Required,
                 title: "seed".to_string(),
                 ticket_urn: None,
+                spec_urn: None,
+                category: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,
             },
@@ -45,10 +47,12 @@ fn finished_workspace_rejects_all_mutations() {
             &workspace_id,
             SessionWorkflowNodeDraft {
                 node_id: Some("post-finish-node".to_string()),
-                kind: SessionWorkflowNodeKind::Action,
+                kind: SessionWorkflowNodeKind::Task,
                 requirement: SessionWorkflowNodeRequirement::Optional,
                 title: "should be rejected".to_string(),
                 ticket_urn: None,
+                spec_urn: None,
+                category: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,
             },
@@ -168,6 +172,8 @@ fn finish_excludes_mutation_init_and_resume_until_terminal_commit() {
                 requirement: SessionWorkflowNodeRequirement::Required,
                 title: "terminal ticket".to_string(),
                 ticket_urn: Some(ticket_urn.to_string()),
+                spec_urn: None,
+                category: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,
             },
@@ -199,10 +205,12 @@ fn finish_excludes_mutation_init_and_resume_until_terminal_commit() {
             &workspace_id,
             SessionWorkflowNodeDraft {
                 node_id: Some("racing-mutation".to_string()),
-                kind: SessionWorkflowNodeKind::Action,
+                kind: SessionWorkflowNodeKind::Task,
                 requirement: SessionWorkflowNodeRequirement::Optional,
                 title: "must not interleave".to_string(),
                 ticket_urn: None,
+                spec_urn: None,
+                category: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,
             },
@@ -248,7 +256,7 @@ fn finish_excludes_mutation_init_and_resume_until_terminal_commit() {
     );
 }
 
-/// Helper: create a workspace with one required Action node marked done and
+/// Helper: create a workspace with one required Task node marked done and
 /// then finish it, returning the config and workspace id for immutability tests.
 fn finished_workspace() -> (SessionStoreConfig, String, TempDir) {
     let tempdir = TempDir::new().unwrap();
@@ -264,10 +272,12 @@ fn finished_workspace() -> (SessionStoreConfig, String, TempDir) {
             &workspace_id,
             SessionWorkflowNodeDraft {
                 node_id: Some("seed-node".to_string()),
-                kind: SessionWorkflowNodeKind::Action,
+                kind: SessionWorkflowNodeKind::Task,
                 requirement: SessionWorkflowNodeRequirement::Required,
                 title: "seed".to_string(),
                 ticket_urn: None,
+                spec_urn: None,
+                category: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,
             },

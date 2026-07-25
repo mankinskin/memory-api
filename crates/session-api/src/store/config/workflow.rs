@@ -128,22 +128,40 @@ impl SessionStoreConfig {
 
         if let Some(resolver) = resolver {
             for node in &context.workflow.nodes {
-                let Some(ticket_urn) = node.ticket_urn.as_deref() else {
-                    continue;
-                };
+                // Ticket-backed nodes resolve authoritative live ticket state.
+                if let Some(ticket_urn) = node.ticket_urn.as_deref() {
+                    match resolver.resolve_ticket_state(ticket_urn) {
+                        Ok(state) =>
+                            resolutions.push(SessionWorkflowNodeResolution {
+                                node_id: node.node_id.clone(),
+                                live_ticket_state: state,
+                            }),
+                        Err(message) =>
+                            diagnostics.push(SessionWorkflowDiagnostic {
+                                node_id: node.node_id.clone(),
+                                code: "ticket-state-unavailable".to_string(),
+                                message,
+                            }),
+                    }
+                }
 
-                match resolver.resolve_ticket_state(ticket_urn) {
-                    Ok(state) =>
-                        resolutions.push(SessionWorkflowNodeResolution {
-                            node_id: node.node_id.clone(),
-                            live_ticket_state: state,
-                        }),
-                    Err(message) =>
-                        diagnostics.push(SessionWorkflowDiagnostic {
-                            node_id: node.node_id.clone(),
-                            code: "ticket-state-unavailable".to_string(),
-                            message,
-                        }),
+                // Spec-backed nodes resolve authoritative live spec state,
+                // symmetric to ticket resolution. The `live_ticket_state` slot
+                // carries the live entity state regardless of backing kind.
+                if let Some(spec_urn) = node.spec_urn.as_deref() {
+                    match resolver.resolve_spec_state(spec_urn) {
+                        Ok(state) =>
+                            resolutions.push(SessionWorkflowNodeResolution {
+                                node_id: node.node_id.clone(),
+                                live_ticket_state: state,
+                            }),
+                        Err(message) =>
+                            diagnostics.push(SessionWorkflowDiagnostic {
+                                node_id: node.node_id.clone(),
+                                code: "spec-state-unavailable".to_string(),
+                                message,
+                            }),
+                    }
                 }
             }
         }

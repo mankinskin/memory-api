@@ -5,5 +5,6 @@ include!("store_tests/runtime/pins_and_workflow_mutation.rs");
 include!("store_tests/workflow/snapshot_and_handoff.rs");
 include!("store_tests/finish/validation_authority.rs");
 include!("store_tests/finish/ticket_enforcement.rs");
+include!("store_tests/finish/spec_enforcement.rs");
 include!("store_tests/finish/workspace_mutation_and_locking.rs");
 include!("store_tests/finish/workspace_lock_ordering.rs");

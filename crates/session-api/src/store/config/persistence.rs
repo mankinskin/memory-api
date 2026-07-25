@@ -182,6 +182,10 @@ impl SessionStoreConfig {
         sibling_store_root(&self.root, ".ticket")
     }
 
+    fn spec_store_root(&self) -> PathBuf {
+        sibling_store_root(&self.root, ".spec")
+    }
+
     fn test_store_root(&self) -> PathBuf {
         sibling_store_root(&self.root, ".test")
     }
@@ -204,6 +208,7 @@ impl SessionStoreConfig {
             })?;
         Ok(DefaultTicketStateResolver {
             store,
+            spec_store_root: self.spec_store_root(),
             workspace_slug: self.workspace_slug.clone(),
         })
     }

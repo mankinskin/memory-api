@@ -14,10 +14,6 @@ use chrono::{
 };
 
 use super::{
-    build_tool_execution_result_event,
-    capture_tool_execution_context,
-    deserialize_transcript_event,
-    hydrate_tool_execution_complete,
     CopilotHookMessage,
     CopilotHookPayload,
     CopilotRuntimeMetadata,
@@ -25,6 +21,10 @@ use super::{
     SessionRole,
     ToolExecutionContext,
     TranscriptEventEnvelope,
+    build_tool_execution_result_event,
+    capture_tool_execution_context,
+    deserialize_transcript_event,
+    hydrate_tool_execution_complete,
 };
 
 pub fn copilot_payload_from_transcript_path(

@@ -71,6 +71,7 @@ use crate::{
     },
 };
 use rule_api::RuleStore;
+use spec_api::SpecStore;
 use test_api::{
     ExecutionQuery,
     TestStoreConfig,
@@ -140,8 +141,6 @@ mod config {
     include!("store/config/worktree_conflicts.rs");
 }
 
-
-
 #[path = "store_routing_types.rs"]
 mod store_routing_types;
 pub use store_routing_types::{
@@ -183,6 +182,7 @@ impl Drop for RuntimeMutationLock {
 
 struct DefaultTicketStateResolver {
     store: TicketStore,
+    spec_store_root: PathBuf,
     workspace_slug: String,
 }
 
@@ -221,6 +221,34 @@ impl SessionTicketStateResolver for DefaultTicketStateResolver {
             None => Err(format!("required ticket not found: {ticket_urn}")),
         }
     }
+
+    fn resolve_spec_state(
+        &self,
+        spec_urn: &str,
+    ) -> Result<Option<String>, String> {
+        let parsed =
+            parse_entity_urn(spec_urn).map_err(|error| error.to_string())?;
+        if parsed.kind != SessionPinnedEntityKind::Spec {
+            return Err(format!("not a spec URN: {spec_urn}"));
+        }
+        // Symmetric to ticket routing: the default resolver only reads the
+        // sibling `.spec` store for the session's own workspace.
+        if parsed.workspace_slug != self.workspace_slug {
+            return Err(format!(
+                "unsupported cross-workspace spec routing: URN workspace `{}` \
+                 does not match session workspace `{}` ({spec_urn})",
+                parsed.workspace_slug, self.workspace_slug
+            ));
+        }
+        // Open the spec store lazily so sessions with no spec nodes never
+        // require an initialized `.spec` store.
+        let store = SpecStore::open(&self.spec_store_root)
+            .map_err(|error| error.to_string())?;
+        let manifest = store
+            .get(&parsed.entity_id)
+            .map_err(|error| format!("required spec not found: {error}"))?;
+        Ok(manifest.state().map(str::to_string))
+    }
 }
 
 fn validation_outcome_label(outcome: ValidationOutcome) -> String {
@@ -246,7 +274,18 @@ fn node_is_effectively_done(
         );
     }
 
-    // Session-only nodes (action/decision/checkpoint/validation) use local status.
+    if node.kind == crate::SessionWorkflowNodeKind::Spec {
+        // Spec-backed nodes are symmetric to tickets: completion is certified
+        // only by the authoritative live spec terminal state. `verified` is the
+        // spec success terminal; `deprecated` and `cancelled` are terminal exit
+        // paths. Any other or unavailable state fails closed.
+        return matches!(
+            live_state.and_then(|value| value.as_deref()),
+            Some("verified") | Some("deprecated") | Some("cancelled")
+        );
+    }
+
+    // Session-only nodes (task/validation) use local status.
     node.status == SessionWorkflowNodeStatus::Done
 }
 

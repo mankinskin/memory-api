@@ -37,10 +37,12 @@ fn finished_check_runs_under_mutation_lock() {
             &workspace_id,
             SessionWorkflowNodeDraft {
                 node_id: Some("post-finish-locked".to_string()),
-                kind: SessionWorkflowNodeKind::Action,
+                kind: SessionWorkflowNodeKind::Task,
                 requirement: SessionWorkflowNodeRequirement::Optional,
                 title: "blocked".to_string(),
                 ticket_urn: None,
+                spec_urn: None,
+                category: None,
                 cached_ticket_title: None,
                 validation_spec_id: None,
             },

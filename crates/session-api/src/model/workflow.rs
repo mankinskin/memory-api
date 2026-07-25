@@ -7,14 +7,38 @@ use serde::{
     Serialize,
 };
 
+/// Behavioral role of a workflow node.
+///
+/// This axis is a **closed, validated set** because production finish/handoff
+/// logic branches on it and each behavioral kind carries required side-data:
+///
+/// - `Ticket` gates finish on authoritative live ticket state and carries a
+///   `ticket_urn`.
+/// - `Validation` gates finish on authoritative validation execution outcomes
+///   and carries a `validation_spec_id`.
+/// - `Spec` gates finish on authoritative live spec state and carries a
+///   `spec_urn` (symmetric to `Ticket`).
+/// - `Task` is the generic non-gating bucket for descriptive work. It never
+///   drives finish behavior; descriptive nuance belongs in the open
+///   [`SessionWorkflowNode::category`] free-text field or the node `title`.
+///
+/// The legacy cosmetic kinds `action`, `decision`, and `checkpoint` branched in
+/// no production code. They are accepted on deserialize as aliases of `Task`
+/// so existing persisted runtime contexts continue to load, and are re-emitted
+/// as `task`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SessionWorkflowNodeKind {
+    /// Ticket-backed behavioral node; gates finish on live ticket state.
     Ticket,
-    Action,
-    Decision,
-    Checkpoint,
+    /// Validation behavioral node; gates finish on authoritative execution.
     Validation,
+    /// Spec-backed behavioral node; gates finish on live spec state.
+    Spec,
+    /// Generic descriptive node; never gates finish. Accepts the deprecated
+    /// `action`/`decision`/`checkpoint` kinds as back-compat aliases.
+    #[serde(alias = "action", alias = "decision", alias = "checkpoint")]
+    Task,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,6 +77,13 @@ pub struct SessionWorkflowNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ticket_urn: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec_urn: Option<String>,
+    /// Open, free-text descriptive classification. No production code branches
+    /// on this value; it exists so agents never hit an expressiveness wall for
+    /// labels that do not drive behavior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cached_ticket_title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deferred_reason: Option<String>,
@@ -84,6 +115,10 @@ pub struct SessionWorkflowNodeDraft {
     pub title: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ticket_urn: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec_urn: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cached_ticket_title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -118,6 +153,21 @@ pub trait SessionTicketStateResolver {
         &self,
         ticket_urn: &str,
     ) -> Result<Option<String>, String>;
+
+    /// Resolve the authoritative live state for a spec-backed workflow node.
+    ///
+    /// Mirrors [`Self::resolve_ticket_state`] so a required `Spec` node can gate
+    /// finish symmetrically to a `Ticket` node. The default implementation
+    /// reports the capability as unavailable, which fails a required `Spec` node
+    /// closed rather than silently passing it.
+    fn resolve_spec_state(
+        &self,
+        spec_urn: &str,
+    ) -> Result<Option<String>, String> {
+        Err(format!(
+            "spec state resolution not supported by this resolver ({spec_urn})"
+        ))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

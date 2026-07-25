@@ -2,12 +2,12 @@ use feedback_api::EntityUrn;
 use serde_json::Value;
 
 use super::{
+    FeedbackSignalKind,
+    StructuredFeedbackSignal,
     event_outcomes::{
         canonicalize_outcome_events,
         is_tool_execution_outcome,
     },
-    FeedbackSignalKind,
-    StructuredFeedbackSignal,
 };
 use crate::CopilotHookEvent;
 
