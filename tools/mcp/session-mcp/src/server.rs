@@ -241,8 +241,11 @@ pub struct WorkflowAddNodeInput {
     /// finish; use ticket_urn/spec_urn for their matching behavioral kinds.
     #[serde(default)]
     pub anchor_urn: Option<String>,
-    /// Free-text custom label for descriptive nodes. For a custom kind, keep
-    /// kind=`task` and set category; no gating logic branches on this value.
+    /// Free-text custom label for descriptive nodes. To model a would-be
+    /// custom kind, keep the behavioral kind as `task` and put your label in
+    /// `category` — for example `kind="task", category="<your-label>"` (such as
+    /// `kind="task", category="review-criterion"`). No gating logic branches on
+    /// this value.
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
@@ -277,6 +280,11 @@ pub struct WorkflowNodeDraftInput {
     pub spec_urn: Option<String>,
     #[serde(default)]
     pub anchor_urn: Option<String>,
+    /// Free-text custom label for descriptive nodes. To model a would-be
+    /// custom kind, keep the behavioral kind as `task` and put your label in
+    /// `category` — for example `kind="task", category="<your-label>"` (such as
+    /// `kind="task", category="review-criterion"`). No gating logic branches on
+    /// this value.
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]

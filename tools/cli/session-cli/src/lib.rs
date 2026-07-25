@@ -315,6 +315,9 @@ pub struct WorkflowAddNodeArgs {
     #[arg(long)]
     pub anchor_urn: Option<String>,
     /// Open, free-text descriptive category. No gating logic branches on it.
+    /// To model a would-be custom kind, keep --kind task and set this label,
+    /// e.g. --kind task --category <your-label> (such as
+    /// --kind task --category review-criterion).
     #[arg(long)]
     pub category: Option<String>,
     #[arg(long)]
