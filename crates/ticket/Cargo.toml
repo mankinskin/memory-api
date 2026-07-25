@@ -1,0 +1,48 @@
+[package]
+name = "ticket"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+cli = ["dep:transport-harness", "transport-harness/cli", "dep:serde", "dep:serde_json", "dep:uuid"]
+mcp = ["dep:transport-harness", "transport-harness/mcp", "dep:serde", "dep:serde_json", "dep:tokio", "dep:uuid"]
+http = ["dep:transport-harness", "transport-harness/http", "dep:serde", "dep:tokio", "dep:uuid"]
+
+[[bin]]
+name = "ticket-cli"
+path = "src/bin/ticket-cli.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "ticket-mcp"
+path = "src/bin/ticket-mcp.rs"
+required-features = ["mcp"]
+
+[[bin]]
+name = "ticket-http"
+path = "src/bin/ticket-http.rs"
+required-features = ["http"]
+
+[dependencies]
+ticket-api = { path = "../ticket-api" }
+transport-harness = { git = "https://github.com/mankinskin/memory-kernel", branch = "main", optional = true, default-features = false }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+uuid = { version = "1", features = ["serde", "v4"], optional = true }
+
+[dev-dependencies]
+memory-fixtures = { git = "https://github.com/mankinskin/memory-fixtures", branch = "main" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tower = { version = "0.5", features = ["util"] }
+pretty_assertions = "1"
+tempfile = "3"
+urlencoding = "2"
+uuid = { version = "1", features = ["v4"] }
