@@ -1,0 +1,17 @@
+[package]
+name = "mcp-cost-gate"
+version = "0.1.0"
+edition = "2024"
+description = "Model-aware MCP middleware: requires a per-request caller_model and enforces the price-awareness orchestrator threshold at the tool boundary"
+
+[[bin]]
+name = "mcp-cost-gate"
+path = "src/main.rs"
+
+[lib]
+name = "mcp_cost_gate"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
