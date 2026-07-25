@@ -12,6 +12,7 @@ use crate::model::{
 
 pub const TYPE_ID: &str = "tracker-improvement";
 pub const BUG_TYPE_ID: &str = "bug";
+pub const TASK_TYPE_ID: &str = "task";
 
 /// Returns the hardcoded built-in `tracker-improvement` ticket type schema.
 ///
@@ -220,9 +221,19 @@ pub fn bug_schema() -> TicketTypeSchema {
     schema
 }
 
+/// Returns the built-in `task` ticket type schema.
+///
+/// Task tickets share the same workflow and validation requirements as
+/// tracker-improvement tickets, but preserve a dedicated semantic type.
+pub fn task_schema() -> TicketTypeSchema {
+    let mut schema = tracker_improvement_schema();
+    schema.type_id = TASK_TYPE_ID.to_string();
+    schema
+}
+
 /// Returns `true` if the given type ID is a known built-in type.
 pub fn is_builtin_type(type_id: &str) -> bool {
-    type_id == TYPE_ID || type_id == BUG_TYPE_ID
+    type_id == TYPE_ID || type_id == BUG_TYPE_ID || type_id == TASK_TYPE_ID
 }
 
 /// Resolve a type schema by type ID. Returns `None` for unknown types.
@@ -230,6 +241,7 @@ pub fn schema_for_type(type_id: &str) -> Option<TicketTypeSchema> {
     match type_id {
         TYPE_ID => Some(tracker_improvement_schema()),
         BUG_TYPE_ID => Some(bug_schema()),
+        TASK_TYPE_ID => Some(task_schema()),
         _ => None,
     }
 }
@@ -255,5 +267,23 @@ mod tests {
         assert!(is_builtin_type(TYPE_ID));
         assert!(is_builtin_type(BUG_TYPE_ID));
         assert!(schema_for_type(BUG_TYPE_ID).is_some());
+    }
+
+    #[test]
+    fn task_schema_uses_task_type_id() {
+        let schema = task_schema();
+        assert_eq!(schema.type_id, TASK_TYPE_ID);
+        assert!(
+            schema
+                .required_states
+                .iter()
+                .any(|state| state == "in-review")
+        );
+    }
+
+    #[test]
+    fn builtin_type_checks_include_task() {
+        assert!(is_builtin_type(TASK_TYPE_ID));
+        assert!(schema_for_type(TASK_TYPE_ID).is_some());
     }
 }

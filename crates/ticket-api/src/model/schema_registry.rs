@@ -8,6 +8,7 @@ use crate::{
     error::StorageError,
     model::default_schema::{
         bug_schema,
+        task_schema,
         tracker_improvement_schema,
     },
 };
@@ -25,13 +26,15 @@ pub struct SchemaRegistry {
 impl SchemaRegistry {
     /// Create a registry pre-loaded with all built-in schemas.
     ///
-    /// Currently registers: `tracker-improvement`, `bug`.
+    /// Currently registers: `tracker-improvement`, `bug`, `task`.
     pub fn with_builtins() -> Self {
         let mut reg = Self::default();
         let s = tracker_improvement_schema();
         reg.schemas.insert(s.type_id.clone(), s);
         let bug = bug_schema();
         reg.schemas.insert(bug.type_id.clone(), bug);
+        let task = task_schema();
+        reg.schemas.insert(task.type_id.clone(), task);
         reg
     }
 

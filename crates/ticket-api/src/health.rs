@@ -127,6 +127,7 @@ pub fn collect_findings(
 
     let mut report = HealthReport::default();
     for ticket in tickets {
+        append_schema_findings(store, ticket, &mut report);
         append_graph_participation_findings(ticket, all_edges, &mut report);
         if done_ids.contains(&ticket.id) {
             continue;
@@ -144,6 +145,33 @@ pub fn collect_findings(
 }
 
 // ─── Per-ticket finding generators ───────────────────────────────────────────
+
+fn append_schema_findings(
+    store: &TicketStore,
+    ticket: &IndexedTicket,
+    report: &mut HealthReport,
+) {
+    if store.schema_registry().get(&ticket.type_id).is_some() {
+        return;
+    }
+
+    report.record(
+        "unknown_type",
+        base_finding(
+            ticket,
+            "unknown_type",
+            "error",
+            format!(
+                "Ticket type '{}' has no registered schema; transitions and validation will fail.",
+                ticket.type_id
+            ),
+            vec![
+                "Register a built-in schema for this type in ticket-api (model/default_schema.rs and SchemaRegistry::with_builtins), or load a matching TOML schema.".to_string(),
+                "If the type is a mistake, retype the ticket to a supported type before continuing.".to_string(),
+            ],
+        ),
+    );
+}
 
 fn append_ticket_findings(
     store: &TicketStore,
@@ -527,6 +555,71 @@ mod tests {
         assert!(
             ticket_findings.is_empty(),
             "expected no findings, got {ticket_findings:?}"
+        );
+    }
+
+    #[test]
+    fn unknown_type_produces_error_finding() {
+        let (_dir, store) = open_store();
+        let id = store
+            .create(
+                None,
+                "made-up-type",
+                Some("Ticket with an unregistered type"),
+                Some("ready"),
+                extra_with_effort("500"),
+                None,
+                Some("This description is definitely long enough to pass the 50-character threshold."),
+            )
+            .unwrap();
+
+        let tickets = store.list(None, None, None).unwrap();
+        let edges = store.list_all_edges().unwrap();
+        let workflow =
+            WorkflowModel::build(&store, tickets.clone(), edges.clone())
+                .unwrap();
+        let report =
+            super::collect_findings(&store, &tickets, &edges, &workflow);
+
+        let finding = report
+            .findings
+            .iter()
+            .find(|f| f.ticket_id == id && f.check == "unknown_type")
+            .expect("expected unknown_type finding");
+        assert_eq!(finding.severity, "error");
+        assert!(finding.message.contains("made-up-type"));
+        assert_eq!(*report.summary.get("unknown_type").unwrap_or(&0), 1);
+    }
+
+    #[test]
+    fn task_type_has_registered_schema_and_no_unknown_type_finding() {
+        let (_dir, store) = open_store();
+        let id = store
+            .create(
+                None,
+                "task",
+                Some("A task-typed ticket"),
+                Some("ready"),
+                extra_with_effort("500"),
+                None,
+                Some("This description is definitely long enough to pass the 50-character threshold."),
+            )
+            .unwrap();
+
+        let tickets = store.list(None, None, None).unwrap();
+        let edges = store.list_all_edges().unwrap();
+        let workflow =
+            WorkflowModel::build(&store, tickets.clone(), edges.clone())
+                .unwrap();
+        let report =
+            super::collect_findings(&store, &tickets, &edges, &workflow);
+
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|f| f.ticket_id == id && f.check == "unknown_type"),
+            "task type must resolve to a schema"
         );
     }
 
