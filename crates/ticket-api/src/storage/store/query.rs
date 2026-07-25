@@ -155,7 +155,7 @@ impl TicketStore {
 
         let is_acyclic = self
             .schema_registry
-            .get(crate::model::default_schema::TYPE_ID)
+            .get(&source.type_id)
             .and_then(|schema| schema.edge_rules.get(&edge.kind))
             .map(|rule| rule.acyclic_enforced)
             .unwrap_or(false);

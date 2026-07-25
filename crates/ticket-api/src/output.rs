@@ -1,16 +1,13 @@
 use serde_json::Value;
 
-use crate::{
-    model::default_schema::TYPE_ID,
-    workspace::DEFAULT_WORKSPACE_NAME,
-};
+use crate::workspace::DEFAULT_WORKSPACE_NAME;
 
 /// Remove default-identifying metadata from serialized ticket outputs.
 ///
-/// The default workspace (`default`) and default ticket schema
-/// (`tracker-improvement`) are implied across the ticket surfaces, so they are
-/// omitted from machine-readable payloads unless a non-default value is
-/// present.
+/// The default workspace (`default`) is implied across the ticket surfaces, so
+/// it is omitted from machine-readable payloads unless a non-default value is
+/// present. ticket-api makes no assumption about a "default" ticket type, so
+/// the `type` field is never stripped.
 pub fn strip_default_metadata(value: &mut Value) {
     match value {
         Value::Object(map) => {
@@ -21,16 +18,6 @@ pub fn strip_default_metadata(value: &mut Value) {
             if matches!(map.get("workspace"), Some(Value::String(workspace)) if workspace == DEFAULT_WORKSPACE_NAME)
             {
                 map.remove("workspace");
-            }
-
-            if matches!(map.get("type"), Some(Value::String(type_id)) if type_id == TYPE_ID)
-            {
-                map.remove("type");
-            }
-
-            if matches!(map.get("type_id"), Some(Value::String(type_id)) if type_id == TYPE_ID)
-            {
-                map.remove("type_id");
             }
         },
         Value::Array(items) =>
@@ -48,7 +35,7 @@ mod tests {
     use super::strip_default_metadata;
 
     #[test]
-    fn strips_default_workspace_and_schema_recursively() {
+    fn strips_default_workspace_but_retains_type() {
         let mut value = json!({
             "workspace": "default",
             "items": [
@@ -68,8 +55,9 @@ mod tests {
         strip_default_metadata(&mut value);
 
         assert!(value.get("workspace").is_none());
-        assert!(value["items"][0].get("type").is_none());
-        assert!(value["ticket"]["fields"].get("type").is_none());
+        // No assumption of a default type: the type field is preserved.
+        assert_eq!(value["items"][0]["type"], "tracker-improvement");
+        assert_eq!(value["ticket"]["fields"]["type"], "tracker-improvement");
     }
 
     #[test]

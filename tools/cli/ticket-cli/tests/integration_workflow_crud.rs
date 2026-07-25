@@ -31,7 +31,8 @@ fn create_and_get_roundtrip() {
         "tracker-improvement",
     ]);
     assert_eq!(created["status"], "ok");
-    assert!(created.get("type").is_none());
+    // ticket-api makes no assumption of a default type, so the type is retained.
+    assert_eq!(created["type"], "tracker-improvement");
 
     let id = created["id"].as_str().expect("id must be present");
 
@@ -40,7 +41,7 @@ fn create_and_get_roundtrip() {
     assert_eq!(got["ticket"]["id"], id);
     assert_eq!(got["ticket"]["fields"]["title"], "Fix login bug");
     assert_eq!(got["ticket"]["fields"]["state"], "new");
-    assert!(got["ticket"]["fields"].get("type").is_none());
+    assert_eq!(got["ticket"]["fields"]["type"], "tracker-improvement");
     // Interview metadata is schema-supported but optional, so it should not be
     // auto-initialized for tickets without an active interview.
     assert!(got["ticket"]["fields"]["interview_file_type"].is_null());

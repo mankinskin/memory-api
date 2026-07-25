@@ -243,7 +243,8 @@ mod tests {
             json["ticket"]["path"].as_str(),
             Some(indexed.path.display().to_string().as_str())
         );
-        assert!(json["ticket"]["fields"].get("type").is_none());
+        // No default-type assumption: the type field is retained in output.
+        assert_eq!(json["ticket"]["fields"]["type"], "tracker-improvement");
     }
 
     #[tokio::test]
@@ -306,7 +307,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_tickets_tool_omits_default_ticket_type_and_workspace() {
+    async fn list_tickets_tool_omits_default_workspace_but_retains_type() {
         let dir = tempfile::tempdir().expect("tempdir");
         let server = TicketServer::new(dir.path().to_path_buf());
         let store = TicketStore::init(dir.path()).expect("open store");
@@ -336,7 +337,7 @@ mod tests {
         let json: Value = serde_json::from_str(&text).expect("valid json");
 
         assert!(json.get("workspace").is_none());
-        assert!(json["items"][0].get("type").is_none());
+        assert_eq!(json["items"][0]["type"], "tracker-improvement");
     }
 }
 
