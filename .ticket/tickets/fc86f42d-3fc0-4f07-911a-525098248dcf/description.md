@@ -35,7 +35,7 @@ Establish the missing join between a runtime continuity thread and its captured 
 
 Body was clobbered in commit `0c49f48` with an unrelated store-refactor note; the correct requirements above were restored from revision `17ad067`.
 
-Re-review against the restored ACs (134 tests pass):
+Re-review against the restored ACs (136 tests pass):
 - AC1 (stable `session_id`) — MET: `session_id` + `canonical_session_id()` in `crates/session-api/src/model.rs` (~L89/L97).
 - AC2 (run records captured `session_id`; join navigable both directions) — NOT MET: `captured_session_id` field exists (`model.rs` ~L79) but is always written `None` (worktree_runtime.rs ~L200/L258); no `runs_for_session()` / `session_for_run()` resolvers exist. The join is not navigable.
 - AC3 (old records deserialize with defaults) — MET: `#[serde(default)]` present.
