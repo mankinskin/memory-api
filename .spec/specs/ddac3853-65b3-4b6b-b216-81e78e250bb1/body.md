@@ -68,7 +68,7 @@ tests should treat the common `ticket-cli` forms as canonical.
 - Tracking ticket: `.ticket/tickets/8de93812-3a8c-4937-9f09-05a9a9b86309/ticket.toml`
 - Canonical parser surface: `tools/cli/ticket-cli/src/cli/args/board.rs`
 - Focused regression coverage: `tools/cli/ticket-cli/tests/integration_board_cli.rs`
-- Updated workflow guidance: `.agents/instructions/ticket-system.instructions.md`
+- Updated workflow guidance: `.agents/instructions/ticket/`
 
 ## Validation
 
