@@ -7,7 +7,9 @@ pub mod hook;
 pub mod model;
 pub mod move_domain;
 pub mod peek;
+pub mod price_loader;
 pub mod store;
+pub mod subagent_rollup;
 pub mod tool_metrics;
 pub mod transcript_feedback;
 
@@ -109,6 +111,10 @@ pub use peek::{
     peek_prompt_pack,
     peek_skeleton,
     peek_turn_range,
+};
+pub use subagent_rollup::{
+    SubAgentRollup,
+    compute_subagent_rollups,
 };
 pub use store::{
     PersistedActiveWorkspaceSession,

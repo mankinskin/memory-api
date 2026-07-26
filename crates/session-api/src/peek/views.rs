@@ -11,7 +11,7 @@ use crate::{
 
 use super::preview_line;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionTurnRange {
     pub session_id: String,
     pub total_turns: usize,

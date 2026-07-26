@@ -89,10 +89,74 @@ pub(super) fn build_tool_execution_result_event(
             })
         });
     let success = event.tool_success;
-    let result_code = match success {
-        Some(true) => "ok",
-        Some(false) => "error",
-        None => "unknown",
+
+    // Extract error message from multiple possible locations
+    let error_message = event
+        .data
+        .get("error")
+        .and_then(Value::as_object)
+        .and_then(|error| {
+            error
+                .get("message")
+                .and_then(Value::as_str)
+                .or_else(|| error.get("reason").and_then(Value::as_str))
+        })
+        .or_else(|| {
+            event
+                .data
+                .get("errorMessage")
+                .or_else(|| event.data.get("error_message"))
+                .and_then(Value::as_str)
+        })
+        .or_else(|| {
+            event
+                .data
+                .get("stderr")
+                .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+        })
+        .map(|s| s.trim().to_string());
+
+    // Extract exit code
+    let exit_code = event
+        .data
+        .get("exitCode")
+        .or_else(|| event.data.get("exit_code"))
+        .and_then(Value::as_i64)
+        .map(|v| v as i32);
+
+    // Check for sync terminal ambiguous state (potential hang)
+    let has_ambiguous_state = event
+        .data
+        .get("blocker")
+        .and_then(Value::as_str)
+        .is_some()
+        || event
+            .data
+            .get("lifecycle_state")
+            .and_then(Value::as_str)
+            .is_some();
+
+    // Classify result_code
+    let result_code = if has_ambiguous_state {
+        "hang"
+    } else if let Some(duration) = duration_ms {
+        // Timeout classification: duration >= 300000ms AND not explicitly successful
+        if duration >= 300_000 && success != Some(true) {
+            "timeout"
+        } else {
+            match success {
+                Some(true) => "ok",
+                Some(false) => "error",
+                None => "unknown",
+            }
+        }
+    } else {
+        match success {
+            Some(true) => "ok",
+            Some(false) => "error",
+            None => "unknown",
+        }
     };
 
     let error_type = event
@@ -157,6 +221,18 @@ pub(super) fn build_tool_execution_result_event(
     }
     if let Some(error_type) = error_type {
         normalized.insert("error_type".to_string(), Value::String(error_type));
+    }
+    if let Some(error_message) = &error_message {
+        normalized.insert(
+            "error_message".to_string(),
+            Value::String(error_message.clone()),
+        );
+    }
+    if let Some(exit_code) = exit_code {
+        normalized.insert(
+            "exit_code".to_string(),
+            Value::Number(exit_code.into()),
+        );
     }
     if sync_terminal_ambiguous {
         normalized.insert(

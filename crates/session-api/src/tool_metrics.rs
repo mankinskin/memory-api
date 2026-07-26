@@ -36,6 +36,9 @@ pub struct ToolTokenStats {
     pub tool_name: String,
     pub call_count: u64,
     pub success_count: u64,
+    pub fail_count: u64,
+    pub timeout_count: u64,
+    pub hang_count: u64,
     pub total_output_chars: u64,
     pub mean_output_chars: f64,
     pub p50_output_chars: u64,
@@ -45,6 +48,10 @@ pub struct ToolTokenStats {
     pub est_mean_output_tokens: f64,
     pub est_p90_output_tokens: f64,
     pub mean_input_chars: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p50_duration_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p95_duration_ms: Option<i64>,
     /// Optional graded cost (1..=scale_max) for this tool.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost: Option<u32>,
@@ -140,8 +147,12 @@ pub struct SessionToolMetricsSummary {
 pub struct ToolCallSummary {
     pub call_count: u64,
     pub success_count: u64,
+    pub fail_count: u64,
+    pub timeout_count: u64,
+    pub hang_count: u64,
     pub output_char_sizes: Vec<u64>,
     pub input_char_sizes: Vec<u64>,
+    pub duration_ms_values: Vec<i64>,
 }
 
 const TOOL_METRICS_SCHEMA_VERSION: u32 = 1;
@@ -165,31 +176,82 @@ pub fn compute_session_summary(
             ToolCallSummary {
                 call_count: 0,
                 success_count: 0,
+                fail_count: 0,
+                timeout_count: 0,
+                hang_count: 0,
                 output_char_sizes: Vec::new(),
                 input_char_sizes: Vec::new(),
+                duration_ms_values: Vec::new(),
             }
         });
 
         entry.call_count += 1;
 
-        // Check if this is a successful call (not explicitly failed)
-        let is_success = turn
+        // Classify execution result from result_code or tool_success
+        let result_code = turn
             .event_meta
             .as_ref()
-            .and_then(|meta| meta.tool_success)
-            != Some(false);
+            .and_then(|meta| meta.result_code.as_deref());
 
+        let is_success = match result_code {
+            Some("ok") => {
+                entry.success_count += 1;
+                true
+            }
+            Some("error") => {
+                entry.fail_count += 1;
+                false
+            }
+            Some("timeout") => {
+                entry.timeout_count += 1;
+                false
+            }
+            Some("hang") => {
+                entry.hang_count += 1;
+                false
+            }
+            _ => {
+                // Fallback to tool_success if result_code is missing or unknown
+                let success = turn
+                    .event_meta
+                    .as_ref()
+                    .and_then(|meta| meta.tool_success)
+                    != Some(false);
+                if success {
+                    entry.success_count += 1;
+                } else {
+                    entry.fail_count += 1;
+                }
+                success
+            }
+        };
+
+        // Capture output chars only for successful calls (preserve existing behavior)
         if is_success {
-            entry.success_count += 1;
             let output_chars = turn.content.chars().count() as u64;
             entry.output_char_sizes.push(output_chars);
+        }
 
-            // Capture input size from tool_arguments_json
-            if let Some(event_meta) = &turn.event_meta {
-                if let Some(args_json) = &event_meta.tool_arguments_json {
-                    let input_chars =
-                        serde_json::to_string(args_json).unwrap_or_default().len() as u64;
-                    entry.input_char_sizes.push(input_chars);
+        // Capture input size and duration from event_meta
+        if let Some(event_meta) = &turn.event_meta {
+            if let Some(args_json) = &event_meta.tool_arguments_json {
+                let input_chars =
+                    serde_json::to_string(args_json).unwrap_or_default().len() as u64;
+                entry.input_char_sizes.push(input_chars);
+            }
+
+            // Extract duration from data_json if present
+            if let Some(data_json) = event_meta
+                .tool_requests_json
+                .as_ref()
+                .or(event_meta.tool_arguments_json.as_ref())
+            {
+                if let Some(duration) = data_json
+                    .get("duration_ms")
+                    .or_else(|| data_json.get("durationMs"))
+                    .and_then(|v| v.as_i64())
+                {
+                    entry.duration_ms_values.push(duration);
                 }
             }
         }
@@ -249,15 +311,23 @@ pub fn aggregate_with_cost(
                 ToolAggregation {
                     call_count: 0,
                     success_count: 0,
+                    fail_count: 0,
+                    timeout_count: 0,
+                    hang_count: 0,
                     output_chars: Vec::new(),
                     input_chars: Vec::new(),
+                    durations: Vec::new(),
                 }
             });
 
             entry.call_count += call_summary.call_count;
             entry.success_count += call_summary.success_count;
+            entry.fail_count += call_summary.fail_count;
+            entry.timeout_count += call_summary.timeout_count;
+            entry.hang_count += call_summary.hang_count;
             entry.output_chars.extend(&call_summary.output_char_sizes);
             entry.input_chars.extend(&call_summary.input_char_sizes);
+            entry.durations.extend(&call_summary.duration_ms_values);
 
             total_turn_count += call_summary.call_count as usize;
         }
@@ -298,10 +368,27 @@ pub fn aggregate_with_cost(
             None
         };
 
+        // Compute duration percentiles
+        let mut sorted_durations = data.durations.clone();
+        sorted_durations.sort_unstable();
+        let p50_duration_ms = if sorted_durations.is_empty() {
+            None
+        } else {
+            Some(percentile_i64(&sorted_durations, 50))
+        };
+        let p95_duration_ms = if sorted_durations.is_empty() {
+            None
+        } else {
+            Some(percentile_i64(&sorted_durations, 95))
+        };
+
         tools.push(ToolTokenStats {
             tool_name,
             call_count: data.call_count,
             success_count: data.success_count,
+            fail_count: data.fail_count,
+            timeout_count: data.timeout_count,
+            hang_count: data.hang_count,
             total_output_chars,
             mean_output_chars,
             p50_output_chars,
@@ -311,6 +398,8 @@ pub fn aggregate_with_cost(
             est_mean_output_tokens,
             est_p90_output_tokens,
             mean_input_chars,
+            p50_duration_ms,
+            p95_duration_ms,
             cost,
         });
     }
@@ -349,11 +438,27 @@ pub fn aggregate_with_cost(
 struct ToolAggregation {
     call_count: u64,
     success_count: u64,
+    fail_count: u64,
+    timeout_count: u64,
+    hang_count: u64,
     output_chars: Vec<u64>,
     input_chars: Vec<u64>,
+    durations: Vec<i64>,
 }
 
 fn percentile(sorted_values: &[u64], p: u8) -> u64 {
+    if sorted_values.is_empty() {
+        return 0;
+    }
+    if p >= 100 {
+        return *sorted_values.last().unwrap();
+    }
+    // Nearest rank method: rank = ceil(p/100 * n)
+    let rank = (p as f64 / 100.0 * sorted_values.len() as f64).ceil() as usize;
+    sorted_values[rank.saturating_sub(1)]
+}
+
+fn percentile_i64(sorted_values: &[i64], p: u8) -> i64 {
     if sorted_values.is_empty() {
         return 0;
     }
@@ -538,6 +643,15 @@ mod tests {
                         tool_call_id: None,
                         reasoning_text: None,
                         tool_requests_json: None,
+                        input_tokens: None,
+                        output_tokens: None,
+                        cache_read_tokens: None,
+                        cache_write_tokens: None,
+                        cost_usd: None,
+                        model_id: None,
+                        error_message: None,
+                        exit_code: None,
+                        result_code: None,
                     }),
                 },
                 SessionTurn {
@@ -558,6 +672,15 @@ mod tests {
                         tool_call_id: None,
                         reasoning_text: None,
                         tool_requests_json: None,
+                        input_tokens: None,
+                        output_tokens: None,
+                        cache_read_tokens: None,
+                        cache_write_tokens: None,
+                        cost_usd: None,
+                        model_id: None,
+                        error_message: None,
+                        exit_code: None,
+                        result_code: None,
                     }),
                 },
             ],
@@ -735,6 +858,9 @@ mod tests {
                     tool_name: "test_tool".to_string(),
                     call_count: 10,
                     success_count: 9,
+                    fail_count: 1,
+                    timeout_count: 0,
+                    hang_count: 0,
                     total_output_chars: 1000,
                     mean_output_chars: 100.0,
                     p50_output_chars: 90,
@@ -744,6 +870,8 @@ mod tests {
                     est_mean_output_tokens: 25.0,
                     est_p90_output_tokens: 37.5,
                     mean_input_chars: 50.0,
+                    p50_duration_ms: Some(100),
+                    p95_duration_ms: Some(500),
                     cost: Some(25),
                 },
             ],
@@ -759,5 +887,262 @@ mod tests {
 
         assert_eq!(deserialized.report.tools[0].cost, Some(25));
         assert_eq!(deserialized.report.session_count, 10);
+    }
+
+    #[test]
+    fn failure_timeout_hang_classification_and_duration_tracking() {
+        // AC1: Prove tool-metrics is non-empty and reflects failures + slow tools
+        // AC2: Verify error reasons are retrievable
+        // AC3: Verify timeout/hang outcomes are countable and distinct
+        use serde_json::json;
+
+        let record = SessionRecord {
+            schema_version: SESSION_SCHEMA_VERSION,
+            session_id: "test-session-with-failures".to_string(),
+            source: "test".to_string(),
+            started_at: sample_time(),
+            captured_at: sample_time(),
+            metadata: SessionMetadata {
+                workspace_slug: "test".to_string(),
+                conversation_id: None,
+                agent_id: None,
+                ticket_id: None,
+                model: None,
+                trigger: None,
+                producer: None,
+                copilot_version: None,
+                vscode_version: None,
+                protocol_version: None,
+                worktree: None,
+            },
+            turns: vec![
+                // Success case
+                SessionTurn {
+                    sequence: 0,
+                    role: SessionRole::Tool,
+                    content: "ok result".to_string(),
+                    captured_at: sample_time(),
+                    tool_name: Some("test_tool".to_string()),
+                    model: None,
+                    event_meta: Some(SessionTurnEventMeta {
+                        tool_success: Some(true),
+                        tool_arguments_json: Some(json!({"duration_ms": 100})),
+                        result_code: Some("ok".to_string()),
+                        error_message: None,
+                        exit_code: None,
+                        event_id: None,
+                        parent_event_id: None,
+                        event_type: None,
+                        turn_id: None,
+                        message_id: None,
+                        tool_call_id: None,
+                        reasoning_text: None,
+                        tool_requests_json: None,
+                        input_tokens: None,
+                        output_tokens: None,
+                        cache_read_tokens: None,
+                        cache_write_tokens: None,
+                        cost_usd: None,
+                        model_id: None,
+                    }),
+                },
+                // Error case with exit code and message
+                SessionTurn {
+                    sequence: 1,
+                    role: SessionRole::Tool,
+                    content: "error output".to_string(),
+                    captured_at: sample_time(),
+                    tool_name: Some("test_tool".to_string()),
+                    model: None,
+                    event_meta: Some(SessionTurnEventMeta {
+                        tool_success: Some(false),
+                        tool_arguments_json: Some(json!({"duration_ms": 200})),
+                        result_code: Some("error".to_string()),
+                        error_message: Some("Command failed with non-zero exit".to_string()),
+                        exit_code: Some(1),
+                        event_id: None,
+                        parent_event_id: None,
+                        event_type: None,
+                        turn_id: None,
+                        message_id: None,
+                        tool_call_id: None,
+                        reasoning_text: None,
+                        tool_requests_json: None,
+                        input_tokens: None,
+                        output_tokens: None,
+                        cache_read_tokens: None,
+                        cache_write_tokens: None,
+                        cost_usd: None,
+                        model_id: None,
+                    }),
+                },
+                // Timeout case (duration >= 300000ms)
+                SessionTurn {
+                    sequence: 2,
+                    role: SessionRole::Tool,
+                    content: "timeout output".to_string(),
+                    captured_at: sample_time(),
+                    tool_name: Some("slow_tool".to_string()),
+                    model: None,
+                    event_meta: Some(SessionTurnEventMeta {
+                        tool_success: Some(false),
+                        tool_arguments_json: Some(json!({"duration_ms": 305000})),
+                        result_code: Some("timeout".to_string()),
+                        error_message: Some("Execution exceeded timeout cap".to_string()),
+                        exit_code: None,
+                        event_id: None,
+                        parent_event_id: None,
+                        event_type: None,
+                        turn_id: None,
+                        message_id: None,
+                        tool_call_id: None,
+                        reasoning_text: None,
+                        tool_requests_json: None,
+                        input_tokens: None,
+                        output_tokens: None,
+                        cache_read_tokens: None,
+                        cache_write_tokens: None,
+                        cost_usd: None,
+                        model_id: None,
+                    }),
+                },
+                // Hang case
+                SessionTurn {
+                    sequence: 3,
+                    role: SessionRole::Tool,
+                    content: "hang output".to_string(),
+                    captured_at: sample_time(),
+                    tool_name: Some("ambiguous_tool".to_string()),
+                    model: None,
+                    event_meta: Some(SessionTurnEventMeta {
+                        tool_success: None,
+                        tool_arguments_json: Some(json!({"duration_ms": 50000})),
+                        result_code: Some("hang".to_string()),
+                        error_message: Some("sync-terminal-state-ambiguous".to_string()),
+                        exit_code: None,
+                        event_id: None,
+                        parent_event_id: None,
+                        event_type: None,
+                        turn_id: None,
+                        message_id: None,
+                        tool_call_id: None,
+                        reasoning_text: None,
+                        tool_requests_json: None,
+                        input_tokens: None,
+                        output_tokens: None,
+                        cache_read_tokens: None,
+                        cache_write_tokens: None,
+                        cost_usd: None,
+                        model_id: None,
+                    }),
+                },
+            ],
+            links: Default::default(),
+        };
+
+        let estimator = CharsPerTokenEstimator::default();
+        let summary = compute_session_summary(&record, &estimator);
+
+        // Verify test_tool summary
+        let test_tool = &summary.tools["test_tool"];
+        assert_eq!(test_tool.call_count, 2);
+        assert_eq!(test_tool.success_count, 1);
+        assert_eq!(test_tool.fail_count, 1);
+        assert_eq!(test_tool.timeout_count, 0);
+        assert_eq!(test_tool.hang_count, 0);
+        assert_eq!(test_tool.duration_ms_values, vec![100, 200]);
+
+        // Verify slow_tool summary
+        let slow_tool = &summary.tools["slow_tool"];
+        assert_eq!(slow_tool.call_count, 1);
+        assert_eq!(slow_tool.success_count, 0);
+        assert_eq!(slow_tool.fail_count, 0);
+        assert_eq!(slow_tool.timeout_count, 1);
+        assert_eq!(slow_tool.hang_count, 0);
+        assert_eq!(slow_tool.duration_ms_values, vec![305000]);
+
+        // Verify ambiguous_tool summary
+        let ambiguous_tool = &summary.tools["ambiguous_tool"];
+        assert_eq!(ambiguous_tool.call_count, 1);
+        assert_eq!(ambiguous_tool.success_count, 0);
+        assert_eq!(ambiguous_tool.fail_count, 0);
+        assert_eq!(ambiguous_tool.timeout_count, 0);
+        assert_eq!(ambiguous_tool.hang_count, 1);
+        assert_eq!(ambiguous_tool.duration_ms_values, vec![50000]);
+
+        // Aggregate and verify report
+        let window = ToolMetricsWindow::default();
+        let report = aggregate(vec![summary], window, &estimator);
+
+        assert_eq!(report.tools.len(), 3);
+        assert_eq!(report.session_count, 1);
+        assert_eq!(report.turn_count, 4);
+
+        // Verify aggregated stats contain p50/p95 duration
+        let test_tool_stats = report
+            .tools
+            .iter()
+            .find(|t| t.tool_name == "test_tool")
+            .expect("test_tool should be in report");
+        assert_eq!(test_tool_stats.fail_count, 1);
+        assert_eq!(test_tool_stats.p50_duration_ms, Some(100));  // nearest rank: ceil(0.5*2)=1, values[0]=100
+        assert_eq!(test_tool_stats.p95_duration_ms, Some(200));
+
+        let slow_tool_stats = report
+            .tools
+            .iter()
+            .find(|t| t.tool_name == "slow_tool")
+            .expect("slow_tool should be in report");
+        assert_eq!(slow_tool_stats.timeout_count, 1);
+        assert_eq!(slow_tool_stats.p50_duration_ms, Some(305000));
+        assert_eq!(slow_tool_stats.p95_duration_ms, Some(305000));
+
+        let ambiguous_tool_stats = report
+            .tools
+            .iter()
+            .find(|t| t.tool_name == "ambiguous_tool")
+            .expect("ambiguous_tool should be in report");
+        assert_eq!(ambiguous_tool_stats.hang_count, 1);
+        assert_eq!(ambiguous_tool_stats.p50_duration_ms, Some(50000));
+
+        // AC2: Verify error_message is preserved in the turn
+        assert_eq!(
+            record.turns[1].event_meta.as_ref().unwrap().error_message.as_deref(),
+            Some("Command failed with non-zero exit")
+        );
+        assert_eq!(
+            record.turns[1].event_meta.as_ref().unwrap().exit_code,
+            Some(1)
+        );
+
+        // AC3: Verify result_code distinguishes outcomes
+        assert_eq!(
+            record.turns[0].event_meta.as_ref().unwrap().result_code.as_deref(),
+            Some("ok")
+        );
+        assert_eq!(
+            record.turns[1].event_meta.as_ref().unwrap().result_code.as_deref(),
+            Some("error")
+        );
+        assert_eq!(
+            record.turns[2].event_meta.as_ref().unwrap().result_code.as_deref(),
+            Some("timeout")
+        );
+        assert_eq!(
+            record.turns[3].event_meta.as_ref().unwrap().result_code.as_deref(),
+            Some("hang")
+        );
+
+        // AC1: Verify rollup is non-empty and serializable
+        let rollup = ToolMetricsRollup {
+            schema_version: TOOL_METRICS_SCHEMA_VERSION,
+            report,
+        };
+        let json = serde_json::to_string_pretty(&rollup).unwrap();
+        assert!(json.contains("\"fail_count\":"));
+        assert!(json.contains("\"timeout_count\":"));
+        assert!(json.contains("\"hang_count\":"));
+        assert!(json.contains("\"p50_duration_ms\":"));
+        assert!(json.contains("\"p95_duration_ms\":"));
     }
 }

@@ -24,6 +24,15 @@ fn tool_turn(
             reasoning_text: None,
             tool_requests_json: None,
             tool_arguments_json: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            cost_usd: None,
+            model_id: None,
+            error_message: None,
+            exit_code: None,
+            result_code: None,
         }),
     }
 }

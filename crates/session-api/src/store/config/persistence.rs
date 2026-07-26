@@ -260,7 +260,29 @@ impl SessionStoreConfig {
         &self,
         request: SessionCaptureRequest,
     ) -> Result<SessionStorePlan, SessionError> {
-        let (record, events) = request.into_record_and_events()?;
+        let (mut record, events) = request.into_record_and_events()?;
+        
+        // Compute cost_usd for turns with token attribution (ticket 6549b6a7)
+        let price_table = crate::price_loader::load_price_table(&self.root).ok();
+        if let Some(table) = &price_table {
+            for turn in &mut record.turns {
+                if let Some(meta) = &mut turn.event_meta {
+                    if let (Some(model_id), Some(input), Some(output)) =
+                        (&meta.model_id, meta.input_tokens, meta.output_tokens)
+                    {
+                        meta.cost_usd = crate::price_loader::compute_cost_usd(
+                            model_id,
+                            input,
+                            output,
+                            meta.cache_read_tokens.unwrap_or(0),
+                            meta.cache_write_tokens.unwrap_or(0),
+                            table,
+                        );
+                    }
+                }
+            }
+        }
+        
         let paths = self.paths_for(&record)?;
         let events = if events.is_empty() {
             None

@@ -27,7 +27,7 @@ impl From<&SessionRecord> for PersistedSessionManifest {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PersistedSessionTranscript {
     #[serde(default = "crate::default_session_schema_version")]
     pub schema_version: u32,

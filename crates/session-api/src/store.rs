@@ -378,7 +378,7 @@ fn escape_mermaid_label(label: &str) -> String {
         .replace('\n', " ")
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionStorePlan {
     pub record: SessionRecord,
     pub paths: SessionStorePaths,

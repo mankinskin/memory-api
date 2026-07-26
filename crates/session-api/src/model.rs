@@ -201,7 +201,7 @@ pub enum SessionRole {
     Tool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionTurnEventMeta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event_id: Option<String>,
@@ -223,9 +223,29 @@ pub struct SessionTurnEventMeta {
     pub tool_requests_json: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_arguments_json: Option<Value>,
+    // Token and cost attribution (ticket 6549b6a7)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    // Tool execution failure/timeout classification (ticket 84c7757d)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result_code: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionTurn {
     pub sequence: usize,
     pub role: SessionRole,
@@ -296,7 +316,7 @@ pub struct SessionWorktreeAssignment {
     pub predecessor_path: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionRecord {
     #[serde(default = "default_session_schema_version")]
     pub schema_version: u32,
@@ -389,6 +409,17 @@ mod tests {
                     reasoning_text: None,
                     tool_requests_json: None,
                     tool_arguments_json: None,
+                    // Token and cost attribution (ticket 6549b6a7)
+                    input_tokens: None,
+                    output_tokens: None,
+                    cache_read_tokens: None,
+                    cache_write_tokens: None,
+                    cost_usd: None,
+                    model_id: None,
+                    // Tool execution failure/timeout classification (ticket 84c7757d)
+                    error_message: None,
+                    exit_code: None,
+                    result_code: None,
                 }),
             }],
             links: SessionLinks {

@@ -88,7 +88,7 @@ pub struct CopilotRuntimeMetadata {
     pub protocol_version: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CopilotHookMessage {
     pub role: SessionRole,
     pub content: String,
@@ -100,7 +100,7 @@ pub struct CopilotHookMessage {
     pub event_meta: Option<SessionTurnEventMeta>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CopilotHookPayload {
     pub session_id: String,
     pub workspace_slug: String,
@@ -121,7 +121,7 @@ pub struct CopilotHookPayload {
     pub runtime: Option<CopilotRuntimeMetadata>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionCaptureRequest {
     pub source: String,
     pub payload: CopilotHookPayload,
@@ -249,6 +249,56 @@ struct TranscriptEventEnvelope {
 
 impl TranscriptEventEnvelope {
     fn event_meta(&self) -> Option<SessionTurnEventMeta> {
+        // Extract token and model attribution from data_json (ticket 6549b6a7)
+        let (input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, model_id) =
+            if let Some(data) = &self.data_json {
+                let usage = data.get("usage");
+                let input_tokens = usage
+                    .and_then(|u| u.get("input_tokens"))
+                    .and_then(|v| v.as_u64());
+                let output_tokens = usage
+                    .and_then(|u| u.get("output_tokens"))
+                    .and_then(|v| v.as_u64());
+                let cache_read_tokens = usage
+                    .and_then(|u| u.get("cache_read_tokens"))
+                    .and_then(|v| v.as_u64());
+                let cache_write_tokens = usage
+                    .and_then(|u| u.get("cache_write_tokens"))
+                    .and_then(|v| v.as_u64());
+                let model_id = data
+                    .get("model")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                (
+                    input_tokens,
+                    output_tokens,
+                    cache_read_tokens,
+                    cache_write_tokens,
+                    model_id,
+                )
+            } else {
+                (None, None, None, None, None)
+            };
+
+        // Extract error/exit/result_code from data_json (ticket 84c7757d)
+        let (error_message, exit_code, result_code) = if let Some(data) = &self.data_json {
+            let error_message = data
+                .get("error_message")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let exit_code = data
+                .get("exit_code")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32);
+            let result_code = data
+                .get("result_code")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            (error_message, exit_code, result_code)
+        } else {
+            (None, None, None)
+        };
+
         let meta = SessionTurnEventMeta {
             event_id: self.event_id.clone(),
             parent_event_id: self.parent_event_id.clone(),
@@ -260,6 +310,15 @@ impl TranscriptEventEnvelope {
             reasoning_text: self.reasoning_text.clone(),
             tool_requests_json: self.tool_requests_json.clone(),
             tool_arguments_json: self.tool_arguments_json.clone(),
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_write_tokens,
+            cost_usd: None, // Computed later in into_record_and_events
+            model_id,
+            error_message,
+            exit_code,
+            result_code,
         };
         if meta.event_id.is_none()
             && meta.parent_event_id.is_none()
@@ -271,6 +330,15 @@ impl TranscriptEventEnvelope {
             && meta.reasoning_text.is_none()
             && meta.tool_requests_json.is_none()
             && meta.tool_arguments_json.is_none()
+            && meta.input_tokens.is_none()
+            && meta.output_tokens.is_none()
+            && meta.cache_read_tokens.is_none()
+            && meta.cache_write_tokens.is_none()
+            && meta.cost_usd.is_none()
+            && meta.model_id.is_none()
+            && meta.error_message.is_none()
+            && meta.exit_code.is_none()
+            && meta.result_code.is_none()
         {
             None
         } else {
