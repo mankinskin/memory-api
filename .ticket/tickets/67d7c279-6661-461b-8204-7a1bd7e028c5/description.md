@@ -30,3 +30,13 @@ Stop storing each captured event's payload twice, which makes session review and
 
 - Related: `7769da57-a8f6-4e72-a860-c8263d5a360e`, `c851f3af-433a-496e-a586-28631de142ce`.
 - Epic: `effba966-f0a8-4d7d-b289-b7feba826cf8`.
+# Review Findings (2026-07-26)
+
+Re-review against the 5 ACs (134 tests pass):
+- AC1 (`raw_event_json` absent from new captures) — NOT MET: still serialized in `crates/session-api/src/hook.rs` (~L74) via `skip_serializing_if = "Option::is_none"`, and `store_tests/capture/query_and_worktree.rs` (~L28-72) asserts it persists.
+- AC2 (collapse `execution_complete`/`execution_result`) — PARTIAL: dedup exists in `store/helpers/events.rs` (~L29-59) but the unique-payload retention is undocumented.
+- AC3 (read/query/audit unaffected) — MET: `audit.rs` (~L109) reads `data_json`.
+- AC4 (back-compat deserialize) — MET.
+- AC5 (size-regression check) — NOT MET: no size assertion in `store_tests/`.
+
+Remaining work: actually stop persisting `raw_event_json` (and update the asserting test), document AC2 unique-payload retention, and add the AC5 size-regression check. Sent back to implementation as the fresh task.
