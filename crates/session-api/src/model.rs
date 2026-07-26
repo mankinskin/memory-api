@@ -114,6 +114,30 @@ impl SessionRuntimeContext {
             .find(|run| run.run_id == self.active_run_id)
     }
 
+    pub fn runs_for_session(
+        &self,
+        session_id: &str,
+    ) -> Vec<&SessionRunLineage> {
+        self.runs
+            .iter()
+            .filter(|run| {
+                run.captured_session_id
+                    .as_deref()
+                    .map_or(false, |id| id == session_id)
+            })
+            .collect()
+    }
+
+    pub fn session_for_run(
+        &self,
+        run_id: &str,
+    ) -> Option<&str> {
+        self.runs
+            .iter()
+            .find(|run| run.run_id == run_id)
+            .and_then(|run| run.captured_session_id.as_deref())
+    }
+
     pub fn find_pin_mut(
         &mut self,
         urn: &str,

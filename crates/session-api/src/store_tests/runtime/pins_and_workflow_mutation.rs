@@ -427,3 +427,73 @@ fn workflow_batches_are_atomic_and_preserve_duplicate_no_ops() {
         .unwrap();
     assert_eq!(edges.workflow.edges.len(), 2);
 }
+
+#[test]
+fn session_run_lineage_round_trip() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    // Create the initial runtime context (first run).
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    let ctx = &init.context;
+    let session_id = ctx.canonical_session_id();
+    let first_run_id = init.run.run_id.clone();
+
+    // The first run must be stamped with the session id.
+    assert_eq!(
+        init.run.captured_session_id.as_deref(),
+        Some(session_id.as_str()),
+        "first run must carry captured_session_id"
+    );
+
+    // Force a second run on the same workspace.
+    let resume = config
+        .init_runtime_context(SessionRuntimeInitRequest {
+            workspace_session_id: Some(ctx.workspace_session_id.clone()),
+            force_new_run: true,
+            predecessor_run_id: None,
+        })
+        .unwrap();
+    let second_run_id = resume.run.run_id.clone();
+
+    assert_eq!(
+        resume.run.captured_session_id.as_deref(),
+        Some(session_id.as_str()),
+        "second run must also carry captured_session_id"
+    );
+
+    // Read back and verify both-direction navigation.
+    let ctx2 = config
+        .read_runtime_context(&ctx.workspace_session_id)
+        .unwrap();
+
+    let runs = ctx2.runs_for_session(&session_id);
+    let run_ids: Vec<&str> = runs.iter().map(|r| r.run_id.as_str()).collect();
+    assert!(
+        run_ids.contains(&first_run_id.as_str()),
+        "runs_for_session must include first run"
+    );
+    assert!(
+        run_ids.contains(&second_run_id.as_str()),
+        "runs_for_session must include second run"
+    );
+
+    assert_eq!(
+        ctx2.session_for_run(&first_run_id),
+        Some(session_id.as_str()),
+        "session_for_run must return session_id for first run"
+    );
+    assert_eq!(
+        ctx2.session_for_run(&second_run_id),
+        Some(session_id.as_str()),
+        "session_for_run must return session_id for second run"
+    );
+    assert_eq!(
+        ctx2.session_for_run("nonexistent-run-id"),
+        None,
+        "session_for_run must return None for unknown run"
+    );
+}

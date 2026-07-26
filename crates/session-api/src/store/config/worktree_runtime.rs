@@ -197,7 +197,7 @@ impl SessionStoreConfig {
                 let run = SessionRunLineage {
                     run_id: Uuid::new_v4().to_string(),
                     predecessor_run_id: request.predecessor_run_id.clone(),
-                    captured_session_id: None,
+                    captured_session_id: Some(workspace_session_id.clone()),
                     started_at: now,
                 };
 
@@ -255,7 +255,7 @@ impl SessionStoreConfig {
                 let run = SessionRunLineage {
                     run_id: Uuid::new_v4().to_string(),
                     predecessor_run_id: predecessor,
-                    captured_session_id: None,
+                    captured_session_id: Some(context.canonical_session_id()),
                     started_at: now,
                 };
                 context.active_run_id = run.run_id.clone();

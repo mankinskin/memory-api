@@ -1,6 +1,6 @@
 
 #[test]
-fn persist_capture_keeps_distinct_id_less_events_using_raw_event_payload() {
+fn persist_capture_keeps_distinct_id_less_events_by_data_json() {
     let tempdir = TempDir::new().unwrap();
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
@@ -67,22 +67,25 @@ fn persist_capture_keeps_distinct_id_less_events_using_raw_event_payload() {
     let events: PersistedSessionEvents =
         serde_json::from_str(&events_text).unwrap();
     assert_eq!(events.events.len(), 2);
+    // data_json is the canonical payload and must carry the distinct values.
     assert!(events.events.iter().any(|event| {
         event
-            .raw_event_json
+            .data_json
             .as_ref()
-            .and_then(|json| json.pointer("/data/arguments/path"))
+            .and_then(|json| json.pointer("/arguments/path"))
             .and_then(serde_json::Value::as_str)
             == Some("A")
     }));
     assert!(events.events.iter().any(|event| {
         event
-            .raw_event_json
+            .data_json
             .as_ref()
-            .and_then(|json| json.pointer("/data/arguments/path"))
+            .and_then(|json| json.pointer("/arguments/path"))
             .and_then(serde_json::Value::as_str)
             == Some("B")
     }));
+    // raw_event_json must not be written to the persisted file (AC1).
+    assert!(events.events.iter().all(|event| event.raw_event_json.is_none()));
 }
 
 #[test]
@@ -307,5 +310,48 @@ fn check_in_worktree_rotates_for_handoff_and_supersedes_predecessor() {
     assert_eq!(
         predecessor.metadata.worktree.unwrap().status,
         SessionWorktreeStatus::Superseded
+    );
+}
+
+#[test]
+fn new_events_file_omits_raw_event_json() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    let mut payload = sample_payload(
+        "session-size-check",
+        Some("conversation-size-check"),
+        sample_time(),
+        &["size regression check"],
+    );
+    payload.events = vec![crate::CopilotHookEvent {
+        event_id: None,
+        parent_event_id: None,
+        event_type: Some("tool.execution_complete".to_string()),
+        captured_at: Some(sample_time()),
+        turn_id: None,
+        message_id: None,
+        tool_call_id: Some("call-size-1".to_string()),
+        tool_name: Some("read_file".to_string()),
+        tool_success: Some(true),
+        reasoning_text: None,
+        tool_requests_json: None,
+        tool_arguments_json: Some(serde_json::json!({ "path": "size-test.rs" })),
+        data_json: Some(serde_json::json!({ "arguments": { "path": "size-test.rs" } })),
+        raw_event_json: Some(serde_json::json!({
+            "type": "tool.execution_complete",
+            "data": { "arguments": { "path": "size-test.rs" } }
+        })),
+    }];
+    let plan = config
+        .persist_capture(SessionCaptureRequest::copilot(payload))
+        .unwrap();
+
+    let events_text = std::fs::read_to_string(&plan.paths.events_path).unwrap();
+    assert!(
+        !events_text.contains("raw_event_json"),
+        "newly written events.json must not contain the key 'raw_event_json', \
+         but found it in: {events_text}"
     );
 }

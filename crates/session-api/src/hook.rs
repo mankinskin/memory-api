@@ -70,7 +70,9 @@ pub struct CopilotHookEvent {
     pub tool_arguments_json: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_json: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Back-compat read shim: older `events.json` files may contain this field,
+    /// but it is never written to new files (`skip_serializing`).
+    #[serde(default, skip_serializing)]
     pub raw_event_json: Option<Value>,
 }
 

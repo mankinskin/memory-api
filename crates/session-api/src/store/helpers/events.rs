@@ -26,6 +26,14 @@ pub(super) fn captured_event_key(event: &CopilotHookEvent) -> String {
     )
 }
 
+/// Canonicalize a batch of captured events by collapsing redundant
+/// `tool.execution_result` entries that are already covered by a matching
+/// `tool.execution_complete` for the same `tool_call_id`.
+///
+/// Events whose payloads are unique (i.e. a `tool.execution_result` with no
+/// corresponding `tool.execution_complete`, or any other event type) are
+/// **retained** unchanged — deduplication only collapses true structural
+/// duplicates.
 pub(super) fn canonicalize_captured_events(
     events: Vec<CopilotHookEvent>
 ) -> Vec<CopilotHookEvent> {
