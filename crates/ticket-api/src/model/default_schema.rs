@@ -14,6 +14,7 @@ const DELIVERED_SCHEMA_TOML: &[&str] = &[
     include_str!("../../schemas/bug.toml"),
     include_str!("../../schemas/task.toml"),
     include_str!("../../schemas/epic.toml"),
+    include_str!("../../schemas/feature.toml"),
 ];
 
 /// Parse every ticket type schema delivered with ticket-api from its embedded

@@ -9,16 +9,19 @@
 //!
 //! On `tools/list` it injects a required `caller_model` argument into every
 //! advertised tool schema. On `tools/call` it reads `arguments.caller_model`,
-//! rejects the call if absent, refuses token-heavy calls from orchestrator-tier
-//! models with delegation guidance, and otherwise strips `caller_model` and
-//! forwards the cleaned call. All other traffic passes through untouched.
+//! rejects the call if absent, uses graded cost model with optional grant_id
+//! to decide allow/delegate, and strips both caller_model and grant_id before
+//! forwarding. All other traffic passes through untouched.
 //!
 //! Fail-open: if the price table cannot be loaded the proxy is a transparent
 //! passthrough (no schema injection, no enforcement).
 //!
 //! Environment:
 //! * `COST_GATE_TABLE` — path to `model_prices.json` (required for enforcement).
-//! * `COST_GATE_X` — threshold on `output_mtok` (default 15).
+//! * `COST_GATE_TOOL_METRICS` — path to tool metrics rollup JSON (optional).
+//! * `COST_GATE_GRANTS_DIR` — directory with grant JSON files (optional).
+//! * `COST_GATE_SCALE_MAX` — budget scale max (default 100).
+//! * `COST_GATE_BUDGET_ZERO_PRICE` — price at which budget=0 (default 60.0).
 
 use std::{
     io::{
@@ -40,8 +43,8 @@ use std::{
 
 use mcp_cost_gate::{
     gate::{
-        DEFAULT_THRESHOLD_X,
         Gate,
+        ModelBudgetCalibration,
     },
     proxy::{
         ClientAction,
@@ -66,16 +69,35 @@ fn server_command(argv: &[String]) -> Vec<String> {
 }
 
 fn load_gate() -> Option<Gate> {
-    let x = std::env::var("COST_GATE_X")
+    let table = std::env::var("COST_GATE_TABLE").ok().map(PathBuf::from)?;
+    
+    let scale_max = std::env::var("COST_GATE_SCALE_MAX")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(100);
+    let budget_zero_price = std::env::var("COST_GATE_BUDGET_ZERO_PRICE")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
-        .unwrap_or(DEFAULT_THRESHOLD_X);
-    let table = std::env::var("COST_GATE_TABLE").ok().map(PathBuf::from)?;
-    match Gate::load(&table, x) {
+        .unwrap_or(60.0);
+    let calibration = ModelBudgetCalibration {
+        scale_max,
+        budget_zero_price,
+    };
+
+    let rollup_path = std::env::var("COST_GATE_TOOL_METRICS")
+        .ok()
+        .map(PathBuf::from);
+    let grants_dir = std::env::var("COST_GATE_GRANTS_DIR")
+        .ok()
+        .map(PathBuf::from);
+
+    match Gate::load(&table, calibration, rollup_path.as_deref(), grants_dir) {
         Ok(g) => {
             log(&format!(
-                "enforcing per-request caller_model (table={}, x={x})",
-                table.display()
+                "enforcing graded cost model (table={}, scale_max={}, budget_zero_price={:.1})",
+                table.display(),
+                scale_max,
+                budget_zero_price
             ));
             Some(g)
         }

@@ -1,0 +1,14 @@
+{
+  "id": "ticket-api-move-planner-invisible-reference",
+  "title": "Ticket move-planner invisible-reference regression",
+  "command": "rtk cargo test -p ticket-api storage::move_planner::tests::preflight_reports_invisible_reference_visibility_and_path_refs -- --exact --nocapture",
+  "detail": "Verifies legacy cross-store fixture setup reaches move-preflight assertions without weakening public endpoint visibility validation.",
+  "links": {
+    "spec_ids": [
+      "2b0ce814-0c22-42fa-8a89-f123660690e8"
+    ],
+    "ticket_ids": [
+      "d5771b88-ca1d-41b2-8b59-0c911a34b37f"
+    ]
+  }
+}

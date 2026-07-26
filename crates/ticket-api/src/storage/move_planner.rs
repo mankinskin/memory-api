@@ -395,8 +395,9 @@ mod tests {
                 created_at: Utc::now(),
             })
             .unwrap();
-        source_store
-            .add_edge(EdgeRecord {
+        RedbIndexStore::open(&source_store.index_root.join("tickets.db"))
+            .unwrap()
+            .insert_edge(&EdgeRecord {
                 from: source_ticket,
                 to: destination_visible,
                 kind: "depends_on".to_string(),

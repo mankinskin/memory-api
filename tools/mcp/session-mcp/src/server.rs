@@ -39,6 +39,7 @@ use session_api::{
     SessionWorkflowNodeRequirement,
     SessionWorkflowNodeStatus,
     SessionWorktreeCheckInRequest,
+    ToolMetricsWindow,
 };
 
 // ── Workflow enum schema advertisement ─────────────────────────────────────
@@ -206,6 +207,106 @@ pub struct RuntimeUnpinInput {
     pub workspace: String,
     pub workspace_session_id: String,
     pub entity_urn: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ToolMetricsInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
+    pub workspace: String,
+    /// Maximum age in days for included sessions.
+    #[serde(default)]
+    pub days: Option<u32>,
+    /// Maximum number of sessions to include.
+    #[serde(default)]
+    pub max_sessions: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GrantCreateInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
+    pub workspace: String,
+    /// Grant scope: session or subagent.
+    pub scope: String,
+    /// Budget offset to add.
+    pub offset: u32,
+    /// Optional model constraint (case-insensitive).
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Optional TTL in seconds from now.
+    #[serde(default)]
+    pub ttl_seconds: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GrantListInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
+    pub workspace: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GrantRevokeInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
+    pub workspace: String,
+    /// Grant ID to revoke.
+    pub grant_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct EscalationCreateInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
+    pub workspace: String,
+    /// The blocking decision or problem statement.
+    pub blocking_decision: String,
+    /// Context explaining the situation.
+    pub context: String,
+    /// Optional requested capability or resource.
+    #[serde(default)]
+    pub requested_capability: Option<String>,
+    /// Options considered before escalating.
+    #[serde(default)]
+    pub options_considered: Vec<String>,
+    /// Optional session ID that created the escalation.
+    #[serde(default)]
+    pub session_id: Option<String>,
+    /// Optional model that created the escalation.
+    #[serde(default)]
+    pub from_model: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct EscalationListInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
+    pub workspace: String,
+    /// Optional status filter: open or resolved.
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct EscalationGetInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
+    pub workspace: String,
+    /// Escalation ID to retrieve.
+    pub escalation_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct EscalationResolveInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
+    pub workspace: String,
+    /// Escalation ID to resolve.
+    pub escalation_id: String,
+    /// Resolution action: handled, granted-offset, escalated-to-user, spawned-session.
+    pub action: String,
+    /// Optional note about the resolution.
+    #[serde(default)]
+    pub note: Option<String>,
+    /// Grant ID (required when action is granted-offset).
+    #[serde(default)]
+    pub grant_id: Option<String>,
+    /// Spawned session ID (required when action is spawned-session).
+    #[serde(default)]
+    pub spawned_session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -1176,6 +1277,245 @@ impl SessionServer {
             .peek_skeleton(&input.session_id, preview_chars)
             .map_err(Self::session_err)?;
         Self::json_result(&skeleton)
+    }
+
+    #[tool(
+        name = "session_tool_metrics",
+        description = "Compute and report tool metrics for the workspace store with optional window filtering."
+    )]
+    pub async fn session_tool_metrics(
+        &self,
+        Parameters(input): Parameters<ToolMetricsInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let window = ToolMetricsWindow {
+            max_age_days: input.days,
+            max_sessions: input.max_sessions,
+        };
+        let report = self
+            .config_for_workspace(&input.workspace)?
+            .tool_metrics(window)
+            .map_err(Self::session_err)?;
+        Self::json_result(&report)
+    }
+
+    #[tool(
+        name = "session_grant_create",
+        description = "Create a new budget-offset grant for the graded cost gate."
+    )]
+    pub async fn session_grant_create(
+        &self,
+        Parameters(input): Parameters<GrantCreateInput>,
+    ) -> Result<CallToolResult, McpError> {
+        use session_api::{create_grant, BudgetGrantScope};
+        
+        let scope = match input.scope.to_lowercase().as_str() {
+            "session" => BudgetGrantScope::Session,
+            "subagent" => BudgetGrantScope::Subagent,
+            _ => {
+                return Err(McpError::invalid_params(
+                    format!(
+                        "invalid scope: {}. allowed values: session, subagent",
+                        input.scope
+                    ),
+                    None,
+                ));
+            }
+        };
+        
+        let grant = create_grant(
+            &self.config_for_workspace(&input.workspace)?,
+            scope,
+            input.offset,
+            input.model,
+            input.ttl_seconds,
+        )
+        .map_err(Self::session_err)?;
+        
+        Self::json_result(&grant)
+    }
+
+    #[tool(
+        name = "session_grant_list",
+        description = "List all budget-offset grants in the store."
+    )]
+    pub async fn session_grant_list(
+        &self,
+        Parameters(input): Parameters<GrantListInput>,
+    ) -> Result<CallToolResult, McpError> {
+        use session_api::list_grants;
+        
+        let grants = list_grants(&self.config_for_workspace(&input.workspace)?)
+            .map_err(Self::session_err)?;
+        
+        Self::json_result(&grants)
+    }
+
+    #[tool(
+        name = "session_grant_revoke",
+        description = "Revoke (delete) a budget-offset grant by its ID."
+    )]
+    pub async fn session_grant_revoke(
+        &self,
+        Parameters(input): Parameters<GrantRevokeInput>,
+    ) -> Result<CallToolResult, McpError> {
+        use session_api::revoke_grant;
+        
+        let revoked = revoke_grant(
+            &self.config_for_workspace(&input.workspace)?,
+            &input.grant_id,
+        )
+        .map_err(Self::session_err)?;
+        
+        Self::json_result(&serde_json::json!({
+            "revoked": revoked,
+            "grant_id": input.grant_id,
+        }))
+    }
+
+    #[tool(
+        name = "session_escalation_create",
+        description = "Create a new escalation record for upward problem delegation."
+    )]
+    pub async fn session_escalation_create(
+        &self,
+        Parameters(input): Parameters<EscalationCreateInput>,
+    ) -> Result<CallToolResult, McpError> {
+        use session_api::{create_escalation, escalation_marker};
+        
+        let escalation = create_escalation(
+            &self.config_for_workspace(&input.workspace)?,
+            input.blocking_decision,
+            input.context,
+            input.requested_capability,
+            input.options_considered,
+            input.session_id,
+            input.from_model,
+        )
+        .map_err(Self::session_err)?;
+        
+        // Include the marker in the response
+        let mut result = serde_json::to_value(&escalation).map_err(|e| {
+            McpError::internal_error(format!("serialization: {e}"), None)
+        })?;
+        
+        if let Some(obj) = result.as_object_mut() {
+            obj.insert(
+                "marker".to_string(),
+                serde_json::Value::String(escalation_marker(&escalation.escalation_id)),
+            );
+        }
+        
+        Self::json_result(&result)
+    }
+
+    #[tool(
+        name = "session_escalation_list",
+        description = "List escalations in the store, optionally filtered by status."
+    )]
+    pub async fn session_escalation_list(
+        &self,
+        Parameters(input): Parameters<EscalationListInput>,
+    ) -> Result<CallToolResult, McpError> {
+        use session_api::{list_escalations, EscalationStatus};
+        
+        let status_filter = if let Some(status_str) = input.status {
+            match status_str.to_lowercase().as_str() {
+                "open" => Some(EscalationStatus::Open),
+                "resolved" => Some(EscalationStatus::Resolved),
+                _ => {
+                    return Err(McpError::invalid_params(
+                        format!(
+                            "invalid status: {}. allowed values: open, resolved",
+                            status_str
+                        ),
+                        None,
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+        
+        let escalations = list_escalations(
+            &self.config_for_workspace(&input.workspace)?,
+            status_filter,
+        )
+        .map_err(Self::session_err)?;
+        
+        Self::json_result(&escalations)
+    }
+
+    #[tool(
+        name = "session_escalation_get",
+        description = "Get a single escalation by ID."
+    )]
+    pub async fn session_escalation_get(
+        &self,
+        Parameters(input): Parameters<EscalationGetInput>,
+    ) -> Result<CallToolResult, McpError> {
+        use session_api::get_escalation;
+        
+        let escalation = get_escalation(
+            &self.config_for_workspace(&input.workspace)?,
+            &input.escalation_id,
+        )
+        .ok_or_else(|| {
+            McpError::invalid_params(
+                format!("escalation not found: {}", input.escalation_id),
+                None,
+            )
+        })?;
+        
+        Self::json_result(&escalation)
+    }
+
+    #[tool(
+        name = "session_escalation_resolve",
+        description = "Resolve an escalation with a resolution action and details."
+    )]
+    pub async fn session_escalation_resolve(
+        &self,
+        Parameters(input): Parameters<EscalationResolveInput>,
+    ) -> Result<CallToolResult, McpError> {
+        use session_api::{
+            resolve_escalation,
+            EscalationAction,
+            EscalationResolution,
+        };
+        use chrono::Utc;
+        
+        let action = match input.action.to_lowercase().as_str() {
+            "handled" => EscalationAction::Handled,
+            "granted-offset" => EscalationAction::GrantedOffset,
+            "escalated-to-user" => EscalationAction::EscalatedToUser,
+            "spawned-session" => EscalationAction::SpawnedSession,
+            _ => {
+                return Err(McpError::invalid_params(
+                    format!(
+                        "invalid action: {}. allowed values: handled, granted-offset, escalated-to-user, spawned-session",
+                        input.action
+                    ),
+                    None,
+                ));
+            }
+        };
+        
+        let resolution = EscalationResolution {
+            action,
+            note: input.note,
+            offset_grant_id: input.grant_id,
+            spawned_session_id: input.spawned_session_id,
+            resolved_at: Utc::now(),
+        };
+        
+        let escalation = resolve_escalation(
+            &self.config_for_workspace(&input.workspace)?,
+            &input.escalation_id,
+            resolution,
+        )
+        .map_err(Self::session_err)?;
+        
+        Self::json_result(&escalation)
     }
 
     #[tool(

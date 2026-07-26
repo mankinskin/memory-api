@@ -1,0 +1,24 @@
+{
+  "id": "exec-ticket-api-move-planner-invisible-reference-20260725",
+  "validation_spec_id": "ticket-api-move-planner-invisible-reference",
+  "outcome": "passed",
+  "executed_at": "2026-07-25T22:19:23.884410Z",
+  "duration_ms": 580,
+  "detail": "1 passed; 127 filtered out. The fixture seeds the intended legacy cross-store index edge; public `TicketStore::add_edge` validation is unchanged.",
+  "links": {
+    "spec_ids": [
+      "2b0ce814-0c22-42fa-8a89-f123660690e8"
+    ],
+    "ticket_ids": [
+      "d5771b88-ca1d-41b2-8b59-0c911a34b37f"
+    ]
+  },
+  "provenance": {
+    "source_path": "memory-api/crates/ticket-api/src/storage/move_planner.rs",
+    "test_id": "storage::move_planner::tests::preflight_reports_invisible_reference_visibility_and_path_refs",
+    "domain": "ticket-api",
+    "operation": "cargo test",
+    "transport": "cli",
+    "run_id": "00501003-13a9-4760-be7b-898682fe44b4"
+  }
+}

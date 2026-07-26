@@ -19,6 +19,9 @@ use crate::gate::{
 /// The argument name injected into every tool schema and required on each call.
 pub const CALLER_MODEL_ARG: &str = "caller_model";
 
+/// Optional grant id argument for budget offset.
+pub const GRANT_ID_ARG: &str = "grant_id";
+
 /// What the proxy should do with a client→server message.
 #[derive(Debug)]
 pub enum ClientAction {
@@ -103,6 +106,11 @@ pub fn handle_client_message(
                 .unwrap_or("")
                 .trim()
                 .to_string();
+            let grant_id = params
+                .get("arguments")
+                .and_then(|a| a.get(GRANT_ID_ARG))
+                .and_then(Value::as_str)
+                .map(|s| s.trim().to_string());
 
             if caller_model.is_empty() {
                 return ClientAction::Respond(error_result(
@@ -115,18 +123,19 @@ pub fn handle_client_message(
                 ));
             }
 
-            match gate.evaluate(&caller_model, &tool) {
+            match gate.evaluate(&caller_model, &tool, grant_id.as_deref()) {
                 Decision::Delegate { guidance } => {
                     ClientAction::Respond(error_result(&id, &guidance))
                 }
                 Decision::Allow => {
-                    // Strip caller_model before forwarding to the real server.
+                    // Strip caller_model and grant_id before forwarding to the real server.
                     if let Some(args) = msg
                         .get_mut("params")
                         .and_then(|p| p.get_mut("arguments"))
                         .and_then(Value::as_object_mut)
                     {
                         args.remove(CALLER_MODEL_ARG);
+                        args.remove(GRANT_ID_ARG);
                     }
                     ClientAction::Forward(msg)
                 }
@@ -229,7 +238,13 @@ mod tests {
             ]}"#,
         )
         .unwrap();
-        let g = Gate::load(Path::new(&path), crate::gate::DEFAULT_THRESHOLD_X).unwrap();
+        let g = Gate::load(
+            Path::new(&path),
+            crate::gate::ModelBudgetCalibration::default(),
+            None,
+            None,
+        )
+        .unwrap();
         let _ = std::fs::remove_file(&path);
         g
     }
@@ -278,7 +293,8 @@ mod tests {
     fn cheap_forwards_and_strips_caller_model() {
         let g = test_gate();
         let mut p = PendingList::default();
-        match handle_client_message(call("read_file", Some("gpt-5-mini")), Some(&g), &mut p) {
+        // Use a light tool (cost 1) that gpt-5-mini (budget ~97) can afford
+        match handle_client_message(call("some_unknown_tool", Some("gpt-5-mini")), Some(&g), &mut p) {
             ClientAction::Forward(v) => {
                 let args = &v["params"]["arguments"];
                 assert!(args.get(CALLER_MODEL_ARG).is_none(), "caller_model must be stripped");

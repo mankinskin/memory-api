@@ -12,6 +12,7 @@ use session_api::{
     SessionError,
     SessionStoreConfig,
     SessionStorePlan,
+    ToolMetricsWindow,
     build_follow_up_ticket_draft,
     mine_explicit_ingestion_signals,
     mine_failed_tool_call_signals,
@@ -75,6 +76,10 @@ fn run() -> Result<(), SessionError> {
         &plan,
         memory_api::workspace::working_dir().as_deref(),
     );
+    
+    // Refresh tool metrics rollup (best-effort)
+    refresh_tool_metrics_rollup(&config);
+    
     println!("{{}}");
     Ok(())
 }
@@ -234,6 +239,15 @@ fn synthesize_follow_up_tickets(
                 draft.dedupe_key
             ),
         }
+    }
+}
+
+/// Refresh the tool metrics rollup for the store after a successful capture.
+/// Best-effort: rollup write failures do NOT fail the capture.
+fn refresh_tool_metrics_rollup(config: &SessionStoreConfig) {
+    let window = ToolMetricsWindow::default();
+    if let Err(error) = config.write_tool_metrics_rollup(window) {
+        eprintln!("[copilot-capture-hook] tool metrics rollup refresh failed (non-fatal): {error}");
     }
 }
 

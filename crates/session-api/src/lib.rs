@@ -1,11 +1,14 @@
 pub mod audit;
 pub mod error;
+pub mod escalation;
 pub mod follow_up;
+pub mod grants;
 pub mod hook;
 pub mod model;
 pub mod move_domain;
 pub mod peek;
 pub mod store;
+pub mod tool_metrics;
 pub mod transcript_feedback;
 
 pub use audit::{
@@ -17,12 +20,31 @@ pub use audit::{
     SessionAuditToolCount,
 };
 pub use error::SessionError;
+pub use escalation::{
+    EscalationAction,
+    EscalationRecord,
+    EscalationResolution,
+    EscalationStatus,
+    create_escalation,
+    escalation_marker,
+    get_escalation,
+    list_escalations,
+    parse_escalation_marker,
+    resolve_escalation,
+};
 pub use follow_up::{
     FollowUpSynthesisOutcome,
     FollowUpTicketDraft,
     build_follow_up_ticket_draft,
     follow_up_ticket_id,
     synthesize_follow_up_ticket,
+};
+pub use grants::{
+    BudgetGrant,
+    BudgetGrantScope,
+    create_grant,
+    list_grants,
+    revoke_grant,
 };
 pub use hook::{
     CopilotHookEvent,
@@ -101,6 +123,24 @@ pub use store::{
     SessionStorePlan,
     SessionWorktreeCheckInReceipt,
     SessionWorktreeCheckInRequest,
+};
+pub use tool_metrics::{
+    CharsPerTokenEstimator,
+    GradedCostCalibration,
+    SessionToolMetricsSummary,
+    TokenEstimator,
+    ToolCallSummary,
+    ToolMetricsReport,
+    ToolMetricsRollup,
+    ToolMetricsWindow,
+    ToolMetricsWindowDescription,
+    ToolTokenStats,
+    aggregate,
+    aggregate_multi_store,
+    aggregate_with_cost,
+    compute_session_summary,
+    graded_cost,
+    write_rollup,
 };
 pub use transcript_feedback::{
     EntityDiscoveryQueue,

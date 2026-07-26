@@ -1,0 +1,14 @@
+{
+  "id": "ticket-api-crate-suite",
+  "title": "ticket-api crate test suite",
+  "command": "rtk cargo test -p ticket-api",
+  "detail": "Crate-level regression validation for ticket-api storage behavior.",
+  "links": {
+    "spec_ids": [
+      "2b0ce814-0c22-42fa-8a89-f123660690e8"
+    ],
+    "ticket_ids": [
+      "d5771b88-ca1d-41b2-8b59-0c911a34b37f"
+    ]
+  }
+}

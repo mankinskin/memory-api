@@ -29,6 +29,7 @@ use session_api::{
     SessionWorkflowNodeRequirement,
     SessionWorkflowNodeStatus,
     SessionWorktreeCheckInRequest,
+    ToolMetricsWindow,
 };
 
 const SESSION_STORE_DIR: &str = ".session";
@@ -121,6 +122,18 @@ pub enum SessionCommand {
     PeekSkeleton(PeekSkeletonArgs),
     /// Peek a prompt-facing compact view of a session transcript.
     PeekPromptPack(PeekPromptPackArgs),
+    /// Compute and report tool metrics for this store.
+    ToolMetrics(ToolMetricsArgs),
+    /// Budget-offset grant management (`session grant <subcommand>`).
+    Grant {
+        #[command(subcommand)]
+        command: GrantCommand,
+    },
+    /// Upward escalation workflow (`session escalation <subcommand>`).
+    Escalation {
+        #[command(subcommand)]
+        command: EscalationCommand,
+    },
 }
 
 /// Canonical nested workflow subcommands. These mirror the flat
@@ -143,6 +156,30 @@ pub enum WorkflowCommand {
     RenderTerminal(ViewArgs),
     /// Render workflow as Mermaid flowchart output.
     RenderMermaid(ViewArgs),
+}
+
+/// Budget-offset grant subcommands.
+#[derive(Debug, Subcommand)]
+pub enum GrantCommand {
+    /// Create a new budget-offset grant.
+    Create(GrantCreateArgs),
+    /// List all grants in the store.
+    List,
+    /// Revoke (delete) a grant by its ID.
+    Revoke(GrantRevokeArgs),
+}
+
+/// Upward escalation workflow subcommands.
+#[derive(Debug, Subcommand)]
+pub enum EscalationCommand {
+    /// Create a new escalation record.
+    Create(EscalationCreateArgs),
+    /// List escalations in the store.
+    List(EscalationListArgs),
+    /// Get a single escalation by ID.
+    Get(EscalationGetArgs),
+    /// Resolve an escalation.
+    Resolve(EscalationResolveArgs),
 }
 
 #[derive(Debug, Args)]
@@ -227,6 +264,97 @@ pub struct PeekPromptPackArgs {
     /// Content-length threshold above which entries are summarized.
     #[arg(long, default_value_t = DEFAULT_PROMPT_SUMMARIZE_THRESHOLD_CHARS)]
     pub summarize_threshold_chars: usize,
+}
+
+#[derive(Debug, Args)]
+pub struct ToolMetricsArgs {
+    /// Maximum age in days for included sessions.
+    #[arg(long)]
+    pub days: Option<u32>,
+    /// Maximum number of sessions to include.
+    #[arg(long = "max-sessions")]
+    pub max_sessions: Option<usize>,
+    /// Export rollup to the specified path.
+    #[arg(long)]
+    pub export: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct GrantCreateArgs {
+    /// Grant scope: session or subagent.
+    #[arg(long)]
+    pub scope: String,
+    /// Budget offset to add.
+    #[arg(long)]
+    pub offset: u32,
+    /// Optional model constraint (case-insensitive).
+    #[arg(long)]
+    pub model: Option<String>,
+    /// Optional TTL in seconds from now.
+    #[arg(long = "ttl-seconds")]
+    pub ttl_seconds: Option<u64>,
+    /// Optional expiration timestamp (RFC3339).
+    #[arg(long = "expires-at", conflicts_with = "ttl_seconds")]
+    pub expires_at: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct GrantRevokeArgs {
+    /// Grant ID to revoke.
+    pub grant_id: String,
+}
+
+#[derive(Debug, Args)]
+pub struct EscalationCreateArgs {
+    /// The blocking decision or problem statement.
+    #[arg(long)]
+    pub blocking: String,
+    /// Context explaining the situation.
+    #[arg(long)]
+    pub context: String,
+    /// Optional requested capability or resource.
+    #[arg(long)]
+    pub requested_capability: Option<String>,
+    /// Options considered (repeatable).
+    #[arg(long = "option")]
+    pub options_considered: Vec<String>,
+    /// Optional session ID that created the escalation.
+    #[arg(long)]
+    pub session_id: Option<String>,
+    /// Optional model that created the escalation.
+    #[arg(long)]
+    pub from_model: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct EscalationListArgs {
+    /// Filter by status: open or resolved.
+    #[arg(long)]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct EscalationGetArgs {
+    /// Escalation ID to retrieve.
+    pub escalation_id: String,
+}
+
+#[derive(Debug, Args)]
+pub struct EscalationResolveArgs {
+    /// Escalation ID to resolve.
+    pub escalation_id: String,
+    /// Resolution action: handled, granted-offset, escalated-to-user, spawned-session.
+    #[arg(long)]
+    pub action: String,
+    /// Optional note about the resolution.
+    #[arg(long)]
+    pub note: Option<String>,
+    /// Grant ID (required when action is granted-offset).
+    #[arg(long = "grant-id")]
+    pub grant_id: Option<String>,
+    /// Spawned session ID (required when action is spawned-session).
+    #[arg(long = "spawned-session-id")]
+    pub spawned_session_id: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -622,6 +750,23 @@ fn dispatch(
             )?;
             to_value(&pack)
         },
+        SessionCommand::ToolMetrics(args) => {
+            let window = ToolMetricsWindow {
+                max_age_days: args.days,
+                max_sessions: args.max_sessions,
+            };
+            let report = config.tool_metrics(window)?;
+            
+            // If export path specified, write rollup
+            if let Some(export_path) = args.export {
+                use session_api::tool_metrics::write_rollup;
+                write_rollup(&export_path, report.clone())?;
+            }
+            
+            to_value(&report)
+        },
+        SessionCommand::Grant { command } => handle_grant_command(config, command),
+        SessionCommand::Escalation { command } => handle_escalation_command(config, command),
     }
 }
 
@@ -745,6 +890,162 @@ fn handle_workflow_command(
             let rendered = config
                 .workflow_render_mermaid(&args.workspace_session_id, None)?;
             to_value(&json!({"render": rendered}))
+        },
+    }
+}
+
+/// Handler for grant subcommands.
+fn handle_grant_command(
+    config: &SessionStoreConfig,
+    command: GrantCommand,
+) -> Result<Value, CliRunError> {
+    use session_api::{create_grant, list_grants, revoke_grant, BudgetGrantScope};
+    use chrono::{DateTime, Utc};
+    
+    match command {
+        GrantCommand::Create(args) => {
+            let scope = match args.scope.to_lowercase().as_str() {
+                "session" => BudgetGrantScope::Session,
+                "subagent" => BudgetGrantScope::Subagent,
+                _ => return Err(CliRunError::BadRequest(format!(
+                    "invalid scope: {}. allowed values: session, subagent",
+                    args.scope
+                ))),
+            };
+            
+            // Handle expiry: prefer TTL, fall back to explicit expires_at
+            let ttl_seconds = if let Some(ttl) = args.ttl_seconds {
+                Some(ttl)
+            } else if let Some(expires_at) = &args.expires_at {
+                // Convert RFC3339 to TTL from now
+                let expires = DateTime::parse_from_rfc3339(expires_at)
+                    .map_err(|e| CliRunError::BadRequest(format!(
+                        "invalid expires-at timestamp: {e}"
+                    )))?;
+                let now = Utc::now();
+                let duration = expires.signed_duration_since(now);
+                if duration.num_seconds() < 0 {
+                    return Err(CliRunError::BadRequest(
+                        "expires-at is in the past".to_string()
+                    ));
+                }
+                Some(duration.num_seconds() as u64)
+            } else {
+                None
+            };
+            
+            let grant = create_grant(
+                config,
+                scope,
+                args.offset,
+                args.model,
+                ttl_seconds,
+            )?;
+            to_value(&grant)
+        },
+        GrantCommand::List => {
+            let grants = list_grants(config)?;
+            to_value(&grants)
+        },
+        GrantCommand::Revoke(args) => {
+            let revoked = revoke_grant(config, &args.grant_id)?;
+            to_value(&json!({
+                "revoked": revoked,
+                "grant_id": args.grant_id,
+            }))
+        },
+    }
+}
+
+fn handle_escalation_command(
+    config: &SessionStoreConfig,
+    command: EscalationCommand,
+) -> Result<Value, CliRunError> {
+    use session_api::{
+        create_escalation,
+        escalation_marker,
+        get_escalation,
+        list_escalations,
+        resolve_escalation,
+        EscalationAction,
+        EscalationResolution,
+        EscalationStatus,
+    };
+    use chrono::Utc;
+    
+    match command {
+        EscalationCommand::Create(args) => {
+            let escalation = create_escalation(
+                config,
+                args.blocking,
+                args.context,
+                args.requested_capability,
+                args.options_considered,
+                args.session_id,
+                args.from_model,
+            )?;
+            
+            // Include the marker in the response
+            let mut result = serde_json::to_value(&escalation).map_err(|e| {
+                CliRunError::Serialization(format!("serialization error: {e}"))
+            })?;
+            
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert(
+                    "marker".to_string(),
+                    serde_json::Value::String(escalation_marker(&escalation.escalation_id)),
+                );
+            }
+            
+            Ok(result)
+        },
+        EscalationCommand::List(args) => {
+            let status_filter = if let Some(status_str) = args.status {
+                match status_str.to_lowercase().as_str() {
+                    "open" => Some(EscalationStatus::Open),
+                    "resolved" => Some(EscalationStatus::Resolved),
+                    _ => return Err(CliRunError::BadRequest(format!(
+                        "invalid status: {}. allowed values: open, resolved",
+                        status_str
+                    ))),
+                }
+            } else {
+                None
+            };
+            
+            let escalations = list_escalations(config, status_filter)?;
+            to_value(&escalations)
+        },
+        EscalationCommand::Get(args) => {
+            let escalation = get_escalation(config, &args.escalation_id)
+                .ok_or_else(|| CliRunError::BadRequest(format!(
+                    "escalation not found: {}",
+                    args.escalation_id
+                )))?;
+            to_value(&escalation)
+        },
+        EscalationCommand::Resolve(args) => {
+            let action = match args.action.to_lowercase().as_str() {
+                "handled" => EscalationAction::Handled,
+                "granted-offset" => EscalationAction::GrantedOffset,
+                "escalated-to-user" => EscalationAction::EscalatedToUser,
+                "spawned-session" => EscalationAction::SpawnedSession,
+                _ => return Err(CliRunError::BadRequest(format!(
+                    "invalid action: {}. allowed values: handled, granted-offset, escalated-to-user, spawned-session",
+                    args.action
+                ))),
+            };
+            
+            let resolution = EscalationResolution {
+                action,
+                note: args.note,
+                offset_grant_id: args.grant_id,
+                spawned_session_id: args.spawned_session_id,
+                resolved_at: Utc::now(),
+            };
+            
+            let escalation = resolve_escalation(config, &args.escalation_id, resolution)?;
+            to_value(&escalation)
         },
     }
 }

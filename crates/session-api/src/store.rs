@@ -139,6 +139,7 @@ mod config {
     include!("store/config/handoff_finish.rs");
     include!("store/config/persistence.rs");
     include!("store/config/worktree_conflicts.rs");
+    include!("store/config/tool_metrics.rs");
 }
 
 #[path = "store_routing_types.rs"]

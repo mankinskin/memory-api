@@ -1,0 +1,23 @@
+{
+  "id": "exec-ticket-api-crate-suite-20260725",
+  "validation_spec_id": "ticket-api-crate-suite",
+  "outcome": "passed",
+  "executed_at": "2026-07-25T22:19:23.850330800Z",
+  "duration_ms": 183700,
+  "detail": "128 passed across 5 suites.",
+  "links": {
+    "spec_ids": [
+      "2b0ce814-0c22-42fa-8a89-f123660690e8"
+    ],
+    "ticket_ids": [
+      "d5771b88-ca1d-41b2-8b59-0c911a34b37f"
+    ]
+  },
+  "provenance": {
+    "source_path": "memory-api/crates/ticket-api",
+    "domain": "ticket-api",
+    "operation": "cargo test",
+    "transport": "cli",
+    "run_id": "00501003-13a9-4760-be7b-898682fe44b4"
+  }
+}

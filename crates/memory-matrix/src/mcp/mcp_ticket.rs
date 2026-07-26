@@ -101,7 +101,7 @@ async fn ticket_mcp_create(
     .await?;
     let result = server
         .get_ticket(Parameters(TicketRefInput {
-            workspace: workspace_root.to_string(),
+            workspace: Some(workspace_root.to_string()),
             id: created_id,
         }))
         .await
@@ -130,7 +130,7 @@ async fn ticket_mcp_get(
 
     let result = server
         .get_ticket(Parameters(TicketRefInput {
-            workspace: workspace_root.to_string(),
+            workspace: Some(workspace_root.to_string()),
             id: created_id.clone(),
         }))
         .await
