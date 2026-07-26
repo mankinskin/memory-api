@@ -28,6 +28,7 @@ use memory_api::workspace;
 use session_api::{
     DEFAULT_SKELETON_PREVIEW_CHARS,
     SessionError,
+    SessionHandoffPackage,
     SessionQuery,
     SessionRuntimeInitRequest,
     SessionStoreConfig,
@@ -219,6 +220,14 @@ pub struct ToolMetricsInput {
     /// Maximum number of sessions to include.
     #[serde(default)]
     pub max_sessions: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SubagentRollupsInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
+    pub workspace: String,
+    /// Workspace session id to get rollups for.
+    pub workspace_session_id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -451,6 +460,34 @@ pub struct RuntimeHandoffInput {
     pub workspace_session_id: String,
     #[serde(default)]
     pub validation: Vec<ValidationGateInput>,
+    /// The single goal of the next implementation unit (required for an
+    /// implementation-ready package).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub objective: String,
+    /// Ticket ids expected to be worked in the next session.
+    #[serde(default)]
+    pub target_tickets: Vec<String>,
+    /// Workspace-relative file paths expected to be touched.
+    #[serde(default)]
+    pub target_files: Vec<String>,
+    /// Resolved design choices.
+    #[serde(default)]
+    pub decisions: Vec<String>,
+    /// Explicit out-of-scope boundaries.
+    #[serde(default)]
+    pub non_goals: Vec<String>,
+    /// Prior findings and ids needed so no search is required.
+    #[serde(default)]
+    pub context_anchors: Vec<String>,
+    /// Must be empty for the package to be implementation-ready.
+    #[serde(default)]
+    pub open_escalations: Vec<String>,
+    /// Known risks or fragile areas (optional).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub risk_notes: Option<String>,
+    /// Id of the handoff this one supersedes (optional).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predecessor_handoff: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -1153,10 +1190,35 @@ impl SessionServer {
         &self,
         Parameters(input): Parameters<RuntimeHandoffInput>,
     ) -> Result<CallToolResult, McpError> {
+        let package = if !input.objective.is_empty()
+            || !input.target_tickets.is_empty()
+            || !input.target_files.is_empty()
+            || !input.decisions.is_empty()
+            || !input.non_goals.is_empty()
+            || !input.context_anchors.is_empty()
+            || !input.open_escalations.is_empty()
+            || input.risk_notes.is_some()
+            || input.predecessor_handoff.is_some()
+        {
+            Some(SessionHandoffPackage {
+                objective: input.objective,
+                target_tickets: input.target_tickets,
+                target_files: input.target_files,
+                decisions: input.decisions,
+                non_goals: input.non_goals,
+                context_anchors: input.context_anchors,
+                open_escalations: input.open_escalations,
+                risk_notes: input.risk_notes,
+                predecessor_handoff: input.predecessor_handoff,
+            })
+        } else {
+            None
+        };
         let result = self
             .config_for_workspace(&input.workspace)?
             .create_handoff_result(
                 &input.workspace_session_id,
+                package,
                 input.validation.into_iter().map(Into::into).collect(),
                 None,
             )
@@ -1296,6 +1358,21 @@ impl SessionServer {
             .tool_metrics(window)
             .map_err(Self::session_err)?;
         Self::json_result(&report)
+    }
+
+    #[tool(
+        name = "session_subagent_rollups",
+        description = "Compute and report per-sub-agent cost and usage rollups for a workspace session."
+    )]
+    pub async fn session_subagent_rollups(
+        &self,
+        Parameters(input): Parameters<SubagentRollupsInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let rollups = self
+            .config_for_workspace(&input.workspace)?
+            .subagent_rollups(&input.workspace_session_id)
+            .map_err(Self::session_err)?;
+        Self::json_result(&rollups)
     }
 
     #[tool(

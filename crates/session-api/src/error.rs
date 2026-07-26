@@ -128,4 +128,9 @@ pub enum SessionError {
 
     #[error("session move failed: {0}")]
     Move(String),
+
+    #[error(
+        "handoff package is incomplete — missing required fields: {fields}"
+    )]
+    HandoffPackageIncomplete { fields: String },
 }

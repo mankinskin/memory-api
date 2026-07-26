@@ -2,9 +2,29 @@ impl SessionStoreConfig {
     pub fn create_handoff_record(
         &self,
         workspace_session_id: &str,
+        package: Option<SessionHandoffPackage>,
         validation: Vec<SessionValidationGate>,
         resolver: Option<&dyn SessionTicketStateResolver>,
     ) -> Result<SessionHandoffRecord, SessionError> {
+        // Validate package completeness when a package is supplied.
+        // Missing `objective` is a hard error; missing list fields are a soft warning.
+        if let Some(ref pkg) = package {
+            let missing = pkg.missing_fields();
+            if missing.contains(&"objective") {
+                return Err(SessionError::HandoffPackageIncomplete {
+                    fields: "objective".to_string(),
+                });
+            }
+            if !missing.is_empty() {
+                eprintln!(
+                    "[session-api] handoff package is missing required list \
+                     fields ({fields}); the handoff persists but is not \
+                     implementation-ready",
+                    fields = missing.join(", ")
+                );
+            }
+        }
+
         let context = self.read_runtime_context(workspace_session_id)?;
         let workflow =
             self.workflow_snapshot(workspace_session_id, resolver)?;
@@ -16,6 +36,33 @@ impl SessionStoreConfig {
             "session-cli resume --workspace-session-id {} --predecessor-run-id {}",
             context.workspace_session_id, context.active_run_id
         );
+
+        let (
+            objective,
+            target_tickets,
+            target_files,
+            decisions,
+            non_goals,
+            context_anchors,
+            open_escalations,
+            risk_notes,
+            predecessor_handoff,
+        ) = package
+            .map(|pkg| {
+                (
+                    pkg.objective,
+                    pkg.target_tickets,
+                    pkg.target_files,
+                    pkg.decisions,
+                    pkg.non_goals,
+                    pkg.context_anchors,
+                    pkg.open_escalations,
+                    pkg.risk_notes,
+                    pkg.predecessor_handoff,
+                )
+            })
+            .unwrap_or_default();
+
         let record = SessionHandoffRecord {
             handoff_id: handoff_id.clone(),
             workspace_session_id: context.workspace_session_id.clone(),
@@ -25,6 +72,15 @@ impl SessionStoreConfig {
             pinned_entities: view.pinned_headers,
             workflow,
             validation,
+            objective,
+            target_tickets: target_tickets.clone(),
+            target_files,
+            decisions,
+            non_goals,
+            context_anchors,
+            open_escalations,
+            risk_notes,
+            predecessor_handoff,
         };
 
         let paths = self.runtime_paths_for_workspace(workspace_session_id)?;
@@ -37,17 +93,65 @@ impl SessionStoreConfig {
         let handoff_path =
             paths.handoffs_dir.join(format!("{handoff_id}.json"));
         write_json(&handoff_path, &record)?;
+
+        // Mirror the handoff onto each target ticket (best-effort; the handoff
+        // record is the authoritative source of truth).
+        if !target_tickets.is_empty() {
+            let _ = self.mirror_handoff_to_tickets(&record, &target_tickets);
+        }
+
         Ok(record)
+    }
+
+    fn mirror_handoff_to_tickets(
+        &self,
+        record: &SessionHandoffRecord,
+        target_tickets: &[String],
+    ) -> Result<(), SessionError> {
+        let store =
+            TicketStore::open_or_init(&self.ticket_store_root()).map_err(
+                |error| {
+                    SessionError::InvalidHookInput(format!(
+                        "ticket store unavailable for handoff mirror: {error}"
+                    ))
+                },
+            )?;
+
+        let mirror_value = serde_json::json!({
+            "handoff_id": record.handoff_id,
+            "objective": record.objective,
+            "target_tickets": record.target_tickets,
+            "target_files": record.target_files,
+            "validation": record.validation,
+            "open_escalations": record.open_escalations,
+        });
+
+        for ticket_id_str in target_tickets {
+            let ticket_id = match Uuid::parse_str(ticket_id_str) {
+                Ok(id) => id,
+                Err(_) => continue,
+            };
+            let mut patch = std::collections::BTreeMap::new();
+            patch.insert(
+                "handoff_package".to_string(),
+                mirror_value.clone(),
+            );
+            // Best-effort: ignore individual ticket update errors.
+            let _ = store.update(&ticket_id, patch, None, None, None, None);
+        }
+        Ok(())
     }
 
     pub fn create_handoff_result(
         &self,
         workspace_session_id: &str,
+        package: Option<SessionHandoffPackage>,
         validation: Vec<SessionValidationGate>,
         resolver: Option<&dyn SessionTicketStateResolver>,
     ) -> Result<SessionHandoffResult, SessionError> {
         let record = self.create_handoff_record(
             workspace_session_id,
+            package,
             validation,
             resolver,
         )?;
@@ -65,11 +169,13 @@ impl SessionStoreConfig {
     pub fn render_handoff_terminal(
         &self,
         workspace_session_id: &str,
+        package: Option<SessionHandoffPackage>,
         validation: Vec<SessionValidationGate>,
         resolver: Option<&dyn SessionTicketStateResolver>,
     ) -> Result<String, SessionError> {
         let result = self.create_handoff_result(
             workspace_session_id,
+            package,
             validation,
             resolver,
         )?;

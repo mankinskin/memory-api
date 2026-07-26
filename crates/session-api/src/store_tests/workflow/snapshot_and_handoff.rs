@@ -213,6 +213,7 @@ fn handoff_persists_before_render_and_resume_links_new_run() {
     let _rendered = config
         .render_handoff_terminal(
             &workspace_id,
+            None,
             vec![crate::SessionValidationGate {
                 validation_spec_id: "val-session-handoff-continuity"
                     .to_string(),
@@ -247,4 +248,112 @@ fn handoff_persists_before_render_and_resume_links_new_run() {
         resumed.run.predecessor_run_id.as_deref(),
         Some(handoff.outgoing_run_id.as_str())
     );
+}
+
+#[test]
+fn handoff_package_missing_objective_is_rejected() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(crate::SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    let result = config.create_handoff_record(
+        &workspace_id,
+        Some(crate::SessionHandoffPackage {
+            objective: "".to_string(), // missing
+            target_tickets: vec![],
+            ..Default::default()
+        }),
+        vec![],
+        None,
+    );
+
+    assert!(
+        result.is_err(),
+        "expected Err for incomplete package but got Ok"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("incomplete") || err.contains("missing"),
+        "unexpected error message: {err}"
+    );
+}
+
+#[test]
+fn handoff_package_round_trip_persists_schema_fields() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(crate::SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    let package = crate::SessionHandoffPackage {
+        objective: "Implement required-field enforcement".to_string(),
+        target_tickets: vec!["d3af78d7-9486-43c0-aae7-ddd5681d9807"
+            .to_string()],
+        target_files: vec![
+            "memory-api/crates/session-api/src/model/handoff.rs".to_string(),
+        ],
+        decisions: vec!["Use Option<SessionHandoffPackage> for backward compat"
+            .to_string()],
+        non_goals: vec!["UI/viewer representation".to_string()],
+        context_anchors: vec!["spec:5e52039d".to_string()],
+        open_escalations: vec![],
+        risk_notes: Some("none".to_string()),
+        predecessor_handoff: None,
+    };
+
+    let result = config
+        .create_handoff_result(&workspace_id, Some(package.clone()), vec![], None)
+        .expect("handoff with complete package");
+
+    assert_eq!(result.record.objective, package.objective);
+    assert_eq!(result.record.target_tickets, package.target_tickets);
+    assert_eq!(result.record.target_files, package.target_files);
+    assert_eq!(result.record.decisions, package.decisions);
+    assert_eq!(result.record.non_goals, package.non_goals);
+    assert_eq!(result.record.context_anchors, package.context_anchors);
+    assert!(result.record.open_escalations.is_empty());
+    assert!(result.render.contains("implementation_ready: true"));
+    assert!(result.render.contains("objective:"));
+
+    // Verify the record is persisted and can be re-read from disk.
+    let paths = config.runtime_paths_for_workspace(&workspace_id).unwrap();
+    let handoff_path =
+        paths.handoffs_dir.join(format!("{}.json", result.record.handoff_id));
+    let on_disk: crate::SessionHandoffRecord =
+        serde_json::from_slice(&std::fs::read(&handoff_path).unwrap()).unwrap();
+    assert_eq!(on_disk.objective, package.objective);
+    assert_eq!(on_disk.target_tickets, package.target_tickets);
+}
+
+#[test]
+fn handoff_package_with_open_escalations_persists_but_not_ready() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let init = config
+        .init_runtime_context(crate::SessionRuntimeInitRequest::default())
+        .unwrap();
+    let workspace_id = init.context.workspace_session_id;
+
+    let package = crate::SessionHandoffPackage {
+        objective: "Implement something".to_string(),
+        open_escalations: vec!["Must resolve cross-crate dep question first"
+            .to_string()],
+        ..Default::default()
+    };
+
+    let result = config
+        .create_handoff_result(&workspace_id, Some(package), vec![], None)
+        .expect("handoff with escalations should persist");
+
+    assert!(!result.record.open_escalations.is_empty());
+    assert!(result.render.contains("implementation_ready: false"));
+    assert!(result.render.contains("open_escalations:"));
 }

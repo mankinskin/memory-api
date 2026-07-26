@@ -62,6 +62,7 @@ pub use model::{
     SESSION_SCHEMA_VERSION,
     SessionFinishRecord,
     SessionFinishResult,
+    SessionHandoffPackage,
     SessionHandoffRecord,
     SessionHandoffResult,
     SessionLinks,

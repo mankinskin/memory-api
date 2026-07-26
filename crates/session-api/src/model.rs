@@ -25,6 +25,7 @@ mod workflow;
 pub use handoff::{
     SessionFinishRecord,
     SessionFinishResult,
+    SessionHandoffPackage,
     SessionHandoffRecord,
     SessionHandoffResult,
 };

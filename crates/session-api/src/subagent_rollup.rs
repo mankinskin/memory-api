@@ -244,4 +244,86 @@ mod tests {
         assert!((rollup.cost_usd.unwrap() - 0.15).abs() < 0.0001);
         assert_eq!(rollup.model.as_deref(), Some("claude-3-5-sonnet"));
     }
+
+    #[test]
+    fn query_surface_returns_rollups_for_session_with_context() {
+        use crate::SessionStoreConfig;
+        use tempfile::TempDir;
+        use chrono::Utc;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config = SessionStoreConfig::new(
+            temp_dir.path().join(".session"),
+            "test-workspace",
+        );
+
+        // Create a simple session using the capture API
+        let session_id = "test-session-1";
+        use crate::hook::{CopilotHookPayload, CopilotHookMessage};
+        
+        let payload = CopilotHookPayload {
+            session_id: session_id.to_string(),
+            workspace_slug: "test-workspace".to_string(),
+            captured_at: Utc::now(),
+            conversation_id: None,
+            agent_id: None,
+            model: Some("claude-opus-4".to_string()),
+            trigger: Some("test".to_string()),
+            messages: vec![
+                CopilotHookMessage {
+                    role: SessionRole::User,
+                    content: "Hello".to_string(),
+                    tool_name: None,
+                    captured_at: None,
+                    event_meta: None,
+                },
+                CopilotHookMessage {
+                    role: SessionRole::Assistant,
+                    content: "Hi there".to_string(),
+                    tool_name: None,
+                    captured_at: None,
+                    event_meta: Some(SessionTurnEventMeta {
+                        event_id: None,
+                        parent_event_id: None,
+                        event_type: None,
+                        turn_id: None,
+                        message_id: None,
+                        tool_call_id: None,
+                        tool_success: None,
+                        reasoning_text: None,
+                        tool_requests_json: None,
+                        tool_arguments_json: None,
+                        input_tokens: Some(500),
+                        output_tokens: Some(250),
+                        cache_read_tokens: Some(0),
+                        cache_write_tokens: Some(0),
+                        cost_usd: Some(0.025),
+                        model_id: Some("claude-opus-4".to_string()),
+                        error_message: None,
+                        exit_code: None,
+                        result_code: None,
+                    }),
+                },
+            ],
+            events: vec![],
+            runtime: None,
+        };
+
+        config.capture_copilot_hook(payload).unwrap();
+
+        // Query the rollups
+        let rollups = config.subagent_rollups(session_id).unwrap();
+        
+        // Verify we got rollups
+        assert!(!rollups.is_empty(), "Should have at least one rollup");
+        
+        // Check the main session rollup
+        let rollup = rollups.get(session_id).expect("Should have session rollup");
+        assert_eq!(rollup.session_id, session_id);
+        assert_eq!(rollup.turn_count, 1); // One assistant turn
+        assert_eq!(rollup.input_tokens, 500);
+        assert_eq!(rollup.output_tokens, 250);
+        assert_eq!(rollup.model.as_deref(), Some("claude-opus-4"));
+        assert!((rollup.cost_usd.unwrap() - 0.025).abs() < 0.0001);
+    }
 }

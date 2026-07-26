@@ -124,6 +124,8 @@ pub enum SessionCommand {
     PeekPromptPack(PeekPromptPackArgs),
     /// Compute and report tool metrics for this store.
     ToolMetrics(ToolMetricsArgs),
+    /// Compute and report per-sub-agent cost and usage rollups for a workspace session.
+    SubagentRollups(SubagentRollupsArgs),
     /// Budget-offset grant management (`session grant <subcommand>`).
     Grant {
         #[command(subcommand)]
@@ -277,6 +279,13 @@ pub struct ToolMetricsArgs {
     /// Export rollup to the specified path.
     #[arg(long)]
     pub export: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct SubagentRollupsArgs {
+    /// Workspace session id to get rollups for.
+    #[arg(long)]
+    pub workspace_session_id: String,
 }
 
 #[derive(Debug, Args)]
@@ -685,6 +694,7 @@ fn dispatch(
         SessionCommand::Handoff(args) => {
             let result = config.create_handoff_result(
                 &args.workspace_session_id,
+                None,
                 parse_validation_gates(args.validation_json.as_deref())?,
                 None,
             )?;
@@ -764,6 +774,10 @@ fn dispatch(
             }
             
             to_value(&report)
+        },
+        SessionCommand::SubagentRollups(args) => {
+            let rollups = config.subagent_rollups(&args.workspace_session_id)?;
+            to_value(&rollups)
         },
         SessionCommand::Grant { command } => handle_grant_command(config, command),
         SessionCommand::Escalation { command } => handle_escalation_command(config, command),
@@ -1783,6 +1797,7 @@ mod tests {
         let rendered = config
             .render_handoff_terminal(
                 &workspace_session_id,
+                None,
                 vec![session_api::SessionValidationGate {
                     validation_spec_id: "val-handoff-reference-completeness"
                         .to_string(),

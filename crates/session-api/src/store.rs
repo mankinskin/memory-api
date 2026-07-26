@@ -27,6 +27,7 @@ use crate::{
     SessionError,
     SessionFinishRecord,
     SessionFinishResult,
+    SessionHandoffPackage,
     SessionHandoffRecord,
     SessionHandoffResult,
     SessionLinks,
@@ -140,6 +141,7 @@ mod config {
     include!("store/config/persistence.rs");
     include!("store/config/worktree_conflicts.rs");
     include!("store/config/tool_metrics.rs");
+    include!("store/config/subagent_rollup_query.rs");
 }
 
 #[path = "store_routing_types.rs"]
@@ -299,6 +301,30 @@ fn render_handoff_record_terminal(record: &SessionHandoffRecord) -> String {
     ));
     lines.push(format!("outgoing_run_id: {}", record.outgoing_run_id));
     lines.push(format!("resume: {}", record.resume_command));
+    if !record.objective.is_empty() {
+        lines.push(format!("objective: {}", record.objective));
+    }
+    if !record.target_tickets.is_empty() {
+        lines.push(format!(
+            "target_tickets: {}",
+            record.target_tickets.join(", ")
+        ));
+    }
+    if !record.target_files.is_empty() {
+        lines.push(format!(
+            "target_files: {}",
+            record.target_files.join(", ")
+        ));
+    }
+    if !record.open_escalations.is_empty() {
+        lines.push(format!(
+            "open_escalations: {}",
+            record.open_escalations.join(", ")
+        ));
+        lines.push("implementation_ready: false".to_string());
+    } else if !record.objective.is_empty() {
+        lines.push("implementation_ready: true".to_string());
+    }
     lines.push("workflow:".to_string());
     lines.push(format!("  nodes: {}", record.workflow.workflow.nodes.len()));
     lines.push(format!("  edges: {}", record.workflow.workflow.edges.len()));
