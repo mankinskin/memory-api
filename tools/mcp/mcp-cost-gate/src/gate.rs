@@ -74,6 +74,10 @@ pub enum ToolClass {
 pub enum Decision {
     Allow,
     Delegate { guidance: String },
+    /// The `caller_model` could not be resolved in the price table. The call is
+    /// refused so price-awareness enforcement is never silently bypassed by an
+    /// unrecognized model id (which would otherwise resolve to a zero budget).
+    Reject { guidance: String },
 }
 
 /// Model budget calibration for the graded cost scale.
@@ -309,6 +313,14 @@ impl Gate {
     /// * effective = base_budget + offset (capped at 2*scale_max).
     /// * Allow if cost <= effective; else Delegate with guidance.
     pub fn evaluate(&self, model: &str, tool: &str, grant_id: Option<&str>) -> Decision {
+        // Reject an unresolvable caller_model before any budget math. An unknown
+        // id must never fall through to a zero budget: that silently disables
+        // price-awareness enforcement instead of surfacing the mistake.
+        if self.resolve_output_mtok(model).is_none() {
+            return Decision::Reject {
+                guidance: unknown_model_guidance(model),
+            };
+        }
         let tool_cost = self.tool_cost(tool);
         if tool_cost == 0 {
             return Decision::Allow;
@@ -365,6 +377,18 @@ pub fn classify_tool(tool: &str) -> ToolClass {
         return ToolClass::TokenHeavy;
     }
     ToolClass::Light
+}
+
+/// Guidance returned when `caller_model` cannot be resolved in the price table.
+pub fn unknown_model_guidance(model: &str) -> String {
+    format!(
+        "Unknown caller_model '{model}': it does not match any model_id in the \
+         price table. Pass the actual id of the model issuing this call (its real \
+         price-table model_id, e.g. claude-opus-4-8, claude-sonnet-4-5, gpt-5), \
+         not a generic vendor or product label such as 'github-copilot', \
+         'copilot', 'openai', or 'anthropic'. An unrecognized caller_model is \
+         refused so price-awareness enforcement is never silently bypassed."
+    )
 }
 
 /// Delegation guidance returned when an orchestrator-tier model calls a
@@ -625,8 +649,8 @@ mod tests {
         assert!(matches!(g.evaluate("o3", heavy_tool, None), Decision::Delegate { .. })); // 40 → budget ~33
         assert!(matches!(g.evaluate("claude-opus-4-1", heavy_tool, None), Decision::Delegate { .. })); // 75 → budget 0
         
-        // Unknown model → Delegate (budget 0)
-        assert!(matches!(g.evaluate("unknown-model", heavy_tool, None), Decision::Delegate { .. }));
+        // Unknown model → Reject (caller_model unresolvable, budget cannot apply)
+        assert!(matches!(g.evaluate("unknown-model", heavy_tool, None), Decision::Reject { .. }));
         
         // Light tool → Allow for all models except those at/above budget_zero_price
         let light_tool = "some_light_tool";
@@ -637,9 +661,31 @@ mod tests {
         assert_eq!(g.evaluate("o3", light_tool, None), Decision::Allow);
         assert!(matches!(g.evaluate("claude-opus-4-1", light_tool, None), Decision::Delegate { .. })); // 75 > 60 → budget 0, cost 1 → delegate
         
-        // AlwaysAllowed → Always allow
+        // AlwaysAllowed → Always allow (for resolvable models)
         assert_eq!(g.evaluate("claude-haiku", "runSubagent", None), Decision::Allow);
         assert_eq!(g.evaluate("claude-opus-4-1", "runSubagent", None), Decision::Allow);
-        assert_eq!(g.evaluate("unknown-model", "runSubagent", None), Decision::Allow);
+        // Unknown model is rejected even for always-allowed tools
+        assert!(matches!(g.evaluate("unknown-model", "runSubagent", None), Decision::Reject { .. }));
+    }
+
+    #[test]
+    fn evaluate_rejects_unknown_caller_model() {
+        let g = test_gate();
+        // Unknown caller_model is refused regardless of tool class, so a
+        // zero-cost budget can never silently bypass enforcement.
+        assert!(matches!(
+            g.evaluate("github-copilot", "read_file", None),
+            Decision::Reject { .. }
+        ));
+        assert!(matches!(
+            g.evaluate("github-copilot", "update_ticket", None),
+            Decision::Reject { .. }
+        ));
+        assert!(matches!(
+            g.evaluate("github-copilot", "runSubagent", None),
+            Decision::Reject { .. }
+        ));
+        // A resolvable model is not rejected.
+        assert_eq!(g.evaluate("claude-haiku", "update_ticket", None), Decision::Allow);
     }
 }

@@ -124,7 +124,7 @@ pub fn handle_client_message(
             }
 
             match gate.evaluate(&caller_model, &tool, grant_id.as_deref()) {
-                Decision::Delegate { guidance } => {
+                Decision::Reject { guidance } | Decision::Delegate { guidance } => {
                     ClientAction::Respond(error_result(&id, &guidance))
                 }
                 Decision::Allow => {
@@ -310,6 +310,20 @@ mod tests {
         match handle_client_message(call("runSubagent", Some("claude-opus-4-1")), Some(&g), &mut p) {
             ClientAction::Forward(_) => {}
             other => panic!("expected Forward, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_caller_model_is_rejected() {
+        let g = test_gate();
+        let mut p = PendingList::default();
+        match handle_client_message(call("read_file", Some("github-copilot")), Some(&g), &mut p) {
+            ClientAction::Respond(v) => {
+                assert_eq!(v["result"]["isError"], json!(true));
+                let text = v["result"]["content"][0]["text"].as_str().unwrap();
+                assert!(text.to_lowercase().contains("unknown caller_model"));
+            }
+            other => panic!("expected Respond, got {other:?}"),
         }
     }
 
