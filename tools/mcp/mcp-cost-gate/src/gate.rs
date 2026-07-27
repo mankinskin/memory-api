@@ -19,55 +19,7 @@ use serde::Deserialize;
 pub const DEFAULT_THRESHOLD_X: f64 = 15.0;
 
 /// Minimum call count for using empirical tool cost from rollup.
-pub const MIN_CALLS: u64 = 5;
-
-/// Tools that consume large amounts of context/output tokens when driven
-/// directly by an expensive model. Matched as case-insensitive substrings so
-/// provider-prefixed names (e.g. `mcp_ticket-mcp_get_ticket`) are covered.
-pub const TOKEN_HEAVY_TOOL_SUBSTRINGS: &[&str] = &[
-    "read_file",
-    "read_notebook_cell_output",
-    "semantic_search",
-    "grep_search",
-    "file_search",
-    "list_dir",
-    "fetch_webpage",
-    "get_log",
-    "query_logs",
-    "search_all_logs",
-    "get_source",
-    "peek_read",
-    "peek_grep",
-    "peek_skeleton",
-    "get_ticket_description",
-    "spec_get",
-    "spec_section_get",
-    "session_peek_range",
-    "session_peek_skeleton",
-    "subgraph",
-    "topgraph",
-];
-
-/// Tools always allowed even in orchestrator mode: planning, delegation, and
-/// lightweight status/mutation calls. The sub-agent spawn primitive must always
-/// be allowed so an orchestrator can delegate.
-pub const ALWAYS_ALLOWED_TOOL_SUBSTRINGS: &[&str] = &[
-    "runsubagent",
-    "run_subagent",
-    "board_check_in",
-    "board_check_out",
-    "board_heartbeat",
-    "update_ticket",
-    "workflow_set_status",
-];
-
-/// Classification of a tool for enforcement (static fallback).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToolClass {
-    AlwaysAllowed,
-    TokenHeavy,
-    Light,
-}
+pub const MIN_CALLS: u64 = 1;
 
 /// Outcome of a gate evaluation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -174,14 +126,7 @@ impl Gate {
         }
     }
 
-    /// Compute the static fallback cost for TokenHeavy tools as the base budget
-    /// at the legacy threshold X. This ensures the fallback reproduces the binary
-    /// boundary and auto-tracks calibration changes.
-    fn heavy_fallback_cost(&self) -> u32 {
-        let ratio = 1.0 - (DEFAULT_THRESHOLD_X / self.calibration.budget_zero_price);
-        let scaled = (ratio * self.calibration.scale_max as f64).round();
-        scaled.clamp(0.0, self.calibration.scale_max as f64) as u32
-    }
+
 
     /// Load the price table from `path`. Returns an error string on failure so
     /// callers can decide to fail open.
@@ -242,33 +187,26 @@ impl Gate {
         scaled.clamp(0.0, self.calibration.scale_max as f64) as u32
     }
 
-    /// Resolve tool cost: empirical rollup (if sufficient data) else static fallback.
-    /// AlwaysAllowed tools always return 0 (bypass budget check).
+    /// Resolve tool cost from empirical rollup. Fail open (return 0) for unmeasured tools.
     fn tool_cost(&self, tool: &str) -> u32 {
-        if classify_tool(tool) == ToolClass::AlwaysAllowed {
+        let Some(rollup) = &self.rollup else {
             return 0;
-        }
-        if let Some(rollup) = &self.rollup {
-            let tool_low = tool.to_lowercase();
-            let matches: Vec<_> = rollup
-                .report
-                .tools
-                .iter()
-                .filter(|t| {
-                    let name_low = t.tool_name.to_lowercase();
-                    name_low.contains(&tool_low) || tool_low.contains(&name_low)
-                })
-                .filter(|t| t.call_count >= MIN_CALLS && t.cost.is_some())
-                .collect();
-            if !matches.is_empty() {
-                return matches.iter().filter_map(|t| t.cost).max().unwrap_or(0);
-            }
-        }
-        // Static fallback
-        match classify_tool(tool) {
-            ToolClass::AlwaysAllowed => 0,
-            ToolClass::TokenHeavy => self.heavy_fallback_cost(),
-            ToolClass::Light => 1,
+        };
+        let tool_low = tool.to_lowercase();
+        let matches: Vec<_> = rollup
+            .report
+            .tools
+            .iter()
+            .filter(|t| {
+                let name_low = t.tool_name.to_lowercase();
+                name_low.contains(&tool_low) || tool_low.contains(&name_low)
+            })
+            .filter(|t| t.call_count >= MIN_CALLS && t.cost.is_some())
+            .collect();
+        if !matches.is_empty() {
+            matches.iter().filter_map(|t| t.cost).max().unwrap_or(0)
+        } else {
+            0
         }
     }
 
@@ -308,7 +246,6 @@ impl Gate {
 
     /// Decide whether `model` may call `tool` directly, with optional grant_id.
     ///
-    /// * AlwaysAllowed tool → Allow (bypass budget).
     /// * Compute: base_budget, tool_cost, offset.
     /// * effective = base_budget + offset (capped at 2*scale_max).
     /// * Allow if cost <= effective; else Delegate with guidance.
@@ -344,19 +281,7 @@ impl Gate {
 
     /// Legacy evaluate without grant_id (for backward compatibility).
     pub fn evaluate_legacy(&self, model: &str, tool: &str) -> Decision {
-        let orchestrator = match self.resolve_output_mtok(model) {
-            Some(out) => self.is_orchestrator(out),
-            None => true,
-        };
-        if !orchestrator {
-            return Decision::Allow;
-        }
-        match classify_tool(tool) {
-            ToolClass::AlwaysAllowed | ToolClass::Light => Decision::Allow,
-            ToolClass::TokenHeavy => Decision::Delegate {
-                guidance: delegation_guidance(model, tool, DEFAULT_THRESHOLD_X),
-            },
-        }
+        self.evaluate(model, tool, None)
     }
 }
 
@@ -365,18 +290,6 @@ fn fold_max(acc: Option<f64>, v: f64) -> Option<f64> {
         Some(a) if a >= v => a,
         _ => v,
     })
-}
-
-/// Classify a tool name. `always_allowed` wins over `token_heavy`.
-pub fn classify_tool(tool: &str) -> ToolClass {
-    let low = tool.to_lowercase();
-    if ALWAYS_ALLOWED_TOOL_SUBSTRINGS.iter().any(|s| low.contains(s)) {
-        return ToolClass::AlwaysAllowed;
-    }
-    if TOKEN_HEAVY_TOOL_SUBSTRINGS.iter().any(|s| low.contains(s)) {
-        return ToolClass::TokenHeavy;
-    }
-    ToolClass::Light
 }
 
 /// Guidance returned when `caller_model` cannot be resolved in the price table.
@@ -452,13 +365,7 @@ mod tests {
         assert!(!g.is_orchestrator(15.0));
     }
 
-    #[test]
-    fn classify() {
-        assert_eq!(classify_tool("read_file"), ToolClass::TokenHeavy);
-        assert_eq!(classify_tool("mcp_ticket-mcp_get_ticket_description"), ToolClass::TokenHeavy);
-        assert_eq!(classify_tool("runSubagent"), ToolClass::AlwaysAllowed);
-        assert_eq!(classify_tool("whatever"), ToolClass::Light);
-    }
+
 
     #[test]
     fn base_budget_linear_inverse() {
@@ -480,11 +387,12 @@ mod tests {
     }
 
     #[test]
-    fn tool_cost_static_fallback() {
+    fn tool_cost_fail_open_no_rollup() {
         let g = test_gate();
-        assert_eq!(g.tool_cost("runSubagent"), 0); // always allowed
-        assert_eq!(g.tool_cost("read_file"), 75); // token heavy -> heavy_fallback_cost (budget at X=15)
-        assert_eq!(g.tool_cost("some_unknown_tool"), 1); // light
+        // Without rollup, all tools return cost 0 (fail open)
+        assert_eq!(g.tool_cost("runSubagent"), 0);
+        assert_eq!(g.tool_cost("read_file"), 0);
+        assert_eq!(g.tool_cost("some_unknown_tool"), 0);
     }
 
     #[test]
@@ -499,8 +407,13 @@ mod tests {
                     },
                     ToolTokenStats {
                         tool_name: "grep_search".into(),
-                        call_count: 3, // insufficient
+                        call_count: 1, // at MIN_CALLS threshold
                         cost: Some(50),
+                    },
+                    ToolTokenStats {
+                        tool_name: "unmeasured_tool".into(),
+                        call_count: 0, // below threshold
+                        cost: Some(30),
                     },
                 ],
             },
@@ -512,8 +425,10 @@ mod tests {
             None,
         );
         assert_eq!(g.tool_cost("read_file"), 80); // from rollup
-        assert_eq!(g.tool_cost("grep_search"), 75); // insufficient -> fallback heavy (75 at X=15)
-        assert_eq!(g.tool_cost("runSubagent"), 0); // always allowed bypass
+        assert_eq!(g.tool_cost("grep_search"), 50); // at MIN_CALLS=1, use rollup
+        assert_eq!(g.tool_cost("unmeasured_tool"), 0); // below MIN_CALLS -> fail open
+        assert_eq!(g.tool_cost("runSubagent"), 0); // not in rollup -> fail open
+        assert_eq!(g.tool_cost("completely_unknown"), 0); // not in rollup -> fail open
     }
 
     #[test]
@@ -572,17 +487,33 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_graded_allow() {
-        let g = test_gate();
-        // Haiku (high budget ~98) vs light tool (cost 1) -> allow
-        assert_eq!(g.evaluate("claude-haiku", "update_ticket", None), Decision::Allow);
-        // Sonnet (mid budget ~75) vs heavy tool (cost 75) -> allow (at boundary)
-        assert_eq!(g.evaluate("claude-sonnet-4-5", "read_file", None), Decision::Allow);
-        // Opus-4-5 (budget ~58) vs heavy tool (cost 75) -> delegate
+    fn evaluate_with_rollup() {
+        let rollup = ToolMetricsRollup {
+            report: ToolMetricsReport {
+                tools: vec![
+                    ToolTokenStats {
+                        tool_name: "read_file".into(),
+                        call_count: 10,
+                        cost: Some(80),
+                    },
+                ],
+            },
+        };
+        let g = Gate::new(
+            test_gate().models,
+            ModelBudgetCalibration::default(),
+            Some(rollup),
+            None,
+        );
+        // Haiku (high budget ~98) vs measured tool (cost 80) -> allow
+        assert_eq!(g.evaluate("claude-haiku", "read_file", None), Decision::Allow);
+        // Opus-4-5 (budget ~58) vs measured tool (cost 80) -> delegate
         assert!(matches!(
             g.evaluate("claude-opus-4-5", "read_file", None),
             Decision::Delegate { .. }
         ));
+        // Any model vs unmeasured tool -> allow (fail open)
+        assert_eq!(g.evaluate("claude-opus-4-1", "unknown_tool", None), Decision::Allow);
     }
 
     #[test]
@@ -591,87 +522,134 @@ mod tests {
         let grant_path = tmp.path().join("boost.json");
         std::fs::write(&grant_path, r#"{"grant_id":"boost","offset":30}"#).unwrap();
 
+        let rollup = ToolMetricsRollup {
+            report: ToolMetricsReport {
+                tools: vec![
+                    ToolTokenStats {
+                        tool_name: "read_file".into(),
+                        call_count: 10,
+                        cost: Some(75),
+                    },
+                ],
+            },
+        };
         let g = Gate::new(
             test_gate().models,
             ModelBudgetCalibration::default(),
-            None,
+            Some(rollup),
             Some(tmp.path().to_path_buf()),
         );
-        // Sonnet base ~75 + offset 30 = 105 > 75 heavy tool cost -> allow
+        // Sonnet base ~75 + offset 30 = 105 > 75 tool cost -> allow
         assert_eq!(
             g.evaluate("claude-sonnet-4-5", "read_file", Some("boost")),
             Decision::Allow
         );
-        // Without grant: Sonnet (75) vs heavy (75) -> allow at boundary
+        // Without grant: Sonnet (75) vs tool (75) -> allow at boundary
         assert_eq!(g.evaluate("claude-sonnet-4-5", "read_file", None), Decision::Allow);
     }
 
     #[test]
-    fn always_allowed_bypass() {
+    fn fail_open_unmeasured() {
         let g = test_gate();
-        // Always allowed tools bypass budget check
+        // Without rollup, all tools fail open (cost 0) -> allow
         assert_eq!(
             g.evaluate("claude-opus-4-1", "runSubagent", None),
             Decision::Allow
         );
-    }
-
-    #[test]
-    fn evaluate_legacy_compat() {
-        let g = test_gate();
-        // Legacy: Opus (75 > 15) + heavy -> delegate
-        assert!(matches!(
-            g.evaluate_legacy("claude-opus-4-1", "read_file"),
-            Decision::Delegate { .. }
-        ));
-        // Sonnet (15 == 15, not strictly greater) + heavy -> allow
         assert_eq!(
-            g.evaluate_legacy("claude-sonnet-4-5", "read_file"),
+            g.evaluate("claude-opus-4-1", "read_file", None),
             Decision::Allow
         );
     }
 
     #[test]
-    fn heavy_fallback_boundary_tests() {
-        let g = test_gate();
-        let heavy_tool = "read_file";
-        
-        // With defaults (budget_zero_price=60, X=15), heavy_fallback_cost = 75
-        assert_eq!(g.heavy_fallback_cost(), 75);
+    fn evaluate_legacy_delegates_to_evaluate() {
+        let rollup = ToolMetricsRollup {
+            report: ToolMetricsReport {
+                tools: vec![
+                    ToolTokenStats {
+                        tool_name: "read_file".into(),
+                        call_count: 10,
+                        cost: Some(80),
+                    },
+                ],
+            },
+        };
+        let g = Gate::new(
+            test_gate().models,
+            ModelBudgetCalibration::default(),
+            Some(rollup),
+            None,
+        );
+        // Legacy now delegates to evaluate(), so behavior is consistent
+        assert!(matches!(
+            g.evaluate_legacy("claude-opus-4-5", "read_file"),
+            Decision::Delegate { .. }
+        ));
+        // Unmeasured tool -> allow
+        assert_eq!(
+            g.evaluate_legacy("claude-opus-4-1", "unknown_tool"),
+            Decision::Allow
+        );
+    }
+
+    #[test]
+    fn graded_budget_boundary_with_rollup() {
+        let rollup = ToolMetricsRollup {
+            report: ToolMetricsReport {
+                tools: vec![
+                    ToolTokenStats {
+                        tool_name: "read_file".into(),
+                        call_count: 10,
+                        cost: Some(75),
+                    },
+                    ToolTokenStats {
+                        tool_name: "light_tool".into(),
+                        call_count: 5,
+                        cost: Some(1),
+                    },
+                ],
+            },
+        };
+        let g = Gate::new(
+            test_gate().models,
+            ModelBudgetCalibration::default(),
+            Some(rollup),
+            None,
+        );
         
         // Models with output_mtok 1, 10, 15 → Allow (budget >= 75)
-        assert_eq!(g.evaluate("claude-haiku", heavy_tool, None), Decision::Allow); // 1 → budget ~98
-        assert_eq!(g.evaluate("gpt-5", heavy_tool, None), Decision::Allow); // 10 → budget ~83
-        assert_eq!(g.evaluate("claude-sonnet-4-5", heavy_tool, None), Decision::Allow); // 15 → budget 75 (at boundary)
+        assert_eq!(g.evaluate("claude-haiku", "read_file", None), Decision::Allow); // 1 → budget ~98
+        assert_eq!(g.evaluate("gpt-5", "read_file", None), Decision::Allow); // 10 → budget ~83
+        assert_eq!(g.evaluate("claude-sonnet-4-5", "read_file", None), Decision::Allow); // 15 → budget 75 (at boundary)
         
-        // Models with output_mtok 25, 50, 75 → Delegate (budget < 75)
-        assert!(matches!(g.evaluate("claude-opus-4-5", heavy_tool, None), Decision::Delegate { .. })); // 25 → budget ~58
-        assert!(matches!(g.evaluate("o3", heavy_tool, None), Decision::Delegate { .. })); // 40 → budget ~33
-        assert!(matches!(g.evaluate("claude-opus-4-1", heavy_tool, None), Decision::Delegate { .. })); // 75 → budget 0
+        // Models with output_mtok 25, 40, 75 → Delegate (budget < 75)
+        assert!(matches!(g.evaluate("claude-opus-4-5", "read_file", None), Decision::Delegate { .. })); // 25 → budget ~58
+        assert!(matches!(g.evaluate("o3", "read_file", None), Decision::Delegate { .. })); // 40 → budget ~33
+        assert!(matches!(g.evaluate("claude-opus-4-1", "read_file", None), Decision::Delegate { .. })); // 75 → budget 0
         
-        // Unknown model → Reject (caller_model unresolvable, budget cannot apply)
-        assert!(matches!(g.evaluate("unknown-model", heavy_tool, None), Decision::Reject { .. }));
+        // Unknown model → Reject (caller_model unresolvable)
+        assert!(matches!(g.evaluate("unknown-model", "read_file", None), Decision::Reject { .. }));
         
-        // Light tool → Allow for all models except those at/above budget_zero_price
-        let light_tool = "some_light_tool";
-        assert_eq!(g.evaluate("claude-haiku", light_tool, None), Decision::Allow);
-        assert_eq!(g.evaluate("gpt-5", light_tool, None), Decision::Allow);
-        assert_eq!(g.evaluate("claude-sonnet-4-5", light_tool, None), Decision::Allow);
-        assert_eq!(g.evaluate("claude-opus-4-5", light_tool, None), Decision::Allow);
-        assert_eq!(g.evaluate("o3", light_tool, None), Decision::Allow);
-        assert!(matches!(g.evaluate("claude-opus-4-1", light_tool, None), Decision::Delegate { .. })); // 75 > 60 → budget 0, cost 1 → delegate
+        // Light tool → Allow for all models with budget >= 1
+        assert_eq!(g.evaluate("claude-haiku", "light_tool", None), Decision::Allow);
+        assert_eq!(g.evaluate("gpt-5", "light_tool", None), Decision::Allow);
+        assert_eq!(g.evaluate("claude-sonnet-4-5", "light_tool", None), Decision::Allow);
+        assert_eq!(g.evaluate("claude-opus-4-5", "light_tool", None), Decision::Allow);
+        assert_eq!(g.evaluate("o3", "light_tool", None), Decision::Allow);
+        assert!(matches!(g.evaluate("claude-opus-4-1", "light_tool", None), Decision::Delegate { .. })); // 75 > 60 → budget 0, cost 1 → delegate
         
-        // AlwaysAllowed → Always allow (for resolvable models)
+        // Unmeasured tools fail open → Always allow (for resolvable models)
         assert_eq!(g.evaluate("claude-haiku", "runSubagent", None), Decision::Allow);
         assert_eq!(g.evaluate("claude-opus-4-1", "runSubagent", None), Decision::Allow);
-        // Unknown model is rejected even for always-allowed tools
+        // Unknown model is rejected even for unmeasured tools
         assert!(matches!(g.evaluate("unknown-model", "runSubagent", None), Decision::Reject { .. }));
     }
 
     #[test]
     fn evaluate_rejects_unknown_caller_model() {
         let g = test_gate();
-        // Unknown caller_model is refused regardless of tool class, so a
+        // Unknown caller_model is refused regardless of tool, so a
         // zero-cost budget can never silently bypass enforcement.
         assert!(matches!(
             g.evaluate("github-copilot", "read_file", None),
@@ -685,7 +663,7 @@ mod tests {
             g.evaluate("github-copilot", "runSubagent", None),
             Decision::Reject { .. }
         ));
-        // A resolvable model is not rejected.
+        // A resolvable model is not rejected, and unmeasured tools fail open.
         assert_eq!(g.evaluate("claude-haiku", "update_ticket", None), Decision::Allow);
     }
 }

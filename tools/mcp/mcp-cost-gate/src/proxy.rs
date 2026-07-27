@@ -277,8 +277,41 @@ mod tests {
     }
 
     #[test]
-    fn expensive_token_heavy_is_refused() {
-        let g = test_gate();
+    fn expensive_measured_tool_is_refused() {
+        // Build a gate with a rollup that measures read_file with cost 75
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir();
+        let tid = std::thread::current().id();
+        let path = dir.join(format!("mcpcg-fixture-{:?}-{}-{}.json", tid, std::process::id(), n));
+        let rollup_path = dir.join(format!("mcpcg-rollup-{:?}-{}-{}.json", tid, std::process::id(), n));
+        std::fs::write(
+            &path,
+            r#"{"models":[
+                {"provider_id":"anthropic","model_id":"claude-opus-4-1","output_mtok":75.0},
+                {"provider_id":"openai","model_id":"gpt-5-mini","output_mtok":2.0}
+            ]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &rollup_path,
+            r#"{"report":{"tools":[
+                {"tool_name":"read_file","call_count":10,"cost":75}
+            ]}}"#,
+        )
+        .unwrap();
+        let g = Gate::load(
+            std::path::Path::new(&path),
+            crate::gate::ModelBudgetCalibration::default(),
+            Some(std::path::Path::new(&rollup_path)),
+            None,
+        )
+        .unwrap();
+        // Clean up temp files after loading
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&rollup_path);
+
         let mut p = PendingList::default();
         match handle_client_message(call("read_file", Some("claude-opus-4-1")), Some(&g), &mut p) {
             ClientAction::Respond(v) => {
@@ -286,6 +319,20 @@ mod tests {
                 assert!(v["result"]["content"][0]["text"].as_str().unwrap().to_lowercase().contains("delegate"));
             }
             other => panic!("expected Respond, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unmeasured_tool_fail_open() {
+        // Without a rollup, even expensive models can call any tool (fail open)
+        let g = test_gate();
+        let mut p = PendingList::default();
+        match handle_client_message(call("read_file", Some("claude-opus-4-1")), Some(&g), &mut p) {
+            ClientAction::Forward(v) => {
+                let args = &v["params"]["arguments"];
+                assert!(args.get(CALLER_MODEL_ARG).is_none(), "caller_model must be stripped");
+            }
+            other => panic!("expected Forward (fail open), got {other:?}"),
         }
     }
 
