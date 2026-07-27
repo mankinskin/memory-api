@@ -1,0 +1,18 @@
+{
+  "id": "exec-val-session-api-build-20260727",
+  "validation_spec_id": "val-session-api-build",
+  "outcome": "passed",
+  "executed_at": "2026-07-27T12:00:00Z",
+  "duration_ms": 3000,
+  "links": {
+    "spec_ids": [
+      "7be68a48-f4e5-49a2-b9a5-118f07b48b90"
+    ]
+  },
+  "provenance": {
+    "domain": "session-api",
+    "operation": "build",
+    "transport": "cli",
+    "run_id": "run-20260727-session-api"
+  }
+}

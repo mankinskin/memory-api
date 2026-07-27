@@ -1,0 +1,6 @@
+{
+  "id": "val-session-api-build",
+  "title": "session-api build validation",
+  "command": "cargo build -p session-api",
+  "links": {}
+}

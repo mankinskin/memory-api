@@ -8,6 +8,9 @@ use crate::{SessionRecord, SessionRole, SessionRuntimeContext};
 pub struct SubAgentRollup {
     pub run_id: String,
     pub session_id: String,
+    /// The parent session id that spawned this delegated session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     pub turn_count: usize,
@@ -41,6 +44,7 @@ pub fn compute_subagent_rollups(
                     SubAgentRollup {
                         run_id: run.run_id.clone(),
                         session_id: session_id.clone(),
+                        parent_session_id: Some(record.session_id.clone()),
                         model: None,
                         turn_count: 0,
                         tool_call_count: 0,
@@ -89,6 +93,7 @@ pub fn compute_subagent_rollups(
                 SubAgentRollup {
                     run_id: rollup_key.clone(),
                     session_id: record.session_id.clone(),
+                    parent_session_id: None,
                     model: None,
                     turn_count: 0,
                     tool_call_count: 0,

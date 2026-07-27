@@ -1,0 +1,6 @@
+{
+  "id": "val-session-api-lib-suite",
+  "title": "session-api library test suite",
+  "command": "cargo test -p session-api --lib",
+  "links": {}
+}

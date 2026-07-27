@@ -8,6 +8,7 @@ pub mod model;
 pub mod move_domain;
 pub mod peek;
 pub mod price_loader;
+pub mod quality_gate;
 pub mod store;
 pub mod subagent_rollup;
 pub mod tool_metrics;
@@ -112,6 +113,13 @@ pub use peek::{
     peek_prompt_pack,
     peek_skeleton,
     peek_turn_range,
+};
+pub use quality_gate::{
+    QualityGate,
+    QualityGateOutcome,
+    QualityGatePhase,
+    post_delegation_gate,
+    pre_delegation_gate,
 };
 pub use subagent_rollup::{
     SubAgentRollup,
