@@ -183,4 +183,8 @@ pub struct SessionValidationGate {
     pub required: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<String>,
+    /// The command that performs the validation check. Optional; when absent,
+    /// `validation_spec_id` should reference a test-api ValidationSpec entry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
 }

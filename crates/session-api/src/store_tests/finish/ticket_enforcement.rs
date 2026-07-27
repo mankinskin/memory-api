@@ -25,6 +25,7 @@ fn workflow_finish_rejects_caller_passed_when_no_execution_exists() {
                 validation_spec_id: spec_id.to_string(),
                 required: true,
                 outcome: Some("passed".to_string()),
+                command: None,
             }],
             vec![],
             None,

@@ -521,6 +521,10 @@ pub struct ValidationGateInput {
     pub required: bool,
     #[serde(default)]
     pub outcome: Option<String>,
+    /// The command that performs the validation check. Optional; when absent,
+    /// `validation_spec_id` should reference a test-api ValidationSpec entry.
+    #[serde(default)]
+    pub command: Option<String>,
 }
 
 impl From<ValidationGateInput> for SessionValidationGate {
@@ -529,6 +533,7 @@ impl From<ValidationGateInput> for SessionValidationGate {
             validation_spec_id: value.validation_spec_id,
             required: value.required,
             outcome: value.outcome,
+            command: value.command,
         }
     }
 }

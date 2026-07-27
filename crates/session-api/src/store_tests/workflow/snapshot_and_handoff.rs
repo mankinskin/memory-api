@@ -219,6 +219,7 @@ fn handoff_persists_before_render_and_resume_links_new_run() {
                     .to_string(),
                 required: true,
                 outcome: Some("passed".to_string()),
+                command: None,
             }],
             None,
         )

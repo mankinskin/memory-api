@@ -85,6 +85,7 @@ impl SessionStoreConfig {
                     validation_spec_id: spec_id,
                     required: true,
                     outcome,
+                    command: None,
                 },
             );
         }
