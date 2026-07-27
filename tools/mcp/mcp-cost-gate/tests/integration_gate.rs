@@ -1,0 +1,718 @@
+//! Integration tests for mcp-cost-gate gating logic.
+//!
+//! These tests verify end-to-end behavior using synthetic price tables and
+//! rollups. They cover:
+//! - Expensive model + expensive tool → Delegate
+//! - Cheap model + same tool → Allow
+//! - Unmeasured tool → Allow (fail-open)
+//! - Unknown model → Reject
+//! - Missing price table → fail-open (Gate::load error)
+
+use mcp_cost_gate::{
+    gate::{Decision, Gate, ModelBudgetCalibration},
+    proxy::{handle_client_message, ClientAction, PendingList},
+};
+use serde_json::{json, Value};
+use std::fs;
+use std::io::{BufRead, BufReader, Write};
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use tempfile::TempDir;
+
+/// Helper: write JSON to a temp file.
+fn write_json(dir: &TempDir, name: &str, value: &Value) -> PathBuf {
+    let path = dir.path().join(name);
+    fs::write(&path, serde_json::to_string_pretty(value).unwrap()).unwrap();
+    path
+}
+
+/// Helper: get the path to the built mcp-cost-gate binary.
+fn get_binary_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_mcp-cost-gate"))
+}
+
+/// Helper: construct a tools/call JSON-RPC request.
+fn tools_call_request(id: u32, tool: &str, caller_model: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": "tools/call",
+        "params": {
+            "name": tool,
+            "arguments": {
+                "caller_model": caller_model
+            }
+        }
+    })
+}
+
+/// Extract decision guidance from ClientAction::Respond error payload.
+fn extract_error_text(action: ClientAction) -> String {
+    match action {
+        ClientAction::Respond(val) => {
+            val["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or("")
+                .to_string()
+        }
+        _ => String::new(),
+    }
+}
+
+#[test]
+fn test_expensive_model_expensive_tool_delegate() {
+    let tmp = TempDir::new().unwrap();
+
+    // Price table with an expensive model (output_mtok > threshold).
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-opus-4-8",
+                "output_mtok": 60.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    // Rollup with a high-cost tool.
+    let rollup = json!({
+        "report": {
+            "tools": [
+                {
+                    "tool_name": "expensive_tool",
+                    "call_count": 10,
+                    "cost": 50
+                }
+            ]
+        }
+    });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+
+    let gate = Gate::load(
+        &table_path,
+        ModelBudgetCalibration::default(),
+        Some(&rollup_path),
+        None,
+    )
+    .unwrap();
+
+    // Expensive model's base_budget will be 0 (since output_mtok >= budget_zero_price).
+    // Tool cost is 50. Decision should be Delegate.
+    let decision = gate.evaluate("claude-opus-4-8", "expensive_tool", None);
+    match decision {
+        Decision::Delegate { guidance } => {
+            assert!(guidance.contains("expensive_tool"));
+            assert!(guidance.contains("cost 50"));
+        }
+        _ => panic!("Expected Delegate, got {:?}", decision),
+    }
+}
+
+#[test]
+fn test_cheap_model_expensive_tool_allow() {
+    let tmp = TempDir::new().unwrap();
+
+    // Price table with a cheap model (low output_mtok).
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-haiku-3-7",
+                "output_mtok": 2.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    // Rollup with a high-cost tool (but within cheap model's budget).
+    let rollup = json!({
+        "report": {
+            "tools": [
+                {
+                    "tool_name": "expensive_tool",
+                    "call_count": 10,
+                    "cost": 50
+                }
+            ]
+        }
+    });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+
+    let gate = Gate::load(
+        &table_path,
+        ModelBudgetCalibration::default(),
+        Some(&rollup_path),
+        None,
+    )
+    .unwrap();
+
+    // Cheap model (output_mtok=2.0) should have high base_budget (~97).
+    // Tool cost is 50, which is within budget. Decision should be Allow.
+    let decision = gate.evaluate("claude-haiku-3-7", "expensive_tool", None);
+    assert_eq!(decision, Decision::Allow);
+}
+
+#[test]
+fn test_unmeasured_tool_allow() {
+    let tmp = TempDir::new().unwrap();
+
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-opus-4-8",
+                "output_mtok": 60.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    // Rollup with NO entry for "unmeasured_tool" (or insufficient call count).
+    let rollup = json!({
+        "report": {
+            "tools": []
+        }
+    });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+
+    let gate = Gate::load(
+        &table_path,
+        ModelBudgetCalibration::default(),
+        Some(&rollup_path),
+        None,
+    )
+    .unwrap();
+
+    // Unmeasured tool → cost=0 → fail-open → Allow.
+    let decision = gate.evaluate("claude-opus-4-8", "unmeasured_tool", None);
+    assert_eq!(decision, Decision::Allow);
+}
+
+#[test]
+fn test_unknown_model_reject() {
+    let tmp = TempDir::new().unwrap();
+
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-opus-4-8",
+                "output_mtok": 60.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    let rollup = json!({
+        "report": {
+            "tools": [
+                {
+                    "tool_name": "some_tool",
+                    "call_count": 10,
+                    "cost": 10
+                }
+            ]
+        }
+    });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+
+    let gate = Gate::load(
+        &table_path,
+        ModelBudgetCalibration::default(),
+        Some(&rollup_path),
+        None,
+    )
+    .unwrap();
+
+    // Unknown model "gpt-99-turbo" is not in the price table.
+    let decision = gate.evaluate("gpt-99-turbo", "some_tool", None);
+    match decision {
+        Decision::Reject { guidance } => {
+            assert!(guidance.to_lowercase().contains("unrecognized"));
+        }
+        _ => panic!("Expected Reject, got {:?}", decision),
+    }
+}
+
+#[test]
+fn test_missing_price_table_fail_open() {
+    let tmp = TempDir::new().unwrap();
+    let nonexistent_path = tmp.path().join("does_not_exist.json");
+
+    // Attempting to load a missing price table should fail, resulting in fail-open.
+    let result = Gate::load(
+        &nonexistent_path,
+        ModelBudgetCalibration::default(),
+        None,
+        None,
+    );
+    assert!(result.is_err(), "Expected Gate::load to fail for missing table");
+}
+
+#[test]
+fn test_handle_client_message_expensive_model_refused() {
+    let tmp = TempDir::new().unwrap();
+
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-opus-4-8",
+                "output_mtok": 60.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    let rollup = json!({
+        "report": {
+            "tools": [
+                {
+                    "tool_name": "get_ticket_description",
+                    "call_count": 100,
+                    "cost": 80
+                }
+            ]
+        }
+    });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+
+    let gate = Gate::load(
+        &table_path,
+        ModelBudgetCalibration::default(),
+        Some(&rollup_path),
+        None,
+    )
+    .unwrap();
+
+    let msg = tools_call_request(1, "get_ticket_description", "claude-opus-4-8");
+    let mut pending = PendingList::default();
+    let action = handle_client_message(msg, Some(&gate), &mut pending);
+
+    // Should be refused with Delegate guidance.
+    let error_text = extract_error_text(action);
+    assert!(error_text.contains("cost 80"));
+    assert!(error_text.contains("budget"));
+}
+
+#[test]
+fn test_handle_client_message_cheap_model_allowed() {
+    let tmp = TempDir::new().unwrap();
+
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-haiku-3-7",
+                "output_mtok": 2.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    let rollup = json!({
+        "report": {
+            "tools": [
+                {
+                    "tool_name": "get_ticket_description",
+                    "call_count": 100,
+                    "cost": 80
+                }
+            ]
+        }
+    });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+
+    let gate = Gate::load(
+        &table_path,
+        ModelBudgetCalibration::default(),
+        Some(&rollup_path),
+        None,
+    )
+    .unwrap();
+
+    let msg = tools_call_request(1, "get_ticket_description", "claude-haiku-3-7");
+    let mut pending = PendingList::default();
+    let action = handle_client_message(msg, Some(&gate), &mut pending);
+
+    // Should be forwarded (allowed).
+    match action {
+        ClientAction::Forward(val) => {
+            // Verify caller_model was stripped from arguments.
+            assert!(val["params"]["arguments"].get("caller_model").is_none());
+        }
+        ClientAction::Respond(val) => {
+            panic!("Expected Forward, got Respond: {:?}", val);
+        }
+    }
+}
+
+#[test]
+fn test_handle_client_message_no_gate_fail_open() {
+    let msg = tools_call_request(1, "some_tool", "claude-opus-4-8");
+    let mut pending = PendingList::default();
+    let action = handle_client_message(msg, None, &mut pending);
+
+    // No gate (fail-open) → should forward unchanged.
+    match action {
+        ClientAction::Forward(_) => {}
+        ClientAction::Respond(val) => {
+            panic!("Expected Forward in fail-open mode, got Respond: {:?}", val);
+        }
+    }
+}
+
+//
+// STDIO / JSON-RPC integration tests (BLOCKER 1)
+//
+
+#[test]
+fn test_stdio_expensive_model_refused() {
+    let tmp = TempDir::new().unwrap();
+
+    // Setup fixtures identical to test_expensive_model_expensive_tool_delegate.
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-opus-4-8",
+                "output_mtok": 60.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    let rollup = json!({
+        "report": {
+            "tools": [
+                {
+                    "tool_name": "expensive_tool",
+                    "call_count": 10,
+                    "cost": 50
+                }
+            ]
+        }
+    });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+
+    // Spawn the binary with a dummy passthrough command (--).
+    let mut child = Command::new(get_binary_path())
+        .arg("--")
+        .arg("cat") // Dummy server that echoes input.
+        .env("COST_GATE_TABLE", table_path.display().to_string())
+        .env("COST_GATE_TOOL_METRICS", rollup_path.display().to_string())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn mcp-cost-gate binary");
+
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let mut reader = BufReader::new(stdout);
+
+    // Send initialize request.
+    let init_req = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "test-client",
+                "version": "1.0.0"
+            }
+        }
+    });
+    writeln!(stdin, "{}", serde_json::to_string(&init_req).unwrap()).unwrap();
+    stdin.flush().unwrap();
+
+    // Read initialize response (skip it).
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+
+    // Send tools/call with expensive model and expensive tool.
+    let call_req = tools_call_request(2, "expensive_tool", "claude-opus-4-8");
+    writeln!(stdin, "{}", serde_json::to_string(&call_req).unwrap()).unwrap();
+    stdin.flush().unwrap();
+
+    // Read the response.
+    line.clear();
+    reader.read_line(&mut line).unwrap();
+    let response: Value = serde_json::from_str(&line).expect("Failed to parse response JSON");
+
+    // Verify it's a refusal response with the correct structure.
+    assert_eq!(response["jsonrpc"], "2.0");
+    assert_eq!(response["id"], 2);
+
+    // The proxy returns a result with content containing the delegate guidance.
+    let content = &response["result"]["content"];
+    assert!(content.is_array(), "Expected content array");
+    assert!(!content.as_array().unwrap().is_empty());
+
+    let text = content[0]["text"].as_str().unwrap();
+    assert!(text.contains("cost 50"), "Expected cost 50 in refusal guidance");
+    assert!(
+        text.contains("budget") || text.contains("Delegate"),
+        "Expected budget/delegate guidance"
+    );
+
+    // Clean up.
+    drop(stdin);
+    let _ = child.wait();
+}
+
+#[test]
+fn test_stdio_cheap_model_allowed() {
+    let tmp = TempDir::new().unwrap();
+
+    // Setup fixtures identical to test_cheap_model_expensive_tool_allow.
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-haiku-3-7",
+                "output_mtok": 2.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    let rollup = json!({
+        "report": {
+            "tools": [
+                {
+                    "tool_name": "expensive_tool",
+                    "call_count": 10,
+                    "cost": 50
+                }
+            ]
+        }
+    });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+
+    // Spawn the binary with a dummy passthrough command.
+    let mut child = Command::new(get_binary_path())
+        .arg("--")
+        .arg("cat")
+        .env("COST_GATE_TABLE", table_path.display().to_string())
+        .env("COST_GATE_TOOL_METRICS", rollup_path.display().to_string())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn mcp-cost-gate binary");
+
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let mut reader = BufReader::new(stdout);
+
+    // Send initialize request.
+    let init_req = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "test-client",
+                "version": "1.0.0"
+            }
+        }
+    });
+    writeln!(stdin, "{}", serde_json::to_string(&init_req).unwrap()).unwrap();
+    stdin.flush().unwrap();
+
+    // Read initialize response (skip it).
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+
+    // Send tools/call with cheap model and expensive tool (within budget).
+    let call_req = tools_call_request(2, "expensive_tool", "claude-haiku-3-7");
+    writeln!(stdin, "{}", serde_json::to_string(&call_req).unwrap()).unwrap();
+    stdin.flush().unwrap();
+
+    // Read the response - should be forwarded to the cat command, which echoes it.
+    line.clear();
+    reader.read_line(&mut line).unwrap();
+    let response: Value = serde_json::from_str(&line).expect("Failed to parse response JSON");
+
+    // Verify the call was forwarded (not refused).
+    // The cat command will echo the forwarded request.
+    assert_eq!(response["method"], "tools/call");
+    assert_eq!(response["params"]["name"], "expensive_tool");
+
+    // Verify caller_model was stripped.
+    assert!(
+        response["params"]["arguments"].get("caller_model").is_none(),
+        "caller_model should be stripped"
+    );
+
+    // Clean up.
+    drop(stdin);
+    let _ = child.wait();
+}
+
+//
+// verdict subcommand tests (BLOCKER 2)
+//
+
+#[test]
+fn test_verdict_allow() {
+    let tmp = TempDir::new().unwrap();
+
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-haiku-3-7",
+                "output_mtok": 2.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    let rollup = json!({
+        "report": {
+            "tools": [
+                {
+                    "tool_name": "cheap_tool",
+                    "call_count": 10,
+                    "cost": 10
+                }
+            ]
+        }
+    });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+
+    let output = Command::new(get_binary_path())
+        .arg("verdict")
+        .arg("--model")
+        .arg("claude-haiku-3-7")
+        .arg("--tool")
+        .arg("cheap_tool")
+        .arg("--table")
+        .arg(table_path.display().to_string())
+        .arg("--rollup")
+        .arg(rollup_path.display().to_string())
+        .output()
+        .expect("Failed to execute verdict subcommand");
+
+    assert!(output.status.success(), "verdict should exit 0");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "Allow", "Expected 'Allow' verdict");
+}
+
+#[test]
+fn test_verdict_delegate() {
+    let tmp = TempDir::new().unwrap();
+
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-opus-4-8",
+                "output_mtok": 60.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    let rollup = json!({
+        "report": {
+            "tools": [
+                {
+                    "tool_name": "expensive_tool",
+                    "call_count": 10,
+                    "cost": 50
+                }
+            ]
+        }
+    });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+
+    let output = Command::new(get_binary_path())
+        .arg("verdict")
+        .arg("--model")
+        .arg("claude-opus-4-8")
+        .arg("--tool")
+        .arg("expensive_tool")
+        .arg("--table")
+        .arg(table_path.display().to_string())
+        .arg("--rollup")
+        .arg(rollup_path.display().to_string())
+        .output()
+        .expect("Failed to execute verdict subcommand");
+
+    assert!(output.status.success(), "verdict should exit 0");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.starts_with("Delegate:"), "Expected 'Delegate:' verdict");
+    assert!(stdout.contains("cost 50"), "Expected cost in guidance");
+}
+
+#[test]
+fn test_verdict_reject_unknown_model() {
+    let tmp = TempDir::new().unwrap();
+
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-opus-4-8",
+                "output_mtok": 60.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    let rollup = json!({
+        "report": {
+            "tools": [
+                {
+                    "tool_name": "some_tool",
+                    "call_count": 10,
+                    "cost": 10
+                }
+            ]
+        }
+    });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+
+    let output = Command::new(get_binary_path())
+        .arg("verdict")
+        .arg("--model")
+        .arg("unknown-model-99")
+        .arg("--tool")
+        .arg("some_tool")
+        .arg("--table")
+        .arg(table_path.display().to_string())
+        .arg("--rollup")
+        .arg(rollup_path.display().to_string())
+        .output()
+        .expect("Failed to execute verdict subcommand");
+
+    assert!(output.status.success(), "verdict should exit 0");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.starts_with("Reject:"), "Expected 'Reject:' verdict");
+    assert!(
+        stdout.to_lowercase().contains("unrecognized"),
+        "Expected unrecognized model guidance"
+    );
+}
+
+#[test]
+fn test_verdict_missing_args() {
+    // Test error case: missing required arguments.
+    let output = Command::new(get_binary_path())
+        .arg("verdict")
+        .arg("--model")
+        .arg("some-model")
+        // Missing --tool and --table
+        .output()
+        .expect("Failed to execute verdict subcommand");
+
+    assert!(!output.status.success(), "verdict should exit non-zero");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("usage"), "Expected usage message in stderr");
+}

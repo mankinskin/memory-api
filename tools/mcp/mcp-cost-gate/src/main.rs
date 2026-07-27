@@ -43,6 +43,7 @@ use std::{
 
 use mcp_cost_gate::{
     gate::{
+        Decision,
         Gate,
         ModelBudgetCalibration,
     },
@@ -117,8 +118,59 @@ fn spawn_server(command: &[String]) -> std::io::Result<Child> {
         .spawn()
 }
 
+/// Parse a flag value: --flag <value>
+fn parse_flag<'a>(argv: &'a [String], flag: &str) -> Option<&'a str> {
+    argv.iter()
+        .position(|arg| arg == flag)
+        .and_then(|pos| argv.get(pos + 1))
+        .map(String::as_str)
+}
+
+/// verdict subcommand: print the gate decision for a given (model, tool) pair.
+fn run_verdict(argv: &[String]) {
+    let model = parse_flag(argv, "--model").unwrap_or("");
+    let tool = parse_flag(argv, "--tool").unwrap_or("");
+    let table_path = parse_flag(argv, "--table").unwrap_or("");
+    let rollup_path = parse_flag(argv, "--rollup");
+    let grant_id = parse_flag(argv, "--grant");
+
+    if model.is_empty() || tool.is_empty() || table_path.is_empty() {
+        eprintln!("usage: mcp-cost-gate verdict --model <model> --tool <tool> --table <path> [--rollup <path>] [--grant <id>]");
+        std::process::exit(2);
+    }
+
+    let calibration = ModelBudgetCalibration::default();
+    let rollup_path_buf = rollup_path.map(PathBuf::from);
+    let gate = match Gate::load(
+        &PathBuf::from(table_path),
+        calibration,
+        rollup_path_buf.as_deref(),
+        None,
+    ) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("error loading gate: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let decision = gate.evaluate(model, tool, grant_id);
+    match decision {
+        Decision::Allow => println!("Allow"),
+        Decision::Delegate { guidance } => println!("Delegate: {guidance}"),
+        Decision::Reject { guidance } => println!("Reject: {guidance}"),
+    }
+}
+
 fn main() {
     let argv: Vec<String> = std::env::args().collect();
+
+    // Check for verdict subcommand before proxy logic.
+    if argv.len() > 1 && argv[1] == "verdict" {
+        run_verdict(&argv);
+        return;
+    }
+
     let command = server_command(&argv);
     if command.is_empty() {
         log("no server command provided; usage: mcp-cost-gate -- <server> [args...]");
