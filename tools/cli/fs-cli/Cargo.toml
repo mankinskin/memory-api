@@ -1,0 +1,21 @@
+[package]
+name = "fs-cli"
+version = "0.1.0"
+edition = "2024"
+description = "Bounded filesystem operations CLI — safe directory listing and conflict-aware mutations"
+
+[[bin]]
+name = "fs"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+fs-api = { path = "../../../crates/fs-api" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toon-format = "0.5"
+
+[dev-dependencies]
+assert_cmd = "2"
+tempfile = "3"
+serde_json = "1"

@@ -1,0 +1,21 @@
+[package]
+name = "fs-api"
+version = "0.1.0"
+edition = "2024"
+description = "Bounded filesystem operations API with conflict detection"
+
+[lib]
+name = "fs_api"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+ignore = "0.4"
+globset = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
+
+[target.'cfg(windows)'.dev-dependencies]
+junction = "1.1"
