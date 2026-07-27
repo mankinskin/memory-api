@@ -4,5 +4,6 @@ title = "[session-api] Complete handoff round-trip assertions (risk_notes, prede
 state = "new"
 component = "session-api"
 effort = "600"
+linked = ["8c67b96a-b88f-4710-b8e2-f65e59c4e61e"]
 risk_level = "low"
 type = "tracker-improvement"

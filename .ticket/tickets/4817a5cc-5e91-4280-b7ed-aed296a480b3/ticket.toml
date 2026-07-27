@@ -1,7 +1,7 @@
 id = "4817a5cc-5e91-4280-b7ed-aed296a480b3"
 created_at = "2026-07-15T20:59:57.893160800+00:00"
 title = "[session-api][store] Git-tracking policy: track durable session artifacts, ignore local pointers/locks"
-state = "in-review"
+state = "new"
 component = "session-api"
 depends_on = ["41ed4585-5b1e-4681-96e8-4883ed140c18", "67d7c279-6661-461b-8204-7a1bd7e028c5"]
 effort = "800"

@@ -4,5 +4,6 @@ title = "[session-mcp][rule-mcp][feedback-mcp] Workspace-validation test parity 
 state = "new"
 component = "memory-api"
 effort = "600"
+linked = ["9faa3f5f-e2e1-469d-994e-1bb8b90d5ab4"]
 risk_level = "low"
 type = "tracker-improvement"

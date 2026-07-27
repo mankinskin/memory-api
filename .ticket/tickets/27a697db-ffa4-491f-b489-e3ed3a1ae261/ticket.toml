@@ -4,5 +4,6 @@ title = "[ticket-api] `cargo test -p ticket` broken: TicketStore has no Default 
 state = "new"
 component = "ticket-api"
 effort = "400"
+linked = ["980cf1fa-45e1-4bf3-96c0-305a5d6f709f"]
 risk_level = "low"
 type = "tracker-improvement"
