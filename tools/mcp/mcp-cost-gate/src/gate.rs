@@ -193,6 +193,22 @@ impl Gate {
             return 0;
         };
         let tool_low = tool.to_lowercase();
+        
+        // Try exact match first (case-insensitive)
+        let exact_match = rollup
+            .report
+            .tools
+            .iter()
+            .find(|t| {
+                t.tool_name.to_lowercase() == tool_low
+                    && t.call_count >= MIN_CALLS
+                    && t.cost.is_some()
+            });
+        if let Some(entry) = exact_match {
+            return entry.cost.unwrap_or(0);
+        }
+        
+        // Fall back to bidirectional substring matching
         let matches: Vec<_> = rollup
             .report
             .tools
@@ -665,5 +681,124 @@ mod tests {
         ));
         // A resolvable model is not rejected, and unmeasured tools fail open.
         assert_eq!(g.evaluate("claude-haiku", "update_ticket", None), Decision::Allow);
+    }
+
+    #[test]
+    fn tool_cost_exact_match_precedence() {
+        // Rollup with both "read" and "read_file" entries
+        let rollup = ToolMetricsRollup {
+            report: ToolMetricsReport {
+                tools: vec![
+                    ToolTokenStats {
+                        tool_name: "read".into(),
+                        call_count: 5,
+                        cost: Some(20),
+                    },
+                    ToolTokenStats {
+                        tool_name: "read_file".into(),
+                        call_count: 10,
+                        cost: Some(80),
+                    },
+                ],
+            },
+        };
+        let g = Gate::new(
+            test_gate().models,
+            ModelBudgetCalibration::default(),
+            Some(rollup),
+            None,
+        );
+
+        // Exact match "read_file" should return 80, not 20 from substring match "read"
+        assert_eq!(g.tool_cost("read_file"), 80);
+        
+        // Exact match "read" should return 20
+        assert_eq!(g.tool_cost("read"), 20);
+    }
+
+    #[test]
+    fn tool_cost_substring_fallback_when_no_exact() {
+        // Rollup with only partial names
+        let rollup = ToolMetricsRollup {
+            report: ToolMetricsReport {
+                tools: vec![
+                    ToolTokenStats {
+                        tool_name: "file".into(),
+                        call_count: 5,
+                        cost: Some(50),
+                    },
+                ],
+            },
+        };
+        let g = Gate::new(
+            test_gate().models,
+            ModelBudgetCalibration::default(),
+            Some(rollup),
+            None,
+        );
+
+        // No exact match, but substring "file" matches "read_file"
+        assert_eq!(g.tool_cost("read_file"), 50);
+        
+        // Bidirectional: "read_file" contains "file"
+        assert_eq!(g.tool_cost("file"), 50);
+    }
+
+    #[test]
+    fn tool_cost_exact_match_case_insensitive() {
+        let rollup = ToolMetricsRollup {
+            report: ToolMetricsReport {
+                tools: vec![
+                    ToolTokenStats {
+                        tool_name: "Read_File".into(),
+                        call_count: 10,
+                        cost: Some(75),
+                    },
+                ],
+            },
+        };
+        let g = Gate::new(
+            test_gate().models,
+            ModelBudgetCalibration::default(),
+            Some(rollup),
+            None,
+        );
+
+        // Case-insensitive exact match
+        assert_eq!(g.tool_cost("read_file"), 75);
+        assert_eq!(g.tool_cost("Read_File"), 75);
+        assert_eq!(g.tool_cost("READ_FILE"), 75);
+    }
+
+    #[test]
+    fn tool_cost_exact_match_ineligible_falls_through_to_substring() {
+        // Rollup with an exact-match entry that is ineligible (call_count < MIN_CALLS)
+        // and an eligible substring-match entry
+        let rollup = ToolMetricsRollup {
+            report: ToolMetricsReport {
+                tools: vec![
+                    ToolTokenStats {
+                        tool_name: "read_file".into(),
+                        call_count: 0, // below MIN_CALLS
+                        cost: Some(999),
+                    },
+                    ToolTokenStats {
+                        tool_name: "file".into(),
+                        call_count: 5, // eligible
+                        cost: Some(40),
+                    },
+                ],
+            },
+        };
+        let g = Gate::new(
+            test_gate().models,
+            ModelBudgetCalibration::default(),
+            Some(rollup),
+            None,
+        );
+
+        // Query "read_file": exact match exists but is ineligible -> must fall through
+        // to substring match "file" and return 40, not 0
+        assert_eq!(g.tool_cost("read_file"), 40);
     }
 }
