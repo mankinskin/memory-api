@@ -1,0 +1,1 @@
+{"rev":1,"ts":"2026-07-27T20:23:41.457440900+00:00","fields":{"component":"session-api","effort":"600","risk_level":"low","state":"new","title":"[session-api] Complete handoff round-trip assertions (risk_notes, predecessor_handoff) and verify 8c67b96a AC4/AC5","type":"tracker-improvement"}}

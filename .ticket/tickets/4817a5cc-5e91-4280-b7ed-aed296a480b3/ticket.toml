@@ -5,6 +5,7 @@ state = "in-review"
 component = "session-api"
 depends_on = ["41ed4585-5b1e-4681-96e8-4883ed140c18", "67d7c279-6661-461b-8204-7a1bd7e028c5"]
 effort = "800"
+linked = ["16e4063a-32c6-416c-a6fe-160df9f9edd0"]
 priority = "high"
 risk_level = "medium"
 type = "tracker-improvement"
