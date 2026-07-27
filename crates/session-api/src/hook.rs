@@ -316,6 +316,11 @@ impl TranscriptEventEnvelope {
             cache_write_tokens,
             cost_usd: None, // Computed later in into_record_and_events
             model_id,
+            request_bytes: None,
+            request_chars: None,
+            response_bytes: None,
+            response_chars: None,
+            tokens_estimated: None,
             error_message,
             exit_code,
             result_code,

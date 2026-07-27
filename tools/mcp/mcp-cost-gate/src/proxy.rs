@@ -6,6 +6,7 @@
 
 use std::collections::HashSet;
 
+use serde::{Deserialize, Serialize};
 use serde_json::{
     Value,
     json,
@@ -50,6 +51,32 @@ impl PendingList {
 
 fn id_key(id: &Value) -> String {
     serde_json::to_string(id).unwrap_or_default()
+}
+
+/// Payload telemetry for an MCP tool call (ticket 9d527ad1).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallTelemetry {
+    pub timestamp: String,
+    pub tool_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub caller_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grant_id: Option<String>,
+    pub decision: String,
+    pub request_bytes: u64,
+    pub request_chars: u64,
+    pub response_bytes: u64,
+    pub response_chars: u64,
+    pub tokens_estimated: u64,
+}
+
+/// Compute payload size and estimated tokens from a JSON value.
+pub fn compute_payload_telemetry(value: &Value) -> (u64, u64, u64) {
+    let json_str = serde_json::to_string(value).unwrap_or_default();
+    let bytes = json_str.as_bytes().len() as u64;
+    let chars = json_str.chars().count() as u64;
+    let tokens_estimated = chars / 4; // chars/4 divisor per ticket spec
+    (bytes, chars, tokens_estimated)
 }
 
 /// Build a `tools/call` result carrying an error message (isError=true).
@@ -409,5 +436,37 @@ mod tests {
         inject_caller_model_schema(&mut tool);
         assert_eq!(tool["inputSchema"]["type"], json!("object"));
         assert_eq!(tool["inputSchema"]["required"][0], json!(CALLER_MODEL_ARG));
+    }
+
+    #[test]
+    fn telemetry_computation_is_monotonic() {
+        // AC3: larger payloads yield larger estimates
+        let small = json!({"a": 1});
+        let medium = json!({"a": 1, "b": "hello", "c": [1,2,3]});
+        let large = json!({"a": 1, "b": "hello", "c": [1,2,3], "d": {"nested": "structure with more data"}});
+
+        let (bytes_s, chars_s, tokens_s) = compute_payload_telemetry(&small);
+        let (bytes_m, chars_m, tokens_m) = compute_payload_telemetry(&medium);
+        let (bytes_l, chars_l, tokens_l) = compute_payload_telemetry(&large);
+
+        assert!(bytes_s < bytes_m && bytes_m < bytes_l, "bytes should be monotonic");
+        assert!(chars_s < chars_m && chars_m < chars_l, "chars should be monotonic");
+        assert!(tokens_s < tokens_m && tokens_m < tokens_l, "tokens_estimated should be monotonic");
+        
+        // Verify the chars/4 relationship
+        assert_eq!(tokens_s, chars_s / 4);
+        assert_eq!(tokens_m, chars_m / 4);
+        assert_eq!(tokens_l, chars_l / 4);
+    }
+
+    #[test]
+    fn telemetry_computation_returns_nonzero() {
+        // AC1/AC2: non-empty payloads yield non-zero counts
+        let payload = json!({"method": "tools/call", "params": {"name": "read_file", "arguments": {}}});
+        let (bytes, chars, tokens) = compute_payload_telemetry(&payload);
+        
+        assert!(bytes > 0, "bytes should be non-zero for non-empty payload");
+        assert!(chars > 0, "chars should be non-zero for non-empty payload");
+        assert!(tokens > 0, "tokens_estimated should be non-zero for non-empty payload");
     }
 }

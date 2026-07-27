@@ -237,6 +237,17 @@ pub struct SessionTurnEventMeta {
     pub cost_usd: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
+    // Payload telemetry (MCP tool calls) — ticket 9d527ad1
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_chars: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_chars: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_estimated: Option<u64>,
     // Tool execution failure/timeout classification (ticket 84c7757d)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
@@ -417,6 +428,12 @@ mod tests {
                     cache_write_tokens: None,
                     cost_usd: None,
                     model_id: None,
+                    // Payload telemetry (ticket 9d527ad1)
+                    request_bytes: None,
+                    request_chars: None,
+                    response_bytes: None,
+                    response_chars: None,
+                    tokens_estimated: None,
                     // Tool execution failure/timeout classification (ticket 84c7757d)
                     error_message: None,
                     exit_code: None,
