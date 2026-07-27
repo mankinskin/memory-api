@@ -41,7 +41,7 @@ pub struct RecordFeedbackInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ImportRuleFileInput {
-    /// Concrete workspace path, repo root, .rule store path, or path inside that store.
+    /// Concrete workspace path, repo root, .rule store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
     pub path: String,
     pub file_kind: String,
@@ -59,7 +59,7 @@ pub struct ImportRuleFileInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateRuleInput {
-    /// Concrete workspace path, repo root, .rule store path, or path inside that store.
+    /// Concrete workspace path, repo root, .rule store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
     pub title: String,
     pub slug: String,

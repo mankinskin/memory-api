@@ -42,7 +42,7 @@ use test_api::{
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RecordSpecInput {
-    /// Concrete workspace path, repo root, .test store path, or path inside that store.
+    /// Concrete workspace path, repo root, .test store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
     /// Stable validation spec id (e.g. `vt-core-tests`). Used as the file name.
     pub id: String,
@@ -70,7 +70,7 @@ pub struct RecordSpecInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RecordExecutionInput {
-    /// Concrete workspace path, repo root, .test store path, or path inside that store.
+    /// Concrete workspace path, repo root, .test store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
     /// Stable execution id (e.g. `exec-vt-core-tests-20260615`). Used as file name.
     pub id: String,

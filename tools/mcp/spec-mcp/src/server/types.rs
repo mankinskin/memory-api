@@ -18,7 +18,7 @@ pub struct SpecRefInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateSpecInput {
-    /// Concrete workspace path, repo root, .spec store path, or path inside that store.
+    /// Concrete workspace path, repo root, .spec store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
     /// Spec title.
     pub title: String,

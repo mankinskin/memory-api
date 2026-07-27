@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct IngestInput {
+    /// Concrete workspace path, repo root, .feedback store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
     pub workspace_slug: String,
     pub source: String,
@@ -49,6 +50,7 @@ pub struct IngestInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct QueryInput {
+    /// Concrete workspace path, repo root, .feedback store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
     pub workspace_slug: String,
     pub target: String,

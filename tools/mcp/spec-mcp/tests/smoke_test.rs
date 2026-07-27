@@ -516,3 +516,85 @@ async fn spec_search_tool() {
     // Search results may or may not contain the new spec depending on
     // indexing timing, but the tool should succeed.
 }
+
+/// Workspace validation: verify that invalid workspace selectors produce the
+/// canonical error shape.
+#[tokio::test]
+async fn spec_workspace_validation_error() {
+    let (_tmp, server) = make_sandbox();
+
+    // Test 'default' rejection
+    let result = server
+        .spec_create(Parameters(CreateSpecInput {
+            workspace: "default".to_string(),
+            title: "Test".to_string(),
+            slug: "test/spec".to_string(),
+            component: "test".to_string(),
+            parent: None,
+            scope: None,
+            body: None,
+            fields: BTreeMap::new(),
+        }))
+        .await;
+
+    let err = result.expect_err("should fail with 'default'");
+    let err_msg = err.to_string();
+    assert!(
+        err_msg.contains("invalid workspace selector"),
+        "error should mention 'invalid workspace selector': {err_msg}"
+    );
+    assert!(
+        err_msg.contains("entity creation requires an explicit workspace path"),
+        "error should state the requirement: {err_msg}"
+    );
+    assert!(
+        err_msg.contains("'default'"),
+        "error should list 'default' as rejected: {err_msg}"
+    );
+
+    // Test empty string rejection
+    let result = server
+        .spec_create(Parameters(CreateSpecInput {
+            workspace: "".to_string(),
+            title: "Test".to_string(),
+            slug: "test/spec".to_string(),
+            component: "test".to_string(),
+            parent: None,
+            scope: None,
+            body: None,
+            fields: BTreeMap::new(),
+        }))
+        .await;
+
+    let err = result.expect_err("should fail with empty string");
+    let err_msg = err.to_string();
+    assert!(
+        err_msg.contains("invalid workspace selector"),
+        "error should mention 'invalid workspace selector': {err_msg}"
+    );
+
+    // Test '.' rejection
+    let result = server
+        .spec_create(Parameters(CreateSpecInput {
+            workspace: ".".to_string(),
+            title: "Test".to_string(),
+            slug: "test/spec".to_string(),
+            component: "test".to_string(),
+            parent: None,
+            scope: None,
+            body: None,
+            fields: BTreeMap::new(),
+        }))
+        .await;
+
+    let err = result.expect_err("should fail with '.'");
+    let err_msg = err.to_string();
+    assert!(
+        err_msg.contains("invalid workspace selector"),
+        "error should mention 'invalid workspace selector': {err_msg}"
+    );
+    assert!(
+        err_msg.contains("'.'"),
+        "error should list '.' as rejected: {err_msg}"
+    );
+}
