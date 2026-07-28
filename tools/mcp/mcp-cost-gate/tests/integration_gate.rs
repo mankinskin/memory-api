@@ -628,6 +628,99 @@ fn test_stdio_telemetry_recorded_for_allowed_call() {
     assert!(telemetry["duration_ms"].as_u64().is_some());
 }
 
+#[test]
+fn test_stdio_tokens_estimated_increases_with_larger_payload() {
+    // AC3: exercise real proxy telemetry path with two differently sized
+    // payloads and assert strict monotonicity for tokens_estimated.
+    let tmp = TempDir::new().unwrap();
+
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-haiku-3-7",
+                "output_mtok": 2.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    // No measured tool in rollup => fail-open allow for any tool name.
+    let rollup = json!({ "report": { "tools": [] } });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+    let telemetry_path = tmp.path().join("telemetry-monotonic.jsonl");
+
+    let mut child = Command::new(get_binary_path())
+        .arg("--")
+        .arg("cat")
+        .env("COST_GATE_TABLE", table_path.display().to_string())
+        .env("COST_GATE_TOOL_METRICS", rollup_path.display().to_string())
+        .env("COST_GATE_TELEMETRY_LOG", telemetry_path.display().to_string())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn mcp-cost-gate binary");
+
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let mut reader = BufReader::new(stdout);
+
+    let small = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "size_probe",
+            "arguments": {
+                "caller_model": "claude-haiku-3-7",
+                "payload": "x"
+            }
+        }
+    });
+    let large = json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "size_probe",
+            "arguments": {
+                "caller_model": "claude-haiku-3-7",
+                "payload": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            }
+        }
+    });
+
+    writeln!(stdin, "{}", serde_json::to_string(&small).unwrap()).unwrap();
+    stdin.flush().unwrap();
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+
+    line.clear();
+    writeln!(stdin, "{}", serde_json::to_string(&large).unwrap()).unwrap();
+    stdin.flush().unwrap();
+    reader.read_line(&mut line).unwrap();
+
+    drop(stdin);
+    let _ = child.wait();
+
+    let contents = fs::read_to_string(&telemetry_path)
+        .expect("expected telemetry JSONL file to be written");
+    let lines: Vec<&str> = contents.lines().collect();
+    assert!(lines.len() >= 2, "expected at least two telemetry lines");
+
+    let first: Value = serde_json::from_str(lines[0]).expect("first telemetry line should be valid JSON");
+    let second: Value = serde_json::from_str(lines[1]).expect("second telemetry line should be valid JSON");
+
+    let first_tokens = first["tokens_estimated"].as_u64().expect("first tokens_estimated should be present");
+    let second_tokens = second["tokens_estimated"].as_u64().expect("second tokens_estimated should be present");
+    assert!(
+        second_tokens > first_tokens,
+        "larger payload should produce larger tokens_estimated ({} !< {})",
+        first_tokens,
+        second_tokens
+    );
+}
+
 //
 // verdict subcommand tests (BLOCKER 2)
 //
