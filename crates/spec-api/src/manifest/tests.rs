@@ -37,6 +37,72 @@ fn test_set_scope() {
 }
 
 #[test]
+fn related_tickets_round_trips_through_toml() {
+    use crate::ticket_ref::TicketRef;
+
+    let mut m =
+        SpecManifest::new("ticket-api/store", "TicketStore", "ticket-api");
+    let refs = vec![TicketRef {
+        ticket_id: uuid::Uuid::new_v4(),
+        workspace: "default".to_string(),
+        store_root: ".ticket".to_string(),
+    }];
+    m.set_related_tickets(refs.clone());
+    assert_eq!(m.related_tickets(), refs);
+
+    let toml_str = toml::to_string(&m).unwrap();
+    let parsed: SpecManifest = toml::from_str(&toml_str).unwrap();
+    assert_eq!(parsed.related_tickets(), refs);
+}
+
+#[test]
+fn set_related_tickets_empty_removes_key() {
+    use crate::ticket_ref::TicketRef;
+
+    let mut m =
+        SpecManifest::new("ticket-api/store", "TicketStore", "ticket-api");
+    m.set_related_tickets(vec![TicketRef {
+        ticket_id: uuid::Uuid::new_v4(),
+        workspace: "default".to_string(),
+        store_root: ".ticket".to_string(),
+    }]);
+    assert!(m.extra.contains_key("related_tickets"));
+
+    m.set_related_tickets(Vec::new());
+    assert!(!m.extra.contains_key("related_tickets"));
+    assert!(m.related_tickets().is_empty());
+}
+
+#[test]
+fn legacy_ticket_link_entries_detects_untyped_strings_and_not_typed_entries() {
+    use crate::ticket_ref::TicketRef;
+
+    let mut m =
+        SpecManifest::new("ticket-api/store", "TicketStore", "ticket-api");
+    m.extra.insert(
+        "related_tickets".to_string(),
+        serde_json::json!(["0386c4d0-0000-0000-0000-000000000000"]),
+    );
+    m.extra.insert(
+        "ticket_ids".to_string(),
+        serde_json::json!(["../../.ticket/tickets/deadbeef/ticket.toml"]),
+    );
+
+    let legacy = m.legacy_ticket_link_entries();
+    assert_eq!(legacy.len(), 2);
+
+    m.set_related_tickets(vec![TicketRef {
+        ticket_id: uuid::Uuid::nil(),
+        workspace: "default".to_string(),
+        store_root: ".ticket".to_string(),
+    }]);
+    // ticket_ids untyped key is untouched by set_related_tickets, so the
+    // legacy signal remains until it is explicitly migrated/removed.
+    m.extra.remove("ticket_ids");
+    assert!(m.legacy_ticket_link_entries().is_empty());
+}
+
+#[test]
 fn test_contract_fields_round_trip_through_toml() {
     let mut manifest =
         SpecManifest::new("spec-api/contract", "Contract", "spec-api");

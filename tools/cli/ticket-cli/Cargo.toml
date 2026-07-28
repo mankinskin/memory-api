@@ -15,6 +15,7 @@ path = "src/lib.rs"
 [dependencies]
 ticket-api = { path = "../../../crates/ticket-api" }
 ticket-http = { path = "../../http/ticket-http" }
+spec-api = { path = "../../../crates/spec-api" }
 memory-api = { path = "../../../crates/memory-api" }
 
 clap = { version = "4", features = ["derive"] }

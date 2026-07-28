@@ -14,6 +14,7 @@ path = "src/lib.rs"
 
 [dependencies]
 spec-api = { path = "../../../crates/spec-api" }
+ticket-api = { path = "../../../crates/ticket-api" }
 memory-api = { path = "../../../crates/memory-api" }
 rule-api = { path = "../../../crates/rule-api" }
 

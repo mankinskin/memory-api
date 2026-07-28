@@ -12,7 +12,10 @@ use serde::{
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::code_ref::CodeRef;
+use crate::{
+    code_ref::CodeRef,
+    ticket_ref::TicketRef,
+};
 
 pub type SpecId = Uuid;
 
@@ -214,6 +217,34 @@ impl SpecManifest {
         self.parse_vec_field("fulfillment_summaries")
     }
 
+    /// Structured ticket links for this spec (typed field backed by the
+    /// `related_tickets` extra key). Returns an empty vec (never errors)
+    /// when the key is absent or holds legacy untyped entries — see
+    /// [`Self::legacy_ticket_link_entries`] for the migration-detection
+    /// path.
+    pub fn related_tickets(&self) -> Vec<TicketRef> {
+        self.parse_vec_field("related_tickets")
+    }
+
+    /// Legacy untyped ticket-link entries (bare UUID or path strings) found
+    /// under the `related_tickets`/`ticket_ids` extra keys. Used by
+    /// `validate-links` and migration tooling to detect specs that still
+    /// need conversion to structured [`TicketRef`] entries; never an error
+    /// on its own.
+    pub fn legacy_ticket_link_entries(&self) -> Vec<String> {
+        let mut entries = Vec::new();
+        for key in ["related_tickets", "ticket_ids"] {
+            if let Some(Value::Array(items)) = self.extra.get(key) {
+                for item in items {
+                    if let Value::String(s) = item {
+                        entries.push(s.clone());
+                    }
+                }
+            }
+        }
+        entries
+    }
+
     // ── setters ──
 
     pub fn set_slug(
@@ -297,6 +328,18 @@ impl SpecManifest {
         fulfillment_summaries: Vec<FulfillmentSummary>,
     ) {
         self.set_typed_field("fulfillment_summaries", fulfillment_summaries);
+    }
+
+    /// Replace the structured ticket links, storing them under the
+    /// `related_tickets` extra key. Removes the key entirely when empty
+    /// (via `set_typed_field`'s empty-vec handling) so serialized manifests
+    /// stay minimal, and so a migrated manifest no longer carries the
+    /// legacy untyped entries once replaced.
+    pub fn set_related_tickets(
+        &mut self,
+        related_tickets: Vec<TicketRef>,
+    ) {
+        self.set_typed_field("related_tickets", related_tickets);
     }
 
     /// Access the underlying extra fields.

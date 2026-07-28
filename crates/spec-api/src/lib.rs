@@ -6,6 +6,7 @@ pub mod move_domain;
 pub mod slug;
 pub mod store;
 pub mod store_index;
+pub mod ticket_ref;
 pub mod verification;
 pub mod workspace;
 
@@ -49,6 +50,7 @@ pub use store_index::{
     SpecCatalogSource,
     generate_spec_catalog,
 };
+pub use ticket_ref::TicketRef;
 pub use verification::{
     SpecVerificationOutcome,
     parse_guards_from_markdown,

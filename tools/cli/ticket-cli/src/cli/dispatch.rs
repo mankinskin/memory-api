@@ -289,6 +289,7 @@ fn command_uses_descendant_scan_roots(command: &TicketCommandCli) -> bool {
             | TicketCommandCli::Health(_)
             | TicketCommandCli::StoreIndex(_)
             | TicketCommandCli::Audit
+            | TicketCommandCli::ValidateLinks
     )
 }
 
@@ -401,7 +402,8 @@ fn dispatch_store_command(
         | TicketCommandCli::Audit
         | TicketCommandCli::Fmt(_)
         | TicketCommandCli::Board(_)
-        | TicketCommandCli::Workspace(_) =>
+        | TicketCommandCli::Workspace(_)
+        | TicketCommandCli::ValidateLinks =>
             dispatch_store_command_ops(command, store, dry_run),
         TicketCommandCli::ExportCommandSchema | TicketCommandCli::Init => {
             unreachable!("handled before store dispatch")
@@ -532,7 +534,8 @@ fn dispatch_store_command_ops(
         | TicketCommandCli::Audit
         | TicketCommandCli::Fmt(_)
         | TicketCommandCli::Board(_)
-        | TicketCommandCli::Workspace(_) =>
+        | TicketCommandCli::Workspace(_)
+        | TicketCommandCli::ValidateLinks =>
             dispatch_store_command_ops_admin(command, store),
         _ => unreachable!("handled in ops store dispatch"),
     }
@@ -570,6 +573,7 @@ fn dispatch_store_command_ops_admin(
         TicketCommandCli::Board(args) => commands::cmd_board(args, &store),
         TicketCommandCli::Workspace(args) =>
             commands::cmd_workspace(args, &store),
+        TicketCommandCli::ValidateLinks => commands::cmd_validate_links(&store),
         _ => unreachable!("handled in ops admin dispatch"),
     }
 }

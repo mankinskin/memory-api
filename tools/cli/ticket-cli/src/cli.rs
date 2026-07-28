@@ -191,6 +191,11 @@ pub enum TicketCommandCli {
     Board(BoardArgs),
     /// Inspect or edit the workspace policy and rescan with policy applied.
     Workspace(WorkspaceArgs),
+    /// Validate related_specs links: detect dangling spec refs, wrong-store
+    /// refs, and bidirectional inconsistencies against the referenced spec
+    /// store(s).
+    #[command(name = "validate-links")]
+    ValidateLinks,
 }
 
 // ── error type ─────────────────────────────────────────────────────────────────

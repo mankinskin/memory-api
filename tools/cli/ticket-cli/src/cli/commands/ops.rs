@@ -9,6 +9,7 @@ use serde_json::{
     Value,
     json,
 };
+use uuid::Uuid;
 
 use ticket_api::{
     TICKET_INDEX_AGENT_HOOK_PATH,
@@ -317,6 +318,375 @@ fn read_existing(path: &Path) -> Option<String> {
 
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+/// Resolve a `SpecRef.store_root` (repo-root-relative, e.g. ".spec" or
+/// "memory-api/.spec") against the workspace root that `ticket validate-links`
+/// was invoked against.
+fn resolve_referenced_spec_root(
+    workspace_root: &Path,
+    store_root: &str,
+) -> std::path::PathBuf {
+    let candidate = Path::new(store_root);
+    if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        workspace_root.join(candidate)
+    }
+}
+
+/// Attempt to read a spec at `root` by id. Returns `None` when the store
+/// does not exist there or the id is not found.
+fn try_get_spec(
+    root: &Path,
+    spec_id: Uuid,
+) -> Option<spec_api::SpecManifest> {
+    let store = spec_api::SpecStore::open(root).ok()?;
+    store.get(&spec_id.to_string()).ok()
+}
+
+fn count_links_by_kind(findings: &[Value]) -> Value {
+    let mut counts = serde_json::Map::new();
+    for finding in findings {
+        let kind = finding
+            .get("kind")
+            .and_then(|k| k.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let entry = counts.entry(kind).or_insert(json!(0));
+        if let Some(n) = entry.as_u64() {
+            *entry = json!(n + 1);
+        }
+    }
+    Value::Object(counts)
+}
+
+/// Validate `related_specs` links: detect dangling spec refs, wrong-store
+/// refs, and bidirectional inconsistencies against the referenced spec
+/// store(s). Mirrors `spec validate-links` from the other direction.
+pub(crate) fn cmd_validate_links(
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    let workspace_root = workspace::resolve_workspace_root_from_store_root(
+        &store.index_root,
+        workspace::TICKET_INDEX_DIR,
+    );
+    let canonical_spec_root = workspace_root.join(".spec");
+
+    let all = store.list(None, None, None)?;
+    let mut findings: Vec<Value> = Vec::new();
+    let mut checked = 0usize;
+
+    for indexed in &all {
+        let ticket = match store.get(&indexed.id) {
+            Ok(ticket) => ticket,
+            Err(_) => continue,
+        };
+
+        for spec_ref in ticket.related_specs() {
+            checked += 1;
+            let referenced_root = resolve_referenced_spec_root(
+                &workspace_root,
+                &spec_ref.store_root,
+            );
+
+            if let Some(spec) = try_get_spec(&referenced_root, spec_ref.spec_id)
+            {
+                let has_back_ref = spec
+                    .related_tickets()
+                    .iter()
+                    .any(|ticket_ref| ticket_ref.ticket_id == ticket.id);
+                if !has_back_ref {
+                    findings.push(json!({
+                        "kind": "bidirectional_inconsistency",
+                        "ticket_id": ticket.id,
+                        "spec_id": spec_ref.spec_id,
+                        "workspace": spec_ref.workspace,
+                        "store_root": spec_ref.store_root,
+                        "message": format!(
+                            "ticket {} links spec {} but the spec's related_tickets does not link back",
+                            ticket.id, spec_ref.spec_id,
+                        ),
+                    }));
+                }
+                continue;
+            }
+
+            if referenced_root != canonical_spec_root
+                && try_get_spec(&canonical_spec_root, spec_ref.spec_id).is_some()
+            {
+                findings.push(json!({
+                    "kind": "wrong_store_ref",
+                    "ticket_id": ticket.id,
+                    "spec_id": spec_ref.spec_id,
+                    "workspace": spec_ref.workspace,
+                    "store_root": spec_ref.store_root,
+                    "message": format!(
+                        "spec {} exists but not under store_root '{}'; found under the workspace's canonical .spec store instead",
+                        spec_ref.spec_id, spec_ref.store_root,
+                    ),
+                }));
+                continue;
+            }
+
+            findings.push(json!({
+                "kind": "dangling_spec_ref",
+                "ticket_id": ticket.id,
+                "spec_id": spec_ref.spec_id,
+                "workspace": spec_ref.workspace,
+                "store_root": spec_ref.store_root,
+                "message": format!(
+                    "spec {} not found under store_root '{}'",
+                    spec_ref.spec_id, spec_ref.store_root,
+                ),
+            }));
+        }
+    }
+
+    let counts = count_links_by_kind(&findings);
+
+    Ok(json!({
+        "command": "validate_links",
+        "status": "ok",
+        "workspace_root": workspace_root.display().to_string(),
+        "checked": checked,
+        "valid": findings.is_empty(),
+        "counts": counts,
+        "findings": findings,
+    }))
+}
+
+#[cfg(test)]
+mod validate_links_tests {
+    use std::collections::BTreeMap;
+
+    use memory_api::model::entity::SpecRef;
+    use spec_api::{
+        SpecManifest,
+        SpecStore,
+        TicketRef,
+    };
+    use tempfile::TempDir;
+
+    use super::{
+        TicketStore,
+        cmd_validate_links,
+    };
+
+    /// Reproduces the nested-store bug: a ticket's `related_specs` entry
+    /// carries a `store_root` that does not resolve to any store, while the
+    /// referenced spec actually exists under the workspace's canonical
+    /// `.spec` store. Before structured `SpecRef` carried an explicit store
+    /// identifier, a relative-path prose link like this could silently
+    /// resolve against the wrong (or a nonexistent) store instead of being
+    /// flagged. `validate-links` must detect it as `wrong_store_ref`.
+    #[test]
+    fn detects_wrong_store_ref_for_nested_store_bug_scenario() {
+        let workspace = TempDir::new().unwrap();
+        let workspace_root = workspace.path();
+
+        let ticket_store =
+            TicketStore::init(&workspace_root.join(".ticket")).unwrap();
+        let mut spec_store =
+            SpecStore::init(&workspace_root.join(".spec")).unwrap();
+
+        let spec_manifest = SpecManifest::new(
+            "traceability/nested-store-bug",
+            "Nested store bug spec",
+            "ticket-api",
+        );
+        let spec_id = spec_manifest.id();
+        spec_store.create(&spec_manifest, "body", None).unwrap();
+
+        let ticket_id = ticket_store
+            .create(
+                None,
+                "task",
+                Some("Nested store bug ticket"),
+                None,
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        // Wrong: the spec actually lives under the canonical `.spec` store,
+        // but this ref claims a nonexistent nested store.
+        let wrong_spec_ref = SpecRef {
+            spec_id,
+            workspace: "default".to_string(),
+            store_root: "nested/.spec".to_string(),
+        };
+        let mut patch = BTreeMap::new();
+        patch.insert(
+            "related_specs".to_string(),
+            serde_json::to_value(vec![wrong_spec_ref]).unwrap(),
+        );
+        ticket_store
+            .update(&ticket_id, patch, None, None, None, None)
+            .unwrap();
+
+        let result = cmd_validate_links(&ticket_store).unwrap();
+
+        assert_eq!(result["valid"], false);
+        assert_eq!(result["checked"], 1);
+        let findings = result["findings"].as_array().unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0]["kind"], "wrong_store_ref");
+        assert_eq!(findings[0]["spec_id"], spec_id.to_string());
+    }
+
+    #[test]
+    fn detects_dangling_spec_ref() {
+        let workspace = TempDir::new().unwrap();
+        let workspace_root = workspace.path();
+
+        let ticket_store =
+            TicketStore::init(&workspace_root.join(".ticket")).unwrap();
+        SpecStore::init(&workspace_root.join(".spec")).unwrap();
+
+        let ticket_id = ticket_store
+            .create(
+                None,
+                "task",
+                Some("Dangling spec ref ticket"),
+                None,
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let dangling_ref = SpecRef {
+            spec_id: uuid::Uuid::new_v4(),
+            workspace: "default".to_string(),
+            store_root: ".spec".to_string(),
+        };
+        let mut patch = BTreeMap::new();
+        patch.insert(
+            "related_specs".to_string(),
+            serde_json::to_value(vec![dangling_ref]).unwrap(),
+        );
+        ticket_store
+            .update(&ticket_id, patch, None, None, None, None)
+            .unwrap();
+
+        let result = cmd_validate_links(&ticket_store).unwrap();
+
+        assert_eq!(result["valid"], false);
+        let findings = result["findings"].as_array().unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0]["kind"], "dangling_spec_ref");
+    }
+
+    #[test]
+    fn detects_bidirectional_inconsistency() {
+        let workspace = TempDir::new().unwrap();
+        let workspace_root = workspace.path();
+
+        let ticket_store =
+            TicketStore::init(&workspace_root.join(".ticket")).unwrap();
+        let mut spec_store =
+            SpecStore::init(&workspace_root.join(".spec")).unwrap();
+
+        let spec_manifest = SpecManifest::new(
+            "traceability/no-back-ref",
+            "No back ref spec",
+            "ticket-api",
+        );
+        let spec_id = spec_manifest.id();
+        spec_store.create(&spec_manifest, "body", None).unwrap();
+        // Deliberately do not set the spec's related_tickets back-reference.
+
+        let ticket_id = ticket_store
+            .create(
+                None,
+                "task",
+                Some("One-way link ticket"),
+                None,
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let spec_ref = SpecRef {
+            spec_id,
+            workspace: "default".to_string(),
+            store_root: ".spec".to_string(),
+        };
+        let mut patch = BTreeMap::new();
+        patch.insert(
+            "related_specs".to_string(),
+            serde_json::to_value(vec![spec_ref]).unwrap(),
+        );
+        ticket_store
+            .update(&ticket_id, patch, None, None, None, None)
+            .unwrap();
+
+        let result = cmd_validate_links(&ticket_store).unwrap();
+
+        assert_eq!(result["valid"], false);
+        let findings = result["findings"].as_array().unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0]["kind"], "bidirectional_inconsistency");
+    }
+
+    #[test]
+    fn valid_when_bidirectional_link_is_consistent() {
+        let workspace = TempDir::new().unwrap();
+        let workspace_root = workspace.path();
+
+        let ticket_store =
+            TicketStore::init(&workspace_root.join(".ticket")).unwrap();
+        let mut spec_store =
+            SpecStore::init(&workspace_root.join(".spec")).unwrap();
+
+        let mut spec_manifest = SpecManifest::new(
+            "traceability/consistent-link",
+            "Consistent link spec",
+            "ticket-api",
+        );
+        let spec_id = spec_manifest.id();
+
+        let ticket_id = ticket_store
+            .create(
+                None,
+                "task",
+                Some("Consistent link ticket"),
+                None,
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .unwrap();
+
+        spec_manifest.set_related_tickets(vec![TicketRef {
+            ticket_id,
+            workspace: "default".to_string(),
+            store_root: ".ticket".to_string(),
+        }]);
+        spec_store.create(&spec_manifest, "body", None).unwrap();
+
+        let spec_ref = SpecRef {
+            spec_id,
+            workspace: "default".to_string(),
+            store_root: ".spec".to_string(),
+        };
+        let mut patch = BTreeMap::new();
+        patch.insert(
+            "related_specs".to_string(),
+            serde_json::to_value(vec![spec_ref]).unwrap(),
+        );
+        ticket_store
+            .update(&ticket_id, patch, None, None, None, None)
+            .unwrap();
+
+        let result = cmd_validate_links(&ticket_store).unwrap();
+
+        assert_eq!(result["valid"], true);
+        assert_eq!(result["findings"].as_array().unwrap().len(), 0);
+    }
 }
 
 pub(crate) fn cmd_add_root(

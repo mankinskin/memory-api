@@ -95,6 +95,7 @@ fn command_uses_descendant_scan_roots(command: &SpecCommandCli) -> bool {
             | SpecCommandCli::Health(_)
             | SpecCommandCli::StoreIndex(_)
             | SpecCommandCli::Scan(_)
+            | SpecCommandCli::ValidateLinks
     )
 }
 
@@ -149,6 +150,8 @@ fn dispatch_read_only(
         SpecCommandCli::Move(args) => commands::cmd_move(args, store),
         SpecCommandCli::StoreIndex(args) =>
             commands::cmd_store_index(args, store, default_workspace_root),
+        SpecCommandCli::ValidateLinks =>
+            commands::cmd_validate_links(store, default_workspace_root),
         SpecCommandCli::Init => unreachable!("Init handled before store open"),
         _ => unreachable!(
             "command_mutates keeps mutating commands out of this path"

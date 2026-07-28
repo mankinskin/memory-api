@@ -93,6 +93,11 @@ pub enum SpecCommandCli {
     Bootstrap(BootstrapArgs),
     /// Move a spec to another workspace store (dry-run/resume/rollback).
     Move(MoveArgs),
+    /// Validate related_tickets links: detect dangling ticket refs,
+    /// wrong-store refs, and bidirectional inconsistencies against the
+    /// referenced ticket store(s).
+    #[command(name = "validate-links")]
+    ValidateLinks,
 }
 
 // ── error type ────────────────────────────────────────────────────────────────

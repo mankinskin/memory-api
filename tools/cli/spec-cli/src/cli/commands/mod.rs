@@ -8,6 +8,7 @@ mod refs;
 mod sections;
 mod store_index;
 mod sync_generated;
+mod validate_links;
 
 pub use bootstrap::*;
 pub(crate) use crud::*;
@@ -18,3 +19,4 @@ pub(crate) use refs::*;
 pub(crate) use sections::*;
 pub(crate) use store_index::*;
 pub(crate) use sync_generated::*;
+pub(crate) use validate_links::*;
