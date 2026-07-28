@@ -14,6 +14,12 @@ pub enum SpecError {
     #[error("duplicate slug: {0}")]
     DuplicateSlug(String),
 
+    #[error("empty body update rejected for {0} (pass force=true to allow)")]
+    EmptyBody(String),
+
+    #[error("no-op body update rejected for {0}: content is unchanged")]
+    NoOpUpdate(String),
+
     #[error("storage error: {0}")]
     Storage(#[from] memory_api::error::StorageError),
 

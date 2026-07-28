@@ -102,7 +102,7 @@ fn create_get_update_delete_spec() {
     let updated = store.update("root/overview", patch, None).unwrap();
     assert_eq!(updated.title(), Some("Overview 2"));
 
-    store.update_body("root/overview", "body v2").unwrap();
+    store.update_body("root/overview", "body v2", false).unwrap();
     let full2 = store.get_full("root/overview").unwrap();
     assert_eq!(full2.1, "body v2");
 
@@ -111,6 +111,55 @@ fn create_get_update_delete_spec() {
         store.get("root/overview"),
         Err(SpecError::NotFound(_))
     ));
+}
+
+#[test]
+fn update_body_rejects_empty_content_without_force() {
+    let (_tmp, mut store) = setup();
+    let spec = make_spec("root/empty-body", "Empty Body");
+    store.create(&spec, "body v1", None).unwrap();
+
+    let err = store.update_body("root/empty-body", "", false).unwrap_err();
+    assert!(matches!(err, SpecError::EmptyBody(_)));
+
+    let full = store.get_full("root/empty-body").unwrap();
+    assert_eq!(full.1, "body v1");
+}
+
+#[test]
+fn update_body_allows_empty_content_with_force() {
+    let (_tmp, mut store) = setup();
+    let spec = make_spec("root/empty-body-forced", "Empty Body Forced");
+    store.create(&spec, "body v1", None).unwrap();
+
+    store.update_body("root/empty-body-forced", "", true).unwrap();
+    let full = store.get_full("root/empty-body-forced").unwrap();
+    assert_eq!(full.1, "");
+}
+
+#[test]
+fn update_body_rejects_noop_content() {
+    let (_tmp, mut store) = setup();
+    let spec = make_spec("root/noop-body", "NoOp Body");
+    store.create(&spec, "body v1", None).unwrap();
+
+    let err = store
+        .update_body("root/noop-body", "body v1", false)
+        .unwrap_err();
+    assert!(matches!(err, SpecError::NoOpUpdate(_)));
+}
+
+#[test]
+fn update_body_succeeds_on_genuine_change() {
+    let (_tmp, mut store) = setup();
+    let spec = make_spec("root/real-change", "Real Change");
+    store.create(&spec, "body v1", None).unwrap();
+
+    store
+        .update_body("root/real-change", "body v2", false)
+        .unwrap();
+    let full = store.get_full("root/real-change").unwrap();
+    assert_eq!(full.1, "body v2");
 }
 
 #[test]

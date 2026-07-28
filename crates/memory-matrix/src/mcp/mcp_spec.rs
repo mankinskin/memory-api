@@ -186,6 +186,7 @@ async fn spec_mcp_update(
             fields: Some(vec!["title=Matrix MCP Updated".to_string()]),
             to_state: None,
             body: None,
+            force_body: false,
             field_map: None,
         }))
         .await

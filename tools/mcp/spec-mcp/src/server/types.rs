@@ -68,6 +68,9 @@ pub struct UpdateSpecInput {
     /// Optional body content to replace.
     #[serde(default)]
     pub body: Option<String>,
+    /// Allow an empty body update.
+    #[serde(default)]
+    pub force_body: bool,
     /// Additional structured field patches.
     #[serde(default)]
     pub field_map: Option<BTreeMap<String, Value>>,

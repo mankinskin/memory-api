@@ -64,6 +64,9 @@ pub struct UpdateArgs {
     /// Update body from file.
     #[arg(long = "body-file")]
     pub body_file: Option<PathBuf>,
+    /// Allow an empty body update.
+    #[arg(long = "force-body")]
+    pub force_body: bool,
     /// Read additional structured field patches from a JSON or TOON object file.
     #[arg(long = "fields-file")]
     pub fields_file: Option<PathBuf>,

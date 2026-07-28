@@ -99,6 +99,10 @@ impl SpecServer {
                 McpError::invalid_params(e.to_string(), None),
             SpecError::DuplicateSlug(_) =>
                 McpError::invalid_params(e.to_string(), None),
+            SpecError::EmptyBody(_) =>
+                McpError::invalid_params(e.to_string(), None),
+            SpecError::NoOpUpdate(_) =>
+                McpError::invalid_params(e.to_string(), None),
             _ => McpError::internal_error(format!("spec error: {e}"), None),
         }
     }

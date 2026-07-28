@@ -693,12 +693,20 @@ impl SpecStore {
         &self,
         id_or_slug: &str,
         content: &str,
+        force: bool,
     ) -> Result<(), SpecError> {
         let uuid = self.resolve_id(id_or_slug)?;
         let indexed = self
             .inner
             .get_indexed(&uuid)?
             .ok_or_else(|| SpecError::NotFound(uuid.to_string()))?;
+        if content.is_empty() && !force {
+            return Err(SpecError::EmptyBody(uuid.to_string()));
+        }
+        let existing = read_body(&indexed.path);
+        if existing == content {
+            return Err(SpecError::NoOpUpdate(uuid.to_string()));
+        }
         write_body(&indexed.path, content)?;
         Ok(())
     }

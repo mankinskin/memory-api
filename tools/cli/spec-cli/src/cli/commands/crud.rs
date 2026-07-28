@@ -130,7 +130,7 @@ pub(crate) fn cmd_update(
         let content = std::fs::read_to_string(body_file).map_err(|e| {
             CliRunError::BadRequest(format!("cannot read body-file: {e}"))
         })?;
-        store.update_body(&args.id, &content)?;
+        store.update_body(&args.id, &content, args.force_body)?;
     }
 
     let spec = store.update(&args.id, patch, args.to_state.as_deref())?;

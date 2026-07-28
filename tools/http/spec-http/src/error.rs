@@ -29,6 +29,20 @@ pub fn spec_err(
         SpecError::Validation(e) =>
             ApiError::new("spec.validation", &e.to_string(), rid)
                 .into_response_with_status(StatusCode::UNPROCESSABLE_ENTITY),
+        SpecError::EmptyBody(id) => ApiError::new(
+            "spec.empty_body",
+            &format!(
+                "empty body update rejected for {id} (pass force_body=true to allow)"
+            ),
+            rid,
+        )
+        .into_response_with_status(StatusCode::BAD_REQUEST),
+        SpecError::NoOpUpdate(id) => ApiError::new(
+            "spec.noop_update",
+            &format!("no-op body update rejected for {id}: content is unchanged"),
+            rid,
+        )
+        .into_response_with_status(StatusCode::BAD_REQUEST),
         _ => {
             tracing::error!(error = %e, "spec error in http handler");
             ApiError::internal(rid)

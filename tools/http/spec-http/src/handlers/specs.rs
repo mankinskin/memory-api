@@ -112,6 +112,8 @@ pub struct UpdateSpecRequest {
     pub fields: BTreeMap<String, Value>,
     pub to_state: Option<String>,
     pub body: Option<String>,
+    #[serde(default)]
+    pub force_body: bool,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -374,7 +376,7 @@ pub async fn update_spec(
     let _ = store.scan(false);
 
     if let Some(body) = &req.body {
-        if let Err(e) = store.update_body(&id, body) {
+        if let Err(e) = store.update_body(&id, body, req.force_body) {
             return spec_err(e, &rid.0);
         }
     }

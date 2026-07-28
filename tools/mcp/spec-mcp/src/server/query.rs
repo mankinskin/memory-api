@@ -143,7 +143,9 @@ impl SpecServer {
             }
 
             if let Some(body) = &input.body {
-                store.update_body(&input.id, body).map_err(Self::spec_err)?;
+                store
+                    .update_body(&input.id, body, input.force_body)
+                    .map_err(Self::spec_err)?;
             }
 
             let changed_fields = patch.clone();
