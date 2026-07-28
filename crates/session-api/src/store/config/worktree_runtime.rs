@@ -290,20 +290,12 @@ impl SessionStoreConfig {
         validate_runtime_workspace_id(workspace_session_id)?;
         let paths = self.runtime_paths_for_workspace(workspace_session_id)?;
 
-        // Try new path first (.session/sessions/<id>/)
         let persisted: PersistedRuntimeContext = match read_json(&paths.context_path) {
             Ok(ctx) => ctx,
             Err(SessionError::NotFound { .. }) => {
-                // Fall back to legacy path (.session/runtime/workspaces/<id>/) for back-compat
-                let legacy_paths = self.legacy_runtime_paths_for_workspace(workspace_session_id)?;
-                read_json(&legacy_paths.context_path)
-                    .map_err(|err| match err {
-                        SessionError::NotFound { .. } =>
-                            SessionError::RuntimeContextNotFound {
-                                workspace_session_id: workspace_session_id.to_string(),
-                            },
-                        other => other,
-                    })?
+                return Err(SessionError::RuntimeContextNotFound {
+                    workspace_session_id: workspace_session_id.to_string(),
+                });
             }
             Err(other) => return Err(other),
         };

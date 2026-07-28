@@ -129,13 +129,6 @@ impl SessionStoreConfig {
         Ok(self.root.join("sessions"))
     }
 
-    fn runtime_root(&self) -> Result<PathBuf, SessionError> {
-        if self.root.as_os_str().is_empty() {
-            return Err(SessionError::EmptyStoreRoot);
-        }
-        Ok(self.root.join("runtime"))
-    }
-
     fn local_root(&self) -> Result<PathBuf, SessionError> {
         if self.root.as_os_str().is_empty() {
             return Err(SessionError::EmptyStoreRoot);
@@ -147,10 +140,6 @@ impl SessionStoreConfig {
         Ok(self.local_root()?.join("active_workspace_session.json"))
     }
 
-    pub(super) fn legacy_active_workspace_session_path(&self) -> Result<PathBuf, SessionError> {
-        Ok(self.runtime_root()?.join("active_workspace_session.json"))
-    }
-
     pub(super) fn runtime_paths_for_workspace(
         &self,
         workspace_session_id: &str,
@@ -158,26 +147,6 @@ impl SessionStoreConfig {
         validate_runtime_workspace_id(workspace_session_id)?;
         let workspace_dir = self
             .sessions_root()?
-            .join(workspace_session_id);
-        let context_path = workspace_dir.join("context.json");
-        let handoffs_dir = workspace_dir.join("handoffs");
-        let finish_path = workspace_dir.join("finish.json");
-        Ok(SessionRuntimePaths {
-            workspace_dir,
-            context_path,
-            handoffs_dir,
-            finish_path,
-        })
-    }
-
-    pub(super) fn legacy_runtime_paths_for_workspace(
-        &self,
-        workspace_session_id: &str,
-    ) -> Result<SessionRuntimePaths, SessionError> {
-        validate_runtime_workspace_id(workspace_session_id)?;
-        let workspace_dir = self
-            .runtime_root()?
-            .join("workspaces")
             .join(workspace_session_id);
         let context_path = workspace_dir.join("context.json");
         let handoffs_dir = workspace_dir.join("handoffs");
@@ -258,16 +227,6 @@ impl SessionStoreConfig {
         if let Some(active) = read_json_if_exists::<
             PersistedActiveWorkspaceSession,
         >(&active_path)?
-        {
-            validate_runtime_workspace_id(&active.workspace_session_id)?;
-            return Ok(active.workspace_session_id);
-        }
-
-        // Fall back to legacy path (.session/runtime/) for back-compat
-        let legacy_path = self.legacy_active_workspace_session_path()?;
-        if let Some(active) = read_json_if_exists::<
-            PersistedActiveWorkspaceSession,
-        >(&legacy_path)?
         {
             validate_runtime_workspace_id(&active.workspace_session_id)?;
             return Ok(active.workspace_session_id);

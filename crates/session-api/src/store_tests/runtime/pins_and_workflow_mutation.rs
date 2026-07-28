@@ -499,18 +499,32 @@ fn session_run_lineage_round_trip() {
 }
 
 #[test]
-fn legacy_runtime_context_loads_from_old_layout() {
+fn read_runtime_context_missing_surfaces_not_found() {
     let tempdir = TempDir::new().unwrap();
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
-    
-    // Create a runtime context using the new API
+
+    let err = config
+        .read_runtime_context("11111111-1111-4111-8111-111111111111")
+        .unwrap_err();
+
+    assert!(
+        matches!(err, SessionError::RuntimeContextNotFound { .. }),
+        "expected RuntimeContextNotFound, got {err:?}"
+    );
+}
+
+#[test]
+fn writes_never_target_legacy_runtime_tree() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+
     let init = config
         .init_runtime_context(SessionRuntimeInitRequest::default())
         .unwrap();
     let workspace_id = init.context.workspace_session_id.clone();
-    
-    // Pin something so we have non-empty context
+
     config
         .pin_runtime_entity(
             &workspace_id,
@@ -519,24 +533,11 @@ fn legacy_runtime_context_loads_from_old_layout() {
             Some("test-reason".to_string()),
         )
         .unwrap();
-    
-    // Read the persisted context from the new path
-    let new_paths = config.runtime_paths_for_workspace(&workspace_id).unwrap();
-    let context_json = std::fs::read_to_string(&new_paths.context_path).unwrap();
-    
-    // Write it to the legacy path and remove the new one
-    let legacy_paths = config.legacy_runtime_paths_for_workspace(&workspace_id).unwrap();
-    std::fs::create_dir_all(&legacy_paths.workspace_dir).unwrap();
-    std::fs::write(&legacy_paths.context_path, &context_json).unwrap();
-    std::fs::remove_file(&new_paths.context_path).unwrap();
-    
-    // Read should fall back to legacy path without panic
-    let loaded = config.read_runtime_context(&workspace_id).unwrap();
-    
-    assert_eq!(loaded.workspace_session_id, workspace_id);
-    assert_eq!(loaded.pinned_entities.len(), 1);
-    assert_eq!(
-        loaded.pinned_entities[0].urn,
-        "ce://default/tickets/11111111-1111-4111-8111-111111111111"
+
+    let legacy_runtime_dir = store_root.join("runtime");
+    assert!(
+        !legacy_runtime_dir.exists(),
+        "no write should ever create a legacy .session/runtime/ tree, found: {}",
+        legacy_runtime_dir.display()
     );
 }
