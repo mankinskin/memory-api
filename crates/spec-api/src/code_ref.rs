@@ -10,6 +10,7 @@ use serde::{
 #[serde(rename_all = "snake_case")]
 pub enum SymbolKind {
     Struct,
+    #[serde(alias = "fn")]
     Function,
     Trait,
     Impl,
@@ -17,6 +18,12 @@ pub enum SymbolKind {
     Module,
     Const,
     Type,
+    /// A struct or enum field.
+    Field,
+    /// A single enum variant.
+    EnumVariant,
+    /// An arbitrary unnamed code region not tied to a single named symbol.
+    Block,
 }
 
 /// A reference from a spec to a specific symbol in implementation code.
@@ -136,6 +143,94 @@ mod tests {
         }];
         let results = validate_refs(&refs, std::path::Path::new("/tmp"));
         assert!(!results[0].file_exists);
+    }
+
+    #[test]
+    fn test_symbol_kind_fn_alias_deserializes_as_function() {
+        let cr: CodeRef = toml::from_str(
+            r#"
+            file = "src/main.rs"
+            symbol = "main"
+            kind = "fn"
+            line_start = 1
+            line_end = 10
+            "#,
+        )
+        .unwrap();
+        assert_eq!(cr.kind, SymbolKind::Function);
+    }
+
+    #[test]
+    fn test_symbol_kind_new_variants_deserialize() {
+        let cases = [
+            ("field", SymbolKind::Field),
+            ("enum_variant", SymbolKind::EnumVariant),
+            ("block", SymbolKind::Block),
+        ];
+        for (value, expected) in cases {
+            let cr: CodeRef = toml::from_str(&format!(
+                r#"
+                file = "src/lib.rs"
+                symbol = "x"
+                kind = "{value}"
+                line_start = 1
+                line_end = 2
+                "#
+            ))
+            .unwrap();
+            assert_eq!(cr.kind, expected, "kind = \"{value}\" should deserialize as {expected:?}");
+        }
+    }
+
+    #[test]
+    fn test_symbol_kind_canonical_values_unaffected() {
+        let cases = [
+            ("struct", SymbolKind::Struct),
+            ("function", SymbolKind::Function),
+            ("trait", SymbolKind::Trait),
+            ("impl", SymbolKind::Impl),
+            ("enum", SymbolKind::Enum),
+            ("module", SymbolKind::Module),
+            ("const", SymbolKind::Const),
+            ("type", SymbolKind::Type),
+        ];
+        for (value, expected) in cases {
+            let cr: CodeRef = toml::from_str(&format!(
+                r#"
+                file = "src/lib.rs"
+                symbol = "x"
+                kind = "{value}"
+                line_start = 1
+                line_end = 2
+                "#
+            ))
+            .unwrap();
+            assert_eq!(cr.kind, expected, "kind = \"{value}\" should deserialize as {expected:?}");
+        }
+    }
+
+    #[test]
+    fn test_symbol_kind_new_variants_serialize_canonical_form() {
+        for (kind, expected) in [
+            (SymbolKind::Function, "function"),
+            (SymbolKind::Field, "field"),
+            (SymbolKind::EnumVariant, "enum_variant"),
+            (SymbolKind::Block, "block"),
+        ] {
+            let cr = CodeRef {
+                file: "src/lib.rs".to_string(),
+                symbol: "x".to_string(),
+                kind,
+                line_start: 1,
+                line_end: 2,
+                description: None,
+            };
+            let toml_str = toml::to_string(&cr).unwrap();
+            assert!(
+                toml_str.contains(&format!("kind = \"{expected}\"")),
+                "expected canonical form \"{expected}\" in {toml_str}"
+            );
+        }
     }
 
     #[test]
