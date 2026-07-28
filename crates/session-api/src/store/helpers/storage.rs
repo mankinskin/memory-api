@@ -128,6 +128,12 @@ pub(super) fn merge_manifest(
         incoming.metadata =
             merge_metadata(existing.metadata, incoming.metadata);
         incoming.links = merge_links(existing.links, incoming.links);
+        
+        // Preserve track fields: prefer incoming non-None, else keep existing
+        incoming.track_id = incoming.track_id.or(existing.track_id);
+        incoming.anchor_ticket_id = incoming.anchor_ticket_id.or(existing.anchor_ticket_id);
+        incoming.parent_session_id = incoming.parent_session_id.or(existing.parent_session_id);
+        incoming.spawned_session_id = incoming.spawned_session_id.or(existing.spawned_session_id);
     }
 
     incoming
