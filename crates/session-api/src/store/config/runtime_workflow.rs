@@ -243,7 +243,7 @@ impl SessionStoreConfig {
         drafts: Vec<SessionWorkflowNodeDraft>,
     ) -> Result<SessionRuntimeContext, SessionError> {
         for (index, draft) in drafts.iter().enumerate() {
-            validate_workflow_node_draft(draft).map_err(|error| {
+            self.validate_workflow_node_draft(draft).map_err(|error| {
                 indexed_workflow_error("nodes", index, error)
             })?;
         }
@@ -295,68 +295,125 @@ impl SessionStoreConfig {
     }
 }
 
-fn validate_workflow_node_draft(
-    draft: &SessionWorkflowNodeDraft
-) -> Result<(), SessionError> {
-    if draft.title.trim().is_empty() {
-        return Err(SessionError::InvalidHookInput(
-            "workflow node title cannot be empty".to_string(),
-        ));
-    }
-
-    if draft.kind == crate::SessionWorkflowNodeKind::Ticket {
-        let ticket_urn = draft.ticket_urn.as_deref().ok_or_else(|| {
-            SessionError::InvalidHookInput(
-                "ticket workflow node requires --ticket-urn".to_string(),
-            )
-        })?;
-        let parsed = parse_entity_urn(ticket_urn)?;
-        if parsed.kind != SessionPinnedEntityKind::Ticket {
-            return Err(SessionError::InvalidHookInput(format!(
-                "ticket workflow node requires a ticket URN, got {}",
-                ticket_urn
-            )));
+impl SessionStoreConfig {
+    /// Validate a workflow node draft before it is persisted.
+    ///
+    /// Every behavioral kind that gates finish (`ticket`, `spec`,
+    /// `validation`) requires its matching side-data field to be present,
+    /// non-empty, and (for `validation`) resolvable against the sibling
+    /// `.test` store. Rejecting these at creation time is the primary fix for
+    /// the wedge where a `validation` node with a null/empty
+    /// `validation_spec_id` could be added and would then permanently block
+    /// `session_finish`/`session_handoff` with no way to identify the cause
+    /// beyond a generic "missing field" message. Any node that is already
+    /// wedged in a persisted graph can be repaired with
+    /// `workflow_update_node`/`workflow_remove_node`
+    /// (`session_workflow_update_node`/`session_workflow_remove_node` at the
+    /// MCP layer) instead of being stuck forever or "fixed" by piling on a
+    /// second required node.
+    fn validate_workflow_node_draft(
+        &self,
+        draft: &SessionWorkflowNodeDraft,
+    ) -> Result<(), SessionError> {
+        if draft.title.trim().is_empty() {
+            return Err(SessionError::InvalidHookInput(
+                "workflow node title cannot be empty".to_string(),
+            ));
         }
-    } else if draft.ticket_urn.is_some() {
-        return Err(SessionError::InvalidHookInput(
+
+        if draft.kind == crate::SessionWorkflowNodeKind::Ticket {
+            let ticket_urn = draft
+                .ticket_urn
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    SessionError::InvalidHookInput(
+                        "ticket workflow node requires a non-empty ticket_urn"
+                            .to_string(),
+                    )
+                })?;
+            let parsed = parse_entity_urn(ticket_urn)?;
+            if parsed.kind != SessionPinnedEntityKind::Ticket {
+                return Err(SessionError::InvalidHookInput(format!(
+                    "ticket workflow node requires a ticket URN, got {}",
+                    ticket_urn
+                )));
+            }
+        } else if draft.ticket_urn.is_some() {
+            return Err(SessionError::InvalidHookInput(
                 "only ticket workflow nodes may set ticket_urn; for a non-gating reference, use anchor_urn or pin the ticket"
                     .to_string(),
             ));
-    }
-
-    if draft.kind == crate::SessionWorkflowNodeKind::Spec {
-        let spec_urn = draft.spec_urn.as_deref().ok_or_else(|| {
-            SessionError::InvalidHookInput(
-                "spec workflow node requires --spec-urn".to_string(),
-            )
-        })?;
-        let parsed = parse_entity_urn(spec_urn)?;
-        if parsed.kind != SessionPinnedEntityKind::Spec {
-            return Err(SessionError::InvalidHookInput(format!(
-                "spec workflow node requires a spec URN, got {}",
-                spec_urn
-            )));
         }
-    } else if draft.spec_urn.is_some() {
-        return Err(SessionError::InvalidHookInput(
+
+        if draft.kind == crate::SessionWorkflowNodeKind::Spec {
+            let spec_urn = draft
+                .spec_urn
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    SessionError::InvalidHookInput(
+                        "spec workflow node requires a non-empty spec_urn"
+                            .to_string(),
+                    )
+                })?;
+            let parsed = parse_entity_urn(spec_urn)?;
+            if parsed.kind != SessionPinnedEntityKind::Spec {
+                return Err(SessionError::InvalidHookInput(format!(
+                    "spec workflow node requires a spec URN, got {}",
+                    spec_urn
+                )));
+            }
+        } else if draft.spec_urn.is_some() {
+            return Err(SessionError::InvalidHookInput(
                 "only spec workflow nodes may set spec_urn; for a non-gating reference, use anchor_urn or pin the spec"
                     .to_string(),
             ));
-    }
-
-    if let Some(anchor_urn) = draft.anchor_urn.as_deref() {
-        let parsed = parse_entity_urn(anchor_urn)?;
-        if !matches!(
-            parsed.kind,
-            SessionPinnedEntityKind::Ticket | SessionPinnedEntityKind::Spec
-        ) {
-            return Err(SessionError::InvalidHookInput(format!(
-                "anchor_urn requires a ticket or spec URN, got {anchor_urn}"
-            )));
         }
-    }
 
-    Ok(())
+        if draft.kind == crate::SessionWorkflowNodeKind::Validation {
+            let spec_id = draft
+                .validation_spec_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    SessionError::InvalidHookInput(
+                        "validation workflow node requires a non-empty validation_spec_id"
+                            .to_string(),
+                    )
+                })?;
+            // Resolve against the authoritative test-api store so a node UUID
+            // (or any other non-spec id) cannot be passed as a validation
+            // spec id and silently wedge finish later.
+            self.test_store_config().get_spec(spec_id).map_err(|error| {
+                SessionError::InvalidHookInput(format!(
+                    "validation workflow node validation_spec_id `{spec_id}` does not resolve to a spec in the .test store: {error}"
+                ))
+            })?;
+        } else if draft.validation_spec_id.is_some() {
+            return Err(SessionError::InvalidHookInput(
+                "only validation workflow nodes may set validation_spec_id"
+                    .to_string(),
+            ));
+        }
+
+        if let Some(anchor_urn) = draft.anchor_urn.as_deref() {
+            let parsed = parse_entity_urn(anchor_urn)?;
+            if !matches!(
+                parsed.kind,
+                SessionPinnedEntityKind::Ticket | SessionPinnedEntityKind::Spec
+            ) {
+                return Err(SessionError::InvalidHookInput(format!(
+                    "anchor_urn requires a ticket or spec URN, got {anchor_urn}"
+                )));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 pub(super) fn indexed_workflow_error(

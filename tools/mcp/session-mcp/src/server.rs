@@ -37,6 +37,7 @@ use session_api::{
     SessionWorkflowEdgeKind,
     SessionWorkflowNodeDraft,
     SessionWorkflowNodeKind,
+    SessionWorkflowNodePatch,
     SessionWorkflowNodeRequirement,
     SessionWorkflowNodeStatus,
     SessionWorktreeCheckInRequest,
@@ -460,6 +461,45 @@ pub struct WorkflowPromoteInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct WorkflowUpdateNodeInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
+    pub workspace: String,
+    pub workspace_session_id: String,
+    pub node_id: String,
+    /// Behavioral node kind to set. Omit to leave unchanged. Legal values:
+    /// ticket, validation, spec, task.
+    #[serde(default)]
+    #[schemars(with = "Option<WorkflowNodeKindSchema>")]
+    pub kind: Option<String>,
+    /// Requirement to set. Omit to leave unchanged. Legal values: required, optional.
+    #[serde(default)]
+    #[schemars(with = "Option<WorkflowRequirementSchema>")]
+    pub requirement: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub ticket_urn: Option<String>,
+    #[serde(default)]
+    pub spec_urn: Option<String>,
+    #[serde(default)]
+    pub anchor_urn: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub cached_ticket_title: Option<String>,
+    #[serde(default)]
+    pub validation_spec_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WorkflowRemoveNodeInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
+    pub workspace: String,
+    pub workspace_session_id: String,
+    pub node_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct WorkflowRenderInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
@@ -842,6 +882,10 @@ fn session_capability_catalog() -> serde_json::Value {
                  "purpose": "Atomically add multiple workflow edges."},
                 {"order": 3, "tool": "session_workflow_set_status",
                  "purpose": "Update a node status (see status enum)."},
+                {"order": 3, "tool": "session_workflow_update_node",
+                 "purpose": "Repair surface: patch fields on an existing wedged node in place."},
+                {"order": 3, "tool": "session_workflow_remove_node",
+                 "purpose": "Repair surface: delete a wedged node and its edges."},
                 {"order": 4, "tool": "session_workflow_render_terminal",
                  "purpose": "Render the workflow graph as terminal text."},
                 {"order": 4, "tool": "session_workflow_render_mermaid",
@@ -1011,7 +1055,9 @@ impl SessionServer {
 
     #[tool(
         name = "session_workflow_add_node",
-        description = "Add a node to the durable session workflow graph."
+        description = "Add a node to the durable session workflow graph. If node_id \
+                       matches an existing node, this call is a no-op and the \
+                       existing node is left unchanged (no error, no duplicate)."
     )]
     pub async fn session_workflow_add_node(
         &self,
@@ -1040,7 +1086,10 @@ impl SessionServer {
 
     #[tool(
         name = "session_workflow_add_nodes",
-        description = "Atomically add workflow nodes; errors identify nodes[index]."
+        description = "Atomically add workflow nodes; errors identify nodes[index]. \
+                       Any node whose node_id matches an existing node is a \
+                       no-op (left unchanged, not duplicated); use \
+                       session_workflow_update_node to change an existing node."
     )]
     pub async fn session_workflow_add_nodes(
         &self,
@@ -1141,6 +1190,66 @@ impl SessionServer {
                 parse_node_status(&input.status)?,
                 input.deferred_reason,
             )
+            .map_err(Self::session_err)?;
+        Self::json_result_with_handle(&input.workspace_session_id, &context)
+    }
+
+    #[tool(
+        name = "session_workflow_update_node",
+        description = "Patch fields on an existing workflow node in place (repair surface for a \
+                       wedged node, e.g. a validation node missing validation_spec_id). Every \
+                       field is optional: omit a field to leave it unchanged, set it to \
+                       overwrite. The merged node is re-validated with the same rules enforced \
+                       at node creation, so a patch cannot introduce a new wedge."
+    )]
+    pub async fn session_workflow_update_node(
+        &self,
+        Parameters(input): Parameters<WorkflowUpdateNodeInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let kind = input
+            .kind
+            .as_deref()
+            .map(parse_node_kind)
+            .transpose()?;
+        let requirement = input
+            .requirement
+            .as_deref()
+            .map(parse_requirement)
+            .transpose()?;
+        let context = self
+            .config_for_workspace(&input.workspace)?
+            .workflow_update_node(
+                &input.workspace_session_id,
+                &input.node_id,
+                SessionWorkflowNodePatch {
+                    kind,
+                    requirement,
+                    title: input.title,
+                    ticket_urn: input.ticket_urn,
+                    spec_urn: input.spec_urn,
+                    anchor_urn: input.anchor_urn,
+                    category: input.category,
+                    cached_ticket_title: input.cached_ticket_title,
+                    validation_spec_id: input.validation_spec_id,
+                },
+            )
+            .map_err(Self::session_err)?;
+        Self::json_result_with_handle(&input.workspace_session_id, &context)
+    }
+
+    #[tool(
+        name = "session_workflow_remove_node",
+        description = "Delete a workflow node and any edges that reference it. Repair surface for \
+                       a node that cannot be fixed in place (or should never have been added), \
+                       instead of permanently blocking session_finish/session_handoff."
+    )]
+    pub async fn session_workflow_remove_node(
+        &self,
+        Parameters(input): Parameters<WorkflowRemoveNodeInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let context = self
+            .config_for_workspace(&input.workspace)?
+            .workflow_remove_node(&input.workspace_session_id, &input.node_id)
             .map_err(Self::session_err)?;
         Self::json_result_with_handle(&input.workspace_session_id, &context)
     }
@@ -2357,5 +2466,25 @@ mod tests {
         assert!(behavioral.contains(&"ticket"));
         assert!(behavioral.contains(&"validation"));
         assert!(behavioral.contains(&"spec"));
+    }
+
+    #[test]
+    fn workspace_validation_rejects_ambient_aliases() {
+        for value in [None, Some(""), Some("default"), Some("."), Some("..")]
+        {
+            let err = workspace::validate_explicit_workspace_selector(value)
+                .expect_err("should reject ambient selector");
+            let err_msg = err.to_string();
+            assert!(
+                err_msg.contains("invalid workspace selector"),
+                "error should mention 'invalid workspace selector': {err_msg}"
+            );
+            assert!(
+                err_msg.contains(
+                    "entity creation requires an explicit workspace path"
+                ),
+                "error should state the requirement: {err_msg}"
+            );
+        }
     }
 }

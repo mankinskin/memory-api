@@ -41,6 +41,7 @@ pub use workflow::{
     SessionWorkflowNode,
     SessionWorkflowNodeDraft,
     SessionWorkflowNodeKind,
+    SessionWorkflowNodePatch,
     SessionWorkflowNodeRequirement,
     SessionWorkflowNodeResolution,
     SessionWorkflowNodeStatus,

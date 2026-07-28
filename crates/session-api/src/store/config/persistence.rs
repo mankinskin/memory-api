@@ -23,7 +23,10 @@ impl SessionStoreConfig {
                 node.validation_spec_id.clone().ok_or_else(|| {
                     SessionError::FinishBlocked {
                         reason: format!(
-                            "required validation node {} is missing validation_spec_id",
+                            "required validation node {} is missing validation_spec_id; \
+                             repair it with workflow_update_node (MCP: session_workflow_update_node) \
+                             to set validation_spec_id, or remove the node with \
+                             workflow_remove_node (MCP: session_workflow_remove_node)",
                             node.node_id
                         ),
                     }

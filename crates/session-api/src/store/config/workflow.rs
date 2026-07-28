@@ -32,6 +32,125 @@ impl SessionStoreConfig {
         Ok(context)
     }
 
+    /// Repair surface for a node that is already wedged in a persisted
+    /// graph (for example a `validation` node with a missing
+    /// `validation_spec_id`, or a `ticket`/`spec` node with a missing URN).
+    ///
+    /// Every field in `patch` is optional: `None` leaves the current node
+    /// value unchanged, `Some(value)` overwrites it. The merged node is
+    /// re-validated with the same rules enforced at node creation
+    /// (`validate_workflow_node_draft`) before anything is persisted, so a
+    /// patch that would introduce a new wedge is rejected instead of
+    /// silently replacing one wedge with another.
+    ///
+    /// Passing the same `node_id` that is already present has no special
+    /// case here — every call re-validates and re-persists the merged node,
+    /// so repeated identical patches are idempotent.
+    pub fn workflow_update_node(
+        &self,
+        workspace_session_id: &str,
+        node_id: &str,
+        patch: crate::SessionWorkflowNodePatch,
+    ) -> Result<SessionRuntimeContext, SessionError> {
+        let _lock = self.begin_runtime_mutation(workspace_session_id)?;
+        let mut context = self.read_runtime_context(workspace_session_id)?;
+        let index = context
+            .workflow
+            .nodes
+            .iter()
+            .position(|node| node.node_id == node_id)
+            .ok_or_else(|| {
+                SessionError::InvalidHookInput(format!(
+                    "unknown workflow node id: {node_id}"
+                ))
+            })?;
+
+        let mut updated = context.workflow.nodes[index].clone();
+        if let Some(kind) = patch.kind {
+            updated.kind = kind;
+        }
+        if let Some(requirement) = patch.requirement {
+            updated.requirement = requirement;
+        }
+        if let Some(title) = patch.title {
+            updated.title = title;
+        }
+        if let Some(ticket_urn) = patch.ticket_urn {
+            updated.ticket_urn = Some(ticket_urn);
+        }
+        if let Some(spec_urn) = patch.spec_urn {
+            updated.spec_urn = Some(spec_urn);
+        }
+        if let Some(anchor_urn) = patch.anchor_urn {
+            updated.anchor_urn = Some(anchor_urn);
+        }
+        if let Some(category) = patch.category {
+            updated.category = Some(category);
+        }
+        if let Some(cached_ticket_title) = patch.cached_ticket_title {
+            updated.cached_ticket_title = Some(cached_ticket_title);
+        }
+        if let Some(validation_spec_id) = patch.validation_spec_id {
+            updated.validation_spec_id = Some(validation_spec_id);
+        }
+
+        let draft = crate::SessionWorkflowNodeDraft {
+            node_id: Some(updated.node_id.clone()),
+            kind: updated.kind,
+            requirement: updated.requirement,
+            title: updated.title.clone(),
+            ticket_urn: updated.ticket_urn.clone(),
+            spec_urn: updated.spec_urn.clone(),
+            anchor_urn: updated.anchor_urn.clone(),
+            category: updated.category.clone(),
+            cached_ticket_title: updated.cached_ticket_title.clone(),
+            validation_spec_id: updated.validation_spec_id.clone(),
+        };
+        self.validate_workflow_node_draft(&draft)?;
+
+        updated.updated_at = chrono::Utc::now();
+        context.workflow.nodes[index] = updated;
+        sort_workflow_graph(&mut context.workflow);
+        context.updated_at = chrono::Utc::now();
+        self.persist_runtime_context(&context)?;
+        Ok(context)
+    }
+
+    /// Delete a workflow node and any edges that reference it.
+    ///
+    /// This is the other half of the repair surface for a wedged node: when
+    /// a node cannot be repaired in place (or should never have been added),
+    /// it can be removed outright instead of permanently blocking
+    /// `session_finish`/`session_handoff`. Edges naming the removed node are
+    /// pruned so the graph never carries a dangling reference.
+    pub fn workflow_remove_node(
+        &self,
+        workspace_session_id: &str,
+        node_id: &str,
+    ) -> Result<SessionRuntimeContext, SessionError> {
+        let _lock = self.begin_runtime_mutation(workspace_session_id)?;
+        let mut context = self.read_runtime_context(workspace_session_id)?;
+        let existed = context
+            .workflow
+            .nodes
+            .iter()
+            .any(|node| node.node_id == node_id);
+        if !existed {
+            return Err(SessionError::InvalidHookInput(format!(
+                "unknown workflow node id: {node_id}"
+            )));
+        }
+
+        context.workflow.nodes.retain(|node| node.node_id != node_id);
+        context
+            .workflow
+            .edges
+            .retain(|edge| edge.from != node_id && edge.to != node_id);
+        context.updated_at = chrono::Utc::now();
+        self.persist_runtime_context(&context)?;
+        Ok(context)
+    }
+
     pub fn workflow_add_edge(
         &self,
         workspace_session_id: &str,

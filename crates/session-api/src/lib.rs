@@ -100,6 +100,7 @@ pub use model::{
     SessionWorkflowNode,
     SessionWorkflowNodeDraft,
     SessionWorkflowNodeKind,
+    SessionWorkflowNodePatch,
     SessionWorkflowNodeRequirement,
     SessionWorkflowNodeResolution,
     SessionWorkflowNodeStatus,

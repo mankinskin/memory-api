@@ -131,6 +131,38 @@ pub struct SessionWorkflowNodeDraft {
     pub validation_spec_id: Option<String>,
 }
 
+/// Partial patch for repairing an existing workflow node in place.
+///
+/// Every field is `Option`; `None` leaves the current node value unchanged
+/// and `Some(value)` overwrites it. This is the repair surface for a node
+/// that was created wedged (for example a `validation` node with a missing
+/// `validation_spec_id`, or a `ticket`/`spec` node with a missing URN): the
+/// caller can patch the offending field directly instead of adding a second
+/// node next to the wedged one. The merged node is re-validated with the
+/// same rules as node creation before the patch is persisted, so a patch
+/// cannot introduce a new wedge.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionWorkflowNodePatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<SessionWorkflowNodeKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirement: Option<SessionWorkflowNodeRequirement>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ticket_urn: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec_urn: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_urn: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_ticket_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation_spec_id: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionWorkflowNodeResolution {
     pub node_id: String,
