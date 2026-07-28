@@ -43,7 +43,8 @@ Verified in `memory-api/crates/session-api/src/store.rs`:
 2. Runtime context and captured transcripts share the `session_id` join.
 3. Handoffs persist as folders with JSON + markdown.
 4. Durable artifacts are git-tracked; local pointers/locks are ignored.
-5. Existing `runtime/workspaces/` records still load (back-compat).
+5. The legacy `runtime/workspaces/` tree is removed and no writer or reader targets it. Code paths must be updated to the new layout.  
+Note: Back-compat was deliberately dropped by user decision during the iteration review; its removal and the legacy-path cleanup are tracked in the follow-on ticket created alongside this change.
 
 # Traceability
 

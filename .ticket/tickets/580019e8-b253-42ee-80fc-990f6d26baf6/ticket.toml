@@ -4,6 +4,7 @@ title = "[session-api][repo] Untrack 76 committed events.json files (~99MB) with
 state = "new"
 component = "session-api"
 effort = "400"
+depends_on = ["4817a5cc-5e91-4280-b7ed-aed296a480b3"]
 linked = ["4817a5cc-5e91-4280-b7ed-aed296a480b3"]
 risk_level = "medium"
 type = "tracker-improvement"
