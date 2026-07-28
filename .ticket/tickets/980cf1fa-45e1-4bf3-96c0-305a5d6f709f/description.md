@@ -1,56 +1,30 @@
-## Problem
+## Implementation Summary (2026-07-28)
 
-A `validation` workflow node can be created with a null `validation_spec_id`. Once created, that node permanently wedges the session: `session_handoff` and `session_finish` both reject with
+Both halves of the fix landed:
 
-```
-session finish is blocked: required validation node <node_id> is missing validation_spec_id
-```
+**Reject-at-creation (AC1, AC2, AC5):** `validate_workflow_node_draft` in `memory-api/crates/session-api/src/store/config/runtime_workflow.rs` is now a `SessionStoreConfig` method (was a free function) so it can resolve against the `.test` store. It enforces, for `workflow_add_node`/`workflow_add_nodes`:
+- `validation` requires a non-empty `validation_spec_id` that resolves via `TestStoreConfig::get_spec` against the sibling `.test` store (AC5 — a node UUID cannot be passed as a spec id).
+- `ticket` requires a non-empty `ticket_urn`; `spec` requires a non-empty `spec_urn` (AC2, symmetric with validation).
+- The batch tool (`session_workflow_add_nodes` / `workflow_add_nodes`) identifies the offending `nodes[index]` via the existing `indexed_workflow_error` wrapper.
 
-and **there is no repair path through the MCP surface**:
+**Repair surface (AC3):** added `workflow_update_node` (patch) and `workflow_remove_node` (delete) to `memory-api/crates/session-api/src/store/config/workflow.rs`, backed by a new `SessionWorkflowNodePatch` model type (`memory-api/crates/session-api/src/model/workflow.rs`, re-exported via `model.rs`/`lib.rs`). `workflow_update_node` merges the patch onto the existing node and re-validates it with the same creation rules before persisting, so a patch cannot introduce a new wedge. `workflow_remove_node` deletes the node and prunes any edges referencing it. Exposed at the MCP layer as `session_workflow_update_node` / `session_workflow_remove_node` in `memory-api/tools/mcp/session-mcp/src/server.rs`.
 
-- `session_workflow_add_node` / `session_workflow_add_nodes` are documented as a no-op on a duplicate `node_id`, so re-adding the node with the field set silently does nothing.
-- `session_workflow_set_status` only mutates `status`.
-- There is no node delete, and no node field-patch tool.
-- Passing `validation` gates to `session_handoff` does not override the per-node check.
-- Starting a new run does not reset the graph — the workflow is session-scoped, not run-scoped.
+**AC4:** the `FinishBlocked` message in `memory-api/crates/session-api/src/store/config/persistence.rs` (`resolve_validation_gates`) now names both repair tools (`workflow_update_node`/`session_workflow_update_node`, `workflow_remove_node`/`session_workflow_remove_node`) instead of only stating the field is missing.
 
-The only way out is hand-editing `.session/runtime/workspaces/<id>/context.json`.
+**AC7:** duplicate-`node_id` no-op behavior is now documented directly in the `session_workflow_add_node` / `session_workflow_add_nodes` tool `#[tool(description = ...)]` strings in `server.rs`, not only in the instruction file.
 
-## Observed incident (2026-07-27)
+**AC6 test coverage** added to `memory-api/crates/session-api/src/store_tests/finish/validation_authority.rs`:
+- `workflow_add_node_rejects_validation_kind_with_absent_spec_id`
+- `workflow_add_nodes_rejects_unresolvable_validation_spec_id_with_index` (batch index + AC5 spec resolution)
+- `workflow_add_node_rejects_ticket_and_spec_kinds_without_urn`
+- `wedged_validation_node_is_repaired_via_update_node_and_finish_then_succeeds` (simulates a legacy wedge by writing `PersistedRuntimeContext` directly, bypassing create-time validation; asserts the `FinishBlocked` message names both repair tools; repairs via `workflow_update_node`; proves a finish round-trip succeeds after repair)
+- `wedged_validation_node_is_repaired_via_remove_node` (same wedge simulation, repaired via `workflow_remove_node`)
+- Fixed a pre-existing test (`workflow_finish_blocks_when_required_validation_guard_is_missing`) that previously created a `validation` node referencing a spec id that was never seeded in `.test` — now seeds the spec first so creation succeeds under the new AC5 check, and finish still blocks on the (unrelated, pre-existing) missing-execution path.
 
-Session `0101b7ef-e717-4c94-bebd-c8d55f6aaa82`. The `b0d6bb1c` lane created four required validation nodes with no `validation_spec_id`:
+Spec [c677182e Durable session workflow graph and handoff continuity](memory-api/.spec/specs/c677182e-90da-4ac3-8b94-9e2e97c825cf/spec.toml) updated with a new "Node Creation Validation and Repair (ticket 980cf1fa)" section documenting the contract change.
 
-| node_id | title |
-|---|---|
-| `123213da-1465-4777-822b-e056f5f0ffb2` | AC4: test_cost_gate.py passes |
-| `12975a73-4ae8-4012-bcfb-1ac4c319976d` | AC1: --check round-trips with both sources |
-| `671a2d6b-f509-4882-ad95-fc1366bbe6c1` | AC3: precedence documented and deterministic |
-| `851ab3fa-1275-4530-b533-0a164bba9680` | AC2: MAI-Code-1-Flash resolves to real price via --query |
+**Validation:**
+- `cargo test -p session-api` — 192 passed (10 suites)
+- `cargo test -p session-mcp` — 12 passed (3 suites)
 
-Two subsequent repair attempts made it worse by adding *new* required+pending nodes instead of patching:
-
-- `c296e3d5-8c8f-4f47-98f1-69344149af35` — "Validation for spec 123213da", whose `validation_spec_id` was set to the **node UUID** `123213da-...`, which is not a validation spec at all.
-- `62894c27-de71-43b3-af60-4d3e5d17ad02` — a duplicate of the AC4 node.
-
-Net effect: 4 blocking nodes became 6, and the session could not hand off for ~50 minutes.
-
-**Repaired manually** by editing `context.json`: the four originals were given `vt-model-prices-cost-gate`, `vt-model-prices-check-roundtrip`, `vt-model-prices-precedence-doc`, `vt-model-prices-query-resolves`, and the two malformed nodes were deleted.
-
-## Acceptance criteria
-
-1. `session_workflow_add_node` and `session_workflow_add_nodes` reject `kind="validation"` with an absent or empty `validation_spec_id`, with an error naming the field and, for the batch tool, the offending `nodes[index]`.
-2. The same rejection applies to `kind="ticket"` without `ticket_urn` and `kind="spec"` without `spec_urn`, so all three gating kinds fail fast and consistently at creation.
-3. A repair surface exists for nodes that gate incorrectly — either a field-patch tool (e.g. `session_workflow_update_node`) or a delete tool (`session_workflow_remove_node`), or both. It must be able to fix a node that already exists in a wedged graph.
-4. The finish/handoff rejection message names the concrete repair tool to call, instead of only stating the node is missing the field.
-5. `validation_spec_id` is validated to resolve to an actual spec in the `.test` store, so a node UUID cannot be passed as a spec id.
-6. Tests cover: creation rejection for each of the three gating kinds; repair of an already-wedged graph via the new surface; and a round-trip proving handoff succeeds after repair.
-7. Duplicate-`node_id` no-op behavior is documented in the tool description itself, not only in the instruction file, so callers do not assume re-add patches.
-
-## Non-goals
-
-- Changing the finish-gating semantics of `validation` / `ticket` / `spec` nodes.
-- Migrating existing wedged sessions automatically.
-
-## Related
-
-Blocks reliable operation of the closed-loop iteration workflow, which requires a persisted handoff on every run.
+**Blocker/note:** `memory-api/tools/mcp/session-mcp/src/server.rs` is concurrently owned by another agent's board entry (ticket 459789f8, "workspace-validation parity tests"), which the draftboard already flags as `Conflict`. My server.rs edits (input structs, two new tool handlers, capability catalog entries, AC7 doc strings) compile cleanly and are validated by the green `cargo test -p session-mcp` run above, but board file-ownership could not be claimed for that file due to the pre-existing entry.

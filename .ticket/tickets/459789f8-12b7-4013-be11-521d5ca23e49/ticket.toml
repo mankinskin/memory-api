@@ -1,7 +1,7 @@
 id = "459789f8-12b7-4013-be11-521d5ca23e49"
 created_at = "2026-07-27T20:23:51.099576800+00:00"
 title = "[session-mcp][rule-mcp][feedback-mcp] Workspace-validation test parity across all 5 MCP servers"
-state = "new"
+state = "in-review"
 component = "memory-api"
 effort = "600"
 linked = ["9faa3f5f-e2e1-469d-994e-1bb8b90d5ab4"]
