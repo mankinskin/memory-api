@@ -1,7 +1,7 @@
 id = "580019e8-b253-42ee-80fc-990f6d26baf6"
 created_at = "2026-07-27T20:24:01.720133+00:00"
 title = "[session-api][repo] Untrack 76 committed events.json files (~99MB) with git rm --cached, no history rewrite"
-state = "new"
+state = "done"
 component = "session-api"
 depends_on = ["4817a5cc-5e91-4280-b7ed-aed296a480b3"]
 effort = "400"
