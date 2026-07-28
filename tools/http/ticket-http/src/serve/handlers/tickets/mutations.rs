@@ -18,6 +18,7 @@ use axum::{
     },
 };
 use serde_json::Value;
+use ticket_api::storage::DescriptionUpdateMode;
 use uuid::Uuid;
 
 use viewer_api::{
@@ -150,6 +151,21 @@ pub async fn update_ticket(
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
 
+    let description_mode = match body.description_mode.as_deref() {
+        None | Some("replace") => DescriptionUpdateMode::Replace,
+        Some("append") => DescriptionUpdateMode::Append,
+        Some(other) => {
+            return ApiError::bad_request(
+                "invalid_description_mode",
+                &format!(
+                    "invalid description_mode '{other}': expected 'replace' or 'append'"
+                ),
+                &request_id,
+            )
+            .into_response_with_status(StatusCode::BAD_REQUEST);
+        },
+    };
+
     tokio::task::spawn_blocking(move || {
         let request_id = task_request_id.clone();
         let workspace = workspace.clone();
@@ -159,6 +175,7 @@ pub async fn update_ticket(
             Some(transition_states.as_slice()),
             to_state.as_deref(),
             description.as_deref(),
+            description_mode,
             author.as_deref(),
             single_hop,
         ) {

@@ -7,6 +7,7 @@ use serde_json::{
 };
 
 use ticket_api::storage::{
+    DescriptionUpdateMode,
     TicketStore,
     ticket_fs::TicketFs,
 };
@@ -160,8 +161,18 @@ pub(crate) fn cmd_update(
         }
         let prev = &revisions[revisions.len() - 2];
         let prev_rev = prev.rev;
+        let mut revert_fields = prev.fields.clone();
+        if let Some(desc_val) = revisions[revisions.len() - 1]
+            .fields
+            .get(ticket_api::storage::DESCRIPTION_HISTORY_KEY)
+        {
+            revert_fields.insert(
+                ticket_api::storage::DESCRIPTION_HISTORY_KEY.to_string(),
+                desc_val.clone(),
+            );
+        }
         let new_rev =
-            store.apply_revert(&id, prev.fields.clone(), author.as_deref())?;
+            store.apply_revert(&id, revert_fields, author.as_deref())?;
         let updated = store.get(&id)?;
         return Ok(json!({
             "command": "update",
@@ -174,6 +185,15 @@ pub(crate) fn cmd_update(
         }));
     }
 
+    let description_mode = match args.description_mode.as_str() {
+        "replace" => DescriptionUpdateMode::Replace,
+        "append" => DescriptionUpdateMode::Append,
+        other => {
+            return Err(CliRunError::BadRequest(format!(
+                "invalid --description-mode '{other}': expected 'replace' or 'append'"
+            )));
+        },
+    };
     let patch = parse_fields_to_json(&args.fields)?;
     let manifest = store.update_with_options(
         &id,
@@ -181,6 +201,7 @@ pub(crate) fn cmd_update(
         Some(args.transition_states.as_slice()),
         args.to_state.as_deref(),
         args.description.as_deref(),
+        description_mode,
         author.as_deref(),
         args.single_hop,
     )?;

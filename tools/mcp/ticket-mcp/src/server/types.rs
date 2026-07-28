@@ -162,6 +162,10 @@ pub struct UpdateTicketInput {
     pub undo: bool,
     #[serde(default)]
     pub description: Option<String>,
+    /// How to apply `description`: `"replace"` (default, overwrites) or
+    /// `"append"` (concatenates onto the existing description).
+    #[serde(default)]
+    pub description_mode: Option<String>,
     #[serde(default)]
     pub author: Option<String>,
     /// Opt out of auto-walking multi-hop transitions. When true, a `to_state`

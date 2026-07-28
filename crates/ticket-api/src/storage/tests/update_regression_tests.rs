@@ -264,6 +264,7 @@ fn update_blocks_reachable_multi_step_under_single_hop_flag() {
             None,
             Some("in-implementation"),
             None,
+            DescriptionUpdateMode::default(),
             None,
             true,
         )
@@ -346,6 +347,7 @@ fn update_blocks_reachable_reverse_multi_step_under_single_hop_flag() {
             None,
             Some("new"),
             None,
+            DescriptionUpdateMode::default(),
             None,
             true,
         )
@@ -360,3 +362,209 @@ fn update_blocks_reachable_reverse_multi_step_under_single_hop_flag() {
     let indexed = store.get_indexed(&id).unwrap().unwrap();
     assert_eq!(indexed.state.as_deref(), Some("in-implementation"));
 }
+
+#[test]
+fn update_without_description_preserves_existing_description() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Test ticket"),
+            Some("new"),
+            Default::default(),
+            None,
+            Some("Original description"),
+        )
+        .unwrap();
+
+    // Regression: a field-only update that never intended to touch the
+    // description must not clobber the existing description.md content.
+    let mut patch = BTreeMap::new();
+    patch.insert(
+        "custom_field".to_string(),
+        Value::String("custom value".to_string()),
+    );
+    store.update(&id, patch, None, None, None, None).unwrap();
+
+    let path = store.get_indexed(&id).unwrap().unwrap().path;
+    let description = crate::storage::ticket_fs::TicketFs::read_description(&path);
+    assert_eq!(
+        description.as_deref(),
+        Some("Original description"),
+        "an update that omits description must preserve the existing description"
+    );
+}
+
+#[test]
+fn update_with_replace_mode_overwrites_description() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Test ticket"),
+            Some("new"),
+            Default::default(),
+            None,
+            Some("Original description"),
+        )
+        .unwrap();
+
+    store
+        .update_with_options(
+            &id,
+            BTreeMap::new(),
+            None,
+            None,
+            Some("New description"),
+            DescriptionUpdateMode::Replace,
+            None,
+            false,
+        )
+        .unwrap();
+
+    let path = store.get_indexed(&id).unwrap().unwrap().path;
+    let description = crate::storage::ticket_fs::TicketFs::read_description(&path);
+    assert_eq!(description.as_deref(), Some("New description"));
+}
+
+#[test]
+fn update_with_append_mode_concatenates_description() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Test ticket"),
+            Some("new"),
+            Default::default(),
+            None,
+            Some("Original description"),
+        )
+        .unwrap();
+
+    store
+        .update_with_options(
+            &id,
+            BTreeMap::new(),
+            None,
+            None,
+            Some("Extra note"),
+            DescriptionUpdateMode::Append,
+            None,
+            false,
+        )
+        .unwrap();
+
+    let path = store.get_indexed(&id).unwrap().unwrap().path;
+    let description = crate::storage::ticket_fs::TicketFs::read_description(&path);
+    assert_eq!(
+        description.as_deref(),
+        Some("Original description\nExtra note"),
+        "append mode should concatenate onto the existing description"
+    );
+}
+
+#[test]
+fn update_captures_previous_description_in_history_regardless_of_mode() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Test ticket"),
+            Some("new"),
+            Default::default(),
+            None,
+            Some("Original description"),
+        )
+        .unwrap();
+
+    store
+        .update_with_options(
+            &id,
+            BTreeMap::new(),
+            None,
+            None,
+            Some("New description"),
+            DescriptionUpdateMode::Replace,
+            None,
+            false,
+        )
+        .unwrap();
+
+    let revisions = store.get_history(&id).unwrap();
+    let last = revisions.last().expect("history revision recorded");
+    assert_eq!(
+        last.fields.get(crate::storage::store::DESCRIPTION_HISTORY_KEY),
+        Some(&Value::String("Original description".to_string())),
+        "the pre-update description must be captured in history on every description change"
+    );
+}
+
+#[test]
+fn undo_restores_previous_description() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Test ticket"),
+            Some("new"),
+            Default::default(),
+            None,
+            Some("Original description"),
+        )
+        .unwrap();
+
+    store
+        .update_with_options(
+            &id,
+            BTreeMap::new(),
+            None,
+            None,
+            Some("New description"),
+            DescriptionUpdateMode::Replace,
+            None,
+            false,
+        )
+        .unwrap();
+
+    let path = store.get_indexed(&id).unwrap().unwrap().path;
+    assert_eq!(
+        crate::storage::ticket_fs::TicketFs::read_description(&path).as_deref(),
+        Some("New description")
+    );
+
+    let revisions = store.get_history(&id).unwrap();
+    let previous = &revisions[revisions.len() - 2];
+    let mut revert_fields = previous.fields.clone();
+    if let Some(desc_val) = revisions[revisions.len() - 1]
+        .fields
+        .get(crate::storage::store::DESCRIPTION_HISTORY_KEY)
+    {
+        revert_fields.insert(
+            crate::storage::store::DESCRIPTION_HISTORY_KEY.to_string(),
+            desc_val.clone(),
+        );
+    }
+    store.apply_revert(&id, revert_fields, None).unwrap();
+
+    assert_eq!(
+        crate::storage::ticket_fs::TicketFs::read_description(&path).as_deref(),
+        Some("Original description"),
+        "undo must restore the pre-overwrite description, making it recoverable"
+    );
+}
+

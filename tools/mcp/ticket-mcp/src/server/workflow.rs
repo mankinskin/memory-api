@@ -160,7 +160,7 @@ impl TicketServer {
                 "update_ticket": {
                     "description": "Update ticket fields and/or transition state",
                     "required": ["workspace", "id"],
-                    "optional": ["transition_states", "to_state", "fields", "undo", "description", "author"],
+                    "optional": ["transition_states", "to_state", "fields", "undo", "description", "description_mode", "author"],
                 },
                 "close_ticket": {
                     "description": "Fast-forward ticket to target state",

@@ -1,5 +1,6 @@
 use serde_json::Value;
 use ticket_api::model::edge::EdgeRecord;
+use ticket_api::storage::DescriptionUpdateMode;
 use uuid::Uuid;
 
 use super::{
@@ -35,6 +36,18 @@ impl TicketServer {
         let to_state = input.to_state;
         let patch = parse_field_patch(input.fields, input.field_map)?;
         let description = input.description;
+        let description_mode = match input.description_mode.as_deref() {
+            None | Some("replace") => DescriptionUpdateMode::Replace,
+            Some("append") => DescriptionUpdateMode::Append,
+            Some(other) => {
+                return Err(McpError::invalid_params(
+                    format!(
+                        "invalid description_mode '{other}': expected 'replace' or 'append'"
+                    ),
+                    None,
+                ));
+            },
+        };
         let author = input.author;
         let single_hop = input.single_hop;
         let changed_fields = patch.clone();
@@ -54,6 +67,7 @@ impl TicketServer {
                         Some(transition_states.as_slice()),
                         to_state.as_deref(),
                         description.as_deref(),
+                        description_mode,
                         author.as_deref(),
                         single_hop,
                     )
@@ -589,8 +603,19 @@ impl TicketServer {
                     ));
                 }
                 let previous = &revisions[revisions.len() - 2];
+                let mut revert_fields = previous.fields.clone();
+                if let Some(desc_val) = revisions[revisions.len() - 1]
+                    .fields
+                    .get(ticket_api::storage::DESCRIPTION_HISTORY_KEY)
+                {
+                    revert_fields.insert(
+                        ticket_api::storage::DESCRIPTION_HISTORY_KEY
+                            .to_string(),
+                        desc_val.clone(),
+                    );
+                }
                 let new_rev = store
-                    .apply_revert(&id, previous.fields.clone(), None)
+                    .apply_revert(&id, revert_fields, None)
                     .map_err(Self::store_err)?;
                 let updated = store.get(&id).map_err(Self::store_err)?;
                 let path = indexed_ticket_path(store, &id)?;

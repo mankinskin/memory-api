@@ -27,6 +27,8 @@ pub use storage::{
     BoardError,
     BoardReconcileResult,
     BoardSnapshot,
+    DESCRIPTION_HISTORY_KEY,
+    DescriptionUpdateMode,
     ReconcileAction,
 };
 

@@ -22,4 +22,8 @@ pub use board::{
     BoardSnapshot,
     ReconcileAction,
 };
-pub use store::TicketStore;
+pub use store::{
+    DESCRIPTION_HISTORY_KEY,
+    DescriptionUpdateMode,
+    TicketStore,
+};

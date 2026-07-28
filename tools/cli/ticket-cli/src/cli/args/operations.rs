@@ -250,6 +250,10 @@ pub struct UpdateArgs {
     /// Markdown description to write/overwrite as description.md.
     #[arg(long)]
     pub description: Option<String>,
+    /// How to apply `--description`: `replace` (default, overwrites) or
+    /// `append` (concatenates onto the existing description).
+    #[arg(long = "description-mode", default_value = "replace")]
+    pub description_mode: String,
     /// Author/user identity to record in the history revision (overrides TICKET_AUTHOR env var).
     #[arg(long)]
     pub author: Option<String>,

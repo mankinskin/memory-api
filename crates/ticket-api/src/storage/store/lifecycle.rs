@@ -114,10 +114,21 @@ impl TicketStore {
             .get("state")
             .and_then(Value::as_str)
             .map(str::to_string);
+        let previous_description =
+            fields.get(super::DESCRIPTION_HISTORY_KEY).cloned();
         let mut patch = fields.clone();
         patch.remove("state");
+        patch.remove(super::DESCRIPTION_HISTORY_KEY);
 
         TicketFs::update(&indexed.path, &patch, target_state.as_deref())?;
+
+        if let Some(desc_val) = previous_description {
+            let restored = match desc_val {
+                Value::String(s) => s,
+                _ => String::new(),
+            };
+            TicketFs::write_description(&indexed.path, &restored)?;
+        }
 
         let previous_state = indexed.state.clone();
         let mut refreshed = indexed;

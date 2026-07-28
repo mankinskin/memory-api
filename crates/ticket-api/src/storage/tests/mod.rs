@@ -23,7 +23,10 @@ use memory_api::{
 use tempfile::tempdir;
 use uuid::Uuid;
 
-use super::TicketStore;
+use super::{
+    DescriptionUpdateMode,
+    TicketStore,
+};
 use crate::model::{
     manifest_format::format_manifest_toml,
     ticket::TicketManifest,

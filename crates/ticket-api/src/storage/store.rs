@@ -64,6 +64,26 @@ pub use self::{
 
 const STORE_TRACE_TARGET: &str = "ticket_api::storage::store";
 
+/// History field key under which the pre-update `description.md` content is
+/// captured whenever a description change is applied, regardless of
+/// [`DescriptionUpdateMode`]. Used by [`TicketStore::apply_revert`] to
+/// restore the description on undo.
+pub const DESCRIPTION_HISTORY_KEY: &str = "__previous_description__";
+
+/// How a caller-supplied `description` value should be applied to an
+/// existing ticket's `description.md`.
+///
+/// Defaults to [`DescriptionUpdateMode::Replace`], matching the historical
+/// behavior of unconditionally overwriting the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DescriptionUpdateMode {
+    /// Overwrite `description.md` with the supplied text.
+    #[default]
+    Replace,
+    /// Concatenate the supplied text onto the existing description.
+    Append,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct StoreOpenReport {
     pub initialized_store: bool,
@@ -408,6 +428,7 @@ impl TicketStore {
             transition_states,
             to_state,
             description,
+            DescriptionUpdateMode::default(),
             author,
             false,
         )
@@ -427,6 +448,7 @@ impl TicketStore {
         transition_states: Option<&[String]>,
         to_state: Option<&str>,
         description: Option<&str>,
+        description_mode: DescriptionUpdateMode,
         author: Option<&str>,
         single_hop: bool,
     ) -> Result<TicketManifest, StorageError> {
@@ -448,13 +470,15 @@ impl TicketStore {
             single_hop,
         )?;
         let previous_state = indexed.state.clone();
-        let updated_manifest = self.apply_manifest_update(
-            &indexed.path,
-            &patch,
-            &new_state,
-            &transition_path,
-            description,
-        )?;
+        let (updated_manifest, previous_description) = self
+            .apply_manifest_update(
+                &indexed.path,
+                &patch,
+                &new_state,
+                &transition_path,
+                description,
+                description_mode,
+            )?;
 
         // Route edge-field updates through canonical graph APIs.
         apply_edge_patch_plans(self, *id, edge_patch_plans)?;
@@ -470,12 +494,25 @@ impl TicketStore {
             now,
         )?;
 
-        // Append history snapshot after successful write.
+        // Append history snapshot after successful write. Always capture the
+        // pre-update description alongside the manifest fields whenever a
+        // description change was applied, regardless of mode, so it is
+        // recoverable via undo.
+        let mut history_fields = updated_manifest.extra.clone();
+        if description.is_some() {
+            history_fields.insert(
+                DESCRIPTION_HISTORY_KEY.to_string(),
+                previous_description
+                    .map(Value::String)
+                    .unwrap_or(Value::Null),
+            );
+        }
         let _ = TicketFs::append_history(
             &indexed.path,
-            updated_manifest.extra.clone(),
+            history_fields,
             author.map(str::to_string),
         );
+
 
         // Emit SSE hook event.
         if let Some(h) = self.hook() {
@@ -552,7 +589,8 @@ impl TicketStore {
         new_state: &Option<String>,
         transition_path: &[String],
         description: Option<&str>,
-    ) -> Result<TicketManifest, StorageError> {
+        description_mode: DescriptionUpdateMode,
+    ) -> Result<(TicketManifest, Option<String>), StorageError> {
         let updated_manifest = if transition_path.is_empty() {
             TicketFs::update(ticket_path, patch, new_state.as_deref())?
         } else {
@@ -572,11 +610,23 @@ impl TicketStore {
             manifest.expect("transition path produces at least one manifest")
         };
 
+        let mut previous_description = None;
         if let Some(desc) = description {
-            TicketFs::write_description(ticket_path, desc)?;
+            let existing = TicketFs::read_description(ticket_path);
+            previous_description = existing.clone();
+            let final_text = match description_mode {
+                DescriptionUpdateMode::Replace => desc.to_string(),
+                DescriptionUpdateMode::Append => match existing {
+                    Some(existing) if !existing.is_empty() => {
+                        format!("{existing}\n{desc}")
+                    },
+                    _ => desc.to_string(),
+                },
+            };
+            TicketFs::write_description(ticket_path, &final_text)?;
         }
 
-        Ok(updated_manifest)
+        Ok((updated_manifest, previous_description))
     }
 
     fn refresh_index_and_search(
