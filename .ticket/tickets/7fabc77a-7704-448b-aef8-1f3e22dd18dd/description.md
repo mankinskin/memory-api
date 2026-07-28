@@ -18,3 +18,9 @@ Back-compat for `runtime/workspaces/` was deliberately dropped by user decision 
 ## Notes
 
 Other worktrees or machines may still hold a `.session/runtime/` tree. Removal is fail-closed by design per the user decision; stale trees are abandoned, not migrated.
+
+## Incident (2026-07-28)
+
+- On 2026-07-28 a stale `~/.cargo/bin/session-mcp.exe` (installed before the session-store flatten commit) wrote a handoff to the legacy `.session/runtime/workspaces/<id>/` layout, recreating a tree that had been deleted.
+- Source code was verified correct; this was a tooling-install staleness issue, not a code regression.
+- Consequence for this ticket: when removing the legacy fallback shims, ALSO sweep any residual `.session/runtime/` tree, and consider adding a startup assertion or test that fails loudly if a legacy path is ever written, so stale-binary drift is detected rather than silently tolerated.
