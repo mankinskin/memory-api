@@ -308,14 +308,16 @@ fn handoff_package_round_trip_persists_schema_fields() {
         non_goals: vec!["UI/viewer representation".to_string()],
         context_anchors: vec!["spec:5e52039d".to_string()],
         open_escalations: vec![],
-        risk_notes: Some("none".to_string()),
-        predecessor_handoff: None,
+        risk_notes: Some("Blocked on upstream ticket ownership".to_string()),
+        predecessor_handoff: Some("handoff-previous-0001".to_string()),
     };
 
     let result = config
         .create_handoff_result(&workspace_id, Some(package.clone()), vec![], None)
         .expect("handoff with complete package");
 
+    // Contract: every field accepted by `session_handoff` gets an explicit
+    // round-trip assertion here so schema drift is auditable.
     assert_eq!(result.record.objective, package.objective);
     assert_eq!(result.record.target_tickets, package.target_tickets);
     assert_eq!(result.record.target_files, package.target_files);
@@ -323,6 +325,8 @@ fn handoff_package_round_trip_persists_schema_fields() {
     assert_eq!(result.record.non_goals, package.non_goals);
     assert_eq!(result.record.context_anchors, package.context_anchors);
     assert!(result.record.open_escalations.is_empty());
+    assert_eq!(result.record.risk_notes, package.risk_notes);
+    assert_eq!(result.record.predecessor_handoff, package.predecessor_handoff);
     assert!(result.render.contains("implementation_ready: true"));
     assert!(result.render.contains("objective:"));
 
@@ -336,6 +340,54 @@ fn handoff_package_round_trip_persists_schema_fields() {
         serde_json::from_slice(&std::fs::read(&handoff_json_path).unwrap()).unwrap();
     assert_eq!(on_disk.objective, package.objective);
     assert_eq!(on_disk.target_tickets, package.target_tickets);
+    assert_eq!(on_disk.target_files, package.target_files);
+    assert_eq!(on_disk.decisions, package.decisions);
+    assert_eq!(on_disk.non_goals, package.non_goals);
+    assert_eq!(on_disk.context_anchors, package.context_anchors);
+    assert_eq!(on_disk.open_escalations, package.open_escalations);
+    assert_eq!(on_disk.risk_notes, package.risk_notes);
+    assert_eq!(on_disk.predecessor_handoff, package.predecessor_handoff);
+}
+
+#[test]
+fn legacy_inline_handoff_package_still_deserializes() {
+    #[derive(serde::Deserialize)]
+    struct LegacyInlineHandoffPackage {
+        objective: String,
+        target_tickets: Vec<String>,
+        target_files: Vec<String>,
+        decisions: Vec<String>,
+        non_goals: Vec<String>,
+        context_anchors: Vec<String>,
+        open_escalations: Vec<String>,
+        risk_notes: Option<String>,
+        predecessor_handoff: Option<String>,
+    }
+
+    let legacy_json = r#"{
+        "objective": "Fix the serialization regression",
+        "target_tickets": ["ticket-123"],
+        "target_files": ["src/lib.rs"],
+        "decisions": ["Keep the inline package shape"],
+        "non_goals": ["No schema migration"],
+        "context_anchors": ["old session transcript"],
+        "open_escalations": [],
+        "risk_notes": "Back-compat must remain intact",
+        "predecessor_handoff": "handoff-inline-0007"
+    }"#;
+
+    let legacy: LegacyInlineHandoffPackage = serde_json::from_str(legacy_json)
+        .expect("deserialize legacy inline handoff package");
+
+    assert_eq!(legacy.objective, "Fix the serialization regression");
+    assert_eq!(legacy.target_tickets, vec!["ticket-123"]);
+    assert_eq!(legacy.target_files, vec!["src/lib.rs"]);
+    assert_eq!(legacy.decisions, vec!["Keep the inline package shape"]);
+    assert_eq!(legacy.non_goals, vec!["No schema migration"]);
+    assert_eq!(legacy.context_anchors, vec!["old session transcript"]);
+    assert!(legacy.open_escalations.is_empty());
+    assert_eq!(legacy.risk_notes.as_deref(), Some("Back-compat must remain intact"));
+    assert_eq!(legacy.predecessor_handoff.as_deref(), Some("handoff-inline-0007"));
 }
 
 #[test]
