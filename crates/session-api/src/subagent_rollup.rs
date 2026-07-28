@@ -255,6 +255,10 @@ mod tests {
                 },
             ],
             links: SessionLinks::default(),
+            track_id: None,
+            anchor_ticket_id: None,
+            parent_session_id: None,
+            spawned_session_id: None,
         };
 
         let rollups = compute_subagent_rollups(&record, None);
@@ -488,6 +492,10 @@ mod tests {
                 },
             ],
             links: SessionLinks::default(),
+            track_id: None,
+            anchor_ticket_id: None,
+            parent_session_id: None,
+            spawned_session_id: None,
         };
 
         let rollups = compute_subagent_rollups(&record, None);
@@ -568,6 +576,10 @@ mod tests {
                 },
             ],
             links: SessionLinks::default(),
+            track_id: None,
+            anchor_ticket_id: None,
+            parent_session_id: None,
+            spawned_session_id: None,
         };
 
         let rollups = compute_subagent_rollups(&record, None);

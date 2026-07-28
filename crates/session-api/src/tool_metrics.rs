@@ -695,6 +695,10 @@ mod tests {
                 },
             ],
             links: Default::default(),
+            track_id: None,
+            anchor_ticket_id: None,
+            parent_session_id: None,
+            spawned_session_id: None,
         };
 
         let estimator = CharsPerTokenEstimator::default();
@@ -792,6 +796,10 @@ mod tests {
                 event_meta: None,
             }],
             links: Default::default(),
+            track_id: None,
+            anchor_ticket_id: None,
+            parent_session_id: None,
+            spawned_session_id: None,
         };
 
         let estimator = CharsPerTokenEstimator::default();
@@ -1068,6 +1076,10 @@ mod tests {
                 },
             ],
             links: Default::default(),
+            track_id: None,
+            anchor_ticket_id: None,
+            parent_session_id: None,
+            spawned_session_id: None,
         };
 
         let estimator = CharsPerTokenEstimator::default();

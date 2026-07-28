@@ -66,6 +66,10 @@ impl SessionStoreConfig {
             metadata: manifest.metadata,
             turns: transcript.turns,
             links: manifest.links,
+            track_id: manifest.track_id,
+            anchor_ticket_id: manifest.anchor_ticket_id,
+            parent_session_id: manifest.parent_session_id,
+            spawned_session_id: manifest.spawned_session_id,
         })
     }
 

@@ -127,6 +127,10 @@ impl SessionStoreConfig {
             },
             turns: vec![],
             links: SessionLinks::default(),
+            track_id: None,
+            anchor_ticket_id: None,
+            parent_session_id: None,
+            spawned_session_id: None,
         };
         self.persist_record(record.clone())?;
         receipt_from_record(&record)

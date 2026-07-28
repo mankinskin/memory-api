@@ -341,6 +341,14 @@ pub struct SessionRecord {
     pub turns: Vec<SessionTurn>,
     #[serde(default)]
     pub links: SessionLinks,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub track_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_ticket_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawned_session_id: Option<String>,
 }
 
 impl SessionRecord {
@@ -452,6 +460,10 @@ mod tests {
                     "8cf1255d-7969-4ac2-905a-cbd234dc3eac".to_string(),
                 ),
             },
+            track_id: None,
+            anchor_ticket_id: None,
+            parent_session_id: None,
+            spawned_session_id: None,
         };
 
         let json = serde_json::to_string_pretty(&record).unwrap();
@@ -465,5 +477,42 @@ mod tests {
         );
         assert!(record.links.links_to_ticket("ticket-1"));
         assert!(record.links.links_to_spec("spec-1"));
+    }
+
+    #[test]
+    fn existing_sessions_deserialize_without_track_fields() {
+        // Real on-disk session format from pre-track schema (AC2 verification)
+        let legacy_json = r#"{
+            "schema_version": 1,
+            "session_id": "01246bdc-dd6b-4807-bda3-38cf6aa780de",
+            "source": "copilot-hook",
+            "started_at": "2026-07-25T18:57:59.736Z",
+            "captured_at": "2026-07-26T01:23:11.736Z",
+            "metadata": {
+                "workspace_slug": "default",
+                "agent_id": "copilot-agent",
+                "trigger": "Stop",
+                "producer": "copilot-agent",
+                "copilot_version": "0.58.0",
+                "vscode_version": "1.130.0",
+                "protocol_version": 1
+            },
+            "links": {}
+        }"#;
+
+        let record: SessionRecord = serde_json::from_str(legacy_json).unwrap();
+
+        // All four track fields must deserialize to None
+        assert_eq!(record.track_id, None, "track_id must be None for legacy sessions");
+        assert_eq!(record.anchor_ticket_id, None, "anchor_ticket_id must be None for legacy sessions");
+        assert_eq!(record.parent_session_id, None, "parent_session_id must be None for legacy sessions");
+        assert_eq!(record.spawned_session_id, None, "spawned_session_id must be None for legacy sessions");
+
+        // Round-trip must not emit the track fields
+        let reserialized = serde_json::to_string(&record).unwrap();
+        assert!(!reserialized.contains("track_id"), "track_id must not appear in JSON when None");
+        assert!(!reserialized.contains("anchor_ticket_id"), "anchor_ticket_id must not appear in JSON when None");
+        assert!(!reserialized.contains("parent_session_id"), "parent_session_id must not appear in JSON when None");
+        assert!(!reserialized.contains("spawned_session_id"), "spawned_session_id must not appear in JSON when None");
     }
 }

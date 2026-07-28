@@ -11,6 +11,14 @@ pub struct PersistedSessionManifest {
     pub metadata: SessionMetadata,
     #[serde(default)]
     pub links: SessionLinks,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub track_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_ticket_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawned_session_id: Option<String>,
 }
 
 impl From<&SessionRecord> for PersistedSessionManifest {
@@ -23,6 +31,10 @@ impl From<&SessionRecord> for PersistedSessionManifest {
             captured_at: record.captured_at,
             metadata: record.metadata.clone(),
             links: record.links.clone(),
+            track_id: record.track_id.clone(),
+            anchor_ticket_id: record.anchor_ticket_id.clone(),
+            parent_session_id: record.parent_session_id.clone(),
+            spawned_session_id: record.spawned_session_id.clone(),
         }
     }
 }

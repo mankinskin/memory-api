@@ -66,6 +66,10 @@ fn subagent_rollup_links_delegated_session_to_parent() {
         },
         turns: vec![],
         links: SessionLinks::default(),
+        track_id: None,
+        anchor_ticket_id: None,
+        parent_session_id: None,
+        spawned_session_id: None,
     };
 
     let context = SessionRuntimeContext {
@@ -194,6 +198,10 @@ fn subagent_rollup_aggregates_token_cost_model_per_delegated_session() {
             },
         ],
         links: SessionLinks::default(),
+        track_id: None,
+        anchor_ticket_id: None,
+        parent_session_id: None,
+        spawned_session_id: None,
     };
 
     let context = SessionRuntimeContext {

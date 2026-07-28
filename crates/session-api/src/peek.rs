@@ -88,6 +88,10 @@ mod tests {
             },
             turns,
             links: crate::SessionLinks::default(),
+            track_id: None,
+            anchor_ticket_id: None,
+            parent_session_id: None,
+            spawned_session_id: None,
         }
     }
 

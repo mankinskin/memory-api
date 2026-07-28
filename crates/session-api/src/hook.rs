@@ -212,6 +212,10 @@ impl SessionCaptureRequest {
                 },
                 turns,
                 links: self.links,
+                track_id: None,
+                anchor_ticket_id: None,
+                parent_session_id: None,
+                spawned_session_id: None,
             },
             payload.events,
         ))
