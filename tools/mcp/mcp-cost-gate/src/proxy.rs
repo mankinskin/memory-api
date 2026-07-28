@@ -58,6 +58,9 @@ fn id_key(id: &Value) -> String {
 /// `tokens_estimated` is a rough chars/4 estimate over the combined
 /// request+response payloads — never an observed token count, and never a
 /// dollar cost (tools have no dollar cost; see spec 7be68a48 R4).
+///
+/// Coverage is intentionally partial: this proxy only measures MCP
+/// `tools/call` traffic that traverses this middleware.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallTelemetry {
     pub timestamp: String,
@@ -67,12 +70,17 @@ pub struct CallTelemetry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub grant_id: Option<String>,
     pub decision: String,
-    pub request_bytes: u64,
-    pub request_chars: u64,
-    pub response_bytes: u64,
-    pub response_chars: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_chars: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_chars: Option<u64>,
     pub duration_ms: u64,
-    pub tokens_estimated: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens_estimated: Option<u64>,
 }
 
 /// A `tools/call` forwarded to the real server, awaiting its response.
@@ -191,12 +199,12 @@ pub fn handle_client_message(
                 caller_model,
                 grant_id: grant_id.clone(),
                 decision: decision.to_string(),
-                request_bytes,
-                request_chars,
-                response_bytes: 0,
-                response_chars: 0,
+                request_bytes: Some(request_bytes),
+                request_chars: Some(request_chars),
+                response_bytes: Some(0),
+                response_chars: Some(0),
                 duration_ms: 0,
-                tokens_estimated: request_chars / 4,
+                tokens_estimated: Some(request_chars / 4),
             };
 
             if caller_model.is_empty() {
@@ -271,12 +279,12 @@ pub fn handle_server_message(
             caller_model: call.caller_model,
             grant_id: call.grant_id,
             decision: call.decision,
-            request_bytes: call.request_bytes,
-            request_chars: call.request_chars,
-            response_bytes,
-            response_chars,
+            request_bytes: Some(call.request_bytes),
+            request_chars: Some(call.request_chars),
+            response_bytes: Some(response_bytes),
+            response_chars: Some(response_chars),
             duration_ms,
-            tokens_estimated,
+            tokens_estimated: Some(tokens_estimated),
         }
     });
 
@@ -406,7 +414,7 @@ mod tests {
                 let telemetry = telemetry.expect("expected telemetry for refused call");
                 assert_eq!(telemetry.decision, "reject-missing-model");
                 assert_eq!(telemetry.duration_ms, 0);
-                assert_eq!(telemetry.response_bytes, 0);
+                assert_eq!(telemetry.response_bytes, Some(0));
             }
             other => panic!("expected Respond, got {other:?}"),
         }
@@ -616,15 +624,15 @@ mod tests {
         let telemetry = telemetry.expect("expected telemetry once the response is correlated");
         assert_eq!(telemetry.decision, "allow");
         assert_eq!(telemetry.tool_name, "some_unknown_tool");
-        assert!(telemetry.response_bytes > 0, "response_bytes should be non-zero");
-        assert!(telemetry.response_chars > 0, "response_chars should be non-zero");
+        assert!(telemetry.response_bytes.unwrap_or(0) > 0, "response_bytes should be non-zero");
+        assert!(telemetry.response_chars.unwrap_or(0) > 0, "response_chars should be non-zero");
         assert!(
-            telemetry.tokens_estimated > 0,
+            telemetry.tokens_estimated.unwrap_or(0) > 0,
             "tokens_estimated should be non-zero for a real intercepted tools/call"
         );
         assert_eq!(
             telemetry.tokens_estimated,
-            (telemetry.request_chars + telemetry.response_chars) / 4
+            Some((telemetry.request_chars.unwrap_or(0) + telemetry.response_chars.unwrap_or(0)) / 4)
         );
     }
 
@@ -666,9 +674,9 @@ mod tests {
         let (_, telemetry) =
             handle_client_message(call("read_file", None), Some(&g), &mut p, &mut pc);
         let telemetry = telemetry.expect("expected telemetry for the refused call");
-        assert_eq!(telemetry.response_bytes, 0);
-        assert_eq!(telemetry.response_chars, 0);
+        assert_eq!(telemetry.response_bytes, Some(0));
+        assert_eq!(telemetry.response_chars, Some(0));
         assert_eq!(telemetry.duration_ms, 0);
-        assert!(telemetry.request_chars > 0);
+        assert!(telemetry.request_chars.unwrap_or(0) > 0);
     }
 }
