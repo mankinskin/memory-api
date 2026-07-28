@@ -232,9 +232,12 @@ fn handoff_persists_before_render_and_resume_links_new_run() {
         .unwrap();
     assert_eq!(handoff_files.len(), 1);
 
-    let handoff_path = handoff_files[0].path();
+    // Handoffs are now stored as folders; read handoff.json from inside
+    let handoff_folder = handoff_files[0].path();
+    assert!(handoff_folder.is_dir(), "handoff should be a folder");
+    let handoff_json_path = handoff_folder.join("handoff.json");
     let handoff: crate::SessionHandoffRecord =
-        serde_json::from_slice(&std::fs::read(handoff_path).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(handoff_json_path).unwrap()).unwrap();
     assert_eq!(handoff.workspace_session_id, workspace_id);
     assert_eq!(handoff.outgoing_run_id, init.context.active_run_id);
     assert!(handoff.resume_command.contains(&workspace_id));
@@ -325,10 +328,12 @@ fn handoff_package_round_trip_persists_schema_fields() {
 
     // Verify the record is persisted and can be re-read from disk.
     let paths = config.runtime_paths_for_workspace(&workspace_id).unwrap();
-    let handoff_path =
-        paths.handoffs_dir.join(format!("{}.json", result.record.handoff_id));
+    // Handoffs are now stored as folders with handoff.json inside
+    let handoff_folder =
+        paths.handoffs_dir.join(&result.record.handoff_id);
+    let handoff_json_path = handoff_folder.join("handoff.json");
     let on_disk: crate::SessionHandoffRecord =
-        serde_json::from_slice(&std::fs::read(&handoff_path).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(&handoff_json_path).unwrap()).unwrap();
     assert_eq!(on_disk.objective, package.objective);
     assert_eq!(on_disk.target_tickets, package.target_tickets);
 }

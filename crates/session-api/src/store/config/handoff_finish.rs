@@ -90,9 +90,27 @@ impl SessionStoreConfig {
                 source,
             }
         })?;
-        let handoff_path =
-            paths.handoffs_dir.join(format!("{handoff_id}.json"));
-        write_json(&handoff_path, &record)?;
+
+        // Create handoff folder and write both JSON and Markdown
+        let handoff_folder = paths.handoffs_dir.join(&handoff_id);
+        fs::create_dir_all(&handoff_folder).map_err(|source| {
+            SessionError::Io {
+                path: handoff_folder.clone(),
+                source,
+            }
+        })?;
+
+        let handoff_json_path = handoff_folder.join("handoff.json");
+        write_json(&handoff_json_path, &record)?;
+
+        let handoff_md_path = handoff_folder.join("handoff.md");
+        let markdown_content = render_handoff_record_markdown(&record);
+        fs::write(&handoff_md_path, markdown_content).map_err(|source| {
+            SessionError::Io {
+                path: handoff_md_path.clone(),
+                source,
+            }
+        })?;
 
         // Mirror the handoff onto each target ticket (best-effort; the handoff
         // record is the authoritative source of truth).
@@ -158,7 +176,7 @@ impl SessionStoreConfig {
         let paths = self.runtime_paths_for_workspace(workspace_session_id)?;
         let record_path = paths
             .handoffs_dir
-            .join(format!("{}.json", record.handoff_id));
+            .join(&record.handoff_id);
         Ok(SessionHandoffResult {
             render: render_handoff_record_terminal(&record),
             record,

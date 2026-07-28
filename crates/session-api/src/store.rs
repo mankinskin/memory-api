@@ -360,6 +360,139 @@ fn render_handoff_record_terminal(record: &SessionHandoffRecord) -> String {
     lines.join("\n")
 }
 
+fn render_handoff_record_markdown(record: &SessionHandoffRecord) -> String {
+    let mut sections = Vec::new();
+
+    // Header
+    sections.push(format!("# Handoff: {}", record.handoff_id));
+    sections.push(String::new());
+
+    // Summary section
+    sections.push("## Summary".to_string());
+    sections.push(format!("- **Workspace Session**: `{}`", record.workspace_session_id));
+    sections.push(format!("- **Outgoing Run**: `{}`", record.outgoing_run_id));
+    sections.push(format!("- **Created**: {}", record.created_at.to_rfc3339()));
+    if !record.objective.is_empty() {
+        sections.push(format!("- **Objective**: {}", record.objective));
+    }
+    let implementation_ready = !record.objective.is_empty() && record.open_escalations.is_empty();
+    sections.push(format!("- **Implementation Ready**: {}", implementation_ready));
+    sections.push(String::new());
+
+    // Resume command
+    sections.push("## Resume Command".to_string());
+    sections.push("```bash".to_string());
+    sections.push(record.resume_command.clone());
+    sections.push("```".to_string());
+    sections.push(String::new());
+
+    // Target Tickets
+    if !record.target_tickets.is_empty() {
+        sections.push("## Target Tickets".to_string());
+        for ticket in &record.target_tickets {
+            sections.push(format!("- `{}`", ticket));
+        }
+        sections.push(String::new());
+    }
+
+    // Target Files
+    if !record.target_files.is_empty() {
+        sections.push("## Target Files".to_string());
+        for file in &record.target_files {
+            sections.push(format!("- `{}`", file));
+        }
+        sections.push(String::new());
+    }
+
+    // Decisions
+    if !record.decisions.is_empty() {
+        sections.push("## Decisions".to_string());
+        for decision in &record.decisions {
+            sections.push(format!("- {}", decision));
+        }
+        sections.push(String::new());
+    }
+
+    // Non-Goals
+    if !record.non_goals.is_empty() {
+        sections.push("## Non-Goals".to_string());
+        for non_goal in &record.non_goals {
+            sections.push(format!("- {}", non_goal));
+        }
+        sections.push(String::new());
+    }
+
+    // Context Anchors
+    if !record.context_anchors.is_empty() {
+        sections.push("## Context Anchors".to_string());
+        for anchor in &record.context_anchors {
+            sections.push(format!("- {}", anchor));
+        }
+        sections.push(String::new());
+    }
+
+    // Open Escalations
+    if !record.open_escalations.is_empty() {
+        sections.push("## ⚠️ Open Escalations".to_string());
+        for escalation in &record.open_escalations {
+            sections.push(format!("- {}", escalation));
+        }
+        sections.push(String::new());
+    }
+
+    // Risk Notes
+    if let Some(ref risk_notes) = record.risk_notes {
+        sections.push("## Risk Notes".to_string());
+        sections.push(risk_notes.clone());
+        sections.push(String::new());
+    }
+
+    // Workflow
+    sections.push("## Workflow".to_string());
+    sections.push(format!("- **Nodes**: {}", record.workflow.workflow.nodes.len()));
+    sections.push(format!("- **Edges**: {}", record.workflow.workflow.edges.len()));
+    let not_done = record
+        .workflow
+        .workflow
+        .nodes
+        .iter()
+        .filter(|node| node.status != SessionWorkflowNodeStatus::Done)
+        .count();
+    sections.push(format!("- **Not Done**: {}", not_done));
+    sections.push(String::new());
+
+    // Pinned Entities
+    if !record.pinned_entities.is_empty() {
+        sections.push("## Pinned Entities".to_string());
+        for pin in &record.pinned_entities {
+            sections.push(format!("- `{}` ({})", pin.urn, format!("{:?}", pin.kind).to_lowercase()));
+        }
+        sections.push(String::new());
+    }
+
+    // Validation
+    if !record.validation.is_empty() {
+        sections.push("## Validation".to_string());
+        for gate in &record.validation {
+            let outcome = gate.outcome.as_deref().unwrap_or("-");
+            let required = if gate.required { "required" } else { "optional" };
+            sections.push(format!("- `{}`: {} ({})", gate.validation_spec_id, outcome, required));
+        }
+        sections.push(String::new());
+    }
+
+    // Diagnostics
+    if !record.workflow.diagnostics.is_empty() {
+        sections.push("## Diagnostics".to_string());
+        for diag in &record.workflow.diagnostics {
+            sections.push(format!("- **{}** [{}]: {}", diag.node_id, diag.code, diag.message));
+        }
+        sections.push(String::new());
+    }
+
+    sections.join("\n")
+}
+
 fn sort_workflow_graph(graph: &mut crate::SessionWorkflowGraph) {
     graph
         .nodes
