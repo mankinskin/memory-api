@@ -97,9 +97,6 @@ pub struct PendingCall {
     pub request_bytes: u64,
     pub request_chars: u64,
     pub started_at: std::time::Instant,
-    /// Soft warning to surface on the eventual server response when the
-    /// `caller_model` only resolved after fallback normalization.
-    pub warning: Option<String>,
 }
 
 /// Tracks in-flight forwarded `tools/call` requests by JSON-RPC id.
@@ -120,28 +117,6 @@ impl PendingCalls {
 
 fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()
-}
-
-/// Fallback normalization for `caller_model` strings, applied only when the
-/// raw value fails the gate's exact/substring resolution. Strips a trailing
-/// parenthetical client qualifier (e.g. `"Claude Sonnet 5 (copilot)"` ->
-/// `"Claude Sonnet 5"`), then folds spaces and underscores to hyphens, then
-/// lowercases. No fuzzy or edit-distance matching.
-pub fn normalize_caller_model(model: &str) -> String {
-    let trimmed = model.trim();
-    let stripped = if trimmed.ends_with(')') {
-        trimmed
-            .rfind('(')
-            .map(|idx| trimmed[..idx].trim_end())
-            .unwrap_or(trimmed)
-    } else {
-        trimmed
-    };
-    stripped
-        .chars()
-        .map(|c| if c == ' ' || c == '_' { '-' } else { c })
-        .collect::<String>()
-        .to_lowercase()
 }
 
 /// Compute payload size and estimated tokens from a JSON value.
@@ -171,11 +146,6 @@ fn error_result(id: &Value, text: &str) -> Value {
 /// * `tools/call` requests are gated: a missing `caller_model` is rejected; a
 ///   delegate decision is refused with guidance; an allow strips `caller_model`
 ///   and forwards the cleaned call.
-/// * `caller_model` is resolved as-is first (exact match, then substring,
-///   unchanged precedence). Only if that fails is a normalized candidate
-///   tried as a fallback (see [`normalize_caller_model`]); a match there
-///   still allows the call but attaches a `costGateWarning` to the eventual
-///   response instead of rejecting.
 /// * Everything else is forwarded unchanged.
 ///
 /// When `gate` is `None` (fail-open, e.g. price table missing) the message is
@@ -252,26 +222,7 @@ pub fn handle_client_message(
                 );
             }
 
-            // Resolve the raw caller_model first (exact -> substring, unchanged
-            // precedence). Only when that fails do we retry with a normalized
-            // candidate (trailing client qualifier stripped; separators
-            // folded to hyphens) as a fallback, never in place of it.
-            let mut effective_model = caller_model.clone();
-            let mut soft_warning: Option<String> = None;
-            if !gate.resolves(&caller_model) {
-                let normalized = normalize_caller_model(&caller_model);
-                if normalized != caller_model && gate.resolves(&normalized) {
-                    soft_warning = Some(format!(
-                        "caller_model '{caller_model}' did not match the price table \
-                         exactly; normalized to '{normalized}' (stripped trailing client \
-                         qualifier and/or folded separators to hyphens) and resolved from \
-                         there. Pass the exact price-table model_id to avoid this warning."
-                    ));
-                    effective_model = normalized;
-                }
-            }
-
-            match gate.evaluate(&effective_model, &tool, grant_id.as_deref()) {
+            match gate.evaluate(&caller_model, &tool, grant_id.as_deref()) {
                 Decision::Reject { guidance } => {
                     let telemetry = immediate_telemetry("reject", Some(caller_model));
                     (ClientAction::Respond(error_result(&id, &guidance)), Some(telemetry))
@@ -290,18 +241,16 @@ pub fn handle_client_message(
                         args.remove(CALLER_MODEL_ARG);
                         args.remove(GRANT_ID_ARG);
                     }
-                    let decision_label = if soft_warning.is_some() { "allow-normalized" } else { "allow" };
                     pending_calls.record(
                         &id,
                         PendingCall {
                             tool_name: tool,
                             caller_model: Some(caller_model),
                             grant_id,
-                            decision: decision_label.to_string(),
+                            decision: "allow".to_string(),
                             request_bytes,
                             request_chars,
                             started_at: std::time::Instant::now(),
-                            warning: soft_warning,
                         },
                     );
                     (ClientAction::Forward(msg), None)
@@ -320,12 +269,10 @@ pub fn handle_server_message(
     pending: &mut PendingList,
     pending_calls: &mut PendingCalls,
 ) -> (Value, Option<CallTelemetry>) {
-    let mut warning_to_inject: Option<String> = None;
     let telemetry = msg.get("id").and_then(|id| pending_calls.take(id)).map(|call| {
         let (response_bytes, response_chars, _) = compute_payload_telemetry(&msg);
         let duration_ms = call.started_at.elapsed().as_millis() as u64;
         let tokens_estimated = (call.request_chars + response_chars) / 4;
-        warning_to_inject = call.warning.clone();
         CallTelemetry {
             timestamp: now_rfc3339(),
             tool_name: call.tool_name,
@@ -340,12 +287,6 @@ pub fn handle_server_message(
             tokens_estimated: Some(tokens_estimated),
         }
     });
-
-    if let Some(warning) = warning_to_inject {
-        if let Some(result) = msg.get_mut("result").and_then(Value::as_object_mut) {
-            result.insert("costGateWarning".to_string(), json!(warning));
-        }
-    }
 
     let is_list_response = msg
         .get("id")
@@ -396,7 +337,7 @@ pub fn inject_caller_model_schema(tool: &mut Value) {
             CALLER_MODEL_ARG.to_string(),
             json!({
                 "type": "string",
-                "description": "Id of the model issuing this call (e.g. claude-opus-4-8). Required for price-awareness enforcement. Client-appended qualifiers such as 'Claude Sonnet 5 (copilot)', and space/underscore separators, are tolerated as a fallback and normalized to hyphens; prefer the exact price-table model_id."
+                "description": "Id of the model issuing this call (e.g. claude-opus-4-8). Required for price-awareness enforcement."
             }),
         );
     }
@@ -575,88 +516,6 @@ mod tests {
         let mut p = PendingList::default();
         let mut pc = PendingCalls::default();
         match handle_client_message(call("read_file", Some("github-copilot")), Some(&g), &mut p, &mut pc) {
-            (ClientAction::Respond(v), telemetry) => {
-                assert_eq!(v["result"]["isError"], json!(true));
-                let text = v["result"]["content"][0]["text"].as_str().unwrap();
-                assert!(text.to_lowercase().contains("unknown caller_model"));
-                assert_eq!(telemetry.expect("expected telemetry").decision, "reject");
-            }
-            other => panic!("expected Respond, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parenthetical_client_qualifier_is_tolerated() {
-        // "gpt-5-mini (copilot)" doesn't match exactly or by substring, but
-        // stripping the trailing "(copilot)" qualifier resolves to "gpt-5-mini".
-        let g = test_gate();
-        let mut p = PendingList::default();
-        let mut pc = PendingCalls::default();
-        match handle_client_message(
-            call("some_unknown_tool", Some("gpt-5-mini (copilot)")),
-            Some(&g),
-            &mut p,
-            &mut pc,
-        ) {
-            (ClientAction::Forward(v), _) => {
-                let args = &v["params"]["arguments"];
-                assert!(args.get(CALLER_MODEL_ARG).is_none(), "caller_model must be stripped");
-            }
-            other => panic!("expected Forward (allow after normalization), got {other:?}"),
-        }
-
-        // The soft warning surfaces on the eventual server response.
-        let resp = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": { "content": [{ "type": "text", "text": "ok" }] }
-        });
-        let (out, telemetry) = handle_server_message(resp, &mut p, &mut pc);
-        assert!(out["result"]["costGateWarning"].as_str().unwrap().contains("normalized"));
-        assert_eq!(telemetry.unwrap().decision, "allow-normalized");
-    }
-
-    #[test]
-    fn space_and_underscore_separators_are_normalized() {
-        // "Claude_Opus 4 1" doesn't match exactly, but normalizing separators
-        // to hyphens and lowercasing resolves to "claude-opus-4-1".
-        let g = test_gate();
-        let mut p = PendingList::default();
-        let mut pc = PendingCalls::default();
-        match handle_client_message(
-            call("runSubagent", Some("Claude_Opus 4 1")),
-            Some(&g),
-            &mut p,
-            &mut pc,
-        ) {
-            (ClientAction::Forward(v), _) => {
-                let args = &v["params"]["arguments"];
-                assert!(args.get(CALLER_MODEL_ARG).is_none(), "caller_model must be stripped");
-            }
-            other => panic!("expected Forward (allow after normalization), got {other:?}"),
-        }
-        let resp = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": { "content": [{ "type": "text", "text": "ok" }] }
-        });
-        let (out, _) = handle_server_message(resp, &mut p, &mut pc);
-        assert!(out["result"]["costGateWarning"].is_string());
-    }
-
-    #[test]
-    fn genuinely_unknown_model_still_rejected_after_normalization() {
-        // Normalizing "Totally Unknown Model (copilot)" still doesn't match
-        // anything in the price table, so the call is rejected as before.
-        let g = test_gate();
-        let mut p = PendingList::default();
-        let mut pc = PendingCalls::default();
-        match handle_client_message(
-            call("read_file", Some("Totally Unknown Model (copilot)")),
-            Some(&g),
-            &mut p,
-            &mut pc,
-        ) {
             (ClientAction::Respond(v), telemetry) => {
                 assert_eq!(v["result"]["isError"], json!(true));
                 let text = v["result"]["content"][0]["text"].as_str().unwrap();
