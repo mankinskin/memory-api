@@ -1803,6 +1803,7 @@ mod tests {
                         .to_string(),
                     required: true,
                     outcome: Some("passed".to_string()),
+                    command: None,
                 }],
                 None,
             )
