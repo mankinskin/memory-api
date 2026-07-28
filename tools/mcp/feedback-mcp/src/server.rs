@@ -255,4 +255,26 @@ mod tests {
 
         assert!(server.get_info().capabilities.tools.is_some());
     }
+
+    #[test]
+    fn workspace_validation_rejects_ambient_aliases() {
+        for value in [None, Some(""), Some("default"), Some("."), Some("..")]
+        {
+            let err = memory_api::workspace::validate_explicit_workspace_selector(
+                value,
+            )
+            .expect_err("should reject ambient selector");
+            let err_msg = err.to_string();
+            assert!(
+                err_msg.contains("invalid workspace selector"),
+                "error should mention 'invalid workspace selector': {err_msg}"
+            );
+            assert!(
+                err_msg.contains(
+                    "entity creation requires an explicit workspace path"
+                ),
+                "error should state the requirement: {err_msg}"
+            );
+        }
+    }
 }
