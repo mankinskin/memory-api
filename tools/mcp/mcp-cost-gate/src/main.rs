@@ -22,6 +22,8 @@
 //! * `COST_GATE_GRANTS_DIR` — directory with grant JSON files (optional).
 //! * `COST_GATE_SCALE_MAX` — budget scale max (default 100).
 //! * `COST_GATE_BUDGET_ZERO_PRICE` — price at which budget=0 (default 60.0).
+//! * `COST_GATE_TELEMETRY_LOG` — path to append per-call `CallTelemetry` JSONL
+//!   records (ticket 9d527ad1; optional, no telemetry emitted when unset).
 
 use std::{
     io::{
@@ -48,7 +50,9 @@ use mcp_cost_gate::{
         ModelBudgetCalibration,
     },
     proxy::{
+        CallTelemetry,
         ClientAction,
+        PendingCalls,
         PendingList,
         handle_client_message,
         handle_server_message,
@@ -58,6 +62,22 @@ use serde_json::Value;
 
 fn log(msg: &str) {
     eprintln!("[mcp-cost-gate] {msg}");
+}
+
+/// Append a `CallTelemetry` record as a JSONL line to the path named by
+/// `COST_GATE_TELEMETRY_LOG` (optional; telemetry is dropped silently when
+/// unset, matching the other `COST_GATE_*` optional-config conventions).
+fn emit_telemetry(path: Option<&PathBuf>, telemetry: &CallTelemetry) {
+    let Some(path) = path else { return };
+    let Ok(line) = serde_json::to_string(telemetry) else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{line}");
+    }
 }
 
 /// Split argv into the real server command (everything after `--`).
@@ -178,6 +198,10 @@ fn main() {
     }
 
     let gate = load_gate().map(Arc::new);
+    let telemetry_log = std::env::var("COST_GATE_TELEMETRY_LOG")
+        .ok()
+        .map(PathBuf::from)
+        .map(Arc::new);
 
     let mut child = match spawn_server(&command) {
         Ok(c) => c,
@@ -190,14 +214,19 @@ fn main() {
     let child_stdin = child.stdin.take().expect("piped stdin");
     let child_stdout = child.stdout.take().expect("piped stdout");
 
-    // Shared client-stdout writer (both threads may write to it) and the set of
-    // in-flight tools/list request ids.
+    // Shared client-stdout writer (both threads may write to it), the set of
+    // in-flight tools/list request ids, and the in-flight tools/call requests
+    // awaiting a response for telemetry correlation.
     let client_out = Arc::new(Mutex::new(std::io::stdout()));
     let pending = Arc::new(Mutex::new(PendingList::default()));
+    let pending_calls = Arc::new(Mutex::new(PendingCalls::default()));
 
-    // Server -> client: pass through, injecting tool schemas on list responses.
+    // Server -> client: pass through, injecting tool schemas on list responses
+    // and emitting telemetry for correlated tools/call responses.
     let reader_out = Arc::clone(&client_out);
     let reader_pending = Arc::clone(&pending);
+    let reader_pending_calls = Arc::clone(&pending_calls);
+    let reader_telemetry_log = telemetry_log.clone();
     let reader = std::thread::spawn(move || {
         let mut lines = BufReader::new(child_stdout).lines();
         while let Some(Ok(line)) = lines.next() {
@@ -206,8 +235,14 @@ fn main() {
             }
             let out_line = match serde_json::from_str::<Value>(&line) {
                 Ok(msg) => {
-                    let rewritten =
-                        handle_server_message(msg, &mut reader_pending.lock().unwrap());
+                    let (rewritten, telemetry) = handle_server_message(
+                        msg,
+                        &mut reader_pending.lock().unwrap(),
+                        &mut reader_pending_calls.lock().unwrap(),
+                    );
+                    if let Some(telemetry) = &telemetry {
+                        emit_telemetry(reader_telemetry_log.as_deref(), telemetry);
+                    }
                     serde_json::to_string(&rewritten).unwrap_or(line)
                 }
                 Err(_) => line,
@@ -228,11 +263,15 @@ fn main() {
         }
         match serde_json::from_str::<Value>(&line) {
             Ok(msg) => {
-                let action = handle_client_message(
+                let (action, telemetry) = handle_client_message(
                     msg,
                     gate.as_deref(),
                     &mut pending.lock().unwrap(),
+                    &mut pending_calls.lock().unwrap(),
                 );
+                if let Some(telemetry) = &telemetry {
+                    emit_telemetry(telemetry_log.as_deref(), telemetry);
+                }
                 match action {
                     ClientAction::Forward(v) => {
                         let s = serde_json::to_string(&v).unwrap_or(line);

@@ -54,6 +54,10 @@ fn id_key(id: &Value) -> String {
 }
 
 /// Payload telemetry for an MCP tool call (ticket 9d527ad1).
+///
+/// `tokens_estimated` is a rough chars/4 estimate over the combined
+/// request+response payloads — never an observed token count, and never a
+/// dollar cost (tools have no dollar cost; see spec 7be68a48 R4).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallTelemetry {
     pub timestamp: String,
@@ -67,7 +71,44 @@ pub struct CallTelemetry {
     pub request_chars: u64,
     pub response_bytes: u64,
     pub response_chars: u64,
+    pub duration_ms: u64,
     pub tokens_estimated: u64,
+}
+
+/// A `tools/call` forwarded to the real server, awaiting its response.
+///
+/// Captured at the moment of forwarding so `handle_server_message` can
+/// compute `duration_ms` and emit a `CallTelemetry` once the matching
+/// response arrives (correlated by JSON-RPC id).
+#[derive(Debug, Clone)]
+pub struct PendingCall {
+    pub tool_name: String,
+    pub caller_model: Option<String>,
+    pub grant_id: Option<String>,
+    pub decision: String,
+    pub request_bytes: u64,
+    pub request_chars: u64,
+    pub started_at: std::time::Instant,
+}
+
+/// Tracks in-flight forwarded `tools/call` requests by JSON-RPC id.
+#[derive(Default)]
+pub struct PendingCalls {
+    calls: std::collections::HashMap<String, PendingCall>,
+}
+
+impl PendingCalls {
+    pub fn record(&mut self, id: &Value, call: PendingCall) {
+        self.calls.insert(id_key(id), call);
+    }
+
+    pub fn take(&mut self, id: &Value) -> Option<PendingCall> {
+        self.calls.remove(&id_key(id))
+    }
+}
+
+fn now_rfc3339() -> String {
+    chrono::Utc::now().to_rfc3339()
 }
 
 /// Compute payload size and estimated tokens from a JSON value.
@@ -105,9 +146,10 @@ pub fn handle_client_message(
     mut msg: Value,
     gate: Option<&Gate>,
     pending: &mut PendingList,
-) -> ClientAction {
+    pending_calls: &mut PendingCalls,
+) -> (ClientAction, Option<CallTelemetry>) {
     let Some(gate) = gate else {
-        return ClientAction::Forward(msg);
+        return (ClientAction::Forward(msg), None);
     };
 
     let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
@@ -116,7 +158,7 @@ pub fn handle_client_message(
             if let Some(id) = msg.get("id") {
                 pending.record(id);
             }
-            ClientAction::Forward(msg)
+            (ClientAction::Forward(msg), None)
         }
         "tools/call" => {
             let id = msg.get("id").cloned().unwrap_or(Value::Null);
@@ -138,21 +180,48 @@ pub fn handle_client_message(
                 .and_then(|a| a.get(GRANT_ID_ARG))
                 .and_then(Value::as_str)
                 .map(|s| s.trim().to_string());
+            let (request_bytes, request_chars, _) = compute_payload_telemetry(&msg);
+
+            // Build an immediate (non-forwarded) telemetry record: nothing was
+            // sent to the server, so response counts are zero and duration_ms
+            // is zero (no wall-clock span to measure).
+            let immediate_telemetry = |decision: &str, caller_model: Option<String>| CallTelemetry {
+                timestamp: now_rfc3339(),
+                tool_name: tool.clone(),
+                caller_model,
+                grant_id: grant_id.clone(),
+                decision: decision.to_string(),
+                request_bytes,
+                request_chars,
+                response_bytes: 0,
+                response_chars: 0,
+                duration_ms: 0,
+                tokens_estimated: request_chars / 4,
+            };
 
             if caller_model.is_empty() {
-                return ClientAction::Respond(error_result(
-                    &id,
-                    &format!(
-                        "Missing required '{CALLER_MODEL_ARG}' argument. Every tool \
-                         call must declare the id of the model issuing it (e.g. \
-                         claude-opus-4-8) so price-awareness enforcement can run."
-                    ),
-                ));
+                let telemetry = immediate_telemetry("reject-missing-model", None);
+                return (
+                    ClientAction::Respond(error_result(
+                        &id,
+                        &format!(
+                            "Missing required '{CALLER_MODEL_ARG}' argument. Every tool \
+                             call must declare the id of the model issuing it (e.g. \
+                             claude-opus-4-8) so price-awareness enforcement can run."
+                        ),
+                    )),
+                    Some(telemetry),
+                );
             }
 
             match gate.evaluate(&caller_model, &tool, grant_id.as_deref()) {
-                Decision::Reject { guidance } | Decision::Delegate { guidance } => {
-                    ClientAction::Respond(error_result(&id, &guidance))
+                Decision::Reject { guidance } => {
+                    let telemetry = immediate_telemetry("reject", Some(caller_model));
+                    (ClientAction::Respond(error_result(&id, &guidance)), Some(telemetry))
+                }
+                Decision::Delegate { guidance } => {
+                    let telemetry = immediate_telemetry("delegate", Some(caller_model));
+                    (ClientAction::Respond(error_result(&id, &guidance)), Some(telemetry))
                 }
                 Decision::Allow => {
                     // Strip caller_model and grant_id before forwarding to the real server.
@@ -164,18 +233,53 @@ pub fn handle_client_message(
                         args.remove(CALLER_MODEL_ARG);
                         args.remove(GRANT_ID_ARG);
                     }
-                    ClientAction::Forward(msg)
+                    pending_calls.record(
+                        &id,
+                        PendingCall {
+                            tool_name: tool,
+                            caller_model: Some(caller_model),
+                            grant_id,
+                            decision: "allow".to_string(),
+                            request_bytes,
+                            request_chars,
+                            started_at: std::time::Instant::now(),
+                        },
+                    );
+                    (ClientAction::Forward(msg), None)
                 }
             }
         }
-        _ => ClientAction::Forward(msg),
+        _ => (ClientAction::Forward(msg), None),
     }
 }
 
 /// Handle a server→client message: if it is the response to a recorded
 /// `tools/list` request, inject a required `caller_model` argument into every
 /// advertised tool's `inputSchema`. Otherwise pass through unchanged.
-pub fn handle_server_message(mut msg: Value, pending: &mut PendingList) -> Value {
+pub fn handle_server_message(
+    mut msg: Value,
+    pending: &mut PendingList,
+    pending_calls: &mut PendingCalls,
+) -> (Value, Option<CallTelemetry>) {
+    let telemetry = msg.get("id").and_then(|id| pending_calls.take(id)).map(|call| {
+        let (response_bytes, response_chars, _) = compute_payload_telemetry(&msg);
+        let duration_ms = call.started_at.elapsed().as_millis() as u64;
+        let tokens_estimated = (call.request_chars + response_chars) / 4;
+        CallTelemetry {
+            timestamp: now_rfc3339(),
+            tool_name: call.tool_name,
+            caller_model: call.caller_model,
+            grant_id: call.grant_id,
+            decision: call.decision,
+            request_bytes: call.request_bytes,
+            request_chars: call.request_chars,
+            response_bytes,
+            response_chars,
+            duration_ms,
+            tokens_estimated,
+        }
+    });
+
     let is_list_response = msg
         .get("id")
         .map(|id| pending.take(id))
@@ -187,7 +291,7 @@ pub fn handle_server_message(mut msg: Value, pending: &mut PendingList) -> Value
             .unwrap_or(false);
 
     if !is_list_response {
-        return msg;
+        return (msg, telemetry);
     }
 
     if let Some(tools) = msg
@@ -199,7 +303,7 @@ pub fn handle_server_message(mut msg: Value, pending: &mut PendingList) -> Value
             inject_caller_model_schema(tool);
         }
     }
-    msg
+    (msg, telemetry)
 }
 
 /// Ensure a single tool object requires a `caller_model` string argument.
@@ -293,11 +397,16 @@ mod tests {
     fn missing_caller_model_is_rejected() {
         let g = test_gate();
         let mut p = PendingList::default();
-        match handle_client_message(call("read_file", None), Some(&g), &mut p) {
-            ClientAction::Respond(v) => {
+        let mut pc = PendingCalls::default();
+        match handle_client_message(call("read_file", None), Some(&g), &mut p, &mut pc) {
+            (ClientAction::Respond(v), telemetry) => {
                 assert_eq!(v["result"]["isError"], json!(true));
                 let text = v["result"]["content"][0]["text"].as_str().unwrap();
                 assert!(text.contains(CALLER_MODEL_ARG));
+                let telemetry = telemetry.expect("expected telemetry for refused call");
+                assert_eq!(telemetry.decision, "reject-missing-model");
+                assert_eq!(telemetry.duration_ms, 0);
+                assert_eq!(telemetry.response_bytes, 0);
             }
             other => panic!("expected Respond, got {other:?}"),
         }
@@ -340,10 +449,12 @@ mod tests {
         let _ = std::fs::remove_file(&rollup_path);
 
         let mut p = PendingList::default();
-        match handle_client_message(call("read_file", Some("claude-opus-4-1")), Some(&g), &mut p) {
-            ClientAction::Respond(v) => {
+        let mut pc = PendingCalls::default();
+        match handle_client_message(call("read_file", Some("claude-opus-4-1")), Some(&g), &mut p, &mut pc) {
+            (ClientAction::Respond(v), telemetry) => {
                 assert_eq!(v["result"]["isError"], json!(true));
                 assert!(v["result"]["content"][0]["text"].as_str().unwrap().to_lowercase().contains("delegate"));
+                assert_eq!(telemetry.expect("expected telemetry").decision, "delegate");
             }
             other => panic!("expected Respond, got {other:?}"),
         }
@@ -354,10 +465,12 @@ mod tests {
         // Without a rollup, even expensive models can call any tool (fail open)
         let g = test_gate();
         let mut p = PendingList::default();
-        match handle_client_message(call("read_file", Some("claude-opus-4-1")), Some(&g), &mut p) {
-            ClientAction::Forward(v) => {
+        let mut pc = PendingCalls::default();
+        match handle_client_message(call("read_file", Some("claude-opus-4-1")), Some(&g), &mut p, &mut pc) {
+            (ClientAction::Forward(v), telemetry) => {
                 let args = &v["params"]["arguments"];
                 assert!(args.get(CALLER_MODEL_ARG).is_none(), "caller_model must be stripped");
+                assert!(telemetry.is_none(), "forwarded calls emit telemetry on response, not on forward");
             }
             other => panic!("expected Forward (fail open), got {other:?}"),
         }
@@ -367,9 +480,10 @@ mod tests {
     fn cheap_forwards_and_strips_caller_model() {
         let g = test_gate();
         let mut p = PendingList::default();
+        let mut pc = PendingCalls::default();
         // Use a light tool (cost 1) that gpt-5-mini (budget ~97) can afford
-        match handle_client_message(call("some_unknown_tool", Some("gpt-5-mini")), Some(&g), &mut p) {
-            ClientAction::Forward(v) => {
+        match handle_client_message(call("some_unknown_tool", Some("gpt-5-mini")), Some(&g), &mut p, &mut pc) {
+            (ClientAction::Forward(v), _) => {
                 let args = &v["params"]["arguments"];
                 assert!(args.get(CALLER_MODEL_ARG).is_none(), "caller_model must be stripped");
             }
@@ -381,8 +495,9 @@ mod tests {
     fn expensive_light_tool_forwards() {
         let g = test_gate();
         let mut p = PendingList::default();
-        match handle_client_message(call("runSubagent", Some("claude-opus-4-1")), Some(&g), &mut p) {
-            ClientAction::Forward(_) => {}
+        let mut pc = PendingCalls::default();
+        match handle_client_message(call("runSubagent", Some("claude-opus-4-1")), Some(&g), &mut p, &mut pc) {
+            (ClientAction::Forward(_), _) => {}
             other => panic!("expected Forward, got {other:?}"),
         }
     }
@@ -391,11 +506,13 @@ mod tests {
     fn unknown_caller_model_is_rejected() {
         let g = test_gate();
         let mut p = PendingList::default();
-        match handle_client_message(call("read_file", Some("github-copilot")), Some(&g), &mut p) {
-            ClientAction::Respond(v) => {
+        let mut pc = PendingCalls::default();
+        match handle_client_message(call("read_file", Some("github-copilot")), Some(&g), &mut p, &mut pc) {
+            (ClientAction::Respond(v), telemetry) => {
                 assert_eq!(v["result"]["isError"], json!(true));
                 let text = v["result"]["content"][0]["text"].as_str().unwrap();
                 assert!(text.to_lowercase().contains("unknown caller_model"));
+                assert_eq!(telemetry.expect("expected telemetry").decision, "reject");
             }
             other => panic!("expected Respond, got {other:?}"),
         }
@@ -404,30 +521,33 @@ mod tests {
     #[test]
     fn no_gate_is_passthrough() {
         let mut p = PendingList::default();
-        match handle_client_message(call("read_file", None), None, &mut p) {
-            ClientAction::Forward(_) => {}
-            other => panic!("expected Forward, got {other:?}"),
+        let mut pc = PendingCalls::default();
+        match handle_client_message(call("read_file", None), None, &mut p, &mut pc) {
+            (ClientAction::Forward(_), None) => {}
+            other => panic!("expected Forward with no telemetry, got {other:?}"),
         }
     }
 
     #[test]
     fn tools_list_response_gets_schema_injected() {
         let mut p = PendingList::default();
+        let mut pc = PendingCalls::default();
         // Record the list request id.
         let req = json!({"jsonrpc":"2.0","id":7,"method":"tools/list","params":{}});
         let g = test_gate();
-        let _ = handle_client_message(req, Some(&g), &mut p);
+        let _ = handle_client_message(req, Some(&g), &mut p, &mut pc);
 
         let resp = json!({
             "jsonrpc": "2.0",
             "id": 7,
             "result": { "tools": [ { "name": "read_file", "inputSchema": { "type": "object", "properties": {}, "required": [] } } ] }
         });
-        let out = handle_server_message(resp, &mut p);
+        let (out, telemetry) = handle_server_message(resp, &mut p, &mut pc);
         let tool = &out["result"]["tools"][0];
         assert_eq!(tool["inputSchema"]["properties"][CALLER_MODEL_ARG]["type"], json!("string"));
         let required = tool["inputSchema"]["required"].as_array().unwrap();
         assert!(required.iter().any(|v| v == CALLER_MODEL_ARG));
+        assert!(telemetry.is_none(), "tools/list response is not a tools/call, no telemetry expected");
     }
 
     #[test]
@@ -468,5 +588,87 @@ mod tests {
         assert!(bytes > 0, "bytes should be non-zero for non-empty payload");
         assert!(chars > 0, "chars should be non-zero for non-empty payload");
         assert!(tokens > 0, "tokens_estimated should be non-zero for non-empty payload");
+    }
+
+    #[test]
+    fn allowed_call_emits_nonzero_tokens_estimated_on_response() {
+        // (a) A forwarded (allowed) tools/call correlates its response by
+        // JSON-RPC id and records a non-zero tokens_estimated derived from
+        // the combined request+response payload.
+        let g = test_gate();
+        let mut p = PendingList::default();
+        let mut pc = PendingCalls::default();
+        let req = call("some_unknown_tool", Some("gpt-5-mini"));
+        let (action, telemetry) = handle_client_message(req, Some(&g), &mut p, &mut pc);
+        assert!(telemetry.is_none(), "no telemetry until the response arrives");
+        let forwarded = match action {
+            ClientAction::Forward(v) => v,
+            other => panic!("expected Forward, got {other:?}"),
+        };
+        let id = forwarded["id"].clone();
+
+        let resp = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": { "content": [{ "type": "text", "text": "some tool output" }] }
+        });
+        let (_, telemetry) = handle_server_message(resp, &mut p, &mut pc);
+        let telemetry = telemetry.expect("expected telemetry once the response is correlated");
+        assert_eq!(telemetry.decision, "allow");
+        assert_eq!(telemetry.tool_name, "some_unknown_tool");
+        assert!(telemetry.response_bytes > 0, "response_bytes should be non-zero");
+        assert!(telemetry.response_chars > 0, "response_chars should be non-zero");
+        assert!(
+            telemetry.tokens_estimated > 0,
+            "tokens_estimated should be non-zero for a real intercepted tools/call"
+        );
+        assert_eq!(
+            telemetry.tokens_estimated,
+            (telemetry.request_chars + telemetry.response_chars) / 4
+        );
+    }
+
+    #[test]
+    fn duration_ms_is_populated_for_forwarded_calls() {
+        // (c) duration_ms measures wall-clock from forward to response receipt.
+        let g = test_gate();
+        let mut p = PendingList::default();
+        let mut pc = PendingCalls::default();
+        let req = call("some_unknown_tool", Some("gpt-5-mini"));
+        let (action, _) = handle_client_message(req, Some(&g), &mut p, &mut pc);
+        let forwarded = match action {
+            ClientAction::Forward(v) => v,
+            other => panic!("expected Forward, got {other:?}"),
+        };
+        let id = forwarded["id"].clone();
+
+        // Sleep a measurable span so duration_ms is guaranteed nonzero.
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        let resp = json!({ "jsonrpc": "2.0", "id": id, "result": { "content": [] } });
+        let (_, telemetry) = handle_server_message(resp, &mut p, &mut pc);
+        let telemetry = telemetry.expect("expected telemetry");
+        assert!(
+            telemetry.duration_ms >= 5,
+            "duration_ms should reflect the wall-clock span, got {}",
+            telemetry.duration_ms
+        );
+    }
+
+    #[test]
+    fn refused_call_records_zero_duration_and_response_counts() {
+        // (b/AC4 null-vs-zero): refused calls never reach the server, so
+        // response counts and duration_ms are recorded as zero (measured),
+        // not omitted — the call itself was still observed.
+        let g = test_gate();
+        let mut p = PendingList::default();
+        let mut pc = PendingCalls::default();
+        let (_, telemetry) =
+            handle_client_message(call("read_file", None), Some(&g), &mut p, &mut pc);
+        let telemetry = telemetry.expect("expected telemetry for the refused call");
+        assert_eq!(telemetry.response_bytes, 0);
+        assert_eq!(telemetry.response_chars, 0);
+        assert_eq!(telemetry.duration_ms, 0);
+        assert!(telemetry.request_chars > 0);
     }
 }

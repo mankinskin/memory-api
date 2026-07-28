@@ -10,7 +10,7 @@
 
 use mcp_cost_gate::{
     gate::{Decision, Gate, ModelBudgetCalibration},
-    proxy::{handle_client_message, ClientAction, PendingList},
+    proxy::{handle_client_message, ClientAction, PendingCalls, PendingList},
 };
 use serde_json::{json, Value};
 use std::fs;
@@ -288,7 +288,8 @@ fn test_handle_client_message_expensive_model_refused() {
 
     let msg = tools_call_request(1, "get_ticket_description", "claude-opus-4-8");
     let mut pending = PendingList::default();
-    let action = handle_client_message(msg, Some(&gate), &mut pending);
+    let mut pending_calls = PendingCalls::default();
+    let (action, _telemetry) = handle_client_message(msg, Some(&gate), &mut pending, &mut pending_calls);
 
     // Should be refused with Delegate guidance.
     let error_text = extract_error_text(action);
@@ -334,7 +335,8 @@ fn test_handle_client_message_cheap_model_allowed() {
 
     let msg = tools_call_request(1, "get_ticket_description", "claude-haiku-3-7");
     let mut pending = PendingList::default();
-    let action = handle_client_message(msg, Some(&gate), &mut pending);
+    let mut pending_calls = PendingCalls::default();
+    let (action, _telemetry) = handle_client_message(msg, Some(&gate), &mut pending, &mut pending_calls);
 
     // Should be forwarded (allowed).
     match action {
@@ -352,7 +354,8 @@ fn test_handle_client_message_cheap_model_allowed() {
 fn test_handle_client_message_no_gate_fail_open() {
     let msg = tools_call_request(1, "some_tool", "claude-opus-4-8");
     let mut pending = PendingList::default();
-    let action = handle_client_message(msg, None, &mut pending);
+    let mut pending_calls = PendingCalls::default();
+    let (action, _telemetry) = handle_client_message(msg, None, &mut pending, &mut pending_calls);
 
     // No gate (fail-open) → should forward unchanged.
     match action {
@@ -552,6 +555,77 @@ fn test_stdio_cheap_model_allowed() {
     // Clean up.
     drop(stdin);
     let _ = child.wait();
+}
+
+#[test]
+fn test_stdio_telemetry_recorded_for_allowed_call() {
+    // (a) A real intercepted MCP tools/call (spawned binary, stdio transport)
+    // records a CallTelemetry line with a non-zero tokens_estimated and a
+    // populated duration_ms once the "cat" passthrough echoes the response.
+    let tmp = TempDir::new().unwrap();
+
+    let price_table = json!({
+        "models": [
+            {
+                "provider_id": "anthropic",
+                "model_id": "claude-haiku-3-7",
+                "output_mtok": 2.0
+            }
+        ]
+    });
+    let table_path = write_json(&tmp, "prices.json", &price_table);
+
+    let rollup = json!({
+        "report": {
+            "tools": [
+                {
+                    "tool_name": "expensive_tool",
+                    "call_count": 10,
+                    "cost": 50
+                }
+            ]
+        }
+    });
+    let rollup_path = write_json(&tmp, "rollup.json", &rollup);
+    let telemetry_path = tmp.path().join("telemetry.jsonl");
+
+    let mut child = Command::new(get_binary_path())
+        .arg("--")
+        .arg("cat")
+        .env("COST_GATE_TABLE", table_path.display().to_string())
+        .env("COST_GATE_TOOL_METRICS", rollup_path.display().to_string())
+        .env("COST_GATE_TELEMETRY_LOG", telemetry_path.display().to_string())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn mcp-cost-gate binary");
+
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let mut reader = BufReader::new(stdout);
+
+    let call_req = tools_call_request(1, "expensive_tool", "claude-haiku-3-7");
+    writeln!(stdin, "{}", serde_json::to_string(&call_req).unwrap()).unwrap();
+    stdin.flush().unwrap();
+
+    // Read the echoed response so the server->client thread has processed it
+    // and had a chance to correlate + emit telemetry.
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+
+    drop(stdin);
+    let _ = child.wait();
+
+    let contents = fs::read_to_string(&telemetry_path)
+        .expect("expected telemetry JSONL file to be written");
+    let last_line = contents.lines().last().expect("expected at least one telemetry line");
+    let telemetry: Value = serde_json::from_str(last_line).expect("telemetry line should be valid JSON");
+
+    assert_eq!(telemetry["tool_name"], "expensive_tool");
+    assert_eq!(telemetry["decision"], "allow");
+    assert!(telemetry["response_bytes"].as_u64().unwrap() > 0);
+    assert!(telemetry["tokens_estimated"].as_u64().unwrap() > 0);
+    assert!(telemetry["duration_ms"].as_u64().is_some());
 }
 
 //
