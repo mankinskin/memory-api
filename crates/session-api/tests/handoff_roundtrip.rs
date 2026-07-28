@@ -37,7 +37,7 @@ fn open_escalations_field_persists_and_round_trips() {
     let package = SessionHandoffPackage {
         objective: "Fix the bug".to_string(),
         target_tickets: vec!["ticket-123".to_string()],
-        target_files: vec!["src/main.rs".to_string()],
+        target_files: vec!["memory-api/crates/session-api/src/lib.rs".to_string()],
         decisions: vec!["Use async/await".to_string()],
         non_goals: vec!["No refactoring".to_string()],
         context_anchors: vec!["Related PR #456".to_string()],
@@ -77,7 +77,7 @@ fn empty_open_escalations_is_persisted_as_empty_list() {
     let package = SessionHandoffPackage {
         objective: "Implement feature".to_string(),
         target_tickets: vec!["ticket-789".to_string()],
-        target_files: vec!["src/lib.rs".to_string()],
+        target_files: vec!["memory-api/crates/session-api/src/error.rs".to_string()],
         decisions: vec!["Use trait bounds".to_string()],
         non_goals: vec!["No optimization yet".to_string()],
         context_anchors: vec!["Spec doc#12".to_string()],
@@ -105,7 +105,7 @@ fn validation_gate_command_field_persists_and_round_trips() {
     let package = SessionHandoffPackage {
         objective: "Run tests".to_string(),
         target_tickets: vec!["ticket-101".to_string()],
-        target_files: vec!["tests/integration.rs".to_string()],
+        target_files: vec!["memory-api/crates/session-api/src/store.rs".to_string()],
         decisions: vec!["Use Criterion benchmarks".to_string()],
         non_goals: vec!["No UI tests".to_string()],
         context_anchors: vec!["Test plan doc".to_string()],

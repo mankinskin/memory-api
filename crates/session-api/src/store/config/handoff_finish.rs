@@ -8,7 +8,8 @@ impl SessionStoreConfig {
     ) -> Result<SessionHandoffRecord, SessionError> {
         // Validate package completeness when a package is supplied.
         // Missing `objective` is a hard error; missing list fields are a soft warning.
-        if let Some(ref pkg) = package {
+        let mut package = package;
+        if let Some(ref mut pkg) = package {
             let missing = pkg.missing_fields();
             if missing.contains(&"objective") {
                 return Err(SessionError::HandoffPackageIncomplete {
@@ -22,6 +23,39 @@ impl SessionStoreConfig {
                      implementation-ready",
                     fields = missing.join(", ")
                 );
+            }
+
+            // AC1/AC2: every `target_files` entry must be a repo-root-relative,
+            // forward-slash path that exists on disk, verified at creation
+            // time (not left for the consuming Implement Agent to discover).
+            let root = workspace_root();
+            for target in pkg.target_files.iter_mut() {
+                let normalized = normalize_repo_relative_path(target);
+                if !verify_repo_relative_path_exists(&root, &normalized) {
+                    return Err(SessionError::HandoffPathNotFound {
+                        path: target.clone(),
+                        workspace_root: root,
+                    });
+                }
+                *target = normalized;
+            }
+
+            // Path-shaped `context_anchors` (store-qualified physical paths,
+            // e.g. `memory-api/.ticket/tickets/<uuid>`) get the same
+            // creation-time verification; free-form anchors (URNs, ids,
+            // prose) are left untouched.
+            for anchor in pkg.context_anchors.iter_mut() {
+                if !looks_like_path(anchor) {
+                    continue;
+                }
+                let normalized = normalize_repo_relative_path(anchor);
+                if !verify_repo_relative_path_exists(&root, &normalized) {
+                    return Err(SessionError::HandoffPathNotFound {
+                        path: anchor.clone(),
+                        workspace_root: root,
+                    });
+                }
+                *anchor = normalized;
             }
         }
 

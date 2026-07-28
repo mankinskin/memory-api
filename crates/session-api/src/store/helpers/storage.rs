@@ -5,6 +5,79 @@ use events::{
 };
 use links::extend_unique;
 
+/// Discover the repository root so handoff package paths can be verified as
+/// repo-root-relative, regardless of where the session store root happens to
+/// live (a temp dir in tests, a nested `.session` dir in production).
+///
+/// `CARGO_MANIFEST_DIR` is baked in at compile time to this crate's own
+/// checkout location. This repo nests submodules at multiple levels (e.g.
+/// `context-engine` is itself a submodule of an outer repo, and `memory-api`
+/// has its own `.git`, each also carrying its own `AGENTS.md`), so neither
+/// `.git` nor `AGENTS.md` presence alone can identify the correct root.
+/// `repo_map.toon` lives at this repo's root uniquely (see the ticket
+/// `fb14754e` problem statement), so prefer it and fall back to the nearest
+/// `.git` ancestor if it is absent.
+pub(super) fn workspace_root() -> PathBuf {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut dir = manifest_dir.as_path();
+    loop {
+        if dir.join("repo_map.toon").is_file() {
+            return dir.to_path_buf();
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent,
+            None => break,
+        }
+    }
+    let mut dir = manifest_dir.as_path();
+    loop {
+        if dir.join(".git").exists() {
+            return dir.to_path_buf();
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent,
+            None => return manifest_dir,
+        }
+    }
+}
+
+
+
+
+/// Normalize a path to forward-slash form so persisted handoff paths are
+/// portable across platforms (AC1: repo-root-relative, forward-slash).
+pub(super) fn normalize_repo_relative_path(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
+/// Heuristic: does a `context_anchors` entry look like a physical path
+/// (rather than a free-form identifier like `spec:5e52039d` or a URN like
+/// `ce://default/ticket/<id>`)? Only path-shaped anchors are subject to
+/// existence verification; the field also carries non-path context notes.
+pub(super) fn looks_like_path(anchor: &str) -> bool {
+    if anchor.contains("://") {
+        return false;
+    }
+    if let Some(idx) = anchor.find(':') {
+        if !anchor[..idx].contains('/') {
+            return false;
+        }
+    }
+    anchor.contains('/')
+}
+
+/// Verify a repo-root-relative path exists on disk under `root`, rejecting
+/// absolute paths and parent-directory escapes (AC2: fail at creation time).
+pub(super) fn verify_repo_relative_path_exists(
+    root: &Path,
+    normalized: &str,
+) -> bool {
+    if normalized.starts_with('/') || normalized.contains("..") {
+        return false;
+    }
+    root.join(normalized).exists()
+}
+
 pub(super) fn write_json<T: Serialize>(
     path: &Path,
     value: &T,

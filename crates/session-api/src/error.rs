@@ -133,4 +133,13 @@ pub enum SessionError {
         "handoff package is incomplete — missing required fields: {fields}"
     )]
     HandoffPackageIncomplete { fields: String },
+
+    #[error(
+        "handoff package references a path that does not exist under the \
+         workspace root ({workspace_root}): {path}"
+    )]
+    HandoffPathNotFound {
+        path: String,
+        workspace_root: PathBuf,
+    },
 }
