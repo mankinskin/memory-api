@@ -1,9 +1,11 @@
 id = "908ed6a4-d4f2-4cd1-bce0-d2d804b19b62"
 created_at = "2026-07-27T20:23:41.370213600+00:00"
 title = "[session-api] Complete handoff round-trip assertions (risk_notes, predecessor_handoff) and verify 8c67b96a AC4/AC5"
-state = "in-review"
+state = "done"
 component = "session-api"
 effort = "600"
 linked = ["8c67b96a-b88f-4710-b8e2-f65e59c4e61e"]
+review_recommendation = "done"
+review_verdict = "pass"
 risk_level = "low"
 type = "tracker-improvement"

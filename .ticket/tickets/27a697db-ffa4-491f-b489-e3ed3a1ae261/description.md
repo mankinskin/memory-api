@@ -1,1 +1,1 @@
-Rationale: TicketStore requires an explicit index_root via TicketStore::open(&Path); adding Default would invent a store root and change the constructor contract. Replaced the broken #[cfg(test)] assertion in memory-api/crates/ticket/src/lib.rs with a check that the explicit-root constructor remains the public contract. Validation: rtk cargo test -p ticket (passed).
+Review pass: all 4 ACs met; constructor-contract test replaces invalid Default assertion.
