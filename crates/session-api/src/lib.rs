@@ -30,6 +30,7 @@ pub use delegation_cost::{
     RepeatCount,
     SubAgentDelegationReport,
     compute_delegation_cost_report,
+    compute_delegation_cost_report_from_events,
     normalize_path_for_dedup,
 };
 pub use error::SessionError;
