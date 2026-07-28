@@ -584,6 +584,29 @@ impl SessionStorePlan {
             write_json(&self.paths.events_path, &events)?;
         }
 
+        // Populate tool-metrics.json immediately at capture time (ticket
+        // b7c61f0e AC4) instead of only lazily on first aggregate read, so
+        // newly captured sessions always have a non-empty, up-to-date
+        // summary reflecting the full merged transcript.
+        let merged_record = SessionRecord {
+            schema_version: manifest.schema_version,
+            session_id: manifest.session_id.clone(),
+            source: manifest.source.clone(),
+            started_at: manifest.started_at,
+            captured_at: manifest.captured_at,
+            metadata: manifest.metadata.clone(),
+            turns: transcript.turns.clone(),
+            links: manifest.links.clone(),
+            track_id: manifest.track_id.clone(),
+            anchor_ticket_id: manifest.anchor_ticket_id.clone(),
+            parent_session_id: manifest.parent_session_id.clone(),
+            spawned_session_id: manifest.spawned_session_id.clone(),
+        };
+        let estimator = crate::tool_metrics::CharsPerTokenEstimator::default();
+        let summary =
+            crate::tool_metrics::compute_session_summary(&merged_record, &estimator);
+        write_json(&self.paths.session_dir.join("tool-metrics.json"), &summary)?;
+
         Ok(self.paths.clone())
     }
 }

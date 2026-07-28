@@ -202,7 +202,7 @@ pub enum SessionRole {
     Tool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SessionTurnEventMeta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event_id: Option<String>,
@@ -255,6 +255,15 @@ pub struct SessionTurnEventMeta {
     pub exit_code: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result_code: Option<String>,
+    /// Sub-agent span attribution (ticket b7c61f0e): the `tool_call_id` of the
+    /// nearest enclosing `runSubagent` invocation whose
+    /// `tool.execution_start`/`tool.execution_complete` bracket contains this
+    /// event, resolved at capture time from true `parent_event_id` ancestry
+    /// (not raw event-index overlap) so nested and parallel sub-agent spans
+    /// are attributed without double-counting. `None` for top-level
+    /// orchestrator turns that are not nested inside any `runSubagent` call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subagent_run_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -446,6 +455,7 @@ mod tests {
                     error_message: None,
                     exit_code: None,
                     result_code: None,
+                    subagent_run_id: None,
                 }),
             }],
             links: SessionLinks {

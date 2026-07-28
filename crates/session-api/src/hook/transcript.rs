@@ -81,6 +81,15 @@ fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
     let mut events = vec![];
     let mut tool_execution_contexts: HashMap<String, ToolExecutionContext> =
         HashMap::new();
+    // Sub-agent span attribution (ticket b7c61f0e): maps an event's own
+    // `event_id` to the `tool_call_id` of the nearest enclosing `runSubagent`
+    // invocation, derived from true `parent_event_id` ancestry as each event
+    // is consumed in order. This correctly attributes nested and parallel
+    // sub-agent spans without the double-counting that naive event-index
+    // overlap produces, because every event has exactly one ancestor chain
+    // regardless of how spans interleave in the flat event stream.
+    let mut span_owner_by_event_id: HashMap<String, Option<String>> =
+        HashMap::new();
 
     for line in reader.lines() {
         let line = line.map_err(|source| SessionError::Io {
@@ -103,6 +112,30 @@ fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
         let tool_call_key = event.tool_call_id.clone().unwrap_or_default();
         let context = tool_execution_contexts.get(tool_call_key.as_str());
         hydrate_tool_execution_complete(&mut event, context);
+
+        let parent_owner = event
+            .parent_event_id
+            .as_ref()
+            .and_then(|parent_id| {
+                span_owner_by_event_id.get(parent_id.as_str()).cloned()
+            })
+            .flatten();
+        let is_subagent_start = event.tool_name.as_deref()
+            == Some("runSubagent")
+            && matches!(
+                event.event_type.as_deref(),
+                Some("tool.execution_start") | Some("tool_execution_start")
+            );
+        event.subagent_run_id = parent_owner.clone();
+        let owner_for_descendants = if is_subagent_start {
+            event.tool_call_id.clone()
+        } else {
+            parent_owner
+        };
+        if let Some(event_id) = event.event_id.clone() {
+            span_owner_by_event_id.insert(event_id, owner_for_descendants);
+        }
+
         events.push(event.captured_event());
         if let Some(result_event) =
             build_tool_execution_result_event(&event, context)

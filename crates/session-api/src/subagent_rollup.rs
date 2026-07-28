@@ -69,11 +69,6 @@ pub fn compute_subagent_rollups(
     // Aggregate token/cost data from turns with event_meta
     for turn in &record.turns {
         if let Some(meta) = &turn.event_meta {
-            // For sub-agent sessions (those with a run_id in context),
-            // aggregate into that run's rollup. For top-level sessions
-            // without a run_id, we could create a synthetic rollup, but
-            // skip for now since the ticket focuses on sub-agent attribution.
-            
             // Extract model_id from event_meta or turn.model
             let model_id = meta.model_id.as_ref().or(turn.model.as_ref());
             
@@ -89,16 +84,29 @@ pub fn compute_subagent_rollups(
             let cache_read = meta.cache_read_tokens.unwrap_or(0);
             let cache_write = meta.cache_write_tokens.unwrap_or(0);
             
-            // For now, aggregate all turns into the main session's rollup
-            // (we'd need a way to match turns to specific run_ids for true
-            // per-sub-agent attribution, which would require run_id in event_meta)
-            let rollup_key = record.session_id.clone();
+            // Real per-sub-agent attribution (ticket b7c61f0e): when the
+            // capture hook has resolved this turn's owning `runSubagent`
+            // span via `parent_event_id` ancestry, group into that span's
+            // own rollup instead of lumping every turn into the parent
+            // session's bucket. Turns without a resolved span (top-level
+            // orchestrator turns, or transcripts captured before this
+            // attribution existed) keep the prior fallback behavior of
+            // aggregating into the parent session's own key.
+            let rollup_key = meta
+                .subagent_run_id
+                .clone()
+                .unwrap_or_else(|| record.session_id.clone());
+            let is_inline_subagent_span = rollup_key != record.session_id;
             
             let rollup = rollups.entry(rollup_key.clone()).or_insert_with(|| {
                 SubAgentRollup {
                     run_id: rollup_key.clone(),
                     session_id: record.session_id.clone(),
-                    parent_session_id: None,
+                    parent_session_id: if is_inline_subagent_span {
+                        Some(record.session_id.clone())
+                    } else {
+                        None
+                    },
                     model: None,
                     turn_count: 0,
                     tool_call_count: 0,
@@ -217,6 +225,7 @@ mod tests {
                         error_message: None,
                         exit_code: None,
                         result_code: None,
+                        subagent_run_id: None,
                     }),
                 },
                 SessionTurn {
@@ -251,6 +260,7 @@ mod tests {
                         error_message: None,
                         exit_code: None,
                         result_code: None,
+                        subagent_run_id: None,
                     }),
                 },
             ],
@@ -337,6 +347,7 @@ mod tests {
                         error_message: None,
                         exit_code: None,
                         result_code: None,
+                        subagent_run_id: None,
                     }),
                 },
             ],
@@ -418,6 +429,7 @@ mod tests {
                         error_message: None,
                         exit_code: None,
                         result_code: None,
+                        subagent_run_id: None,
                     }),
                 },
                 // Another MCP tool call
@@ -453,6 +465,7 @@ mod tests {
                         error_message: None,
                         exit_code: None,
                         result_code: None,
+                        subagent_run_id: None,
                     }),
                 },
                 // Non-MCP turn with null telemetry (AC4: null vs zero)
@@ -488,6 +501,7 @@ mod tests {
                         error_message: None,
                         exit_code: None,
                         result_code: None,
+                        subagent_run_id: None,
                     }),
                 },
             ],
@@ -572,6 +586,7 @@ mod tests {
                         error_message: None,
                         exit_code: None,
                         result_code: None,
+                        subagent_run_id: None,
                     }),
                 },
             ],

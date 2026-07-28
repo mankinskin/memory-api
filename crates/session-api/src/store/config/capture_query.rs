@@ -200,4 +200,27 @@ impl SessionStoreConfig {
         Ok(build_session_audit_report(&record, events.as_ref()))
     }
 
+    /// Compute the delegation cost report for a captured session: the
+    /// supported, tested replacement for the ad-hoc
+    /// `tmp/subagent_cost_probe.py` analysis (ticket b7c61f0e). Reproduces
+    /// per-sub-agent tool histograms, cross-agent duplicate-read detection
+    /// (path-normalization safe), duplicate-command detection, and real
+    /// per-sub-agent token/cost totals once `data_json.usage` is populated.
+    pub fn delegation_cost_report(
+        &self,
+        selector: SessionAuditSelector,
+    ) -> Result<crate::DelegationCostReport, SessionError> {
+        let session_id = match selector {
+            SessionAuditSelector::SessionId(session_id) => session_id,
+            SessionAuditSelector::Latest => self.latest_session_id()?.ok_or(
+                SessionError::NoSessionsFound {
+                    root: self.sessions_root()?,
+                },
+            )?,
+        };
+
+        let record = self.read_session(&session_id)?;
+        Ok(crate::delegation_cost::compute_delegation_cost_report(&record))
+    }
+
 }

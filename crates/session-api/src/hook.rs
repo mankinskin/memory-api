@@ -249,6 +249,10 @@ struct TranscriptEventEnvelope {
     tool_arguments_json: Option<Value>,
     data_json: Option<Value>,
     raw_event_json: Option<Value>,
+    /// Nearest enclosing `runSubagent` span this event belongs to, resolved
+    /// via `parent_event_id` ancestry during transcript parsing (ticket
+    /// b7c61f0e). See [`crate::SessionTurnEventMeta::subagent_run_id`].
+    subagent_run_id: Option<String>,
 }
 
 impl TranscriptEventEnvelope {
@@ -328,6 +332,7 @@ impl TranscriptEventEnvelope {
             error_message,
             exit_code,
             result_code,
+            subagent_run_id: self.subagent_run_id.clone(),
         };
         if meta.event_id.is_none()
             && meta.parent_event_id.is_none()
@@ -348,6 +353,7 @@ impl TranscriptEventEnvelope {
             && meta.error_message.is_none()
             && meta.exit_code.is_none()
             && meta.result_code.is_none()
+            && meta.subagent_run_id.is_none()
         {
             None
         } else {

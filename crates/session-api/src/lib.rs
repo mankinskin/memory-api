@@ -1,4 +1,5 @@
 pub mod audit;
+pub mod delegation_cost;
 pub mod error;
 pub mod escalation;
 pub mod follow_up;
@@ -21,6 +22,15 @@ pub use audit::{
     SessionAuditSelector,
     SessionAuditSeverity,
     SessionAuditToolCount,
+};
+pub use delegation_cost::{
+    CrossAgentDuplicate,
+    DelegationCostReport,
+    DelegationFailure,
+    RepeatCount,
+    SubAgentDelegationReport,
+    compute_delegation_cost_report,
+    normalize_path_for_dedup,
 };
 pub use error::SessionError;
 pub use escalation::{

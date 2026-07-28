@@ -66,6 +66,7 @@ pub(super) fn deserialize_transcript_event(
         tool_arguments_json: json_value(&data, "arguments"),
         data_json: Some(data.clone()),
         raw_event_json: Some(value),
+        subagent_run_id: None,
         data,
     })
 }

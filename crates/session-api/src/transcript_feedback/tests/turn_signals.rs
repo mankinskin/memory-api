@@ -38,6 +38,7 @@ fn tool_turn(
         error_message: None,
             exit_code: None,
             result_code: None,
+            subagent_run_id: None,
         }),
     }
 }

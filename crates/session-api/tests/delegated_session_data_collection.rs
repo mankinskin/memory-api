@@ -160,6 +160,7 @@ fn subagent_rollup_aggregates_token_cost_model_per_delegated_session() {
                     error_message: None,
                     exit_code: None,
                     result_code: None,
+                    subagent_run_id: None,
                 }),
             },
             SessionTurn {
@@ -194,6 +195,7 @@ fn subagent_rollup_aggregates_token_cost_model_per_delegated_session() {
                     error_message: None,
                     exit_code: None,
                     result_code: None,
+                    subagent_run_id: None,
                 }),
             },
         ],
@@ -390,6 +392,7 @@ fn token_cost_model_fields_populated_via_session_turn_event_meta() {
             error_message: None,
             exit_code: None,
             result_code: None,
+            subagent_run_id: None,
         }),
     };
 
