@@ -176,6 +176,19 @@ impl Gate {
             .fold(None, fold_max)
     }
 
+    /// True when `model` resolves to a price-table entry via [`resolve_output_mtok`].
+    pub fn resolves(&self, model: &str) -> bool {
+        self.resolve_output_mtok(model).is_some()
+    }
+
+    /// Compact, sorted, deduplicated list of known `model_id`s, for rejection guidance.
+    pub fn available_model_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.models.iter().map(|r| r.model_id.clone()).collect();
+        ids.sort();
+        ids.dedup();
+        ids
+    }
+
     /// Compute base_budget from model's output_mtok using linear inverse mapping.
     /// Returns a value in [0, scale_max]. Unknown model → 0 (conservative).
     pub fn base_budget(&self, model: &str) -> u32 {
@@ -271,7 +284,7 @@ impl Gate {
         // price-awareness enforcement instead of surfacing the mistake.
         if self.resolve_output_mtok(model).is_none() {
             return Decision::Reject {
-                guidance: unknown_model_guidance(model),
+                guidance: unknown_model_guidance(model, &self.available_model_ids()),
             };
         }
         let tool_cost = self.tool_cost(tool);
@@ -308,15 +321,27 @@ fn fold_max(acc: Option<f64>, v: f64) -> Option<f64> {
     })
 }
 
-/// Guidance returned when `caller_model` cannot be resolved in the price table.
-pub fn unknown_model_guidance(model: &str) -> String {
+/// Guidance returned when `caller_model` cannot be resolved in the price table,
+/// even after the transport wrapper's fallback normalization (trailing
+/// parenthetical qualifier stripped; spaces/underscores folded to hyphens).
+/// `available` is the compact list of known `model_id`s, sourced from
+/// [`Gate::available_model_ids`].
+pub fn unknown_model_guidance(model: &str, available: &[String]) -> String {
+    let sample = if available.is_empty() {
+        "(no models loaded)".to_string()
+    } else {
+        available.iter().take(12).cloned().collect::<Vec<_>>().join(", ")
+    };
     format!(
         "Unknown caller_model '{model}': it does not match any model_id in the \
-         price table. Pass the actual id of the model issuing this call (its real \
-         price-table model_id, e.g. claude-opus-4-8, claude-sonnet-4-5, gpt-5), \
-         not a generic vendor or product label such as 'github-copilot', \
-         'copilot', 'openai', or 'anthropic'. An unrecognized caller_model is \
-         refused so price-awareness enforcement is never silently bypassed."
+         price table, even after normalizing common deviations (stripping a \
+         trailing client qualifier such as '(copilot)', and folding spaces/ \
+         underscores to hyphens). Pass the actual id of the model issuing this \
+         call (its real price-table model_id, e.g. claude-opus-5, claude-sonnet-5, \
+         gpt-5.3-codex, ...), not a generic vendor or product label such as \
+         'github-copilot', 'copilot', 'openai', or 'anthropic'. Detected available \
+         models: {sample}. An unrecognized caller_model is refused so \
+         price-awareness enforcement is never silently bypassed."
     )
 }
 
