@@ -3,7 +3,7 @@ use crate::{
     ToolMetricsReport,
     ToolMetricsWindow,
     aggregate_with_cost,
-    compute_session_summary,
+    compute_session_summary_with_events,
     write_rollup,
     tool_metrics::{CharsPerTokenEstimator, GradedCostCalibration, SessionToolMetricsSummary},
 };
@@ -49,8 +49,16 @@ impl SessionStoreConfig {
 
             let session_id = entry.file_name().to_string_lossy().into_owned();
 
-            // Try to load cached summary, or compute and persist if missing
-            let summary = self.load_or_compute_tool_metrics_summary(&session_id)?;
+            // Skip directories that are not readable sessions (e.g. runtime
+            // scratch folders): they must not fail the whole aggregation.
+            let summary = match self
+                .load_or_compute_tool_metrics_summary(&session_id)
+            {
+                Ok(summary) => summary,
+                Err(SessionError::NotFound { .. }) => continue,
+                Err(SessionError::Deserialize { .. }) => continue,
+                Err(error) => return Err(error),
+            };
             summaries.push(summary);
         }
 
@@ -75,18 +83,38 @@ impl SessionStoreConfig {
     ) -> Result<SessionToolMetricsSummary, SessionError> {
         let tool_metrics_path = self.tool_metrics_path(session_id)?;
 
-        // Try to load existing summary
-        if let Some(summary) = read_json_if_exists(&tool_metrics_path)? {
-            return Ok(summary);
+        // Reuse a cached summary only when it actually holds tool data. An
+        // empty cached summary predates event-based capture, so recompute it.
+        if let Some(summary) =
+            read_json_if_exists::<SessionToolMetricsSummary>(&tool_metrics_path)?
+        {
+            if !summary.is_empty() {
+                return Ok(summary);
+            }
         }
 
-        // Compute from transcript
+        // Compute from the transcript plus the captured event stream, which is
+        // where tool call telemetry actually lives.
         let record = self.read_session(session_id)?;
+        let paths = self.paths_for_session_id(session_id)?;
+        let events: Option<crate::PersistedSessionEvents> =
+            read_json_if_exists(&paths.events_path)?;
         let estimator = CharsPerTokenEstimator::default();
-        let summary = compute_session_summary(&record, &estimator);
+        let summary = compute_session_summary_with_events(
+            &record,
+            events
+                .as_ref()
+                .map(|events| events.events.as_slice())
+                .unwrap_or_default(),
+            &estimator,
+        );
 
-        // Persist for future use
-        write_json(&tool_metrics_path, &summary)?;
+        // Persist lazily: never leave an empty sidecar behind.
+        if summary.is_empty() {
+            remove_file_if_exists(&tool_metrics_path)?;
+        } else {
+            write_json(&tool_metrics_path, &summary)?;
+        }
 
         Ok(summary)
     }

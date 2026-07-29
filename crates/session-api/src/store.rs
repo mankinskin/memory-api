@@ -580,14 +580,15 @@ impl SessionStorePlan {
 
         write_json(&self.paths.manifest_path, &manifest)?;
         write_json(&self.paths.transcript_path, &transcript)?;
-        if let Some(events) = merged_events {
-            write_json(&self.paths.events_path, &events)?;
+        if let Some(events) = &merged_events {
+            write_json(&self.paths.events_path, events)?;
         }
 
-        // Populate tool-metrics.json immediately at capture time (ticket
-        // b7c61f0e AC4) instead of only lazily on first aggregate read, so
-        // newly captured sessions always have a non-empty, up-to-date
-        // summary reflecting the full merged transcript.
+        // Populate tool-metrics.json at capture time (ticket b7c61f0e AC4) so
+        // newly captured sessions always have an up-to-date summary reflecting
+        // the full merged transcript AND event stream. Tool telemetry lives in
+        // the captured events, not in `role: tool` turns, which the Copilot
+        // transcript never produces.
         let merged_record = SessionRecord {
             schema_version: manifest.schema_version,
             session_id: manifest.session_id.clone(),
@@ -603,9 +604,22 @@ impl SessionStorePlan {
             spawned_session_id: manifest.spawned_session_id.clone(),
         };
         let estimator = crate::tool_metrics::CharsPerTokenEstimator::default();
-        let summary =
-            crate::tool_metrics::compute_session_summary(&merged_record, &estimator);
-        write_json(&self.paths.session_dir.join("tool-metrics.json"), &summary)?;
+        let summary = crate::tool_metrics::compute_session_summary_with_events(
+            &merged_record,
+            merged_events
+                .as_ref()
+                .map(|events| events.events.as_slice())
+                .unwrap_or_default(),
+            &estimator,
+        );
+        // Create the sidecar lazily: a session with no observed tool call must
+        // not leave an empty `tool-metrics.json` behind.
+        let tool_metrics_path = self.paths.session_dir.join("tool-metrics.json");
+        if summary.is_empty() {
+            remove_file_if_exists(&tool_metrics_path)?;
+        } else {
+            write_json(&tool_metrics_path, &summary)?;
+        }
 
         Ok(self.paths.clone())
     }

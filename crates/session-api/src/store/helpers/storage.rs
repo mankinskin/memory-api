@@ -78,6 +78,19 @@ pub(super) fn verify_repo_relative_path_exists(
     root.join(normalized).exists()
 }
 
+/// Remove `path` if it exists. Used to keep optional sidecar files (such as
+/// `tool-metrics.json`) from lingering once they would only hold empty data.
+pub(super) fn remove_file_if_exists(path: &Path) -> Result<(), SessionError> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(SessionError::Io {
+            path: path.to_path_buf(),
+            source,
+        }),
+    }
+}
+
 pub(super) fn write_json<T: Serialize>(
     path: &Path,
     value: &T,

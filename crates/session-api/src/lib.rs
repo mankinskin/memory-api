@@ -166,6 +166,7 @@ pub use tool_metrics::{
     aggregate_multi_store,
     aggregate_with_cost,
     compute_session_summary,
+    compute_session_summary_with_events,
     graded_cost,
     write_rollup,
 };

@@ -97,6 +97,82 @@ fn e2e_hook_binary_persists_fixture_transcript() {
     assert_eq!(record.session_id, FIXTURE_SESSION_ID);
     assert_eq!(record.metadata.workspace_slug, "default");
     assert_eq!(record.metadata.trigger.as_deref(), Some("UserPromptSubmit"));
+
+    // A transcript with no tool execution must not leave an empty sidecar.
+    let tool_metrics_path = store_root
+        .join("sessions")
+        .join(FIXTURE_SESSION_ID)
+        .join("tool-metrics.json");
+    assert!(
+        !tool_metrics_path.exists(),
+        "tool-metrics.json must be created lazily, only when a tool call was captured"
+    );
+}
+
+const TOOL_CALL_TRANSCRIPT: &str = concat!(
+    r#"{"id":"evt-start-t","type":"session.start","timestamp":"2026-06-02T23:06:54.049Z","data":{"sessionId":"fixture-tool-calls","producer":"copilot-agent","startTime":"2026-06-02T23:06:54.049Z"}}"#,
+    "\n",
+    r#"{"id":"evt-user-t","type":"user.message","timestamp":"2026-06-02T23:07:00.000Z","data":{"content":"run a search"}}"#,
+    "\n",
+    r#"{"id":"evt-tool-start","type":"tool.execution_start","timestamp":"2026-06-02T23:07:01.000Z","data":{"toolCallId":"call-1","toolName":"grep_search","arguments":{"query":"needle"}}}"#,
+    "\n",
+    r#"{"id":"evt-tool-complete","type":"tool.execution_complete","timestamp":"2026-06-02T23:07:02.500Z","data":{"toolCallId":"call-1","success":true}}"#,
+    "\n",
+    r#"{"id":"evt-assistant-t","type":"assistant.message","timestamp":"2026-06-02T23:07:05.000Z","data":{"content":"done"}}"#,
+    "\n",
+);
+
+#[test]
+fn e2e_hook_binary_populates_tool_metrics_from_captured_tool_events() {
+    let fixture_dir = tempdir().expect("temp fixture dir");
+    let transcript_path = write_fixture_transcript(
+        fixture_dir.path(),
+        "fixture-tool-calls.jsonl",
+        TOOL_CALL_TRANSCRIPT,
+    );
+
+    let store_dir = tempdir().expect("tempdir");
+    let store_root = store_dir.path().join("memory-api-store");
+    fs::create_dir_all(&store_root).expect("create temp store root");
+
+    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
+        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+
+    let output = Command::new(hook_bin)
+        .arg("--transcript-path")
+        .arg(&transcript_path)
+        .arg("--store-root")
+        .arg(&store_root)
+        .arg("--workspace-slug")
+        .arg("default")
+        .arg("--trigger")
+        .arg("Stop")
+        .output()
+        .expect("run copilot-capture-hook");
+
+    assert!(
+        output.status.success(),
+        "copilot-capture-hook failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let tool_metrics_path = store_root
+        .join("sessions")
+        .join("fixture-tool-calls")
+        .join("tool-metrics.json");
+    let raw = fs::read_to_string(&tool_metrics_path)
+        .expect("tool-metrics.json should exist once a tool call was captured");
+    let summary: serde_json::Value =
+        serde_json::from_str(&raw).expect("tool-metrics.json should be valid json");
+
+    let grep = &summary["tools"]["grep_search"];
+    assert_eq!(grep["call_count"], 1);
+    assert_eq!(grep["success_count"], 1);
+    assert_eq!(
+        grep["duration_ms_values"][0], 1500,
+        "duration is derived from the start/complete bracket"
+    );
 }
 
 #[test]

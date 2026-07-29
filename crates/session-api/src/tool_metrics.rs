@@ -1,9 +1,9 @@
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use crate::{SessionError, SessionRecord, SessionRole};
+use crate::{CopilotHookEvent, SessionError, SessionRecord, SessionRole};
 
 /// Trait for estimating token counts from character counts.
 pub trait TokenEstimator {
@@ -142,6 +142,14 @@ pub struct SessionToolMetricsSummary {
     pub tools: BTreeMap<String, ToolCallSummary>,
 }
 
+impl SessionToolMetricsSummary {
+    /// `true` when no tool call was observed for this session. Callers use
+    /// this to avoid persisting an empty `tool-metrics.json` sidecar.
+    pub fn is_empty(&self) -> bool {
+        self.tools.is_empty()
+    }
+}
+
 /// Per-tool call summary within a session.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolCallSummary {
@@ -155,14 +163,87 @@ pub struct ToolCallSummary {
     pub duration_ms_values: Vec<i64>,
 }
 
+impl ToolCallSummary {
+    fn new() -> Self {
+        Self {
+            call_count: 0,
+            success_count: 0,
+            fail_count: 0,
+            timeout_count: 0,
+            hang_count: 0,
+            output_char_sizes: Vec::new(),
+            input_char_sizes: Vec::new(),
+            duration_ms_values: Vec::new(),
+        }
+    }
+
+    /// Increment the outcome bucket implied by `result_code`, falling back to
+    /// `tool_success` when the code is missing or unrecognized. Returns whether
+    /// the call was classified as successful.
+    fn classify(
+        &mut self,
+        result_code: Option<&str>,
+        tool_success: Option<bool>,
+    ) -> bool {
+        match result_code {
+            Some("ok") => {
+                self.success_count += 1;
+                true
+            },
+            Some("error") => {
+                self.fail_count += 1;
+                false
+            },
+            Some("timeout") => {
+                self.timeout_count += 1;
+                false
+            },
+            Some("hang") => {
+                self.hang_count += 1;
+                false
+            },
+            _ => {
+                let success = tool_success != Some(false);
+                if success {
+                    self.success_count += 1;
+                } else {
+                    self.fail_count += 1;
+                }
+                success
+            },
+        }
+    }
+}
+
 const TOOL_METRICS_SCHEMA_VERSION: u32 = 1;
 
 /// Compute per-session tool metrics summary from a session record.
+///
+/// Prefer [`compute_session_summary_with_events`]: the Copilot capture path
+/// never emits `role: tool` turns, so a turn-only computation is empty for
+/// every real session.
 pub fn compute_session_summary(
     record: &SessionRecord,
+    estimator: &impl TokenEstimator,
+) -> SessionToolMetricsSummary {
+    compute_session_summary_with_events(record, &[], estimator)
+}
+
+/// Compute per-session tool metrics summary from a session record plus its
+/// captured event stream.
+///
+/// Tool call telemetry lives in the captured events (`tool.execution_complete`
+/// / `tool.execution_result`), not in transcript turns — the Copilot
+/// transcript format has no `role: tool` message. Turn-derived calls are still
+/// honoured (other producers may emit them) and are de-duplicated against the
+/// event stream by `tool_call_id`.
+pub fn compute_session_summary_with_events(
+    record: &SessionRecord,
+    events: &[CopilotHookEvent],
     _estimator: &impl TokenEstimator,
 ) -> SessionToolMetricsSummary {
     let mut tools = BTreeMap::<String, ToolCallSummary>::new();
+    let mut counted_tool_call_ids = BTreeSet::<String>::new();
 
     for turn in &record.turns {
         if turn.role != SessionRole::Tool {
@@ -172,18 +253,15 @@ pub fn compute_session_summary(
             continue;
         };
 
-        let entry = tools.entry(tool_name.clone()).or_insert_with(|| {
-            ToolCallSummary {
-                call_count: 0,
-                success_count: 0,
-                fail_count: 0,
-                timeout_count: 0,
-                hang_count: 0,
-                output_char_sizes: Vec::new(),
-                input_char_sizes: Vec::new(),
-                duration_ms_values: Vec::new(),
-            }
-        });
+        if let Some(tool_call_id) = turn
+            .event_meta
+            .as_ref()
+            .and_then(|meta| meta.tool_call_id.clone())
+        {
+            counted_tool_call_ids.insert(tool_call_id);
+        }
+
+        let entry = tools.entry(tool_name.clone()).or_insert_with(ToolCallSummary::new);
 
         entry.call_count += 1;
 
@@ -193,38 +271,10 @@ pub fn compute_session_summary(
             .as_ref()
             .and_then(|meta| meta.result_code.as_deref());
 
-        let is_success = match result_code {
-            Some("ok") => {
-                entry.success_count += 1;
-                true
-            }
-            Some("error") => {
-                entry.fail_count += 1;
-                false
-            }
-            Some("timeout") => {
-                entry.timeout_count += 1;
-                false
-            }
-            Some("hang") => {
-                entry.hang_count += 1;
-                false
-            }
-            _ => {
-                // Fallback to tool_success if result_code is missing or unknown
-                let success = turn
-                    .event_meta
-                    .as_ref()
-                    .and_then(|meta| meta.tool_success)
-                    != Some(false);
-                if success {
-                    entry.success_count += 1;
-                } else {
-                    entry.fail_count += 1;
-                }
-                success
-            }
-        };
+        let is_success = entry.classify(
+            result_code,
+            turn.event_meta.as_ref().and_then(|meta| meta.tool_success),
+        );
 
         // Capture output chars only for successful calls (preserve existing behavior)
         if is_success {
@@ -257,12 +307,105 @@ pub fn compute_session_summary(
         }
     }
 
+    for event in events {
+        record_event_tool_call(event, &mut tools, &mut counted_tool_call_ids);
+    }
+
     SessionToolMetricsSummary {
         schema_version: TOOL_METRICS_SCHEMA_VERSION,
         session_id: record.session_id.clone(),
         captured_at: record.captured_at,
         tools,
     }
+}
+
+/// Accumulate a single captured tool-completion event into `tools`.
+///
+/// Only terminal events (`tool.execution_complete` / `tool.execution_result`)
+/// are counted, so a start/complete pair yields exactly one call. Redundant
+/// `tool.execution_result` entries collapsed into their matching
+/// `tool.execution_complete` at capture time are additionally guarded by the
+/// `tool_call_id` de-duplication set.
+fn record_event_tool_call(
+    event: &CopilotHookEvent,
+    tools: &mut BTreeMap<String, ToolCallSummary>,
+    counted_tool_call_ids: &mut BTreeSet<String>,
+) {
+    let is_terminal = matches!(
+        event.event_type.as_deref(),
+        Some("tool.execution_complete")
+            | Some("tool_execution_complete")
+            | Some("tool.execution_result")
+            | Some("tool_execution_result")
+    );
+    if !is_terminal {
+        return;
+    }
+
+    let data = event.data_json.as_ref();
+    let Some(tool_name) = event
+        .tool_name
+        .clone()
+        .or_else(|| json_str(data, &["tool_name", "toolName"]))
+    else {
+        return;
+    };
+
+    if let Some(tool_call_id) = event.tool_call_id.clone() {
+        if !counted_tool_call_ids.insert(tool_call_id) {
+            return;
+        }
+    }
+
+    let entry = tools.entry(tool_name).or_insert_with(ToolCallSummary::new);
+    entry.call_count += 1;
+
+    let result_code = json_str(data, &["result_code", "resultCode"]);
+    let tool_success = event
+        .tool_success
+        .or_else(|| data.and_then(|data| data.get("success")?.as_bool()));
+    entry.classify(result_code.as_deref(), tool_success);
+
+    if let Some(arguments) = event
+        .tool_arguments_json
+        .as_ref()
+        .or_else(|| data.and_then(|data| data.get("arguments")))
+    {
+        let input_chars =
+            serde_json::to_string(arguments).unwrap_or_default().len() as u64;
+        entry.input_char_sizes.push(input_chars);
+    }
+
+    // Output size is only recorded when the producer reported it. The Copilot
+    // transcript carries no tool result payload, so leaving it unrecorded keeps
+    // the unmeasured-tool cost policy fail-open instead of inventing a size.
+    if let Some(output_chars) = data.and_then(|data| {
+        ["output_chars", "response_chars", "outputChars", "responseChars"]
+            .iter()
+            .find_map(|key| data.get(*key)?.as_u64())
+    }) {
+        entry.output_char_sizes.push(output_chars);
+    }
+
+    if let Some(duration) = data.and_then(|data| {
+        data.get("duration_ms")
+            .or_else(|| data.get("durationMs"))?
+            .as_i64()
+    }) {
+        entry.duration_ms_values.push(duration);
+    }
+}
+
+fn json_str(
+    value: Option<&serde_json::Value>,
+    keys: &[&str],
+) -> Option<String> {
+    let value = value?;
+    keys.iter()
+        .find_map(|key| value.get(*key)?.as_str())
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(ToString::to_string)
 }
 
 /// Aggregate tool metrics from multiple session summaries with window filtering.
@@ -552,23 +695,37 @@ pub fn aggregate_multi_store(
             }
 
             let session_id = entry.file_name().to_string_lossy().into_owned();
-            
-            // Try to load cached summary
+
+            // Try to load a cached summary that actually holds tool data.
             let tool_metrics_path = entry.path().join("tool-metrics.json");
-            
+
             if tool_metrics_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&tool_metrics_path) {
                     if let Ok(summary) = serde_json::from_str::<SessionToolMetricsSummary>(&content) {
-                        all_summaries.push(summary);
-                        continue;
+                        if !summary.is_empty() {
+                            all_summaries.push(summary);
+                            continue;
+                        }
                     }
                 }
             }
-            
-            // If cached summary doesn't exist, compute it
+
+            // Otherwise recompute from the transcript plus the event stream.
             if let Ok(record) = config.read_session(&session_id) {
+                let events = std::fs::read_to_string(entry.path().join("events.json"))
+                    .ok()
+                    .and_then(|content| {
+                        serde_json::from_str::<crate::PersistedSessionEvents>(&content).ok()
+                    });
                 let estimator = CharsPerTokenEstimator::default();
-                let summary = compute_session_summary(&record, &estimator);
+                let summary = compute_session_summary_with_events(
+                    &record,
+                    events
+                        .as_ref()
+                        .map(|events| events.events.as_slice())
+                        .unwrap_or_default(),
+                    &estimator,
+                );
                 all_summaries.push(summary);
             }
         }
@@ -1192,5 +1349,151 @@ mod tests {
         assert!(json.contains("\"hang_count\":"));
         assert!(json.contains("\"p50_duration_ms\":"));
         assert!(json.contains("\"p95_duration_ms\":"));
+    }
+
+    use serde_json::json;
+
+    fn empty_record() -> SessionRecord {
+        SessionRecord {
+            schema_version: SESSION_SCHEMA_VERSION,
+            session_id: "events-session".to_string(),
+            source: "test".to_string(),
+            started_at: sample_time(),
+            captured_at: sample_time(),
+            metadata: SessionMetadata {
+                workspace_slug: "test".to_string(),
+                conversation_id: None,
+                agent_id: None,
+                ticket_id: None,
+                model: None,
+                trigger: None,
+                producer: None,
+                copilot_version: None,
+                vscode_version: None,
+                protocol_version: None,
+                worktree: None,
+            },
+            turns: vec![],
+            links: Default::default(),
+            track_id: None,
+            anchor_ticket_id: None,
+            parent_session_id: None,
+            spawned_session_id: None,
+        }
+    }
+
+    fn completion_event(
+        tool_call_id: &str,
+        tool_name: &str,
+        event_type: &str,
+        data: serde_json::Value,
+    ) -> CopilotHookEvent {
+        CopilotHookEvent {
+            event_id: Some(format!("{tool_call_id}-{event_type}")),
+            parent_event_id: None,
+            event_type: Some(event_type.to_string()),
+            captured_at: Some(sample_time()),
+            turn_id: None,
+            message_id: None,
+            tool_call_id: Some(tool_call_id.to_string()),
+            tool_name: Some(tool_name.to_string()),
+            tool_success: None,
+            reasoning_text: None,
+            tool_requests_json: None,
+            tool_arguments_json: None,
+            data_json: Some(data),
+            raw_event_json: None,
+        }
+    }
+
+    #[test]
+    fn computes_tool_calls_from_captured_events_when_no_tool_turns_exist() {
+        let events = vec![
+            completion_event(
+                "call-1",
+                "grep_search",
+                "tool.execution_start",
+                json!({"toolName": "grep_search"}),
+            ),
+            completion_event(
+                "call-1",
+                "grep_search",
+                "tool.execution_complete",
+                json!({
+                    "result_code": "ok",
+                    "duration_ms": 322,
+                    "arguments": {"query": "abc"},
+                }),
+            ),
+            completion_event(
+                "call-2",
+                "run_in_terminal",
+                "tool.execution_complete",
+                json!({"result_code": "error", "duration_ms": 12}),
+            ),
+        ];
+
+        let summary = compute_session_summary_with_events(
+            &empty_record(),
+            &events,
+            &CharsPerTokenEstimator::default(),
+        );
+
+        assert!(!summary.is_empty());
+        let grep = &summary.tools["grep_search"];
+        assert_eq!(grep.call_count, 1, "start event must not count as a call");
+        assert_eq!(grep.success_count, 1);
+        assert_eq!(grep.duration_ms_values, vec![322]);
+        assert_eq!(grep.input_char_sizes.len(), 1);
+        assert!(
+            grep.output_char_sizes.is_empty(),
+            "output size is unreported by the producer and must stay unmeasured"
+        );
+
+        let terminal = &summary.tools["run_in_terminal"];
+        assert_eq!(terminal.call_count, 1);
+        assert_eq!(terminal.fail_count, 1);
+    }
+
+    #[test]
+    fn does_not_double_count_complete_and_result_for_the_same_tool_call() {
+        let events = vec![
+            completion_event(
+                "call-1",
+                "read_file",
+                "tool.execution_complete",
+                json!({"result_code": "ok"}),
+            ),
+            completion_event(
+                "call-1",
+                "read_file",
+                "tool.execution_result",
+                json!({"result_code": "ok"}),
+            ),
+        ];
+
+        let summary = compute_session_summary_with_events(
+            &empty_record(),
+            &events,
+            &CharsPerTokenEstimator::default(),
+        );
+
+        assert_eq!(summary.tools["read_file"].call_count, 1);
+    }
+
+    #[test]
+    fn summary_is_empty_when_no_tool_call_was_observed() {
+        let summary = compute_session_summary_with_events(
+            &empty_record(),
+            &[completion_event(
+                "call-1",
+                "grep_search",
+                "assistant.turn_end",
+                json!({}),
+            )],
+            &CharsPerTokenEstimator::default(),
+        );
+
+        assert!(summary.is_empty());
     }
 }
