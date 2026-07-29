@@ -1,0 +1,9 @@
+id = "3d952036-efd4-4f36-a77f-6b7f5058a0a0"
+created_at = "2026-07-29T12:51:32.635509800+00:00"
+title = "Part-addressed writes and mandatory description_mode (remove the replace default)"
+state = "new"
+component = "ticket-api"
+depends_on = ["5a3d152c-faf7-4d33-8a4e-7ed19cf6b142"]
+effort = "3000"
+priority = "high"
+type = "task"
