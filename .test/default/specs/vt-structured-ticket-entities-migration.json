@@ -1,0 +1,10 @@
+{
+  "id": "vt-structured-ticket-entities-migration",
+  "title": "Structured ticket entities: migration dry-run then lossless apply",
+  "detail": "Dry-run report first, then apply. Apply must produce byte-identical total content to the pre-migration descriptions, and tickets already in `planned` must be migrated via unfreeze then re-freeze.",
+  "links": {
+    "ticket_ids": [
+      "f65f2b32-9297-4360-9ad7-deb75e7ea401"
+    ]
+  }
+}

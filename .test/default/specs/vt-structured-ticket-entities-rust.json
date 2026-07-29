@@ -1,0 +1,16 @@
+{
+  "id": "vt-structured-ticket-entities-rust",
+  "title": "Structured ticket entities: Rust unit and storage tests",
+  "command": "cargo test -p ticket-api -p memory-api",
+  "detail": "Covers parts storage, part-addressed writes, typed refs, freezing guard, and projection profiles.",
+  "links": {
+    "ticket_ids": [
+      "bbb4bce9-d57c-4f85-8757-8d239f9f7cde",
+      "5a3d152c-faf7-4d33-8a4e-7ed19cf6b142",
+      "3d952036-efd4-4f36-a77f-6b7f5058a0a0",
+      "9d69e93d-b7ab-4f88-a88c-40ec76d5206b",
+      "f9e70385-adb7-4942-a8fb-6a383863cc7e",
+      "4c7b884e-fd9b-4967-9599-5b55495d6e52"
+    ]
+  }
+}

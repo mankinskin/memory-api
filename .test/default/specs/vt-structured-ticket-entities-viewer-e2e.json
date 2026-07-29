@@ -1,0 +1,11 @@
+{
+  "id": "vt-structured-ticket-entities-viewer-e2e",
+  "title": "Structured ticket entities: ticket-viewer release E2E",
+  "command": "npm run test:e2e:release",
+  "detail": "Run from memory-viewers/ticket-viewer/frontend/dioxus. Requires screenshots of part rendering, frozen badges, amendments, and typed refs, plus external fullscreen Chromium verification.",
+  "links": {
+    "ticket_ids": [
+      "89fa0c25-a9ee-4f2d-a341-09fd9707946a"
+    ]
+  }
+}
