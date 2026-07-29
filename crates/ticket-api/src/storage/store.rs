@@ -454,6 +454,20 @@ impl TicketStore {
     ) -> Result<TicketManifest, StorageError> {
         let mut patch = patch;
 
+        // `state` must never be applied as a plain field patch: doing so
+        // would either bypass transition validation (if silently applied)
+        // or be silently dropped (as it previously was, when the
+        // to_state-derived `new_state` overwrote the patched value with the
+        // ticket's unchanged current state). Reject it explicitly so callers
+        // route state changes through `to_state`/`transition_states`, which
+        // validate against the schema's allowed transitions.
+        if patch.contains_key("state") {
+            return Err(StorageError::Other(format!(
+                "field 'state' cannot be set via a field/field_map patch (rejected value: {:?}); use to_state or transition_states to change ticket state",
+                patch.get("state")
+            )));
+        }
+
         let mut indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
         let current_manifest = TicketFs::read(&indexed.path)?;

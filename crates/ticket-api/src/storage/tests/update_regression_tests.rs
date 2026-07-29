@@ -1,5 +1,49 @@
 use super::*;
 #[test]
+fn ticket_29a56eef_state_in_field_patch_errors_instead_of_silently_dropping() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Test ticket"),
+            Some("new"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    // A `state` key sent through a plain field/field_map patch (no
+    // `to_state`) must never be silently dropped: it must either apply or
+    // return an explicit error naming the field.
+    let mut patch = BTreeMap::new();
+    patch.insert("state".to_string(), Value::String("ready".to_string()));
+
+    let result = store.update(&id, patch, None, None, None, None);
+
+    match result {
+        Ok(_) => {
+            let indexed = store.get_indexed(&id).unwrap().unwrap();
+            assert_eq!(
+                indexed.state.as_deref(),
+                Some("ready"),
+                "if the write is accepted, it must actually apply"
+            );
+        },
+        Err(err) => {
+            let message = err.to_string();
+            assert!(
+                message.contains("state"),
+                "error must name the rejected field, got: {message}"
+            );
+        },
+    }
+}
+
+#[test]
 fn bug_7f4aaa05_state_preserved_on_field_patch_without_to_state() {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();

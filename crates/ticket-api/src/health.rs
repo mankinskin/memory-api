@@ -151,26 +151,51 @@ fn append_schema_findings(
     ticket: &IndexedTicket,
     report: &mut HealthReport,
 ) {
-    if store.schema_registry().get(&ticket.type_id).is_some() {
-        return;
-    }
-
-    report.record(
-        "unknown_type",
-        base_finding(
-            ticket,
+    let Some(schema) = store.schema_registry().get(&ticket.type_id) else {
+        report.record(
             "unknown_type",
-            "error",
-            format!(
-                "Ticket type '{}' has no registered schema; transitions and validation will fail.",
-                ticket.type_id
+            base_finding(
+                ticket,
+                "unknown_type",
+                "error",
+                format!(
+                    "Ticket type '{}' has no registered schema; transitions and validation will fail.",
+                    ticket.type_id
+                ),
+                vec![
+                    "Register a built-in schema for this type in ticket-api (model/default_schema.rs and SchemaRegistry::with_builtins), or load a matching TOML schema.".to_string(),
+                    "If the type is a mistake, retype the ticket to a supported type before continuing.".to_string(),
+                ],
             ),
-            vec![
-                "Register a built-in schema for this type in ticket-api (model/default_schema.rs and SchemaRegistry::with_builtins), or load a matching TOML schema.".to_string(),
-                "If the type is a mistake, retype the ticket to a supported type before continuing.".to_string(),
-            ],
-        ),
-    );
+        );
+        return;
+    };
+
+    if let Some(state) = ticket.state.as_deref() {
+        if !schema.states.iter().any(|s| s == state) {
+            report.record(
+                "off_schema_state",
+                base_finding(
+                    ticket,
+                    "off_schema_state",
+                    "error",
+                    format!(
+                        "Ticket state '{}' is not a member of type '{}' schema's allowed states [{}]; the ticket has zero legal transitions.",
+                        state,
+                        ticket.type_id,
+                        schema.states.join(", ")
+                    ),
+                    vec![
+                        format!(
+                            "Set 'state' directly in the ticket's manifest to one of: {}.",
+                            schema.states.join(", ")
+                        ),
+                        "field/field_map patches reject 'state' writes; edit the manifest state field directly or use a supported transition once the state is legal again.".to_string(),
+                    ],
+                ),
+            );
+        }
+    }
 }
 
 fn append_ticket_findings(
@@ -589,6 +614,44 @@ mod tests {
         assert_eq!(finding.severity, "error");
         assert!(finding.message.contains("made-up-type"));
         assert_eq!(*report.summary.get("unknown_type").unwrap_or(&0), 1);
+    }
+
+    #[test]
+    fn off_schema_state_produces_finding() {
+        let (_dir, store) = open_store();
+        // Reproduces the frozen-ticket scenario: a ticket created directly
+        // with a `state` value that is not a member of its type schema's
+        // `states` list (e.g. "open", which is not in tracker-improvement's
+        // schema). Such a ticket has zero legal transitions.
+        let id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("Ticket frozen in an off-schema state"),
+                Some("open"),
+                extra_with_effort("500"),
+                None,
+                Some("This description is definitely long enough to pass the 50-character threshold."),
+            )
+            .unwrap();
+
+        let tickets = store.list(None, None, None).unwrap();
+        let edges = store.list_all_edges().unwrap();
+        let workflow =
+            WorkflowModel::build(&store, tickets.clone(), edges.clone())
+                .unwrap();
+        let report =
+            super::collect_findings(&store, &tickets, &edges, &workflow);
+
+        let finding = report
+            .findings
+            .iter()
+            .find(|f| f.ticket_id == id && f.check == "off_schema_state")
+            .expect("expected off_schema_state finding");
+        assert_eq!(finding.severity, "error");
+        assert!(finding.message.contains("open"));
+        assert_eq!(finding.ticket_id, id);
+        assert_eq!(*report.summary.get("off_schema_state").unwrap_or(&0), 1);
     }
 
     #[test]

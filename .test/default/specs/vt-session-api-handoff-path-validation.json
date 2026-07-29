@@ -1,0 +1,18 @@
+{
+  "id": "vt-session-api-handoff-path-validation",
+  "title": "Handoff package creation-time physical path verification",
+  "command": "cargo test -p session-api",
+  "links": {
+    "spec_ids": [
+      "5e52039d-aabc-434d-bdf3-eca63e312476"
+    ],
+    "acceptance_criterion_ids": [
+      "AC1",
+      "AC2",
+      "AC3"
+    ],
+    "ticket_ids": [
+      "fb14754e-2be8-40a5-a995-488842ba6367"
+    ]
+  }
+}

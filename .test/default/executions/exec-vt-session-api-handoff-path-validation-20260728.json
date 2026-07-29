@@ -1,0 +1,27 @@
+{
+  "id": "exec-vt-session-api-handoff-path-validation-20260728",
+  "validation_spec_id": "vt-session-api-handoff-path-validation",
+  "outcome": "passed",
+  "executed_at": "2026-07-28T14:08:31.731131100Z",
+  "detail": "cargo build -p session-api: pass. cargo test -p session-api: 195 passed across 10 suites (0 failed), including 2 new tests: handoff_package_with_nonexistent_target_file_fails_at_creation_time (AC2, asserts SessionError::HandoffPathNotFound and zero handoff folders persisted) and handoff_package_normalizes_backslash_target_files_to_forward_slash (AC1, asserts forward-slash normalization of a real repo-relative path). Fixed 6 pre-existing integration-test fixtures (handoff_folder_storage.rs, handoff_roundtrip.rs) that used synthetic non-existent placeholder paths (src/main.rs etc.) to use real repo-relative paths, since creation-time validation now correctly rejects them.",
+  "links": {
+    "spec_ids": [
+      "5e52039d-aabc-434d-bdf3-eca63e312476"
+    ],
+    "acceptance_criterion_ids": [
+      "AC1",
+      "AC2",
+      "AC3"
+    ],
+    "ticket_ids": [
+      "fb14754e-2be8-40a5-a995-488842ba6367"
+    ]
+  },
+  "provenance": {
+    "source_path": "memory-api/crates/session-api/src/store_tests/workflow/snapshot_and_handoff.rs",
+    "domain": "session-api",
+    "operation": "create_handoff_record",
+    "transport": "cli",
+    "run_id": "fb14754e-implement-20260728"
+  }
+}
