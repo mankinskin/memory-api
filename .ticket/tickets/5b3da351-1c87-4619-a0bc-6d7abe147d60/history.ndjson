@@ -1,0 +1,2 @@
+{"rev":1,"ts":"2026-07-29T13:38:52.271282800+00:00","fields":{"component":"ticket-api","effort":"3200","priority":"high","state":"new","title":"Rename ticket lifecycle states: new -> open, ready -> planned, with store migration","type":"task"}}
+{"rev":2,"ts":"2026-07-29T13:40:26.362126100+00:00","fields":{"component":"ticket-api","effort":"3200","priority":"high","state":"ready","title":"Rename ticket lifecycle states: new -> open, ready -> planned, with store migration","type":"task"}}

@@ -1,0 +1,8 @@
+id = "5b3da351-1c87-4619-a0bc-6d7abe147d60"
+created_at = "2026-07-29T13:38:52.229384+00:00"
+title = "Rename ticket lifecycle states: new -> open, ready -> planned, with store migration"
+state = "ready"
+component = "ticket-api"
+effort = "3200"
+priority = "high"
+type = "task"
