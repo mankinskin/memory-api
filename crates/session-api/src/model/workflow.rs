@@ -186,6 +186,70 @@ pub struct SessionWorkflowSnapshot {
     pub diagnostics: Vec<SessionWorkflowDiagnostic>,
 }
 
+/// A structural defect found in a [`SessionWorkflowGraph`] by
+/// [`validate_workflow_graph`], independent of any resolver.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionWorkflowValidationIssue {
+    pub node_id: Option<String>,
+    pub code: String,
+    pub message: String,
+}
+
+/// Structurally validate a workflow graph: every edge endpoint must
+/// reference an existing node, and node ids must be unique.
+pub fn validate_workflow_graph(
+    graph: &SessionWorkflowGraph,
+) -> Vec<SessionWorkflowValidationIssue> {
+    use std::collections::HashSet;
+
+    let mut issues = Vec::new();
+
+    let known_ids: HashSet<&str> = graph
+        .nodes
+        .iter()
+        .map(|node| node.node_id.as_str())
+        .collect();
+
+    for edge in &graph.edges {
+        if !known_ids.contains(edge.from.as_str()) {
+            issues.push(SessionWorkflowValidationIssue {
+                node_id: Some(edge.from.clone()),
+                code: "dangling-edge".to_string(),
+                message: format!(
+                    "edge {} -> {} has a dangling `from` referencing missing node {}",
+                    edge.from, edge.to, edge.from
+                ),
+            });
+        }
+        if !known_ids.contains(edge.to.as_str()) {
+            issues.push(SessionWorkflowValidationIssue {
+                node_id: Some(edge.to.clone()),
+                code: "dangling-edge".to_string(),
+                message: format!(
+                    "edge {} -> {} has a dangling `to` referencing missing node {}",
+                    edge.from, edge.to, edge.to
+                ),
+            });
+        }
+    }
+
+    let mut seen: HashSet<&str> = HashSet::new();
+    for node in &graph.nodes {
+        if !seen.insert(node.node_id.as_str()) {
+            issues.push(SessionWorkflowValidationIssue {
+                node_id: Some(node.node_id.clone()),
+                code: "duplicate-node-id".to_string(),
+                message: format!(
+                    "node id {} appears more than once in the workflow graph",
+                    node.node_id
+                ),
+            });
+        }
+    }
+
+    issues
+}
+
 pub trait SessionTicketStateResolver {
     fn resolve_ticket_state(
         &self,
@@ -219,4 +283,73 @@ pub struct SessionValidationGate {
     /// `validation_spec_id` should reference a test-api ValidationSpec entry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(node_id: &str) -> SessionWorkflowNode {
+        let now = Utc::now();
+        SessionWorkflowNode {
+            node_id: node_id.to_string(),
+            kind: SessionWorkflowNodeKind::Task,
+            requirement: SessionWorkflowNodeRequirement::Required,
+            status: SessionWorkflowNodeStatus::Pending,
+            title: node_id.to_string(),
+            created_at: now,
+            updated_at: now,
+            ticket_urn: None,
+            spec_urn: None,
+            anchor_urn: None,
+            category: None,
+            cached_ticket_title: None,
+            deferred_reason: None,
+            validation_spec_id: None,
+        }
+    }
+
+    #[test]
+    fn validate_workflow_graph_reports_no_issues_for_valid_graph() {
+        let graph = SessionWorkflowGraph {
+            nodes: vec![node("a"), node("b")],
+            edges: vec![SessionWorkflowEdge {
+                from: "a".to_string(),
+                to: "b".to_string(),
+                kind: SessionWorkflowEdgeKind::DependsOn,
+            }],
+        };
+
+        assert!(validate_workflow_graph(&graph).is_empty());
+    }
+
+    #[test]
+    fn validate_workflow_graph_detects_dangling_edge() {
+        let graph = SessionWorkflowGraph {
+            nodes: vec![node("a")],
+            edges: vec![SessionWorkflowEdge {
+                from: "a".to_string(),
+                to: "missing".to_string(),
+                kind: SessionWorkflowEdgeKind::DependsOn,
+            }],
+        };
+
+        let issues = validate_workflow_graph(&graph);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "dangling-edge");
+        assert_eq!(issues[0].node_id.as_deref(), Some("missing"));
+    }
+
+    #[test]
+    fn validate_workflow_graph_detects_duplicate_node_id() {
+        let graph = SessionWorkflowGraph {
+            nodes: vec![node("a"), node("a")],
+            edges: vec![],
+        };
+
+        let issues = validate_workflow_graph(&graph);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "duplicate-node-id");
+        assert_eq!(issues[0].node_id.as_deref(), Some("a"));
+    }
 }

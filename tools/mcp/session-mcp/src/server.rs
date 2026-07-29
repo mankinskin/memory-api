@@ -683,6 +683,8 @@ impl SessionServer {
             | SessionError::CrossSessionReuseRequiresAdopt { .. }
             | SessionError::RuntimeContextNotFound { .. }
             | SessionError::FinishBlocked { .. }
+            | SessionError::WorkflowGraphInvalid { .. }
+            | SessionError::WorkflowDiagnosticsUnresolved { .. }
             | SessionError::Move(_) =>
                 McpError::invalid_params(err.to_string(), None),
             _ =>

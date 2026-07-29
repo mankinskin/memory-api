@@ -629,6 +629,7 @@ mod tests {
                 },
                 spec_fulfillment: SpecFulfillmentSummary::not_applicable("n/a"),
                 ticket_graph: CountMetric::unavailable("n/a"),
+                session_workflow_graph: CountMetric::unavailable("n/a"),
                 rule_overlap: RuleOverlapSummary::not_applicable("n/a"),
             },
             findings,

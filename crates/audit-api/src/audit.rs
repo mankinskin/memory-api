@@ -22,6 +22,7 @@ use crate::{
         cargo_quality,
         file_length,
         rule_overlap,
+        session_workflow_graph,
         spec_fulfillment,
         static_metrics,
         ticket_graph,
@@ -65,6 +66,8 @@ pub fn audit(
     )?;
     let spec_fulfillment_result = spec_fulfillment::evaluate(&repo_root);
     let ticket_graph_result = ticket_graph::evaluate(&repo_root);
+    let session_workflow_graph_result =
+        session_workflow_graph::evaluate(&repo_root);
     let rule_overlap_result = rule_overlap::evaluate(&repo_root);
 
     let mut findings = file_length_result.findings;
@@ -74,6 +77,7 @@ pub fn audit(
     findings.extend(coverage_result.findings);
     findings.extend(spec_fulfillment_result.findings);
     findings.extend(ticket_graph_result.findings);
+    findings.extend(session_workflow_graph_result.findings);
     findings.extend(rule_overlap_result.findings);
 
     let total_lines = indexed_files.iter().map(|file| file.line_count).sum();
@@ -87,6 +91,7 @@ pub fn audit(
         static_metrics: static_metrics_result.metric,
         spec_fulfillment: spec_fulfillment_result.metric,
         ticket_graph: ticket_graph_result.metric,
+        session_workflow_graph: session_workflow_graph_result.metric,
         rule_overlap: rule_overlap_result.metric,
     };
 

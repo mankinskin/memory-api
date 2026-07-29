@@ -25,6 +25,7 @@ ticket-api = { path = "../ticket-api" }
 spec-api = { path = "../spec-api" }
 memory-api = { path = "../memory-api" }
 rule-api = { path = "../rule-api" }
+session-api = { path = "../session-api" }
 
 [dev-dependencies]
 tempfile = "3"

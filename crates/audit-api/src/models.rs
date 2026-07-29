@@ -230,6 +230,7 @@ pub struct AuditMetrics {
     pub static_metrics: StaticMetricsSummary,
     pub spec_fulfillment: SpecFulfillmentSummary,
     pub ticket_graph: CountMetric,
+    pub session_workflow_graph: CountMetric,
     pub rule_overlap: RuleOverlapSummary,
 }
 

@@ -70,6 +70,7 @@ use crate::{
         peek_skeleton,
         peek_turn_range,
     },
+    validate_workflow_graph,
 };
 use rule_api::RuleStore;
 use spec_api::SpecStore;
@@ -459,6 +460,16 @@ fn render_handoff_record_markdown(record: &SessionHandoffRecord) -> String {
         .filter(|node| node.status != SessionWorkflowNodeStatus::Done)
         .count();
     sections.push(format!("- **Not Done**: {}", not_done));
+    if !record.workflow.workflow.nodes.is_empty() {
+        // Blank line required so Markdown renderers don't treat the fence as list continuation.
+        sections.push(String::new());
+        sections.push("```mermaid".to_string());
+        sections.push(render_workflow_mermaid(
+            &record.workflow.workflow,
+            &record.workflow.resolutions,
+        ));
+        sections.push("```".to_string());
+    }
     sections.push(String::new());
 
     // Pinned Entities
@@ -535,6 +546,55 @@ fn escape_mermaid_label(label: &str) -> String {
         .replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('\n', " ")
+}
+
+fn render_workflow_mermaid(
+    workflow: &crate::SessionWorkflowGraph,
+    resolutions: &[crate::SessionWorkflowNodeResolution],
+) -> String {
+    let live_states = resolutions
+        .iter()
+        .map(|item| (item.node_id.clone(), item.live_ticket_state.clone()))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut lines = vec!["flowchart TD".to_string()];
+    for node in &workflow.nodes {
+        let req = match node.requirement {
+            crate::SessionWorkflowNodeRequirement::Required => "req",
+            crate::SessionWorkflowNodeRequirement::Optional => "opt",
+        };
+        let live = live_states
+            .get(&node.node_id)
+            .and_then(|state| state.as_deref())
+            .unwrap_or("-");
+        let label = format!(
+            "{} |{}| |{}| |ticket:{}|",
+            node.title,
+            req,
+            workflow_status_label(node.status),
+            live
+        );
+        lines.push(format!(
+            "  {}[\"{}\"]",
+            mermaid_node_id(&node.node_id),
+            escape_mermaid_label(&label)
+        ));
+    }
+
+    for edge in &workflow.edges {
+        let arrow = match edge.kind {
+            SessionWorkflowEdgeKind::DependsOn => "-->|depends_on|",
+            SessionWorkflowEdgeKind::Order => "-->|order|",
+        };
+        lines.push(format!(
+            "  {} {} {}",
+            mermaid_node_id(&edge.from),
+            arrow,
+            mermaid_node_id(&edge.to)
+        ));
+    }
+
+    lines.join("\n")
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -62,6 +62,31 @@ impl SessionStoreConfig {
         let context = self.read_runtime_context(workspace_session_id)?;
         let workflow =
             self.workflow_snapshot(workspace_session_id, resolver)?;
+        // Fail before any handoff files are written so a bad graph never leaves a partial folder.
+        let structural_issues = validate_workflow_graph(&workflow.workflow);
+        if !structural_issues.is_empty() {
+            return Err(SessionError::WorkflowGraphInvalid {
+                workspace_session_id: workspace_session_id.to_string(),
+                issues: structural_issues
+                    .iter()
+                    .map(|issue| format!("{}: {}", issue.code, issue.message))
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            });
+        }
+        if !workflow.diagnostics.is_empty() {
+            return Err(SessionError::WorkflowDiagnosticsUnresolved {
+                workspace_session_id: workspace_session_id.to_string(),
+                diagnostics: workflow
+                    .diagnostics
+                    .iter()
+                    .map(|diag| {
+                        format!("{} [{}]: {}", diag.node_id, diag.code, diag.message)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            });
+        }
         let validation =
             self.resolve_validation_gates(&context, validation, false)?;
         let view = self.view_runtime_context(workspace_session_id)?;

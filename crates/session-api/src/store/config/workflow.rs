@@ -405,66 +405,9 @@ impl SessionStoreConfig {
     ) -> Result<String, SessionError> {
         let snapshot =
             self.workflow_snapshot(workspace_session_id, resolver)?;
-        let live_states = snapshot
-            .resolutions
-            .iter()
-            .map(|item| (item.node_id.clone(), item.live_ticket_state.clone()))
-            .collect::<BTreeMap<_, _>>();
-
-        let mut lines = vec!["flowchart TD".to_string()];
-        for node in &snapshot.workflow.nodes {
-            let req = match node.requirement {
-                crate::SessionWorkflowNodeRequirement::Required => "req",
-                crate::SessionWorkflowNodeRequirement::Optional => "opt",
-            };
-            let live = live_states
-                .get(&node.node_id)
-                .and_then(|state| state.as_deref())
-                .unwrap_or("-");
-            let label = format!(
-                "{} |{}| |{}| |ticket:{}|",
-                node.title,
-                req,
-                workflow_status_label(node.status),
-                live
-            );
-            lines.push(format!(
-                "  {}[\"{}\"]",
-                mermaid_node_id(&node.node_id),
-                escape_mermaid_label(&label)
-            ));
-        }
-
-        for edge in &snapshot.workflow.edges {
-            let arrow = match edge.kind {
-                SessionWorkflowEdgeKind::DependsOn => "-->|depends_on|",
-                SessionWorkflowEdgeKind::Order => "-->|order|",
-            };
-            lines.push(format!(
-                "  {} {} {}",
-                mermaid_node_id(&edge.from),
-                arrow,
-                mermaid_node_id(&edge.to)
-            ));
-        }
-
-        for diag in &snapshot.diagnostics {
-            let diag_id = format!("diag_{}", mermaid_node_id(&diag.node_id));
-            lines.push(format!(
-                "  {}((\"{}\"))",
-                diag_id,
-                escape_mermaid_label(&format!(
-                    "{}: {}",
-                    diag.code, diag.message
-                ))
-            ));
-            lines.push(format!(
-                "  {} -.-> {}",
-                diag_id,
-                mermaid_node_id(&diag.node_id)
-            ));
-        }
-
-        Ok(lines.join("\n"))
+        Ok(render_workflow_mermaid(
+            &snapshot.workflow,
+            &snapshot.resolutions,
+        ))
     }
 }

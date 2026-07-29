@@ -142,4 +142,22 @@ pub enum SessionError {
         path: String,
         workspace_root: PathBuf,
     },
+
+    #[error(
+        "workflow graph for workspace session {workspace_session_id} is \
+         structurally invalid: {issues}"
+    )]
+    WorkflowGraphInvalid {
+        workspace_session_id: String,
+        issues: String,
+    },
+
+    #[error(
+        "workflow diagnostics for workspace session {workspace_session_id} \
+         are unresolved: {diagnostics}"
+    )]
+    WorkflowDiagnosticsUnresolved {
+        workspace_session_id: String,
+        diagnostics: String,
+    },
 }

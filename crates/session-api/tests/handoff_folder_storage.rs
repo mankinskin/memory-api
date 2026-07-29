@@ -4,8 +4,9 @@
 //! and handoff.md, with deterministic markdown content and full JSON round-trip.
 
 use session_api::{
-    SessionHandoffPackage, SessionRuntimeInitRequest, SessionStoreConfig,
-    SessionValidationGate,
+    PersistedRuntimeContext, SessionError, SessionHandoffPackage, SessionRuntimeInitRequest,
+    SessionStoreConfig, SessionTicketStateResolver, SessionWorkflowEdge, SessionWorkflowEdgeKind,
+    SessionWorkflowNodeDraft, SessionWorkflowNodeKind, SessionWorkflowNodeRequirement,
 };
 use std::path::PathBuf;
 
@@ -214,4 +215,220 @@ fn legacy_flat_json_handoffs_still_load() {
     
     assert_eq!(legacy_loaded.handoff_id, legacy_handoff_id);
     assert_eq!(legacy_loaded.objective, package.objective);
+}
+
+#[test]
+fn handoff_markdown_includes_workflow_mermaid_diagram_when_nodes_exist() {
+    let (config, _temp_dir) = setup_test_store();
+    let workspace_session_id = "test-session-workflow-mermaid";
+
+    init_test_session(&config, workspace_session_id);
+
+    config
+        .workflow_add_node(
+            workspace_session_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("node-a".to_string()),
+                kind: SessionWorkflowNodeKind::Task,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "Do the thing".to_string(),
+                ticket_urn: None,
+                spec_urn: None,
+                anchor_urn: None,
+                category: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .expect("add workflow node");
+
+    let package = SessionHandoffPackage {
+        objective: "Ship the workflow".to_string(),
+        target_tickets: vec![],
+        target_files: vec![],
+        decisions: vec![],
+        non_goals: vec![],
+        context_anchors: vec![],
+        open_escalations: vec![],
+        risk_notes: None,
+        predecessor_handoff: None,
+    };
+
+    let result = config
+        .create_handoff_result(workspace_session_id, Some(package), vec![], None)
+        .expect("create handoff result");
+
+    let handoff_folder = PathBuf::from(&result.record_path);
+    let md_content = std::fs::read_to_string(handoff_folder.join("handoff.md"))
+        .expect("read handoff.md");
+
+    assert!(md_content.contains("```mermaid"), "markdown should contain a fenced mermaid block");
+    assert!(md_content.contains("flowchart TD"), "mermaid block should contain flowchart TD");
+    assert!(md_content.contains("node_a"), "mermaid block should contain a line for the seeded node");
+    assert!(
+        md_content.contains("\n\n```mermaid"),
+        "fence must be preceded by a blank line or Markdown treats it as list continuation"
+    );
+}
+
+#[test]
+fn handoff_markdown_omits_mermaid_diagram_when_workflow_empty() {
+    let (config, _temp_dir) = setup_test_store();
+    let workspace_session_id = "test-session-workflow-empty";
+
+    init_test_session(&config, workspace_session_id);
+
+    let package = SessionHandoffPackage {
+        objective: "No workflow yet".to_string(),
+        target_tickets: vec![],
+        target_files: vec![],
+        decisions: vec![],
+        non_goals: vec![],
+        context_anchors: vec![],
+        open_escalations: vec![],
+        risk_notes: None,
+        predecessor_handoff: None,
+    };
+
+    let result = config
+        .create_handoff_result(workspace_session_id, Some(package), vec![], None)
+        .expect("create handoff result");
+
+    let handoff_folder = PathBuf::from(&result.record_path);
+    let md_content = std::fs::read_to_string(handoff_folder.join("handoff.md"))
+        .expect("read handoff.md");
+
+    assert!(!md_content.contains("```mermaid"), "markdown should not contain a fenced mermaid block when workflow has no nodes");
+}
+
+/// A resolver that always fails ticket state resolution, to exercise the
+/// unresolved-diagnostics finish gate.
+struct FailingResolver;
+
+impl SessionTicketStateResolver for FailingResolver {
+    fn resolve_ticket_state(
+        &self,
+        _ticket_urn: &str,
+    ) -> Result<Option<String>, String> {
+        Err("boom".to_string())
+    }
+}
+
+#[test]
+fn create_handoff_result_rejects_dangling_edge_before_writing_files() {
+    let (config, _temp_dir) = setup_test_store();
+    let workspace_session_id = "test-session-dangling-edge";
+
+    init_test_session(&config, workspace_session_id);
+
+    config
+        .workflow_add_node(
+            workspace_session_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("node-a".to_string()),
+                kind: SessionWorkflowNodeKind::Task,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "Do the thing".to_string(),
+                ticket_urn: None,
+                spec_urn: None,
+                anchor_urn: None,
+                category: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .expect("add workflow node");
+
+    // workflow_add_edge validates both endpoints exist, so a dangling edge is
+    // injected directly into the persisted runtime context.
+    let context_path = _temp_dir
+        .join("sessions")
+        .join(workspace_session_id)
+        .join("context.json");
+    let mut context: PersistedRuntimeContext = serde_json::from_str(
+        &std::fs::read_to_string(&context_path).expect("read context.json"),
+    )
+    .expect("deserialize context.json");
+    context.workflow.edges.push(SessionWorkflowEdge {
+        from: "node-a".to_string(),
+        to: "node-missing".to_string(),
+        kind: SessionWorkflowEdgeKind::DependsOn,
+    });
+    std::fs::write(
+        &context_path,
+        serde_json::to_string_pretty(&context).expect("serialize context.json"),
+    )
+    .expect("write context.json");
+
+    let result = config.create_handoff_result(workspace_session_id, None, vec![], None);
+
+    assert!(
+        matches!(result, Err(SessionError::WorkflowGraphInvalid { .. })),
+        "expected WorkflowGraphInvalid, got {:?}",
+        result.map(|r| r.record.handoff_id)
+    );
+
+    let handoffs_dir = _temp_dir
+        .join("sessions")
+        .join(workspace_session_id)
+        .join("handoffs");
+    if handoffs_dir.exists() {
+        let entries: Vec<_> = std::fs::read_dir(&handoffs_dir)
+            .expect("read handoffs dir")
+            .collect();
+        assert!(
+            entries.is_empty(),
+            "no handoff folder should be written when structural validation fails"
+        );
+    }
+}
+
+#[test]
+fn create_handoff_result_rejects_unresolved_diagnostics_before_writing_files() {
+    let (config, _temp_dir) = setup_test_store();
+    let workspace_session_id = "test-session-unresolved-diagnostics";
+
+    init_test_session(&config, workspace_session_id);
+
+    config
+        .workflow_add_node(
+            workspace_session_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("node-ticket".to_string()),
+                kind: SessionWorkflowNodeKind::Ticket,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: "Gate on ticket state".to_string(),
+                ticket_urn: Some("ce://default/ticket/abc".to_string()),
+                spec_urn: None,
+                anchor_urn: None,
+                category: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .expect("add workflow node");
+
+    let resolver = FailingResolver;
+    let result =
+        config.create_handoff_result(workspace_session_id, None, vec![], Some(&resolver));
+
+    assert!(
+        matches!(result, Err(SessionError::WorkflowDiagnosticsUnresolved { .. })),
+        "expected WorkflowDiagnosticsUnresolved, got {:?}",
+        result.map(|r| r.record.handoff_id)
+    );
+
+    let handoffs_dir = _temp_dir
+        .join("sessions")
+        .join(workspace_session_id)
+        .join("handoffs");
+    if handoffs_dir.exists() {
+        let entries: Vec<_> = std::fs::read_dir(&handoffs_dir)
+            .expect("read handoffs dir")
+            .collect();
+        assert!(
+            entries.is_empty(),
+            "no handoff folder should be written when diagnostics are unresolved"
+        );
+    }
 }

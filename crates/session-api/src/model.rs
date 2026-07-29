@@ -46,6 +46,8 @@ pub use workflow::{
     SessionWorkflowNodeResolution,
     SessionWorkflowNodeStatus,
     SessionWorkflowSnapshot,
+    SessionWorkflowValidationIssue,
+    validate_workflow_graph,
 };
 
 mod handoff;

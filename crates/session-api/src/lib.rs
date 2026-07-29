@@ -106,11 +106,13 @@ pub use model::{
     SessionWorkflowNodeResolution,
     SessionWorkflowNodeStatus,
     SessionWorkflowSnapshot,
+    SessionWorkflowValidationIssue,
     SessionWorktreeAllocationMode,
     SessionWorktreeAssignment,
     SessionWorktreeStatus,
     default_runtime_context_schema_version,
     default_session_schema_version,
+    validate_workflow_graph,
 };
 pub use peek::{
     DEFAULT_PROMPT_SUMMARIZE_THRESHOLD_CHARS,
