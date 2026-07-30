@@ -1,0 +1,18 @@
+{
+  "id": "exec-bc74e91f-ac1-combined-write-objective-matches-description-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-rust",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T16:21:14.064510600Z",
+  "detail": "AC1: a single combined call (`--to-state planned` + `--description`) materializes the `objective` part from the new description text before the freeze runs, so the frozen objective matches the just-written description instead of going stale/empty. Verified by direct code read of memory-api/crates/ticket-api/src/storage/store.rs L704-739 (description write now runs immediately after enforce_description_write_gate, before the transition-path loop that runs apply_plan_freeze).",
+  "links": {
+    "ticket_ids": [
+      "bc74e91f-d9ef-42df-8b72-94bd4743944c"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "objective-staleness-fix",
+    "transport": "cli",
+    "run_id": "run-20260730-ticket-api-full-suite"
+  }
+}

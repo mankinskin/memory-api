@@ -1,0 +1,18 @@
+{
+  "id": "exec-3d952036-ac3-review-write-leaves-objective-untouched-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-rust",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T16:20:44.098238700Z",
+  "detail": "AC3: a part write to `review` leaves the `objective` part byte-identical. Backed by `ticket_3d952036_review_part_write_leaves_objective_byte_identical` (passed).",
+  "links": {
+    "ticket_ids": [
+      "3d952036-efd4-4f36-a77f-6b7f5058a0a0"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "description-mode-required",
+    "transport": "cli",
+    "run_id": "run-20260730-ticket-api-full-suite"
+  }
+}

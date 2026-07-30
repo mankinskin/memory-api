@@ -4,7 +4,7 @@
 //! See `api-contract-v0.1.md` (ticket `21a1b9ca`) for the full endpoint spec.
 pub mod auth_state;
 pub mod error;
-mod handlers;
+pub mod handlers;
 pub mod middleware;
 pub mod registry;
 pub mod routes;
@@ -273,6 +273,7 @@ mod tests {
     #[tokio::test]
     async fn ensure_workspace_runtime_wires_hook_for_lazy_open_store() {
         let dir = tempfile::tempdir().expect("tempdir");
+        TicketStore::init(dir.path()).expect("init workspace store");
         let state = AppState::new(
             Arc::new(WorkspaceRegistry::single(dir.path().to_path_buf())),
             Arc::new(StreamBroker::new()),

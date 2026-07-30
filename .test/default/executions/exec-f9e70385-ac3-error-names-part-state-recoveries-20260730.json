@@ -1,0 +1,18 @@
+{
+  "id": "exec-f9e70385-ac3-error-names-part-state-recoveries-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-rust",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T16:20:43.535336300Z",
+  "detail": "AC3: the rejection error names the offending part, the current ticket state, and the recovery options (unfreeze/refreeze or amendment). Verified as part of the frozen-part-write regression suite (passed).",
+  "links": {
+    "ticket_ids": [
+      "f9e70385-adb7-4942-a8fb-6a383863cc7e"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "plan-freezing",
+    "transport": "cli",
+    "run_id": "run-20260730-ticket-api-full-suite"
+  }
+}

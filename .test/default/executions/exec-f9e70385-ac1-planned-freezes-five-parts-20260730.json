@@ -1,0 +1,18 @@
+{
+  "id": "exec-f9e70385-ac1-planned-freezes-five-parts-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-rust",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T16:20:43.479495300Z",
+  "detail": "AC1: transitioning to `planned` sets frozen=true on exactly the 5 planning parts and no others. Backed by `cargo test -p ticket-api storage::tests::update_regression_tests::f9e70385_planned_freezes_exactly_the_five_planning_parts` (passed, part of the 156-passed full-suite run).",
+  "links": {
+    "ticket_ids": [
+      "f9e70385-adb7-4942-a8fb-6a383863cc7e"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "plan-freezing",
+    "transport": "cli",
+    "run_id": "run-20260730-ticket-api-full-suite"
+  }
+}

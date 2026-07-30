@@ -1,0 +1,18 @@
+{
+  "id": "exec-bc74e91f-ac2-repro-regression-test-added-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-rust",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T16:21:14.036728Z",
+  "detail": "AC2: new regression test `bc74e91f_combined_freeze_and_description_write_materializes_matching_objective` in memory-api/crates/ticket-api/src/storage/tests/update_regression_tests.rs reproduces the exact repro shape and passes (independently re-run: 1 passed/0 failed).",
+  "links": {
+    "ticket_ids": [
+      "bc74e91f-d9ef-42df-8b72-94bd4743944c"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "objective-staleness-fix",
+    "transport": "cli",
+    "run_id": "run-20260730-ticket-api-full-suite"
+  }
+}

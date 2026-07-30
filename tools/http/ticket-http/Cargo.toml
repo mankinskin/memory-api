@@ -33,3 +33,4 @@ tower = { version = "0.5", features = ["util"] }
 ticket-mcp = { path = "../../mcp/ticket-mcp" }
 rmcp = { version = "0.14", features = ["server", "transport-io"] }
 tokio = { version = "1", features = ["full"] }
+trybuild = "1"

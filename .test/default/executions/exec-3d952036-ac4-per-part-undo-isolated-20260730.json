@@ -1,0 +1,18 @@
+{
+  "id": "exec-3d952036-ac4-per-part-undo-isolated-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-rust",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T16:20:43.890717800Z",
+  "detail": "AC4: per-part history and undo restores only the targeted part, leaving sibling parts untouched. Backed by `ticket_3d952036_per_part_history_and_undo_restores_only_that_part` (passed).",
+  "links": {
+    "ticket_ids": [
+      "3d952036-efd4-4f36-a77f-6b7f5058a0a0"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "description-mode-required",
+    "transport": "cli",
+    "run_id": "run-20260730-ticket-api-full-suite"
+  }
+}

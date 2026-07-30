@@ -1,0 +1,18 @@
+{
+  "id": "exec-f9e70385-ac4-review-write-succeeds-on-planned-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-rust",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T16:20:43.620803900Z",
+  "detail": "AC4: a write to the `review` part succeeds on a `planned` ticket (non-frozen part remains writable). Backed by `f9e70385_review_write_on_planned_ticket_succeeds` (passed).",
+  "links": {
+    "ticket_ids": [
+      "f9e70385-adb7-4942-a8fb-6a383863cc7e"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "plan-freezing",
+    "transport": "cli",
+    "run_id": "run-20260730-ticket-api-full-suite"
+  }
+}

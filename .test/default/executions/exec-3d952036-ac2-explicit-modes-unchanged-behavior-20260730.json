@@ -1,0 +1,18 @@
+{
+  "id": "exec-3d952036-ac2-explicit-modes-unchanged-behavior-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-rust",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T16:20:44.154047Z",
+  "detail": "AC2: explicit `replace` and `append` modes behave unchanged from before the mandatory-mode change. Backed by `update_with_replace_mode_overwrites_description` and `update_with_append_mode_concatenates_description` (both passed).",
+  "links": {
+    "ticket_ids": [
+      "3d952036-efd4-4f36-a77f-6b7f5058a0a0"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "description-mode-required",
+    "transport": "cli",
+    "run_id": "run-20260730-ticket-api-full-suite"
+  }
+}

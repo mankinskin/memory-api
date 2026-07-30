@@ -1,0 +1,18 @@
+{
+  "id": "exec-f9e70385-ac7-no-alternate-write-entry-point-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-rust",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T16:20:43.889695800Z",
+  "detail": "AC7: all part/description writes route through `enforce_part_write_gate`/`enforce_description_write_gate`; no alternate write entry point bypasses the freeze check. The previously-found legacy-description bypass is closed: `store.rs` L704 now calls `enforce_description_write_gate` before any description write. Backed by `f9e70385_legacy_description_write_rejected_when_objective_frozen` (independently re-run, passed).",
+  "links": {
+    "ticket_ids": [
+      "f9e70385-adb7-4942-a8fb-6a383863cc7e"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "plan-freezing",
+    "transport": "cli",
+    "run_id": "run-20260730-ticket-api-full-suite"
+  }
+}

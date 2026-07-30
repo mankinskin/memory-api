@@ -1,0 +1,18 @@
+{
+  "id": "exec-bc74e91f-ac3-no-regression-to-freeze-bypass-fix-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-rust",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T16:21:14.116498Z",
+  "detail": "AC3: no regression to the separate-call freeze-bypass fix — `f9e70385_legacy_description_write_rejected_when_objective_frozen` still passes in the same full-suite run (independently confirmed).",
+  "links": {
+    "ticket_ids": [
+      "bc74e91f-d9ef-42df-8b72-94bd4743944c"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "objective-staleness-fix",
+    "transport": "cli",
+    "run_id": "run-20260730-ticket-api-full-suite"
+  }
+}

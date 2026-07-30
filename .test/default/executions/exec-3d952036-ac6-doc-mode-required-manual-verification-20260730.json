@@ -1,0 +1,18 @@
+{
+  "id": "exec-3d952036-ac6-doc-mode-required-manual-verification-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-rust",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T16:20:43.707136300Z",
+  "detail": "AC6 manual verification (per user decision — doc requirement is not machine-checkable by an executable test): confirmed by direct source read that memory-api/tools/mcp/ticket-mcp/src/server.rs L346 and memory-api/tools/mcp/ticket-mcp/src/server/workflow.rs L166 state description_mode is required whenever description is provided, valid values are replace/append with no default, and that omitting both leaves the description unchanged. The generated README.md carries a `<!-- rule-api:file generated=true -->` marker confirming the generation mechanism exists; README regeneration is performed as part of the Commit phase of this iteration.",
+  "links": {
+    "ticket_ids": [
+      "3d952036-efd4-4f36-a77f-6b7f5058a0a0"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-mcp",
+    "operation": "doc-manual-verification",
+    "transport": "cli",
+    "run_id": "run-20260730-iteration-3d952036-ac6-manual-verify"
+  }
+}

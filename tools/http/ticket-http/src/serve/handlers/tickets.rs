@@ -10,7 +10,7 @@ mod read;
 #[path = "tickets/tests.rs"]
 mod tests;
 #[path = "tickets/types.rs"]
-mod types;
+pub mod types;
 
 pub use self::{
     assets::*,

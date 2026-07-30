@@ -1,0 +1,18 @@
+{
+  "id": "exec-3d952036-ac1-omitted-mode-rejected-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-rust",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T16:20:44.002253Z",
+  "detail": "AC1: omitting `description_mode` while `description` is set is rejected and the on-disk ticket is unchanged. Backed by `ticket_3d952036_omitted_description_mode_is_rejected` (passed).",
+  "links": {
+    "ticket_ids": [
+      "3d952036-efd4-4f36-a77f-6b7f5058a0a0"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "description-mode-required",
+    "transport": "cli",
+    "run_id": "run-20260730-ticket-api-full-suite"
+  }
+}
