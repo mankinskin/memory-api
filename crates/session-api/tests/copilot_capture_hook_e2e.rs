@@ -175,6 +175,84 @@ fn e2e_hook_binary_populates_tool_metrics_from_captured_tool_events() {
     );
 }
 
+/// Regression fixture for `val-session-api-tool-metrics-e2e` (ticket
+/// `ce7b7bde`). This is the recurrence guardrail: unit tests in
+/// `tool_metrics.rs` hand-construct `role: Tool` turns the real Copilot
+/// producer never emits, so a green unit-test count proved nothing about the
+/// artifact the hook binary actually writes. This test drives the real
+/// `copilot-capture-hook` binary end-to-end and reads back the persisted
+/// `tool-metrics.json`.
+const PRODUCER_SHAPED_TOOL_TRANSCRIPT: &str = concat!(
+    r#"{"id":"evt-start-g","type":"session.start","timestamp":"2026-07-30T10:00:00.000Z","data":{"sessionId":"fixture-tool-metrics-gate","producer":"copilot-agent","startTime":"2026-07-30T10:00:00.000Z"}}"#,
+    "\n",
+    r#"{"id":"evt-user-g","type":"user.message","timestamp":"2026-07-30T10:00:01.000Z","data":{"content":"read a file"}}"#,
+    "\n",
+    r#"{"id":"evt-tool-start-g","type":"tool.execution_start","timestamp":"2026-07-30T10:00:02.000Z","data":{"toolCallId":"call-gate-1","toolName":"read_file","arguments":{"path":"README.md"}}}"#,
+    "\n",
+    r#"{"id":"evt-tool-complete-g","type":"tool.execution_complete","timestamp":"2026-07-30T10:00:03.250Z","data":{"toolCallId":"call-gate-1","success":true}}"#,
+    "\n",
+    r#"{"id":"evt-assistant-g","type":"assistant.message","timestamp":"2026-07-30T10:00:04.000Z","data":{"content":"done"}}"#,
+    "\n",
+);
+
+#[test]
+fn e2e_val_session_api_tool_metrics_gate_asserts_nonempty_tools_map() {
+    let fixture_dir = tempdir().expect("temp fixture dir");
+    let transcript_path = write_fixture_transcript(
+        fixture_dir.path(),
+        "fixture-tool-metrics-gate.jsonl",
+        PRODUCER_SHAPED_TOOL_TRANSCRIPT,
+    );
+
+    let store_dir = tempdir().expect("tempdir");
+    let store_root = store_dir.path().join("memory-api-store");
+    fs::create_dir_all(&store_root).expect("create temp store root");
+
+    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
+        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+
+    let output = Command::new(hook_bin)
+        .arg("--transcript-path")
+        .arg(&transcript_path)
+        .arg("--store-root")
+        .arg(&store_root)
+        .arg("--workspace-slug")
+        .arg("default")
+        .arg("--trigger")
+        .arg("Stop")
+        .output()
+        .expect("run copilot-capture-hook");
+
+    assert!(
+        output.status.success(),
+        "copilot-capture-hook failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let tool_metrics_path = store_root
+        .join("sessions")
+        .join("fixture-tool-metrics-gate")
+        .join("tool-metrics.json");
+    let raw = fs::read_to_string(&tool_metrics_path).expect(
+        "tool-metrics.json should exist once a tool call was captured from \
+         a producer-shaped transcript",
+    );
+    let summary: serde_json::Value =
+        serde_json::from_str(&raw).expect("tool-metrics.json should be valid json");
+
+    let tools = summary["tools"]
+        .as_object()
+        .expect("tools field should be a json object");
+    assert!(
+        !tools.is_empty(),
+        "tools map in {} must be non-empty for a transcript with captured \
+         tool execution events; got: {raw}",
+        tool_metrics_path.display()
+    );
+    assert_eq!(tools["read_file"]["call_count"], 1);
+}
+
 #[test]
 fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
     let repo_root = repo_root();
