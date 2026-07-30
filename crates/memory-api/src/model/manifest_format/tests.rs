@@ -222,6 +222,50 @@ fn null_value_is_omitted_from_serialized_toml() {
 }
 
 #[test]
+fn null_element_in_array_is_dropped_not_emitted_as_empty_string() {
+    let mut manifest = EntityManifest::new(Uuid::new_v4(), Utc::now());
+    manifest.extra.insert(
+        "labels".into(),
+        json!(["keep-one", null, "keep-two"]),
+    );
+
+    let toml = format_manifest_toml(&manifest);
+    assert!(
+        !toml.contains("\"\""),
+        "null array element must be dropped, not written as \"\":\n{toml}"
+    );
+
+    let parsed = roundtrip(&manifest);
+    assert_eq!(
+        parsed.extra["labels"],
+        json!(["keep-one", "keep-two"]),
+        "null array element must be dropped from the array on round-trip"
+    );
+}
+
+#[test]
+fn null_value_in_inline_table_is_omitted_not_emitted_as_empty_string() {
+    let mut manifest = EntityManifest::new(Uuid::new_v4(), Utc::now());
+    manifest.extra.insert(
+        "metadata".into(),
+        json!({"keep": "value", "drop_me": null}),
+    );
+
+    let toml = format_manifest_toml(&manifest);
+    assert!(
+        !toml.contains("\"\""),
+        "null inline-table value must be omitted, not written as \"\":\n{toml}"
+    );
+
+    let parsed = roundtrip(&manifest);
+    assert_eq!(
+        parsed.extra["metadata"],
+        json!({"keep": "value"}),
+        "null key must be dropped from the inline table on round-trip"
+    );
+}
+
+#[test]
 fn explicit_empty_string_is_preserved_not_treated_as_deletion() {
     let mut manifest = EntityManifest::new(Uuid::new_v4(), Utc::now());
     manifest.extra.insert("notes".into(), json!(""));

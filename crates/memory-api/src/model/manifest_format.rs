@@ -135,13 +135,15 @@ fn write_toml_kv(
         },
         Value::Array(arr) => {
             let items: Vec<String> =
-                arr.iter().map(inline_toml_value).collect();
+                arr.iter().filter_map(inline_toml_value).collect();
             writeln!(out, "{key} = [{}]", items.join(", ")).unwrap();
         },
         Value::Object(map) => {
             let pairs: Vec<String> = map
                 .iter()
-                .map(|(k, v)| format!("{k} = {}", inline_toml_value(v)))
+                .filter_map(|(k, v)| {
+                    inline_toml_value(v).map(|s| format!("{k} = {s}"))
+                })
                 .collect();
             writeln!(out, "{key} = {{ {} }}", pairs.join(", ")).unwrap();
         },
@@ -154,24 +156,28 @@ fn write_toml_kv(
     }
 }
 
-fn inline_toml_value(v: &Value) -> String {
+// Returns `None` for `Value::Null` so callers can drop the entry (array
+// element or inline-table key) instead of emitting a corrupting `""`.
+fn inline_toml_value(v: &Value) -> Option<String> {
     match v {
-        Value::String(s) => format!("\"{}\"", escape_toml_basic(s)),
-        Value::Number(n) => n.to_string(),
-        Value::Bool(b) => b.to_string(),
+        Value::String(s) => Some(format!("\"{}\"", escape_toml_basic(s))),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Bool(b) => Some(b.to_string()),
         Value::Array(arr) => {
             let items: Vec<String> =
-                arr.iter().map(inline_toml_value).collect();
-            format!("[{}]", items.join(", "))
+                arr.iter().filter_map(inline_toml_value).collect();
+            Some(format!("[{}]", items.join(", ")))
         },
         Value::Object(map) => {
             let pairs: Vec<String> = map
                 .iter()
-                .map(|(k, v)| format!("{k} = {}", inline_toml_value(v)))
+                .filter_map(|(k, v)| {
+                    inline_toml_value(v).map(|s| format!("{k} = {s}"))
+                })
                 .collect();
-            format!("{{ {} }}", pairs.join(", "))
+            Some(format!("{{ {} }}", pairs.join(", ")))
         },
-        Value::Null => "\"\"".to_string(),
+        Value::Null => None,
     }
 }
 

@@ -263,7 +263,14 @@ impl TicketStore {
         let mut event = BTreeMap::new();
         event.insert("_event".to_string(), Value::String("attach".to_string()));
         event.insert("asset".to_string(), Value::String(file_name));
-        let _ = TicketFs::append_history(&indexed.path, event, None);
+        if let Err(error) = TicketFs::append_history(&indexed.path, event, None) {
+            tracing::error!(
+                ticket_id = %id,
+                path = %indexed.path.display(),
+                %error,
+                "failed to append history revision; manifest write succeeded but undo history is now incomplete"
+            );
+        }
 
         Ok(destination)
     }

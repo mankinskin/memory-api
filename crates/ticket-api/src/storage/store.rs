@@ -358,11 +358,18 @@ impl TicketStore {
         })?;
 
         // Append initial history snapshot (rev 1).
-        let _ = TicketFs::append_history(
+        if let Err(error) = TicketFs::append_history(
             &indexed.path,
             manifest.extra.clone(),
             None,
-        );
+        ) {
+            tracing::error!(
+                ticket_id = %id,
+                path = %indexed.path.display(),
+                %error,
+                "failed to append history revision; manifest write succeeded but undo history is now incomplete"
+            );
+        }
 
         // Emit SSE hook event.
         if let Some(h) = self.hook() {

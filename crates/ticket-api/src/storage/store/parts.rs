@@ -122,11 +122,18 @@ impl TicketStore {
             PART_HISTORY_CONTENT_KEY.to_string(),
             prior_content.map(Value::String).unwrap_or(Value::Null),
         );
-        let _ = TicketFs::append_history(
+        if let Err(error) = TicketFs::append_history(
             &indexed.path,
             history_fields,
             author.map(str::to_string),
-        );
+        ) {
+            tracing::error!(
+                ticket_id = %id,
+                path = %indexed.path.display(),
+                %error,
+                "failed to append history revision; manifest write succeeded but undo history is now incomplete"
+            );
+        }
 
         Ok(manifest)
     }
@@ -165,11 +172,18 @@ impl TicketStore {
             PART_HISTORY_CONTENT_KEY.to_string(),
             prior_content.map(Value::String).unwrap_or(Value::Null),
         );
-        let _ = TicketFs::append_history(
+        if let Err(error) = TicketFs::append_history(
             &indexed.path,
             history_fields,
             author.map(str::to_string),
-        );
+        ) {
+            tracing::error!(
+                ticket_id = %id,
+                path = %indexed.path.display(),
+                %error,
+                "failed to append history revision; manifest write succeeded but undo history is now incomplete"
+            );
+        }
 
         Ok(manifest)
     }
@@ -226,11 +240,18 @@ impl TicketStore {
             Value::String(part_id_str),
         );
         history_fields.insert(PART_HISTORY_CONTENT_KEY.to_string(), Value::Null);
-        let _ = TicketFs::append_history(
+        if let Err(error) = TicketFs::append_history(
             &indexed.path,
             history_fields,
             author.map(str::to_string),
-        );
+        ) {
+            tracing::error!(
+                ticket_id = %id,
+                path = %indexed.path.display(),
+                %error,
+                "failed to append history revision; manifest write succeeded but undo history is now incomplete"
+            );
+        }
 
         Ok(manifest)
     }

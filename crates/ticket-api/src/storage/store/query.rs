@@ -175,11 +175,18 @@ impl TicketStore {
         if changed {
             source.updated_at = Utc::now();
             self.index.insert_ticket(&source)?;
-            let _ = TicketFs::append_history(
+            if let Err(error) = TicketFs::append_history(
                 &source.path,
                 manifest.extra.clone(),
                 None,
-            );
+            ) {
+                tracing::error!(
+                    ticket_id = %source.id,
+                    path = %source.path.display(),
+                    %error,
+                    "failed to append history revision; manifest write succeeded but undo history is now incomplete"
+                );
+            }
         }
         if let Some(hook) = self.hook() {
             hook.edge_upsert(edge.from, edge.to, edge.kind.clone());
@@ -213,11 +220,18 @@ impl TicketStore {
         if changed {
             source.updated_at = Utc::now();
             self.index.insert_ticket(&source)?;
-            let _ = TicketFs::append_history(
+            if let Err(error) = TicketFs::append_history(
                 &source.path,
                 manifest.extra.clone(),
                 None,
-            );
+            ) {
+                tracing::error!(
+                    ticket_id = %source.id,
+                    path = %source.path.display(),
+                    %error,
+                    "failed to append history revision; manifest write succeeded but undo history is now incomplete"
+                );
+            }
         }
         if let Some(hook) = self.hook() {
             hook.edge_delete(edge.from, edge.to, edge.kind.clone());
