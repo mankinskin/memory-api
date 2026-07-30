@@ -207,6 +207,11 @@ fn manifest_only_hidden_child_store_is_discovered() {
         .join(".ticket");
     std::fs::create_dir_all(child_index_root.join("tickets"))
         .expect("mkdir child store");
+    let hidden_ticket_dir = child_index_root.join("tickets").join("hidden");
+    std::fs::create_dir_all(&hidden_ticket_dir)
+        .expect("mkdir hidden ticket dir");
+    std::fs::write(hidden_ticket_dir.join("ticket.toml"), "")
+        .expect("write hidden ticket manifest");
 
     parent_store
         .add_scan_root(ScanRoot {
@@ -276,6 +281,12 @@ fn resolve_indexed_many_prefers_deepest_existing_workspace() {
         .expect("resolve ticket");
     let resolved = resolved.get(&ticket_id).expect("resolved ticket");
 
-    assert_eq!(resolved.workspace, "child");
+    assert_eq!(
+        resolved.workspace,
+        crate::serve::registry::canonical_workspace_name_for_index_root(
+            &child_index_root,
+            "workspace",
+        )
+    );
     assert!(resolved.ticket.path.join("ticket.toml").is_file());
 }

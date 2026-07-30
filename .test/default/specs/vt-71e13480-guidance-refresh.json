@@ -1,0 +1,13 @@
+{
+  "id": "vt-71e13480-guidance-refresh",
+  "title": "Agent guidance refresh for parts/freezing/projected reads (71e13480)",
+  "detail": "Manual grep + read-back verification that guidance surfaces name view profiles, freeze contract, part kinds, and stop instructing description overwrites.",
+  "links": {
+    "spec_ids": [
+      "24b3d22b-e235-4c4f-b53c-75fb819ea95b"
+    ],
+    "ticket_ids": [
+      "71e13480-4f92-418a-a9e6-155f3274f180"
+    ]
+  }
+}

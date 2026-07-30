@@ -1,0 +1,21 @@
+id = "4460cad4-c137-45c4-893e-6e340e16bbe7"
+created_at = "2026-07-30T19:39:52.672625700+00:00"
+title = "Demo: structured parts render check"
+state = "planned"
+parts = [{ id = "ec0ccd10-0b0c-4f9e-9dd5-6160232b353d", kind = "requirements", path = "parts/ec0ccd10-0b0c-4f9e-9dd5-6160232b353d.md", frozen = true, created_at = "2026-07-30T19:40:06.253134200Z" }, { id = "20dd0bf5-b4a4-479e-b14d-b3cc3d37ac8f", kind = "examples", path = "parts/20dd0bf5-b4a4-479e-b14d-b3cc3d37ac8f.md", frozen = true, created_at = "2026-07-30T19:40:06.313630200Z" }, { id = "1d6c16ae-f5cb-49aa-ae7a-d9fe151653da", kind = "objective", path = "parts/1d6c16ae-f5cb-49aa-ae7a-d9fe151653da.md", frozen = true, created_at = "2026-07-30T19:40:06.373261700Z" }, { id = "5957f8f1-32bc-4b81-bd6c-dbabca7a1554", kind = "review", path = "parts/5957f8f1-32bc-4b81-bd6c-dbabca7a1554.md", frozen = false, created_at = "2026-07-30T19:40:06.434331400Z" }, { id = "152ab3d9-5ed3-4577-8f58-ba0aafb37b30", kind = "design", path = "parts/152ab3d9-5ed3-4577-8f58-ba0aafb37b30.md", frozen = true, created_at = "2026-07-30T19:40:06.468018600Z" }, { id = "1cadc66f-e977-4bba-a51a-bd0805ca40a1", kind = "acceptance_criteria", path = "parts/1cadc66f-e977-4bba-a51a-bd0805ca40a1.md", frozen = true, created_at = "2026-07-30T19:40:06.513972600Z" }, { id = "7b8df8a5-8ef4-48ad-a746-4f589ec942b1", kind = "scratchpad", path = "parts/7b8df8a5-8ef4-48ad-a746-4f589ec942b1.md", frozen = false, created_at = "2026-07-30T19:40:06.580444600Z" }, { id = "c4d26684-c265-43ae-b5fe-28294d70f021", kind = "amendment", path = "parts/c4d26684-c265-43ae-b5fe-28294d70f021.md", frozen = false, created_at = "2026-07-30T19:40:15.311617Z", supersedes = "1d6c16ae-f5cb-49aa-ae7a-d9fe151653da" }]
+plan_revision = 1
+type = "task"
+
+[[refs]]
+kind = "spec"
+urn = "ce://default/spec/24b3d22b-e235-4c4f-b53c-75fb819ea95b"
+note = "Structured Ticket Entities spec"
+
+[[refs]]
+kind = "spec"
+urn = "ce://default/spec/not-a-real-uuid"
+note = "Intentionally dangling for validation"
+
+[[refs]]
+kind = "file"
+urn = "memory-viewers/ticket-viewer/frontend/dioxus/src/components/ticket_content/parts.rs"

@@ -233,6 +233,8 @@ async fn get_ticket_and_history_include_ticket_refs() {
         Path(id),
         Query(TicketIdParam {
             workspace: workspace.clone(),
+            view: None,
+            parts: None,
         }),
     )
     .await;
@@ -255,6 +257,8 @@ async fn get_ticket_and_history_include_ticket_refs() {
         Path(id),
         Query(TicketIdParam {
             workspace: workspace.clone(),
+            view: None,
+            parts: None,
         }),
     )
     .await;
@@ -405,6 +409,8 @@ async fn mixed_workspace_search_followups_remain_reversible() {
         Path(id),
         Query(TicketIdParam {
             workspace: workspace.clone(),
+            view: None,
+            parts: None,
         }),
     )
     .await;
@@ -426,6 +432,8 @@ async fn mixed_workspace_search_followups_remain_reversible() {
         Path(id),
         Query(TicketIdParam {
             workspace: workspace.clone(),
+            view: None,
+            parts: None,
         }),
     )
     .await;
@@ -450,6 +458,8 @@ async fn mixed_workspace_search_followups_remain_reversible() {
         Path(id),
         Query(TicketIdParam {
             workspace: workspace.clone(),
+            view: None,
+            parts: None,
         }),
     )
     .await;
@@ -471,6 +481,8 @@ async fn mixed_workspace_search_followups_remain_reversible() {
         Path(id),
         Query(TicketIdParam {
             workspace: workspace.clone(),
+            view: None,
+            parts: None,
         }),
     )
     .await;

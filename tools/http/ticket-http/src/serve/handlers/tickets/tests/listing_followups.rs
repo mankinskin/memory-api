@@ -191,6 +191,8 @@ async fn duplicate_basename_workspaces_keep_followups_distinct() {
             Path(id),
             Query(TicketIdParam {
                 workspace: workspace.to_string(),
+                view: None,
+                parts: None,
             }),
         )
         .await;
@@ -212,6 +214,8 @@ async fn duplicate_basename_workspaces_keep_followups_distinct() {
             Path(id),
             Query(TicketIdParam {
                 workspace: workspace.to_string(),
+                view: None,
+                parts: None,
             }),
         )
         .await;
@@ -233,6 +237,8 @@ async fn duplicate_basename_workspaces_keep_followups_distinct() {
             Path(id),
             Query(TicketIdParam {
                 workspace: workspace.to_string(),
+                view: None,
+                parts: None,
             }),
         )
         .await;
@@ -251,6 +257,8 @@ async fn duplicate_basename_workspaces_keep_followups_distinct() {
             Path(id),
             Query(TicketIdParam {
                 workspace: workspace.to_string(),
+                view: None,
+                parts: None,
             }),
         )
         .await;
@@ -362,6 +370,8 @@ async fn search_list_excludes_stale_search_hits_and_followups() {
         Path(id),
         Query(TicketIdParam {
             workspace: workspace.clone(),
+            view: None,
+            parts: None,
         }),
     )
     .await;
@@ -373,6 +383,8 @@ async fn search_list_excludes_stale_search_hits_and_followups() {
         Path(id),
         Query(TicketIdParam {
             workspace: workspace.clone(),
+            view: None,
+            parts: None,
         }),
     )
     .await;
@@ -384,6 +396,8 @@ async fn search_list_excludes_stale_search_hits_and_followups() {
         Path(id),
         Query(TicketIdParam {
             workspace: workspace.clone(),
+            view: None,
+            parts: None,
         }),
     )
     .await;
@@ -395,6 +409,8 @@ async fn search_list_excludes_stale_search_hits_and_followups() {
         Path(id),
         Query(TicketIdParam {
             workspace: workspace.clone(),
+            view: None,
+            parts: None,
         }),
     )
     .await;

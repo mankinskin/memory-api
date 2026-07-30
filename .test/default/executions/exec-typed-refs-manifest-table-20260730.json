@@ -1,0 +1,18 @@
+{
+  "id": "exec-typed-refs-manifest-table-20260730",
+  "validation_spec_id": "vt-typed-refs-manifest-table",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T18:57:37.245350700Z",
+  "detail": "cargo build --workspace: 0 errors. cargo test -p ticket-api -p memory-api --no-fail-fast: ticket-api 177/177 passed (incl. 9 new refs tests: write_ref_appends_and_round_trips_all_six_kinds, write_ref_rejects_unknown_kind_with_vocabulary_in_error, write_ref_rejects_malformed_urn_for_kind, foreign_ref_kind_already_in_manifest_round_trips_unchanged, legacy_related_specs_extra_bridges_to_refs_with_identical_spec_identity, remove_ref_deletes_matching_entry_and_leaves_others, ticket_fs_update_preserves_refs_table_when_patching_other_fields, plus 7 unit tests in model/refs.rs); memory-api 159/161 passed, 2 pre-existing failures (discover_workspace_scan_roots_maps_store_roots_to_entity_roots, discover_workspace_scan_roots_includes_ancestor_store_roots) unrelated to this change, unchanged before/after. Sanity check: loaded 50 real tickets from memory-api/.ticket via TicketStore, calling refs()/parts() on each with no panics (temp test removed after use). Edge model (model/edge.rs) untouched.",
+  "links": {
+    "ticket_ids": [
+      "9d69e93d-b7ab-4f88-a88c-40ec76d5206b"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "cargo_test",
+    "transport": "cli",
+    "run_id": "typed-refs-9d69e93d-20260730"
+  }
+}

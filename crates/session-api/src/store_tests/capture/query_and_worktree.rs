@@ -203,6 +203,55 @@ fn capture_copilot_transcript_allows_divergent_newer_snapshot() {
     assert_eq!(record.turns[2].content, "Additional message");
 }
 
+/// Ticket 44119807 Step B: the synchronous capture path must never sleep or
+/// retry waiting for a tool-response override to land in the transcript.
+/// Even when the override's `tool_call_id` never appears in the parsed
+/// transcript (the worst case that used to drive up to 12 * 200ms of
+/// blocking retries here), the call must return promptly and persist
+/// whatever was parsed on the single attempt.
+#[test]
+fn capture_copilot_transcript_with_tool_response_never_blocks_on_missing_override_match() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let transcript_path = tempdir.path().join("copilot.jsonl");
+
+    std::fs::write(
+            &transcript_path,
+            concat!(
+                "{\"type\":\"session.start\",\"timestamp\":\"2026-06-02T23:06:54.049Z\",\"data\":{\"sessionId\":\"session-no-retry\",\"producer\":\"copilot-agent\",\"startTime\":\"2026-06-02T23:06:54.049Z\"}}\n",
+                "{\"type\":\"user.message\",\"timestamp\":\"2026-06-02T23:07:00.000Z\",\"data\":{\"content\":\"Run a tool\"}}\n"
+            ),
+        )
+        .unwrap();
+
+    let override_value = crate::ToolResponseOverride {
+        tool_call_id: "call-never-appears".to_string(),
+        output_chars: 4096,
+        output_source: "hook_payload".to_string(),
+    };
+
+    let started = std::time::Instant::now();
+    config
+        .capture_copilot_transcript_with_tool_response(
+            &transcript_path,
+            "PostToolUse",
+            Some(override_value),
+        )
+        .unwrap();
+    let elapsed = started.elapsed();
+
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "sync capture path must not sleep/retry waiting for the override to \
+         land; took {elapsed:?} (old blocking loop took up to 2.4s)"
+    );
+
+    let record = config.read_session("session-no-retry").unwrap();
+    assert_eq!(record.turns.len(), 1);
+    assert_eq!(record.turns[0].content, "Run a tool");
+}
+
 #[test]
 fn check_in_worktree_creates_and_returns_new_assignment() {
     let tempdir = TempDir::new().unwrap();

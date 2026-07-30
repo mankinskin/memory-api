@@ -24,6 +24,15 @@ pub struct CreateArgs {
 pub struct IdArgs {
     /// Ticket UUID or 8+ character hex prefix.
     pub id: String,
+    /// Named read-projection view profile: summary, plan, review, or full.
+    /// Mutually exclusive with `--parts`. Defaults to `summary` when
+    /// neither is given (applies to `get`/`describe` only).
+    #[arg(long)]
+    pub view: Option<String>,
+    /// Explicit comma-separated part-kind list to project (e.g.
+    /// `objective,acceptance_criteria`). Mutually exclusive with `--view`.
+    #[arg(long)]
+    pub parts: Option<String>,
 }
 
 #[derive(Debug, Args)]

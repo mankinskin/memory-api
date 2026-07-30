@@ -369,6 +369,7 @@ async fn descendant_ticket_ref_from_list_is_followable() {
 
     let parent_store = open_workspace_store(dir.path());
     let child_store = open_workspace_store(child_dir.as_path());
+    let child_workspace = primary_workspace_name(child_dir.as_path());
 
     let child_id = child_store
         .create(
@@ -407,7 +408,10 @@ async fn descendant_ticket_ref_from_list_is_followable() {
         .unwrap();
     let list_payload: serde_json::Value =
         serde_json::from_slice(&list_bytes).unwrap();
-    assert_eq!(list_payload["items"][0]["ticket_ref"]["workspace"], "child");
+    assert_eq!(
+        list_payload["items"][0]["ticket_ref"]["workspace"],
+        child_workspace
+    );
     assert_eq!(
         list_payload["items"][0]["ticket_ref"]["id"],
         child_id.to_string()
@@ -415,7 +419,9 @@ async fn descendant_ticket_ref_from_list_is_followable() {
 
     let detail_request = Request::builder()
         .method(Method::GET)
-        .uri(format!("/api/tickets/{child_id}?workspace=child"))
+        .uri(format!(
+            "/api/tickets/{child_id}?workspace={child_workspace}"
+        ))
         .body(Body::empty())
         .unwrap();
 
@@ -427,8 +433,11 @@ async fn descendant_ticket_ref_from_list_is_followable() {
         .unwrap();
     let detail_payload: serde_json::Value =
         serde_json::from_slice(&detail_bytes).unwrap();
-    assert_eq!(detail_payload["active_workspace"], "child");
-    assert_eq!(detail_payload["ticket"]["ticket_ref"]["workspace"], "child");
+    assert_eq!(detail_payload["active_workspace"], child_workspace);
+    assert_eq!(
+        detail_payload["ticket"]["ticket_ref"]["workspace"],
+        detail_payload["active_workspace"]
+    );
     assert_eq!(
         detail_payload["ticket"]["ticket_ref"]["id"],
         child_id.to_string()

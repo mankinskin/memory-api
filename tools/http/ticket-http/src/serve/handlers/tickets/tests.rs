@@ -21,6 +21,8 @@ mod listing_followups;
 mod listing_workspace;
 #[path = "tests/mutations.rs"]
 mod mutations;
+#[path = "tests/projection.rs"]
+mod projection;
 
 fn make_store(dir: &std::path::Path) -> Arc<TicketStore> {
     let store = Arc::new(TicketStore::init(dir).expect("open store"));

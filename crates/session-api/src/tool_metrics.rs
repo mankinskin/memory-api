@@ -1,6 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::{CopilotHookEvent, SessionError, SessionRecord, SessionRole};
@@ -55,6 +55,11 @@ pub struct ToolTokenStats {
     /// Optional graded cost (1..=scale_max) for this tool.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost: Option<u32>,
+    /// Per-source counts of recorded tool outputs (e.g. "hook_payload",
+    /// "spill_file", "transcript_turn"). Empty maps are omitted for backward
+    /// compatibility with rollups produced before source attribution.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub output_source_counts: BTreeMap<String, u64>,
 }
 
 /// Aggregated tool metrics report.
@@ -247,7 +252,7 @@ pub fn compute_session_summary_with_events(
     _estimator: &impl TokenEstimator,
 ) -> SessionToolMetricsSummary {
     let mut tools = BTreeMap::<String, ToolCallSummary>::new();
-    let mut counted_tool_call_ids = BTreeSet::<String>::new();
+    let mut tracked_calls = BTreeMap::<String, TrackedToolCall>::new();
 
     for turn in &record.turns {
         if turn.role != SessionRole::Tool {
@@ -257,13 +262,10 @@ pub fn compute_session_summary_with_events(
             continue;
         };
 
-        if let Some(tool_call_id) = turn
+        let tool_call_id = turn
             .event_meta
             .as_ref()
-            .and_then(|meta| meta.tool_call_id.clone())
-        {
-            counted_tool_call_ids.insert(tool_call_id);
-        }
+            .and_then(|meta| meta.tool_call_id.clone());
 
         let entry = tools.entry(tool_name.clone()).or_insert_with(ToolCallSummary::new);
 
@@ -281,10 +283,14 @@ pub fn compute_session_summary_with_events(
         );
 
         // Capture output chars only for successful calls (preserve existing behavior)
+        let mut output_slot = None;
+        let mut output_rank = OUTPUT_SOURCE_RANK_NONE;
         if is_success {
             let output_chars = turn.content.chars().count() as u64;
             entry.output_char_sizes.push(output_chars);
             entry.output_source.push("transcript_turn".to_string());
+            output_slot = Some(entry.output_char_sizes.len() - 1);
+            output_rank = output_source_rank("transcript_turn");
         }
 
         // Capture input size and duration from event_meta
@@ -310,10 +316,21 @@ pub fn compute_session_summary_with_events(
                 }
             }
         }
+
+        if let Some(tool_call_id) = tool_call_id {
+            tracked_calls.insert(
+                tool_call_id,
+                TrackedToolCall {
+                    tool_name: tool_name.clone(),
+                    output_slot,
+                    output_rank,
+                },
+            );
+        }
     }
 
     for event in events {
-        record_event_tool_call(event, &mut tools, &mut counted_tool_call_ids);
+        record_event_tool_call(event, &mut tools, &mut tracked_calls);
     }
 
     SessionToolMetricsSummary {
@@ -324,17 +341,50 @@ pub fn compute_session_summary_with_events(
     }
 }
 
+/// Fidelity rank of an `output_source` value, matching the layering
+/// documented on [`crate::hook::transcript::ToolResponseOverride`]:
+/// `hook_payload` (highest fidelity) > `spill_file` > `transcript_turn` >
+/// any unrecognized/`unspecified` source. Used by [`record_event_tool_call`]
+/// to decide whether a later copy of an already-counted `tool_call_id` may
+/// upgrade the recorded output size, never downgrade it.
+const OUTPUT_SOURCE_RANK_NONE: i8 = -1;
+
+fn output_source_rank(source: &str) -> i8 {
+    match source {
+        "hook_payload" => 3,
+        "spill_file" => 2,
+        "transcript_turn" => 1,
+        _ => 0,
+    }
+}
+
+/// Per-`tool_call_id` bookkeeping so a later, higher-fidelity copy of an
+/// already-counted call's output can overwrite the earlier value in place
+/// instead of being discarded (ticket 44119807) or double-counted.
+struct TrackedToolCall {
+    tool_name: String,
+    /// Index into `tools[tool_name].output_char_sizes` / `.output_source`
+    /// holding this call's recorded output, if any was recorded yet.
+    output_slot: Option<usize>,
+    output_rank: i8,
+}
+
 /// Accumulate a single captured tool-completion event into `tools`.
 ///
 /// Only terminal events (`tool.execution_complete` / `tool.execution_result`)
-/// are counted, so a start/complete pair yields exactly one call. Redundant
-/// `tool.execution_result` entries collapsed into their matching
-/// `tool.execution_complete` at capture time are additionally guarded by the
-/// `tool_call_id` de-duplication set.
+/// are counted, so a start/complete pair yields exactly one call. A second
+/// (or later) terminal event for the same `tool_call_id` — e.g. a `Stop`-
+/// triggered re-parse of the transcript carrying a higher-fidelity
+/// `output_source` than the first persist saw — never recounts the call or
+/// its input/duration, but may upgrade the previously recorded output size
+/// in place when its `output_source` outranks the one already stored. A
+/// poorer late copy (lower rank, or no output data at all) never downgrades
+/// or overwrites a richer one already recorded, and replaying the identical
+/// event again is a no-op (rank ties do not overwrite).
 fn record_event_tool_call(
     event: &CopilotHookEvent,
     tools: &mut BTreeMap<String, ToolCallSummary>,
-    counted_tool_call_ids: &mut BTreeSet<String>,
+    tracked_calls: &mut BTreeMap<String, TrackedToolCall>,
 ) {
     let is_terminal = matches!(
         event.event_type.as_deref(),
@@ -356,13 +406,54 @@ fn record_event_tool_call(
         return;
     };
 
+    // Output size is only recorded when the producer reported it. The Copilot
+    // transcript carries no tool result payload, so leaving it unrecorded keeps
+    // the unmeasured-tool cost policy fail-open instead of inventing a size.
+    let output_chars = data.and_then(|data| {
+        ["output_chars", "response_chars", "outputChars", "responseChars"]
+            .iter()
+            .find_map(|key| data.get(*key)?.as_u64())
+    });
+    let output_source = output_chars.map(|_| {
+        json_str(data, &["output_source", "outputSource"])
+            .unwrap_or_else(|| "unspecified".to_string())
+    });
+    let new_rank = output_source
+        .as_deref()
+        .map(output_source_rank)
+        .unwrap_or(OUTPUT_SOURCE_RANK_NONE);
+
     if let Some(tool_call_id) = event.tool_call_id.clone() {
-        if !counted_tool_call_ids.insert(tool_call_id) {
+        if let Some(tracked) = tracked_calls.get_mut(&tool_call_id) {
+            // Already counted this call: never recount call_count, input, or
+            // duration. Only a strictly higher-fidelity output may land.
+            if let (Some(output_chars), Some(output_source)) =
+                (output_chars, output_source)
+            {
+                if new_rank > tracked.output_rank {
+                    let entry = tools
+                        .entry(tracked.tool_name.clone())
+                        .or_insert_with(ToolCallSummary::new);
+                    match tracked.output_slot {
+                        Some(index) => {
+                            entry.output_char_sizes[index] = output_chars;
+                            entry.output_source[index] = output_source;
+                        },
+                        None => {
+                            entry.output_char_sizes.push(output_chars);
+                            entry.output_source.push(output_source);
+                            tracked.output_slot =
+                                Some(entry.output_char_sizes.len() - 1);
+                        },
+                    }
+                    tracked.output_rank = new_rank;
+                }
+            }
             return;
         }
     }
 
-    let entry = tools.entry(tool_name).or_insert_with(ToolCallSummary::new);
+    let entry = tools.entry(tool_name.clone()).or_insert_with(ToolCallSummary::new);
     entry.call_count += 1;
 
     let result_code = json_str(data, &["result_code", "resultCode"]);
@@ -381,18 +472,22 @@ fn record_event_tool_call(
         entry.input_char_sizes.push(input_chars);
     }
 
-    // Output size is only recorded when the producer reported it. The Copilot
-    // transcript carries no tool result payload, so leaving it unrecorded keeps
-    // the unmeasured-tool cost policy fail-open instead of inventing a size.
-    if let Some(output_chars) = data.and_then(|data| {
-        ["output_chars", "response_chars", "outputChars", "responseChars"]
-            .iter()
-            .find_map(|key| data.get(*key)?.as_u64())
-    }) {
+    let mut output_slot = None;
+    if let (Some(output_chars), Some(output_source)) = (output_chars, output_source) {
         entry.output_char_sizes.push(output_chars);
-        let output_source = json_str(data, &["output_source", "outputSource"])
-            .unwrap_or_else(|| "unspecified".to_string());
         entry.output_source.push(output_source);
+        output_slot = Some(entry.output_char_sizes.len() - 1);
+    }
+
+    if let Some(tool_call_id) = event.tool_call_id.clone() {
+        tracked_calls.insert(
+            tool_call_id,
+            TrackedToolCall {
+                tool_name,
+                output_slot,
+                output_rank: new_rank,
+            },
+        );
     }
 
     if let Some(duration) = data.and_then(|data| {
@@ -468,6 +563,7 @@ pub fn aggregate_with_cost(
                     output_chars: Vec::new(),
                     input_chars: Vec::new(),
                     durations: Vec::new(),
+                    output_source_counts: BTreeMap::new(),
                 }
             });
 
@@ -479,6 +575,12 @@ pub fn aggregate_with_cost(
             entry.output_chars.extend(&call_summary.output_char_sizes);
             entry.input_chars.extend(&call_summary.input_char_sizes);
             entry.durations.extend(&call_summary.duration_ms_values);
+            for source in &call_summary.output_source {
+                *entry
+                    .output_source_counts
+                    .entry(source.clone())
+                    .or_insert(0) += 1;
+            }
 
             total_turn_count += call_summary.call_count as usize;
         }
@@ -552,6 +654,7 @@ pub fn aggregate_with_cost(
             p50_duration_ms,
             p95_duration_ms,
             cost,
+            output_source_counts: data.output_source_counts,
         });
     }
 
@@ -595,6 +698,7 @@ struct ToolAggregation {
     output_chars: Vec<u64>,
     input_chars: Vec<u64>,
     durations: Vec<i64>,
+    output_source_counts: BTreeMap<String, u64>,
 }
 
 fn percentile(sorted_values: &[u64], p: u8) -> u64 {
@@ -1058,6 +1162,7 @@ mod tests {
                     p50_duration_ms: Some(100),
                     p95_duration_ms: Some(500),
                     cost: Some(25),
+                    output_source_counts: BTreeMap::new(),
                 },
             ],
         };
@@ -1489,6 +1594,107 @@ mod tests {
         assert_eq!(summary.tools["read_file"].call_count, 1);
     }
 
+    /// Ticket 44119807: a first persist without an output-size override (the
+    /// PostToolUse hook races the transcript flush) must not permanently
+    /// lose a later, higher-fidelity override for the same `tool_call_id`
+    /// (e.g. delivered by a subsequent `Stop`-triggered re-parse).
+    #[test]
+    fn late_arriving_richer_output_copy_upgrades_the_dropped_record() {
+        let events = vec![
+            // First persist: terminal event with no output data reported yet.
+            completion_event(
+                "call-1",
+                "run_in_terminal",
+                "tool.execution_complete",
+                json!({"result_code": "ok"}),
+            ),
+            // Later persist (e.g. Stop re-parse) carries the hook-payload
+            // override with the highest-fidelity output_source.
+            completion_event(
+                "call-1",
+                "run_in_terminal",
+                "tool.execution_complete",
+                json!({
+                    "result_code": "ok",
+                    "output_chars": 4096,
+                    "output_source": "hook_payload",
+                }),
+            ),
+        ];
+
+        let summary = compute_session_summary_with_events(
+            &empty_record(),
+            &events,
+            &CharsPerTokenEstimator::default(),
+        );
+
+        let tool = &summary.tools["run_in_terminal"];
+        assert_eq!(tool.call_count, 1, "the late copy must not recount the call");
+        assert_eq!(
+            tool.output_char_sizes,
+            vec![4096],
+            "the richer late copy must land instead of being dropped"
+        );
+        assert_eq!(tool.output_source, vec!["hook_payload".to_string()]);
+    }
+
+    /// A poorer late copy (lower-fidelity source, or no output data at all)
+    /// must never downgrade or duplicate a richer value already recorded,
+    /// and replaying the identical event must not double-count anything.
+    #[test]
+    fn poorer_or_duplicate_late_copy_never_downgrades_or_double_counts() {
+        let events = vec![
+            completion_event(
+                "call-1",
+                "run_in_terminal",
+                "tool.execution_complete",
+                json!({
+                    "result_code": "ok",
+                    "output_chars": 4096,
+                    "output_source": "hook_payload",
+                }),
+            ),
+            // Later copy with a lower-fidelity source: must not overwrite.
+            completion_event(
+                "call-1",
+                "run_in_terminal",
+                "tool.execution_result",
+                json!({
+                    "result_code": "ok",
+                    "output_chars": 12,
+                    "output_source": "spill_file",
+                }),
+            ),
+            // Exact replay of the first event: must not double-count.
+            completion_event(
+                "call-1",
+                "run_in_terminal",
+                "tool.execution_complete",
+                json!({
+                    "result_code": "ok",
+                    "output_chars": 4096,
+                    "output_source": "hook_payload",
+                }),
+            ),
+        ];
+
+        let summary = compute_session_summary_with_events(
+            &empty_record(),
+            &events,
+            &CharsPerTokenEstimator::default(),
+        );
+
+        let tool = &summary.tools["run_in_terminal"];
+        assert_eq!(tool.call_count, 1);
+        assert_eq!(tool.success_count, 1);
+        assert_eq!(
+            tool.output_char_sizes,
+            vec![4096],
+            "a lower-fidelity late copy must not overwrite the richer value"
+        );
+        assert_eq!(tool.output_source, vec!["hook_payload".to_string()]);
+    }
+
     #[test]
     fn summary_is_empty_when_no_tool_call_was_observed() {
         let summary = compute_session_summary_with_events(
@@ -1503,5 +1709,69 @@ mod tests {
         );
 
         assert!(summary.is_empty());
+    }
+
+    /// Requirement R2: per-call output_source discriminant must survive
+    /// cross-session aggregation as a deterministic per-source breakdown.
+    #[test]
+    fn aggregate_preserves_mixed_output_source_breakdown() {
+        fn make_summary(sources: Vec<&str>) -> SessionToolMetricsSummary {
+            let output_char_sizes: Vec<u64> =
+                sources.iter().map(|s| s.len() as u64 * 10).collect();
+            SessionToolMetricsSummary {
+                schema_version: TOOL_METRICS_SCHEMA_VERSION,
+                session_id: format!("session-{}", sources.join("-")),
+                captured_at: sample_time(),
+                tools: {
+                    let mut map = BTreeMap::new();
+                    map.insert(
+                        "test_tool".to_string(),
+                        ToolCallSummary {
+                            call_count: sources.len() as u64,
+                            success_count: sources.len() as u64,
+                            fail_count: 0,
+                            timeout_count: 0,
+                            hang_count: 0,
+                            output_char_sizes,
+                            output_source: sources
+                                .iter()
+                                .map(|s| s.to_string())
+                                .collect(),
+                            input_char_sizes: Vec::new(),
+                            duration_ms_values: Vec::new(),
+                        },
+                    );
+                    map
+                },
+            }
+        }
+
+        let summaries = vec![
+            make_summary(vec![
+                "hook_payload",
+                "spill_file",
+                "transcript_turn",
+            ]),
+            make_summary(vec!["hook_payload", "unspecified"]),
+        ];
+
+        let report = aggregate(
+            summaries,
+            ToolMetricsWindow::default(),
+            &CharsPerTokenEstimator::default(),
+        );
+
+        let stats = report
+            .tools
+            .iter()
+            .find(|t| t.tool_name == "test_tool")
+            .expect("test_tool should be aggregated");
+        let expected: BTreeMap<String, u64> = BTreeMap::from([
+            ("hook_payload".to_string(), 2),
+            ("spill_file".to_string(), 1),
+            ("transcript_turn".to_string(), 1),
+            ("unspecified".to_string(), 1),
+        ]);
+        assert_eq!(stats.output_source_counts, expected);
     }
 }

@@ -31,6 +31,15 @@ pub struct WorkspaceParam {
 #[derive(Deserialize)]
 pub struct TicketIdParam {
     pub workspace: String,
+    /// Named read-projection view profile: summary, plan, review, or full.
+    /// Mutually exclusive with `parts`. Defaults to `summary` when neither
+    /// is supplied.
+    #[serde(default)]
+    pub view: Option<String>,
+    /// Explicit comma-separated part-kind list to project. Mutually
+    /// exclusive with `view`.
+    #[serde(default)]
+    pub parts: Option<String>,
 }
 
 #[derive(Clone, Serialize)]

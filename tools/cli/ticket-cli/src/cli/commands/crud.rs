@@ -109,6 +109,27 @@ pub(crate) fn cmd_get(
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
+    let projection = ticket_api::storage::ReadProjection::decode(
+        args.view.as_deref(),
+        args.parts.as_deref(),
+    )?;
+    if let Some(projection) = projection {
+        let projected = match store.project(&id, &projection) {
+            Ok(projected) => projected,
+            Err(ticket_api::error::StorageError::NotFound(_)) => {
+                return Err(CliRunError::BadRequest(format!(
+                    "ticket '{id}' was not found in the active workspace. Retry with --workspace-root <workspace-path> or --index-root <path-to-.ticket>."
+                )));
+            },
+            Err(error) => return Err(CliRunError::Storage(error)),
+        };
+        return Ok(json!({
+            "command": "get",
+            "status": "ok",
+            "ticket": projected,
+        }));
+    }
+
     let manifest = match store.get(&id) {
         Ok(manifest) => manifest,
         Err(ticket_api::error::StorageError::NotFound(_)) => {
@@ -428,6 +449,20 @@ pub(crate) fn cmd_describe(
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
     let id = super::resolve_uuid_prefix(&args.id, store)?;
+    let projection = ticket_api::storage::ReadProjection::decode(
+        args.view.as_deref(),
+        args.parts.as_deref(),
+    )?;
+    if let Some(projection) = projection {
+        let projected = store.project(&id, &projection)?;
+        return Ok(json!({
+            "command": "describe",
+            "status": "ok",
+            "id": id.to_string(),
+            "ticket": projected,
+        }));
+    }
+
     let indexed = store.get_indexed(&id)?.ok_or_else(|| {
         CliRunError::BadRequest(format!("ticket not found: {}", id))
     })?;
@@ -468,12 +503,84 @@ mod tests {
             .expect("indexed get")
             .expect("indexed ticket");
 
-        let payload = cmd_get(IdArgs { id: id.to_string() }, &store)
+        let payload = cmd_get(
+            IdArgs {
+                id: id.to_string(),
+                view: None,
+                parts: None,
+            },
+            &store,
+        )
             .expect("cmd_get succeeds");
 
         assert_eq!(
             payload["ticket"]["path"].as_str(),
             Some(indexed.path.display().to_string().as_str())
         );
+    }
+
+    /// End-to-end CLI proof (ticket 4c7b884e, AC7): `ticket get --view
+    /// summary` reaches the projection helper and returns exactly the
+    /// `objective` part, not the raw manifest fields path.
+    #[test]
+    fn cmd_get_with_view_summary_projects_to_objective_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = TicketStore::init(dir.path()).expect("open store");
+        let id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("cli projection"),
+                Some("open"),
+                BTreeMap::new(),
+                None,
+                Some("objective body"),
+            )
+            .expect("create ticket");
+
+        let payload = cmd_get(
+            IdArgs {
+                id: id.to_string(),
+                view: Some("summary".to_string()),
+                parts: None,
+            },
+            &store,
+        )
+        .expect("cmd_get with --view summary succeeds");
+
+        let parts = payload["ticket"]["parts"].as_array().expect("parts array");
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0]["kind"], "objective");
+    }
+
+    /// CLI proof (ticket 4c7b884e, AC3): `--view` and `--parts` together is
+    /// rejected, not silently favoring one.
+    #[test]
+    fn cmd_get_rejects_both_view_and_parts() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = TicketStore::init(dir.path()).expect("open store");
+        let id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("cli projection conflict"),
+                Some("open"),
+                BTreeMap::new(),
+                None,
+                Some("objective body"),
+            )
+            .expect("create ticket");
+
+        let error = cmd_get(
+            IdArgs {
+                id: id.to_string(),
+                view: Some("summary".to_string()),
+                parts: Some("objective".to_string()),
+            },
+            &store,
+        )
+        .expect_err("both view and parts must be rejected");
+
+        assert!(error.to_string().contains("both"));
     }
 }

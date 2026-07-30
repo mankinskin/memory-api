@@ -48,16 +48,18 @@ impl SessionStoreConfig {
     /// call's own completion entry to the transcript file (confirmed via
     /// live capture: a fixed 750ms retry window never caught up, a 5s window
     /// reliably did), so a first parse is routinely missing exactly the one
-    /// event the override needs to patch. Once a captured event without the
-    /// override is persisted, `merge_events`'s dedup by
-    /// `captured_event_key` (which fingerprints `data_json`, so an
-    /// override-enriched retry produces a different key) keeps both
-    /// versions, and `record_event_tool_call`'s per-`tool_call_id` dedup
-    /// then silently drops whichever version comes second in iteration
-    /// order — so the override effectively must succeed on this very first
-    /// persist, or never. This retries re-reading the transcript fresh with
-    /// a short backoff (bounded, non-blocking beyond the hook's own
-    /// timeout) before giving up and persisting whatever was parsed.
+    /// event the override needs to patch. This synchronous path does a
+    /// single parse and persists immediately — no sleep, no retry (spec
+    /// budget: ≤50ms p95). It relies on `record_event_tool_call` (in
+    /// `tool_metrics.rs`) upgrading an already-counted `tool_call_id`'s
+    /// recorded output when a later copy carries a higher-fidelity
+    /// `output_source`: the next hook invocation for this session (e.g. the
+    /// `Stop` trigger, which re-parses the by-then-flushed transcript and
+    /// re-applies the override) produces a distinct `captured_event_key`
+    /// (it fingerprints `data_json`, so an override-enriched copy differs
+    /// from the override-less one already persisted) and `merge_events`
+    /// keeps both; the override-rich copy then lands on that later call
+    /// instead of being silently dropped.
     pub fn capture_copilot_transcript_with_tool_response(
         &self,
         transcript_path: impl AsRef<Path>,
@@ -67,36 +69,13 @@ impl SessionStoreConfig {
         let transcript_path = transcript_path.as_ref();
         let trigger = trigger.into();
 
-        const MAX_ATTEMPTS: u32 = 12;
-        const RETRY_DELAY: std::time::Duration =
-            std::time::Duration::from_millis(200);
-
-        let mut payload =
+        let payload =
             copilot_payload_from_transcript_path_with_tool_response_override(
                 transcript_path,
                 self.workspace_slug.clone(),
                 Some(trigger.clone()),
                 tool_response_override.clone(),
             )?;
-
-        if let Some(override_value) = &tool_response_override {
-            for attempt in 0..MAX_ATTEMPTS {
-                if override_applied(&payload, &override_value.tool_call_id) {
-                    break;
-                }
-                if attempt + 1 >= MAX_ATTEMPTS {
-                    break;
-                }
-                std::thread::sleep(RETRY_DELAY);
-                payload =
-                    copilot_payload_from_transcript_path_with_tool_response_override(
-                        transcript_path,
-                        self.workspace_slug.clone(),
-                        Some(trigger.clone()),
-                        tool_response_override.clone(),
-                    )?;
-            }
-        }
 
         self.capture_copilot_hook(payload)
     }
@@ -285,21 +264,4 @@ impl SessionStoreConfig {
         Ok(crate::delegation_cost::compute_delegation_cost_report(&record))
     }
 
-}
-
-/// Whether a terminal tool event matching `tool_call_id` in `payload.events`
-/// already carries the `output_source` the override was meant to apply
-/// (ticket 44119807 T2 AC1 real-capture retry).
-fn override_applied(
-    payload: &CopilotHookPayload,
-    tool_call_id: &str,
-) -> bool {
-    payload.events.iter().any(|event| {
-        event.tool_call_id.as_deref() == Some(tool_call_id)
-            && event
-                .data_json
-                .as_ref()
-                .and_then(|data| data.get("output_source"))
-                .is_some()
-    })
 }

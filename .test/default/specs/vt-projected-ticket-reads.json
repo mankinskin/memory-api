@@ -1,0 +1,10 @@
+{
+  "id": "vt-projected-ticket-reads",
+  "title": "Projected ticket reads: profile/explicit-part-list validation across store, CLI, MCP, HTTP",
+  "command": "cargo test -p ticket-api -p memory-api -p ticket-cli -p ticket-mcp -p ticket-http --no-fail-fast",
+  "links": {
+    "ticket_ids": [
+      "4c7b884e-fd9b-4967-9599-5b55495d6e52"
+    ]
+  }
+}

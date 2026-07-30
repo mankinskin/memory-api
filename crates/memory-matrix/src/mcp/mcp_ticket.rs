@@ -103,6 +103,8 @@ async fn ticket_mcp_create(
         .get_ticket(Parameters(TicketRefInput {
             workspace: Some(workspace_root.to_string()),
             id: created_id,
+            view: None,
+            parts: None,
         }))
         .await
         .map_err(|err| {
@@ -132,6 +134,8 @@ async fn ticket_mcp_get(
         .get_ticket(Parameters(TicketRefInput {
             workspace: Some(workspace_root.to_string()),
             id: created_id.clone(),
+            view: None,
+            parts: None,
         }))
         .await
         .map_err(|err| format!("mcp ticket get call failed: {err}"))?;

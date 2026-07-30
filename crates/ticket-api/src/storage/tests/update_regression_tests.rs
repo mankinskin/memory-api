@@ -1285,4 +1285,71 @@ fn f9e70385_legacy_description_write_rejected_when_objective_frozen() {
     );
 }
 
+#[test]
+fn bc74e91f_combined_freeze_and_description_write_materializes_matching_objective() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Combined freeze + description write"),
+            Some("open"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let written = "combined write content";
+
+    // AC1/AC2: a single call that both transitions to `planned` and writes
+    // the description must materialize the `objective` part from the new
+    // description text, not from the pre-call (empty) description.
+    store
+        .update_with_options(
+            &id,
+            BTreeMap::new(),
+            None,
+            Some("planned"),
+            Some(written),
+            Some(DescriptionUpdateMode::Replace),
+            None,
+            false,
+        )
+        .unwrap();
+
+    let path = store.get_indexed(&id).unwrap().unwrap().path;
+    let manifest = store.get(&id).unwrap();
+    let objective = manifest
+        .parts()
+        .into_iter()
+        .find(|p| p.kind == "objective")
+        .expect("objective part should be materialized by plan freeze");
+    assert!(
+        objective.frozen,
+        "objective should be frozen after entering planned"
+    );
+
+    let objective_content = fs::read_to_string(path.join(&objective.path)).unwrap();
+    let description_content = fs::read_to_string(path.join("description.md")).unwrap();
+
+    assert_eq!(
+        objective_content, written,
+        "objective part must contain the newly written description"
+    );
+    assert_eq!(
+        description_content, written,
+        "description.md must contain the newly written description"
+    );
+    assert_eq!(
+        objective_content, description_content,
+        "objective part and description.md must be byte-identical"
+    );
+
+    let indexed = store.get_indexed(&id).unwrap().unwrap();
+    assert_eq!(indexed.state.as_deref(), Some("planned"));
+}
+
 

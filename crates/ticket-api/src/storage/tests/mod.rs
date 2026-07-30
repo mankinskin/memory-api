@@ -132,7 +132,10 @@ fn assert_ticket_title_and_state(
     );
 }
 
+mod history_append_failure_tests;
+mod part_kind_rejection_tests;
 mod policy_tests;
+mod projection_tests;
 mod recovery_tests;
 mod scan_reconcile_tests;
 mod scan_visibility_tests;

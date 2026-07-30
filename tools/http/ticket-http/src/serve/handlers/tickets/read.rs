@@ -265,6 +265,8 @@ pub async fn get_ticket(
     let state = state.clone();
     let request_id = rid.0.clone();
     let task_request_id = request_id.clone();
+    let view = params.view;
+    let parts = params.parts;
 
     tokio::task::spawn_blocking(move || {
         let request_id = task_request_id.clone();
@@ -278,6 +280,29 @@ pub async fn get_ticket(
             Ok(ticket) => ticket,
             Err(response) => return response,
         };
+
+        let projection = match ticket_api::storage::ReadProjection::decode(
+            view.as_deref(),
+            parts.as_deref(),
+        ) {
+            Ok(projection) => projection,
+            Err(error) => return storage_err(error, &request_id),
+        };
+
+        if let Some(projection) = projection {
+            return match store.project(&id, &projection) {
+                Ok(projected) => Json(serde_json::json!({
+                    "request_id": request_id,
+                    "active_workspace": workspace,
+                    "workspace": workspace,
+                    "ticket_ref": resolved.ticket_ref,
+                    "ticket": projected,
+                }))
+                .into_response(),
+                Err(error) => storage_err(error, &request_id),
+            };
+        }
+
         match TicketFs::read(&resolved.path) {
             Ok(manifest) => {
                 let ticket_ref = resolved.ticket_ref;

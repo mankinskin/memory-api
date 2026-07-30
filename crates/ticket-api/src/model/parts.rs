@@ -37,6 +37,84 @@ pub fn is_planning_part_kind(kind: &str) -> bool {
     PLANNING_PART_KINDS.contains(&kind)
 }
 
+/// The named read-projection view profiles (spec 24b3d22b, ticket
+/// 4c7b884e). The single source of truth for profile -> part-kind mapping;
+/// every transport (store API, CLI, MCP, HTTP) resolves reads through
+/// [`ViewProfile`] rather than re-declaring this vocabulary.
+pub const VIEW_PROFILE_NAMES: &[&str] = &["summary", "plan", "review", "full"];
+
+/// A named projection bundle selecting which part kinds (and whether typed
+/// `[[refs]]`) an aggregated ticket read includes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewProfile {
+    /// metadata + `objective`.
+    Summary,
+    /// metadata + `objective` + `requirements` + `design` + `examples` +
+    /// `acceptance_criteria` + refs.
+    Plan,
+    /// metadata + `acceptance_criteria` + `review` + `validation`.
+    Review,
+    /// Everything: every part present on the ticket (core and free-form)
+    /// plus refs.
+    Full,
+}
+
+impl ViewProfile {
+    /// Parse a wire `view` string. Rejects an unrecognized name, naming the
+    /// valid vocabulary.
+    pub fn parse(name: &str) -> Result<Self, StorageError> {
+        match name {
+            "summary" => Ok(Self::Summary),
+            "plan" => Ok(Self::Plan),
+            "review" => Ok(Self::Review),
+            "full" => Ok(Self::Full),
+            other => Err(StorageError::Other(format!(
+                "unknown view profile '{other}': valid profiles are {}",
+                VIEW_PROFILE_NAMES.join(", ")
+            ))),
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Summary => "summary",
+            Self::Plan => "plan",
+            Self::Review => "review",
+            Self::Full => "full",
+        }
+    }
+
+    /// Ordered core part kinds this profile includes, or `None` for `full`,
+    /// which includes every kind present on the ticket (core and
+    /// free-form) rather than a fixed list.
+    pub fn kinds(&self) -> Option<&'static [&'static str]> {
+        match self {
+            Self::Summary => Some(&["objective"]),
+            Self::Plan => Some(&[
+                "objective",
+                "requirements",
+                "design",
+                "examples",
+                "acceptance_criteria",
+            ]),
+            Self::Review => Some(&["acceptance_criteria", "review", "validation"]),
+            Self::Full => None,
+        }
+    }
+
+    /// Whether this profile's aggregated output includes typed `[[refs]]`.
+    pub fn includes_refs(self) -> bool {
+        matches!(self, Self::Plan | Self::Full)
+    }
+
+    /// Whether this profile renders each frozen part followed immediately
+    /// by its amendments inline (oldest first, newest last), rather than a
+    /// separate trailing amendments section (spec 24b3d22b AC10).
+    pub fn inlines_amendments(self) -> bool {
+        matches!(self, Self::Plan | Self::Full)
+    }
+}
+
 /// Classification of a part's `kind` string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PartKindClass {

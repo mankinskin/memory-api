@@ -64,9 +64,26 @@ impl TicketServer {
     ) -> Result<CallToolResult, McpError> {
         let workspace = input.workspace.unwrap_or_else(|| "default".to_string());
         let id_str = input.id;
+        let view = input.view;
+        let parts = input.parts;
 
         self.with_store_ext(&workspace.clone(), move |store| {
             let id = Self::resolve_uuid_for_read(store, &id_str)?;
+            let projection = ticket_api::storage::ReadProjection::decode(
+                view.as_deref(),
+                parts.as_deref(),
+            )
+            .map_err(Self::store_err)?;
+
+            if let Some(projection) = projection {
+                let projected =
+                    store.project(&id, &projection).map_err(Self::store_err)?;
+                return Self::json_result(&serde_json::json!({
+                    "workspace": workspace,
+                    "ticket": projected,
+                }));
+            }
+
             let path = store
                 .get_indexed(&id)
                 .map_err(Self::store_err)?
@@ -232,6 +249,8 @@ mod tests {
             .get_ticket_tool(TicketRefInput {
                 workspace: None,
                 id: id.to_string(),
+                view: None,
+                parts: None,
             })
             .await
             .expect("get_ticket_tool ok");
@@ -245,6 +264,43 @@ mod tests {
         );
         // No default-type assumption: the type field is retained in output.
         assert_eq!(json["ticket"]["fields"]["type"], "tracker-improvement");
+    }
+
+    /// End-to-end MCP proof (ticket 4c7b884e, AC7): `get_ticket` with
+    /// `view: "summary"` reaches the projection helper and returns exactly
+    /// the `objective` part rather than the raw manifest fields.
+    #[tokio::test]
+    async fn get_ticket_tool_with_view_summary_projects_to_objective_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let server = TicketServer::new(dir.path().to_path_buf());
+        let store = TicketStore::init(dir.path()).expect("open store");
+        let id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("mcp projection"),
+                Some("open"),
+                BTreeMap::new(),
+                None,
+                Some("objective body"),
+            )
+            .expect("create ticket");
+
+        let result = server
+            .get_ticket_tool(TicketRefInput {
+                workspace: None,
+                id: id.to_string(),
+                view: Some("summary".to_string()),
+                parts: None,
+            })
+            .await
+            .expect("get_ticket_tool with view=summary ok");
+        let json: Value = serde_json::from_str(&extract_text(&result))
+            .expect("valid json");
+
+        let parts = json["ticket"]["parts"].as_array().expect("parts array");
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0]["kind"], "objective");
     }
 
     #[tokio::test]
@@ -277,6 +333,8 @@ mod tests {
             .get_ticket_tool(TicketRefInput {
                 workspace: None,
                 id: id.to_string(),
+                view: None,
+                parts: None,
             })
             .await
             .expect("get indexed descendant ticket");
@@ -298,6 +356,8 @@ mod tests {
             .get_ticket_tool(TicketRefInput {
                 workspace: None,
                 id: "deadbeef".to_string(),
+                view: None,
+                parts: None,
             })
             .await
             .expect_err("missing prefix should fail");

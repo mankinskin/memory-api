@@ -1,0 +1,11 @@
+{
+  "id": "vt-typed-refs-manifest-table",
+  "title": "Typed [[refs]] manifest table round-trip, validation, and legacy migration",
+  "command": "cargo test -p ticket-api -p memory-api --no-fail-fast",
+  "detail": "Covers AC1-AC6 of ticket 9d69e93d: six ref kinds round-trip via write_ref/refs()/set_refs; unknown kind rejected with vocabulary in error; malformed URN rejected per-kind at write time; legacy related_specs bridges to refs() with identical spec identity; foreign/unknown ref kinds already in a manifest round-trip unchanged on read; no edge-model code touched.",
+  "links": {
+    "ticket_ids": [
+      "9d69e93d-b7ab-4f88-a88c-40ec76d5206b"
+    ]
+  }
+}

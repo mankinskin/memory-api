@@ -1,0 +1,17 @@
+{
+  "id": "exec-projected-ticket-reads-20260730",
+  "validation_spec_id": "vt-projected-ticket-reads",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T19:28:06.438366600Z",
+  "detail": "Store: 12/12 projection_tests pass in ticket-api. CLI: 2 new tests pass. MCP: 1 new test passes. HTTP: 3 new tests pass. Build: cargo build --workspace clean. cargo test -p ticket-api -p memory-api -p ticket-cli: 193/193, 159/161 (2 pre-existing failures excluded per instructions), 21/21 pass. Live CLI proof against real tickets 9d69e93d and 4c7b884e for all 4 profiles, explicit parts list, legacy objective synthesis, and all 3 rejection paths.",
+  "links": {
+    "ticket_ids": [
+      "4c7b884e-fd9b-4967-9599-5b55495d6e52"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "cargo-test",
+    "run_id": "4c7b884e-projection-validation"
+  }
+}

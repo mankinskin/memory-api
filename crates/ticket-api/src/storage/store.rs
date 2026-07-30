@@ -47,6 +47,7 @@ use crate::{
 mod board;
 mod lifecycle;
 mod parts;
+mod projection;
 mod query;
 mod release;
 mod scan;
@@ -57,6 +58,11 @@ pub use self::{
     parts::{
         PART_HISTORY_CONTENT_KEY,
         PART_HISTORY_ID_KEY,
+    },
+    projection::{
+        ProjectedPart,
+        ReadProjection,
+        TicketProjection,
     },
     release::{
         GateCheckOutcome,
@@ -711,6 +717,35 @@ impl TicketStore {
             self.enforce_description_write_gate(id)?;
         }
 
+        // AC1/AC2 (ticket bc74e91f): write the new description before any
+        // transition path is walked so that `apply_plan_freeze` materializes
+        // the `objective` part from the freshly written text rather than from
+        // the pre-call (often empty) description.
+        let mut previous_description = None;
+        if let Some(desc) = description {
+            // AC1/AC2: an omitted description_mode is a hard error, not a
+            // silent default — the silent `Replace` default was the direct
+            // cause of destructive description overwrites.
+            let mode = description_mode.ok_or_else(|| {
+                StorageError::Other(REQUIRED_DESCRIPTION_MODE_ERROR.to_string())
+            })?;
+            let existing = TicketFs::read_description(ticket_path);
+            previous_description = existing.clone();
+            let final_text = match mode {
+                DescriptionUpdateMode::Replace => desc.to_string(),
+                DescriptionUpdateMode::Append => match existing {
+                    Some(existing) if !existing.is_empty() => {
+                        format!("{existing}\n{desc}")
+                    },
+                    _ => desc.to_string(),
+                },
+            };
+            // AC7: the legacy `description` write is not a privileged
+            // bypass of plan freezing — it was already gated above against
+            // this call's pre-transition state.
+            TicketFs::write_description(ticket_path, &final_text)?;
+        }
+
         let updated_manifest = if transition_path.is_empty() {
             TicketFs::update(ticket_path, patch, new_state.as_deref())?
         } else {
@@ -747,31 +782,6 @@ impl TicketStore {
             }
             manifest.expect("transition path produces at least one manifest")
         };
-
-        let mut previous_description = None;
-        if let Some(desc) = description {
-            // AC1/AC2: an omitted description_mode is a hard error, not a
-            // silent default — the silent `Replace` default was the direct
-            // cause of destructive description overwrites.
-            let mode = description_mode.ok_or_else(|| {
-                StorageError::Other(REQUIRED_DESCRIPTION_MODE_ERROR.to_string())
-            })?;
-            let existing = TicketFs::read_description(ticket_path);
-            previous_description = existing.clone();
-            let final_text = match mode {
-                DescriptionUpdateMode::Replace => desc.to_string(),
-                DescriptionUpdateMode::Append => match existing {
-                    Some(existing) if !existing.is_empty() => {
-                        format!("{existing}\n{desc}")
-                    },
-                    _ => desc.to_string(),
-                },
-            };
-            // AC7: the legacy `description` write is not a privileged
-            // bypass of plan freezing — it was already gated above against
-            // this call's pre-transition state.
-            TicketFs::write_description(ticket_path, &final_text)?;
-        }
 
         Ok((updated_manifest, previous_description))
     }

@@ -1,0 +1,26 @@
+{
+  "id": "exec-71e13480-guidance-refresh-20260730",
+  "validation_spec_id": "vt-71e13480-guidance-refresh",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T19:34:16.756809900Z",
+  "detail": "Grep swept AGENTS.md/.agents/instructions//.agents/prompts/.clinerules for stale new/ready states and description_mode/description.md: zero real hits. Added view-profile table + refs docs to workflow.instructions.md, freeze contract to lifecycle.instructions.md, part-kind naming to review/testing/implement agent surfaces, and a --view pointer in AGENTS.md token-efficiency section. All touched files confirmed hand-authored (not in any rule-targets.yaml, no rule-api:file generated=true marker); rule-mcp regeneration step deferred — not in this agent's tool grant.",
+  "links": {
+    "acceptance_criterion_ids": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7"
+    ],
+    "ticket_ids": [
+      "71e13480-4f92-418a-a9e6-155f3274f180"
+    ]
+  },
+  "provenance": {
+    "domain": "docs",
+    "operation": "guidance-refresh",
+    "run_id": "run-71e13480-20260730"
+  }
+}

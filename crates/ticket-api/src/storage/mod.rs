@@ -28,6 +28,9 @@ pub use store::{
     DescriptionUpdateMode,
     PART_HISTORY_CONTENT_KEY,
     PART_HISTORY_ID_KEY,
+    ProjectedPart,
     REQUIRED_DESCRIPTION_MODE_ERROR,
+    ReadProjection,
+    TicketProjection,
     TicketStore,
 };

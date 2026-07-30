@@ -85,6 +85,16 @@ pub struct TicketRefInput {
     #[serde(default)]
     pub workspace: Option<String>,
     pub id: String,
+    /// Named read-projection view profile: summary, plan, review, or full.
+    /// Mutually exclusive with `parts`. Defaults to `summary` when neither
+    /// is supplied. Ignored by tools other than `get_ticket`.
+    #[serde(default)]
+    pub view: Option<String>,
+    /// Explicit comma-separated part-kind list to project (e.g.
+    /// "objective,acceptance_criteria"). Mutually exclusive with `view`.
+    /// Ignored by tools other than `get_ticket`.
+    #[serde(default)]
+    pub parts: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

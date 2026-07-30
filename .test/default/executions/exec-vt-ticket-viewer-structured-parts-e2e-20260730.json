@@ -1,0 +1,20 @@
+{
+  "id": "exec-vt-ticket-viewer-structured-parts-e2e-20260730",
+  "validation_spec_id": "vt-ticket-viewer-structured-parts-e2e",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T20:24:24.418234300Z",
+  "detail": "3/3 passed. Chromium-family browser: Microsoft Edge (system install), headed, viewport 1280x720. Covered: (1) multiple typed parts render as separate collapsible sections in manifest order, (2) frozen parts show 'Frozen at planned' badge, (3) amendment renders inline beneath the objective part it supersedes, (4) typed refs render: spec ref deep-links to spec-viewer, dangling spec ref marked unresolved, file ref renders as plain text, (5) legacy description-only ticket (no [[parts]]) renders a single synthesized objective section, no blank page, no desc-error. Screenshots: structured-parts-expanded.png, structured-parts-collapsed.png, structured-parts-refs.png, structured-parts-legacy.png under memory-viewers/ticket-viewer/frontend/dioxus/test-results-release/.",
+  "links": {
+    "spec_ids": [
+      "24b3d22b-e235-4c4f-b53c-75fb819ea95b"
+    ],
+    "ticket_ids": [
+      "89fa0c25-a9ee-4f2d-a341-09fd9707946a"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-viewer",
+    "operation": "playwright-e2e",
+    "run_id": "run-20260730-2223"
+  }
+}

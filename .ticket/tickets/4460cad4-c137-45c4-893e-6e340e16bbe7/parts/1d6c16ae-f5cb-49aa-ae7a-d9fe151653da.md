@@ -1,0 +1,1 @@
+Validate ticket-viewer renders typed parts, frozen state, amendments, and refs correctly.

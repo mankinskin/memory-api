@@ -1,0 +1,14 @@
+{
+  "id": "vt-ticket-viewer-structured-parts-e2e",
+  "title": "ticket-viewer structured parts/frozen/amendment/refs release E2E",
+  "command": "npx playwright test -c playwright.release.msedge.config.ts structured-parts.release.spec.ts",
+  "detail": "Covers ticket 89fa0c25 ACs 1-8: typed part rendering, frozen badges, inline amendment, typed refs (spec deep-link + dangling marking), and legacy description-only ticket rendering, with screenshots.",
+  "links": {
+    "spec_ids": [
+      "24b3d22b-e235-4c4f-b53c-75fb819ea95b"
+    ],
+    "ticket_ids": [
+      "89fa0c25-a9ee-4f2d-a341-09fd9707946a"
+    ]
+  }
+}

@@ -39,6 +39,8 @@ fn create_nested_ticket_fixture()
 fn dry_run_payload_is_returned_for_mutating_command() {
     let payload = dry_run_command_payload(&TicketCommandCli::Delete(IdArgs {
         id: Uuid::new_v4().to_string(),
+        view: None,
+        parts: None,
     }))
     .expect("delete should be dry-runnable");
     assert_eq!(payload["dry_run"], json!(true));
@@ -90,6 +92,8 @@ fn dispatch_get_reads_child_ticket_from_explicit_workspace_root() {
     let payload = dispatch(
         TicketCommandCli::Get(IdArgs {
             id: ticket_id.clone(),
+            view: None,
+            parts: None,
         }),
         None,
         Some(&child),
@@ -250,6 +254,8 @@ fn dispatch_get_reads_child_ticket_after_scan_root_augmentation() {
     let payload = dispatch_store_command(
         TicketCommandCli::Get(IdArgs {
             id: ticket_id.clone(),
+            view: None,
+            parts: None,
         }),
         root_store,
         false,
