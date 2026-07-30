@@ -1,7 +1,8 @@
 id = "0c02b304-de04-4e29-818f-fb1e6797bdc0"
 created_at = "2026-07-30T00:49:46.713422900+00:00"
 title = "Fix silent history-append failures and manifest null-deletion corruption"
-state = "in-review"
+state = "in-implementation"
 child_of = ["bbb4bce9-d57c-4f85-8757-8d239f9f7cde"]
+parts = [{ id = "34597ab4-9c49-4c0f-b415-ad4902ddb12b", kind = "review", path = "parts/34597ab4-9c49-4c0f-b415-ad4902ddb12b.md", frozen = false, created_at = "2026-07-30T11:32:48.094632900Z" }]
 priority = "high"
 type = "bug"
