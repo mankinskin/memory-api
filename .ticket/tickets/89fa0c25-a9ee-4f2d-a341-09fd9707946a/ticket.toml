@@ -1,7 +1,7 @@
 id = "89fa0c25-a9ee-4f2d-a341-09fd9707946a"
 created_at = "2026-07-29T12:53:14.131527400+00:00"
 title = "ticket-viewer: render parts, frozen state, amendments, and typed refs"
-state = "new"
+state = "open"
 component = "ticket-viewer"
 depends_on = ["4c7b884e-fd9b-4967-9599-5b55495d6e52"]
 effort = "2400"

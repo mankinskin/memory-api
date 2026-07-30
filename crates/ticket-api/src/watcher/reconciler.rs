@@ -345,7 +345,7 @@ mod tests {
                 None,
                 "tracker-improvement",
                 Some("watch me"),
-                Some("ready"),
+                Some("planned"),
                 Default::default(),
                 None,
                 None,

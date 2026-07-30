@@ -67,7 +67,7 @@ impl TicketDomain {
                 None,
                 "tracker-improvement",
                 Some("matrix move"),
-                Some("ready"),
+                Some("planned"),
                 BTreeMap::new(),
                 None,
                 None,
@@ -160,7 +160,7 @@ impl TicketDomain {
                 None,
                 "tracker-improvement",
                 Some(title),
-                Some("new"),
+                Some("open"),
                 BTreeMap::new(),
                 None,
                 None,
@@ -231,7 +231,7 @@ impl DomainOps for TicketDomain {
                 None,
                 "tracker-improvement",
                 Some("matrix create"),
-                Some("new"),
+                Some("open"),
                 BTreeMap::new(),
                 None,
                 None,
@@ -288,17 +288,17 @@ impl DomainOps for TicketDomain {
                 None,
                 "tracker-improvement",
                 Some("matrix update"),
-                Some("new"),
+                Some("open"),
                 BTreeMap::new(),
                 None,
                 None,
             )
             .map_err(|err| err.to_string())?;
         let manifest = store
-            .update(&id, BTreeMap::new(), None, Some("ready"), None, None)
+            .update(&id, BTreeMap::new(), None, Some("planned"), None, None)
             .map_err(|err| err.to_string())?;
         match manifest.extra.get("state").and_then(Value::as_str) {
-            Some("ready") => pass(),
+            Some("planned") => pass(),
             other => Err(format!("update did not transition state: {other:?}")),
         }
     }
@@ -313,7 +313,7 @@ impl DomainOps for TicketDomain {
                 None,
                 "tracker-improvement",
                 Some("matrix delete"),
-                Some("new"),
+                Some("open"),
                 BTreeMap::new(),
                 None,
                 None,

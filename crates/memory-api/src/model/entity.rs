@@ -34,6 +34,52 @@ pub struct SpecRef {
     pub store_root: String,
 }
 
+/// A single addressable content part of a ticket, stored under
+/// `parts/<file>` and indexed by the `parts` extra key (rendered as
+/// `[[parts]]` in `ticket.toml`). See spec 24b3d22b.
+///
+/// `id` is the stable addressing key, assigned once at creation and never
+/// reused; manifest order is display/creation order only and is never used
+/// for addressing.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TicketPart {
+    /// Stable opaque addressing key, assigned at creation.
+    pub id: Uuid,
+    /// Part kind: one of the core, schema-validated kinds or a free-form
+    /// opaque attachment kind.
+    pub kind: String,
+    /// Path to the part's markdown file, relative to the ticket directory
+    /// (e.g. `"parts/<id>.md"`).
+    pub path: String,
+    /// `true` once the ticket has entered `planned` and this is a planning
+    /// part; frozen parts reject direct writes (enforced by a follow-up
+    /// ticket, not here).
+    pub frozen: bool,
+    pub created_at: DateTime<Utc>,
+    /// Reserved from the start: the `id` of the frozen part an `amendment`
+    /// part supersedes. Unused until the freeze ticket lands.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supersedes: Option<Uuid>,
+}
+
+impl TicketPart {
+    /// Construct a new, unfrozen part with a freshly assigned `id` and the
+    /// current timestamp.
+    pub fn new(
+        kind: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            kind: kind.into(),
+            path: path.into(),
+            frozen: false,
+            created_at: Utc::now(),
+            supersedes: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EntityManifest {
     pub id: EntityId,
@@ -104,6 +150,40 @@ impl EntityManifest {
             }
         }
         entries
+    }
+
+    /// Structured content parts for this entity (typed field backed by the
+    /// `parts` extra key, rendered as `[[parts]]` in `ticket.toml`). Returns
+    /// an empty vec (never errors) when the key is absent — the case for
+    /// every legacy ticket with no `[[parts]]` table.
+    pub fn parts(&self) -> Vec<TicketPart> {
+        self.extra
+            .get("parts")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or_default()
+    }
+
+    /// Replace the structured content parts, storing them under the `parts`
+    /// extra key in manifest (creation/display) order. Removes the key
+    /// entirely when empty so serialized manifests stay minimal and legacy
+    /// (no-`[[parts]]`) tickets round-trip unchanged.
+    pub fn set_parts(
+        &mut self,
+        parts: Vec<TicketPart>,
+    ) {
+        if parts.is_empty() {
+            self.extra.remove("parts");
+            return;
+        }
+        match serde_json::to_value(parts) {
+            Ok(value) => {
+                self.extra.insert("parts".to_string(), value);
+            },
+            Err(_) => {
+                self.extra.remove("parts");
+            },
+        }
     }
 }
 
@@ -191,6 +271,65 @@ mod tests {
         }]);
         manifest.extra.remove("spec_ids");
         assert!(manifest.legacy_spec_link_entries().is_empty());
+    }
+
+    #[test]
+    fn parts_round_trip_through_extra() {
+        let mut manifest = make_manifest();
+        let parts = vec![
+            TicketPart::new("objective", "parts/aaaaaaaa.md"),
+            TicketPart::new("notes", "parts/bbbbbbbb.md"),
+        ];
+
+        manifest.set_parts(parts.clone());
+        assert_eq!(manifest.parts(), parts);
+
+        let toml_str = toml::to_string(&manifest).unwrap();
+        let parsed: EntityManifest = toml::from_str(&toml_str).unwrap();
+        assert_eq!(parsed.parts(), parts);
+    }
+
+    #[test]
+    fn parts_supersedes_none_omitted_and_round_trips() {
+        let mut manifest = make_manifest();
+        let original = TicketPart::new("acceptance_criteria", "parts/orig.md");
+        let amendment = TicketPart {
+            supersedes: Some(original.id),
+            ..TicketPart::new("amendment", "parts/amend.md")
+        };
+        manifest.set_parts(vec![original.clone(), amendment.clone()]);
+
+        // `supersedes: None` must not survive as an explicit null — it must
+        // be indistinguishable from a legacy part that never had the field.
+        let value = manifest.extra.get("parts").unwrap();
+        let first = &value.as_array().unwrap()[0];
+        assert!(
+            first.get("supersedes").is_none(),
+            "supersedes should be omitted, not null, when absent"
+        );
+
+        let toml_str = toml::to_string(&manifest).unwrap();
+        let parsed: EntityManifest = toml::from_str(&toml_str).unwrap();
+        let round_tripped = parsed.parts();
+        assert_eq!(round_tripped[0].supersedes, None);
+        assert_eq!(round_tripped[1].supersedes, Some(original.id));
+    }
+
+    #[test]
+    fn set_parts_empty_removes_key() {
+        let mut manifest = make_manifest();
+        manifest.set_parts(vec![TicketPart::new("objective", "parts/a.md")]);
+        assert!(manifest.extra.contains_key("parts"));
+
+        manifest.set_parts(Vec::new());
+        assert!(manifest.extra.get("parts").is_none());
+        assert!(manifest.parts().is_empty());
+    }
+
+    #[test]
+    fn parts_absent_key_yields_empty_vec_for_legacy_manifests() {
+        let manifest = make_manifest();
+        assert!(manifest.parts().is_empty());
     }
 }
 

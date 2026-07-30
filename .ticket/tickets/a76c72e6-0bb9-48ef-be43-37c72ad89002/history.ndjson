@@ -1,2 +1,2 @@
-{"rev":1,"ts":"2026-05-21T11:44:36.940930200+00:00","fields":{"state":"new","title":"Project tracker: rule-api hierarchy and documentation pipeline","type":"tracker-improvement"}}
-{"rev":2,"ts":"2026-07-23T13:33:27.198255300+00:00","fields":{"effort":"1200","state":"new","title":"Project tracker: rule-api hierarchy and documentation pipeline","type":"tracker-improvement"},"author":"github-copilot"}
+{"rev":1,"ts":"2026-05-21T11:44:36.940930200+00:00","fields":{"state":"open","title":"Project tracker: rule-api hierarchy and documentation pipeline","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-23T13:33:27.198255300+00:00","fields":{"effort":"1200","state":"open","title":"Project tracker: rule-api hierarchy and documentation pipeline","type":"tracker-improvement"},"author":"github-copilot"}

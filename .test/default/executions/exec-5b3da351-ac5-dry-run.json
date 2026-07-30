@@ -1,0 +1,18 @@
+{
+  "id": "exec-5b3da351-ac5-dry-run",
+  "validation_spec_id": "vt-5b3da351-ticket-state-rename",
+  "outcome": "passed",
+  "executed_at": "2026-07-29T23:42:08.483184900Z",
+  "detail": "Ran migrate_ticket_states.py --dry-run against both stores before any real write: reported ticket.toml changed=356/96 and history.ndjson changed=779/301 (per-file paths printed), then confirmed via grep that 356 ticket.toml files still contained the old literal (no writes occurred).",
+  "links": {
+    "ticket_ids": [
+      "5b3da351-1c87-4619-a0bc-6d7abe147d60"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "store-migration-verification",
+    "transport": "cli",
+    "run_id": "5b3da351-manual-verification"
+  }
+}

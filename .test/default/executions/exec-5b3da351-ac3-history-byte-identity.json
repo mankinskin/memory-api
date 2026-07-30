@@ -1,0 +1,18 @@
+{
+  "id": "exec-5b3da351-ac3-history-byte-identity",
+  "validation_spec_id": "vt-5b3da351-ticket-state-rename",
+  "outcome": "passed",
+  "executed_at": "2026-07-29T23:41:55.816569900Z",
+  "detail": "Python byte-diff script compared pre-migration backups (C:/tmp/verify_root, C:/tmp/verify_memapi) against migrated history.ndjson line-by-line for both stores: 2997 + 1086 lines changed, 0 unexpected mismatches (every changed line differs only in the `\"state\":\"new\"/\"ready\"` token -> `\"state\":\"open\"/\"planned\"`; all other bytes, key order, and line ordering identical). No JSON re-serialization was used; migration is a targeted regex substring substitution.",
+  "links": {
+    "ticket_ids": [
+      "5b3da351-1c87-4619-a0bc-6d7abe147d60"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "store-migration-verification",
+    "transport": "cli",
+    "run_id": "5b3da351-manual-verification"
+  }
+}

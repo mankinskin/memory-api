@@ -1,7 +1,7 @@
 id = "6ddfb633-6e04-49ef-a464-f38bb13f6051"
 created_at = "2026-07-04T01:24:26.771073100+00:00"
 title = "[ticket-api][perf] Add aggressive e2e timing coverage for move and health"
-state = "ready"
+state = "planned"
 component = "ticket-api"
 depends_on = ["f5875ff3-7c37-4ac2-8ae6-d68aff240bf4"]
 effort = "2200"

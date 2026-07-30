@@ -31,6 +31,7 @@ mod graph;
 mod health;
 mod mutations;
 mod next_tickets;
+mod parts;
 mod query;
 mod types;
 mod workflow;
@@ -342,7 +343,7 @@ impl TicketServer {
 
     #[tool(
         name = "update_ticket",
-        description = "Update a ticket: apply field patches and/or transition state. Set undo=true to revert to the previous history revision."
+        description = "Update a ticket: apply field patches and/or transition state. Set undo=true to revert to the previous history revision. description_mode ('replace' or 'append') is required and rejected if omitted whenever description is set; there is no default."
     )]
     pub async fn update_ticket(
         &self,
@@ -610,6 +611,61 @@ impl TicketServer {
     )]
     async fn help(&self) -> Result<CallToolResult, McpError> {
         self.help_tool().await
+    }
+
+    #[tool(
+        name = "list_parts",
+        description = "List a ticket's content parts (id, kind, frozen, created_at, supersedes, and optionally content), including any orphaned part files reported separately."
+    )]
+    pub async fn list_parts(
+        &self,
+        Parameters(input): Parameters<ListPartsInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.list_parts_tool(input).await
+    }
+
+    #[tool(
+        name = "get_part",
+        description = "Get a single ticket content part by its opaque part id."
+    )]
+    pub async fn get_part(
+        &self,
+        Parameters(input): Parameters<GetPartInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.get_part_tool(input).await
+    }
+
+    #[tool(
+        name = "write_part",
+        description = "Write a ticket content part: updates an existing part via part_id, or creates a new part of the given kind. Rejected with the full frozen-part error if the addressed part is frozen by plan freezing."
+    )]
+    pub async fn write_part(
+        &self,
+        Parameters(input): Parameters<WritePartInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.write_part_tool(input).await
+    }
+
+    #[tool(
+        name = "write_amendment",
+        description = "Write an 'amendment' part that supersedes another (typically frozen) part, recording a correction without unfreezing the original."
+    )]
+    pub async fn write_amendment(
+        &self,
+        Parameters(input): Parameters<WriteAmendmentInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.write_amendment_tool(input).await
+    }
+
+    #[tool(
+        name = "undo_part",
+        description = "Restore a part to the content it held immediately before its most recent write. Rejected if the part is currently frozen."
+    )]
+    pub async fn undo_part(
+        &self,
+        Parameters(input): Parameters<UndoPartInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.undo_part_tool(input).await
     }
 }
 

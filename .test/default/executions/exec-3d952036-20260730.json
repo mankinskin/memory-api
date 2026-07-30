@@ -1,0 +1,17 @@
+{
+  "id": "exec-3d952036-20260730",
+  "validation_spec_id": "vt-3d952036-ticket-api-session-api",
+  "outcome": "passed",
+  "executed_at": "2026-07-29T23:01:15.096233800Z",
+  "detail": "cargo test -p ticket-api: 143+1+1+4 passed (0 failed). cargo test -p session-api: 184+5+5+4+5+4+1+7+3+4 passed (0 failed, 1 ignored baseline generator). cargo build --workspace: clean, no errors. cargo build -p ticket-viewer-dioxus: clean (frontend call site fixed).",
+  "links": {
+    "ticket_ids": [
+      "3d952036-efd4-4f36-a77f-6b7f5058a0a0"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "cargo-test-and-build",
+    "run_id": "3d952036-manual-20260730"
+  }
+}

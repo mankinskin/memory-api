@@ -7,7 +7,7 @@ fn next_and_board_prefer_newer_tickets_before_older_ones() {
 
     for ticket_id in [&older, &newer] {
         let ready =
-            s.ticket_json(&["update", ticket_id, "--to-state", "ready"]);
+            s.ticket_json(&["update", ticket_id, "--to-state", "planned"]);
         assert_eq!(ready["status"], "ok");
 
         let priority =
@@ -44,7 +44,7 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
 
     for ticket_id in [&older_more_dependees, &newer_fewer_dependees] {
         let ready =
-            s.ticket_json(&["update", ticket_id, "--to-state", "ready"]);
+            s.ticket_json(&["update", ticket_id, "--to-state", "planned"]);
         assert_eq!(ready["status"], "ok");
 
         let priority =
@@ -93,7 +93,7 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
         &older_more_dependees[..8]
     )));
     assert!(human.contains(
-        "state: ready  priority: high  effort: -  dependee_count: 2  dependency_count: 0"
+        "state: planned  priority: high  effort: -  dependee_count: 2  dependency_count: 0"
     ));
     assert!(human.contains(&format!("created_at: {pretty_created_at}")));
     assert!(human.contains(&format!("ticket_id: {older_more_dependees}")));
@@ -118,7 +118,7 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
         entries[0],
         NextTicketEntry {
             ticket_id: older_more_dependees.clone(),
-            state: Some("ready".into()),
+            state: Some("planned".into()),
             priority: "high".into(),
             effort: None,
             dependee_count: 2,
@@ -129,7 +129,7 @@ fn next_and_board_prefer_more_dependees_before_newer_tickets() {
         entries[1],
         NextTicketEntry {
             ticket_id: newer_fewer_dependees.clone(),
-            state: Some("ready".into()),
+            state: Some("planned".into()),
             priority: "high".into(),
             effort: None,
             dependee_count: 0,
@@ -166,7 +166,7 @@ fn next_and_board_prefer_recently_actionable_candidates_and_surface_timing_metad
 
     for ticket_id in [&recently_actionable, &steadier_newer] {
         let ready =
-            s.ticket_json(&["update", ticket_id, "--to-state", "ready"]);
+            s.ticket_json(&["update", ticket_id, "--to-state", "planned"]);
         assert_eq!(ready["status"], "ok");
 
         let priority =
@@ -174,7 +174,7 @@ fn next_and_board_prefer_recently_actionable_candidates_and_surface_timing_metad
         assert_eq!(priority["status"], "ok");
     }
 
-    for state in ["ready", "in-implementation", "in-review"] {
+    for state in ["planned", "in-implementation", "in-review"] {
         let updated =
             s.ticket_json(&["update", &transient_blocker, "--to-state", state]);
         assert_eq!(updated["status"], "ok");
@@ -228,10 +228,10 @@ fn next_and_board_promote_convergence_before_unrelated_ready_work() {
     let advanced_dependent = create_ticket(&s, "Advanced dependent");
 
     let unrelated_ready_state =
-        s.ticket_json(&["update", &unrelated_ready, "--to-state", "ready"]);
+        s.ticket_json(&["update", &unrelated_ready, "--to-state", "planned"]);
     assert_eq!(unrelated_ready_state["status"], "ok");
 
-    for state in ["ready", "in-implementation", "in-review"] {
+    for state in ["planned", "in-implementation", "in-review"] {
         let dependent_state = s.ticket_json(&[
             "update",
             &advanced_dependent,
@@ -289,7 +289,7 @@ fn board_show_excludes_history_and_board_history_lists_recent_completions() {
     let completed_ticket = create_ticket(&s, "Recently completed board work");
     let next_ticket = create_ticket(&s, "Ready board follow-up");
 
-    let ready = s.ticket_json(&["update", &next_ticket, "--to-state", "ready"]);
+    let ready = s.ticket_json(&["update", &next_ticket, "--to-state", "planned"]);
     assert_eq!(ready["status"], "ok");
 
     let active = s.ticket_json(&[
@@ -375,7 +375,7 @@ fn update_with_board_check_in() {
         "update",
         &ticket_id,
         "--to-state",
-        "ready",
+        "planned",
         "--board-check-in",
         "--board-agent",
         "agent-epsilon",
@@ -384,7 +384,7 @@ fn update_with_board_check_in() {
     ]);
 
     assert_eq!(result["status"], "ok");
-    assert_eq!(result["state"], "ready");
+    assert_eq!(result["state"], "planned");
     assert!(
         !result["board_entry"].is_null(),
         "board_entry should be present in update response"

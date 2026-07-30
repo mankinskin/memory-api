@@ -1,0 +1,18 @@
+{
+  "id": "exec-5b3da351-ac6-transports-and-help",
+  "validation_spec_id": "vt-5b3da351-ticket-state-rename",
+  "outcome": "passed",
+  "executed_at": "2026-07-29T23:42:15.843858500Z",
+  "detail": "cargo test -p ticket-api: 143 passed, 0 failed (lib) + 1/1/4/0 passed across e2e_fixture_loader, e2e_fixture_move, e2e_perf_move_health integration suites; 0 doc-tests. cargo build --workspace: Finished with warnings only, no errors. Grepped ticket-cli/ticket-mcp/ticket-http source and `ticket --help` output for old state names: none found outside historical/test fixtures unaffected by AC scope.",
+  "links": {
+    "ticket_ids": [
+      "5b3da351-1c87-4619-a0bc-6d7abe147d60"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "cargo-test-and-build",
+    "transport": "cli",
+    "run_id": "5b3da351-manual-verification"
+  }
+}

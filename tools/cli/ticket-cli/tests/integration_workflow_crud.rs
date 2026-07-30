@@ -8,12 +8,14 @@
 mod common;
 
 use std::fs;
+use std::process::Command;
 
 use common::{
     TicketCommands,
     TicketSandbox as Sandbox,
     create_ticket,
 };
+use ticket_api::storage::REQUIRED_DESCRIPTION_MODE_ERROR;
 
 // ---------------------------------------------------------------------------
 // CRUD
@@ -40,7 +42,7 @@ fn create_and_get_roundtrip() {
     assert_eq!(got["status"], "ok");
     assert_eq!(got["ticket"]["id"], id);
     assert_eq!(got["ticket"]["fields"]["title"], "Fix login bug");
-    assert_eq!(got["ticket"]["fields"]["state"], "new");
+    assert_eq!(got["ticket"]["fields"]["state"], "open");
     assert_eq!(got["ticket"]["fields"]["type"], "tracker-improvement");
     // Interview metadata is schema-supported but optional, so it should not be
     // auto-initialized for tickets without an active interview.
@@ -85,13 +87,13 @@ fn list_filters_by_state() {
 
     create_ticket(&s, "Stays new");
     let id2 = create_ticket(&s, "Goes ready");
-    s.ticket_json(&["update", &id2, "--to-state", "ready"]);
+    s.ticket_json(&["update", &id2, "--to-state", "planned"]);
 
-    let new_tickets = s.ticket_json(&["list", "--state", "new"]);
+    let new_tickets = s.ticket_json(&["list", "--state", "open"]);
     assert_eq!(new_tickets["count"].as_u64().unwrap(), 1);
     assert_eq!(new_tickets["items"][0]["title"], "Stays new");
 
-    let in_ref = s.ticket_json(&["list", "--state", "ready"]);
+    let in_ref = s.ticket_json(&["list", "--state", "planned"]);
     assert_eq!(in_ref["count"].as_u64().unwrap(), 1);
     assert_eq!(in_ref["items"][0]["id"], id2.as_str());
 }
@@ -137,13 +139,46 @@ fn update_fields_and_state_transition() {
         "--field",
         "title=Updated title",
         "--to-state",
-        "ready",
+        "planned",
     ]);
     assert_eq!(updated["status"], "ok");
 
     let got = s.ticket_json(&["get", &id]);
     assert_eq!(got["ticket"]["fields"]["title"], "Updated title");
-    assert_eq!(got["ticket"]["fields"]["state"], "ready");
+    assert_eq!(got["ticket"]["fields"]["state"], "planned");
+}
+
+#[test]
+fn update_description_requires_an_explicit_mode() {
+    let s = Sandbox::new();
+    let id = create_ticket(&s, "Needs description mode");
+
+    let (code, stderr) = s.ticket_fail(&[
+        "update",
+        &id,
+        "--description",
+        "Summary text",
+    ]);
+
+    assert_eq!(code, 1);
+    assert!(
+        stderr.contains(REQUIRED_DESCRIPTION_MODE_ERROR),
+        "expected store-level description-mode error, got: {stderr}"
+    );
+}
+
+#[test]
+fn update_help_documents_description_mode() {
+    let help = Command::new(env!("CARGO_BIN_EXE_ticket"))
+        .args(["update", "--help"])
+        .output()
+        .expect("update help should run");
+
+    assert!(help.status.success());
+    let stdout = String::from_utf8_lossy(&help.stdout);
+    assert!(stdout.contains("--description-mode <DESCRIPTION_MODE>"));
+    assert!(stdout.contains("Required when setting a description"));
+    assert!(stdout.contains("append"));
 }
 
 #[test]

@@ -99,7 +99,7 @@ async fn revert_route_returns_200_with_restored_state() {
 
     // Advance state so there is a revision 1 (new) and revision 2 (ready).
     store
-        .update(&id, BTreeMap::new(), None, Some("ready"), None, None)
+        .update(&id, BTreeMap::new(), None, Some("planned"), None, None)
         .expect("advance to ready");
 
     let app = make_router_from_store(Arc::clone(&store));
@@ -117,7 +117,7 @@ async fn revert_route_returns_200_with_restored_state() {
 
     let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
     let payload: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(payload["ticket"]["fields"]["state"], "new");
+    assert_eq!(payload["ticket"]["fields"]["state"], "open");
     assert_eq!(payload["ticket"]["fields"]["title"], "Router revert test");
     // request_id header is injected by middleware - must be present.
     assert!(payload.get("request_id").is_some());
@@ -196,7 +196,7 @@ async fn history_route_returns_200_with_revision_entries() {
 
     // Add a second revision so history has 2 entries.
     store
-        .update(&id, BTreeMap::new(), None, Some("ready"), None, None)
+        .update(&id, BTreeMap::new(), None, Some("planned"), None, None)
         .expect("advance state");
 
     let app = make_router_from_store(Arc::clone(&store));
@@ -215,7 +215,7 @@ async fn history_route_returns_200_with_revision_entries() {
     assert_eq!(payload["count"], 2);
     // Oldest-first: first entry is the initial creation revision.
     assert_eq!(payload["entries"][0]["rev"], 1);
-    assert_eq!(payload["entries"][0]["fields"]["state"], "new");
+    assert_eq!(payload["entries"][0]["fields"]["state"], "open");
 }
 
 /// Verify that multiple concurrent subgraph requests all complete without

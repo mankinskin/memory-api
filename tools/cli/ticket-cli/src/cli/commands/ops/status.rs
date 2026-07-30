@@ -23,7 +23,7 @@ use crate::cli::{
 };
 
 const DONE_STATES: &[&str] = &["done", "cancelled"];
-const ACTIVE_STATES: &[&str] = &["ready", "in-implementation", "in-review"];
+const ACTIVE_STATES: &[&str] = &["planned", "in-implementation", "in-review"];
 const PAUSED_STATES: &[&str] = &["on-hold"];
 
 #[derive(Default)]
@@ -62,11 +62,11 @@ pub(super) fn run(
             "total": sections.total,
             "done": sections.done_count,
             "active": sections.active.len(),
-            "ready": sections.ready.len(),
+            "planned": sections.ready.len(),
             "blocked": blocked_count,
         },
         "active": sections.active,
-        "ready": sections.ready,
+        "planned": sections.ready,
         "blocked": sections.blocked,
         "parallel_groups": parallel_groups,
         "board": board_value(board_snap.as_ref()),
@@ -127,7 +127,7 @@ fn status_sections(
 
     for ticket in tickets {
         sections.total += 1;
-        let state = ticket.state.as_deref().unwrap_or("new");
+        let state = ticket.state.as_deref().unwrap_or("open");
 
         if DONE_STATES.contains(&state) {
             sections.done_count += 1;

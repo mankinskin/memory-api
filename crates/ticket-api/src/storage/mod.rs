@@ -25,5 +25,8 @@ pub use board::{
 pub use store::{
     DESCRIPTION_HISTORY_KEY,
     DescriptionUpdateMode,
+    PART_HISTORY_CONTENT_KEY,
+    PART_HISTORY_ID_KEY,
+    REQUIRED_DESCRIPTION_MODE_ERROR,
     TicketStore,
 };

@@ -1,7 +1,7 @@
 id = "ee43f72e-53ef-4937-8216-92e17f185d85"
 created_at = "2026-03-21T01:48:37.893056900+00:00"
 title = "[bootstrap] implement unified query execution on real indexes"
-state = "new"
+state = "open"
 acceptance_criteria = "mixed metadata + text queries return stable ranked results; unknown fields return deterministic errors"
 bootstrap_blocker = "false"
 component = "search"

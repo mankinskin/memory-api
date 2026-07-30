@@ -647,12 +647,12 @@ mod tests {
                 "total": 10,
                 "done": 3,
                 "active": 2,
-                "ready": 3
+                "planned": 3
             },
             "active": [
                 { "id": "aaa", "title": "Bug fix", "state": "in-implementation", "component": "core" }
             ],
-            "ready": [],
+            "planned": [],
             "parallel_groups": []
         });
         let out = render_human_readable(&payload);
@@ -661,7 +661,7 @@ mod tests {
         assert!(out.contains("[active] (1)"));
         assert!(out.contains("  title: Bug fix"));
         // Empty arrays render inline (no items to section)
-        assert!(out.contains("ready:"));
+        assert!(out.contains("planned:"));
     }
 
     #[test]
@@ -715,7 +715,7 @@ mod tests {
             "active": 8,
             "deleted": 2,
             "by_state": {
-                "new": 3,
+                "open": 3,
                 "in-implementation": 2,
                 "done": 3
             },
@@ -726,7 +726,7 @@ mod tests {
         let out = render_human_readable(&payload);
         assert!(out.contains("total: 10"));
         assert!(out.contains("[by_state]"));
-        assert!(out.contains("  new: 3"));
+        assert!(out.contains("  open: 3"));
         assert!(out.contains("[by_type]"));
         assert!(out.contains("  tracker-improvement: 10"));
     }

@@ -8,7 +8,7 @@ fn workflow_facts_set_became_actionable_at_when_blockers_resolve() {
             None,
             "tracker-improvement",
             Some("Blocking prerequisite"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -19,7 +19,7 @@ fn workflow_facts_set_became_actionable_at_when_blockers_resolve() {
             None,
             "tracker-improvement",
             Some("Blocked dependent"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -56,7 +56,7 @@ fn workflow_facts_set_last_blocker_progress_at_while_ticket_remains_blocked() {
             None,
             "tracker-improvement",
             Some("Progressing blocker"),
-            Some("new"),
+            Some("open"),
             Default::default(),
             None,
             None,
@@ -67,7 +67,7 @@ fn workflow_facts_set_last_blocker_progress_at_while_ticket_remains_blocked() {
             None,
             "tracker-improvement",
             Some("Persistent blocker"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -78,7 +78,7 @@ fn workflow_facts_set_last_blocker_progress_at_while_ticket_remains_blocked() {
             None,
             "tracker-improvement",
             Some("Still blocked dependent"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -105,7 +105,7 @@ fn workflow_facts_set_last_blocker_progress_at_while_ticket_remains_blocked() {
             &progressing_blocker,
             BTreeMap::new(),
             Some(&[]),
-            Some("ready"),
+            Some("planned"),
             None,
             None,
         )
@@ -169,7 +169,7 @@ fn update_allows_reverse_transitions_from_terminal_states() {
             &cancelled_ticket,
             BTreeMap::new(),
             Some(&[]),
-            Some("new"),
+            Some("open"),
             None,
             None,
         )
@@ -181,7 +181,7 @@ fn update_allows_reverse_transitions_from_terminal_states() {
             .unwrap()
             .state
             .as_deref(),
-        Some("new")
+        Some("open")
     );
 }
 
@@ -194,7 +194,7 @@ fn workflow_facts_follow_depends_on_edge_removal() {
             None,
             "tracker-improvement",
             Some("Transient blocker"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -205,7 +205,7 @@ fn workflow_facts_follow_depends_on_edge_removal() {
             None,
             "tracker-improvement",
             Some("Edge-driven dependent"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -247,7 +247,7 @@ fn update_guards_transition_ahead_of_dependency_state() {
             None,
             "tracker-improvement",
             Some("Guard blocker"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -258,7 +258,7 @@ fn update_guards_transition_ahead_of_dependency_state() {
             None,
             "tracker-improvement",
             Some("Guard dependent"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -275,7 +275,7 @@ fn update_guards_transition_ahead_of_dependency_state() {
 
     // ready -> ready (equal rank) is allowed.
     store
-        .update(&dependent, BTreeMap::new(), Some(&[]), Some("ready"), None, None)
+        .update(&dependent, BTreeMap::new(), Some(&[]), Some("planned"), None, None)
         .unwrap();
 
     // Advancing the dependent past the blocker (still 'ready') is rejected.
@@ -335,7 +335,7 @@ fn update_guards_transition_ahead_of_dependency_state() {
             None,
             "tracker-improvement",
             Some("Cancel gate"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -346,7 +346,7 @@ fn update_guards_transition_ahead_of_dependency_state() {
             None,
             "tracker-improvement",
             Some("Abandoned dependent"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -383,7 +383,7 @@ fn release_lease_enforces_owner_and_stale_rules() {
             None,
             "tracker-improvement",
             Some("Leased ticket"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -424,7 +424,7 @@ fn board_check_out_releases_orphaned_lease_when_entry_is_missing() {
             None,
             "tracker-improvement",
             Some("Orphaned lease ticket"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,

@@ -150,7 +150,7 @@ mod tests {
             fake_ticket(
                 id_a,
                 "Ticket A",
-                "new",
+                "open",
                 ws.join(".ticket/tickets/a/ticket.toml"),
             ),
         ];

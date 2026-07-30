@@ -21,13 +21,15 @@ fn store_index_writes_expected_artifacts_and_check_passes() {
         "update",
         &ticket_a,
         "--to-state",
-        "ready",
+        "planned",
         "--field",
         "component=ticket-api",
         "--field",
         "priority=high",
         "--description",
         "Primary summary for ticket A.",
+        "--description-mode",
+        "replace",
     ]);
     let _ = s.ticket_json(&[
         "update",
@@ -38,6 +40,8 @@ fn store_index_writes_expected_artifacts_and_check_passes() {
         "priority=medium",
         "--description",
         "Primary summary for ticket B.",
+        "--description-mode",
+        "replace",
     ]);
 
     let write_payload = s.ticket_json(&["store-index"]);
@@ -56,8 +60,8 @@ fn store_index_writes_expected_artifacts_and_check_passes() {
 
     let readme_text = fs::read_to_string(&readme).unwrap();
     assert!(readme_text.contains("# Ticket Catalog"));
-    assert!(readme_text.contains("## State: ready"));
-    assert!(readme_text.contains("## State: new"));
+    assert!(readme_text.contains("## State: planned"));
+    assert!(readme_text.contains("## State: open"));
     assert!(readme_text.contains("### Component: ticket-api"));
     assert!(readme_text.contains("### Component: spec-api"));
 
@@ -79,6 +83,8 @@ fn store_index_check_detects_readme_drift() {
         "component=ticket-api",
         "--description",
         "Summary used by store-index.",
+        "--description-mode",
+        "replace",
     ]);
 
     let _ = s.ticket_json(&["store-index"]);

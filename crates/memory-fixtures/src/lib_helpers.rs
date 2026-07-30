@@ -125,8 +125,8 @@ pub(super) fn seed_perf_ticket_batch(
         })?;
 
         let state = match index % 4 {
-            0 => "new",
-            1 => "ready",
+            0 => "open",
+            1 => "planned",
             2 => "in-implementation",
             _ => "in-review",
         };
@@ -272,8 +272,8 @@ pub(super) fn seed_generated_tickets(
         })?;
 
         let state = match index % 4 {
-            0 => "new",
-            1 => "ready",
+            0 => "open",
+            1 => "planned",
             2 => "in-implementation",
             _ => "in-review",
         };

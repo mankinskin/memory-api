@@ -94,7 +94,7 @@ fn open_or_create_heals_stale_fast_field_schema_on_construction() {
             &id,
             Some("title"),
             Some("searchable body"),
-            Some("ready"),
+            Some("planned"),
             Some("rule-entry"),
             Some("2026-06-15T00:00:00Z"),
             Some("3"),

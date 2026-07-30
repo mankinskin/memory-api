@@ -1,7 +1,7 @@
 id = "6c00ef55-1531-4494-9bf2-00184740a3b0"
 created_at = "2026-04-18T15:00:05.635911+00:00"
 title = "[spec][P4] Skill generation — master index and cross-references"
-state = "ready"
+state = "planned"
 component = "spec-api"
 depends_on = ["eddf5d2e-e1b6-4ec9-b88f-d50bd192b194"]
 effort = "1200"

@@ -449,7 +449,7 @@ pub(super) fn dispatch_ticket_mcp_stdio_sentinel_get(
                 "workspace": workspace_root,
                 "type": "tracker-improvement",
                 "title": title,
-                "state": "new",
+                "state": "open",
                 "fields": []
             }
         }),

@@ -3,6 +3,7 @@ pub mod edge;
 pub mod event;
 pub mod filesystem;
 pub mod manifest_format;
+pub mod parts;
 pub mod query;
 pub mod schema;
 pub mod schema_registry;

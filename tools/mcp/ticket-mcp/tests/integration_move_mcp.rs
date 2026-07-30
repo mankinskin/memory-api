@@ -63,7 +63,7 @@ async fn move_tools_preflight_and_apply_smoke() {
             None,
             "tracker-improvement",
             Some("Move via MCP"),
-            Some("ready"),
+            Some("planned"),
             BTreeMap::new(),
             None,
             None,

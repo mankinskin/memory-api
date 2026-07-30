@@ -1,0 +1,13 @@
+{
+  "id": "vt-ticket-parts-storage-model",
+  "title": "ticket-api parts/ storage model, [[parts]] manifest index, core kind vocabulary",
+  "command": "cargo test -p ticket-api -p memory-api",
+  "links": {
+    "spec_ids": [
+      "24b3d22b-e235-4c4f-b53c-75fb819ea95b"
+    ],
+    "ticket_ids": [
+      "5a3d152c-faf7-4d33-8a4e-7ed19cf6b142"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "exec-5b3da351-ac1-schema-states",
+  "validation_spec_id": "vt-5b3da351-ticket-state-rename",
+  "outcome": "passed",
+  "executed_at": "2026-07-29T23:41:42.251543600Z",
+  "detail": "Attempted `update --to-state ready` from `open` on a fresh scratch workspace: rejected with `storage error: schema validation: invalid state transition 'open' -> 'ready'; current state 'open' allows next states [cancelled, planned]; no direct transition to 'ready' is available'`. Confirmed `open -> planned` accepted in the same run.",
+  "links": {
+    "ticket_ids": [
+      "5b3da351-1c87-4619-a0bc-6d7abe147d60"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "schema-transition-validation",
+    "transport": "cli",
+    "run_id": "5b3da351-manual-verification"
+  }
+}

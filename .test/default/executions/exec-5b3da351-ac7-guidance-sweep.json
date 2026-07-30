@@ -1,0 +1,18 @@
+{
+  "id": "exec-5b3da351-ac7-guidance-sweep",
+  "validation_spec_id": "vt-5b3da351-ticket-state-rename",
+  "outcome": "blocked",
+  "executed_at": "2026-07-29T23:42:24.260396800Z",
+  "detail": "Grepped .agents/, .github/, and .rule/README.md (generated rule catalog) for old state literals in guidance/prose. Found and fixed 3 stale references in .agents/instructions/ticket/lifecycle.instructions.md, .agents/instructions/ticket/workflow.instructions.md, and .agents/prompts/swarm-worker.prompt.md. LIMITATION: .rule/README.md (generated rule catalog) still contains 2 stale lines (rule ids 384ad946.../6dbc4c74...) sourced from rule.toml entries whose backing files no longer exist under any discoverable .rule store; a rule-cli sync/regeneration is required to reconcile this and is out of this ticket's scope to hand-edit a generated artifact.",
+  "links": {
+    "ticket_ids": [
+      "5b3da351-1c87-4619-a0bc-6d7abe147d60"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "repo-wide-grep-sweep",
+    "transport": "cli",
+    "run_id": "5b3da351-manual-verification"
+  }
+}

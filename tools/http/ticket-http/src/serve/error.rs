@@ -60,7 +60,8 @@ fn is_client_storage_err(error: &ticket_api::error::StorageError) -> bool {
         | StorageError::DependencyCycle
         | StorageError::SchemaMismatch(_)
         | StorageError::Protocol(_)
-        | StorageError::WorkspaceNotFound { .. } => true,
+        | StorageError::WorkspaceNotFound { .. }
+        | StorageError::FrozenPartWrite { .. } => true,
         StorageError::Io(io_error) => io_error.kind() == ErrorKind::NotFound,
         _ => false,
     }
@@ -157,6 +158,14 @@ fn client_storage_err(
                 rid,
             )
             .into_response_with_status(StatusCode::SERVICE_UNAVAILABLE)
+        },
+        StorageError::FrozenPartWrite { .. } => {
+            // Full message names the part, the freezing state, and both
+            // recovery paths — surfaced verbatim, never reworded.
+            let message = error.to_string();
+            tracing::debug!(request_id = %rid, error = %message, "frozen part write rejected");
+            ApiError::new("ticket.frozen_part_write", message, rid)
+                .into_response_with_status(StatusCode::CONFLICT)
         },
         _ => unreachable!("client classification mismatch"),
     }

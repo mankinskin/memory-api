@@ -1,0 +1,11 @@
+{
+  "id": "vt-f9e70385-plan-freezing",
+  "title": "Plan freezing at planned: hard reject, amendment parts, unfreeze by state transition",
+  "command": "cargo test -p ticket-api f9e70385",
+  "detail": "Covers AC1-AC7 of ticket f9e70385: freeze-on-planned materialization, hard rejection with byte-identity, AC3 error text, review write success on planned, freeze/unfreeze/refreeze + plan_revision, amendment supersedes retrievability, and the enforce_part_write_gate no-bypass regression (undo_part + legacy description write path).",
+  "links": {
+    "ticket_ids": [
+      "f9e70385-adb7-4942-a8fb-6a383863cc7e"
+    ]
+  }
+}

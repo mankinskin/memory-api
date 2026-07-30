@@ -1,7 +1,7 @@
 id = "a0bc8bd8-3fe0-4768-a895-b1bacee42759"
 created_at = "2026-06-28T12:41:30.126123200+00:00"
 title = "[memory-api][test] Unified validation & benchmark surface in test-api (tracker)"
-state = "new"
+state = "open"
 component = "test-api"
 depends_on = ["03ed4121-ec7e-4d5f-adb4-4d3846af8031", "124c6621-b39d-4009-b599-a3e5503d08f6", "1bc3982c-e0c2-4b6a-b809-aff4eb78d161", "23f4e2eb-e916-401e-b398-9ad59c06c5e3", "26d6353a-6613-48ad-96c5-d4bd8ad5180f", "2b0f31e5-1067-45e9-93ff-ef273c26020e", "751f0e71-a857-484f-a45e-09717f086321", "7a524627-bb48-47c8-a3d8-9c8b9303f0f3", "90de77b1-7784-4b26-81d1-9039277a9bec"]
 effort = "1200"

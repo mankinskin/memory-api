@@ -157,20 +157,45 @@ use store_routing_types::{
     validate_runtime_workspace_id,
 };
 
-fn sibling_store_root(
-    session_store_root: &Path,
-    sibling_store_dir: &str,
-) -> PathBuf {
+fn sibling_store_base(session_store_root: &Path) -> &Path {
     if session_store_root
         .file_name()
         .and_then(|name| name.to_str())
         == Some(".session")
     {
         if let Some(parent) = session_store_root.parent() {
-            return parent.join(sibling_store_dir);
+            return parent;
         }
     }
-    session_store_root.join(sibling_store_dir)
+    session_store_root
+}
+
+fn sibling_store_root(
+    session_store_root: &Path,
+    sibling_store_dir: &str,
+) -> PathBuf {
+    sibling_store_base(session_store_root).join(sibling_store_dir)
+}
+
+/// Resolves a URN workspace slug to a sibling store root. The literal slug
+/// `default` and the session's own workspace slug both resolve to the
+/// existing sibling store (byte-identical to pre-cross-workspace behavior);
+/// any other slug resolves to `<base>/<slug>/<sibling_store_dir>` and is
+/// validated to reject empty, `.`, `..`, and path-separator segments before
+/// any path is built.
+fn resolve_slug_store_root(
+    session_store_root: &Path,
+    session_workspace_slug: &str,
+    slug: &str,
+    sibling_store_dir: &str,
+) -> Result<PathBuf, String> {
+    if slug == "default" || slug == session_workspace_slug {
+        return Ok(sibling_store_root(session_store_root, sibling_store_dir));
+    }
+    validate_segment(slug, true).map_err(|error| error.to_string())?;
+    Ok(sibling_store_base(session_store_root)
+        .join(slug)
+        .join(sibling_store_dir))
 }
 
 /// RAII guard that releases the runtime mutation lock on drop.
@@ -185,9 +210,87 @@ impl Drop for RuntimeMutationLock {
 }
 
 struct DefaultTicketStateResolver {
-    store: TicketStore,
-    spec_store_root: PathBuf,
+    session_store_root: PathBuf,
     workspace_slug: String,
+    // Keyed by resolved store root path (not by raw URN slug) so that the
+    // literal `default` alias and the session's own workspace slug share one
+    // cache entry and open the store at most once.
+    ticket_stores: std::sync::Mutex<BTreeMap<PathBuf, TicketStore>>,
+    spec_stores: std::sync::Mutex<BTreeMap<PathBuf, SpecStore>>,
+}
+
+impl DefaultTicketStateResolver {
+    /// Runs `f` against the cached (or freshly opened) ticket store for
+    /// `slug`, opening and caching it at most once per resolved store root.
+    /// Never creates a store as a side effect: the session's own store still
+    /// uses `open_or_init` (unchanged from prior behavior), but any other
+    /// resolved slug requires the store root to already exist.
+    fn with_ticket_store<T>(
+        &self,
+        slug: &str,
+        f: impl FnOnce(&TicketStore) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let root = resolve_slug_store_root(
+            &self.session_store_root,
+            &self.workspace_slug,
+            slug,
+            ".ticket",
+        )?;
+        let mut stores = self.ticket_stores.lock().unwrap();
+        if !stores.contains_key(&root) {
+            let is_own_workspace =
+                slug == "default" || slug == self.workspace_slug;
+            let store = if is_own_workspace {
+                TicketStore::open_or_init(&root)
+                    .map_err(|error| error.to_string())?
+            } else {
+                if !root.exists() {
+                    return Err(format!(
+                        "ticket store for workspace `{slug}` is unavailable \
+                         at {}: not initialized",
+                        root.display()
+                    ));
+                }
+                TicketStore::open(&root).map_err(|error| error.to_string())?
+            };
+            stores.insert(root.clone(), store);
+        }
+        f(stores.get(&root).expect("just inserted"))
+    }
+
+    /// Symmetric to [`Self::with_ticket_store`] for spec stores.
+    fn with_spec_store<T>(
+        &self,
+        slug: &str,
+        f: impl FnOnce(&SpecStore) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let root = resolve_slug_store_root(
+            &self.session_store_root,
+            &self.workspace_slug,
+            slug,
+            ".spec",
+        )?;
+        let mut stores = self.spec_stores.lock().unwrap();
+        if !stores.contains_key(&root) {
+            let is_own_workspace =
+                slug == "default" || slug == self.workspace_slug;
+            if !is_own_workspace && !root.exists() {
+                return Err(format!(
+                    "spec store for workspace `{slug}` is unavailable at {}: \
+                     not initialized",
+                    root.display()
+                ));
+            }
+            // `SpecStore::open` never creates the directory as a side effect;
+            // the session's own store is expected to already exist (or be
+            // absent, in which case sessions with no spec nodes never pay
+            // the open cost until a spec URN actually needs resolving).
+            let store =
+                SpecStore::open(&root).map_err(|error| error.to_string())?;
+            stores.insert(root.clone(), store);
+        }
+        f(stores.get(&root).expect("just inserted"))
+    }
 }
 
 impl SessionTicketStateResolver for DefaultTicketStateResolver {
@@ -200,30 +303,19 @@ impl SessionTicketStateResolver for DefaultTicketStateResolver {
         if parsed.kind != SessionPinnedEntityKind::Ticket {
             return Err(format!("not a ticket URN: {ticket_urn}"));
         }
-        // The default resolver only queries the sibling `.ticket` store for the
-        // session's own workspace. Cross-workspace ticket URNs are rejected
-        // explicitly rather than silently resolved against the wrong store.
-        if parsed.workspace_slug != self.workspace_slug {
-            return Err(format!(
-                "unsupported cross-workspace ticket routing: URN workspace `{}` \
-                 does not match session workspace `{}` ({ticket_urn})",
-                parsed.workspace_slug, self.workspace_slug
-            ));
-        }
         let ticket_id =
             Uuid::parse_str(&parsed.entity_id).map_err(|error| {
                 format!("invalid ticket id in URN {ticket_urn}: {error}")
             })?;
-        match self
-            .store
-            .get_indexed(&ticket_id)
-            .map_err(|error| error.to_string())?
-        {
-            // A resolved ticket may legitimately have no recorded state; keep that
-            // distinct from an absent ticket, which is an unavailable-state error.
-            Some(indexed) => Ok(indexed.state),
-            None => Err(format!("required ticket not found: {ticket_urn}")),
-        }
+        self.with_ticket_store(&parsed.workspace_slug, |store| {
+            match store.get_indexed(&ticket_id).map_err(|error| error.to_string())? {
+                // A resolved ticket may legitimately have no recorded state; keep
+                // that distinct from an absent ticket, which is an
+                // unavailable-state error.
+                Some(indexed) => Ok(indexed.state),
+                None => Err(format!("required ticket not found: {ticket_urn}")),
+            }
+        })
     }
 
     fn resolve_spec_state(
@@ -235,23 +327,12 @@ impl SessionTicketStateResolver for DefaultTicketStateResolver {
         if parsed.kind != SessionPinnedEntityKind::Spec {
             return Err(format!("not a spec URN: {spec_urn}"));
         }
-        // Symmetric to ticket routing: the default resolver only reads the
-        // sibling `.spec` store for the session's own workspace.
-        if parsed.workspace_slug != self.workspace_slug {
-            return Err(format!(
-                "unsupported cross-workspace spec routing: URN workspace `{}` \
-                 does not match session workspace `{}` ({spec_urn})",
-                parsed.workspace_slug, self.workspace_slug
-            ));
-        }
-        // Open the spec store lazily so sessions with no spec nodes never
-        // require an initialized `.spec` store.
-        let store = SpecStore::open(&self.spec_store_root)
-            .map_err(|error| error.to_string())?;
-        let manifest = store
-            .get(&parsed.entity_id)
-            .map_err(|error| format!("required spec not found: {error}"))?;
-        Ok(manifest.state().map(str::to_string))
+        self.with_spec_store(&parsed.workspace_slug, |store| {
+            let manifest = store
+                .get(&parsed.entity_id)
+                .map_err(|error| format!("required spec not found: {error}"))?;
+            Ok(manifest.state().map(str::to_string))
+        })
     }
 }
 

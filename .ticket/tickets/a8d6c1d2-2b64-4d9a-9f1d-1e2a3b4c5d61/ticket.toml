@@ -1,7 +1,7 @@
 id = "a8d6c1d2-2b64-4d9a-9f1d-1e2a3b4c5d61"
 created_at = "2026-03-21T01:48:38.904940600+00:00"
 title = "[bootstrap][T1] startup and auth bootstrap for host executor"
-state = "ready"
+state = "planned"
 acceptance_criteria = "host executor starts in stdio mode, scoped token auth succeeds, unauthorized request returns structured auth error"
 bootstrap_blocker = "true"
 component = "lease"

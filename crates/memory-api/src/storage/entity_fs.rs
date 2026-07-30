@@ -476,7 +476,7 @@ mod tests {
 
     #[test]
     fn history_revision_backward_compat_no_author() {
-        let json = r#"{"rev":1,"ts":"2025-01-01T00:00:00Z","fields":{"state":"new","title":"Old entry"}}"#;
+        let json = r#"{"rev":1,"ts":"2025-01-01T00:00:00Z","fields":{"state":"open","title":"Old entry"}}"#;
         let rev: HistoryRevision = serde_json::from_str(json)
             .expect("should deserialize legacy revision without author field");
         assert_eq!(rev.rev, 1);

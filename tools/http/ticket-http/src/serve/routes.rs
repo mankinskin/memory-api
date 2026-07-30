@@ -44,6 +44,14 @@ pub fn build_router(state: AppState) -> Router {
             "/api/tickets/{id}/asset",
             get(handlers::tickets::get_ticket_asset),
         )
+        .route(
+            "/api/tickets/{id}/parts",
+            get(handlers::tickets::list_parts),
+        )
+        .route(
+            "/api/tickets/{id}/parts/{part_id}",
+            get(handlers::tickets::get_part),
+        )
         .route("/api/workflow/next", get(handlers::workflow::workflow_next))
         .route(
             "/api/workflow/blockers",
@@ -96,6 +104,18 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/tickets/{id}/revert",
             post(handlers::tickets::revert_ticket),
+        )
+        .route(
+            "/api/tickets/{id}/parts",
+            post(handlers::tickets::write_part),
+        )
+        .route(
+            "/api/tickets/{id}/parts/amendment",
+            post(handlers::tickets::write_amendment),
+        )
+        .route(
+            "/api/tickets/{id}/parts/{part_id}/undo",
+            post(handlers::tickets::undo_part),
         )
         .route(
             "/api/edges",

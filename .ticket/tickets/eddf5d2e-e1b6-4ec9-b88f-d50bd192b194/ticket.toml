@@ -1,7 +1,7 @@
 id = "eddf5d2e-e1b6-4ec9-b88f-d50bd192b194"
 created_at = "2026-04-18T15:00:05.487731800+00:00"
 title = "[spec][P4] Skill generation — per-crate and per-domain SKILL.md files from spec data"
-state = "ready"
+state = "planned"
 component = "spec-api"
 depends_on = ["ab47648c-d1f8-4ad5-a652-08ef97f76ccd"]
 effort = "1200"

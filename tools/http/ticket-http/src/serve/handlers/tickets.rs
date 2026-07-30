@@ -2,6 +2,8 @@
 mod assets;
 #[path = "tickets/mutations.rs"]
 mod mutations;
+#[path = "tickets/parts.rs"]
+mod parts;
 #[path = "tickets/read.rs"]
 mod read;
 #[cfg(test)]
@@ -13,6 +15,7 @@ mod types;
 pub use self::{
     assets::*,
     mutations::*,
+    parts::*,
     read::*,
     types::*,
 };

@@ -340,7 +340,7 @@ fn append_dependency_state_findings(
     report: &mut HealthReport,
 ) {
     let state = ticket.state.as_deref().unwrap_or("");
-    if state == "new" {
+    if state == "open" {
         return;
     }
 
@@ -538,7 +538,7 @@ mod tests {
                 None,
                 "tracker-improvement",
                 Some("My well-described ticket"),
-                Some("ready"),
+                Some("planned"),
                 extra_with_effort("1200"),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
@@ -549,7 +549,7 @@ mod tests {
                 None,
                 "tracker-improvement",
                 Some("My well-described dependent ticket"),
-                Some("ready"),
+                Some("planned"),
                 extra_with_effort("800"),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
@@ -591,7 +591,7 @@ mod tests {
                 None,
                 "made-up-type",
                 Some("Ticket with an unregistered type"),
-                Some("ready"),
+                Some("planned"),
                 extra_with_effort("500"),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
@@ -621,14 +621,14 @@ mod tests {
         let (_dir, store) = open_store();
         // Reproduces the frozen-ticket scenario: a ticket created directly
         // with a `state` value that is not a member of its type schema's
-        // `states` list (e.g. "open", which is not in tracker-improvement's
+        // `states` list (e.g. "archived", which is not in tracker-improvement's
         // schema). Such a ticket has zero legal transitions.
         let id = store
             .create(
                 None,
                 "tracker-improvement",
                 Some("Ticket frozen in an off-schema state"),
-                Some("open"),
+                Some("archived"),
                 extra_with_effort("500"),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
@@ -649,7 +649,7 @@ mod tests {
             .find(|f| f.ticket_id == id && f.check == "off_schema_state")
             .expect("expected off_schema_state finding");
         assert_eq!(finding.severity, "error");
-        assert!(finding.message.contains("open"));
+        assert!(finding.message.contains("archived"));
         assert_eq!(finding.ticket_id, id);
         assert_eq!(*report.summary.get("off_schema_state").unwrap_or(&0), 1);
     }
@@ -662,7 +662,7 @@ mod tests {
                 None,
                 "task",
                 Some("A task-typed ticket"),
-                Some("ready"),
+                Some("planned"),
                 extra_with_effort("500"),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
@@ -694,7 +694,7 @@ mod tests {
                 None,
                 "tracker-improvement",
                 Some("Ticket with no description"),
-                Some("ready"),
+                Some("planned"),
                 extra_with_effort("900"),
                 None,
                 None,
@@ -733,7 +733,7 @@ mod tests {
                 None,
                 "tracker-improvement",
                 Some("Ticket with terse description"),
-                Some("ready"),
+                Some("planned"),
                 extra_with_effort("600"),
                 None,
                 Some("Short."),
@@ -852,7 +852,7 @@ mod tests {
                 None,
                 "tracker-improvement",
                 Some("Parent"),
-                Some("ready"),
+                Some("planned"),
                 extra_with_effort("500"),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
@@ -863,7 +863,7 @@ mod tests {
                 None,
                 "tracker-improvement",
                 Some("Missing effort"),
-                Some("ready"),
+                Some("planned"),
                 BTreeMap::new(),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
@@ -926,7 +926,7 @@ mod tests {
                 None,
                 "tracker-improvement",
                 Some("Parent prerequisite"),
-                Some("ready"),
+                Some("planned"),
                 extra_with_effort("1200"),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
@@ -947,7 +947,7 @@ mod tests {
                 None,
                 "tracker-improvement",
                 Some("Child ticket"),
-                Some("ready"),
+                Some("planned"),
                 extra_with_effort("800"),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),

@@ -573,7 +573,7 @@ mod tests {
         manifest
             .extra
             .insert("title".to_string(), json!("Stale schema heals"));
-        manifest.extra.insert("state".to_string(), json!("ready"));
+        manifest.extra.insert("state".to_string(), json!("planned"));
         store
             .fs
             .create(&manifest, &entity_dir, Some("searchable body text"))
@@ -627,7 +627,7 @@ mod tests {
             let mut manifest = EntityManifest::new(id, Utc::now());
             manifest.extra.insert("type".into(), json!("rule-entry"));
             manifest.extra.insert("title".into(), json!(n));
-            manifest.extra.insert("state".into(), json!("ready"));
+            manifest.extra.insert("state".into(), json!("planned"));
             store.fs.create(&manifest, &entity_dir, Some(body)).unwrap();
             ids.push(id);
         }
@@ -742,7 +742,7 @@ mod tests {
         manifest1
             .extra
             .insert("title".to_string(), json!("Low effort, early date"));
-        manifest1.extra.insert("state".to_string(), json!("ready"));
+        manifest1.extra.insert("state".to_string(), json!("planned"));
         manifest1.extra.insert("effort".to_string(), json!("3"));
         store
             .fs
@@ -845,7 +845,7 @@ mod tests {
             manifest
                 .extra
                 .insert("title".into(), json!(format!("Entity {n}")));
-            manifest.extra.insert("state".into(), json!("ready"));
+            manifest.extra.insert("state".into(), json!("planned"));
             store.fs.create(&manifest, &entity_dir, Some("body")).unwrap();
             ids.push(id);
         }

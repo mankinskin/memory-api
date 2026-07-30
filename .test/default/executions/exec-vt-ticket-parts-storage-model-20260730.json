@@ -1,0 +1,18 @@
+{
+  "id": "exec-vt-ticket-parts-storage-model-20260730",
+  "validation_spec_id": "vt-ticket-parts-storage-model",
+  "outcome": "passed",
+  "executed_at": "2026-07-29T22:18:35.482922200Z",
+  "detail": "139 unit + 6 integration tests in ticket-api pass (0 failed); 157 tests in memory-api pass with 2 pre-existing, unrelated workspace-discovery failures confirmed via git stash to predate this change.",
+  "links": {
+    "ticket_ids": [
+      "5a3d152c-faf7-4d33-8a4e-7ed19cf6b142"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "cargo-test",
+    "transport": "cli",
+    "run_id": "2026-07-30T00:00:00Z"
+  }
+}

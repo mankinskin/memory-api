@@ -1,7 +1,7 @@
 id = "f2c1ebc2-aaee-4a93-895b-56284b549840"
 created_at = "2026-04-18T15:00:07.430048200+00:00"
 title = "[spec][P8] Bootstrap: write spec files for ticket-cli interface"
-state = "ready"
+state = "planned"
 component = "spec-cli"
 depends_on = ["090b6db9-f88e-418b-888e-94641d347432"]
 effort = "1200"

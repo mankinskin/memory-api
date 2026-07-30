@@ -51,7 +51,7 @@ async fn list_tickets_uses_scan_root_label_for_ticket_ref_workspace() {
             None,
             "tracker-improvement",
             Some("child-owned ticket"),
-            Some("ready"),
+            Some("planned"),
             BTreeMap::new(),
             Some(child_root.as_path()),
             None,
@@ -116,7 +116,7 @@ async fn search_list_prefers_authoritative_mixed_workspace_hit() {
             None,
             "tracker-improvement",
             Some("mixed-workspace child authoritative ticket"),
-            Some("ready"),
+            Some("planned"),
             BTreeMap::new(),
             None,
             Some("mixed-workspace authoritative description"),
@@ -143,7 +143,7 @@ async fn search_list_prefers_authoritative_mixed_workspace_hit() {
         parent_store.index_root.join("tickets").join(id.to_string());
     poisoned.title =
         Some("mixed-workspace stale parent placeholder".to_string());
-    poisoned.state = Some("new".to_string());
+    poisoned.state = Some("open".to_string());
     poisoned_index
         .insert_ticket(&poisoned)
         .expect("poison parent indexed row");
@@ -155,7 +155,7 @@ async fn search_list_prefers_authoritative_mixed_workspace_hit() {
         &id,
         Some("mixed-workspace stale parent placeholder"),
         Some("mixed-workspace stale parent body"),
-        Some("new"),
+        Some("open"),
         Some("tracker-improvement"),
         Some(&chrono::Utc::now().to_rfc3339()),
         None,
@@ -204,7 +204,7 @@ async fn search_list_prefers_authoritative_mixed_workspace_hit() {
             "mixed-workspace child authoritative ticket".to_string()
         )
     );
-    assert_eq!(items[0]["state"], "ready");
+    assert_eq!(items[0]["state"], "planned");
     assert_ne!(items[0]["created_at"], "1970-01-01T00:00:00Z");
 }
 
@@ -302,7 +302,7 @@ async fn mixed_workspace_search_followups_remain_reversible() {
             None,
             "tracker-improvement",
             Some("mixed-workspace child authoritative ticket"),
-            Some("ready"),
+            Some("planned"),
             BTreeMap::new(),
             None,
             Some("mixed-workspace child description"),
@@ -340,7 +340,7 @@ async fn mixed_workspace_search_followups_remain_reversible() {
         parent_store.index_root.join("tickets").join(id.to_string());
     poisoned.title =
         Some("mixed-workspace stale parent placeholder".to_string());
-    poisoned.state = Some("new".to_string());
+    poisoned.state = Some("open".to_string());
     poisoned_index
         .insert_ticket(&poisoned)
         .expect("poison parent indexed row");
@@ -352,7 +352,7 @@ async fn mixed_workspace_search_followups_remain_reversible() {
         &id,
         Some("mixed-workspace stale parent placeholder"),
         Some("mixed-workspace stale parent body"),
-        Some("new"),
+        Some("open"),
         Some("tracker-improvement"),
         Some(&chrono::Utc::now().to_rfc3339()),
         None,
@@ -544,7 +544,7 @@ async fn legacy_workspace_label_collision_returns_typed_bad_request() {
             None,
             "tracker-improvement",
             Some("left shared ticket"),
-            Some("ready"),
+            Some("planned"),
             BTreeMap::new(),
             None,
             None,
@@ -555,7 +555,7 @@ async fn legacy_workspace_label_collision_returns_typed_bad_request() {
             None,
             "tracker-improvement",
             Some("right shared ticket"),
-            Some("ready"),
+            Some("planned"),
             BTreeMap::new(),
             None,
             None,
@@ -641,7 +641,7 @@ async fn unique_display_workspace_label_returns_typed_bad_request() {
             None,
             "tracker-improvement",
             Some("legacy workspace alias ticket"),
-            Some("ready"),
+            Some("planned"),
             BTreeMap::new(),
             None,
             None,

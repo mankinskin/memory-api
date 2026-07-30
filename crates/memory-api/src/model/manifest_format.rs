@@ -146,7 +146,10 @@ fn write_toml_kv(
             writeln!(out, "{key} = {{ {} }}", pairs.join(", ")).unwrap();
         },
         Value::Null => {
-            writeln!(out, "{key} = \"\"").unwrap();
+            // Omitting the key (rather than writing `key = ""`) is what
+            // lets an update patch actually delete a manifest field; a
+            // written-out null previously corrupted the field into a
+            // permanent empty string instead of removing it.
         },
     }
 }

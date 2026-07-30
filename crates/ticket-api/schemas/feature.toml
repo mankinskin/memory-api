@@ -7,8 +7,8 @@
 type_id = "feature"
 
 states = [
-    "new",
-    "ready",
+    "open",
+    "planned",
     "in-implementation",
     "in-review",
     "on-hold",
@@ -23,27 +23,27 @@ required_states = ["in-review"]
 # ── State machine transitions ──────────────────────────────────────────────────
 
 [[transitions]]
-from = "new"
-to = "ready"
+from = "open"
+to = "planned"
 
 [[transitions]]
-from = "new"
+from = "open"
 to = "in-review"
 
 [[transitions]]
-from = "new"
+from = "open"
 to = "cancelled"
 
 [[transitions]]
-from = "ready"
+from = "planned"
 to = "in-implementation"
 
 [[transitions]]
-from = "ready"
+from = "planned"
 to = "cancelled"
 
 [[transitions]]
-from = "ready"
+from = "planned"
 to = "on-hold"
 
 [[transitions]]
@@ -72,7 +72,7 @@ to = "on-hold"
 
 [[transitions]]
 from = "on-hold"
-to = "ready"
+to = "planned"
 
 [[transitions]]
 from = "on-hold"

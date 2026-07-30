@@ -36,6 +36,7 @@ use crate::{
             TICKET_HISTORY_FILE,
             TICKET_LOCK_FILE,
             TICKET_MANIFEST_FILE,
+            TICKET_PARTS_DIR,
             parse_ticket_manifest_toml,
         },
         ticket::TicketManifest,
@@ -148,9 +149,16 @@ impl TicketFs {
 
         let result = (|| -> Result<TicketManifest, StorageError> {
             let mut manifest = Self::read(ticket_path)?;
-            // Apply extra-field patches.
+            // Apply extra-field patches. A `Value::Null` in the patch means
+            // "delete this key" rather than "set it to null" — the manifest
+            // TOML format has no null literal, so storing it verbatim used
+            // to corrupt the field into an empty string on every write.
             for (k, v) in patch {
-                manifest.extra.insert(k.clone(), v.clone());
+                if v.is_null() {
+                    manifest.extra.remove(k);
+                } else {
+                    manifest.extra.insert(k.clone(), v.clone());
+                }
             }
             // Apply state change.
             if let Some(state) = new_state {
@@ -239,15 +247,26 @@ impl TicketFs {
         let file = File::open(&path)?;
         let reader = BufReader::new(file);
         let mut revisions = Vec::new();
-        for line in reader.lines() {
+        for (line_no, line) in reader.lines().enumerate() {
             let line = line?;
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
             }
-            let rev: HistoryRevision = serde_json::from_str(trimmed)
-                .map_err(|e| StorageError::Serialization(e.to_string()))?;
-            revisions.push(rev);
+            // A single malformed line must not permanently wedge every future
+            // append (read_history is called to compute the next rev number
+            // before each append); skip and report it loudly instead.
+            match serde_json::from_str::<HistoryRevision>(trimmed) {
+                Ok(rev) => revisions.push(rev),
+                Err(error) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        line = line_no + 1,
+                        error = %error,
+                        "skipping malformed history.ndjson line"
+                    );
+                },
+            }
         }
         Ok(revisions)
     }
@@ -323,6 +342,223 @@ impl TicketFs {
         fs::read_to_string(&desc).ok()
     }
 
+    /// Load a ticket's content parts: the `[[parts]]` manifest entries
+    /// joined with their file content, plus a report of orphan files under
+    /// `parts/` not referenced by any manifest entry.
+    ///
+    /// A legacy ticket with no `[[parts]]` table (AC8) reads back a single
+    /// synthetic `objective` part backed by `description.md`, with a
+    /// deterministic `id` derived from the ticket id so it stays stable
+    /// across reads without requiring a migration write.
+    pub fn load_parts(
+        ticket_path: &Path,
+        manifest: &TicketManifest,
+    ) -> Result<PartsLoadReport, StorageError> {
+        let entries = manifest.parts();
+
+        if entries.is_empty() {
+            let content = Self::read_description(ticket_path).unwrap_or_default();
+            return Ok(PartsLoadReport {
+                parts: vec![LoadedPart {
+                    id: implicit_objective_part_id(manifest.id),
+                    kind: "objective".to_string(),
+                    path: "description.md".to_string(),
+                    frozen: false,
+                    created_at: manifest.created_at,
+                    supersedes: None,
+                    content,
+                    implicit: true,
+                }],
+                orphans: Vec::new(),
+            });
+        }
+
+        let mut parts = Vec::with_capacity(entries.len());
+        let mut referenced_paths: BTreeSet<String> = BTreeSet::new();
+        for entry in entries {
+            let content = fs::read_to_string(ticket_path.join(&entry.path))
+                .unwrap_or_default();
+            referenced_paths.insert(entry.path.clone());
+            parts.push(LoadedPart {
+                id: entry.id,
+                kind: entry.kind,
+                path: entry.path,
+                frozen: entry.frozen,
+                created_at: entry.created_at,
+                supersedes: entry.supersedes,
+                content,
+                implicit: false,
+            });
+        }
+
+        let orphans =
+            find_orphan_part_files(ticket_path, &referenced_paths)?;
+        Ok(PartsLoadReport { parts, orphans })
+    }
+
+    /// Write content to a single content part addressed by its stable
+    /// opaque `part_id` — never by `kind` or manifest index.
+    ///
+    /// If `part_id` matches an existing `[[parts]]` entry, only that
+    /// entry's file is overwritten; its `kind` is left unchanged (`kind` is
+    /// assigned once at creation and never reclassified by a content
+    /// write). If `part_id` matches no existing entry, a new part is
+    /// created with `kind` and appended to the manifest; `supersedes` is
+    /// set on the new entry (used only by `amendment` parts, `None`
+    /// otherwise — ignored when overwriting an existing part).
+    ///
+    /// A legacy ticket with no `[[parts]]` table addresses its implicit
+    /// `objective` part (backed by `description.md`) via
+    /// [`implicit_objective_part_id`]; any other `part_id` creates a new
+    /// explicit part alongside it without disturbing `description.md`.
+    ///
+    /// Only the addressed part's file is ever read or written: writing a
+    /// `review` or `validation` part never touches `objective` or
+    /// `description.md` (AC4 of ticket 3d952036).
+    ///
+    /// Frozen-part rejection is enforced by the caller
+    /// (`TicketStore::enforce_part_write_gate`) before this is reached —
+    /// this is a crate-private low-level primitive with no external entry
+    /// point (spec 24b3d22b, ticket f9e70385, AC7).
+    ///
+    /// Returns the updated manifest and the part's prior content (`None`
+    /// if the write created the part).
+    pub(crate) fn write_part(
+        ticket_path: &Path,
+        part_id: Uuid,
+        kind: &str,
+        content: &str,
+        supersedes: Option<Uuid>,
+    ) -> Result<(TicketManifest, Option<String>), StorageError> {
+        let lock_path = ticket_path.join(TICKET_LOCK_FILE);
+        let lock_file = acquire_lock(&lock_path)?;
+
+        let result = (|| -> Result<(TicketManifest, Option<String>), StorageError> {
+            let mut manifest = Self::read(ticket_path)?;
+            let mut parts = manifest.parts();
+
+            if let Some(entry) = parts.iter().find(|p| p.id == part_id) {
+                let rel_path = entry.path.clone();
+                let prior =
+                    fs::read_to_string(ticket_path.join(&rel_path)).ok();
+                fs::write(ticket_path.join(&rel_path), content)?;
+                return Ok((manifest, prior));
+            }
+
+            if parts.is_empty()
+                && part_id == implicit_objective_part_id(manifest.id)
+            {
+                let prior = Self::read_description(ticket_path);
+                fs::write(ticket_path.join("description.md"), content)?;
+                return Ok((manifest, prior));
+            }
+
+            // New part: create its file under parts/ and append a manifest
+            // entry. Never touches any other part's file.
+            let parts_dir = ticket_path.join(TICKET_PARTS_DIR);
+            fs::create_dir_all(&parts_dir)?;
+            let rel_path = format!("{TICKET_PARTS_DIR}/{part_id}.md");
+            fs::write(ticket_path.join(&rel_path), content)?;
+            parts.push(crate::model::ticket::TicketPart {
+                id: part_id,
+                kind: kind.to_string(),
+                path: rel_path,
+                frozen: false,
+                created_at: Utc::now(),
+                supersedes,
+            });
+            manifest.set_parts(parts);
+            write_manifest(ticket_path, &manifest)?;
+            Ok((manifest, None))
+        })();
+
+        release_lock(&lock_file, &lock_path);
+        result
+    }
+
+    /// Freeze or unfreeze the five planning parts (spec 24b3d22b, ticket
+    /// f9e70385, AC1/AC5), invoked exclusively from the state-transition
+    /// path (`TicketStore::update_with_options`) whenever a ticket enters
+    /// or leaves `planned`. This is the sanctioned freeze/unfreeze
+    /// mechanism itself — not a content write — so it does not go through
+    /// `TicketStore::enforce_part_write_gate`; there is no other privileged
+    /// bypass.
+    ///
+    /// `freeze = true`: every [`crate::model::parts::PLANNING_PART_KINDS`]
+    /// entry is set `frozen = true`; any of the five missing from the
+    /// manifest is materialized first (`objective` inherits legacy
+    /// `description.md` content so a ticket with no `[[parts]]` table
+    /// freezes the same content its reads already expose as `objective`;
+    /// the other four are created empty). `plan_revision` is incremented,
+    /// which appends a plan revision to history via the caller's normal
+    /// history snapshot.
+    ///
+    /// `freeze = false`: every part's `frozen` flag is cleared, regardless
+    /// of kind.
+    pub(crate) fn apply_plan_freeze(
+        ticket_path: &Path,
+        freeze: bool,
+    ) -> Result<TicketManifest, StorageError> {
+        let lock_path = ticket_path.join(TICKET_LOCK_FILE);
+        let lock_file = acquire_lock(&lock_path)?;
+
+        let result = (|| -> Result<TicketManifest, StorageError> {
+            let mut manifest = Self::read(ticket_path)?;
+            let mut parts = manifest.parts();
+
+            if freeze {
+                for &kind in crate::model::parts::PLANNING_PART_KINDS {
+                    if let Some(part) =
+                        parts.iter_mut().find(|p| p.kind == kind)
+                    {
+                        part.frozen = true;
+                        continue;
+                    }
+                    let content = if kind == "objective" {
+                        Self::read_description(ticket_path)
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+                    let id = Uuid::new_v4();
+                    let rel_path = format!("{TICKET_PARTS_DIR}/{id}.md");
+                    fs::create_dir_all(ticket_path.join(TICKET_PARTS_DIR))?;
+                    fs::write(ticket_path.join(&rel_path), &content)?;
+                    parts.push(crate::model::ticket::TicketPart {
+                        id,
+                        kind: kind.to_string(),
+                        path: rel_path,
+                        frozen: true,
+                        created_at: Utc::now(),
+                        supersedes: None,
+                    });
+                }
+                let revision = manifest
+                    .extra
+                    .get("plan_revision")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+                    + 1;
+                manifest.extra.insert(
+                    "plan_revision".to_string(),
+                    Value::Number(revision.into()),
+                );
+            } else {
+                for part in parts.iter_mut() {
+                    part.frozen = false;
+                }
+            }
+
+            manifest.set_parts(parts);
+            write_manifest(ticket_path, &manifest)?;
+            Ok(manifest)
+        })();
+
+        release_lock(&lock_file, &lock_path);
+        result
+    }
+
+
     pub fn update_edge_field(
         ticket_path: &Path,
         edge_kind: &str,
@@ -362,6 +598,63 @@ impl TicketFs {
 
         release_lock(&lock_file, &lock_path);
         result
+    }
+}
+
+/// Identity used to derive the deterministic synthetic `id` of the implicit
+/// `objective` part backfilled for legacy tickets with no `[[parts]]` table
+/// (AC8/AC9). Never persisted; recomputed on every read so it stays stable
+/// for a given ticket without requiring a one-time migration write.
+const IMPLICIT_OBJECTIVE_PART_NAME: &[u8] = b"ticket-api:implicit-objective";
+
+fn implicit_objective_part_id(ticket_id: Uuid) -> Uuid {
+    Uuid::new_v5(&ticket_id, IMPLICIT_OBJECTIVE_PART_NAME)
+}
+
+/// A single loaded content part: manifest metadata joined with its file
+/// content read from `parts/` (or `description.md` for the implicit
+/// legacy `objective` part).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadedPart {
+    pub id: Uuid,
+    pub kind: String,
+    /// Path relative to the ticket directory.
+    pub path: String,
+    pub frozen: bool,
+    pub created_at: chrono::DateTime<Utc>,
+    pub supersedes: Option<Uuid>,
+    pub content: String,
+    /// `true` for the synthetic `objective` part backfilled from
+    /// `description.md` on a legacy ticket with no `[[parts]]` table.
+    pub implicit: bool,
+}
+
+/// Result of loading a ticket's parts: entries in manifest (display/creation)
+/// order, plus any orphan files under `parts/` that exist on disk but are
+/// not referenced by the manifest — reported, never silently adopted (AC4).
+#[derive(Debug, Clone, Default)]
+pub struct PartsLoadReport {
+    pub parts: Vec<LoadedPart>,
+    /// Absolute paths of files under `parts/` with no matching manifest entry.
+    pub orphans: Vec<PathBuf>,
+}
+
+impl PartsLoadReport {
+    /// Address a part by its stable `id` — the only addressing key; kind and
+    /// manifest index are never used for lookup (AC3).
+    pub fn find(
+        &self,
+        id: Uuid,
+    ) -> Option<&LoadedPart> {
+        self.parts.iter().find(|part| part.id == id)
+    }
+
+    /// All parts of a given `kind`, in manifest order.
+    pub fn of_kind<'a>(
+        &'a self,
+        kind: &'a str,
+    ) -> impl Iterator<Item = &'a LoadedPart> {
+        self.parts.iter().filter(move |part| part.kind == kind)
     }
 }
 
@@ -449,6 +742,41 @@ fn write_manifest(
     let path = dir.join(TICKET_MANIFEST_FILE);
     fs::write(&path, toml_str)?;
     Ok(())
+}
+
+/// Files under `parts/` with no matching entry in `referenced_paths`
+/// (manifest-relative paths, e.g. `"parts/<id>.md"`). Absent `parts/`
+/// yields no orphans rather than an error.
+fn find_orphan_part_files(
+    ticket_path: &Path,
+    referenced_paths: &BTreeSet<String>,
+) -> Result<Vec<PathBuf>, StorageError> {
+    let parts_dir = ticket_path.join(TICKET_PARTS_DIR);
+    let read_dir = match fs::read_dir(&parts_dir) {
+        Ok(read_dir) => read_dir,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Vec::new());
+        },
+        Err(error) => return Err(StorageError::Io(error)),
+    };
+
+    let mut orphans = Vec::new();
+    for entry in read_dir {
+        let path = entry?.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str())
+        else {
+            continue;
+        };
+        let relative = format!("{TICKET_PARTS_DIR}/{file_name}");
+        if !referenced_paths.contains(&relative) {
+            orphans.push(path);
+        }
+    }
+    orphans.sort();
+    Ok(orphans)
 }
 
 fn parse_edge_targets(

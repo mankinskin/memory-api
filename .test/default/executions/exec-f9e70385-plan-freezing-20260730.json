@@ -1,0 +1,19 @@
+{
+  "id": "exec-f9e70385-plan-freezing-20260730",
+  "validation_spec_id": "vt-f9e70385-plan-freezing",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T00:06:12.038061100Z",
+  "detail": "7/7 passed: f9e70385_planned_freezes_exactly_the_five_planning_parts (AC1), f9e70385_write_to_frozen_part_is_rejected_and_file_byte_identical (AC2/AC3), f9e70385_review_write_on_planned_ticket_succeeds (AC4), f9e70385_unfreeze_refreeze_cycle_appends_plan_revision (AC5), f9e70385_amendment_records_supersedes_and_is_retrievable_alongside_frozen_part (AC6), f9e70385_undo_part_on_frozen_part_is_also_rejected (AC7), f9e70385_legacy_description_write_never_touches_frozen_objective_part_file (AC7). Full ticket-api suite: 150 passed. session-api suite: all passed. cargo build --workspace: success.",
+  "links": {
+    "ticket_ids": [
+      "f9e70385-adb7-4942-a8fb-6a383863cc7e"
+    ]
+  },
+  "provenance": {
+    "source_path": "memory-api/crates/ticket-api/src/storage/tests/update_regression_tests.rs",
+    "domain": "ticket-api",
+    "operation": "cargo-test",
+    "transport": "cli",
+    "run_id": "f9e70385-implement-session"
+  }
+}

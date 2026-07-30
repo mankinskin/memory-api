@@ -183,7 +183,7 @@ pub fn synthesize_follow_up_ticket(
             Some(id),
             "tracker-improvement",
             Some(&draft.title),
-            Some("new"),
+            Some("open"),
             extra,
             target_root,
             Some(&draft.description),

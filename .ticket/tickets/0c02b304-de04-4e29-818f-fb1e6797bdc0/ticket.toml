@@ -1,0 +1,7 @@
+id = "0c02b304-de04-4e29-818f-fb1e6797bdc0"
+created_at = "2026-07-30T00:49:46.713422900+00:00"
+title = "Fix silent history-append failures and manifest null-deletion corruption"
+state = "in-review"
+child_of = ["bbb4bce9-d57c-4f85-8757-8d239f9f7cde"]
+priority = "high"
+type = "bug"

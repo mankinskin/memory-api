@@ -196,6 +196,26 @@ pub enum TicketCommandCli {
     /// store(s).
     #[command(name = "validate-links")]
     ValidateLinks,
+    /// List a ticket's content parts (objective, requirements, review, ...),
+    /// including frozen state and any orphaned part files.
+    #[command(name = "list-parts")]
+    ListParts(ListPartsArgs),
+    /// Get a single ticket content part by its opaque part id.
+    #[command(name = "get-part")]
+    GetPart(GetPartArgs),
+    /// Write a ticket content part: update an existing part via --part-id,
+    /// or create a new part of --kind. Rejected if the addressed part is
+    /// frozen by plan freezing.
+    #[command(name = "write-part")]
+    WritePart(WritePartArgs),
+    /// Write an `amendment` part that supersedes a (typically frozen) part,
+    /// recording a correction without unfreezing the original.
+    #[command(name = "write-amendment")]
+    WriteAmendment(WriteAmendmentArgs),
+    /// Restore a part to the content it held immediately before its most
+    /// recent write. Rejected if the part is currently frozen.
+    #[command(name = "undo-part")]
+    UndoPart(UndoPartArgs),
 }
 
 // ── error type ─────────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@
  *
  * Regression test for:
  *   ticket 5bf1951a — Fix tree view state grouping
- *   Bug: 48ea4df8 (cancelled) appeared in "new" folder because it depends_on
+ *   Bug: 48ea4df8 (cancelled) appeared in "open" folder because it depends_on
  *        ee43f72e (new), and the old ancestor-promotion code added it there.
  */
 
@@ -31,7 +31,7 @@ jest.mock('node:fs', () => ({
   readdirSync: jest.fn(() => []),
 }));
 
-const SCHEMA_STATES = ['new', 'ready', 'in-implementation', 'in-review', 'done', 'cancelled'];
+const SCHEMA_STATES = ['open', 'planned', 'in-implementation', 'in-review', 'done', 'cancelled'];
 
 function makeTicket(
   id: string,
@@ -268,26 +268,26 @@ describe('TicketTreeProvider — state folder grouping', () => {
   // ── Regression: AC1 — strict state filtering ─────────────────────────────
 
   describe('AC1 — each folder only contains tickets whose state matches the folder', () => {
-    test('cancelled parent does NOT appear in "new" folder (real IDs regression)', async () => {
+    test('cancelled parent does NOT appear in "open" folder (real IDs regression)', async () => {
       /**
        * REGRESSION TEST for ticket 5bf1951a.
        *
        * Setup:
        *   48ea4df8 (cancelled) depends_on ee43f72e (new)
        *
-       * Old behaviour: 48ea4df8 appeared in the "new" folder via ancestor promotion.
+       * Old behaviour: 48ea4df8 appeared in the "open" folder via ancestor promotion.
        * Expected:      48ea4df8 must ONLY appear in "cancelled" folder.
        */
       const tickets = [
         makeTicket(CANCELLED_PARENT_ID, 'cancelled', '[bootstrap] run one-week dogfood trial'),
-        makeTicket(NEW_CHILD_ID, 'new', '[bootstrap] write test fixtures'),
+        makeTicket(NEW_CHILD_ID, 'open', '[bootstrap] write test fixtures'),
       ];
       const edges = [makeEdge(CANCELLED_PARENT_ID, NEW_CHILD_ID)];
 
       const provider = await buildProvider(tickets, edges);
 
-      // 48ea4df8 must NOT appear in "new" folder (root or nested)
-      const newGroup = getGroup(provider, 'new');
+      // 48ea4df8 must NOT appear in "open" folder (root or nested)
+      const newGroup = getGroup(provider, 'open');
       expect(newGroup).not.toBeNull();
       const visibleInNew = newGroup ? collectAllVisibleIds(provider, newGroup) : new Set();
       expect(visibleInNew.has(CANCELLED_PARENT_ID)).toBe(false);
@@ -318,14 +318,14 @@ describe('TicketTreeProvider — state folder grouping', () => {
 
     test('folder count matches actual ticket count for state (AC4)', async () => {
       const tickets = [
-        makeTicket('a0000000-0000-0000-0000-000000000001', 'new'),
-        makeTicket('a0000000-0000-0000-0000-000000000002', 'new'),
+        makeTicket('a0000000-0000-0000-0000-000000000001', 'open'),
+        makeTicket('a0000000-0000-0000-0000-000000000002', 'open'),
         makeTicket('a0000000-0000-0000-0000-000000000003', 'cancelled'),
       ];
       const provider = await buildProvider(tickets, []);
 
-      const newGroup = getGroup(provider, 'new');
-      expect(newGroup?.totalCount).toBe(2); // only 2 "new" tickets
+      const newGroup = getGroup(provider, 'open');
+      expect(newGroup?.totalCount).toBe(2); // only 2 "open" tickets
 
       const cancelledGroup = getGroup(provider, 'cancelled');
       expect(cancelledGroup?.totalCount).toBe(1);
@@ -334,7 +334,7 @@ describe('TicketTreeProvider — state folder grouping', () => {
 
   test('recovers from an initial ticket fetch failure by rebinding and retrying once', async () => {
     const tickets = [
-      makeTicket('a0000000-0000-0000-0000-000000000001', 'new', 'Recovered ticket'),
+      makeTicket('a0000000-0000-0000-0000-000000000001', 'open', 'Recovered ticket'),
     ];
     const mockApi = api as jest.Mocked<typeof api>;
     const recovery = jest.fn().mockResolvedValue({
@@ -409,7 +409,7 @@ describe('TicketTreeProvider — state folder grouping', () => {
     );
 
     await waitForProviderReload(provider, () => {
-      provider.setStateFilter('new');
+      provider.setStateFilter('open');
     });
 
     const infoItems = provider.getChildren(undefined)
@@ -459,14 +459,14 @@ describe('TicketTreeProvider — state folder grouping', () => {
       const B = 'c0000000-0000-0000-0000-000000000002';
       const C = 'c0000000-0000-0000-0000-000000000003';
       const tickets = [
-        makeTicket(A, 'ready', 'A'),
-        makeTicket(B, 'ready', 'B'),
-        makeTicket(C, 'ready', 'C'),
+        makeTicket(A, 'planned', 'A'),
+        makeTicket(B, 'planned', 'B'),
+        makeTicket(C, 'planned', 'C'),
       ];
       const edges = [makeEdge(A, B), makeEdge(B, C)];
       const provider = await buildProvider(tickets, edges);
 
-      const group = getGroup(provider, 'ready');
+      const group = getGroup(provider, 'planned');
       expect(group?.totalCount).toBe(3);
 
       const rootItems = group ? getGroupItems(provider, group) : [];
@@ -491,10 +491,10 @@ describe('TicketTreeProvider — state folder grouping', () => {
 
     test('ticket with no same-state parent appears at folder root (AC3)', async () => {
       const LONE = 'e0000000-0000-0000-0000-000000000001';
-      const tickets = [makeTicket(LONE, 'new', 'Standalone ticket')];
+      const tickets = [makeTicket(LONE, 'open', 'Standalone ticket')];
       const provider = await buildProvider(tickets, []);
 
-      const group = getGroup(provider, 'new');
+      const group = getGroup(provider, 'open');
       const rootItems = group ? getGroupItems(provider, group) : [];
       expect(rootItems.some(i => i.ticket.id === LONE)).toBe(true);
     });
@@ -504,7 +504,7 @@ describe('TicketTreeProvider — state folder grouping', () => {
       const NEW = 'f0000000-0000-0000-0000-000000000002';
       const tickets = [
         makeTicket(DONE, 'done', 'Done parent'),
-        makeTicket(NEW, 'new', 'New child'),
+        makeTicket(NEW, 'open', 'New child'),
       ];
       const edges = [makeEdge(DONE, NEW)];
       const provider = await buildProvider(tickets, edges);
@@ -529,7 +529,7 @@ describe('TicketTreeProvider — state folder grouping', () => {
   describe('AC5 — state folders ordered by schema states', () => {
     test('schema states appear before unknown states', async () => {
       const tickets = [
-        makeTicket('00000000-0000-0000-0000-000000000001', 'new'),
+        makeTicket('00000000-0000-0000-0000-000000000001', 'open'),
         makeTicket('00000000-0000-0000-0000-000000000002', 'zz-custom-state'),
       ];
       const provider = await buildProvider(tickets, []);
@@ -537,19 +537,19 @@ describe('TicketTreeProvider — state folder grouping', () => {
       const groups = getRootGroups(provider);
       const states = groups.filter(g => g instanceof StateGroupItem).map(g => g.state);
 
-      const newIdx = states.indexOf('new');
+      const newIdx = states.indexOf('open');
       const customIdx = states.indexOf('zz-custom-state');
 
       expect(newIdx).toBeGreaterThanOrEqual(0);
       expect(customIdx).toBeGreaterThanOrEqual(0);
-      // 'new' is a schema state → should appear before the unknown custom state
+      // 'open' is a schema state → should appear before the unknown custom state
       expect(newIdx).toBeLessThan(customIdx);
     });
   });
 
   describe('filter-backed reloads', () => {
     test('shows visible root controls for search and state filter', async () => {
-      const provider = await buildProvider([makeTicket('30000000-0000-0000-0000-000000000001', 'new')], []);
+      const provider = await buildProvider([makeTicket('30000000-0000-0000-0000-000000000001', 'open')], []);
 
       const controls = getRootControls(provider);
       expect(controls.map(control => control.label)).toEqual(['Search Tickets', 'Filter By State']);
@@ -558,9 +558,9 @@ describe('TicketTreeProvider — state folder grouping', () => {
 
     test('setLocalSearch filters in-memory tickets without calling fetchAllTickets', async () => {
       const tickets = [
-        makeTicket('40000000-0000-0000-0000-000000000001', 'new', 'Fix authentication bug'),
-        makeTicket('40000000-0000-0000-0000-000000000002', 'new', 'Add export button'),
-        makeTicket('40000000-0000-0000-0000-000000000003', 'ready', 'Improve logging'),
+        makeTicket('40000000-0000-0000-0000-000000000001', 'open', 'Fix authentication bug'),
+        makeTicket('40000000-0000-0000-0000-000000000002', 'open', 'Add export button'),
+        makeTicket('40000000-0000-0000-0000-000000000003', 'planned', 'Improve logging'),
       ];
       const provider = await buildProvider(tickets, []);
       const mockApi = api as jest.Mocked<typeof api>;
@@ -571,16 +571,16 @@ describe('TicketTreeProvider — state folder grouping', () => {
       // No extra server call
       expect(mockApi.fetchAllTickets.mock.calls.length).toBe(callsBefore);
 
-      // Only the matching 'new' ticket should be visible
+      // Only the matching 'open' ticket should be visible
       const groups = getRootGroups(provider);
-      expect(groups.map(g => g.state)).toEqual(['new']);
+      expect(groups.map(g => g.state)).toEqual(['open']);
       const items = provider.getChildren(groups[0]) as TicketItem[];
       expect(items.length).toBe(1);
       expect(items[0].ticket.title).toBe('Fix authentication bug');
     });
 
     test('search control description updates live as setLocalSearch is called', async () => {
-      const provider = await buildProvider([makeTicket('50000000-0000-0000-0000-000000000001', 'new')], []);
+      const provider = await buildProvider([makeTicket('50000000-0000-0000-0000-000000000001', 'open')], []);
 
       provider.setLocalSearch('foo');
       expect(getRootControls(provider)[0].description).toBe('foo');
@@ -591,11 +591,11 @@ describe('TicketTreeProvider — state folder grouping', () => {
 
     test('forwards active search and state filters to fetchAllTickets', async () => {
       const READY = '10000000-0000-0000-0000-000000000001';
-      const provider = await buildProvider([makeTicket(READY, 'ready', 'Needle ticket')], []);
+      const provider = await buildProvider([makeTicket(READY, 'planned', 'Needle ticket')], []);
       const mockApi = api as jest.Mocked<typeof api>;
 
       mockApi.fetchAllTickets.mockResolvedValueOnce([
-        makeTicket(READY, 'ready', 'Needle ticket'),
+        makeTicket(READY, 'planned', 'Needle ticket'),
       ]);
       await waitForProviderReload(provider, () => provider.setSearchQuery('needle'));
 
@@ -607,34 +607,34 @@ describe('TicketTreeProvider — state folder grouping', () => {
       expect(provider.filterSummary).toContain('needle');
 
       mockApi.fetchAllTickets.mockResolvedValueOnce([
-        makeTicket(READY, 'ready', 'Needle ticket'),
+        makeTicket(READY, 'planned', 'Needle ticket'),
       ]);
-      await waitForProviderReload(provider, () => provider.setStateFilter('ready'));
+      await waitForProviderReload(provider, () => provider.setStateFilter('planned'));
 
       expect(mockApi.fetchAllTickets).toHaveBeenLastCalledWith(
         'http://localhost:3002',
         'default',
-        { query: 'needle', state: 'ready' },
+        { query: 'needle', state: 'planned' },
       );
-      expect(getRootControls(provider).map(control => control.description)).toEqual(['needle', 'ready']);
-      expect(getRootGroups(provider).map(group => group.state)).toEqual(['ready']);
+      expect(getRootControls(provider).map(control => control.description)).toEqual(['needle', 'planned']);
+      expect(getRootGroups(provider).map(group => group.state)).toEqual(['planned']);
     });
 
     test('clearFilters restores the unfiltered ticket groups', async () => {
       const NEW = '20000000-0000-0000-0000-000000000001';
       const READY = '20000000-0000-0000-0000-000000000002';
       const initialTickets = [
-        makeTicket(NEW, 'new', 'New ticket'),
-        makeTicket(READY, 'ready', 'Ready ticket'),
+        makeTicket(NEW, 'open', 'New ticket'),
+        makeTicket(READY, 'planned', 'Ready ticket'),
       ];
       const provider = await buildProvider(initialTickets, []);
       const mockApi = api as jest.Mocked<typeof api>;
 
       mockApi.fetchAllTickets.mockResolvedValueOnce([
-        makeTicket(READY, 'ready', 'Ready ticket'),
+        makeTicket(READY, 'planned', 'Ready ticket'),
       ]);
-      await waitForProviderReload(provider, () => provider.setStateFilter('ready'));
-      expect(getRootGroups(provider).map(group => group.state)).toEqual(['ready']);
+      await waitForProviderReload(provider, () => provider.setStateFilter('planned'));
+      expect(getRootGroups(provider).map(group => group.state)).toEqual(['planned']);
 
       mockApi.fetchAllTickets.mockResolvedValueOnce(initialTickets);
       await waitForProviderReload(provider, () => provider.clearFilters());
@@ -644,7 +644,7 @@ describe('TicketTreeProvider — state folder grouping', () => {
         'default',
         {},
       );
-      expect(getRootGroups(provider).map(group => group.state)).toEqual(['new', 'ready']);
+      expect(getRootGroups(provider).map(group => group.state)).toEqual(['open', 'planned']);
       expect(provider.filterSummary).toBeUndefined();
     });
   });

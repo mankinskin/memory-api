@@ -1,7 +1,7 @@
 id = "3be95a71-f6d7-4c83-b877-1d236751a12c"
 created_at = "2026-07-10T22:32:42.033384300+00:00"
 title = "[content-materialization][epic] Fill specs, Rust/code policy, and the feedback ring on top of session construction"
-state = "new"
+state = "open"
 depends_on = ["17483930-36a1-4bf7-864b-e30ded445db3", "5d4078fa-d7eb-4f0d-bf84-e21029f5ad5d", "633a38b8-7200-4979-9ce9-8c296ccc78bd", "6875dff6-7191-46aa-9358-9567430969f1", "7f7ef435-0504-40cf-8d6c-dd96477a0223", "c680b137-01a1-4d13-b219-39af86eaa71b", "effba966-f0a8-4d7d-b289-b7feba826cf8", "f3a58d3c-5961-4ee4-a32d-b51343a5a275"]
 effort = "8000"
 type = "tracker-improvement"

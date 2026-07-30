@@ -102,7 +102,7 @@ fn append_incremental_fixture_tickets(
             root_store,
             &id,
             &format!("incremental perf fixture ticket {batch}-{offset}"),
-            "ready",
+            "planned",
             "perf",
         )
         .expect("append incremental fixture ticket");

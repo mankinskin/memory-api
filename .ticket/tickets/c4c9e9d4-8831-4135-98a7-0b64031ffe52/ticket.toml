@@ -1,7 +1,7 @@
 id = "c4c9e9d4-8831-4135-98a7-0b64031ffe52"
 created_at = "2026-04-18T15:00:06.087518200+00:00"
 title = "[spec][P4] Feature tracking — record feature completeness and bug status per spec"
-state = "ready"
+state = "planned"
 component = "spec-api"
 depends_on = ["ab47648c-d1f8-4ad5-a652-08ef97f76ccd"]
 effort = "1200"

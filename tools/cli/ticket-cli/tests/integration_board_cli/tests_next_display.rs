@@ -41,7 +41,7 @@ fn board_show_immediate_actions_include_state_and_escaped_title() {
     let next_ticket = create_ticket(&s, title);
     let short_ticket = &next_ticket[..8];
     let expected_action = format!(
-        "Board is clear. Start new {short_ticket} \"Fix \\\"isometric\\\" layout defaults\" next."
+        "Board is clear. Start open {short_ticket} \"Fix \\\"isometric\\\" layout defaults\" next."
     );
 
     let show = s.ticket_json(&["board", "show"]);

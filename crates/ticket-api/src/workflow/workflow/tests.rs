@@ -58,8 +58,8 @@ fn build_model_with_facts(
         tickets,
         edges,
         HashMap::from([
-            ("new".to_string(), 0usize),
-            ("ready".to_string(), 1usize),
+            ("open".to_string(), 0usize),
+            ("planned".to_string(), 1usize),
             ("in-implementation".to_string(), 2usize),
             ("in-review".to_string(), 3usize),
             ("done".to_string(), 4usize),
@@ -74,12 +74,12 @@ fn build_model_with_facts(
 fn sort_candidates_prefers_newer_tickets_before_older_ones_without_pressure() {
     let older = ticket(
         "Older ticket",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
     );
     let newer = ticket(
         "Newer ticket",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap(),
     );
     let mut candidates = vec![older.id, newer.id];
@@ -102,22 +102,22 @@ fn sort_candidates_prefers_more_dependees_before_newer_tickets_without_pressure(
  {
     let older = ticket(
         "Older blocker",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
     );
     let newer = ticket(
         "Newer blocker",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap(),
     );
     let dependent_one = ticket(
         "Dependent one",
-        "new",
+        "open",
         Utc.with_ymd_and_hms(2026, 5, 18, 12, 0, 0).unwrap(),
     );
     let dependent_two = ticket(
         "Dependent two",
-        "new",
+        "open",
         Utc.with_ymd_and_hms(2026, 5, 18, 12, 30, 0).unwrap(),
     );
     let now = Utc.with_ymd_and_hms(2026, 5, 18, 13, 0, 0).unwrap();
@@ -158,12 +158,12 @@ fn sort_candidates_prefers_more_dependees_before_newer_tickets_without_pressure(
 fn sort_candidates_prefers_more_recent_actionable_time_before_creation_time() {
     let older_created = ticket(
         "Older created but recently actionable",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
     );
     let newer_created = ticket(
         "Newer created but stale actionable",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 18, 12, 0, 0).unwrap(),
     );
     let recent_actionable_at =
@@ -210,12 +210,12 @@ fn sort_candidates_prefers_more_recent_actionable_time_before_creation_time() {
 fn convergence_pressure_promotes_earlier_state_prerequisite() {
     let prerequisite = ticket(
         "Lagging prerequisite",
-        "new",
+        "open",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
     );
     let unrelated = ticket(
         "Unrelated ready work",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap(),
     );
     let dependent = ticket(
@@ -255,12 +255,12 @@ fn convergence_pressure_promotes_earlier_state_prerequisite() {
 fn convergence_pressure_still_beats_recently_actionable_unrelated_work() {
     let prerequisite = ticket(
         "Lagging prerequisite",
-        "new",
+        "open",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
     );
     let recently_actionable = ticket(
         "Recently actionable unrelated",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 18, 12, 0, 0).unwrap(),
     );
     let dependent = ticket(
@@ -306,17 +306,17 @@ fn convergence_pressure_still_beats_recently_actionable_unrelated_work() {
 fn reverse_dependents_collect_transitive_dependents() {
     let root = ticket(
         "Root",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
     );
     let direct = ticket(
         "Direct dependent",
-        "new",
+        "open",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 30, 0).unwrap(),
     );
     let transitive = ticket(
         "Transitive dependent",
-        "new",
+        "open",
         Utc.with_ymd_and_hms(2026, 5, 16, 13, 0, 0).unwrap(),
     );
     let now = Utc.with_ymd_and_hms(2026, 5, 16, 13, 30, 0).unwrap();
@@ -349,7 +349,7 @@ fn reverse_dependents_collect_transitive_dependents() {
 fn dependency_state_inversions_capture_more_advanced_dependents() {
     let prerequisite = ticket(
         "Lagging prerequisite",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
     );
     let dependent = ticket(
@@ -384,22 +384,22 @@ fn dependency_state_inversions_capture_more_advanced_dependents() {
 fn blocker_tree_preserves_nested_children_and_orders_closest_frontier_first() {
     let root = ticket(
         "Root",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
     );
     let direct_leaf = ticket(
         "Direct frontier leaf",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 5, 0).unwrap(),
     );
     let nested_parent = ticket(
         "Nested parent",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 10, 0).unwrap(),
     );
     let nested_leaf = ticket(
         "Nested frontier leaf",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 15, 0).unwrap(),
     );
     let now = Utc.with_ymd_and_hms(2026, 5, 16, 13, 0, 0).unwrap();
@@ -562,12 +562,12 @@ fn apply_board_filter_respects_skip_board_but_keeps_warnings() {
 fn sort_candidates_prefers_lower_effort_before_newer_tickets() {
     let lower_effort = ticket(
         "Lower effort ticket",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap(),
     );
     let higher_effort = ticket(
         "Higher effort ticket",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap(),
     );
     let mut candidates = vec![higher_effort.id, lower_effort.id];
@@ -607,22 +607,22 @@ fn unlock_tree_marks_actionable_parents_as_frontier_and_preserves_children() {
     );
     let actionable_parent = ticket(
         "Actionable parent",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 5, 0).unwrap(),
     );
     let blocked_parent = ticket(
         "Blocked parent",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 10, 0).unwrap(),
     );
     let external_blocker = ticket(
         "External blocker",
-        "ready",
+        "planned",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 15, 0).unwrap(),
     );
     let grandchild = ticket(
         "Grandchild",
-        "new",
+        "open",
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 20, 0).unwrap(),
     );
     let now = Utc.with_ymd_and_hms(2026, 5, 16, 13, 0, 0).unwrap();

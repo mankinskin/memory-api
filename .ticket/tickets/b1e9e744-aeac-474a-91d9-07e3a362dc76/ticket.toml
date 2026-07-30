@@ -1,7 +1,7 @@
 id = "b1e9e744-aeac-474a-91d9-07e3a362dc76"
 created_at = "2026-06-17T15:34:31.012469800+00:00"
 title = "[feedback-api] Feedback inbox, metadata indexing, and deep search"
-state = "ready"
+state = "planned"
 depends_on = ["3a1ec9f8-15ea-43f2-b6d3-89b88cbdcb17", "4f86d3d2-2b2a-4c9d-9d46-5f2a437f91b7", "9c95c1e4-3cdb-428e-b9de-800684651226", "b7b84c10-8dc5-4087-87ad-6fe27ebbcd45", "c2d6a14a-98b7-4f98-9f62-90a5ccf06d9e", "c7542933-3052-45c8-99e6-3e09f40cc9b9"]
 effort = "1400"
 priority = "high"

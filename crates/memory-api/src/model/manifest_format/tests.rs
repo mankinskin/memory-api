@@ -32,7 +32,7 @@ fn no_fields_dropped_string_fields() {
         ("priority", "high"),
         ("risk_level", "low"),
         ("sprint", "2026-Q2"),
-        ("state", "ready"),
+        ("state", "planned"),
         ("title", "Big feature"),
         ("type", "tracker-improvement"),
     ]);
@@ -137,7 +137,7 @@ fn manifest_partialeq_holds_after_roundtrip() {
     manifest
         .extra
         .insert("title".into(), json!("roundtrip test"));
-    manifest.extra.insert("state".into(), json!("new"));
+    manifest.extra.insert("state".into(), json!("open"));
     manifest
         .extra
         .insert("acceptance_criteria".into(), json!("must pass"));
@@ -199,6 +199,49 @@ fn roundtrip_string_with_embedded_newline() {
 }
 
 #[test]
+fn null_value_is_omitted_from_serialized_toml() {
+    let mut manifest = EntityManifest::new(Uuid::new_v4(), Utc::now());
+    manifest.extra.insert("title".into(), json!("keeps this"));
+    manifest.extra.insert("handoff_package".into(), Value::Null);
+
+    let toml = format_manifest_toml(&manifest);
+    assert!(
+        !toml.contains("handoff_package"),
+        "null field must be omitted, not written as handoff_package = \"\":\n{toml}"
+    );
+
+    // A round-trip through the parser must not reintroduce the key at all,
+    // let alone as a corrupted empty string.
+    let parsed: EntityManifest =
+        toml::from_str(&toml).expect("formatted TOML should be valid");
+    assert!(
+        !parsed.extra.contains_key("handoff_package"),
+        "null field resurfaced after round-trip: {:?}",
+        parsed.extra.get("handoff_package")
+    );
+}
+
+#[test]
+fn explicit_empty_string_is_preserved_not_treated_as_deletion() {
+    let mut manifest = EntityManifest::new(Uuid::new_v4(), Utc::now());
+    manifest.extra.insert("notes".into(), json!(""));
+
+    let toml = format_manifest_toml(&manifest);
+    assert!(
+        toml.contains("notes = \"\""),
+        "explicit empty string must still be written literally:\n{toml}"
+    );
+
+    let parsed = roundtrip(&manifest);
+    assert_eq!(
+        parsed.extra.get("notes"),
+        Some(&Value::String(String::new())),
+        "explicit empty string must round-trip as an empty string, not be dropped"
+    );
+}
+
+
+#[test]
 fn roundtrip_string_with_embedded_tab() {
     let manifest = make_manifest(&[("note", "col1\tcol2\tcol3")]);
     let parsed = roundtrip(&manifest);
@@ -224,7 +267,7 @@ fn roundtrip_string_with_mixed_special_chars() {
 fn formatting_is_idempotent() {
     let mut manifest = EntityManifest::new(Uuid::new_v4(), Utc::now());
     manifest.extra.insert("title".into(), json!("idempotent"));
-    manifest.extra.insert("state".into(), json!("new"));
+    manifest.extra.insert("state".into(), json!("open"));
     manifest
         .extra
         .insert("acceptance_criteria".into(), json!("pass\nall tests"));
@@ -244,7 +287,7 @@ fn formatting_is_idempotent() {
 fn formatting_is_idempotent_after_is_canonically_ordered_check() {
     let manifest = make_manifest(&[
         ("zzz_last", "z"),
-        ("state", "ready"),
+        ("state", "planned"),
         ("acceptance_criteria", "done"),
         ("title", "idempotency"),
         ("aaa_first", "a"),
@@ -262,7 +305,7 @@ fn formatting_is_idempotent_after_is_canonically_ordered_check() {
 fn canonical_order_puts_priority_fields_first() {
     let manifest = make_manifest(&[
         ("component", "api"),
-        ("state", "new"),
+        ("state", "open"),
         ("title", "My entity"),
         ("acceptance_criteria", "It works"),
         ("priority", "high"),
@@ -319,7 +362,7 @@ fn is_canonically_ordered_accepts_correct_order() {
 fn is_canonically_ordered_accepts_format_manifest_output() {
     let manifest = make_manifest(&[
         ("component", "api"),
-        ("state", "new"),
+        ("state", "open"),
         ("title", "My entity"),
         ("acceptance_criteria", "It works"),
         ("priority", "high"),
@@ -353,4 +396,31 @@ fn canonical_order_for_keys_sorts_remainder_alphabetically() {
     ];
     let ordered = canonical_order_for_keys(&keys);
     assert_eq!(ordered, vec!["id", "created_at", "title", "aaa", "zzz"]);
+}
+
+#[test]
+fn parts_table_round_trips_without_loss() {
+    use crate::model::entity::TicketPart;
+
+    let mut manifest = EntityManifest::new(Uuid::new_v4(), Utc::now());
+    let objective = TicketPart::new("objective", "parts/objective.md");
+    let mut amendment = TicketPart::new("amendment", "parts/amend-1.md");
+    amendment.supersedes = Some(objective.id);
+    amendment.frozen = false;
+    let attachment = TicketPart::new("handoff_package", "parts/handoff.md");
+
+    manifest.set_parts(vec![
+        objective.clone(),
+        amendment.clone(),
+        attachment.clone(),
+    ]);
+
+    let parsed = roundtrip(&manifest);
+    let parts = parsed.parts();
+
+    // A full-serialize writer that silently dropped the `parts` extra key
+    // (as `TicketFs::update`'s predecessor bug did for other fields) would
+    // fail this assertion by returning an empty vec here.
+    assert_eq!(parts, vec![objective, amendment.clone(), attachment]);
+    assert_eq!(parts[1].supersedes, amendment.supersedes);
 }

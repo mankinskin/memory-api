@@ -1,0 +1,18 @@
+{
+  "id": "exec-5b3da351-ac2-no-old-toml-state",
+  "validation_spec_id": "vt-5b3da351-ticket-state-rename",
+  "outcome": "passed",
+  "executed_at": "2026-07-29T23:41:48.630157200Z",
+  "detail": "grep -rl 'state = \"new\"' / 'state = \"ready\"' over .ticket/tickets/*/ticket.toml and memory-api/.ticket/tickets/*/ticket.toml returned 0 matches after migration (was 356 and 96 respectively before).",
+  "links": {
+    "ticket_ids": [
+      "5b3da351-1c87-4619-a0bc-6d7abe147d60"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "store-migration-verification",
+    "transport": "cli",
+    "run_id": "5b3da351-manual-verification"
+  }
+}

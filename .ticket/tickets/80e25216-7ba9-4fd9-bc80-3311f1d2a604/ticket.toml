@@ -1,7 +1,7 @@
 id = "80e25216-7ba9-4fd9-bc80-3311f1d2a604"
 created_at = "2026-04-18T15:00:05.198009100+00:00"
 title = "[spec][P3] Spec-to-code sync — update specs after implementation changes"
-state = "ready"
+state = "planned"
 component = "spec-api"
 depends_on = ["55a1b302-9b33-4389-8962-65362b9b3eb0"]
 effort = "1200"

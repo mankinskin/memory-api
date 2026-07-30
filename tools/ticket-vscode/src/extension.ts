@@ -166,7 +166,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   function updateStatusBar(): void {
     const tickets = provider.allTickets;
-    const newCount = tickets.filter(t => t.state === 'new').length;
+    const newCount = tickets.filter(t => t.state === 'open').length;
     const inImplCount = tickets.filter(t => t.state === 'in-implementation').length;
     const prefix = `$(issues) ${state.displayName}`;
     const filterSummary = provider.filterSummary;
@@ -177,7 +177,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       statusBarItem.text = prefix;
     } else {
       const parts: string[] = [];
-      if (newCount > 0) { parts.push(`${newCount} new`); }
+      if (newCount > 0) { parts.push(`${newCount} open`); }
       if (inImplCount > 0) { parts.push(`${inImplCount} in-impl`); }
       statusBarItem.text = parts.length > 0
         ? `${prefix}: ${parts.join(', ')}`

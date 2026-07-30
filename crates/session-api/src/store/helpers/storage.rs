@@ -475,8 +475,15 @@ pub(super) fn validate_segment(
     value: &str,
     is_workspace_slug: bool,
 ) -> Result<(), SessionError> {
+    let trimmed = value.trim();
     let invalid = ['/', '\\', ':'];
-    if value.trim().is_empty() || value.chars().any(|ch| invalid.contains(&ch))
+    // "." and ".." are only rejected for workspace slugs: they would otherwise
+    // resolve to a path-traversal segment when joined onto a store base.
+    let is_dot_segment =
+        is_workspace_slug && (trimmed == "." || trimmed == "..");
+    if trimmed.is_empty()
+        || value.chars().any(|ch| invalid.contains(&ch))
+        || is_dot_segment
     {
         return if is_workspace_slug {
             Err(SessionError::InvalidWorkspaceSlug(value.to_string()))

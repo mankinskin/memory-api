@@ -1,7 +1,7 @@
 id = "49bbe3ae-a80c-479f-98f2-500643706ce6"
 created_at = "2026-07-04T01:24:26.526272400+00:00"
 title = "[ticket-api][perf] Characterize slow ticket move and health end-to-end"
-state = "ready"
+state = "planned"
 component = "ticket-api"
 depends_on = ["6ddfb633-6e04-49ef-a464-f38bb13f6051", "cdae25a0-f7a1-4266-a341-a65a0a9e6325", "f5875ff3-7c37-4ac2-8ae6-d68aff240bf4", "f5dba169-b153-4d6a-ae1b-7620f317309e"]
 effort = "3000"

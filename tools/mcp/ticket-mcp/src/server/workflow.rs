@@ -27,7 +27,7 @@ impl TicketServer {
                 "steps": [
                     {"tool": "health", "input": {}},
                     {"tool": "list_workspaces", "input": {}},
-                    {"tool": "list_tickets", "input": {"workspace": workspace, "state": "new", "limit": 50}},
+                    {"tool": "list_tickets", "input": {"workspace": workspace, "state": "open", "limit": 50}},
                     {"tool": "list_tickets", "input": {"workspace": workspace, "state": "in-implementation", "limit": 50}}
                 ]
             }),
@@ -86,7 +86,12 @@ impl TicketServer {
                 "board_clean_preview",
                 "board_clean_apply",
                 "board_update_files",
-                "board_rename_file"
+                "board_rename_file",
+                "list_parts",
+                "get_part",
+                "write_part",
+                "write_amendment",
+                "undo_part"
             ],
             "operations": {
                 "health": {
@@ -158,7 +163,7 @@ impl TicketServer {
                     "optional": ["limit", "filter"],
                 },
                 "update_ticket": {
-                    "description": "Update ticket fields and/or transition state",
+                    "description": "Update ticket fields and/or transition state. description_mode ('replace' or 'append') is required and rejected if omitted whenever description is set; there is no default.",
                     "required": ["workspace", "id"],
                     "optional": ["transition_states", "to_state", "fields", "undo", "description", "description_mode", "author"],
                 },
@@ -223,6 +228,30 @@ impl TicketServer {
                 "board_rename_file": {
                     "description": "Atomically rename a file in a board entry's owned_files",
                     "required": ["workspace", "ticket_id", "agent_id", "old_path", "new_path"],
+                },
+                "list_parts": {
+                    "description": "List a ticket's content parts, including frozen state and orphaned part files",
+                    "required": ["workspace", "id"],
+                    "optional": ["with_content"],
+                },
+                "get_part": {
+                    "description": "Get a single ticket content part by its opaque part id",
+                    "required": ["workspace", "id", "part_id"],
+                },
+                "write_part": {
+                    "description": "Write a ticket content part (create via kind, or update via part_id); rejected with the full frozen-part error if the part is frozen",
+                    "required": ["workspace", "id", "kind", "content"],
+                    "optional": ["part_id", "author"],
+                },
+                "write_amendment": {
+                    "description": "Write an amendment part that supersedes another (typically frozen) part",
+                    "required": ["workspace", "id", "supersedes", "content"],
+                    "optional": ["part_id", "author"],
+                },
+                "undo_part": {
+                    "description": "Restore a part to its content prior to its most recent write; rejected if frozen",
+                    "required": ["workspace", "id", "part_id"],
+                    "optional": ["author"],
                 },
             },
             "notes": [

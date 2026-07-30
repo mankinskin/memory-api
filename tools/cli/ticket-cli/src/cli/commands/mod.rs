@@ -4,6 +4,7 @@ mod edges;
 mod history;
 mod lifecycle;
 mod ops;
+mod parts;
 mod query;
 mod workspace;
 
@@ -13,6 +14,7 @@ pub(crate) use edges::*;
 pub(crate) use history::*;
 pub(crate) use lifecycle::*;
 pub(crate) use ops::*;
+pub(crate) use parts::*;
 pub(crate) use query::*;
 pub(crate) use workspace::*;
 

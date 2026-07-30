@@ -1,7 +1,7 @@
 id = "181ed793-481d-4d46-b059-0eda891365d7"
 created_at = "2026-05-21T15:21:16.689201800+00:00"
 title = "[ticket-http] Add /api/next endpoint for best-next ranking"
-state = "ready"
+state = "planned"
 acceptance_criteria = "Ticket HTTP exposes GET /api/next with the canonical best-next ranking contract and board-aware warnings or exclusions; HTTP consumers no longer need to compose /api/tickets with /api/edges or /api/graph/topgraph to obtain ranked next candidates; focused HTTP regression coverage locks the route contract"
 component = "ticket-http"
 effort = "1200"

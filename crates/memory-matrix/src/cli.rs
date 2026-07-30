@@ -50,7 +50,7 @@ fn dispatch_ticket_cli(
             "--title".into(),
             token,
             "--state".into(),
-            "new".into(),
+            "open".into(),
         ]),
         "get" => {
             run_ticket_cli(vec![
@@ -66,7 +66,7 @@ fn dispatch_ticket_cli(
                 "--title".into(),
                 token,
                 "--state".into(),
-                "new".into(),
+                "open".into(),
             ])?;
             run_ticket_cli(vec![
                 "ticket".into(),
@@ -91,7 +91,7 @@ fn dispatch_ticket_cli(
                 "--title".into(),
                 token.clone(),
                 "--state".into(),
-                "new".into(),
+                "open".into(),
             ])?;
             run_ticket_cli(vec![
                 "ticket".into(),
@@ -118,7 +118,7 @@ fn dispatch_ticket_cli(
                 "--title".into(),
                 token,
                 "--state".into(),
-                "new".into(),
+                "open".into(),
             ])?;
             run_ticket_cli(vec![
                 "ticket".into(),
@@ -128,7 +128,7 @@ fn dispatch_ticket_cli(
                 "update".into(),
                 id,
                 "--to-state".into(),
-                "ready".into(),
+                "planned".into(),
             ])
         },
         "delete" => {
@@ -145,7 +145,7 @@ fn dispatch_ticket_cli(
                 "--title".into(),
                 token,
                 "--state".into(),
-                "new".into(),
+                "open".into(),
             ])?;
             run_ticket_cli(vec![
                 "ticket".into(),

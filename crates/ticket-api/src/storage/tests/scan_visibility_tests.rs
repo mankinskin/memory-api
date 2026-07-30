@@ -28,7 +28,7 @@ fn run_scan_reconciliation_visibility_agreement(reindex: bool) {
             None,
             "tracker-improvement",
             Some("VisibilityFixture stable"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -39,7 +39,7 @@ fn run_scan_reconciliation_visibility_agreement(reindex: bool) {
             None,
             "tracker-improvement",
             Some("VisibilityFixture delete"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -64,7 +64,7 @@ fn run_scan_reconciliation_visibility_agreement(reindex: bool) {
             None,
             "tracker-improvement",
             Some("VisibilityFixture add"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,
@@ -145,7 +145,7 @@ fn run_scan_reconciliation_visibility_agreement(reindex: bool) {
         .join(move_id.to_string());
     poisoned.type_id = "wrong-type".to_string();
     poisoned.title = Some("Wrong title".to_string());
-    poisoned.state = Some("new".to_string());
+    poisoned.state = Some("open".to_string());
     poisoned.created_at = expected_move.created_at - Duration::days(1);
     poisoned_index.insert_ticket(&poisoned).unwrap();
 
@@ -490,7 +490,7 @@ fn scan_without_reindex_repairs_moved_nested_ticket_path_and_search_doc() {
             None,
             "tracker-improvement",
             Some("Dependent on moved nested workspace ticket"),
-            Some("ready"),
+            Some("planned"),
             Default::default(),
             None,
             None,

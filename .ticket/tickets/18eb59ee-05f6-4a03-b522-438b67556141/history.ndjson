@@ -1,5 +1,5 @@
-{"rev":1,"ts":"2026-05-07T20:41:36.682338900+00:00","fields":{"component":"rule-api","priority":"high","state":"new","title":"Design hierarchical rule target schema","type":"tracker-improvement"}}
-{"rev":2,"ts":"2026-05-08T09:12:01.021795+00:00","fields":{"component":"rule-api","priority":"high","state":"ready","title":"Design hierarchical rule target schema","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}
+{"rev":1,"ts":"2026-05-07T20:41:36.682338900+00:00","fields":{"component":"rule-api","priority":"high","state":"open","title":"Design hierarchical rule target schema","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-05-08T09:12:01.021795+00:00","fields":{"component":"rule-api","priority":"high","state":"planned","title":"Design hierarchical rule target schema","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}
 {"rev":3,"ts":"2026-05-08T09:12:01.218276500+00:00","fields":{"component":"rule-api","priority":"high","state":"in-implementation","title":"Design hierarchical rule target schema","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}
 {"rev":4,"ts":"2026-05-08T09:31:01.223969900+00:00","fields":{"component":"rule-api","priority":"high","state":"in-review","title":"Design hierarchical rule target schema","type":"tracker-improvement"},"author":"copilot-gpt-5.4"}
 {"rev":5,"ts":"2026-05-21T15:46:08.546369700+00:00","fields":{"component":"rule-api","priority":"high","state":"done","title":"Design hierarchical rule target schema","type":"tracker-improvement"}}

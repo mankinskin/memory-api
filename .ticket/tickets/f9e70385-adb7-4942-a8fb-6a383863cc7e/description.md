@@ -67,3 +67,10 @@ created_at = "2026-08-01T09:00:00Z"
 - spec: `ticket-api/entity/structured-ticket-entities` (24b3d22b)
 - code: memory-api/crates/ticket-api/src/model/schema_registry.rs
 - code: memory-api/crates/ticket-api/src/storage/ticket_fs.rs
+Implemented plan freezing at `planned`.
+
+Freezes the five planning parts (objective, requirements, design, examples, acceptance_criteria) on transition to `planned`; materializes any missing ones (objective inherits legacy description.md content). Writes to frozen parts hard-reject via `TicketStore::enforce_part_write_gate`, called by `write_part`, `write_amendment_part`, and `undo_part` — the only write entry points; `TicketFs::write_part` is now `pub(crate)` with no external caller. `TicketFs::apply_plan_freeze` clears all frozen flags on transition to any pre-`planned` state and re-freezes + bumps `plan_revision` on re-entering `planned`. New `StorageError::FrozenPartWrite` names the part kind+id, the freezing state, and both recovery paths (amendment w/ supersedes, transition back to pre-planned). New `TicketStore::write_amendment_part` sets `supersedes`, retrievable via existing `load_parts`.
+
+7 new regression tests (all passing) cover AC1-AC7. AC8 evidence recorded: test-mcp validation spec `vt-f9e70385-plan-freezing`, execution `exec-f9e70385-plan-freezing-20260730` (passed), linked to this ticket.
+
+Validation: cargo test -p ticket-api (150 passed), cargo test -p session-api (all passed), cargo build --workspace (success).

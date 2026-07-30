@@ -1,2 +1,2 @@
-{"rev":1,"ts":"2026-05-21T11:44:45.425218600+00:00","fields":{"state":"new","title":"Project tracker: viewer logging rollout","type":"tracker-improvement"}}
-{"rev":2,"ts":"2026-07-23T13:33:37.143894700+00:00","fields":{"depends_on":["1d8d82b5-8e40-463f-adaf-30d2f5625844","60a2a388-c8b6-4e25-a80a-0ba686f11bf9"],"effort":"1200","state":"new","title":"Project tracker: viewer logging rollout","type":"tracker-improvement"},"author":"github-copilot"}
+{"rev":1,"ts":"2026-05-21T11:44:45.425218600+00:00","fields":{"state":"open","title":"Project tracker: viewer logging rollout","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-23T13:33:37.143894700+00:00","fields":{"depends_on":["1d8d82b5-8e40-463f-adaf-30d2f5625844","60a2a388-c8b6-4e25-a80a-0ba686f11bf9"],"effort":"1200","state":"open","title":"Project tracker: viewer logging rollout","type":"tracker-improvement"},"author":"github-copilot"}

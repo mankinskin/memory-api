@@ -111,6 +111,19 @@ pub enum StorageError {
     },
     #[error("protocol: {0}")]
     Protocol(#[from] ProtocolError),
+    /// A write targeted a part frozen by plan freezing (spec 24b3d22b,
+    /// ticket f9e70385). Names the part (kind + id), the state that froze
+    /// it, and both recovery paths: add an `amendment` part superseding it,
+    /// or transition the ticket back to a pre-freezing state.
+    #[error(
+        "part '{kind}' (id {part_id}) on ticket {ticket} is frozen by the '{freezing_state}' state and cannot be written directly; recover via (a) adding an 'amendment' part with supersedes = {part_id} to record the correction, or (b) transitioning the ticket back to a pre-'{freezing_state}' state to unfreeze it"
+    )]
+    FrozenPartWrite {
+        ticket: Uuid,
+        part_id: Uuid,
+        kind: String,
+        freezing_state: String,
+    },
     #[error("{0}")]
     Other(String),
 }

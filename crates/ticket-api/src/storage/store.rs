@@ -46,6 +46,7 @@ use crate::{
 
 mod board;
 mod lifecycle;
+mod parts;
 mod query;
 mod release;
 mod scan;
@@ -53,6 +54,10 @@ mod store_open;
 mod workflow_facts;
 
 pub use self::{
+    parts::{
+        PART_HISTORY_CONTENT_KEY,
+        PART_HISTORY_ID_KEY,
+    },
     release::{
         GateCheckOutcome,
         GateStatus,
@@ -73,16 +78,21 @@ pub const DESCRIPTION_HISTORY_KEY: &str = "__previous_description__";
 /// How a caller-supplied `description` value should be applied to an
 /// existing ticket's `description.md`.
 ///
-/// Defaults to [`DescriptionUpdateMode::Replace`], matching the historical
-/// behavior of unconditionally overwriting the file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// Has no default: every caller supplying `description` must state a mode
+/// explicitly (see [`REQUIRED_DESCRIPTION_MODE_ERROR`]). The historical
+/// silent `Replace` default was the direct cause of destructive overwrites.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DescriptionUpdateMode {
     /// Overwrite `description.md` with the supplied text.
-    #[default]
     Replace,
     /// Concatenate the supplied text onto the existing description.
     Append,
 }
+
+/// Error text returned when `description` is supplied with no
+/// `description_mode` (AC1/AC2 of ticket 3d952036). Names both modes and
+/// states which one preserves existing content.
+pub const REQUIRED_DESCRIPTION_MODE_ERROR: &str = "update_ticket with `description` requires an explicit `description_mode`: 'replace' (overwrites description.md) or 'append' (preserves existing content by concatenating the new text onto it). There is no default; omitting description_mode is rejected.";
 
 #[derive(Debug, Clone, Default)]
 pub struct StoreOpenReport {
@@ -237,7 +247,7 @@ impl TicketStore {
                 .extra
                 .insert("title".to_string(), Value::String(t.to_string()));
         }
-        let state = initial_state.unwrap_or("new").to_string();
+        let state = initial_state.unwrap_or("open").to_string();
         manifest
             .extra
             .insert("state".to_string(), Value::String(state.clone()));
@@ -428,7 +438,7 @@ impl TicketStore {
             transition_states,
             to_state,
             description,
-            DescriptionUpdateMode::default(),
+            None,
             author,
             false,
         )
@@ -448,7 +458,7 @@ impl TicketStore {
         transition_states: Option<&[String]>,
         to_state: Option<&str>,
         description: Option<&str>,
-        description_mode: DescriptionUpdateMode,
+        description_mode: Option<DescriptionUpdateMode>,
         author: Option<&str>,
         single_hop: bool,
     ) -> Result<TicketManifest, StorageError> {
@@ -490,6 +500,7 @@ impl TicketStore {
                 &patch,
                 &new_state,
                 &transition_path,
+                &indexed.type_id,
                 description,
                 description_mode,
             )?;
@@ -512,6 +523,14 @@ impl TicketStore {
         // pre-update description alongside the manifest fields whenever a
         // description change was applied, regardless of mode, so it is
         // recoverable via undo.
+        //
+        // A failure here is logged loudly rather than propagated: the
+        // manifest/description write above already succeeded and is the
+        // system of record, so failing the whole update would report
+        // failure for a mutation that actually committed (and could prompt
+        // a caller retry that double-applies the patch). The history file
+        // is a best-effort undo trail; losing an entry must be visible, not
+        // silent, but must not mask a successful write as an error.
         let mut history_fields = updated_manifest.extra.clone();
         if description.is_some() {
             history_fields.insert(
@@ -521,11 +540,18 @@ impl TicketStore {
                     .unwrap_or(Value::Null),
             );
         }
-        let _ = TicketFs::append_history(
+        if let Err(error) = TicketFs::append_history(
             &indexed.path,
             history_fields,
             author.map(str::to_string),
-        );
+        ) {
+            tracing::error!(
+                ticket_id = %id,
+                path = %indexed.path.display(),
+                %error,
+                "failed to append history revision; manifest write succeeded but undo history is now incomplete"
+            );
+        }
 
 
         // Emit SSE hook event.
@@ -602,12 +628,21 @@ impl TicketStore {
         patch: &BTreeMap<String, Value>,
         new_state: &Option<String>,
         transition_path: &[String],
+        type_id: &str,
         description: Option<&str>,
-        description_mode: DescriptionUpdateMode,
+        description_mode: Option<DescriptionUpdateMode>,
     ) -> Result<(TicketManifest, Option<String>), StorageError> {
         let updated_manifest = if transition_path.is_empty() {
             TicketFs::update(ticket_path, patch, new_state.as_deref())?
         } else {
+            // Plan freezing (spec 24b3d22b, ticket f9e70385, AC1/AC5): every
+            // state visited along the transition path is evaluated. Entering
+            // `planned` freezes the five planning parts (materializing any
+            // missing) and cuts a plan revision; landing on any state ranked
+            // below `planned` clears every frozen flag. States ranked at or
+            // above `planned` otherwise leave frozen flags untouched.
+            let planned_rank =
+                self.state_rank_for_type(type_id, Some("planned"));
             let mut manifest = None;
             for (index, state) in transition_path.iter().enumerate() {
                 let step_patch = if index + 1 == transition_path.len() {
@@ -615,20 +650,36 @@ impl TicketStore {
                 } else {
                     BTreeMap::new()
                 };
-                manifest = Some(TicketFs::update(
+                let mut step_manifest = TicketFs::update(
                     ticket_path,
                     &step_patch,
                     Some(state.as_str()),
-                )?);
+                )?;
+                if state.as_str() == "planned" {
+                    step_manifest =
+                        TicketFs::apply_plan_freeze(ticket_path, true)?;
+                } else if self.state_rank_for_type(type_id, Some(state.as_str()))
+                    < planned_rank
+                {
+                    step_manifest =
+                        TicketFs::apply_plan_freeze(ticket_path, false)?;
+                }
+                manifest = Some(step_manifest);
             }
             manifest.expect("transition path produces at least one manifest")
         };
 
         let mut previous_description = None;
         if let Some(desc) = description {
+            // AC1/AC2: an omitted description_mode is a hard error, not a
+            // silent default — the silent `Replace` default was the direct
+            // cause of destructive description overwrites.
+            let mode = description_mode.ok_or_else(|| {
+                StorageError::Other(REQUIRED_DESCRIPTION_MODE_ERROR.to_string())
+            })?;
             let existing = TicketFs::read_description(ticket_path);
             previous_description = existing.clone();
-            let final_text = match description_mode {
+            let final_text = match mode {
                 DescriptionUpdateMode::Replace => desc.to_string(),
                 DescriptionUpdateMode::Append => match existing {
                     Some(existing) if !existing.is_empty() => {
@@ -691,7 +742,7 @@ impl TicketStore {
         target_state: &str,
         single_hop: bool,
     ) -> Result<Vec<String>, StorageError> {
-        let current_state = indexed.state.as_deref().unwrap_or("new");
+        let current_state = indexed.state.as_deref().unwrap_or("open");
         if current_state == target_state && transition_states.is_empty() {
             return Ok(vec![]);
         }
@@ -799,7 +850,7 @@ impl TicketStore {
                     target_state: target_state.to_string(),
                     dependency: edge.to,
                     dependency_state: dependency_state
-                        .unwrap_or("new")
+                        .unwrap_or("open")
                         .to_string(),
                 });
             }

@@ -1,7 +1,7 @@
 id = "5012f293-e871-4e4a-af40-c27b3bd967fb"
 created_at = "2026-05-18T10:46:35.808589500+00:00"
 title = "[ticket-http][ticket-api][ticket-viewer] Track: child-workspace ticket reference rollout"
-state = "ready"
+state = "planned"
 acceptance_criteria = "Tracker depends on the three child tickets in implementation order; rollout explicitly sequences design, backend, then frontend; /workspace/default removal, ancestor-owned dependency visibility, and owning-workspace follow-up flows stay coordinated; tracker closes only after all child tickets are closed and the runtime path is validated end-to-end"
 component = "ticket-http"
 effort = "1200"

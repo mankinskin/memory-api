@@ -142,7 +142,7 @@ fn append_dependency_state_finding(
     findings: &mut Vec<Value>,
 ) {
     let state = ticket.state.as_deref().unwrap_or("");
-    if state == "new" {
+    if state == "open" {
         return;
     }
 

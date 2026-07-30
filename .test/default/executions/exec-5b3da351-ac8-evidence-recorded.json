@@ -1,0 +1,18 @@
+{
+  "id": "exec-5b3da351-ac8-evidence-recorded",
+  "validation_spec_id": "vt-5b3da351-ticket-state-rename",
+  "outcome": "passed",
+  "executed_at": "2026-07-29T23:42:30.895355600Z",
+  "detail": "This execution and exec-5b3da351-ac1..ac7 recorded via test-mcp, each linked to ticket 5b3da351-1c87-4619-a0bc-6d7abe147d60 and validation spec vt-5b3da351-ticket-state-rename, covering acceptance criteria 1-7.",
+  "links": {
+    "ticket_ids": [
+      "5b3da351-1c87-4619-a0bc-6d7abe147d60"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "test-api-evidence-recording",
+    "transport": "mcp",
+    "run_id": "5b3da351-manual-verification"
+  }
+}

@@ -37,8 +37,9 @@ impl TicketServer {
         let patch = parse_field_patch(input.fields, input.field_map)?;
         let description = input.description;
         let description_mode = match input.description_mode.as_deref() {
-            None | Some("replace") => DescriptionUpdateMode::Replace,
-            Some("append") => DescriptionUpdateMode::Append,
+            None => None,
+            Some("replace") => Some(DescriptionUpdateMode::Replace),
+            Some("append") => Some(DescriptionUpdateMode::Append),
             Some(other) => {
                 return Err(McpError::invalid_params(
                     format!(

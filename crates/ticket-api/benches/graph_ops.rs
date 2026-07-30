@@ -91,7 +91,7 @@ fn build_fixture() -> Fixture {
                     None,
                     "tracker-improvement",
                     Some(&format!("Bench ticket {i}")),
-                    Some("new"),
+                    Some("open"),
                     Default::default(),
                     None,
                     None,

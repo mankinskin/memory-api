@@ -128,8 +128,9 @@ pub struct UpdateTicketBody {
     #[serde(default)]
     pub transition_states: Vec<String>,
     pub description: Option<String>,
-    /// How to apply `description`: `"replace"` (default, overwrites) or
-    /// `"append"` (concatenates onto the existing description).
+    /// How to apply `description`: `"replace"` (overwrites) or `"append"`
+    /// (preserves existing content, concatenating onto it). Required
+    /// (non-null) whenever `description` is set; there is no default.
     pub description_mode: Option<String>,
     /// Opt out of auto-walking multi-hop transitions. When true, a `state`
     /// that would skip a required waypoint is rejected with recovery guidance
@@ -241,6 +242,67 @@ pub struct TicketAssetResponse {
     pub id: String,
     pub ticket_ref: TicketRef,
     pub path: String,
+    pub content: String,
+}
+
+#[derive(Deserialize)]
+pub struct ListPartsParam {
+    pub workspace: String,
+    #[serde(default)]
+    pub with_content: bool,
+}
+
+#[derive(Serialize)]
+pub struct PartItem {
+    pub id: Uuid,
+    pub kind: String,
+    pub path: String,
+    pub frozen: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub supersedes: Option<Uuid>,
+    pub implicit: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct ListPartsResponse {
+    pub request_id: String,
+    pub active_workspace: String,
+    pub workspace: String,
+    pub id: String,
+    pub ticket_ref: TicketRef,
+    pub count: usize,
+    pub parts: Vec<PartItem>,
+    pub orphans: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct PartResponse {
+    pub request_id: String,
+    pub active_workspace: String,
+    pub workspace: String,
+    pub id: String,
+    pub ticket_ref: TicketRef,
+    pub part: PartItem,
+}
+
+#[derive(Deserialize)]
+pub struct WritePartBody {
+    /// Opaque part id (UUID) to update. Omit to create a new part.
+    pub part_id: Option<Uuid>,
+    /// Part kind. Used when creating a new part; ignored when updating an
+    /// existing part.
+    pub kind: String,
+    pub content: String,
+}
+
+#[derive(Deserialize)]
+pub struct WriteAmendmentBody {
+    /// Opaque part id (UUID) of the part this amendment corrects.
+    pub supersedes: Uuid,
+    /// Opaque part id (UUID) for the new amendment part. Omit to generate one.
+    pub part_id: Option<Uuid>,
     pub content: String,
 }
 

@@ -74,7 +74,7 @@ async fn ticket_mcp_seed_create(
             workspace: workspace_root.to_string(),
             type_id: "tracker-improvement".to_string(),
             title: Some(title),
-            state: Some("new".to_string()),
+            state: Some("open".to_string()),
             fields: vec![],
             description: None,
         }))
@@ -206,11 +206,12 @@ async fn ticket_mcp_update(
             workspace: workspace_root.to_string(),
             id: created_id,
             transition_states: vec![],
-            to_state: Some("ready".to_string()),
+            to_state: Some("planned".to_string()),
             fields: None,
             field_map: None,
             undo: false,
             description: None,
+            description_mode: None,
             author: None,
             single_hop: false,
         }))

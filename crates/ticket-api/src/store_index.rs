@@ -438,7 +438,7 @@ mod tests {
                 id_b,
                 ".ticket/tickets/b/ticket.toml",
                 "Write docs",
-                "new",
+                "open",
                 Some("low"),
                 Some("docs"),
                 "Docs summary.",
@@ -447,7 +447,7 @@ mod tests {
 
         let artifacts = generate_ticket_catalog(&sources, ".ticket");
         assert!(artifacts.readme_markdown.contains("## State: in-review"));
-        assert!(artifacts.readme_markdown.contains("## State: new"));
+        assert!(artifacts.readme_markdown.contains("## State: open"));
         assert!(
             artifacts
                 .readme_markdown
@@ -489,7 +489,7 @@ mod tests {
             id,
             ".ticket/tickets/d/ticket.toml",
             "Stable output",
-            "ready",
+            "planned",
             Some("medium"),
             Some("ticket-api"),
             "Deterministic summary text.",

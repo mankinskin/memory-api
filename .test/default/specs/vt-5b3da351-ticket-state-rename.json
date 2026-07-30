@@ -1,0 +1,11 @@
+{
+  "id": "vt-5b3da351-ticket-state-rename",
+  "title": "Ticket lifecycle state rename (new->open, ready->planned) + store migration",
+  "command": "cargo test -p ticket-api; python3 migrate_ticket_states.py --store .ticket|memory-api/.ticket [--dry-run]",
+  "detail": "Validates schema rename, transition acceptance/rejection, store migration (dry-run, real-run, idempotence), and byte-identity of history.ndjson.",
+  "links": {
+    "ticket_ids": [
+      "5b3da351-1c87-4619-a0bc-6d7abe147d60"
+    ]
+  }
+}

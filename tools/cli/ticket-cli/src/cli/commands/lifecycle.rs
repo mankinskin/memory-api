@@ -477,7 +477,7 @@ mod tests {
                 None,
                 "tracker-improvement",
                 Some("move me"),
-                Some("ready"),
+                Some("planned"),
                 Default::default(),
                 None,
                 None,

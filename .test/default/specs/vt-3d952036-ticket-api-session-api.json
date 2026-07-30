@@ -1,0 +1,10 @@
+{
+  "id": "vt-3d952036-ticket-api-session-api",
+  "title": "ticket-api + session-api tests, workspace build for part-addressed writes / mandatory description_mode",
+  "command": "cargo test -p ticket-api -p session-api && cargo build --workspace",
+  "links": {
+    "ticket_ids": [
+      "3d952036-efd4-4f36-a77f-6b7f5058a0a0"
+    ]
+  }
+}

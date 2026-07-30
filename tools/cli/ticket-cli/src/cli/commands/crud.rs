@@ -16,6 +16,7 @@ use crate::cli::{
     CliRunError,
     CreateArgs,
     IdArgs,
+    DescriptionMode,
     ListArgs,
     ReproArgs,
     UpdateArgs,
@@ -45,7 +46,7 @@ fn effort_from_ticket(
         .and_then(ticket_api::workflow::parse_effort)
 }
 
-fn resolve_author(explicit: Option<&str>) -> Option<String> {
+pub(crate) fn resolve_author(explicit: Option<&str>) -> Option<String> {
     explicit.map(str::to_string).or_else(|| {
         std::env::var("TICKET_AUTHOR")
             .ok()
@@ -185,14 +186,10 @@ pub(crate) fn cmd_update(
         }));
     }
 
-    let description_mode = match args.description_mode.as_str() {
-        "replace" => DescriptionUpdateMode::Replace,
-        "append" => DescriptionUpdateMode::Append,
-        other => {
-            return Err(CliRunError::BadRequest(format!(
-                "invalid --description-mode '{other}': expected 'replace' or 'append'"
-            )));
-        },
+    let description_mode = match args.description_mode {
+        None => None,
+        Some(DescriptionMode::Replace) => Some(DescriptionUpdateMode::Replace),
+        Some(DescriptionMode::Append) => Some(DescriptionUpdateMode::Append),
     };
     let patch = parse_fields_to_json(&args.fields)?;
     let manifest = store.update_with_options(
@@ -459,7 +456,7 @@ mod tests {
                 None,
                 "tracker-improvement",
                 Some("path output regression"),
-                Some("new"),
+                Some("open"),
                 BTreeMap::new(),
                 None,
                 None,

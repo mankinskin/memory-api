@@ -24,7 +24,7 @@ pub(super) fn seed_ticket(
             None,
             "tracker-improvement",
             Some(title),
-            Some("new"),
+            Some("open"),
             BTreeMap::new(),
             None,
             None,

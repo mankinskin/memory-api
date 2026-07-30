@@ -1,7 +1,7 @@
 id = "b03be2d5-5293-4dc7-ad11-cca2dbf32c8b"
 created_at = "2026-04-18T15:00:06.388001400+00:00"
 title = "[spec][P5] Cross-entity edges — spec depends_on ticket, ticket implements spec"
-state = "ready"
+state = "planned"
 component = "memory-api"
 depends_on = ["7599ed31-598e-458e-8651-9bfe6c57ffd9", "e0b3e9a8-bd43-472a-8222-f8c5e3321dbd"]
 effort = "2000"

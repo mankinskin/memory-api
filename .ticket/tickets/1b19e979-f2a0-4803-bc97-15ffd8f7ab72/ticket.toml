@@ -1,7 +1,7 @@
 id = "1b19e979-f2a0-4803-bc97-15ffd8f7ab72"
 created_at = "2026-04-18T15:00:07.578224+00:00"
 title = "[spec][P8] Bootstrap: write spec files for ticket-http interface"
-state = "ready"
+state = "planned"
 component = "spec-http"
 depends_on = ["090b6db9-f88e-418b-888e-94641d347432"]
 effort = "1200"

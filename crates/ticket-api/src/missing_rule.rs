@@ -50,7 +50,7 @@ pub fn handle_missing_rule_match(
             Some(ticket_id),
             "tracker-improvement",
             Some(&title),
-            Some("new"),
+            Some("open"),
             extra,
             target_root,
             Some(&description),

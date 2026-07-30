@@ -1,0 +1,18 @@
+{
+  "id": "exec-5b3da351-ac4-idempotent-rerun",
+  "validation_spec_id": "vt-5b3da351-ticket-state-rename",
+  "outcome": "passed",
+  "executed_at": "2026-07-29T23:42:01.660774900Z",
+  "detail": "Re-ran migrate_ticket_states.py (real, non-dry-run) against both already-migrated stores: reported 0 ticket.toml changed and 0 history.ndjson changed for both .ticket and memory-api/.ticket, proving the migration is idempotent.",
+  "links": {
+    "ticket_ids": [
+      "5b3da351-1c87-4619-a0bc-6d7abe147d60"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "store-migration-verification",
+    "transport": "cli",
+    "run_id": "5b3da351-manual-verification"
+  }
+}

@@ -102,6 +102,14 @@ fn dry_run_payload_core(command: &TicketCommandCli) -> Option<Value> {
             Some(dry_run_payload("add_root", "register scan root")),
         TicketCommandCli::Batch(_) =>
             Some(dry_run_payload("batch", "execute CLI batch commands")),
+        TicketCommandCli::WritePart(_) =>
+            Some(dry_run_payload("write-part", "write ticket content part")),
+        TicketCommandCli::WriteAmendment(_) => Some(dry_run_payload(
+            "write-amendment",
+            "write amendment part superseding another part",
+        )),
+        TicketCommandCli::UndoPart(_) =>
+            Some(dry_run_payload("undo-part", "restore prior part content")),
         _ => None,
     }
 }
@@ -290,6 +298,8 @@ fn command_uses_descendant_scan_roots(command: &TicketCommandCli) -> bool {
             | TicketCommandCli::StoreIndex(_)
             | TicketCommandCli::Audit
             | TicketCommandCli::ValidateLinks
+            | TicketCommandCli::ListParts(_)
+            | TicketCommandCli::GetPart(_)
     )
 }
 
@@ -365,7 +375,12 @@ fn dispatch_store_command(
         | TicketCommandCli::Delete(_)
         | TicketCommandCli::Scan(_)
         | TicketCommandCli::Claim(_)
-        | TicketCommandCli::Unclaim(_) =>
+        | TicketCommandCli::Unclaim(_)
+        | TicketCommandCli::ListParts(_)
+        | TicketCommandCli::GetPart(_)
+        | TicketCommandCli::WritePart(_)
+        | TicketCommandCli::WriteAmendment(_)
+        | TicketCommandCli::UndoPart(_) =>
             dispatch_store_command_core(command, &store),
         TicketCommandCli::Leases
         | TicketCommandCli::Search(_)
@@ -429,6 +444,15 @@ fn dispatch_store_command_core(
         TicketCommandCli::Scan(args) => commands::cmd_scan(args, store),
         TicketCommandCli::Claim(args) => commands::cmd_claim(args, store),
         TicketCommandCli::Unclaim(args) => commands::cmd_unclaim(args, store),
+        TicketCommandCli::ListParts(args) =>
+            commands::cmd_list_parts(args, store),
+        TicketCommandCli::GetPart(args) => commands::cmd_get_part(args, store),
+        TicketCommandCli::WritePart(args) =>
+            commands::cmd_write_part(args, store),
+        TicketCommandCli::WriteAmendment(args) =>
+            commands::cmd_write_amendment(args, store),
+        TicketCommandCli::UndoPart(args) =>
+            commands::cmd_undo_part(args, store),
         _ => unreachable!("handled in core store dispatch"),
     }
 }

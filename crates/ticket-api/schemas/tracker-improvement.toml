@@ -13,8 +13,8 @@
 type_id = "tracker-improvement"
 
 states = [
-    "new",
-    "ready",
+    "open",
+    "planned",
     "in-implementation",
     "in-review",
     "on-hold",
@@ -29,23 +29,23 @@ required_states = ["in-review"]
 # ── State machine transitions ──────────────────────────────────────────────────
 
 [[transitions]]
-from = "new"
-to = "ready"
+from = "open"
+to = "planned"
 
 [[transitions]]
-from = "new"
+from = "open"
 to = "cancelled"
 
 [[transitions]]
-from = "ready"
+from = "planned"
 to = "in-implementation"
 
 [[transitions]]
-from = "ready"
+from = "planned"
 to = "cancelled"
 
 [[transitions]]
-from = "ready"
+from = "planned"
 to = "on-hold"
 
 [[transitions]]

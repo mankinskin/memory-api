@@ -1,7 +1,7 @@
 id = "f5875ff3-7c37-4ac2-8ae6-d68aff240bf4"
 created_at = "2026-07-04T01:24:26.641316900+00:00"
 title = "[memory-fixtures][ticket-api][perf] Expand fixture for slow move/health scenarios"
-state = "ready"
+state = "planned"
 component = "memory-fixtures"
 effort = "1800"
 priority = "high"

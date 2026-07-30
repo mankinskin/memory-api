@@ -1,7 +1,7 @@
 id = "79b0ad85-c57d-4237-bc59-281fa1ad57f8"
 created_at = "2026-04-21T11:15:20.023017900+00:00"
 title = "[spec][vscode] Design and implement spec-vscode VS Code extension"
-state = "new"
+state = "open"
 component = "spec-vscode"
 depends_on = ["06399bb2-eb06-40a9-8de9-26f6d0854753", "0b231549-d029-4465-997e-0ba4d5e0529e"]
 effort = "1200"

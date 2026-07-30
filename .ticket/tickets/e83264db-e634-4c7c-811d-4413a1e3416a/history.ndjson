@@ -1,5 +1,5 @@
-{"rev":1,"ts":"2026-06-28T23:40:36.903706100+00:00","fields":{"priority":"high","state":"new","title":"[ticket-vscode] Prevent aborted list tickets request after server start","type":"tracker-improvement"}}
-{"rev":2,"ts":"2026-06-28T23:41:33.374362+00:00","fields":{"priority":"high","state":"ready","title":"[ticket-vscode] Prevent aborted list tickets request after server start","type":"tracker-improvement"}}
+{"rev":1,"ts":"2026-06-28T23:40:36.903706100+00:00","fields":{"priority":"high","state":"open","title":"[ticket-vscode] Prevent aborted list tickets request after server start","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-06-28T23:41:33.374362+00:00","fields":{"priority":"high","state":"planned","title":"[ticket-vscode] Prevent aborted list tickets request after server start","type":"tracker-improvement"}}
 {"rev":3,"ts":"2026-06-28T23:41:33.587669600+00:00","fields":{"priority":"high","state":"in-implementation","title":"[ticket-vscode] Prevent aborted list tickets request after server start","type":"tracker-improvement"}}
 {"rev":4,"ts":"2026-06-28T23:41:33.806252500+00:00","fields":{"priority":"high","state":"in-review","title":"[ticket-vscode] Prevent aborted list tickets request after server start","type":"tracker-improvement"}}
 {"rev":5,"ts":"2026-06-30T13:05:42.231458600+00:00","fields":{"priority":"high","state":"done","title":"[ticket-vscode] Prevent aborted list tickets request after server start","type":"tracker-improvement"}}

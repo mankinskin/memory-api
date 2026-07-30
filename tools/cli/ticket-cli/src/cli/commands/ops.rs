@@ -130,7 +130,7 @@ pub(crate) fn cmd_transitions(
     })?;
     let type_id = indexed.type_id.clone();
     let current_state =
-        indexed.state.clone().unwrap_or_else(|| "new".to_string());
+        indexed.state.clone().unwrap_or_else(|| "open".to_string());
     let schema = store.schema_registry().get(&type_id).ok_or_else(|| {
         CliRunError::BadRequest(format!(
             "no schema registered for ticket type '{type_id}'"
@@ -789,8 +789,8 @@ pub(crate) fn cmd_ready_overview(
         "date": Utc::now().format("%Y-%m-%d").to_string(),
         "scope": scope,
         "summary": status_payload["summary"],
-        "ready": status_payload["ready"],
-        "ready_count": status_payload["summary"]["ready"],
+        "planned": status_payload["planned"],
+        "ready_count": status_payload["summary"]["planned"],
     }))
 }
 

@@ -1,8 +1,8 @@
-{"rev":1,"ts":"2026-04-09T19:45:29.526506800+00:00","fields":{"priority":"high","state":"new","title":"[Board] Draftboard — workspace WIP coordination for concurrent agents","type":"tracker-improvement"}}
+{"rev":1,"ts":"2026-04-09T19:45:29.526506800+00:00","fields":{"priority":"high","state":"open","title":"[Board] Draftboard — workspace WIP coordination for concurrent agents","type":"tracker-improvement"}}
 {"rev":2,"ts":"2026-04-09T20:26:17.592285200+00:00","fields":{"priority":"high","state":"in-refinement","title":"[Board] Draftboard — workspace WIP coordination for concurrent agents","type":"tracker-improvement"}}
-{"rev":3,"ts":"2026-04-09T20:26:39.099114300+00:00","fields":{"priority":"high","state":"new","title":"[Board] Draftboard — workspace WIP coordination for concurrent agents","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-04-09T20:26:39.099114300+00:00","fields":{"priority":"high","state":"open","title":"[Board] Draftboard — workspace WIP coordination for concurrent agents","type":"tracker-improvement"}}
 {"rev":4,"ts":"2026-04-13T15:12:36.544419300+00:00","fields":{"priority":"high","state":"in-refinement","title":"[Board] Draftboard — workspace WIP coordination for concurrent agents","type":"tracker-improvement"}}
-{"rev":5,"ts":"2026-04-13T15:12:36.740258700+00:00","fields":{"priority":"high","state":"ready","title":"[Board] Draftboard — workspace WIP coordination for concurrent agents","type":"tracker-improvement"}}
+{"rev":5,"ts":"2026-04-13T15:12:36.740258700+00:00","fields":{"priority":"high","state":"planned","title":"[Board] Draftboard — workspace WIP coordination for concurrent agents","type":"tracker-improvement"}}
 {"rev":6,"ts":"2026-04-13T15:12:36.922709500+00:00","fields":{"priority":"high","state":"in-implementation","title":"[Board] Draftboard — workspace WIP coordination for concurrent agents","type":"tracker-improvement"}}
 {"rev":7,"ts":"2026-04-13T15:12:37.117189200+00:00","fields":{"priority":"high","state":"in-review","title":"[Board] Draftboard — workspace WIP coordination for concurrent agents","type":"tracker-improvement"}}
 {"rev":8,"ts":"2026-04-13T15:12:37.304120400+00:00","fields":{"priority":"high","state":"in-validation","title":"[Board] Draftboard — workspace WIP coordination for concurrent agents","type":"tracker-improvement"}}

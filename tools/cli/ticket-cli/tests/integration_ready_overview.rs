@@ -14,7 +14,7 @@ fn ready_overview_returns_json_with_ready_tickets() {
     let done_dependency = create_ticket(&s, "Done dependency");
     let ready = create_ticket(&s, "Ready ticket");
 
-    s.ticket_json(&["update", &done_dependency, "--to-state", "ready"]);
+    s.ticket_json(&["update", &done_dependency, "--to-state", "planned"]);
     s.ticket_json(&[
         "update",
         &done_dependency,
@@ -40,9 +40,9 @@ fn ready_overview_returns_json_with_ready_tickets() {
     assert_eq!(result["status"], "ok");
     assert_eq!(result["ready_count"], 1);
     assert_eq!(result["scope"], "integration test scope");
-    assert_eq!(result["summary"]["ready"], 1);
+    assert_eq!(result["summary"]["planned"], 1);
 
-    let ready_items = result["ready"]
+    let ready_items = result["planned"]
         .as_array()
         .expect("ready should be an array");
     assert_eq!(ready_items.len(), 1);

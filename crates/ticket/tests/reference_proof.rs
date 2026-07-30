@@ -35,7 +35,7 @@ mod fixture {
                 &store_path,
                 test_ticket_id,
                 "Test Ticket",
-                "new",
+                "open",
                 "core",
             )
             .expect("write ticket");

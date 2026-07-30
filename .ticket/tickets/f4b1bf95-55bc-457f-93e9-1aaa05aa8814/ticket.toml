@@ -1,7 +1,7 @@
 id = "f4b1bf95-55bc-457f-93e9-1aaa05aa8814"
 created_at = "2026-07-15T20:13:08.652068500+00:00"
 title = "[spec-api][refs] spec_refs_validate silently passes dangling .test guard-spec references"
-state = "new"
+state = "open"
 component = "spec-api"
 effort = "1500"
 priority = "medium"

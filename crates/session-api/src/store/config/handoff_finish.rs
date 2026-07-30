@@ -194,27 +194,57 @@ impl SessionStoreConfig {
                 },
             )?;
 
-        let mirror_value = serde_json::json!({
-            "handoff_id": record.handoff_id,
-            "objective": record.objective,
-            "target_tickets": record.target_tickets,
-            "target_files": record.target_files,
-            "validation": record.validation,
-            "open_escalations": record.open_escalations,
-        });
+        // A handoff is working-session context, not ticket content: mirror
+        // it as a free-form `notes` part addressed by its own stable id
+        // rather than injecting an untyped `handoff_package` blob into the
+        // ticket's manifest fields (the same untyped whole-field-write bug
+        // this ticket fixes for `description`). Each handoff creates a new
+        // part, so repeated handoffs accumulate as distinct, addressable
+        // notes instead of overwriting one field.
+        let mut content = format!(
+            "# Handoff {}\n\n**Objective:** {}\n",
+            record.handoff_id, record.objective
+        );
+        if !record.target_tickets.is_empty() {
+            content.push_str(&format!(
+                "\n**Target tickets:** {}\n",
+                record.target_tickets.join(", ")
+            ));
+        }
+        if !record.target_files.is_empty() {
+            content.push_str(&format!(
+                "\n**Target files:** {}\n",
+                record.target_files.join(", ")
+            ));
+        }
+        if !record.validation.is_empty() {
+            let validation_json =
+                serde_json::to_string_pretty(&record.validation)
+                    .unwrap_or_default();
+            content.push_str(&format!(
+                "\n**Validation:**\n```json\n{validation_json}\n```\n"
+            ));
+        }
+        if !record.open_escalations.is_empty() {
+            content.push_str(&format!(
+                "\n**Open escalations:** {}\n",
+                record.open_escalations.join(", ")
+            ));
+        }
 
         for ticket_id_str in target_tickets {
             let ticket_id = match Uuid::parse_str(ticket_id_str) {
                 Ok(id) => id,
                 Err(_) => continue,
             };
-            let mut patch = std::collections::BTreeMap::new();
-            patch.insert(
-                "handoff_package".to_string(),
-                mirror_value.clone(),
+            // Best-effort: ignore individual ticket write errors.
+            let _ = store.write_part(
+                &ticket_id,
+                Uuid::new_v4(),
+                "notes",
+                &content,
+                None,
             );
-            // Best-effort: ignore individual ticket update errors.
-            let _ = store.update(&ticket_id, patch, None, None, None, None);
         }
         Ok(())
     }

@@ -239,7 +239,7 @@ impl DependencyMaps {
 /// Mirrors `StateGroupItem` / `buildStateGroups` from `ticketProvider.ts`.
 #[derive(Debug, Clone)]
 pub struct StateGroup {
-    /// The state value (e.g. "ready", "in-implementation").
+    /// The state value (e.g. "planned", "in-implementation").
     pub state: String,
     /// Total tickets in this state bucket.
     pub total: usize,
@@ -594,14 +594,14 @@ mod tests {
     // Filtering
     #[test]
     fn filter_by_state() {
-        let ticket = t("a", "Add feature", "ready");
-        assert!(ticket_matches(&ticket, "ready", ""));
+        let ticket = t("a", "Add feature", "planned");
+        assert!(ticket_matches(&ticket, "planned", ""));
         assert!(!ticket_matches(&ticket, "done", ""));
         assert!(ticket_matches(&ticket, "", ""));
     }
     #[test]
     fn filter_by_query() {
-        let ticket = t("abc123", "Add feature", "ready");
+        let ticket = t("abc123", "Add feature", "planned");
         assert!(ticket_matches(&ticket, "", "feature"));
         assert!(ticket_matches(&ticket, "", "FEATURE"));
         assert!(!ticket_matches(&ticket, "", "missing"));
@@ -609,15 +609,15 @@ mod tests {
     }
     #[test]
     fn filter_combined() {
-        let ticket = t("a", "Add feature", "ready");
-        assert!(ticket_matches(&ticket, "ready", "feature"));
+        let ticket = t("a", "Add feature", "planned");
+        assert!(ticket_matches(&ticket, "planned", "feature"));
         assert!(!ticket_matches(&ticket, "done", "feature"));
     }
 
     // Dependency maps
     #[test]
     fn dependency_maps_basic() {
-        let tickets = vec![t("a", "Parent", "ready"), t("b", "Child", "ready")];
+        let tickets = vec![t("a", "Parent", "planned"), t("b", "Child", "planned")];
         let edges = vec![e("a", "b")];
         let maps = DependencyMaps::build(&tickets, &edges);
         assert_eq!(maps.deps_of["a"], vec!["b"]);
@@ -627,14 +627,14 @@ mod tests {
     }
     #[test]
     fn dependency_maps_skips_unknown() {
-        let tickets = vec![t("a", "A", "ready")];
+        let tickets = vec![t("a", "A", "planned")];
         let edges = vec![e("a", "unknown")];
         let maps = DependencyMaps::build(&tickets, &edges);
         assert!(!maps.deps_of.contains_key("a"));
     }
     #[test]
     fn dependency_maps_skips_non_depends_on() {
-        let tickets = vec![t("a", "A", "ready"), t("b", "B", "ready")];
+        let tickets = vec![t("a", "A", "planned"), t("b", "B", "planned")];
         let edges =
             vec![EdgeRecord::new("a".into(), "b".into(), "linked".into())];
         let maps = DependencyMaps::build(&tickets, &edges);
@@ -645,38 +645,38 @@ mod tests {
     #[test]
     fn state_groups_roots() {
         let tickets = vec![
-            t("a", "Parent", "ready"),
-            t("b", "Child", "ready"),
+            t("a", "Parent", "planned"),
+            t("b", "Child", "planned"),
             t("c", "Done", "done"),
         ];
         let edges = vec![e("a", "b")];
         let groups = build_state_groups(&tickets, &edges, &[], "", "");
         let done = groups.iter().find(|g| g.state == "done").unwrap();
-        let ready = groups.iter().find(|g| g.state == "ready").unwrap();
+        let ready = groups.iter().find(|g| g.state == "planned").unwrap();
         assert_eq!(done.total, 1);
         assert_eq!(ready.total, 2);
         assert_eq!(ready.root_ids, vec!["a"]);
     }
     #[test]
     fn state_groups_schema_order() {
-        let tickets = vec![t("a", "A", "done"), t("b", "B", "ready")];
-        let order: Vec<String> = vec!["ready".into(), "done".into()];
+        let tickets = vec![t("a", "A", "done"), t("b", "B", "planned")];
+        let order: Vec<String> = vec!["planned".into(), "done".into()];
         let groups = build_state_groups(&tickets, &[], &order, "", "");
-        assert_eq!(groups[0].state, "ready");
+        assert_eq!(groups[0].state, "planned");
         assert_eq!(groups[1].state, "done");
     }
     #[test]
     fn state_groups_state_filter() {
-        let tickets = vec![t("a", "A", "ready"), t("b", "B", "done")];
-        let groups = build_state_groups(&tickets, &[], &[], "ready", "");
+        let tickets = vec![t("a", "A", "planned"), t("b", "B", "done")];
+        let groups = build_state_groups(&tickets, &[], &[], "planned", "");
         assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].state, "ready");
+        assert_eq!(groups[0].state, "planned");
     }
     #[test]
     fn state_groups_query_filter() {
         let tickets = vec![
-            t("a", "Alpha feature", "ready"),
-            t("b", "Beta thing", "ready"),
+            t("a", "Alpha feature", "planned"),
+            t("b", "Beta thing", "planned"),
         ];
         let groups = build_state_groups(&tickets, &[], &[], "", "alpha");
         assert_eq!(groups.len(), 1);

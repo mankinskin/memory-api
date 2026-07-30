@@ -12,7 +12,7 @@ const DISCOVERY_PROBE_TIMEOUT_MS = 400;
 const DISCOVERY_BATCH_SIZE = 8;
 
 export const TICKET_STATES = [
-  'new', 'ready', 'in-implementation',
+  'open', 'planned', 'in-implementation',
   'in-review', 'done', 'cancelled',
 ];
 

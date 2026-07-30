@@ -1,7 +1,7 @@
 id = "4c7b884e-fd9b-4967-9599-5b55495d6e52"
 created_at = "2026-07-29T12:52:33.108134500+00:00"
 title = "Projected ticket reads: summary/plan/review/full profiles and explicit part lists"
-state = "new"
+state = "open"
 component = "ticket-api"
 depends_on = ["9d69e93d-b7ab-4f88-a88c-40ec76d5206b"]
 effort = "2600"

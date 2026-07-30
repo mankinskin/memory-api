@@ -9,8 +9,8 @@ function basename(p: string): string {
 
 /** Best-effort icon map for well-known states; unknown states get 'tag'. */
 const STATE_ICONS: Record<string, string> = {
-  'new': 'circle-outline',
-  'ready': 'circle-large-outline',
+  'open': 'circle-outline',
+  'planned': 'circle-large-outline',
   'in-implementation': 'tools',
   'in-review': 'eye',
   'done': 'pass-filled',

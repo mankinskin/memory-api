@@ -152,8 +152,9 @@ pub async fn update_ticket(
     let task_request_id = request_id.clone();
 
     let description_mode = match body.description_mode.as_deref() {
-        None | Some("replace") => DescriptionUpdateMode::Replace,
-        Some("append") => DescriptionUpdateMode::Append,
+        None => None,
+        Some("replace") => Some(DescriptionUpdateMode::Replace),
+        Some("append") => Some(DescriptionUpdateMode::Append),
         Some(other) => {
             return ApiError::bad_request(
                 "invalid_description_mode",
@@ -646,7 +647,7 @@ pub async fn delete_ticket(
     .unwrap_or_else(|_| task_join_err(&request_id, "ticket delete request"))
 }
 
-fn author_from_headers(headers: &HeaderMap) -> Option<String> {
+pub(super) fn author_from_headers(headers: &HeaderMap) -> Option<String> {
     extract_bearer_token(headers).map(str::to_string)
 }
 
