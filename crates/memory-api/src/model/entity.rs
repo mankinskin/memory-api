@@ -80,6 +80,29 @@ impl TicketPart {
     }
 }
 
+/// A single typed external reference from a ticket to a non-ticket entity
+/// (spec, test execution, log, rule, file, or commit), stored under the
+/// `refs` extra key (rendered as `[[refs]]` in `ticket.toml`). See spec
+/// 24b3d22b, ticket 9d69e93d.
+///
+/// `kind` is a plain `String`, not a closed enum: reading never fails, so a
+/// foreign or future kind already present in a manifest round-trips
+/// unchanged. Kind and URN-shape validation is enforced only at write time
+/// (`ticket_api::model::refs`), not here.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TicketRefEntry {
+    /// Reference kind (e.g. "spec", "test_execution", "log", "rule",
+    /// "file", "commit"), or a foreign/unknown kind preserved as-is.
+    pub kind: String,
+    /// Canonical URN or path identifying the target, shape depending on
+    /// `kind` (e.g. `ce://default/spec/<uuid>` for `spec`, a repo-relative
+    /// path for `file`).
+    pub urn: String,
+    /// Optional free-text note explaining why the reference is relevant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EntityManifest {
     pub id: EntityId,
@@ -129,6 +152,59 @@ impl EntityManifest {
             },
             Err(_) => {
                 self.extra.remove("related_specs");
+            },
+        }
+    }
+
+    /// Structured typed references for this entity (typed field backed by
+    /// the `refs` extra key, rendered as `[[refs]]` in `ticket.toml`).
+    /// Returns an empty vec (never errors) when the key is absent and there
+    /// is no legacy data to bridge.
+    ///
+    /// When no explicit `refs` key is present, legacy `related_specs`
+    /// entries are transparently synthesized as `kind = "spec"` refs (no
+    /// loss of identity) so a ticket written before this ticket landed
+    /// still exposes its spec references through the typed surface. Once
+    /// an explicit `refs` key exists, it is authoritative and legacy
+    /// `related_specs` is not merged in (avoids duplicate entries after the
+    /// first `set_refs` write).
+    pub fn refs(&self) -> Vec<TicketRefEntry> {
+        if let Some(value) = self.extra.get("refs").cloned() {
+            return serde_json::from_value(value).unwrap_or_default();
+        }
+        self.related_specs()
+            .into_iter()
+            .map(|spec_ref| TicketRefEntry {
+                kind: "spec".to_string(),
+                urn: format!(
+                    "ce://{}/spec/{}",
+                    spec_ref.workspace, spec_ref.spec_id
+                ),
+                note: None,
+            })
+            .collect()
+    }
+
+    /// Replace the structured typed references, storing them under the
+    /// `refs` extra key in manifest (creation/display) order. Removes the
+    /// key entirely when empty so serialized manifests stay minimal and
+    /// legacy (no-`[[refs]]`) tickets round-trip unchanged. Never touches
+    /// `related_specs` — the old field is read for compatibility only and
+    /// is never written by this path.
+    pub fn set_refs(
+        &mut self,
+        refs: Vec<TicketRefEntry>,
+    ) {
+        if refs.is_empty() {
+            self.extra.remove("refs");
+            return;
+        }
+        match serde_json::to_value(refs) {
+            Ok(value) => {
+                self.extra.insert("refs".to_string(), value);
+            },
+            Err(_) => {
+                self.extra.remove("refs");
             },
         }
     }

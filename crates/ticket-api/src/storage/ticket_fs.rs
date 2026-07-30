@@ -39,6 +39,7 @@ use crate::{
             TICKET_PARTS_DIR,
             parse_ticket_manifest_toml,
         },
+        parts::classify_part_kind,
         ticket::TicketManifest,
     },
 };
@@ -459,7 +460,11 @@ impl TicketFs {
             }
 
             // New part: create its file under parts/ and append a manifest
-            // entry. Never touches any other part's file.
+            // entry. Never touches any other part's file. Reject a
+            // near-miss core-kind typo here — the only point where `kind`
+            // is actually persisted (an existing part's `kind` is fixed at
+            // creation and ignored above) — spec 24b3d22b AC2.
+            classify_part_kind(kind)?;
             let parts_dir = ticket_path.join(TICKET_PARTS_DIR);
             fs::create_dir_all(&parts_dir)?;
             let rel_path = format!("{TICKET_PARTS_DIR}/{part_id}.md");
@@ -481,7 +486,63 @@ impl TicketFs {
         result
     }
 
-    /// Freeze or unfreeze the five planning parts (spec 24b3d22b, ticket
+    /// Append a new typed `[[refs]]` entry through the gated manifest write
+    /// path, validating `kind` against the closed vocabulary and `urn`
+    /// against the shape expected for that `kind` (spec 24b3d22b, ticket
+    /// 9d69e93d, AC2/AC3). Rejects before touching the manifest on disk.
+    pub(crate) fn write_ref(
+        ticket_path: &Path,
+        kind: &str,
+        urn: &str,
+        note: Option<String>,
+    ) -> Result<TicketManifest, StorageError> {
+        crate::model::refs::validate_new_ref(kind, urn)?;
+
+        let lock_path = ticket_path.join(TICKET_LOCK_FILE);
+        let lock_file = acquire_lock(&lock_path)?;
+
+        let result = (|| -> Result<TicketManifest, StorageError> {
+            let mut manifest = Self::read(ticket_path)?;
+            let mut refs = manifest.refs();
+            refs.push(crate::model::ticket::TicketRefEntry {
+                kind: kind.to_string(),
+                urn: urn.to_string(),
+                note,
+            });
+            manifest.set_refs(refs);
+            write_manifest(ticket_path, &manifest)?;
+            Ok(manifest)
+        })();
+
+        release_lock(&lock_file, &lock_path);
+        result
+    }
+
+    /// Remove a typed `[[refs]]` entry matching `kind` and `urn` exactly,
+    /// through the same gated manifest write path as [`Self::write_ref`].
+    /// A no-op (returns the unchanged manifest) when no entry matches.
+    pub(crate) fn remove_ref(
+        ticket_path: &Path,
+        kind: &str,
+        urn: &str,
+    ) -> Result<TicketManifest, StorageError> {
+        let lock_path = ticket_path.join(TICKET_LOCK_FILE);
+        let lock_file = acquire_lock(&lock_path)?;
+
+        let result = (|| -> Result<TicketManifest, StorageError> {
+            let mut manifest = Self::read(ticket_path)?;
+            let mut refs = manifest.refs();
+            refs.retain(|entry| !(entry.kind == kind && entry.urn == urn));
+            manifest.set_refs(refs);
+            write_manifest(ticket_path, &manifest)?;
+            Ok(manifest)
+        })();
+
+        release_lock(&lock_file, &lock_path);
+        result
+    }
+
+
     /// f9e70385, AC1/AC5), invoked exclusively from the state-transition
     /// path (`TicketStore::update_with_options`) whenever a ticket enters
     /// or leaves `planned`. This is the sanctioned freeze/unfreeze

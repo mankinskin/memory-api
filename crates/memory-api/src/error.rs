@@ -39,6 +39,24 @@ pub enum SchemaValidationError {
         kind: String,
         valid_kinds: Vec<String>,
     },
+    /// A `[[refs]]` entry `kind` not in the closed ref-kind vocabulary
+    /// (spec 24b3d22b, ticket 9d69e93d). Enforced only at write time —
+    /// reading a manifest with a foreign kind never fails.
+    #[error(
+        "invalid ref kind '{kind}': not a recognized ref kind; valid ref kinds are [{valid}]",
+        valid = .valid_kinds.join(", "),
+    )]
+    InvalidRefKind {
+        kind: String,
+        valid_kinds: Vec<String>,
+    },
+    /// A `[[refs]]` entry `urn` that does not match the expected shape for
+    /// its `kind` (spec 24b3d22b, ticket 9d69e93d).
+    #[error("invalid ref urn '{urn}' for kind '{kind}'")]
+    InvalidRefUrn {
+        kind: String,
+        urn: String,
+    },
 }
 
 /// Render the human-readable recovery clause for [`SchemaValidationError::InvalidTransition`].

@@ -3,4 +3,5 @@ pub use memory_api::model::entity::{
     EntityManifest as TicketManifest,
     SpecRef,
     TicketPart,
+    TicketRefEntry,
 };
