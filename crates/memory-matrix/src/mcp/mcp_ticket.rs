@@ -210,8 +210,7 @@ async fn ticket_mcp_update(
             fields: None,
             field_map: None,
             undo: false,
-            description: None,
-            description_mode: None,
+            description_update: ticket_api::storage::DescriptionUpdate::Unchanged,
             author: None,
             single_hop: false,
         }))

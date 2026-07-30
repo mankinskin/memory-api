@@ -29,6 +29,16 @@ pub enum SchemaValidationError {
         target: String,
         missing: Vec<String>,
     },
+    /// A part `kind` shaped like a core kind (lowercase snake_case) but not an
+    /// exact match for any entry in the core vocabulary — likely a typo.
+    #[error(
+        "invalid core part kind '{kind}': not a recognized core kind; valid core kinds are [{valid}]",
+        valid = .valid_kinds.join(", "),
+    )]
+    InvalidCoreKind {
+        kind: String,
+        valid_kinds: Vec<String>,
+    },
 }
 
 /// Render the human-readable recovery clause for [`SchemaValidationError::InvalidTransition`].

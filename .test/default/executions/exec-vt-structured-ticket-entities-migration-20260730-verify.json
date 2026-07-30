@@ -1,0 +1,19 @@
+{
+  "id": "exec-vt-structured-ticket-entities-migration-20260730-verify",
+  "validation_spec_id": "vt-structured-ticket-entities-migration",
+  "outcome": "blocked",
+  "executed_at": "2026-07-30T13:30:11.861830700Z",
+  "detail": "BLOCKED, not fabricated: this validation spec's scope (dry-run migration report, then apply producing byte-identical total content vs pre-migration descriptions, including planned-ticket unfreeze/re-freeze) belongs to ticket f65f2b32, which is out of scope for this verification pass (f9e70385 and 3d952036 only). No migration dry-run/apply command was run in this session because f65f2b32's migration tool/command was not exercised. Recording `blocked` rather than a fabricated `passed` result; a real execution against this spec must come from f65f2b32's own validation pass.",
+  "links": {
+    "ticket_ids": [
+      "f9e70385-adb7-4942-a8fb-6a383863cc7e",
+      "3d952036-efd4-4f36-a77f-6b7f5058a0a0"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "migration-dry-run-and-apply",
+    "transport": "cli",
+    "run_id": "verify-f9e70385-3d952036-20260730"
+  }
+}
