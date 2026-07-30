@@ -343,7 +343,7 @@ impl TicketServer {
 
     #[tool(
         name = "update_ticket",
-        description = "Update a ticket: apply field patches and/or transition state. Set undo=true to revert to the previous history revision. description_mode ('replace' or 'append') is required and rejected if omitted whenever description is set; there is no default."
+        description = "Update a ticket: apply field patches and/or transition state. Set undo=true to revert to the previous history revision. If description is provided, description_mode must also be provided; valid values are 'replace' and 'append'. There is no default. Omitting both description and description_mode leaves the description unchanged."
     )]
     pub async fn update_ticket(
         &self,

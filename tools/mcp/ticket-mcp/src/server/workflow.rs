@@ -163,7 +163,7 @@ impl TicketServer {
                     "optional": ["limit", "filter"],
                 },
                 "update_ticket": {
-                    "description": "Update ticket fields and/or transition state. description_mode ('replace' or 'append') is required and rejected if omitted whenever description is set; there is no default.",
+                    "description": "Update ticket fields and/or transition state. If description is provided, description_mode must also be provided; valid values are 'replace' and 'append'. There is no default. Omitting both description and description_mode leaves the description unchanged.",
                     "required": ["workspace", "id"],
                     "optional": ["transition_states", "to_state", "fields", "undo", "description", "description_mode", "author"],
                 },
