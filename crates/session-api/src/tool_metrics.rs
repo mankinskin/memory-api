@@ -159,6 +159,9 @@ pub struct ToolCallSummary {
     pub timeout_count: u64,
     pub hang_count: u64,
     pub output_char_sizes: Vec<u64>,
+    /// Provenance for each entry in `output_char_sizes`, aligned by index
+    /// (e.g. "hook_payload", "spill_file", "transcript_turn").
+    pub output_source: Vec<String>,
     pub input_char_sizes: Vec<u64>,
     pub duration_ms_values: Vec<i64>,
 }
@@ -172,6 +175,7 @@ impl ToolCallSummary {
             timeout_count: 0,
             hang_count: 0,
             output_char_sizes: Vec::new(),
+            output_source: Vec::new(),
             input_char_sizes: Vec::new(),
             duration_ms_values: Vec::new(),
         }
@@ -280,6 +284,7 @@ pub fn compute_session_summary_with_events(
         if is_success {
             let output_chars = turn.content.chars().count() as u64;
             entry.output_char_sizes.push(output_chars);
+            entry.output_source.push("transcript_turn".to_string());
         }
 
         // Capture input size and duration from event_meta
@@ -385,6 +390,9 @@ fn record_event_tool_call(
             .find_map(|key| data.get(*key)?.as_u64())
     }) {
         entry.output_char_sizes.push(output_chars);
+        let output_source = json_str(data, &["output_source", "outputSource"])
+            .unwrap_or_else(|| "unspecified".to_string());
+        entry.output_source.push(output_source);
     }
 
     if let Some(duration) = data.and_then(|data| {

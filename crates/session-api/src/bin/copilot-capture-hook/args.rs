@@ -16,6 +16,18 @@ pub(super) struct Args {
     pub(super) workspace_slug: String,
     pub(super) trigger: String,
     pub(super) from_hook_stdin: bool,
+    /// PostToolUse hook stdin `tool_use_id`, paired with `tool_response_chars`
+    /// to build a `ToolResponseOverride` (ticket 44119807 T2).
+    pub(super) tool_call_id: Option<String>,
+    /// Char count of the PostToolUse hook stdin `tool_response`. `Some(0)` is
+    /// a real zero-length measurement, distinct from `None` (field absent).
+    pub(super) tool_response_chars: Option<u64>,
+    /// PostToolUse hook stdin `session_id`, used with `transcript_path` and
+    /// `tool_call_id` to derive the `chat-session-resources` spill-file path
+    /// (ticket 44119807 T2 AC1 real-capture fix): the real hook payload's
+    /// `tool_response` is observed to always be empty, so the on-disk spill
+    /// convention is the only working source for real sessions.
+    pub(super) session_id: Option<String>,
 }
 
 pub(super) fn parse_args() -> Result<Args, SessionError> {
@@ -68,6 +80,9 @@ pub(super) fn parse_args() -> Result<Args, SessionError> {
         workspace_slug: workspace_slug.unwrap_or_else(|| "default".to_string()),
         trigger: trigger.unwrap_or_else(|| "stop".to_string()),
         from_hook_stdin,
+        tool_call_id: None,
+        tool_response_chars: None,
+        session_id: None,
     })
 }
 
@@ -104,6 +119,25 @@ pub(super) fn args_from_hook_stdin(
         get_field(&payload, &["hook_event_name", "hookEventName"])
     {
         args.trigger = normalize_trigger(&trigger);
+    }
+    if let Some(tool_call_id) =
+        get_field(&payload, &["tool_use_id", "toolUseId"])
+    {
+        args.tool_call_id = Some(tool_call_id);
+    }
+    if let Some(session_id) =
+        get_field(&payload, &["session_id", "sessionId"])
+    {
+        args.session_id = Some(session_id);
+    }
+    // `tool_response` presence (even an empty string) is itself a real
+    // hook-payload measurement, so this reads the raw field directly instead
+    // of `get_field`, which filters out empty strings as absent.
+    if let Some(tool_response) = ["tool_response", "toolResponse"]
+        .iter()
+        .find_map(|key| payload.get(*key)?.as_str())
+    {
+        args.tool_response_chars = Some(tool_response.chars().count() as u64);
     }
     Ok(args)
 }

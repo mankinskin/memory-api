@@ -59,7 +59,9 @@ use crate::{
     audit::build_session_audit_report,
     hook::{
         CopilotHookEvent,
+        ToolResponseOverride,
         copilot_payload_from_transcript_path,
+        copilot_payload_from_transcript_path_with_tool_response_override,
     },
     peek::{
         PromptPackOptions,

@@ -217,7 +217,21 @@ pub(super) fn build_tool_execution_result_event(
         normalized.insert("summary".to_string(), Value::String(summary));
     }
     if let Some(pointer) = spill_pointer.clone() {
+        // Layer 2 (ticket 44119807): stat the spill file at capture time,
+        // while it is still fresh. A missing/unreadable file leaves
+        // output_chars unset (unmeasured), never a fabricated zero.
+        let spill_output_chars = stat_spill_output_chars(&pointer);
         normalized.insert("spill_pointer".to_string(), Value::String(pointer));
+        if let Some(output_chars) = spill_output_chars {
+            normalized.insert(
+                "output_chars".to_string(),
+                Value::Number(output_chars.into()),
+            );
+            normalized.insert(
+                "output_source".to_string(),
+                Value::String("spill_file".to_string()),
+            );
+        }
     }
     if let Some(error_type) = error_type {
         normalized.insert("error_type".to_string(), Value::String(error_type));
@@ -322,6 +336,21 @@ fn find_spill_pointer(
     }
 
     None
+}
+
+/// Stat a resolved spill pointer's byte content and return its char count.
+/// Accepts either a direct file path or a directory containing `content.txt`
+/// (the `chat-session-resources/<session>/<tool_call_id>__*` layout).
+/// Returns `None` (unmeasured, not zero) when the file is absent or unreadable.
+fn stat_spill_output_chars(pointer: &str) -> Option<u64> {
+    let path = std::path::Path::new(pointer.trim());
+    let candidate = if path.is_dir() {
+        path.join("content.txt")
+    } else {
+        path.to_path_buf()
+    };
+    let bytes = std::fs::read(&candidate).ok()?;
+    Some(String::from_utf8_lossy(&bytes).chars().count() as u64)
 }
 
 fn is_sync_terminal_completion_ambiguous(

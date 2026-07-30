@@ -27,10 +27,37 @@ use super::{
     hydrate_tool_execution_complete,
 };
 
+/// Hook-invocation-scoped tool output size, carried in the PostToolUse hook
+/// stdin payload (`tool_response`) rather than the transcript file itself
+/// (ticket 44119807: the transcript carries no tool result payload, so this
+/// is the highest-fidelity source available and overrides any lower-fidelity
+/// value derived while parsing the transcript, e.g. a spill-file byte stat).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolResponseOverride {
+    pub tool_call_id: String,
+    pub output_chars: u64,
+    /// Provenance for `output_chars` (e.g. "hook_payload", "spill_file").
+    pub output_source: String,
+}
+
 pub fn copilot_payload_from_transcript_path(
     transcript_path: impl AsRef<Path>,
     workspace_slug: impl Into<String>,
     trigger: Option<String>,
+) -> Result<CopilotHookPayload, SessionError> {
+    copilot_payload_from_transcript_path_with_tool_response_override(
+        transcript_path,
+        workspace_slug,
+        trigger,
+        None,
+    )
+}
+
+pub fn copilot_payload_from_transcript_path_with_tool_response_override(
+    transcript_path: impl AsRef<Path>,
+    workspace_slug: impl Into<String>,
+    trigger: Option<String>,
+    tool_response_override: Option<ToolResponseOverride>,
 ) -> Result<CopilotHookPayload, SessionError> {
     let transcript_path = transcript_path.as_ref();
     let file =
@@ -45,6 +72,7 @@ pub fn copilot_payload_from_transcript_path(
         transcript_path,
         workspace_slug.into(),
         trigger,
+        tool_response_override,
     )
 }
 
@@ -58,6 +86,7 @@ pub fn copilot_payload_from_transcript_reader<R: BufRead>(
         Path::new("<copilot-transcript>"),
         workspace_slug.into(),
         trigger,
+        None,
     )
 }
 
@@ -66,6 +95,7 @@ fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
     transcript_path: &Path,
     workspace_slug: String,
     trigger: Option<String>,
+    tool_response_override: Option<ToolResponseOverride>,
 ) -> Result<CopilotHookPayload, SessionError> {
     let mut session_id = None;
     let mut agent_id = None;
@@ -204,9 +234,52 @@ fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
         model: None,
         trigger,
         messages,
-        events,
+        events: apply_tool_response_override(events, tool_response_override),
         runtime,
     })
+}
+
+/// Merge the hook-payload output size into the matching terminal tool event,
+/// overwriting any lower-fidelity `output_chars`/`output_source` already set
+/// while parsing the transcript (e.g. a spill-file stat).
+fn apply_tool_response_override(
+    mut events: Vec<super::CopilotHookEvent>,
+    tool_response_override: Option<ToolResponseOverride>,
+) -> Vec<super::CopilotHookEvent> {
+    let Some(override_value) = tool_response_override else {
+        return events;
+    };
+    for event in events.iter_mut() {
+        let is_terminal = matches!(
+            event.event_type.as_deref(),
+            Some("tool.execution_complete")
+                | Some("tool_execution_complete")
+                | Some("tool.execution_result")
+                | Some("tool_execution_result")
+        );
+        if !is_terminal {
+            continue;
+        }
+        if event.tool_call_id.as_deref() != Some(override_value.tool_call_id.as_str())
+        {
+            continue;
+        }
+        let data = event
+            .data_json
+            .get_or_insert_with(|| serde_json::Value::Object(Default::default()));
+        if let Some(map) = data.as_object_mut() {
+            map.insert(
+                "output_chars".to_string(),
+                serde_json::Value::from(override_value.output_chars),
+            );
+            map.insert(
+                "output_source".to_string(),
+                serde_json::Value::String(override_value.output_source.clone()),
+            );
+        }
+        break;
+    }
+    events
 }
 
 fn handle_session_start_event(

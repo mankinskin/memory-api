@@ -66,7 +66,9 @@ pub use hook::{
     CopilotHookPayload,
     CopilotRuntimeMetadata,
     SessionCaptureRequest,
+    ToolResponseOverride,
     copilot_payload_from_transcript_path,
+    copilot_payload_from_transcript_path_with_tool_response_override,
     copilot_payload_from_transcript_reader,
 };
 pub use model::{
