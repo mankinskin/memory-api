@@ -26,11 +26,14 @@ impl TicketStore {
     /// for a `part_id` with no existing manifest entry (a fresh part being
     /// created) or an existing, unfrozen part.
     ///
-    /// Called by [`Self::write_part`] and [`Self::undo_part`] — the only
-    /// two content-write entry points reachable from outside this module.
-    /// [`TicketFs::write_part`] is `pub(crate)` and has no other caller, so
-    /// there is no alternate path that can touch frozen content without
-    /// going through this gate.
+    /// Called by [`Self::write_part`], [`Self::undo_part`], and
+    /// [`Self::enforce_description_write_gate`] (the legacy
+    /// `description.md` path used by `update`/`apply_revert`) — the only
+    /// content-write entry points reachable from outside this module.
+    /// [`TicketFs::write_part`] and [`TicketFs::write_description`] are
+    /// both `pub(crate)` with no caller outside this gate, so there is no
+    /// alternate path that can touch frozen content without going through
+    /// it.
     pub fn enforce_part_write_gate(
         &self,
         id: &Uuid,
@@ -52,6 +55,34 @@ impl TicketStore {
             }
         }
         Ok(())
+    }
+
+    /// Routes the legacy `description.md` write path (`update`/`apply_revert`)
+    /// through [`Self::enforce_part_write_gate`] so it is rejected exactly
+    /// like a part-addressed write when frozen (spec 24b3d22b, ticket
+    /// f9e70385, AC7). `description.md` backs the implicit `objective` part
+    /// for legacy tickets with no `[[parts]]` table, or an explicit
+    /// `objective` entry once one has been materialized (e.g. by plan
+    /// freezing); either way, the same gate call is reused rather than a
+    /// second parallel frozen check that could drift from it.
+    pub(crate) fn enforce_description_write_gate(
+        &self,
+        id: &Uuid,
+    ) -> Result<(), StorageError> {
+        let indexed =
+            self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
+        let manifest = TicketFs::read(&indexed.path)?;
+        let objective_part_id = manifest
+            .parts()
+            .into_iter()
+            .find(|p| p.kind == "objective")
+            .map(|p| p.id)
+            .unwrap_or_else(|| {
+                crate::storage::ticket_fs::implicit_objective_part_id(
+                    manifest.id,
+                )
+            });
+        self.enforce_part_write_gate(id, objective_part_id)
     }
 
     /// Write content to a single content part of a ticket, addressed by its

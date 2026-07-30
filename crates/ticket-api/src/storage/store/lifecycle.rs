@@ -127,6 +127,10 @@ impl TicketStore {
                 Value::String(s) => s,
                 _ => String::new(),
             };
+            // AC7: undo/revert is a write, not a privileged bypass of plan
+            // freezing — route it through the same gate the structured
+            // write paths use.
+            self.enforce_description_write_gate(id)?;
             TicketFs::write_description(&indexed.path, &restored)?;
         }
 

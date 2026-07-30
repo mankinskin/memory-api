@@ -656,6 +656,75 @@ fn ticket_3d952036_omitted_description_mode_is_rejected() {
     );
 }
 
+/// Rework of ticket 3d952036 (AC5): a prior iteration validated the omitted
+/// -mode case only at runtime inside `apply_manifest_update`. This test
+/// proves the *boundary* type (`DescriptionUpdate`, threaded through
+/// `UpdateTicketBody`/`UpdateArgs`/the MCP handler decode) makes "content
+/// without a mode" unrepresentable: there is no `description_mode` field on
+/// those types to omit, only a single `description_update: DescriptionUpdate`
+/// field whose three variants (`Unchanged`/`Replace(String)`/`Append(String)`)
+/// each already encode a complete, valid combination.
+///
+/// This is an exhaustiveness-dependent unit test, not a compile-fail
+/// (trybuild) test — the repository has no trybuild dependency, and this
+/// ticket's scope note says to check before introducing a new one. The
+/// compile-time guarantee itself is structural: `DescriptionUpdate::as_parts`
+/// matches all three variants with no catch-all arm, so adding a fourth
+/// variant without updating every match site (including this test) is a
+/// compiler error, and no Rust code can construct
+/// `DescriptionUpdate::Replace`/`Append` without also supplying content, nor
+/// omit a mode when constructing a variant that carries content.
+#[test]
+fn ticket_3d952036_description_update_makes_missing_mode_unrepresentable() {
+    // Boundary decode still rejects a raw wire `description` with no
+    // `description_mode` string (AC1/AC2), but the value produced by a
+    // *successful* decode is always one of three fully-formed variants —
+    // there is no fourth "content, no mode" shape to construct.
+    let err = DescriptionUpdate::decode(
+        Some("New description".to_string()),
+        None,
+    )
+    .unwrap_err();
+    assert_eq!(err, REQUIRED_DESCRIPTION_MODE_ERROR);
+
+    // Every successful decode round-trips through `as_parts` into exactly
+    // the `(content, mode)` pair the two are paired on — Replace/Append
+    // always carry both, Unchanged always carries neither.
+    let unchanged = DescriptionUpdate::decode(None, None).unwrap();
+    assert_eq!(unchanged, DescriptionUpdate::Unchanged);
+    assert_eq!(unchanged.as_parts(), (None, None));
+
+    let replace =
+        DescriptionUpdate::decode(Some("R".to_string()), Some("replace"))
+            .unwrap();
+    assert_eq!(replace, DescriptionUpdate::Replace("R".to_string()));
+    assert_eq!(
+        replace.as_parts(),
+        (Some("R"), Some(DescriptionUpdateMode::Replace))
+    );
+
+    let append =
+        DescriptionUpdate::decode(Some("A".to_string()), Some("append"))
+            .unwrap();
+    assert_eq!(append, DescriptionUpdate::Append("A".to_string()));
+    assert_eq!(
+        append.as_parts(),
+        (Some("A"), Some(DescriptionUpdateMode::Append))
+    );
+
+    // An unrecognized mode string is also rejected at the decode boundary,
+    // never silently coerced into a variant.
+    let bad = DescriptionUpdate::decode(
+        Some("x".to_string()),
+        Some("overwrite"),
+    )
+    .unwrap_err();
+    assert!(
+        bad.contains("invalid description_mode"),
+        "unrecognized mode must be named in the error: {bad}"
+    );
+}
+
 #[test]
 fn ticket_3d952036_review_part_write_leaves_objective_byte_identical() {
     let dir = tempdir().unwrap();
@@ -1155,7 +1224,7 @@ fn f9e70385_undo_part_on_frozen_part_is_also_rejected() {
 }
 
 #[test]
-fn f9e70385_legacy_description_write_never_touches_frozen_objective_part_file() {
+fn f9e70385_legacy_description_write_rejected_when_objective_frozen() {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();
 
@@ -1182,12 +1251,15 @@ fn f9e70385_legacy_description_write_never_touches_frozen_objective_part_file() 
         .into_iter()
         .find(|p| p.kind == "objective")
         .unwrap();
-    let before = fs::read(path.join(&objective.path)).unwrap();
+    assert!(objective.frozen);
+    let before_part = fs::read(path.join(&objective.path)).unwrap();
+    let before_description = fs::read(path.join("description.md")).unwrap();
 
-    // The legacy `description` field write path is a distinct file
-    // (`description.md`) from the materialized, frozen `objective` part
-    // once a ticket has entered `planned`: it cannot touch frozen content.
-    store
+    // AC7 (review-reproduced bypass): the legacy `description`/
+    // `description_mode` write path in `update_with_options` must reject
+    // exactly like a part-addressed write when the ticket's `objective`
+    // part is frozen — it is not an alternate, ungated entry point.
+    let err = store
         .update_with_options(
             &id,
             BTreeMap::new(),
@@ -1198,12 +1270,18 @@ fn f9e70385_legacy_description_write_never_touches_frozen_objective_part_file() 
             None,
             false,
         )
-        .unwrap();
+        .unwrap_err();
+    assert!(matches!(err, crate::error::StorageError::FrozenPartWrite { .. }));
 
-    let after = fs::read(path.join(&objective.path)).unwrap();
+    let after_part = fs::read(path.join(&objective.path)).unwrap();
+    let after_description = fs::read(path.join("description.md")).unwrap();
     assert_eq!(
-        before, after,
-        "the legacy description write path must never touch the frozen objective part file"
+        before_part, after_part,
+        "a rejected legacy write must leave the frozen objective part file untouched"
+    );
+    assert_eq!(
+        before_description, after_description,
+        "a rejected legacy write must leave description.md untouched"
     );
 }
 

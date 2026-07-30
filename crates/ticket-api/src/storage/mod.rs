@@ -24,6 +24,7 @@ pub use board::{
 };
 pub use store::{
     DESCRIPTION_HISTORY_KEY,
+    DescriptionUpdate,
     DescriptionUpdateMode,
     PART_HISTORY_CONTENT_KEY,
     PART_HISTORY_ID_KEY,

@@ -323,7 +323,12 @@ impl TicketFs {
     }
 
     /// Write or overwrite the `description.md` file for a ticket.
-    pub fn write_description(
+    ///
+    /// Frozen-part rejection is enforced by the caller
+    /// (`TicketStore::enforce_description_write_gate`) before this is
+    /// reached — this is a crate-private low-level primitive with no
+    /// external entry point (spec 24b3d22b, ticket f9e70385, AC7).
+    pub(crate) fn write_description(
         ticket_path: &Path,
         text: &str,
     ) -> Result<(), StorageError> {
@@ -607,7 +612,7 @@ impl TicketFs {
 /// for a given ticket without requiring a one-time migration write.
 const IMPLICIT_OBJECTIVE_PART_NAME: &[u8] = b"ticket-api:implicit-objective";
 
-fn implicit_objective_part_id(ticket_id: Uuid) -> Uuid {
+pub(crate) fn implicit_objective_part_id(ticket_id: Uuid) -> Uuid {
     Uuid::new_v5(&ticket_id, IMPLICIT_OBJECTIVE_PART_NAME)
 }
 

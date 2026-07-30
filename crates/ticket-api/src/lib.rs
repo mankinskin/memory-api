@@ -28,6 +28,7 @@ pub use storage::{
     BoardReconcileResult,
     BoardSnapshot,
     DESCRIPTION_HISTORY_KEY,
+    DescriptionUpdate,
     DescriptionUpdateMode,
     ReconcileAction,
 };

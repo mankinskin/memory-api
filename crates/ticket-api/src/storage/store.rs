@@ -94,6 +94,65 @@ pub enum DescriptionUpdateMode {
 /// states which one preserves existing content.
 pub const REQUIRED_DESCRIPTION_MODE_ERROR: &str = "update_ticket with `description` requires an explicit `description_mode`: 'replace' (overwrites description.md) or 'append' (preserves existing content by concatenating the new text onto it). There is no default; omitting description_mode is rejected.";
 
+/// A caller's requested change to `description.md`, bundling the mode with
+/// its content so "content supplied without a mode" is unrepresentable at
+/// the type level: there is no separate `description_mode` field to omit
+/// once a value of this type exists (AC5 of ticket 3d952036). Boundary
+/// transports (HTTP/MCP JSON, CLI flags) decode two raw wire fields into
+/// this type via [`DescriptionUpdate::decode`]; every Rust construction
+/// downstream of that single decode point must pick one of these variants
+/// explicitly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DescriptionUpdate {
+    /// Leave `description.md` untouched.
+    Unchanged,
+    /// Overwrite `description.md` with the given text.
+    Replace(String),
+    /// Concatenate the given text onto the existing description.
+    Append(String),
+}
+
+impl DescriptionUpdate {
+    /// Boundary decoder: the one place a raw wire `description_mode` string
+    /// is interpreted. Returns [`REQUIRED_DESCRIPTION_MODE_ERROR`] when
+    /// `description` is set without a recognized mode string, and a named
+    /// error for an unrecognized mode string.
+    pub fn decode(
+        description: Option<String>,
+        description_mode: Option<&str>,
+    ) -> Result<Self, String> {
+        match description {
+            None => Ok(DescriptionUpdate::Unchanged),
+            Some(text) => match description_mode {
+                Some("replace") => Ok(DescriptionUpdate::Replace(text)),
+                Some("append") => Ok(DescriptionUpdate::Append(text)),
+                Some(other) => Err(format!(
+                    "invalid description_mode '{other}': expected 'replace' or 'append'"
+                )),
+                None => Err(REQUIRED_DESCRIPTION_MODE_ERROR.to_string()),
+            },
+        }
+    }
+
+    /// Split back into the `(content, mode)` pair
+    /// [`TicketStore::update_with_options`] expects. Infallible: every
+    /// variant already encodes a valid combination, so this can never hit
+    /// the runtime `description_mode.ok_or_else(..)` guard in
+    /// `apply_manifest_update` — that guard remains only as defense in depth
+    /// for any caller that bypasses [`DescriptionUpdate`] entirely.
+    pub fn as_parts(&self) -> (Option<&str>, Option<DescriptionUpdateMode>) {
+        match self {
+            DescriptionUpdate::Unchanged => (None, None),
+            DescriptionUpdate::Replace(text) => {
+                (Some(text.as_str()), Some(DescriptionUpdateMode::Replace))
+            },
+            DescriptionUpdate::Append(text) => {
+                (Some(text.as_str()), Some(DescriptionUpdateMode::Append))
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct StoreOpenReport {
     pub initialized_store: bool,
@@ -496,6 +555,7 @@ impl TicketStore {
         let previous_state = indexed.state.clone();
         let (updated_manifest, previous_description) = self
             .apply_manifest_update(
+                id,
                 &indexed.path,
                 &patch,
                 &new_state,
@@ -624,6 +684,7 @@ impl TicketStore {
 
     fn apply_manifest_update(
         &self,
+        id: &Uuid,
         ticket_path: &Path,
         patch: &BTreeMap<String, Value>,
         new_state: &Option<String>,
@@ -632,6 +693,17 @@ impl TicketStore {
         description: Option<&str>,
         description_mode: Option<DescriptionUpdateMode>,
     ) -> Result<(TicketManifest, Option<String>), StorageError> {
+        // Gate on the ticket's state as of the start of this call, before
+        // any transition below applies this same call's freeze/unfreeze.
+        // A single call that both transitions into `planned` and sets the
+        // description is the freeze taking effect, not a write to a part
+        // already frozen by a prior call — AC7 targets the latter only
+        // (proven by `f9e70385_legacy_description_write_rejected_when_objective_frozen`,
+        // which freezes in one call and writes in a separate later one).
+        if description.is_some() {
+            self.enforce_description_write_gate(id)?;
+        }
+
         let updated_manifest = if transition_path.is_empty() {
             TicketFs::update(ticket_path, patch, new_state.as_deref())?
         } else {
@@ -688,6 +760,9 @@ impl TicketStore {
                     _ => desc.to_string(),
                 },
             };
+            // AC7: the legacy `description` write is not a privileged
+            // bypass of plan freezing — it was already gated above against
+            // this call's pre-transition state.
             TicketFs::write_description(ticket_path, &final_text)?;
         }
 
