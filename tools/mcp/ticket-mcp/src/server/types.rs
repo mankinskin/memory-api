@@ -1,14 +1,20 @@
-use std::collections::BTreeMap;
+use std::{
+    borrow::Cow,
+    collections::BTreeMap,
+};
 
 use rmcp::schemars::{
     self,
     JsonSchema,
+    Schema,
+    SchemaGenerator,
 };
 use serde::{
     Deserialize,
     Serialize,
 };
 use serde_json::Value;
+use ticket_api::storage::DescriptionUpdate;
 
 #[derive(Serialize)]
 pub struct TicketSummary {
@@ -146,8 +152,16 @@ pub enum WorkflowName {
     InspectDependencies,
 }
 
+// Wire shape for the `update_ticket` MCP tool: the raw `description` +
+// `description_mode` pair as received over JSON. Drives both deserialization
+// and the advertised JSON Schema for `UpdateTicketInput` so the tool's schema
+// is unchanged; never used past decoding into a single `DescriptionUpdate` so
+// "content without a mode" cannot be constructed downstream (AC5 of ticket
+// 3d952036). Not a doc comment: schemars would otherwise fold this into the
+// root schema's `description`, changing the advertised schema.
+
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct UpdateTicketInput {
+struct UpdateTicketInputWire {
     pub workspace: String,
     pub id: String,
     #[serde(default)]
@@ -176,6 +190,72 @@ pub struct UpdateTicketInput {
     #[serde(default)]
     pub single_hop: bool,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(try_from = "UpdateTicketInputWire")]
+pub struct UpdateTicketInput {
+    pub workspace: String,
+    pub id: String,
+    pub transition_states: Vec<String>,
+    pub to_state: Option<String>,
+    pub fields: Option<Vec<String>>,
+    pub field_map: Option<BTreeMap<String, Value>>,
+    pub undo: bool,
+    /// How `description` (if any) applies to `description.md`. There is no
+    /// separate `description_mode` field: [`DescriptionUpdate::Unchanged`]
+    /// means no description change, and content only exists paired with an
+    /// explicit mode (AC5 of ticket 3d952036).
+    pub description_update: DescriptionUpdate,
+    pub author: Option<String>,
+    pub single_hop: bool,
+}
+
+impl TryFrom<UpdateTicketInputWire> for UpdateTicketInput {
+    type Error = String;
+
+    fn try_from(wire: UpdateTicketInputWire) -> Result<Self, Self::Error> {
+        let description_update =
+            DescriptionUpdate::decode(wire.description, wire.description_mode.as_deref())?;
+        Ok(UpdateTicketInput {
+            workspace: wire.workspace,
+            id: wire.id,
+            transition_states: wire.transition_states,
+            to_state: wire.to_state,
+            fields: wire.fields,
+            field_map: wire.field_map,
+            undo: wire.undo,
+            description_update,
+            author: wire.author,
+            single_hop: wire.single_hop,
+        })
+    }
+}
+
+// Field layout, docs, and required set delegate to `UpdateTicketInputWire` so
+// the advertised MCP tool schema keeps the `description` / `description_mode`
+// JSON fields exactly as before this type stopped deriving `JsonSchema`
+// directly. `schema_name`/`schema_id` are NOT delegated: `root_schema_for`
+// uses `T::schema_name()` (the outer type, i.e. `UpdateTicketInput`) for the
+// root `"title"`, so these are set to the literal values the original
+// `#[derive(JsonSchema)]` on `UpdateTicketInput` itself would have produced.
+impl JsonSchema for UpdateTicketInput {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("UpdateTicketInput")
+    }
+
+    fn schema_id() -> Cow<'static, str> {
+        Cow::Borrowed(concat!(module_path!(), "::UpdateTicketInput"))
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        UpdateTicketInputWire::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        false
+    }
+}
+
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CloseTicketInput {

@@ -7,7 +7,6 @@ use serde_json::{
 };
 
 use ticket_api::storage::{
-    DescriptionUpdateMode,
     TicketStore,
     ticket_fs::TicketFs,
 };
@@ -16,10 +15,10 @@ use crate::cli::{
     CliRunError,
     CreateArgs,
     IdArgs,
-    DescriptionMode,
     ListArgs,
     ReproArgs,
     UpdateArgs,
+    UpdateArgsCli,
     commands::ticket_workspace_metadata_for_path,
     current_git_commit,
     default_repro_summary,
@@ -139,9 +138,15 @@ pub(crate) fn cmd_get(
 }
 
 pub(crate) fn cmd_update(
-    args: UpdateArgs,
+    args: UpdateArgsCli,
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
+    // Boundary decode: the raw two-flag clap struct converts into the
+    // domain `UpdateArgs`, whose single `description_update` field cannot
+    // represent a description supplied without a mode (AC5 of ticket
+    // 3d952036). Everything below this line uses the compile-time-safe type.
+    let args: UpdateArgs =
+        args.try_into().map_err(CliRunError::BadRequest)?;
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let author = resolve_author(args.author.as_deref());
 
@@ -186,18 +191,14 @@ pub(crate) fn cmd_update(
         }));
     }
 
-    let description_mode = match args.description_mode {
-        None => None,
-        Some(DescriptionMode::Replace) => Some(DescriptionUpdateMode::Replace),
-        Some(DescriptionMode::Append) => Some(DescriptionUpdateMode::Append),
-    };
+    let (description, description_mode) = args.description_update.as_parts();
     let patch = parse_fields_to_json(&args.fields)?;
     let manifest = store.update_with_options(
         &id,
         patch,
         Some(args.transition_states.as_slice()),
         args.to_state.as_deref(),
-        args.description.as_deref(),
+        description,
         description_mode,
         author.as_deref(),
         args.single_hop,

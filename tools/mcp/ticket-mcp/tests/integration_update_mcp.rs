@@ -55,8 +55,7 @@ async fn update_ticket_accepts_sparse_payload_and_returns_minimal_response() {
             fields: None,
             field_map: None,
             undo: false,
-            description: None,
-            description_mode: None,
+            description_update: ticket_api::storage::DescriptionUpdate::Unchanged,
             author: None,
             single_hop: false,
         }))
@@ -100,8 +99,7 @@ async fn update_ticket_blocked_transition_reports_recovery_fields() {
             fields: None,
             field_map: None,
             undo: false,
-            description: None,
-            description_mode: None,
+            description_update: ticket_api::storage::DescriptionUpdate::Unchanged,
             author: None,
             single_hop: true,
         }))

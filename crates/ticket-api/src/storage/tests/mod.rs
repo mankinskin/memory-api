@@ -24,7 +24,9 @@ use tempfile::tempdir;
 use uuid::Uuid;
 
 use super::{
+    DescriptionUpdate,
     DescriptionUpdateMode,
+    REQUIRED_DESCRIPTION_MODE_ERROR,
     TicketStore,
 };
 use crate::model::{

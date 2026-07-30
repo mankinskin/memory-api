@@ -1,6 +1,5 @@
 use serde_json::Value;
 use ticket_api::model::edge::EdgeRecord;
-use ticket_api::storage::DescriptionUpdateMode;
 use uuid::Uuid;
 
 use super::{
@@ -35,20 +34,13 @@ impl TicketServer {
         let transition_states = input.transition_states;
         let to_state = input.to_state;
         let patch = parse_field_patch(input.fields, input.field_map)?;
-        let description = input.description;
-        let description_mode = match input.description_mode.as_deref() {
-            None => None,
-            Some("replace") => Some(DescriptionUpdateMode::Replace),
-            Some("append") => Some(DescriptionUpdateMode::Append),
-            Some(other) => {
-                return Err(McpError::invalid_params(
-                    format!(
-                        "invalid description_mode '{other}': expected 'replace' or 'append'"
-                    ),
-                    None,
-                ));
-            },
-        };
+        // The wire `description` + `description_mode` pair is decoded into
+        // `input.description_update` at deserialization time by
+        // `UpdateTicketInput`'s `TryFrom<UpdateTicketInputWire>` (AC5 of
+        // ticket 3d952036); no runtime decode happens here.
+        let description_update = input.description_update;
+        let (description, description_mode) = description_update.as_parts();
+        let description = description.map(str::to_string);
         let author = input.author;
         let single_hop = input.single_hop;
         let changed_fields = patch.clone();

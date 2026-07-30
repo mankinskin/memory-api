@@ -11,6 +11,7 @@ use uuid::Uuid;
 use ticket_api::{
     error::StorageError,
     storage::{
+        DescriptionUpdate,
         indexed::IndexedTicket,
         store::TicketStore,
     },
@@ -121,22 +122,56 @@ pub struct CreateTicketBody {
     pub description: Option<String>,
 }
 
+/// Wire shape for `PATCH /api/tickets/{id}`: the raw `description` +
+/// `description_mode` pair as received over JSON. Never used past
+/// deserialization — [`UpdateTicketBody`] decodes this into a single
+/// [`DescriptionUpdate`] so "content without a mode" cannot be constructed
+/// downstream.
 #[derive(Deserialize)]
-pub struct UpdateTicketBody {
+struct UpdateTicketBodyWire {
     pub fields: Option<BTreeMap<String, Value>>,
     pub state: Option<String>,
     #[serde(default)]
     pub transition_states: Vec<String>,
     pub description: Option<String>,
-    /// How to apply `description`: `"replace"` (overwrites) or `"append"`
-    /// (preserves existing content, concatenating onto it). Required
-    /// (non-null) whenever `description` is set; there is no default.
     pub description_mode: Option<String>,
+    #[serde(default)]
+    pub single_hop: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(try_from = "UpdateTicketBodyWire")]
+pub struct UpdateTicketBody {
+    pub fields: Option<BTreeMap<String, Value>>,
+    pub state: Option<String>,
+    pub transition_states: Vec<String>,
+    /// How `description` (if any) applies to `description.md`. There is no
+    /// separate `description_mode` field: [`DescriptionUpdate::Unchanged`]
+    /// means no description change, and content only exists paired with an
+    /// explicit mode (AC5 of ticket 3d952036).
+    pub description_update: DescriptionUpdate,
     /// Opt out of auto-walking multi-hop transitions. When true, a `state`
     /// that would skip a required waypoint is rejected with recovery guidance
     /// instead of traversing the intermediate states.
-    #[serde(default)]
     pub single_hop: bool,
+}
+
+impl TryFrom<UpdateTicketBodyWire> for UpdateTicketBody {
+    type Error = String;
+
+    fn try_from(wire: UpdateTicketBodyWire) -> Result<Self, Self::Error> {
+        let description_update = DescriptionUpdate::decode(
+            wire.description,
+            wire.description_mode.as_deref(),
+        )?;
+        Ok(UpdateTicketBody {
+            fields: wire.fields,
+            state: wire.state,
+            transition_states: wire.transition_states,
+            description_update,
+            single_hop: wire.single_hop,
+        })
+    }
 }
 
 #[derive(Deserialize)]

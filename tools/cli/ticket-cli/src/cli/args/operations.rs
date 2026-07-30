@@ -231,7 +231,7 @@ pub struct FmtArgs {
 }
 
 #[derive(Debug, Args)]
-pub struct UpdateArgs {
+pub struct UpdateArgsCli {
     /// Ticket UUID or 8+ character hex prefix.
     pub id: String,
     #[arg(long = "transition-state")]
@@ -274,6 +274,58 @@ pub struct UpdateArgs {
     /// Heartbeat TTL in seconds for --board-check-in (default: 3600).
     #[arg(long)]
     pub board_ttl_secs: Option<u64>,
+}
+
+/// The real `update` command input, converted from [`UpdateArgsCli`] once at
+/// the CLI boundary. There is no separate `description_mode` field here: a
+/// `description` supplied without a mode cannot be represented past
+/// [`UpdateArgsCli::try_into`] (AC5 of ticket 3d952036) — the raw two-flag
+/// clap struct is a boundary decoder only, never used past parsing.
+#[derive(Debug)]
+pub struct UpdateArgs {
+    pub id: String,
+    pub transition_states: Vec<String>,
+    pub to_state: Option<String>,
+    pub single_hop: bool,
+    pub fields: Vec<String>,
+    pub undo: bool,
+    pub description_update: ticket_api::storage::DescriptionUpdate,
+    pub author: Option<String>,
+    pub board_check_in: bool,
+    pub board_agent: Option<String>,
+    pub board_intent: Option<String>,
+    pub board_files: Vec<String>,
+    pub board_ttl_secs: Option<u64>,
+}
+
+impl TryFrom<UpdateArgsCli> for UpdateArgs {
+    type Error = String;
+
+    fn try_from(cli: UpdateArgsCli) -> Result<Self, Self::Error> {
+        let description_mode_str = cli.description_mode.map(|mode| match mode {
+            DescriptionMode::Replace => "replace",
+            DescriptionMode::Append => "append",
+        });
+        let description_update = ticket_api::storage::DescriptionUpdate::decode(
+            cli.description,
+            description_mode_str,
+        )?;
+        Ok(UpdateArgs {
+            id: cli.id,
+            transition_states: cli.transition_states,
+            to_state: cli.to_state,
+            single_hop: cli.single_hop,
+            fields: cli.fields,
+            undo: cli.undo,
+            description_update,
+            author: cli.author,
+            board_check_in: cli.board_check_in,
+            board_agent: cli.board_agent,
+            board_intent: cli.board_intent,
+            board_files: cli.board_files,
+            board_ttl_secs: cli.board_ttl_secs,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

@@ -158,8 +158,7 @@ async fn update_ticket_patches_fields() {
             fields: Some(patch),
             state: None,
             transition_states: vec![],
-            description: None,
-            description_mode: None,
+            description_update: ticket_api::storage::DescriptionUpdate::Unchanged,
             single_hop: false,
         }),
     )
@@ -206,8 +205,7 @@ async fn update_ticket_transitions_state() {
             fields: None,
             state: Some("planned".to_string()),
             transition_states: vec![],
-            description: None,
-            description_mode: None,
+            description_update: ticket_api::storage::DescriptionUpdate::Unchanged,
             single_hop: false,
         }),
     )

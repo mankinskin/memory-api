@@ -94,7 +94,7 @@ pub enum TicketCommandCli {
     /// Get the markdown description body of a ticket.
     Describe(IdArgs),
     /// Update a ticket with field patches and optional state transition.
-    Update(UpdateArgs),
+    Update(UpdateArgsCli),
     /// Record a bug reproduction event with commit and timestamp metadata.
     Repro(ReproArgs),
     /// List tickets with optional state/type filtering.
