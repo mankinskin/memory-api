@@ -1,1 +1,0 @@
-Each principle is its own section so a `rule scan` materialises one canonical entry per principle and downstream agent guidance can reference them individually.

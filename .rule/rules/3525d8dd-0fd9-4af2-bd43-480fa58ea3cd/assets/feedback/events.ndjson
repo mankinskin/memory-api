@@ -1,1 +1,0 @@
-{"timestamp":"2026-05-13T12:38:39.795823800+00:00","rating":"helpful","note_text":"Helpful: this README gave the correct launch contract (cargo run -p ticket-mcp) after the workspace MCP config failed. It is concise, current, and explicitly lists the server capabilities we needed.","note_kind":"note"}

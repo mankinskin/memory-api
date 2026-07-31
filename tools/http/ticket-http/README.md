@@ -1,9 +1,5 @@
-<!-- rule-api:file generated=true -->
-
-<!-- rule-api:entry id=b8535c8a-4097-4042-8f2a-745123d269ee slug=memory-api/readme/tools/parent-readme/l1 -->
 Back to [memory-api/README.md](../../../README.md).
 
-<!-- rule-api:entry id=778633a4-db2b-4624-b295-5ea87b47363d slug=memory-api/readme/tools/http/ticket-http/l1 -->
 # ticket-http
 
 HTTP interface for `ticket-api`.

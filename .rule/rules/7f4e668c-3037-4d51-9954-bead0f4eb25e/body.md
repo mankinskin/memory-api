@@ -1,1 +1,0 @@
-This layer should be generic over the domain adapter that supplies snippet records and any domain-specific metadata.

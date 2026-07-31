@@ -189,35 +189,43 @@ impl SessionStoreConfig {
         workspace_session_id: &str,
     ) -> Result<String, SessionError> {
         let context = self.read_runtime_context(workspace_session_id)?;
-        let rule_store = RuleStore::open(&sibling_store_root(
-            &self.root, ".rule",
-        ))
-        .map_err(|error| {
-            SessionError::InvalidHookInput(format!(
-                "rule store unavailable: {error}"
-            ))
-        })?;
+        // Missing/unopenable rule store degrades to no rule pins rather than failing the render.
+        let rule_store = match RuleStore::open(&sibling_store_root(&self.root, ".rule")) {
+            Ok(store) => Some(store),
+            Err(error) => {
+                eprintln!(
+                    "[session-api] rule store unavailable ({error}); \
+                     skipping pinned rule resolution"
+                );
+                None
+            }
+        };
         let mut rules = Vec::new();
 
-        for pin in context
-            .pinned_entities
-            .iter()
-            .filter(|pin| pin.kind == SessionPinnedEntityKind::Rule)
-        {
-            let parsed = parse_entity_urn(&pin.urn)?;
-            if parsed.workspace_slug != self.workspace_slug {
-                return Err(SessionError::InvalidHookInput(format!(
-                    "unsupported cross-workspace rule routing: URN workspace `{}` does not match session workspace `{}` ({})",
-                    parsed.workspace_slug, self.workspace_slug, pin.urn
-                )));
+        if let Some(rule_store) = rule_store.as_ref() {
+            for pin in context
+                .pinned_entities
+                .iter()
+                .filter(|pin| pin.kind == SessionPinnedEntityKind::Rule)
+            {
+                let parsed = parse_entity_urn(&pin.urn)?;
+                if parsed.workspace_slug != self.workspace_slug {
+                    return Err(SessionError::InvalidHookInput(format!(
+                        "unsupported cross-workspace rule routing: URN workspace `{}` does not match session workspace `{}` ({})",
+                        parsed.workspace_slug, self.workspace_slug, pin.urn
+                    )));
+                }
+                match rule_store.get(&parsed.entity_id) {
+                    Ok(rule) => rules.push(rule),
+                    Err(error) => {
+                        eprintln!(
+                            "[session-api] pinned rule {} could not be \
+                             resolved ({error}); skipping",
+                            pin.urn
+                        );
+                    }
+                }
             }
-            let rule = rule_store.get(&parsed.entity_id).map_err(|error| {
-                SessionError::InvalidHookInput(format!(
-                    "pinned rule {} could not be resolved: {error}",
-                    pin.urn
-                ))
-            })?;
-            rules.push(rule);
         }
 
         rules.sort_by_key(|rule| {

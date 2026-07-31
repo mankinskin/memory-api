@@ -1,3 +1,0 @@
-- Adding fields is allowed.
-- Removing or renaming fields requires a version bump and is announced through the spec for the relevant `memory-api` crate.
-- `--json` output is the source of truth for tests and for downstream `viewer-ctl`-managed viewers; human output is rendered from the same envelope.

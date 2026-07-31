@@ -1,9 +1,5 @@
-<!-- rule-api:file generated=true -->
-
-<!-- rule-api:entry id=b8535c8a-4097-4042-8f2a-745123d269ee slug=memory-api/readme/tools/parent-readme/l1 -->
 Back to [memory-api/README.md](../../../README.md).
 
-<!-- rule-api:entry id=df2d4ede-7992-4ae0-9ca5-8afc654bbdd0 slug=memory-api/readme/tools/cli/spec-cli/l1 -->
 # spec-cli
 
 CLI interface for `spec-api`.

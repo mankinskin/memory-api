@@ -1,1 +1,0 @@
-The canonical discovery protocol is owned at the context-engine root and mirrored through memory-viewers. Add memory-api-specific discovery steps here only when the shared protocol is insufficient.

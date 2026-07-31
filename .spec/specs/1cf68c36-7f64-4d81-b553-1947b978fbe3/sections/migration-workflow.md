@@ -1,6 +1,3 @@
-<!-- spec-api:file generated=true -->
-
-<!-- spec-api:entry id=fba0b27a-3856-42f7-88ae-f2abd053cae9 slug=spec-api/generated-documents/migration-workflow/l1 -->
 ## Migration workflow
 
 This pilot keeps authored `spec.toml` metadata local while canonical prose lives in `spec-doc` rules.

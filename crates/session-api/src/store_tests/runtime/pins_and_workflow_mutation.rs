@@ -67,7 +67,7 @@ fn pinned_rule_render_contains_only_rule_pins_in_canonical_order() {
 }
 
 #[test]
-fn pinned_rule_render_fails_for_missing_rule() {
+fn pinned_rule_render_skips_missing_rule() {
     let tempdir = TempDir::new().unwrap();
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
@@ -84,10 +84,34 @@ fn pinned_rule_render_fails_for_missing_rule() {
         )
         .unwrap();
 
-    let error = config
+    let rendered = config
         .render_pinned_rule_instructions(&init.context.workspace_session_id)
-        .unwrap_err();
-    assert!(matches!(error, SessionError::InvalidHookInput(_)));
+        .unwrap();
+    assert!(!rendered.contains("22222222-2222-4222-8222-222222222222"));
+}
+
+#[test]
+fn pinned_rule_render_succeeds_when_rule_store_is_absent() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let init = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+    // No `.rule` directory created: the store is absent entirely.
+    config
+        .pin_runtime_entity(
+            &init.context.workspace_session_id,
+            "ce://context-engine/rules/22222222-2222-4222-8222-222222222222",
+            None,
+            None,
+        )
+        .unwrap();
+
+    let rendered = config
+        .render_pinned_rule_instructions(&init.context.workspace_session_id)
+        .unwrap();
+    assert!(!rendered.contains("22222222-2222-4222-8222-222222222222"));
 }
 
 #[test]

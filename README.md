@@ -1,6 +1,3 @@
-<!-- rule-api:file generated=true -->
-
-<!-- rule-api:entry id=eaa176c7-4d98-4f0f-aea6-97ab1a2f72a4 slug=memory-api/readme/memory-api/l1 -->
 # memory-api
 
 memory-api is the repository that exposes the core crates and operator surfaces behind rules, specs, tickets, and audits.
@@ -30,7 +27,6 @@ Installable and executable surfaces in this repository include the `rule`, `spec
 | `ticket-api` | Ticket domain logic, workspace state, board snapshots, execution contracts, watchers, and reconciliation. | `ticket`, `ticket-mcp`, `ticket-http`, `ticket-vscode` |
 | `audit-api` | Repository quality audits, indexes, summaries, and review-oriented validation flows. | `audit`, `audit-mcp` |
 
-<!-- rule-api:entry id=4a232bc0-bd5c-4930-b005-e939669f90d2 slug=memory-api/readme/memory-api/usage-guide/l11 -->
 ## Dependency Graph
 
 ```mermaid
@@ -92,7 +88,6 @@ flowchart LR
     TicketHttp --> Viewer
 ```
 
-<!-- rule-api:entry id=84278ede-0aaa-4382-83db-e6ee5d80106c slug=memory-api/readme/memory-api/crate-groups/l18 -->
 ## Tool Use Examples
 
 ### Install the CLI tools

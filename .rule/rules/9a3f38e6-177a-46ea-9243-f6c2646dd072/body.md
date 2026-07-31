@@ -1,3 +1,0 @@
-- `spec-api` stores and validates the mapping from a spec artifact to a target name.
-- `rule-api` still owns the meaning of `config`, target lookup, imports, filters, and outline composition.
-- Section keys are normalized to section artifact names and remain confined to `sections/*.md`.

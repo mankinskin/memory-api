@@ -1,1 +1,0 @@
-The current implementation covers both `body.md` generation and named `sections/*.md` generation through shared snippet rendering and newline-preserving rewrites.

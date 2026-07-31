@@ -1,1 +1,0 @@
-You are a ticket refinement specialist for the context-engine ticket system.
