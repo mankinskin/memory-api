@@ -5,10 +5,21 @@
 
 use chrono::Utc;
 use session_api::{
-    QualityGate, QualityGateOutcome, QualityGatePhase, SubAgentRollup, SessionMetadata,
-    SessionRecord, SessionRole, SessionRuntimeContext, SessionRunLineage, SessionTurn,
-    SessionTurnEventMeta, SessionLinks, pre_delegation_gate, post_delegation_gate,
+    QualityGate,
+    QualityGateOutcome,
+    QualityGatePhase,
+    SessionLinks,
+    SessionMetadata,
+    SessionRecord,
+    SessionRole,
+    SessionRunLineage,
+    SessionRuntimeContext,
+    SessionTurn,
+    SessionTurnEventMeta,
+    SubAgentRollup,
     compute_subagent_rollups,
+    post_delegation_gate,
+    pre_delegation_gate,
 };
 use std::collections::HashMap;
 
@@ -35,7 +46,10 @@ fn quality_gate_captures_pre_and_post_delegation_checks() {
     assert_eq!(post_gate.phase, QualityGatePhase::PostDelegation);
     assert_eq!(pre_gate.outcome, QualityGateOutcome::Passed);
     assert_eq!(post_gate.outcome, QualityGateOutcome::Failed);
-    assert_eq!(pre_gate.delegated_session_id, post_gate.delegated_session_id);
+    assert_eq!(
+        pre_gate.delegated_session_id,
+        post_gate.delegated_session_id
+    );
     assert_eq!(pre_gate.parent_session_id, post_gate.parent_session_id);
 }
 
@@ -70,6 +84,8 @@ fn subagent_rollup_links_delegated_session_to_parent() {
         anchor_ticket_id: None,
         parent_session_id: None,
         spawned_session_id: None,
+        emitted_handoff_ids: vec![],
+        picked_up_handoff_ids: vec![],
     };
 
     let context = SessionRuntimeContext {
@@ -91,7 +107,8 @@ fn subagent_rollup_links_delegated_session_to_parent() {
     };
 
     let rollups = compute_subagent_rollups(&parent_record, Some(&context));
-    let delegated_rollup = rollups.get(run_id).expect("delegated rollup should exist");
+    let delegated_rollup =
+        rollups.get(run_id).expect("delegated rollup should exist");
 
     assert_eq!(delegated_rollup.session_id, delegated_session_id);
     assert_eq!(
@@ -204,6 +221,8 @@ fn subagent_rollup_aggregates_token_cost_model_per_delegated_session() {
         anchor_ticket_id: None,
         parent_session_id: None,
         spawned_session_id: None,
+        emitted_handoff_ids: vec![],
+        picked_up_handoff_ids: vec![],
     };
 
     let context = SessionRuntimeContext {
@@ -225,7 +244,7 @@ fn subagent_rollup_aggregates_token_cost_model_per_delegated_session() {
     };
 
     let rollups = compute_subagent_rollups(&parent_record, Some(&context));
-    
+
     // Note: Current compute_subagent_rollups aggregates all turns into the main session.
     // For proper per-delegated-session attribution, event_meta would need a run_id field.
     // This test documents the current behavior: all turns aggregate to the parent session_id key.
@@ -301,7 +320,8 @@ fn data_model_supports_per_model_satisfactory_work_rate_query() {
     };
 
     // Collect into queryable structures
-    let mut rollups_by_model: HashMap<String, Vec<SubAgentRollup>> = HashMap::new();
+    let mut rollups_by_model: HashMap<String, Vec<SubAgentRollup>> =
+        HashMap::new();
     rollups_by_model
         .entry(model.to_string())
         .or_default()
@@ -316,7 +336,9 @@ fn data_model_supports_per_model_satisfactory_work_rate_query() {
     gates_by_session.insert(delegated_2_id.to_string(), post_gate_2);
 
     // Query: For model M, compute satisfactory-work rate
-    let model_rollups = rollups_by_model.get(model).expect("model should have rollups");
+    let model_rollups = rollups_by_model
+        .get(model)
+        .expect("model should have rollups");
     let total_sessions = model_rollups.len();
     let passed_sessions = model_rollups
         .iter()
@@ -333,10 +355,7 @@ fn data_model_supports_per_model_satisfactory_work_rate_query() {
         .iter()
         .map(|r| r.input_tokens + r.output_tokens)
         .sum();
-    let total_cost: f64 = model_rollups
-        .iter()
-        .filter_map(|r| r.cost_usd)
-        .sum();
+    let total_cost: f64 = model_rollups.iter().filter_map(|r| r.cost_usd).sum();
 
     let satisfactory_work_rate = passed_sessions as f64 / total_sessions as f64;
 
@@ -349,8 +368,14 @@ fn data_model_supports_per_model_satisfactory_work_rate_query() {
     assert!((satisfactory_work_rate - 0.5).abs() < 0.0001); // 1/2 = 0.5
 
     // Verify parent_session_id links are intact
-    assert_eq!(rollup_1.parent_session_id.as_deref(), Some(parent_session_id));
-    assert_eq!(rollup_2.parent_session_id.as_deref(), Some(parent_session_id));
+    assert_eq!(
+        rollup_1.parent_session_id.as_deref(),
+        Some(parent_session_id)
+    );
+    assert_eq!(
+        rollup_2.parent_session_id.as_deref(),
+        Some(parent_session_id)
+    );
 }
 
 #[test]

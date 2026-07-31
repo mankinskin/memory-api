@@ -19,6 +19,10 @@ pub struct PersistedSessionManifest {
     pub parent_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spawned_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub emitted_handoff_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub picked_up_handoff_ids: Vec<String>,
 }
 
 impl From<&SessionRecord> for PersistedSessionManifest {
@@ -35,6 +39,8 @@ impl From<&SessionRecord> for PersistedSessionManifest {
             anchor_ticket_id: record.anchor_ticket_id.clone(),
             parent_session_id: record.parent_session_id.clone(),
             spawned_session_id: record.spawned_session_id.clone(),
+            emitted_handoff_ids: record.emitted_handoff_ids.clone(),
+            picked_up_handoff_ids: record.picked_up_handoff_ids.clone(),
         }
     }
 }

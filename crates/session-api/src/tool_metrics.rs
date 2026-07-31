@@ -1,13 +1,30 @@
-use chrono::{DateTime, Duration, Utc};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use std::path::Path;
+use chrono::{
+    DateTime,
+    Duration,
+    Utc,
+};
+use serde::{
+    Deserialize,
+    Serialize,
+};
+use std::{
+    collections::BTreeMap,
+    path::Path,
+};
 
-use crate::{CopilotHookEvent, SessionError, SessionRecord, SessionRole};
+use crate::{
+    CopilotHookEvent,
+    SessionError,
+    SessionRecord,
+    SessionRole,
+};
 
 /// Trait for estimating token counts from character counts.
 pub trait TokenEstimator {
-    fn estimate_tokens(&self, chars: u64) -> f64;
+    fn estimate_tokens(
+        &self,
+        chars: u64,
+    ) -> f64;
 }
 
 /// Default token estimator using a fixed chars-per-token ratio.
@@ -25,7 +42,10 @@ impl Default for CharsPerTokenEstimator {
 }
 
 impl TokenEstimator for CharsPerTokenEstimator {
-    fn estimate_tokens(&self, chars: u64) -> f64 {
+    fn estimate_tokens(
+        &self,
+        chars: u64,
+    ) -> f64 {
         chars as f64 / self.chars_per_token
     }
 }
@@ -106,7 +126,10 @@ impl Default for GradedCostCalibration {
 
 /// Compute graded cost from estimated tokens using linear mapping.
 /// Maps [0, tokens_at_max] -> [1, scale_max], clamped.
-pub fn graded_cost(est_tokens: f64, cal: &GradedCostCalibration) -> u32 {
+pub fn graded_cost(
+    est_tokens: f64,
+    cal: &GradedCostCalibration,
+) -> u32 {
     if est_tokens <= 0.0 {
         return 1;
     }
@@ -267,7 +290,9 @@ pub fn compute_session_summary_with_events(
             .as_ref()
             .and_then(|meta| meta.tool_call_id.clone());
 
-        let entry = tools.entry(tool_name.clone()).or_insert_with(ToolCallSummary::new);
+        let entry = tools
+            .entry(tool_name.clone())
+            .or_insert_with(ToolCallSummary::new);
 
         entry.call_count += 1;
 
@@ -296,8 +321,9 @@ pub fn compute_session_summary_with_events(
         // Capture input size and duration from event_meta
         if let Some(event_meta) = &turn.event_meta {
             if let Some(args_json) = &event_meta.tool_arguments_json {
-                let input_chars =
-                    serde_json::to_string(args_json).unwrap_or_default().len() as u64;
+                let input_chars = serde_json::to_string(args_json)
+                    .unwrap_or_default()
+                    .len() as u64;
                 entry.input_char_sizes.push(input_chars);
             }
 
@@ -410,9 +436,14 @@ fn record_event_tool_call(
     // transcript carries no tool result payload, so leaving it unrecorded keeps
     // the unmeasured-tool cost policy fail-open instead of inventing a size.
     let output_chars = data.and_then(|data| {
-        ["output_chars", "response_chars", "outputChars", "responseChars"]
-            .iter()
-            .find_map(|key| data.get(*key)?.as_u64())
+        [
+            "output_chars",
+            "response_chars",
+            "outputChars",
+            "responseChars",
+        ]
+        .iter()
+        .find_map(|key| data.get(*key)?.as_u64())
     });
     let output_source = output_chars.map(|_| {
         json_str(data, &["output_source", "outputSource"])
@@ -453,7 +484,9 @@ fn record_event_tool_call(
         }
     }
 
-    let entry = tools.entry(tool_name.clone()).or_insert_with(ToolCallSummary::new);
+    let entry = tools
+        .entry(tool_name.clone())
+        .or_insert_with(ToolCallSummary::new);
     entry.call_count += 1;
 
     let result_code = json_str(data, &["result_code", "resultCode"]);
@@ -473,7 +506,9 @@ fn record_event_tool_call(
     }
 
     let mut output_slot = None;
-    if let (Some(output_chars), Some(output_source)) = (output_chars, output_source) {
+    if let (Some(output_chars), Some(output_source)) =
+        (output_chars, output_source)
+    {
         entry.output_char_sizes.push(output_chars);
         entry.output_source.push(output_source);
         output_slot = Some(entry.output_char_sizes.len() - 1);
@@ -553,19 +588,20 @@ pub fn aggregate_with_cost(
 
     for summary in &filtered_summaries {
         for (tool_name, call_summary) in &summary.tools {
-            let entry = tool_data.entry(tool_name.clone()).or_insert_with(|| {
-                ToolAggregation {
-                    call_count: 0,
-                    success_count: 0,
-                    fail_count: 0,
-                    timeout_count: 0,
-                    hang_count: 0,
-                    output_chars: Vec::new(),
-                    input_chars: Vec::new(),
-                    durations: Vec::new(),
-                    output_source_counts: BTreeMap::new(),
-                }
-            });
+            let entry =
+                tool_data.entry(tool_name.clone()).or_insert_with(|| {
+                    ToolAggregation {
+                        call_count: 0,
+                        success_count: 0,
+                        fail_count: 0,
+                        timeout_count: 0,
+                        hang_count: 0,
+                        output_chars: Vec::new(),
+                        input_chars: Vec::new(),
+                        durations: Vec::new(),
+                        output_source_counts: BTreeMap::new(),
+                    }
+                });
 
             entry.call_count += call_summary.call_count;
             entry.success_count += call_summary.success_count;
@@ -605,7 +641,8 @@ pub fn aggregate_with_cost(
         let p95_output_chars = percentile(&sorted_output, 95);
         let max_output_chars = sorted_output.last().copied().unwrap_or(0);
 
-        let est_mean_output_tokens = estimator.estimate_tokens(mean_output_chars as u64);
+        let est_mean_output_tokens =
+            estimator.estimate_tokens(mean_output_chars as u64);
         let est_p90_output_tokens = estimator.estimate_tokens(p90_output_chars);
 
         let mean_input_chars = if data.input_chars.is_empty() {
@@ -672,9 +709,11 @@ pub fn aggregate_with_cost(
         session_count,
         turn_count: total_turn_count,
         chars_per_token: match estimator as &dyn TokenEstimator {
-            e if std::ptr::eq(e as *const _, &CharsPerTokenEstimator::default() as *const _) => {
-                CharsPerTokenEstimator::default().chars_per_token
-            }
+            e if std::ptr::eq(
+                e as *const _,
+                &CharsPerTokenEstimator::default() as *const _,
+            ) =>
+                CharsPerTokenEstimator::default().chars_per_token,
             _ => 4.0, // fallback
         },
         window: ToolMetricsWindowDescription {
@@ -701,7 +740,10 @@ struct ToolAggregation {
     output_source_counts: BTreeMap<String, u64>,
 }
 
-fn percentile(sorted_values: &[u64], p: u8) -> u64 {
+fn percentile(
+    sorted_values: &[u64],
+    p: u8,
+) -> u64 {
     if sorted_values.is_empty() {
         return 0;
     }
@@ -713,7 +755,10 @@ fn percentile(sorted_values: &[u64], p: u8) -> u64 {
     sorted_values[rank.saturating_sub(1)]
 }
 
-fn percentile_i64(sorted_values: &[i64], p: u8) -> i64 {
+fn percentile_i64(
+    sorted_values: &[i64],
+    p: u8,
+) -> i64 {
     if sorted_values.is_empty() {
         return 0;
     }
@@ -726,38 +771,46 @@ fn percentile_i64(sorted_values: &[i64], p: u8) -> i64 {
 }
 
 /// Write a tool metrics rollup to a file.
-pub fn write_rollup(path: &Path, report: ToolMetricsReport) -> Result<(), SessionError> {
-    use std::fs;
-    use std::io::Write;
-    
+pub fn write_rollup(
+    path: &Path,
+    report: ToolMetricsReport,
+) -> Result<(), SessionError> {
+    use std::{
+        fs,
+        io::Write,
+    };
+
     let rollup = ToolMetricsRollup {
         schema_version: TOOL_METRICS_SCHEMA_VERSION,
         report,
     };
-    
-    let json = serde_json::to_string_pretty(&rollup)
-        .map_err(|source| SessionError::Serialize { 
+
+    let json = serde_json::to_string_pretty(&rollup).map_err(|source| {
+        SessionError::Serialize {
             path: path.to_path_buf(),
             source,
-        })?;
-    
+        }
+    })?;
+
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|source| SessionError::Io {
             path: parent.to_path_buf(),
             source,
         })?;
     }
-    
-    let mut file = fs::File::create(path).map_err(|source| SessionError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    
-    file.write_all(json.as_bytes()).map_err(|source| SessionError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    
+
+    let mut file =
+        fs::File::create(path).map_err(|source| SessionError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+
+    file.write_all(json.as_bytes())
+        .map_err(|source| SessionError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+
     Ok(())
 }
 
@@ -770,16 +823,16 @@ pub fn aggregate_multi_store(
 ) -> Result<ToolMetricsReport, SessionError> {
     // Import here to avoid circular dependencies
     use crate::SessionStoreConfig;
-    
+
     let mut all_summaries = Vec::new();
-    
+
     for store_root in store_roots {
         let config = SessionStoreConfig::new(store_root, "default");
-        
+
         // Get summaries from this store using the same logic as tool_metrics()
         // but don't aggregate yet - just collect
         let sessions_root = store_root.join("sessions");
-        
+
         if !sessions_root.exists() {
             continue;
         }
@@ -795,12 +848,11 @@ pub fn aggregate_multi_store(
                 source,
             })?;
 
-            let file_type = entry.file_type().map_err(|source| {
-                SessionError::Io {
+            let file_type =
+                entry.file_type().map_err(|source| SessionError::Io {
                     path: entry.path(),
                     source,
-                }
-            })?;
+                })?;
 
             if !file_type.is_dir() {
                 continue;
@@ -812,8 +864,12 @@ pub fn aggregate_multi_store(
             let tool_metrics_path = entry.path().join("tool-metrics.json");
 
             if tool_metrics_path.exists() {
-                if let Ok(content) = std::fs::read_to_string(&tool_metrics_path) {
-                    if let Ok(summary) = serde_json::from_str::<SessionToolMetricsSummary>(&content) {
+                if let Ok(content) = std::fs::read_to_string(&tool_metrics_path)
+                {
+                    if let Ok(summary) = serde_json::from_str::<
+                        SessionToolMetricsSummary,
+                    >(&content)
+                    {
                         if !summary.is_empty() {
                             all_summaries.push(summary);
                             continue;
@@ -824,11 +880,16 @@ pub fn aggregate_multi_store(
 
             // Otherwise recompute from the transcript plus the event stream.
             if let Ok(record) = config.read_session(&session_id) {
-                let events = std::fs::read_to_string(entry.path().join("events.json"))
+                let events = std::fs::read_to_string(
+                    entry.path().join("events.json"),
+                )
+                .ok()
+                .and_then(|content| {
+                    serde_json::from_str::<crate::PersistedSessionEvents>(
+                        &content,
+                    )
                     .ok()
-                    .and_then(|content| {
-                        serde_json::from_str::<crate::PersistedSessionEvents>(&content).ok()
-                    });
+                });
                 let estimator = CharsPerTokenEstimator::default();
                 let summary = compute_session_summary_with_events(
                     &record,
@@ -845,13 +906,23 @@ pub fn aggregate_multi_store(
 
     let estimator = CharsPerTokenEstimator::default();
     let cal = GradedCostCalibration::default();
-    Ok(aggregate_with_cost(all_summaries, window, &estimator, Some(cal)))
+    Ok(aggregate_with_cost(
+        all_summaries,
+        window,
+        &estimator,
+        Some(cal),
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{SessionMetadata, SessionTurn, SessionTurnEventMeta, SESSION_SCHEMA_VERSION};
+    use crate::{
+        SESSION_SCHEMA_VERSION,
+        SessionMetadata,
+        SessionTurn,
+        SessionTurnEventMeta,
+    };
     use chrono::TimeZone;
 
     fn sample_time() -> DateTime<Utc> {
@@ -970,6 +1041,8 @@ mod tests {
             anchor_ticket_id: None,
             parent_session_id: None,
             spawned_session_id: None,
+            emitted_handoff_ids: Vec::new(),
+            picked_up_handoff_ids: Vec::new(),
         };
 
         let estimator = CharsPerTokenEstimator::default();
@@ -979,7 +1052,10 @@ mod tests {
         assert_eq!(tool_summary.call_count, 2);
         assert_eq!(tool_summary.success_count, 1);
         assert_eq!(tool_summary.output_char_sizes.len(), 1);
-        assert_eq!(tool_summary.output_char_sizes[0], "success output".chars().count() as u64);
+        assert_eq!(
+            tool_summary.output_char_sizes[0],
+            "success output".chars().count() as u64
+        );
     }
 
     #[test]
@@ -1071,6 +1147,8 @@ mod tests {
             anchor_ticket_id: None,
             parent_session_id: None,
             spawned_session_id: None,
+            emitted_handoff_ids: Vec::new(),
+            picked_up_handoff_ids: Vec::new(),
         };
 
         let estimator = CharsPerTokenEstimator::default();
@@ -1094,23 +1172,23 @@ mod tests {
             scale_max: 100,
             tokens_at_max: 8000.0,
         };
-        
+
         // Zero maps to floor
         assert_eq!(graded_cost(0.0, &cal), 1);
-        
+
         // Below zero maps to floor
         assert_eq!(graded_cost(-10.0, &cal), 1);
-        
+
         // At anchor maps to ceiling
         assert_eq!(graded_cost(8000.0, &cal), 100);
-        
+
         // Above anchor clamps to ceiling
         assert_eq!(graded_cost(20000.0, &cal), 100);
-        
+
         // Mid-range linear mapping
-        assert_eq!(graded_cost(4000.0, &cal), 50);  // half of anchor -> half of scale
-        assert_eq!(graded_cost(800.0, &cal), 10);  // 10% of anchor -> 10% of scale
-        assert_eq!(graded_cost(80.0, &cal), 1);  // 1% of anchor -> 1% of scale (clamped to floor)
+        assert_eq!(graded_cost(4000.0, &cal), 50); // half of anchor -> half of scale
+        assert_eq!(graded_cost(800.0, &cal), 10); // 10% of anchor -> 10% of scale
+        assert_eq!(graded_cost(80.0, &cal), 1); // 1% of anchor -> 1% of scale (clamped to floor)
     }
 
     #[test]
@@ -1119,10 +1197,10 @@ mod tests {
             scale_max: 50,
             tokens_at_max: 100.0,
         };
-        
+
         // Floor clamp
         assert_eq!(graded_cost(0.1, &cal), 1);
-        
+
         // Ceiling clamp
         assert_eq!(graded_cost(200.0, &cal), 50);
     }
@@ -1142,29 +1220,27 @@ mod tests {
                 oldest_session_date: Some(sample_time_offset(-10)),
                 newest_session_date: Some(sample_time()),
             },
-            tools: vec![
-                ToolTokenStats {
-                    tool_name: "test_tool".to_string(),
-                    call_count: 10,
-                    success_count: 9,
-                    fail_count: 1,
-                    timeout_count: 0,
-                    hang_count: 0,
-                    total_output_chars: 1000,
-                    mean_output_chars: 100.0,
-                    p50_output_chars: 90,
-                    p90_output_chars: 150,
-                    p95_output_chars: 180,
-                    max_output_chars: 200,
-                    est_mean_output_tokens: 25.0,
-                    est_p90_output_tokens: 37.5,
-                    mean_input_chars: 50.0,
-                    p50_duration_ms: Some(100),
-                    p95_duration_ms: Some(500),
-                    cost: Some(25),
-                    output_source_counts: BTreeMap::new(),
-                },
-            ],
+            tools: vec![ToolTokenStats {
+                tool_name: "test_tool".to_string(),
+                call_count: 10,
+                success_count: 9,
+                fail_count: 1,
+                timeout_count: 0,
+                hang_count: 0,
+                total_output_chars: 1000,
+                mean_output_chars: 100.0,
+                p50_output_chars: 90,
+                p90_output_chars: 150,
+                p95_output_chars: 180,
+                max_output_chars: 200,
+                est_mean_output_tokens: 25.0,
+                est_p90_output_tokens: 37.5,
+                mean_input_chars: 50.0,
+                p50_duration_ms: Some(100),
+                p95_duration_ms: Some(500),
+                cost: Some(25),
+                output_source_counts: BTreeMap::new(),
+            }],
         };
 
         let rollup = ToolMetricsRollup {
@@ -1173,7 +1249,8 @@ mod tests {
         };
 
         let serialized = serde_json::to_string(&rollup).unwrap();
-        let deserialized: ToolMetricsRollup = serde_json::from_str(&serialized).unwrap();
+        let deserialized: ToolMetricsRollup =
+            serde_json::from_str(&serialized).unwrap();
 
         assert_eq!(deserialized.report.tools[0].cost, Some(25));
         assert_eq!(deserialized.report.session_count, 10);
@@ -1255,7 +1332,9 @@ mod tests {
                         tool_arguments_json: Some(json!({"duration_ms": 200})),
                         result_code: Some("error".to_string()),
                         subagent_run_id: None,
-                        error_message: Some("Command failed with non-zero exit".to_string()),
+                        error_message: Some(
+                            "Command failed with non-zero exit".to_string(),
+                        ),
                         exit_code: Some(1),
                         event_id: None,
                         parent_event_id: None,
@@ -1288,10 +1367,14 @@ mod tests {
                     model: None,
                     event_meta: Some(SessionTurnEventMeta {
                         tool_success: Some(false),
-                        tool_arguments_json: Some(json!({"duration_ms": 305000})),
+                        tool_arguments_json: Some(
+                            json!({"duration_ms": 305000}),
+                        ),
                         result_code: Some("timeout".to_string()),
                         subagent_run_id: None,
-                        error_message: Some("Execution exceeded timeout cap".to_string()),
+                        error_message: Some(
+                            "Execution exceeded timeout cap".to_string(),
+                        ),
                         exit_code: None,
                         event_id: None,
                         parent_event_id: None,
@@ -1324,10 +1407,14 @@ mod tests {
                     model: None,
                     event_meta: Some(SessionTurnEventMeta {
                         tool_success: None,
-                        tool_arguments_json: Some(json!({"duration_ms": 50000})),
+                        tool_arguments_json: Some(
+                            json!({"duration_ms": 50000}),
+                        ),
                         result_code: Some("hang".to_string()),
                         subagent_run_id: None,
-                        error_message: Some("sync-terminal-state-ambiguous".to_string()),
+                        error_message: Some(
+                            "sync-terminal-state-ambiguous".to_string(),
+                        ),
                         exit_code: None,
                         event_id: None,
                         parent_event_id: None,
@@ -1356,6 +1443,8 @@ mod tests {
             anchor_ticket_id: None,
             parent_session_id: None,
             spawned_session_id: None,
+            emitted_handoff_ids: Vec::new(),
+            picked_up_handoff_ids: Vec::new(),
         };
 
         let estimator = CharsPerTokenEstimator::default();
@@ -1403,7 +1492,7 @@ mod tests {
             .find(|t| t.tool_name == "test_tool")
             .expect("test_tool should be in report");
         assert_eq!(test_tool_stats.fail_count, 1);
-        assert_eq!(test_tool_stats.p50_duration_ms, Some(100));  // nearest rank: ceil(0.5*2)=1, values[0]=100
+        assert_eq!(test_tool_stats.p50_duration_ms, Some(100)); // nearest rank: ceil(0.5*2)=1, values[0]=100
         assert_eq!(test_tool_stats.p95_duration_ms, Some(200));
 
         let slow_tool_stats = report
@@ -1425,7 +1514,12 @@ mod tests {
 
         // AC2: Verify error_message is preserved in the turn
         assert_eq!(
-            record.turns[1].event_meta.as_ref().unwrap().error_message.as_deref(),
+            record.turns[1]
+                .event_meta
+                .as_ref()
+                .unwrap()
+                .error_message
+                .as_deref(),
             Some("Command failed with non-zero exit")
         );
         assert_eq!(
@@ -1435,19 +1529,39 @@ mod tests {
 
         // AC3: Verify result_code distinguishes outcomes
         assert_eq!(
-            record.turns[0].event_meta.as_ref().unwrap().result_code.as_deref(),
+            record.turns[0]
+                .event_meta
+                .as_ref()
+                .unwrap()
+                .result_code
+                .as_deref(),
             Some("ok")
         );
         assert_eq!(
-            record.turns[1].event_meta.as_ref().unwrap().result_code.as_deref(),
+            record.turns[1]
+                .event_meta
+                .as_ref()
+                .unwrap()
+                .result_code
+                .as_deref(),
             Some("error")
         );
         assert_eq!(
-            record.turns[2].event_meta.as_ref().unwrap().result_code.as_deref(),
+            record.turns[2]
+                .event_meta
+                .as_ref()
+                .unwrap()
+                .result_code
+                .as_deref(),
             Some("timeout")
         );
         assert_eq!(
-            record.turns[3].event_meta.as_ref().unwrap().result_code.as_deref(),
+            record.turns[3]
+                .event_meta
+                .as_ref()
+                .unwrap()
+                .result_code
+                .as_deref(),
             Some("hang")
         );
 
@@ -1492,6 +1606,8 @@ mod tests {
             anchor_ticket_id: None,
             parent_session_id: None,
             spawned_session_id: None,
+            emitted_handoff_ids: Vec::new(),
+            picked_up_handoff_ids: Vec::new(),
         }
     }
 
@@ -1629,7 +1745,10 @@ mod tests {
         );
 
         let tool = &summary.tools["run_in_terminal"];
-        assert_eq!(tool.call_count, 1, "the late copy must not recount the call");
+        assert_eq!(
+            tool.call_count, 1,
+            "the late copy must not recount the call"
+        );
         assert_eq!(
             tool.output_char_sizes,
             vec![4096],
@@ -1747,11 +1866,7 @@ mod tests {
         }
 
         let summaries = vec![
-            make_summary(vec![
-                "hook_payload",
-                "spill_file",
-                "transcript_turn",
-            ]),
+            make_summary(vec!["hook_payload", "spill_file", "transcript_turn"]),
             make_summary(vec!["hook_payload", "unspecified"]),
         ];
 

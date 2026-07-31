@@ -144,6 +144,20 @@ pub enum SessionError {
     },
 
     #[error(
+        "handoff {handoff_id} was not found in any session's handoff backlog"
+    )]
+    HandoffNotFound { handoff_id: String },
+
+    #[error(
+        "handoff {handoff_id} is already claimed by target session \
+         {target_session_id}"
+    )]
+    HandoffAlreadyClaimed {
+        handoff_id: String,
+        target_session_id: String,
+    },
+
+    #[error(
         "workflow graph for workspace session {workspace_session_id} is \
          structurally invalid: {issues}"
     )]

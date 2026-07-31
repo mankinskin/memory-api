@@ -218,6 +218,8 @@ impl SessionCaptureRequest {
                 anchor_ticket_id: None,
                 parent_session_id: None,
                 spawned_session_id: None,
+                emitted_handoff_ids: Vec::new(),
+                picked_up_handoff_ids: Vec::new(),
             },
             payload.events,
         ))
@@ -260,54 +262,60 @@ struct TranscriptEventEnvelope {
 impl TranscriptEventEnvelope {
     fn event_meta(&self) -> Option<SessionTurnEventMeta> {
         // Extract token and model attribution from data_json (ticket 6549b6a7)
-        let (input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, model_id) =
-            if let Some(data) = &self.data_json {
-                let usage = data.get("usage");
-                let input_tokens = usage
-                    .and_then(|u| u.get("input_tokens"))
-                    .and_then(|v| v.as_u64());
-                let output_tokens = usage
-                    .and_then(|u| u.get("output_tokens"))
-                    .and_then(|v| v.as_u64());
-                let cache_read_tokens = usage
-                    .and_then(|u| u.get("cache_read_tokens"))
-                    .and_then(|v| v.as_u64());
-                let cache_write_tokens = usage
-                    .and_then(|u| u.get("cache_write_tokens"))
-                    .and_then(|v| v.as_u64());
-                let model_id = data
-                    .get("model")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                (
-                    input_tokens,
-                    output_tokens,
-                    cache_read_tokens,
-                    cache_write_tokens,
-                    model_id,
-                )
-            } else {
-                (None, None, None, None, None)
-            };
+        let (
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_write_tokens,
+            model_id,
+        ) = if let Some(data) = &self.data_json {
+            let usage = data.get("usage");
+            let input_tokens = usage
+                .and_then(|u| u.get("input_tokens"))
+                .and_then(|v| v.as_u64());
+            let output_tokens = usage
+                .and_then(|u| u.get("output_tokens"))
+                .and_then(|v| v.as_u64());
+            let cache_read_tokens = usage
+                .and_then(|u| u.get("cache_read_tokens"))
+                .and_then(|v| v.as_u64());
+            let cache_write_tokens = usage
+                .and_then(|u| u.get("cache_write_tokens"))
+                .and_then(|v| v.as_u64());
+            let model_id = data
+                .get("model")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            (
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_write_tokens,
+                model_id,
+            )
+        } else {
+            (None, None, None, None, None)
+        };
 
         // Extract error/exit/result_code from data_json (ticket 84c7757d)
-        let (error_message, exit_code, result_code) = if let Some(data) = &self.data_json {
-            let error_message = data
-                .get("error_message")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let exit_code = data
-                .get("exit_code")
-                .and_then(|v| v.as_i64())
-                .map(|v| v as i32);
-            let result_code = data
-                .get("result_code")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            (error_message, exit_code, result_code)
-        } else {
-            (None, None, None)
-        };
+        let (error_message, exit_code, result_code) =
+            if let Some(data) = &self.data_json {
+                let error_message = data
+                    .get("error_message")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let exit_code = data
+                    .get("exit_code")
+                    .and_then(|v| v.as_i64())
+                    .map(|v| v as i32);
+                let result_code = data
+                    .get("result_code")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                (error_message, exit_code, result_code)
+            } else {
+                (None, None, None)
+            };
 
         let meta = SessionTurnEventMeta {
             event_id: self.event_id.clone(),

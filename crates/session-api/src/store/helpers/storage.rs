@@ -220,6 +220,8 @@ pub(super) fn merge_manifest(
         incoming.anchor_ticket_id = incoming.anchor_ticket_id.or(existing.anchor_ticket_id);
         incoming.parent_session_id = incoming.parent_session_id.or(existing.parent_session_id);
         incoming.spawned_session_id = incoming.spawned_session_id.or(existing.spawned_session_id);
+        extend_unique(&mut incoming.emitted_handoff_ids, existing.emitted_handoff_ids);
+        extend_unique(&mut incoming.picked_up_handoff_ids, existing.picked_up_handoff_ids);
     }
 
     incoming

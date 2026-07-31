@@ -1,7 +1,14 @@
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use std::collections::HashMap;
 
-use crate::{SessionRecord, SessionRole, SessionRuntimeContext};
+use crate::{
+    SessionRecord,
+    SessionRole,
+    SessionRuntimeContext,
+};
 
 /// Per-sub-agent cost and usage rollup.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -71,19 +78,19 @@ pub fn compute_subagent_rollups(
         if let Some(meta) = &turn.event_meta {
             // Extract model_id from event_meta or turn.model
             let model_id = meta.model_id.as_ref().or(turn.model.as_ref());
-            
+
             // Count this turn if it's an assistant turn
             let is_assistant = turn.role == SessionRole::Assistant;
-            
+
             // Count tool calls (tool turns)
             let is_tool_call = turn.role == SessionRole::Tool;
-            
+
             // Aggregate tokens
             let input = meta.input_tokens.unwrap_or(0);
             let output = meta.output_tokens.unwrap_or(0);
             let cache_read = meta.cache_read_tokens.unwrap_or(0);
             let cache_write = meta.cache_write_tokens.unwrap_or(0);
-            
+
             // Real per-sub-agent attribution (ticket b7c61f0e): when the
             // capture hook has resolved this turn's owning `runSubagent`
             // span via `parent_event_id` ancestry, group into that span's
@@ -97,60 +104,62 @@ pub fn compute_subagent_rollups(
                 .clone()
                 .unwrap_or_else(|| record.session_id.clone());
             let is_inline_subagent_span = rollup_key != record.session_id;
-            
-            let rollup = rollups.entry(rollup_key.clone()).or_insert_with(|| {
-                SubAgentRollup {
-                    run_id: rollup_key.clone(),
-                    session_id: record.session_id.clone(),
-                    parent_session_id: if is_inline_subagent_span {
-                        Some(record.session_id.clone())
-                    } else {
-                        None
-                    },
-                    model: None,
-                    turn_count: 0,
-                    tool_call_count: 0,
-                    input_tokens: 0,
-                    output_tokens: 0,
-                    cache_read_tokens: 0,
-                    cache_write_tokens: 0,
-                    cost_usd: None,
-                    tokens_estimated: None,
-                    outcome: None,
-                    wall_time_secs: None,
-                }
-            });
-            
+
+            let rollup =
+                rollups.entry(rollup_key.clone()).or_insert_with(|| {
+                    SubAgentRollup {
+                        run_id: rollup_key.clone(),
+                        session_id: record.session_id.clone(),
+                        parent_session_id: if is_inline_subagent_span {
+                            Some(record.session_id.clone())
+                        } else {
+                            None
+                        },
+                        model: None,
+                        turn_count: 0,
+                        tool_call_count: 0,
+                        input_tokens: 0,
+                        output_tokens: 0,
+                        cache_read_tokens: 0,
+                        cache_write_tokens: 0,
+                        cost_usd: None,
+                        tokens_estimated: None,
+                        outcome: None,
+                        wall_time_secs: None,
+                    }
+                });
+
             if is_assistant {
                 rollup.turn_count += 1;
             }
-            
+
             if is_tool_call {
                 rollup.tool_call_count += 1;
             }
-            
+
             rollup.input_tokens += input;
             rollup.output_tokens += output;
             rollup.cache_read_tokens += cache_read;
             rollup.cache_write_tokens += cache_write;
-            
+
             // Set model if we have one
             if rollup.model.is_none() && model_id.is_some() {
                 rollup.model = model_id.cloned();
             }
-            
+
             // Aggregate cost
             if let Some(cost) = meta.cost_usd {
                 rollup.cost_usd = Some(rollup.cost_usd.unwrap_or(0.0) + cost);
             }
-            
+
             // Aggregate estimated tokens from payload sizes (ticket 9d527ad1)
             if let Some(est) = meta.tokens_estimated {
-                rollup.tokens_estimated = Some(rollup.tokens_estimated.unwrap_or(0) + est);
+                rollup.tokens_estimated =
+                    Some(rollup.tokens_estimated.unwrap_or(0) + est);
             }
         }
     }
-    
+
     // Compute wall time from context if available
     if let Some(ctx) = context {
         for run in &ctx.runs {
@@ -168,7 +177,12 @@ pub fn compute_subagent_rollups(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{SessionMetadata, SessionTurn, SessionTurnEventMeta, SessionLinks};
+    use crate::{
+        SessionLinks,
+        SessionMetadata,
+        SessionTurn,
+        SessionTurnEventMeta,
+    };
     use chrono::Utc;
 
     #[test]
@@ -269,6 +283,8 @@ mod tests {
             anchor_ticket_id: None,
             parent_session_id: None,
             spawned_session_id: None,
+            emitted_handoff_ids: Vec::new(),
+            picked_up_handoff_ids: Vec::new(),
         };
 
         let rollups = compute_subagent_rollups(&record, None);
@@ -288,8 +304,8 @@ mod tests {
     #[test]
     fn query_surface_returns_rollups_for_session_with_context() {
         use crate::SessionStoreConfig;
-        use tempfile::TempDir;
         use chrono::Utc;
+        use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
         let config = SessionStoreConfig::new(
@@ -299,8 +315,11 @@ mod tests {
 
         // Create a simple session using the capture API
         let session_id = "test-session-1";
-        use crate::hook::{CopilotHookPayload, CopilotHookMessage};
-        
+        use crate::hook::{
+            CopilotHookMessage,
+            CopilotHookPayload,
+        };
+
         let payload = CopilotHookPayload {
             session_id: session_id.to_string(),
             workspace_slug: "test-workspace".to_string(),
@@ -359,12 +378,13 @@ mod tests {
 
         // Query the rollups
         let rollups = config.subagent_rollups(session_id).unwrap();
-        
+
         // Verify we got rollups
         assert!(!rollups.is_empty(), "Should have at least one rollup");
-        
+
         // Check the main session rollup
-        let rollup = rollups.get(session_id).expect("Should have session rollup");
+        let rollup =
+            rollups.get(session_id).expect("Should have session rollup");
         assert_eq!(rollup.session_id, session_id);
         assert_eq!(rollup.turn_count, 1); // One assistant turn
         assert_eq!(rollup.input_tokens, 500);
@@ -493,7 +513,7 @@ mod tests {
                         cache_write_tokens: None,
                         cost_usd: Some(0.05),
                         model_id: Some("claude-opus-4".to_string()),
-                        request_bytes: None,  // AC4: null, not zero
+                        request_bytes: None, // AC4: null, not zero
                         request_chars: None,
                         response_bytes: None,
                         response_chars: None,
@@ -510,23 +530,30 @@ mod tests {
             anchor_ticket_id: None,
             parent_session_id: None,
             spawned_session_id: None,
+            emitted_handoff_ids: Vec::new(),
+            picked_up_handoff_ids: Vec::new(),
         };
 
         let rollups = compute_subagent_rollups(&record, None);
-        let rollup = rollups.get("session-with-estimates").expect("rollup should exist");
+        let rollup = rollups
+            .get("session-with-estimates")
+            .expect("rollup should exist");
 
         // AC1, AC2: Verify non-zero aggregation
-        assert_eq!(rollup.tokens_estimated, Some(187), 
-                   "tokens_estimated should aggregate: 150 + 37 = 187");
+        assert_eq!(
+            rollup.tokens_estimated,
+            Some(187),
+            "tokens_estimated should aggregate: 150 + 37 = 187"
+        );
         assert_eq!(rollup.tool_call_count, 2, "should count both tool calls");
         assert_eq!(rollup.turn_count, 1, "should count one assistant turn");
-        
+
         // AC4: Verify the turn without telemetry contributed null, not zero
         // (the aggregate is Some(187), not Some(187+0), proving null was preserved)
-        
+
         // AC5: cost_usd remains Some() because the assistant turn had it
         assert_eq!(rollup.cost_usd, Some(0.05));
-        
+
         // Verify model attribution
         assert_eq!(rollup.model.as_deref(), Some("claude-opus-4"));
     }
@@ -553,56 +580,59 @@ mod tests {
                 protocol_version: None,
                 worktree: None,
             },
-            turns: vec![
-                SessionTurn {
-                    sequence: 0,
-                    role: SessionRole::Assistant,
-                    content: "No tool calls here".to_string(),
-                    captured_at: Utc::now(),
-                    tool_name: None,
-                    model: Some("gpt-4".to_string()),
-                    event_meta: Some(SessionTurnEventMeta {
-                        event_id: None,
-                        parent_event_id: None,
-                        event_type: None,
-                        turn_id: None,
-                        message_id: None,
-                        tool_call_id: None,
-                        tool_success: None,
-                        reasoning_text: None,
-                        tool_requests_json: None,
-                        tool_arguments_json: None,
-                        input_tokens: Some(100),
-                        output_tokens: Some(50),
-                        cache_read_tokens: None,
-                        cache_write_tokens: None,
-                        cost_usd: Some(0.01),
-                        model_id: Some("gpt-4".to_string()),
-                        request_bytes: None,
-                        request_chars: None,
-                        response_bytes: None,
-                        response_chars: None,
-                        tokens_estimated: None, // AC4: null for non-MCP
-                        error_message: None,
-                        exit_code: None,
-                        result_code: None,
-                        subagent_run_id: None,
-                    }),
-                },
-            ],
+            turns: vec![SessionTurn {
+                sequence: 0,
+                role: SessionRole::Assistant,
+                content: "No tool calls here".to_string(),
+                captured_at: Utc::now(),
+                tool_name: None,
+                model: Some("gpt-4".to_string()),
+                event_meta: Some(SessionTurnEventMeta {
+                    event_id: None,
+                    parent_event_id: None,
+                    event_type: None,
+                    turn_id: None,
+                    message_id: None,
+                    tool_call_id: None,
+                    tool_success: None,
+                    reasoning_text: None,
+                    tool_requests_json: None,
+                    tool_arguments_json: None,
+                    input_tokens: Some(100),
+                    output_tokens: Some(50),
+                    cache_read_tokens: None,
+                    cache_write_tokens: None,
+                    cost_usd: Some(0.01),
+                    model_id: Some("gpt-4".to_string()),
+                    request_bytes: None,
+                    request_chars: None,
+                    response_bytes: None,
+                    response_chars: None,
+                    tokens_estimated: None, // AC4: null for non-MCP
+                    error_message: None,
+                    exit_code: None,
+                    result_code: None,
+                    subagent_run_id: None,
+                }),
+            }],
             links: SessionLinks::default(),
             track_id: None,
             anchor_ticket_id: None,
             parent_session_id: None,
             spawned_session_id: None,
+            emitted_handoff_ids: Vec::new(),
+            picked_up_handoff_ids: Vec::new(),
         };
 
         let rollups = compute_subagent_rollups(&record, None);
-        let rollup = rollups.get("session-no-mcp").expect("rollup should exist");
+        let rollup =
+            rollups.get("session-no-mcp").expect("rollup should exist");
 
         // AC4, AC6: tokens_estimated should be None (not Some(0))
-        assert_eq!(rollup.tokens_estimated, None, 
-                   "tokens_estimated should be None when no MCP traffic exists");
+        assert_eq!(
+            rollup.tokens_estimated, None,
+            "tokens_estimated should be None when no MCP traffic exists"
+        );
         assert_eq!(rollup.tool_call_count, 0);
         assert_eq!(rollup.input_tokens, 100);
         assert_eq!(rollup.output_tokens, 50);

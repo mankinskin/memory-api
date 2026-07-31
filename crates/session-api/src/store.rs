@@ -20,6 +20,7 @@ use serde::{
 
 use crate::{
     CopilotHookPayload,
+    HandoffBacklogFilter,
     SESSION_SCHEMA_VERSION,
     SessionAuditReport,
     SessionAuditSelector,
@@ -141,6 +142,7 @@ mod config {
     include!("store/config/runtime_workflow.rs");
     include!("store/config/workflow.rs");
     include!("store/config/handoff_finish.rs");
+    include!("store/config/handoff_pickup.rs");
     include!("store/config/persistence.rs");
     include!("store/config/worktree_conflicts.rs");
     include!("store/config/tool_metrics.rs");
@@ -310,7 +312,10 @@ impl SessionTicketStateResolver for DefaultTicketStateResolver {
                 format!("invalid ticket id in URN {ticket_urn}: {error}")
             })?;
         self.with_ticket_store(&parsed.workspace_slug, |store| {
-            match store.get_indexed(&ticket_id).map_err(|error| error.to_string())? {
+            match store
+                .get_indexed(&ticket_id)
+                .map_err(|error| error.to_string())?
+            {
                 // A resolved ticket may legitimately have no recorded state; keep
                 // that distinct from an absent ticket, which is an
                 // unavailable-state error.
@@ -395,10 +400,7 @@ fn render_handoff_record_terminal(record: &SessionHandoffRecord) -> String {
         ));
     }
     if !record.target_files.is_empty() {
-        lines.push(format!(
-            "target_files: {}",
-            record.target_files.join(", ")
-        ));
+        lines.push(format!("target_files: {}", record.target_files.join(", ")));
     }
     if !record.open_escalations.is_empty() {
         lines.push(format!(
@@ -453,14 +455,21 @@ fn render_handoff_record_markdown(record: &SessionHandoffRecord) -> String {
 
     // Summary section
     sections.push("## Summary".to_string());
-    sections.push(format!("- **Workspace Session**: `{}`", record.workspace_session_id));
+    sections.push(format!(
+        "- **Workspace Session**: `{}`",
+        record.workspace_session_id
+    ));
     sections.push(format!("- **Outgoing Run**: `{}`", record.outgoing_run_id));
     sections.push(format!("- **Created**: {}", record.created_at.to_rfc3339()));
     if !record.objective.is_empty() {
         sections.push(format!("- **Objective**: {}", record.objective));
     }
-    let implementation_ready = !record.objective.is_empty() && record.open_escalations.is_empty();
-    sections.push(format!("- **Implementation Ready**: {}", implementation_ready));
+    let implementation_ready =
+        !record.objective.is_empty() && record.open_escalations.is_empty();
+    sections.push(format!(
+        "- **Implementation Ready**: {}",
+        implementation_ready
+    ));
     sections.push(String::new());
 
     // Resume command
@@ -533,8 +542,14 @@ fn render_handoff_record_markdown(record: &SessionHandoffRecord) -> String {
 
     // Workflow
     sections.push("## Workflow".to_string());
-    sections.push(format!("- **Nodes**: {}", record.workflow.workflow.nodes.len()));
-    sections.push(format!("- **Edges**: {}", record.workflow.workflow.edges.len()));
+    sections.push(format!(
+        "- **Nodes**: {}",
+        record.workflow.workflow.nodes.len()
+    ));
+    sections.push(format!(
+        "- **Edges**: {}",
+        record.workflow.workflow.edges.len()
+    ));
     let not_done = record
         .workflow
         .workflow
@@ -559,7 +574,11 @@ fn render_handoff_record_markdown(record: &SessionHandoffRecord) -> String {
     if !record.pinned_entities.is_empty() {
         sections.push("## Pinned Entities".to_string());
         for pin in &record.pinned_entities {
-            sections.push(format!("- `{}` ({})", pin.urn, format!("{:?}", pin.kind).to_lowercase()));
+            sections.push(format!(
+                "- `{}` ({})",
+                pin.urn,
+                format!("{:?}", pin.kind).to_lowercase()
+            ));
         }
         sections.push(String::new());
     }
@@ -569,8 +588,15 @@ fn render_handoff_record_markdown(record: &SessionHandoffRecord) -> String {
         sections.push("## Validation".to_string());
         for gate in &record.validation {
             let outcome = gate.outcome.as_deref().unwrap_or("-");
-            let required = if gate.required { "required" } else { "optional" };
-            sections.push(format!("- `{}`: {} ({})", gate.validation_spec_id, outcome, required));
+            let required = if gate.required {
+                "required"
+            } else {
+                "optional"
+            };
+            sections.push(format!(
+                "- `{}`: {} ({})",
+                gate.validation_spec_id, outcome, required
+            ));
         }
         sections.push(String::new());
     }
@@ -579,7 +605,10 @@ fn render_handoff_record_markdown(record: &SessionHandoffRecord) -> String {
     if !record.workflow.diagnostics.is_empty() {
         sections.push("## Diagnostics".to_string());
         for diag in &record.workflow.diagnostics {
-            sections.push(format!("- **{}** [{}]: {}", diag.node_id, diag.code, diag.message));
+            sections.push(format!(
+                "- **{}** [{}]: {}",
+                diag.node_id, diag.code, diag.message
+            ));
         }
         sections.push(String::new());
     }
@@ -745,6 +774,8 @@ impl SessionStorePlan {
             anchor_ticket_id: manifest.anchor_ticket_id.clone(),
             parent_session_id: manifest.parent_session_id.clone(),
             spawned_session_id: manifest.spawned_session_id.clone(),
+            emitted_handoff_ids: manifest.emitted_handoff_ids.clone(),
+            picked_up_handoff_ids: manifest.picked_up_handoff_ids.clone(),
         };
         let estimator = crate::tool_metrics::CharsPerTokenEstimator::default();
         let summary = crate::tool_metrics::compute_session_summary_with_events(
@@ -757,7 +788,8 @@ impl SessionStorePlan {
         );
         // Create the sidecar lazily: a session with no observed tool call must
         // not leave an empty `tool-metrics.json` behind.
-        let tool_metrics_path = self.paths.session_dir.join("tool-metrics.json");
+        let tool_metrics_path =
+            self.paths.session_dir.join("tool-metrics.json");
         if summary.is_empty() {
             remove_file_if_exists(&tool_metrics_path)?;
         } else {

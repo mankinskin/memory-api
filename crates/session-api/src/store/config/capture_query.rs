@@ -111,6 +111,8 @@ impl SessionStoreConfig {
             anchor_ticket_id: manifest.anchor_ticket_id,
             parent_session_id: manifest.parent_session_id,
             spawned_session_id: manifest.spawned_session_id,
+            emitted_handoff_ids: manifest.emitted_handoff_ids,
+            picked_up_handoff_ids: manifest.picked_up_handoff_ids,
         })
     }
 

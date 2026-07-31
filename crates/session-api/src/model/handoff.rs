@@ -92,6 +92,10 @@ pub struct SessionHandoffRecord {
     pub outgoing_run_id: String,
     pub created_at: DateTime<Utc>,
     pub resume_command: String,
+    /// The session that picked this handoff up. `None` means the handoff is
+    /// unclaimed (target-less) and appears in the backlog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pinned_entities: Vec<SessionPinnedEntityHeader>,
     pub workflow: SessionWorkflowSnapshot,
@@ -123,6 +127,18 @@ pub struct SessionHandoffResult {
     pub record: SessionHandoffRecord,
     pub record_path: String,
     pub render: String,
+}
+
+/// Filter for querying the unclaimed-handoff backlog. Both fields are
+/// optional narrowing predicates; leave a field `None` to skip it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HandoffBacklogFilter {
+    /// Only include handoffs whose source session belongs to this track.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub track_id: Option<String>,
+    /// Only include handoffs emitted by this source session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -72,6 +72,7 @@ pub use hook::{
     copilot_payload_from_transcript_reader,
 };
 pub use model::{
+    HandoffBacklogFilter,
     RUNTIME_CONTEXT_SCHEMA_VERSION,
     SESSION_SCHEMA_VERSION,
     SessionFinishRecord,
@@ -137,10 +138,6 @@ pub use quality_gate::{
     post_delegation_gate,
     pre_delegation_gate,
 };
-pub use subagent_rollup::{
-    SubAgentRollup,
-    compute_subagent_rollups,
-};
 pub use store::{
     PersistedActiveWorkspaceSession,
     PersistedRuntimeContext,
@@ -154,6 +151,10 @@ pub use store::{
     SessionStorePlan,
     SessionWorktreeCheckInReceipt,
     SessionWorktreeCheckInRequest,
+};
+pub use subagent_rollup::{
+    SubAgentRollup,
+    compute_subagent_rollups,
 };
 pub use tool_metrics::{
     CharsPerTokenEstimator,

@@ -92,6 +92,8 @@ mod tests {
             anchor_ticket_id: None,
             parent_session_id: None,
             spawned_session_id: None,
+            emitted_handoff_ids: Vec::new(),
+            picked_up_handoff_ids: Vec::new(),
         }
     }
 

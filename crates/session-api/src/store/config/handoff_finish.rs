@@ -128,6 +128,7 @@ impl SessionStoreConfig {
             outgoing_run_id: context.active_run_id,
             created_at: chrono::Utc::now(),
             resume_command,
+            target_session_id: None,
             pinned_entities: view.pinned_headers,
             workflow,
             validation,
@@ -175,6 +176,25 @@ impl SessionStoreConfig {
         // record is the authoritative source of truth).
         if !target_tickets.is_empty() {
             let _ = self.mirror_handoff_to_tickets(&record, &target_tickets);
+        }
+
+        // Record this handoff as emitted by its source session (best-effort:
+        // the source session may not have a session.json yet, e.g. a
+        // workflow-only workspace session, and the handoff record itself
+        // remains the authoritative source of truth).
+        if let Ok(mut source_record) =
+            self.read_session(&record.workspace_session_id)
+        {
+            if !source_record
+                .emitted_handoff_ids
+                .iter()
+                .any(|id| id == &record.handoff_id)
+            {
+                source_record
+                    .emitted_handoff_ids
+                    .push(record.handoff_id.clone());
+                let _ = self.persist_record(source_record);
+            }
         }
 
         Ok(record)

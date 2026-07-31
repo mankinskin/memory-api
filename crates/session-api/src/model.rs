@@ -23,6 +23,7 @@ pub fn default_runtime_context_schema_version() -> u32 {
 mod workflow;
 
 pub use handoff::{
+    HandoffBacklogFilter,
     SessionFinishRecord,
     SessionFinishResult,
     SessionHandoffPackage,
@@ -361,6 +362,12 @@ pub struct SessionRecord {
     pub parent_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spawned_session_id: Option<String>,
+    /// Handoff ids created (emitted) by this session.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub emitted_handoff_ids: Vec<String>,
+    /// Handoff ids this session picked up (bound as target).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub picked_up_handoff_ids: Vec<String>,
 }
 
 impl SessionRecord {
@@ -477,6 +484,8 @@ mod tests {
             anchor_ticket_id: None,
             parent_session_id: None,
             spawned_session_id: None,
+            emitted_handoff_ids: Vec::new(),
+            picked_up_handoff_ids: Vec::new(),
         };
 
         let json = serde_json::to_string_pretty(&record).unwrap();
@@ -516,16 +525,40 @@ mod tests {
         let record: SessionRecord = serde_json::from_str(legacy_json).unwrap();
 
         // All four track fields must deserialize to None
-        assert_eq!(record.track_id, None, "track_id must be None for legacy sessions");
-        assert_eq!(record.anchor_ticket_id, None, "anchor_ticket_id must be None for legacy sessions");
-        assert_eq!(record.parent_session_id, None, "parent_session_id must be None for legacy sessions");
-        assert_eq!(record.spawned_session_id, None, "spawned_session_id must be None for legacy sessions");
+        assert_eq!(
+            record.track_id, None,
+            "track_id must be None for legacy sessions"
+        );
+        assert_eq!(
+            record.anchor_ticket_id, None,
+            "anchor_ticket_id must be None for legacy sessions"
+        );
+        assert_eq!(
+            record.parent_session_id, None,
+            "parent_session_id must be None for legacy sessions"
+        );
+        assert_eq!(
+            record.spawned_session_id, None,
+            "spawned_session_id must be None for legacy sessions"
+        );
 
         // Round-trip must not emit the track fields
         let reserialized = serde_json::to_string(&record).unwrap();
-        assert!(!reserialized.contains("track_id"), "track_id must not appear in JSON when None");
-        assert!(!reserialized.contains("anchor_ticket_id"), "anchor_ticket_id must not appear in JSON when None");
-        assert!(!reserialized.contains("parent_session_id"), "parent_session_id must not appear in JSON when None");
-        assert!(!reserialized.contains("spawned_session_id"), "spawned_session_id must not appear in JSON when None");
+        assert!(
+            !reserialized.contains("track_id"),
+            "track_id must not appear in JSON when None"
+        );
+        assert!(
+            !reserialized.contains("anchor_ticket_id"),
+            "anchor_ticket_id must not appear in JSON when None"
+        );
+        assert!(
+            !reserialized.contains("parent_session_id"),
+            "parent_session_id must not appear in JSON when None"
+        );
+        assert!(
+            !reserialized.contains("spawned_session_id"),
+            "spawned_session_id must not appear in JSON when None"
+        );
     }
 }
