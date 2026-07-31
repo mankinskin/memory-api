@@ -1,10 +1,12 @@
 id = "6de424b0-68ec-43c7-9d70-eb8d17305ab3"
 created_at = "2026-05-18T10:56:19.146718300+00:00"
 title = "[ticket-vscode] Validate Rust/WASM parity across desktop, web, and remote hosts"
-state = "in-implementation"
+state = "in-review"
 component = "ticket-vscode"
 depends_on = ["362448d4-ccf1-4b9d-90f3-d4577da83a65", "694d74b4-028b-4602-8090-d6200d577d4a"]
 effort = "1200"
+parts = [{ id = "d0b762d0-5bd6-4c90-bc55-f8da82094678", kind = "objective", path = "parts/d0b762d0-5bd6-4c90-bc55-f8da82094678.md", frozen = false, created_at = "2026-07-30T21:02:29.969150100Z" }, { id = "8804c383-9a62-4446-8064-e4e20df79988", kind = "validation", path = "parts/8804c383-9a62-4446-8064-e4e20df79988.md", frozen = false, created_at = "2026-07-30T21:02:29.973201300Z" }, { id = "be6b690a-907b-438c-a064-8bdf7191443e", kind = "objective", path = "parts/be6b690a-907b-438c-a064-8bdf7191443e.md", frozen = false, created_at = "2026-07-30T21:02:29.978011500Z" }]
 priority = "high"
 risk_level = "medium"
+status_summary = "Bulk triage 2026-07-31: acceptance criteria assessed as substantially met; moved for review verification."
 type = "tracker-improvement"

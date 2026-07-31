@@ -5,5 +5,6 @@ state = "done"
 component = "memory-matrix"
 depends_on = ["a9514081-35c2-4162-b62d-3baf4a14ec8b"]
 effort = "4k tokens"
+parts = [{ id = "9339b739-d3bc-477a-ab6a-0b3f326507c9", kind = "objective", path = "parts/9339b739-d3bc-477a-ab6a-0b3f326507c9.md", frozen = false, created_at = "2026-07-30T21:02:31.807886400Z" }, { id = "0d4069bd-e0c2-49c9-974b-31986290b461", kind = "validation", path = "parts/0d4069bd-e0c2-49c9-974b-31986290b461.md", frozen = false, created_at = "2026-07-30T21:02:31.811420900Z" }, { id = "7c66eca5-bed2-40a9-9197-2dded42ae35e", kind = "objective", path = "parts/7c66eca5-bed2-40a9-9197-2dded42ae35e.md", frozen = false, created_at = "2026-07-30T21:02:31.815133200Z" }]
 priority = "high"
 type = "tracker-improvement"

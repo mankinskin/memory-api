@@ -4,6 +4,7 @@ title = "[spec][P1] spec-api code references — symbol-level links to implement
 state = "done"
 component = "spec-api"
 depends_on = ["ad531f63-124b-4edd-b2b3-1f8a35173649"]
+parts = [{ id = "4aef4ddb-e4a3-4fef-834b-02f6eb06256f", kind = "objective", path = "parts/4aef4ddb-e4a3-4fef-834b-02f6eb06256f.md", frozen = false, created_at = "2026-07-30T21:05:26.315467900Z" }, { id = "9927e71e-17f5-41e2-989a-52da6877f01d", kind = "validation", path = "parts/9927e71e-17f5-41e2-989a-52da6877f01d.md", frozen = false, created_at = "2026-07-30T21:05:26.319210600Z" }, { id = "fdb8ccad-4feb-4cf5-a0e5-c74fa38f9942", kind = "objective", path = "parts/fdb8ccad-4feb-4cf5-a0e5-c74fa38f9942.md", frozen = false, created_at = "2026-07-30T21:05:26.323007Z" }]
 phase = "1"
 priority = "high"
 type = "tracker-improvement"

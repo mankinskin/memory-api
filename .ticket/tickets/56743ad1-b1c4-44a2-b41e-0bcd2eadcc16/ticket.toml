@@ -1,0 +1,9 @@
+id = "56743ad1-b1c4-44a2-b41e-0bcd2eadcc16"
+created_at = "2026-07-30T22:03:29.897614+00:00"
+title = "ticket_ref.workspace echoes a mismatched/unregistered workspace hash, 404ing viewer part fetches"
+state = "open"
+component = "ticket-http"
+parts = [{ id = "b5b166f5-d7ce-4f2e-9cad-6a70a97f39f9", kind = "objective", path = "parts/b5b166f5-d7ce-4f2e-9cad-6a70a97f39f9.md", frozen = false, created_at = "2026-07-30T22:11:34.414342200Z" }, { id = "0743ce96-5ce1-46d7-b854-4a12822ef167", kind = "notes", path = "parts/0743ce96-5ce1-46d7-b854-4a12822ef167.md", frozen = false, created_at = "2026-07-30T22:11:34.656510400Z" }, { id = "a4de2574-6938-4701-a240-5e384eeacb57", kind = "requirements", path = "parts/a4de2574-6938-4701-a240-5e384eeacb57.md", frozen = false, created_at = "2026-07-30T22:11:34.703354100Z" }, { id = "07a0cf36-0f2f-4ad1-b975-40d13642a8de", kind = "acceptance_criteria", path = "parts/07a0cf36-0f2f-4ad1-b975-40d13642a8de.md", frozen = false, created_at = "2026-07-30T22:11:35.054578100Z" }]
+priority = "high"
+risk_level = "high"
+type = "bug"

@@ -1,0 +1,19 @@
+{
+  "id": "exec-vt-ticket-viewer-parts-render-20260730",
+  "validation_spec_id": "vt-structured-ticket-entities-viewer-e2e",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T21:59:09.325209500Z",
+  "detail": "structured-parts.release.spec.ts: 3/3 passed (msedge headed config). Manual browser check (system Edge, headed, ~2552x1310) confirmed migrated ticket e342cc4c renders 5 typed parts as labelled collapsible sections with correct frozen badges. Scenarios b/c/d/e (single-objective, no-description, planned-legacy, typed-refs) confirmed correct at the API layer (GET .../full) but blocked in-UI by a pre-existing, unrelated workspace-hash-mismatch defect in ticket_ref.workspace echoed by list/get responses (see ticket f65f2b32 validation part for detail). Known pre-existing suite e2e-release/ticket-viewer.release.spec.ts still fails on its flagged off-by-one relative import path (unrelated, not fixed).",
+  "links": {
+    "ticket_ids": [
+      "f65f2b32-9297-4360-9ad7-deb75e7ea401"
+    ]
+  },
+  "provenance": {
+    "source_path": "memory-viewers/ticket-viewer/frontend/dioxus/e2e-release/structured-parts.release.spec.ts",
+    "domain": "ticket-viewer",
+    "operation": "structured-parts-visual-verification",
+    "transport": "mcp",
+    "run_id": "run-20260730-parts-verify"
+  }
+}

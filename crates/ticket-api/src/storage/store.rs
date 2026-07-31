@@ -46,6 +46,7 @@ use crate::{
 
 mod board;
 mod lifecycle;
+mod migration;
 mod parts;
 mod projection;
 mod query;
@@ -55,6 +56,14 @@ mod store_open;
 mod workflow_facts;
 
 pub use self::{
+    migration::{
+        split_description,
+        MigrationApplyReport,
+        MigrationDryRunReport,
+        MigrationSegment,
+        TicketMigrationPlan,
+        MIGRATION_CREATED_PART_IDS_KEY,
+    },
     parts::{
         PART_HISTORY_CONTENT_KEY,
         PART_HISTORY_ID_KEY,
@@ -911,18 +920,26 @@ impl TicketStore {
     /// Guard: a ticket may not advance further along the state schema than any
     /// of its unresolved `depends_on` targets. Terminal (`done`/`cancelled`)
     /// dependencies are treated as satisfied, cross-store dependencies that are
-    /// not locally resolvable are skipped, and cancelling a ticket is always
-    /// permitted regardless of dependency progress.
+    /// not locally resolvable are skipped, cancelling a ticket is always
+    /// permitted regardless of dependency progress, and parking (`on-hold`) or
+    /// demoting a ticket never violates the invariant since neither is forward
+    /// progress relative to unresolved dependencies.
     fn enforce_dependency_progress(
         &self,
         indexed: &IndexedTicket,
         target_state: &str,
     ) -> Result<(), StorageError> {
-        if target_state == "cancelled" {
+        if target_state == "cancelled" || target_state == "on-hold" {
             return Ok(());
         }
         let target_rank =
             self.state_rank_for_type(&indexed.type_id, Some(target_state));
+        // Demotions/no-ops can never violate dependency ordering, only advances can.
+        let current_rank =
+            self.state_rank_for_type(&indexed.type_id, indexed.state.as_deref());
+        if target_rank <= current_rank {
+            return Ok(());
+        }
         for edge in self.edges_from(&indexed.id)? {
             if edge.kind != "depends_on" {
                 continue;

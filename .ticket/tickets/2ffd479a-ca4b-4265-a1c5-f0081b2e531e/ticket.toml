@@ -3,4 +3,5 @@ created_at = "2026-07-15T21:59:05.212758+00:00"
 title = "[ticket-mcp] Canonicalize workspace resolution across all tools"
 state = "in-review"
 effort = "1200"
+parts = [{ id = "37126499-7a5e-409a-8330-eb35f285b28f", kind = "objective", path = "parts/37126499-7a5e-409a-8330-eb35f285b28f.md", frozen = false, created_at = "2026-07-30T21:02:29.992637800Z" }, { id = "c1db8bce-dd9c-44f7-aa4b-5a3b21c1cd56", kind = "validation", path = "parts/c1db8bce-dd9c-44f7-aa4b-5a3b21c1cd56.md", frozen = false, created_at = "2026-07-30T21:02:29.996628400Z" }]
 type = "tracker-improvement"

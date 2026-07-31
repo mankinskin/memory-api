@@ -6,6 +6,7 @@ component = "test-api"
 depends_on = ["9138f4e7-2757-4d23-9676-3306608a429e", "a03d8a97-2b31-4f1a-a2cb-b33848af2f2a"]
 effort = "~200k tokens"
 implementation_summary = "Extended MCP matrix coverage (step 1) in memory-matrix: added ticket.update/delete cells, spec.update/delete/scan cells, and rule.update/scan cells; expanded transport support map and blocked-reason model accordingly; added focused assertions for new MCP cells and updated unwired transport expectations. Validation: cargo test -p memory-matrix (18 passed). Unblocked validation (2026-07-03): cargo test -p ticket-mcp --test integration_update_mcp (1 passed) and cargo test -p ticket-mcp (16 passed). Previous OS error 740 blocker is no longer reproducing after installer detection policy removal."
+parts = [{ id = "213b6c11-a9df-43dc-8fcd-904896c13c4f", kind = "objective", path = "parts/213b6c11-a9df-43dc-8fcd-904896c13c4f.md", frozen = false, created_at = "2026-07-30T21:05:26.156738200Z" }, { id = "c855174c-2220-47bf-8ddd-978f4c9ca891", kind = "validation", path = "parts/c855174c-2220-47bf-8ddd-978f4c9ca891.md", frozen = false, created_at = "2026-07-30T21:05:26.161295800Z" }]
 priority = "high"
 risk_level = "high"
 type = "tracker-improvement"

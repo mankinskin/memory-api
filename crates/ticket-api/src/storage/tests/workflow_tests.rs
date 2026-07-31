@@ -373,6 +373,118 @@ fn update_guards_transition_ahead_of_dependency_state() {
 }
 
 #[test]
+fn update_allows_demotion_and_parking_despite_lagging_dependency() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let blocker = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Guard blocker"),
+            Some("open"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let dependent = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Guard dependent"),
+            Some("in-implementation"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    store
+        .add_edge(EdgeRecord {
+            from: dependent,
+            to: blocker,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap();
+
+    // Demoting the dependent below its own current rank is allowed even though
+    // the dependency (open) has not progressed.
+    store
+        .update(&dependent, BTreeMap::new(), Some(&[]), Some("planned"), None, None)
+        .unwrap();
+
+    // Parking a separate in-implementation ticket is also allowed.
+    let parked = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Guard parked"),
+            Some("in-implementation"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    store
+        .add_edge(EdgeRecord {
+            from: parked,
+            to: blocker,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap();
+    store
+        .update(&parked, BTreeMap::new(), Some(&[]), Some("on-hold"), None, None)
+        .unwrap();
+}
+
+#[test]
+fn update_still_guards_forward_transition_past_lagging_dependency() {
+    use crate::error::StorageError;
+
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let blocker = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Guard blocker"),
+            Some("open"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let dependent = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Guard dependent"),
+            Some("in-implementation"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    store
+        .add_edge(EdgeRecord {
+            from: dependent,
+            to: blocker,
+            kind: "depends_on".to_string(),
+            created_at: Utc::now(),
+        })
+        .unwrap();
+
+    let err = store
+        .update(&dependent, BTreeMap::new(), Some(&[]), Some("in-review"), None, None)
+        .unwrap_err();
+    assert!(
+        matches!(err, StorageError::DependencyNotProgressed { .. }),
+        "expected DependencyNotProgressed, got {err:?}"
+    );
+}
+
+#[test]
 fn release_lease_enforces_owner_and_stale_rules() {
     use crate::error::StorageError;
 

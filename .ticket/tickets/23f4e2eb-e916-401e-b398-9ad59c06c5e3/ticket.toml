@@ -4,6 +4,7 @@ title = "[ticket-api][memory-api] Investigate & fix ~100s ticket get latency"
 state = "done"
 component = "ticket-api"
 depends_on = ["026b2eb6-17c6-4d02-b46b-79758f1237a1"]
+parts = [{ id = "b559d480-bed2-49ef-9ad4-8abb767fd061", kind = "objective", path = "parts/b559d480-bed2-49ef-9ad4-8abb767fd061.md", frozen = false, created_at = "2026-07-30T21:05:26.340869200Z" }, { id = "b36131c5-eb44-4e15-9e48-5779d80e7353", kind = "validation", path = "parts/b36131c5-eb44-4e15-9e48-5779d80e7353.md", frozen = false, created_at = "2026-07-30T21:05:26.344762700Z" }]
 priority = "critical"
 risk_level = "high"
 type = "tracker-improvement"

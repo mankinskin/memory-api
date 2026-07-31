@@ -4,6 +4,7 @@ title = "[test] Cross-domain operation test matrix — get/search/CRUD/move/scan
 state = "done"
 component = "test-api"
 depends_on = ["026b2eb6-17c6-4d02-b46b-79758f1237a1", "124c6621-b39d-4009-b599-a3e5503d08f6"]
+parts = [{ id = "26cd8a3d-14a7-4a71-9571-136281098469", kind = "objective", path = "parts/26cd8a3d-14a7-4a71-9571-136281098469.md", frozen = false, created_at = "2026-07-30T21:05:26.285603600Z" }, { id = "a9386c10-524a-470b-9765-eb6ba5abb2ba", kind = "validation", path = "parts/a9386c10-524a-470b-9765-eb6ba5abb2ba.md", frozen = false, created_at = "2026-07-30T21:05:26.289359800Z" }, { id = "73969275-e475-4e8a-904f-5d00606cb33f", kind = "objective", path = "parts/73969275-e475-4e8a-904f-5d00606cb33f.md", frozen = false, created_at = "2026-07-30T21:05:26.293017100Z" }]
 priority = "high"
 risk_level = "medium"
 type = "tracker-improvement"

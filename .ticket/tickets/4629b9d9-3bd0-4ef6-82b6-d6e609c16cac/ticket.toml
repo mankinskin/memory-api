@@ -6,6 +6,7 @@ acceptance_criteria = "ticket-viewer no longer exposes /workspace/default for th
 component = "ticket-viewer"
 depends_on = ["a2f5460c-1e7e-481b-a250-e9def213ba55"]
 effort = "1200"
+parts = [{ id = "987aa3c8-f495-4ca4-82ac-cbe174dd06dc", kind = "review-notes", path = "parts/987aa3c8-f495-4ca4-82ac-cbe174dd06dc.md", frozen = false, created_at = "2026-07-31T07:41:41.066866400Z" }]
 priority = "high"
 risk_level = "high"
 tags = "ticket-viewer,workspaces,frontend-api,filters,design"

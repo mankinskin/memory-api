@@ -3,5 +3,6 @@ created_at = "2026-04-09T20:48:07.083161+00:00"
 title = "[Board][Validation] Concurrent check-in, crash recovery, and cross-interface consistency"
 state = "done"
 depends_on = ["0db86ac1-45ca-49a6-abc7-dd30b5adbee7", "74160bb8-ac9c-4fd6-82e4-2e392d96e48b", "b72b0a40-496e-43d0-a5b3-ec358d85802b", "bcc111c6-5034-4259-b8cd-3a4dacf3113a", "ec52f7cb-7c5e-4854-84d3-80618167762d"]
+parts = [{ id = "766220f3-287b-406c-8985-88eeb0f829fe", kind = "objective", path = "parts/766220f3-287b-406c-8985-88eeb0f829fe.md", frozen = false, created_at = "2026-07-30T21:05:26.242736400Z" }, { id = "7ba3c60c-db55-4b20-9cd9-d987673ed7b6", kind = "validation", path = "parts/7ba3c60c-db55-4b20-9cd9-d987673ed7b6.md", frozen = false, created_at = "2026-07-30T21:05:26.246679600Z" }, { id = "b65babe7-31da-4c88-8965-b4a74fdb4923", kind = "objective", path = "parts/b65babe7-31da-4c88-8965-b4a74fdb4923.md", frozen = false, created_at = "2026-07-30T21:05:26.250125100Z" }]
 priority = "medium"
 type = "tracker-improvement"

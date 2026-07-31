@@ -4,7 +4,7 @@
 //! requiring a `caller_model` argument on every `tools/call`:
 //!
 //! ```text
-//! mcp-cost-gate -- <real-server-command> [server args...]
+//! mcp-toolmon -- <real-server-command> [server args...]
 //! ```
 //!
 //! On `tools/list` it injects a required `caller_model` argument into every
@@ -61,7 +61,7 @@ use mcp_cost_gate::{
 use serde_json::Value;
 
 fn log(msg: &str) {
-    eprintln!("[mcp-cost-gate] {msg}");
+    eprintln!("[mcp-toolmon] {msg}");
 }
 
 /// Append a `CallTelemetry` record as a JSONL line to the path named by
@@ -155,7 +155,7 @@ fn run_verdict(argv: &[String]) {
     let grant_id = parse_flag(argv, "--grant");
 
     if model.is_empty() || tool.is_empty() || table_path.is_empty() {
-        eprintln!("usage: mcp-cost-gate verdict --model <model> --tool <tool> --table <path> [--rollup <path>] [--grant <id>]");
+        eprintln!("usage: mcp-toolmon verdict --model <model> --tool <tool> --table <path> [--rollup <path>] [--grant <id>]");
         std::process::exit(2);
     }
 
@@ -193,7 +193,7 @@ fn main() {
 
     let command = server_command(&argv);
     if command.is_empty() {
-        log("no server command provided; usage: mcp-cost-gate -- <server> [args...]");
+        log("no server command provided; usage: mcp-toolmon -- <server> [args...]");
         std::process::exit(2);
     }
 

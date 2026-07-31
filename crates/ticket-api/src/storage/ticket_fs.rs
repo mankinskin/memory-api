@@ -542,6 +542,43 @@ impl TicketFs {
         result
     }
 
+    /// Remove `[[parts]]` entries matching any of `part_ids` and delete
+    /// their backing files, used by the description migration's undo path
+    /// (`TicketStore::migration_undo`) to restore the pre-migration layout.
+    /// Ids with no matching entry are ignored. `description.md` itself is
+    /// never touched — migration never overwrites it, so it already holds
+    /// the pre-migration content.
+    pub(crate) fn remove_parts(
+        ticket_path: &Path,
+        part_ids: &[Uuid],
+    ) -> Result<TicketManifest, StorageError> {
+        let lock_path = ticket_path.join(TICKET_LOCK_FILE);
+        let lock_file = acquire_lock(&lock_path)?;
+
+        let result = (|| -> Result<TicketManifest, StorageError> {
+            let mut manifest = Self::read(ticket_path)?;
+            let mut parts = manifest.parts();
+            let mut removed_paths = Vec::new();
+            parts.retain(|p| {
+                if part_ids.contains(&p.id) {
+                    removed_paths.push(p.path.clone());
+                    false
+                } else {
+                    true
+                }
+            });
+            manifest.set_parts(parts);
+            write_manifest(ticket_path, &manifest)?;
+            for rel_path in removed_paths {
+                let _ = fs::remove_file(ticket_path.join(&rel_path));
+            }
+            Ok(manifest)
+        })();
+
+        release_lock(&lock_file, &lock_path);
+        result
+    }
+
 
     /// f9e70385, AC1/AC5), invoked exclusively from the state-transition
     /// path (`TicketStore::update_with_options`) whenever a ticket enters

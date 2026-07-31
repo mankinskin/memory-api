@@ -1,7 +1,7 @@
 id = "ef0ebf38-7f55-4bd7-bf0c-0b416650ee0b"
 created_at = "2026-05-22T10:31:13.723954300+00:00"
 title = "[memory-api][ticket-cli][spec-cli][rule-cli] Unify child-workspace resolution across CLI tools"
-state = "in-implementation"
+state = "in-review"
 acceptance_criteria = "1. A shared memory-api workspace helper owns descendant hidden-store discovery and one traversal/skip policy for .ticket, .spec, and .rule. 2. From an ancestor repo root, representative read commands across spec, ticket, and rule resolve child workspaces consistently instead of relying on tool-specific special cases. 3. rule-cli no longer maintains a separate descendant workspace discovery algorithm, and spec no longer relies on a refs-only fallback path. 4. Mutating commands keep explicit target-store semantics rather than silently writing into child workspaces. 5. Focused regressions prove the three CLIs share one descendant-workspace policy."
 component = "memory-api"
 depends_on = ["07836f41-7fa5-4e41-8411-1c7cf8aeee75", "59d96577-09a8-44a7-b0ea-3d51b3a6fb05"]
@@ -10,6 +10,7 @@ implementation_summary = "Added shared memory-api descendant scan-root discovery
 priority = "high"
 risk_level = "medium"
 spec_refs = "ae5ef697-0ee5-4f74-9dca-2cb268290dae"
+status_summary = "Triage 2026-07-31: implementation substantially landed; moved for review verification."
 tags = "memory-api,ticket-cli,spec-cli,rule-cli,workspaces,nested,resolution"
 type = "tracker-improvement"
 validation_status = "needs-follow-up"

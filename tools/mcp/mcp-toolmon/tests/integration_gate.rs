@@ -1,4 +1,4 @@
-//! Integration tests for mcp-cost-gate gating logic.
+//! Integration tests for mcp-toolmon gating logic.
 //!
 //! These tests verify end-to-end behavior using synthetic price tables and
 //! rollups. They cover:
@@ -26,9 +26,9 @@ fn write_json(dir: &TempDir, name: &str, value: &Value) -> PathBuf {
     path
 }
 
-/// Helper: get the path to the built mcp-cost-gate binary.
+/// Helper: get the path to the built mcp-toolmon binary.
 fn get_binary_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_mcp-cost-gate"))
+    PathBuf::from(env!("CARGO_BIN_EXE_mcp-toolmon"))
 }
 
 /// Helper: construct a tools/call JSON-RPC request.
@@ -408,7 +408,7 @@ fn test_stdio_expensive_model_refused() {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
-        .expect("Failed to spawn mcp-cost-gate binary");
+        .expect("Failed to spawn mcp-toolmon binary");
 
     let mut stdin = child.stdin.take().unwrap();
     let stdout = child.stdout.take().unwrap();
@@ -504,7 +504,7 @@ fn test_stdio_cheap_model_allowed() {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
-        .expect("Failed to spawn mcp-cost-gate binary");
+        .expect("Failed to spawn mcp-toolmon binary");
 
     let mut stdin = child.stdin.take().unwrap();
     let stdout = child.stdout.take().unwrap();
@@ -598,7 +598,7 @@ fn test_stdio_telemetry_recorded_for_allowed_call() {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
-        .expect("Failed to spawn mcp-cost-gate binary");
+        .expect("Failed to spawn mcp-toolmon binary");
 
     let mut stdin = child.stdin.take().unwrap();
     let stdout = child.stdout.take().unwrap();
@@ -659,7 +659,7 @@ fn test_stdio_tokens_estimated_increases_with_larger_payload() {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
-        .expect("Failed to spawn mcp-cost-gate binary");
+        .expect("Failed to spawn mcp-toolmon binary");
 
     let mut stdin = child.stdin.take().unwrap();
     let stdout = child.stdout.take().unwrap();

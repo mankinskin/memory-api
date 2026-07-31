@@ -4,6 +4,7 @@ title = "[bench] Cross-domain benchmark matrix with per-operation latency budget
 state = "done"
 component = "test-api"
 depends_on = ["026b2eb6-17c6-4d02-b46b-79758f1237a1", "2b0f31e5-1067-45e9-93ff-ef273c26020e"]
+parts = [{ id = "e72a5aac-f6ad-43b3-9f3e-380d968e3d06", kind = "objective", path = "parts/e72a5aac-f6ad-43b3-9f3e-380d968e3d06.md", frozen = false, created_at = "2026-07-30T21:05:26.362861800Z" }, { id = "f4ccca69-c824-460c-bd63-e7f3fbf388cb", kind = "validation", path = "parts/f4ccca69-c824-460c-bd63-e7f3fbf388cb.md", frozen = false, created_at = "2026-07-30T21:05:26.366890800Z" }, { id = "c5bb02c6-473b-47b2-b102-25cfdc2000a8", kind = "objective", path = "parts/c5bb02c6-473b-47b2-b102-25cfdc2000a8.md", frozen = false, created_at = "2026-07-30T21:05:26.370476600Z" }]
 priority = "high"
 risk_level = "medium"
 type = "tracker-improvement"

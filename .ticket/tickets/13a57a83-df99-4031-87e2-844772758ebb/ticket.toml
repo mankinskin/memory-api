@@ -1,11 +1,14 @@
 id = "13a57a83-df99-4031-87e2-844772758ebb"
 created_at = "2026-04-18T15:00:07.131136800+00:00"
 title = "[spec][P8] Bootstrap: write spec files for the spec system itself"
-state = "in-implementation"
+state = "planned"
 component = "spec-api"
 depends_on = ["090b6db9-f88e-418b-888e-94641d347432"]
 effort = "1200"
 linked = ["06399bb2-eb06-40a9-8de9-26f6d0854753", "0b231549-d029-4465-997e-0ba4d5e0529e", "0f33944e-fab7-4d8c-b3bb-3c665d51854f", "618f6240-3f08-466f-857e-1c8c52d032d8", "79b0ad85-c57d-4237-bc59-281fa1ad57f8"]
+parts = [{ id = "623c2130-4b40-4c1c-a13e-f8b170a8e2c4", kind = "objective", path = "parts/623c2130-4b40-4c1c-a13e-f8b170a8e2c4.md", frozen = true, created_at = "2026-07-31T07:35:06.632134Z" }, { id = "adfb0c72-4d98-4e01-9d91-e214dc1ca777", kind = "requirements", path = "parts/adfb0c72-4d98-4e01-9d91-e214dc1ca777.md", frozen = true, created_at = "2026-07-31T07:35:06.632513200Z" }, { id = "31d9f227-f9b7-484d-bad8-d3e06d796936", kind = "design", path = "parts/31d9f227-f9b7-484d-bad8-d3e06d796936.md", frozen = true, created_at = "2026-07-31T07:35:06.633184200Z" }, { id = "695625ba-6c09-406d-9120-4c8dcd582fac", kind = "examples", path = "parts/695625ba-6c09-406d-9120-4c8dcd582fac.md", frozen = true, created_at = "2026-07-31T07:35:06.633533800Z" }, { id = "41c35e0f-3369-41a3-b225-220ec928efb2", kind = "acceptance_criteria", path = "parts/41c35e0f-3369-41a3-b225-220ec928efb2.md", frozen = true, created_at = "2026-07-31T07:35:06.633906400Z" }]
 phase = "8"
+plan_revision = 1
 priority = "high"
+status_summary = "Triage 2026-07-31: no implementation work landed; returned to planned for re-scoping."
 type = "tracker-improvement"

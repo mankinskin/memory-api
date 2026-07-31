@@ -3,7 +3,7 @@
 //! A grant boosts a session or subagent's effective budget by the specified
 //! offset. Grants are stored as JSON files in `<store_root>/grants/`.
 //!
-//! The gate (mcp-cost-gate) reads these files to resolve offsets. This module
+//! The gate (mcp-toolmon) reads these files to resolve offsets. This module
 //! provides the writer side: create, list, and revoke operations.
 
 use std::{

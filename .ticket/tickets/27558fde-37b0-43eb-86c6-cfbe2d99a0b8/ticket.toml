@@ -1,9 +1,11 @@
 id = "27558fde-37b0-43eb-86c6-cfbe2d99a0b8"
 created_at = "2026-06-27T14:46:06.783146700+00:00"
 title = "[ticket-mcp][ticket-http] Workspace-resolution parity — nested-root awareness + pure transport (first run)"
-state = "in-implementation"
+state = "in-review"
 component = "ticket-api"
 depends_on = ["ef0ebf38-7f55-4bd7-bf0c-0b416650ee0b"]
 effort = "4000"
+parts = [{ id = "b33e1e10-46d9-4281-857d-5bd5258e5f1c", kind = "objective", path = "parts/b33e1e10-46d9-4281-857d-5bd5258e5f1c.md", frozen = false, created_at = "2026-07-30T21:02:31.821159500Z" }, { id = "c013f59d-269f-4762-9e98-afb2fa0b3f91", kind = "validation", path = "parts/c013f59d-269f-4762-9e98-afb2fa0b3f91.md", frozen = false, created_at = "2026-07-30T21:02:31.825161500Z" }, { id = "8dd530e9-7e78-4d3b-a66a-7de897efd8f7", kind = "review", path = "parts/8dd530e9-7e78-4d3b-a66a-7de897efd8f7.md", frozen = false, created_at = "2026-07-30T21:02:31.829564400Z" }, { id = "9cce9fee-c1e2-4699-b665-8f5cb20c49c3", kind = "objective", path = "parts/9cce9fee-c1e2-4699-b665-8f5cb20c49c3.md", frozen = false, created_at = "2026-07-30T21:02:31.833437900Z" }]
 priority = "high"
+status_summary = "Triage 2026-07-31: implementation substantially landed; moved for review verification."
 type = "tracker-improvement"

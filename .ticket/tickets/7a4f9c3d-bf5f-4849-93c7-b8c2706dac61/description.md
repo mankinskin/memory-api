@@ -1,14 +1,41 @@
-## Review Correction (2026-07-28)
+# Goal
 
-The review note claiming `runtime_paths_for_workspace` does not exist is factually FALSE. Symbol exists at `memory-api/crates/session-api/src/store/config/persistence.rs:143` with signature `pub(super) fn runtime_paths_for_workspace(&self, workspace_session_id: &str) -> Result<SessionRuntimePaths, SessionError>`, with 8+ call sites including `handoff_finish.rs:86`, `runtime_workflow.rs:10`, `worktree_runtime.rs:222`, `workspace_lock_ordering.rs:5`, `workspace_mutation_and_locking.rs:101`.
+Relocate runtime context/handoffs/finish to be owned directly by `sessions/<session_id>/`, move local-only pointers/locks to `.session/local/`, and remove the `runtime/workspaces/` nesting (subticket 2 of the flattening tracker). Depends on identity unification.
 
-The bounce from in-review remains CORRECT in outcome: runtime paths are live across 8+ call sites and `.session/local/` exists neither in code nor on disk. Ticket stays in-implementation.
+# Problem (verified)
 
-## Acceptance Criteria
+- `runtime_paths_for_workspace` (`memory-api/crates/session-api/src/store.rs:1754`) builds `runtime/workspaces/<id>/{context.json,handoffs,finish.json}`.
+- `runtime_root` (store.rs:1743) and `active_workspace_session_path` (store.rs:1751) place a machine-local "current thread" pointer in the same ignored tree.
+- Captured transcripts live at `sessions/<session_id>/` (`paths_for_session_id`, store.rs:1717).
 
-1. Session artifacts persist under `.session/sessions/<workspace_session_id>/` containing session records, `handoffs/`, and `finish.json`.
-2. Machine-local state (active workspace session pointers) created under `.session/local/` via `local_root()` and `active_workspace_session_path()` at persistence.rs:139.
-3. Legacy `.session/runtime/workspaces/<id>/` tree removed. No writer or reader targets the legacy tree; code paths must be updated to the new layout.  
-Note: Back-compat (fail-open) was deliberately dropped during the iteration review; removal and cleanup of legacy runtime-path fallbacks is tracked in the follow-on ticket created for this work.
-4. All 8+ call sites to `runtime_paths_for_workspace` updated to use the new path.
-5. Session lifecycle tests pass with new layout: check-in → handoff write → finish → reload.
+# Target layout
+
+```
+.session/sessions/<session_id>/
+    context.json
+    handoffs/…            (folder form in subticket 3)
+    finish.json
+    runs/<run_id>/{transcript.json, events.json}
+.session/local/
+    active_session.json
+    *.lock
+```
+
+# Solution Design
+
+1. Rework the path builders so `context.json`/`handoffs/`/`finish.json` resolve under `sessions/<session_id>/`; move captured `transcript.json`/`events.json` under `runs/<run_id>/`.
+2. Move the active-thread pointer and mutation lock to `.session/local/` (never git-tracked).
+3. Add a back-compat read fallback: if `sessions/<id>/context.json` is absent, read the legacy `runtime/workspaces/<id>/` location. Provide an opt-in migration that relocates legacy threads.
+4. Update all readers/writers (`persist_runtime_context`, finish, handoff, capture) and CLI/MCP path outputs.
+
+# Acceptance Criteria
+
+1. New writes land under `sessions/<session_id>/`; nothing writes to `runtime/workspaces/`.
+2. Local pointer + lock live under `.session/local/`.
+3. Legacy `runtime/workspaces/` records still load via fallback; migration relocates them.
+4. Finish immutability semantics unchanged (`ensure_workspace_not_finished`).
+5. Focused tests cover new-layout round-trip + legacy fallback.
+
+# Traceability
+
+- Parent: flattening tracker. Depends on identity subticket.

@@ -1,11 +1,11 @@
 [package]
-name = "mcp-cost-gate"
+name = "mcp-toolmon"
 version = "0.1.0"
 edition = "2024"
 description = "Model-aware MCP middleware: requires a per-request caller_model and enforces the price-awareness orchestrator threshold at the tool boundary"
 
 [[bin]]
-name = "mcp-cost-gate"
+name = "mcp-toolmon"
 path = "src/main.rs"
 
 [lib]

@@ -5,6 +5,7 @@ state = "done"
 acceptance_criteria = "All agent files migrated to ticket descriptions/assets; 7 new schema fields added; duplicates resolved; all tickets filterable by doc_category and tags"
 component = "ticket-api"
 doc_category = "plan"
+parts = [{ id = "3e49124b-798c-4a5f-b854-0538ac98127c", kind = "objective", path = "parts/3e49124b-798c-4a5f-b854-0538ac98127c.md", frozen = false, created_at = "2026-07-30T21:05:26.298047500Z" }, { id = "5616f3fd-0c28-4445-9f2d-db09c8e01ad4", kind = "validation", path = "parts/5616f3fd-0c28-4445-9f2d-db09c8e01ad4.md", frozen = false, created_at = "2026-07-30T21:05:26.302212400Z" }]
 risk_level = "medium"
 type = "tracker-improvement"
 workflow_stage = "plan"

@@ -5,6 +5,7 @@ state = "done"
 component = "memory-api"
 depends_on = ["21e6c015-55c6-4807-8d55-16193ed687ed", "505b2cd4-f21d-4e8d-8e6a-ae06a5b69854"]
 linked = ["026b2eb6-17c6-4d02-b46b-79758f1237a1"]
+parts = [{ id = "95f0f5a3-081f-4eb0-8fc0-5f09844106a8", kind = "objective", path = "parts/95f0f5a3-081f-4eb0-8fc0-5f09844106a8.md", frozen = false, created_at = "2026-07-30T21:05:26.349802200Z" }, { id = "80f3403d-03f5-4920-997e-4d647bf8c0ec", kind = "validation", path = "parts/80f3403d-03f5-4920-997e-4d647bf8c0ec.md", frozen = false, created_at = "2026-07-30T21:05:26.353641300Z" }, { id = "b612359e-1f14-4620-83e4-387e7311e07c", kind = "objective", path = "parts/b612359e-1f14-4620-83e4-387e7311e07c.md", frozen = false, created_at = "2026-07-30T21:05:26.357871100Z" }]
 priority = "high"
 risk_level = "high"
 type = "tracker-improvement"

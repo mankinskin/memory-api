@@ -4,6 +4,7 @@ title = "[memory-api] Normalize move journal paths and shrink rewrite rollback p
 state = "done"
 component = "memory-api"
 effort = "1200"
+parts = [{ id = "a2ffefd0-3791-4789-8a6b-e0854a1559c4", kind = "objective", path = "parts/a2ffefd0-3791-4789-8a6b-e0854a1559c4.md", frozen = false, created_at = "2026-07-30T21:02:29.983282600Z" }, { id = "4bfa032c-1466-4485-93af-567a3d0a1cfd", kind = "validation", path = "parts/4bfa032c-1466-4485-93af-567a3d0a1cfd.md", frozen = false, created_at = "2026-07-30T21:02:29.987481Z" }]
 priority = "high"
 type = "tracker-improvement"
 validation_status = "ready-for-review"

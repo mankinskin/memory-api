@@ -3,4 +3,5 @@ created_at = "2026-07-10T23:06:04.624805700+00:00"
 title = "[ticket-api] Health + state-guard: stop warning on ready→ready; flag/guard only tickets progressed ahead of their dependencies"
 state = "done"
 effort = "1200"
+parts = [{ id = "28ac427d-5e52-430c-9948-e85ce1224c43", kind = "objective", path = "parts/28ac427d-5e52-430c-9948-e85ce1224c43.md", frozen = false, created_at = "2026-07-30T21:02:29.960258700Z" }, { id = "f83b4fd5-28d4-4a95-926b-1b7fce56075f", kind = "review", path = "parts/f83b4fd5-28d4-4a95-926b-1b7fce56075f.md", frozen = false, created_at = "2026-07-30T21:02:29.964169700Z" }]
 type = "tracker-improvement"

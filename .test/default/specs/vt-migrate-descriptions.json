@@ -1,0 +1,14 @@
+{
+  "id": "vt-migrate-descriptions",
+  "title": "Description-to-parts migration (dry-run + apply, lossless)",
+  "command": "cargo run -p ticket-api --example migrate_descriptions -- &lt;index-root&gt; [--apply]",
+  "detail": "Splits legacy monolithic description.md into typed parts (review/notes/validation/objective) for tickets with no [[parts]] table, dry-run first, lossless, idempotent.",
+  "links": {
+    "spec_ids": [
+      "24b3d22b-e235-4c4f-b53c-75fb819ea95b"
+    ],
+    "ticket_ids": [
+      "f65f2b32-9297-4360-9ad7-deb75e7ea401"
+    ]
+  }
+}

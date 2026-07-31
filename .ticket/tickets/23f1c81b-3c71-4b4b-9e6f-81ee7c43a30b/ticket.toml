@@ -5,5 +5,6 @@ state = "done"
 component = "ticket-http"
 depends_on = ["a9514081-35c2-4162-b62d-3baf4a14ec8b"]
 effort = "4k tokens"
+parts = [{ id = "8027a243-38f7-4e1b-8c7e-8c0c7e11861f", kind = "objective", path = "parts/8027a243-38f7-4e1b-8c7e-8c0c7e11861f.md", frozen = false, created_at = "2026-07-30T21:02:31.840870200Z" }, { id = "7c0b2a7d-84e4-4ad0-b404-5bd3ff746d12", kind = "review", path = "parts/7c0b2a7d-84e4-4ad0-b404-5bd3ff746d12.md", frozen = false, created_at = "2026-07-30T21:02:31.845011500Z" }, { id = "4b7a7b33-9fce-4683-983e-ad91ed661aaa", kind = "review", path = "parts/4b7a7b33-9fce-4683-983e-ad91ed661aaa.md", frozen = false, created_at = "2026-07-30T21:02:31.849804300Z" }]
 priority = "high"
 type = "tracker-improvement"

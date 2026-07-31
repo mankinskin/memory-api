@@ -1,0 +1,9 @@
+id = "99ce3f10-ba51-4b03-9c57-fd7a1797f4fd"
+created_at = "2026-07-30T22:03:30.215031400+00:00"
+title = "ticket-viewer release E2E suite fails to load due to a bad relative import path (0 tests run)"
+state = "open"
+component = "ticket-viewer"
+parts = [{ id = "de4cc5c3-1fae-4a33-82a7-b0f77e0c5872", kind = "objective", path = "parts/de4cc5c3-1fae-4a33-82a7-b0f77e0c5872.md", frozen = false, created_at = "2026-07-30T22:11:34.528532800Z" }, { id = "6804580d-887d-4529-b945-6ea1c41a6c0c", kind = "notes", path = "parts/6804580d-887d-4529-b945-6ea1c41a6c0c.md", frozen = false, created_at = "2026-07-30T22:11:34.722300Z" }, { id = "d2085061-44e2-4ecb-b4c1-550361032e9f", kind = "acceptance_criteria", path = "parts/d2085061-44e2-4ecb-b4c1-550361032e9f.md", frozen = false, created_at = "2026-07-30T22:11:34.931490Z" }]
+priority = "medium"
+risk_level = "low"
+type = "bug"

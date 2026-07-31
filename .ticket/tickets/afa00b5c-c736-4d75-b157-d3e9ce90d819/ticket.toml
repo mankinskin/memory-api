@@ -3,4 +3,5 @@ created_at = "2026-06-26T18:09:41.776397900+00:00"
 title = "[session-bootstrap][design] Define bootstrap contract, session_context schema, and ADRs"
 state = "done"
 effort = "3000"
+parts = [{ id = "a9a4a345-ea9f-4eeb-8044-baee910d4564", kind = "objective", path = "parts/a9a4a345-ea9f-4eeb-8044-baee910d4564.md", frozen = false, created_at = "2026-07-30T21:02:31.723330Z" }, { id = "e0364930-91b7-4698-94ae-104587f0403b", kind = "notes", path = "parts/e0364930-91b7-4698-94ae-104587f0403b.md", frozen = false, created_at = "2026-07-30T21:02:31.727025800Z" }, { id = "a35440a9-0bac-4117-852a-159fa983f460", kind = "objective", path = "parts/a35440a9-0bac-4117-852a-159fa983f460.md", frozen = false, created_at = "2026-07-30T21:02:31.731016300Z" }]
 type = "tracker-improvement"

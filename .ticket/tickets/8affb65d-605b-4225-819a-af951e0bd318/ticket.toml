@@ -5,6 +5,7 @@ state = "done"
 acceptance_criteria = "TicketStore, SpecStore, and RuleStore expose a shared open_or_init path that initializes missing local index artifacts, force-scans manifests only when bootstrapping from disk, and lets ticket-viewer use the shared API instead of a viewer-local rebuild helper."
 component = "memory-api"
 implementation_summary = "TicketStore, SpecStore, and RuleStore now expose shared open_or_init bootstrap helpers that preserve strict open() behavior while initializing and force-scanning manifest-only local workspaces. RuleStore also registers .rule/rules as a scan root so rebuilds can discover rule manifests, and ticket-viewer now delegates to TicketStore::open_or_init instead of carrying viewer-local init/scan logic."
+parts = [{ id = "6d290385-ee74-400c-bed3-fdf429449a9d", kind = "objective", path = "parts/6d290385-ee74-400c-bed3-fdf429449a9d.md", frozen = false, created_at = "2026-07-30T21:05:26.276101300Z" }, { id = "857bde54-24c1-4774-a70e-a8ac44654ce0", kind = "validation", path = "parts/857bde54-24c1-4774-a70e-a8ac44654ce0.md", frozen = false, created_at = "2026-07-30T21:05:26.280424800Z" }]
 priority = "high"
 spec_refs = "b9129cf5-ddad-49f5-9dd0-60fdb72ee306"
 type = "tracker-improvement"

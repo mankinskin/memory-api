@@ -4,6 +4,7 @@ title = "[design][test] Browser & TypeScript automated test integration strategy
 state = "done"
 component = "test-api"
 effort = "2200"
+parts = [{ id = "3dbe596b-92c7-40ba-bfcc-090d220404e6", kind = "acceptance-criteria", path = "parts/3dbe596b-92c7-40ba-bfcc-090d220404e6.md", frozen = false, created_at = "2026-07-31T07:52:44.641400700Z" }]
 phase = "design"
 priority = "high"
 risk_level = "high"

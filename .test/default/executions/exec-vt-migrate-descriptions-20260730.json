@@ -1,0 +1,17 @@
+{
+  "id": "exec-vt-migrate-descriptions-20260730",
+  "validation_spec_id": "vt-migrate-descriptions",
+  "outcome": "passed",
+  "executed_at": "2026-07-30T21:12:10.217438700Z",
+  "detail": "AC1 lossless: for real migrated ticket e342cc4c, diff of parts concatenated in manifest order vs pre-migration description.md was byte-identical. Dry-run's own reconstruction check reported low_confidence=0 across both stores (1381+334 scanned).\nAC2 dry-run-first: migration_apply's only entry point takes a MigrationDryRunReport value produced solely by migration_dry_run (type-level enforcement).\nAC3 largest fixtures: 61f78a57/f95969ba/19990e37 present in root-store migratable set, migrated with low_confidence=0; not individually re-diffed beyond the automated dry-run check within this session's time budget.\nAC4 heading variants: unit tests heading_variants_are_case_insensitive_and_tolerate_trailing_text and unrecognized_heading_stays_in_objective pass.\nAC5 idempotent: second dry-run over root store after apply reported migratable=0; second apply reported migrated=0/parts_created=0.\nAC6 undo: TicketFs::remove_parts + TicketStore::migration_undo implemented; not exercised against a real ticket in this session (deferred).\nAC7 planned tickets: real ticket e342cc4c hit an unrelated dependency-gate rejection re-entering planned; migration_apply now defers (skips, untouched) any currently-planned ticket rather than risk a stuck partial state; the one ticket caught by the original bug was manually recovered to its pre-migration planned+frozen state. skipped_planned=0 on the corrected re-run.\nAC8 audit: dry-run report lists per-ticket matched kinds/counts and remaining objective lines for all migratable tickets.\nAC9: enforce_part_write_gate used unchanged; migration only skips (never bypasses) planned tickets.\ncargo build --workspace: 0 errors. cargo test -p ticket-api -p memory-api --no-fail-fast: only the 2 pre-existing discover_workspace_scan_roots_* failures; all else passed including 6 new splitter unit tests.",
+  "links": {
+    "ticket_ids": [
+      "f65f2b32-9297-4360-9ad7-deb75e7ea401"
+    ]
+  },
+  "provenance": {
+    "domain": "ticket-api",
+    "operation": "migrate_descriptions",
+    "run_id": "f65f2b32-migration-20260730"
+  }
+}
