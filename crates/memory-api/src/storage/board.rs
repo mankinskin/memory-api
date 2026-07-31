@@ -37,6 +37,9 @@ pub struct BoardEntry {
     pub handoff_reason: Option<String>,
     /// When the entry left the active board and became historical.
     pub completed_at: Option<DateTime<Utc>>,
+    pub session_id: Option<String>,
+    pub worktree_path: Option<String>,
+    pub branch: Option<String>,
 }
 
 impl BoardEntry {
@@ -98,8 +101,21 @@ pub struct BoardSnapshot {
     pub wip_limit_reached: bool,
     /// Maps each owned file path to the list of agent IDs holding it.
     pub file_ownership: BTreeMap<String, Vec<String>>,
+    pub active_worktrees: Vec<ActiveWorktree>,
     /// Human-readable warnings (e.g. stale entries needing review).
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveWorktree {
+    pub worktree_path: String,
+    pub branch: Option<String>,
+    pub session_ids: Vec<String>,
+    pub agent_ids: Vec<String>,
+    pub ticket_ids: Vec<Uuid>,
+    pub entry_ids: Vec<Uuid>,
+    /// True when more than one distinct session id claims this worktree.
+    pub conflicted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,6 +191,14 @@ pub enum BoardError {
         conflicting_agent: String,
         conflicting_ticket: Uuid,
     },
+    #[error(
+        "Worktree conflict on '{worktree_path}' with agent {conflicting_agent} (ticket {conflicting_ticket})"
+    )]
+    WorktreeConflict {
+        worktree_path: String,
+        conflicting_agent: String,
+        conflicting_ticket: Uuid,
+    },
     #[error("Already checked in: ticket {ticket_id} by {agent_id}")]
     AlreadyCheckedIn { ticket_id: Uuid, agent_id: String },
     #[error("Not checked in: ticket {ticket_id} by {agent_id}")]
@@ -243,9 +267,13 @@ fn serialize_entry(entry: &BoardEntry) -> Result<Vec<u8>, BoardError> {
 }
 
 fn deserialize_entry(bytes: &[u8]) -> Result<BoardEntry, BoardError> {
+    // Order is load-bearing: shorter shapes can parse a longer payload prefix.
     bincode::deserialize(bytes)
         .or_else(|_| {
-            bincode::deserialize::<LegacyBoardEntry>(bytes).map(Into::into)
+            bincode::deserialize::<BoardEntryV2>(bytes).map(Into::into)
+        })
+        .or_else(|_| {
+            bincode::deserialize::<BoardEntryV1>(bytes).map(Into::into)
         })
         .map_err(|e| {
             BoardError::Storage(StorageError::Serialization(e.to_string()))
@@ -269,7 +297,7 @@ fn db_err(e: rusqlite::Error) -> BoardError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct LegacyBoardEntry {
+struct BoardEntryV1 {
     entry_id: Uuid,
     ticket_id: Uuid,
     agent_id: String,
@@ -283,8 +311,8 @@ struct LegacyBoardEntry {
     handoff_reason: Option<String>,
 }
 
-impl From<LegacyBoardEntry> for BoardEntry {
-    fn from(entry: LegacyBoardEntry) -> Self {
+impl From<BoardEntryV1> for BoardEntry {
+    fn from(entry: BoardEntryV1) -> Self {
         Self {
             entry_id: entry.entry_id,
             ticket_id: entry.ticket_id,
@@ -298,8 +326,100 @@ impl From<LegacyBoardEntry> for BoardEntry {
             status: entry.status,
             handoff_reason: entry.handoff_reason,
             completed_at: None,
+            session_id: None,
+            worktree_path: None,
+            branch: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BoardEntryV2 {
+    entry_id: Uuid,
+    ticket_id: Uuid,
+    agent_id: String,
+    previous_attempt: Option<Uuid>,
+    checked_in_at: DateTime<Utc>,
+    last_heartbeat: DateTime<Utc>,
+    ttl_secs: u64,
+    intent: String,
+    owned_files: Vec<String>,
+    status: BoardEntryStatus,
+    handoff_reason: Option<String>,
+    completed_at: Option<DateTime<Utc>>,
+}
+
+impl From<BoardEntryV2> for BoardEntry {
+    fn from(entry: BoardEntryV2) -> Self {
+        Self {
+            entry_id: entry.entry_id,
+            ticket_id: entry.ticket_id,
+            agent_id: entry.agent_id,
+            previous_attempt: entry.previous_attempt,
+            checked_in_at: entry.checked_in_at,
+            last_heartbeat: entry.last_heartbeat,
+            ttl_secs: entry.ttl_secs,
+            intent: entry.intent,
+            owned_files: entry.owned_files,
+            status: entry.status,
+            handoff_reason: entry.handoff_reason,
+            completed_at: entry.completed_at,
+            session_id: None,
+            worktree_path: None,
+            branch: None,
         }
     }
 }
 
 mod ops;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn v1_entry() -> BoardEntryV1 {
+        BoardEntryV1 {
+            entry_id: Uuid::new_v4(),
+            ticket_id: Uuid::new_v4(),
+            agent_id: "agent".to_string(),
+            previous_attempt: None,
+            checked_in_at: Utc::now(),
+            last_heartbeat: Utc::now(),
+            ttl_secs: 60,
+            intent: "test".to_string(),
+            owned_files: Vec::new(),
+            status: BoardEntryStatus::Active,
+            handoff_reason: None,
+        }
+    }
+
+    #[test]
+    fn deserialize_entry_loads_v1_and_v2_without_worktree_metadata() {
+        let v1 = v1_entry();
+        let v1_bytes = bincode::serialize(&v1).unwrap();
+        let loaded_v1 = deserialize_entry(&v1_bytes).unwrap();
+        assert!(loaded_v1.session_id.is_none());
+        assert!(loaded_v1.worktree_path.is_none());
+        assert!(loaded_v1.branch.is_none());
+
+        let v2 = BoardEntryV2 {
+            entry_id: v1.entry_id,
+            ticket_id: v1.ticket_id,
+            agent_id: v1.agent_id,
+            previous_attempt: v1.previous_attempt,
+            checked_in_at: v1.checked_in_at,
+            last_heartbeat: v1.last_heartbeat,
+            ttl_secs: v1.ttl_secs,
+            intent: v1.intent,
+            owned_files: v1.owned_files,
+            status: v1.status,
+            handoff_reason: v1.handoff_reason,
+            completed_at: None,
+        };
+        let v2_bytes = bincode::serialize(&v2).unwrap();
+        let loaded_v2 = deserialize_entry(&v2_bytes).unwrap();
+        assert!(loaded_v2.session_id.is_none());
+        assert!(loaded_v2.worktree_path.is_none());
+        assert!(loaded_v2.branch.is_none());
+    }
+}

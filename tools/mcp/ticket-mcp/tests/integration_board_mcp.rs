@@ -61,6 +61,9 @@ async fn board_full_lifecycle_mcp() {
             intent: Some("implementing MCP board tools".to_string()),
             files: vec!["server.rs".to_string()],
             ttl_secs: Some(3600),
+            session_id: None,
+            worktree_path: None,
+            branch: None,
         }))
         .await
         .expect("board_check_in ok");
@@ -248,6 +251,9 @@ async fn board_update_and_rename_file_mcp() {
             intent: None,
             files: vec!["a.rs".to_string()],
             ttl_secs: None,
+            session_id: None,
+            worktree_path: None,
+            branch: None,
         }))
         .await
         .expect("check_in ok");
@@ -314,6 +320,9 @@ async fn board_check_out_resolves_agent_from_snapshot_mcp() {
             intent: None,
             files: vec![],
             ttl_secs: None,
+            session_id: None,
+            worktree_path: None,
+            branch: None,
         }))
         .await
         .expect("check_in ok");

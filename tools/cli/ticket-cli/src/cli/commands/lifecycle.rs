@@ -370,6 +370,9 @@ pub(crate) fn cmd_claim(
         args.ttl_secs,
         args.work_intent.as_deref().unwrap_or("claim"),
         vec![],
+        None,
+        None,
+        None,
     )?;
     Ok(json!({
         "command": "claim",

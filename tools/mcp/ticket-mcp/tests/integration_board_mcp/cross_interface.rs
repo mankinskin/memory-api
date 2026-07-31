@@ -35,6 +35,9 @@ async fn board_show_parity_store_and_mcp() {
             3600,
             "cross-interface work",
             vec!["parity.rs".to_string()],
+            None,
+            None,
+            None,
         )
         .expect("check-in via store");
 
@@ -113,7 +116,16 @@ async fn next_tickets_excludes_board_active_and_surfaces_wip_warning() {
 
         let uid: uuid::Uuid = t_active.parse().expect("uuid");
         store
-            .board_check_in(&uid, "exclusion-agent", 3600, "in flight", vec![])
+            .board_check_in(
+                &uid,
+                "exclusion-agent",
+                3600,
+                "in flight",
+                vec![],
+                None,
+                None,
+                None,
+            )
             .expect("check-in");
     }
 

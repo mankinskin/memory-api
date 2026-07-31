@@ -507,6 +507,17 @@ impl TicketServer {
     }
 
     #[tool(
+        name = "board_worktrees",
+        description = "List active worktrees and their sessions, agents, and tickets."
+    )]
+    pub async fn board_worktrees(
+        &self,
+        Parameters(input): Parameters<BoardWorktreesInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.board_worktrees_tool(input).await
+    }
+
+    #[tool(
         name = "board_check_in",
         description = "Register an agent as actively working on a ticket. Returns the new board entry. Fails with WIP limit or file conflict errors."
     )]

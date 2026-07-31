@@ -37,6 +37,9 @@ pub(super) struct BoardDisplayEntry {
     pub owned_files: Vec<String>,
     pub handoff_reason: Option<String>,
     pub completed_at: Option<DateTime<Utc>>,
+    pub session_id: Option<String>,
+    pub worktree_path: Option<String>,
+    pub branch: Option<String>,
 }
 pub(crate) struct BoardRecommendation {
     pub rank: usize,
@@ -67,6 +70,9 @@ pub(super) fn entry_to_json(
         "ttl_secs": entry.ttl_secs,
         "owned_files": entry.owned_files,
         "handoff_reason": entry.handoff_reason,
+        "session_id": entry.session_id,
+        "worktree_path": entry.worktree_path,
+        "branch": entry.branch,
     })
 }
 pub(super) fn config_to_json(config: &BoardConfig) -> Value {
@@ -91,6 +97,9 @@ pub(super) fn board_display_entry_to_json(entry: &BoardDisplayEntry) -> Value {
         "owned_file_count": entry.owned_files.len(),
         "handoff_reason": entry.handoff_reason,
         "completed_at": entry.completed_at,
+        "session_id": entry.session_id,
+        "worktree_path": entry.worktree_path,
+        "branch": entry.branch,
     })
 }
 pub(super) fn board_recommendation_to_json(
@@ -173,6 +182,37 @@ fn write_current_work(
         let _ = writeln!(out, "  (no active board entries)");
         return;
     }
+    let has_worktree_metadata = current_work.iter().any(|entry| {
+        entry.worktree_path.is_some() || entry.branch.is_some()
+    });
+    if has_worktree_metadata {
+        let _ = writeln!(
+            out,
+            "  {:<10}  {:<8}  {:<24}  {:<14}  {:<16}  {:<16}  {:<18}  {:>6}",
+            "STATUS", "TICKET", "TITLE", "AGENT", "BRANCH", "WORKTREE", "INTENT", "HB AGE"
+        );
+        let _ = writeln!(out, "  {}", "-".repeat(132));
+        for entry in current_work {
+            let worktree = entry
+                .worktree_path
+                .as_deref()
+                .map(short_worktree_indicator)
+                .unwrap_or_default();
+            let _ = writeln!(
+                out,
+                "  {:<10}  {:<8}  {:<24}  {:<14}  {:<16}  {:<16}  {:<18}  {:>6}",
+                truncate_field(&entry.status, 10),
+                short_ticket_id(&entry.ticket_id),
+                truncate_field(&entry.title, 24),
+                truncate_field(&entry.agent_id, 14),
+                truncate_field(entry.branch.as_deref().unwrap_or(""), 16),
+                truncate_field(worktree, 16),
+                truncate_field(&entry.intent, 18),
+                entry.heartbeat_age_secs,
+            );
+        }
+        return;
+    }
     let _ = writeln!(
         out,
         "  {:<10}  {:<8}  {:<34}  {:<18}  {:<20}  {:>10}",
@@ -191,6 +231,10 @@ fn write_current_work(
             entry.heartbeat_age_secs,
         );
     }
+}
+
+fn short_worktree_indicator(path: &str) -> &str {
+    path.rsplit(['/', '\\']).next().unwrap_or(path)
 }
 pub(crate) fn write_next_up(
     out: &mut String,

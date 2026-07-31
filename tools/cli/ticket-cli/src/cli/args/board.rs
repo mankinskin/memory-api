@@ -23,6 +23,8 @@ pub enum BoardCommand {
         #[arg(long, alias = "agent-id")]
         agent: Option<String>,
     },
+    /// List active worktrees and the board entries associated with each one.
+    Worktrees,
     /// Check an agent in to the board as actively working a ticket.
     #[command(name = "check-in")]
     CheckIn {
@@ -40,6 +42,15 @@ pub enum BoardCommand {
         /// Heartbeat TTL in seconds (default: 3600).
         #[arg(long, alias = "ttl")]
         ttl_secs: Option<u64>,
+        /// Session identity that owns this board entry.
+        #[arg(long)]
+        session_id: Option<String>,
+        /// Git worktree path associated with this board entry.
+        #[arg(long)]
+        worktree_path: Option<String>,
+        /// Git branch associated with this board entry.
+        #[arg(long)]
+        branch: Option<String>,
     },
     /// Check an agent out of the board (mark entry completed).
     #[command(name = "check-out")]

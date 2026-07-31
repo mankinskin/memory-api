@@ -544,7 +544,16 @@ fn board_check_out_releases_orphaned_lease_when_entry_is_missing() {
         .unwrap();
 
     store
-        .board_check_in(&ticket, "agent-a", 0, "work", vec![])
+        .board_check_in(
+            &ticket,
+            "agent-a",
+            0,
+            "work",
+            vec![],
+            None,
+            None,
+            None,
+        )
         .unwrap();
     assert_eq!(store.list_leases().unwrap().len(), 1);
 
@@ -560,4 +569,150 @@ fn board_check_out_releases_orphaned_lease_when_entry_is_missing() {
         "expected NotCheckedIn, got {err:?}"
     );
     assert!(store.list_leases().unwrap().is_empty());
+}
+
+#[test]
+fn board_check_in_round_trips_session_and_worktree_metadata() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let ticket = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Metadata ticket"),
+            Some("planned"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let entry = store
+        .board_check_in(
+            &ticket,
+            "agent-a",
+            3600,
+            "work",
+            vec![],
+            Some("session-a".to_string()),
+            Some("/tmp/worktree-a".to_string()),
+            Some("agent/metadata".to_string()),
+        )
+        .unwrap();
+    let snapshot = store.board_show(None).unwrap();
+    let stored = snapshot
+        .entries
+        .iter()
+        .find(|candidate| candidate.entry_id == entry.entry_id)
+        .unwrap();
+
+    assert_eq!(stored.session_id.as_deref(), Some("session-a"));
+    assert_eq!(stored.worktree_path.as_deref(), Some("/tmp/worktree-a"));
+    assert_eq!(stored.branch.as_deref(), Some("agent/metadata"));
+}
+
+#[test]
+fn board_worktrees_groups_entries_by_path() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let create_ticket = |title| {
+        store
+            .create(
+                None,
+                "tracker-improvement",
+                Some(title),
+                Some("planned"),
+                Default::default(),
+                None,
+                None,
+            )
+            .unwrap()
+    };
+    let first = create_ticket("First worktree ticket");
+    let second = create_ticket("Second worktree ticket");
+    let third = create_ticket("Third worktree ticket");
+
+    for (ticket, agent, path) in [
+        (first, "agent-a", "/tmp/worktree-a"),
+        (second, "agent-b", "/tmp/worktree-a"),
+        (third, "agent-c", "/tmp/worktree-b"),
+    ] {
+        store
+            .board_check_in(
+                &ticket,
+                agent,
+                3600,
+                "work",
+                vec![],
+                Some("session-a".to_string()),
+                Some(path.to_string()),
+                None,
+            )
+            .unwrap();
+    }
+
+    let snapshot = store.board_show(None).unwrap();
+    assert_eq!(snapshot.active_worktrees.len(), 2);
+    let grouped = snapshot
+        .active_worktrees
+        .iter()
+        .find(|worktree| worktree.worktree_path == "/tmp/worktree-a")
+        .unwrap();
+    assert_eq!(grouped.ticket_ids, vec![first, second]);
+}
+
+#[test]
+fn board_check_in_rejects_worktree_owned_by_another_session() {
+    use crate::storage::board::BoardError;
+
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let first = store
+        .create(None, "tracker-improvement", Some("First"), Some("planned"), Default::default(), None, None)
+        .unwrap();
+    let second = store
+        .create(None, "tracker-improvement", Some("Second"), Some("planned"), Default::default(), None, None)
+        .unwrap();
+
+    store
+        .board_check_in(
+            &first,
+            "agent-a",
+            3600,
+            "work",
+            vec![],
+            Some("session-a".to_string()),
+            Some("/tmp/worktree-a".to_string()),
+            None,
+        )
+        .unwrap();
+    store
+        .board_check_in(
+            &second,
+            "agent-b",
+            3600,
+            "work",
+            vec![],
+            Some("session-a".to_string()),
+            Some("/tmp/worktree-a".to_string()),
+            None,
+        )
+        .unwrap();
+
+    let third = store
+        .create(None, "tracker-improvement", Some("Third"), Some("planned"), Default::default(), None, None)
+        .unwrap();
+    let error = store
+        .board_check_in(
+            &third,
+            "agent-c",
+            3600,
+            "work",
+            vec![],
+            Some("session-b".to_string()),
+            Some("/tmp/worktree-a".to_string()),
+            None,
+        )
+        .unwrap_err();
+    assert!(matches!(error, BoardError::WorktreeConflict { .. }));
 }

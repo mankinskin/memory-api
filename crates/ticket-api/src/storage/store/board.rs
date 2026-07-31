@@ -96,6 +96,9 @@ impl TicketStore {
         ttl_secs: u64,
         intent: &str,
         owned_files: Vec<String>,
+        session_id: Option<String>,
+        worktree_path: Option<String>,
+        branch: Option<String>,
     ) -> Result<BoardEntry, BoardError> {
         let entry = self.index.board_check_in_atomic(
             *ticket_id,
@@ -103,6 +106,9 @@ impl TicketStore {
             ttl_secs,
             intent,
             owned_files,
+            session_id,
+            worktree_path,
+            branch,
         )?;
 
         match self.claim(ticket_id, agent_id, ttl_secs, Some(intent)) {

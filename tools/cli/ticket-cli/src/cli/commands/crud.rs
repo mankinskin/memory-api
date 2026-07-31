@@ -253,6 +253,9 @@ pub(crate) fn cmd_update(
                         ttl,
                         intent,
                         args.board_files.clone(),
+                        None,
+                        None,
+                        None,
                     )
                     .map_err(|e| CliRunError::Board(e))?;
                 Some(json!({

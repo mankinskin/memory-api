@@ -62,13 +62,27 @@ pub(crate) fn cmd_board(
         BoardCommand::Show { agent } => cmd_board_show(agent.as_deref(), store),
         BoardCommand::History { agent } =>
             cmd_board_history(agent.as_deref(), store),
+        BoardCommand::Worktrees => cmd_board_worktrees(store),
         BoardCommand::CheckIn {
             id,
             agent,
             intent,
             files,
             ttl_secs,
-        } => cmd_board_check_in(id, agent, intent, files, ttl_secs, store),
+            session_id,
+            worktree_path,
+            branch,
+        } => cmd_board_check_in(
+            id,
+            agent,
+            intent,
+            files,
+            ttl_secs,
+            session_id,
+            worktree_path,
+            branch,
+            store,
+        ),
         BoardCommand::CheckOut { id, agent, reason } =>
             cmd_board_check_out(id, agent, reason, store),
         BoardCommand::Heartbeat { entry_id } =>
@@ -203,6 +217,43 @@ fn cmd_board_history(
     }))
 }
 
+fn cmd_board_worktrees(store: &TicketStore) -> Result<Value, CliRunError> {
+    let snapshot = store.board_show(None)?;
+    let worktrees = &snapshot.active_worktrees;
+    let mut human = String::from("Active Worktrees:\n");
+    if worktrees.is_empty() {
+        human.push_str("  (no active worktrees)\n");
+    } else {
+        for worktree in worktrees {
+            let branch = worktree.branch.as_deref().unwrap_or("-");
+            let sessions = worktree.session_ids.join(", ");
+            let agents = worktree.agent_ids.join(", ");
+            let tickets = worktree
+                .ticket_ids
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            human.push_str(&format!(
+                "  {}  branch: {}  sessions: {}  agents: {}  tickets: {}{}\n",
+                worktree.worktree_path,
+                branch,
+                sessions,
+                agents,
+                tickets,
+                if worktree.conflicted { "  CONFLICT" } else { "" },
+            ));
+        }
+    }
+
+    Ok(json!({
+        "command": "board_worktrees",
+        "status": "ok",
+        "active_worktrees": worktrees,
+        "human": human,
+    }))
+}
+
 struct TicketSummary {
     title: Option<String>,
     state: Option<String>,
@@ -316,6 +367,9 @@ fn build_display_entry(
         owned_files: entry.owned_files.clone(),
         handoff_reason: entry.handoff_reason.clone(),
         completed_at: history_completed_at(entry),
+        session_id: entry.session_id.clone(),
+        worktree_path: entry.worktree_path.clone(),
+        branch: entry.branch.clone(),
     }
 }
 
@@ -485,6 +539,9 @@ fn cmd_board_check_in(
     intent: Option<String>,
     files: Vec<String>,
     ttl_secs: Option<u64>,
+    session_id: Option<String>,
+    worktree_path: Option<String>,
+    branch: Option<String>,
     store: &TicketStore,
 ) -> Result<Value, CliRunError> {
     let ticket_id = resolve_uuid_prefix(&id, store)?;
@@ -492,7 +549,16 @@ fn cmd_board_check_in(
     let intent_str = intent.as_deref().unwrap_or("");
 
     let entry = store
-        .board_check_in(&ticket_id, &agent, ttl, intent_str, files)
+        .board_check_in(
+            &ticket_id,
+            &agent,
+            ttl,
+            intent_str,
+            files,
+            session_id,
+            worktree_path,
+            branch,
+        )
         .map_err(board_err_to_cli)?;
 
     Ok(json!({
@@ -503,6 +569,9 @@ fn cmd_board_check_in(
         "agent_id": entry.agent_id,
         "intent": entry.intent,
         "owned_files": entry.owned_files,
+        "session_id": entry.session_id,
+        "worktree_path": entry.worktree_path,
+        "branch": entry.branch,
         "checked_in_at": entry.checked_in_at,
         "ttl_secs": entry.ttl_secs,
     }))
@@ -715,6 +784,13 @@ fn board_err_to_cli(err: BoardError) -> CliRunError {
             conflicting_ticket,
         } => CliRunError::BadRequest(format!(
             "file conflict: {files:?} already owned by agent '{conflicting_agent}' on ticket {conflicting_ticket}"
+        )),
+        BoardError::WorktreeConflict {
+            worktree_path,
+            conflicting_agent,
+            conflicting_ticket,
+        } => CliRunError::BadRequest(format!(
+            "worktree conflict: '{worktree_path}' already held by agent '{conflicting_agent}' on ticket {conflicting_ticket}"
         )),
         BoardError::AlreadyCheckedIn { ticket_id, agent_id } => {
             CliRunError::BadRequest(format!(

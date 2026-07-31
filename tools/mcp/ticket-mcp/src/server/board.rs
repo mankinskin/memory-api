@@ -64,6 +64,22 @@ impl TicketServer {
         .await
     }
 
+    pub(crate) async fn board_worktrees_tool(
+        &self,
+        input: BoardWorktreesInput,
+    ) -> Result<CallToolResult, McpError> {
+        let workspace = input.workspace;
+
+        self.with_store_ext(&workspace.clone(), move |store| {
+            let snapshot = store.board_show(None).map_err(Self::board_err)?;
+            Self::json_result(&serde_json::json!({
+                "workspace": workspace,
+                "active_worktrees": snapshot.active_worktrees,
+            }))
+        })
+        .await
+    }
+
     pub(crate) async fn board_check_in_tool(
         &self,
         input: BoardCheckInInput,
@@ -74,11 +90,23 @@ impl TicketServer {
         let intent = input.intent.unwrap_or_default();
         let files = input.files;
         let ttl_secs = input.ttl_secs.unwrap_or(3600);
+        let session_id = input.session_id;
+        let worktree_path = input.worktree_path;
+        let branch = input.branch;
 
         self.with_store_ext(&workspace.clone(), move |store| {
             let ticket_id = Self::resolve_uuid_with(store, &ticket_id_str)?;
             let entry = store
-                .board_check_in(&ticket_id, &agent_id, ttl_secs, &intent, files)
+                .board_check_in(
+                    &ticket_id,
+                    &agent_id,
+                    ttl_secs,
+                    &intent,
+                    files,
+                    session_id,
+                    worktree_path,
+                    branch,
+                )
                 .map_err(Self::board_err)?;
             Self::json_result(&serde_json::json!({
                 "workspace": workspace,

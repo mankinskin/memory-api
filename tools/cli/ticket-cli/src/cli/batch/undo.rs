@@ -113,6 +113,9 @@ pub(super) fn apply_batch_undo(
                 3600,
                 "batch rollback",
                 vec![],
+                None,
+                None,
+                None,
             ) {
                 errors.push(format!(
                     "rollback board_check_in {ticket_id}/{agent_id}: {e}"

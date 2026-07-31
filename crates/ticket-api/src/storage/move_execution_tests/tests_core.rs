@@ -124,7 +124,16 @@ fn execute_move_with_journal_fails_when_board_entry_is_active() {
         .unwrap();
 
     source_store
-        .board_check_in(&id, "agent-a", 300, "working", Vec::new())
+        .board_check_in(
+            &id,
+            "agent-a",
+            300,
+            "working",
+            Vec::new(),
+            None,
+            None,
+            None,
+        )
         .unwrap();
 
     let plan = source_store
@@ -170,7 +179,16 @@ fn execute_move_with_journal_migrates_historical_board_rows() {
         .unwrap();
 
     source_store
-        .board_check_in(&id, "agent-a", 300, "working", Vec::new())
+        .board_check_in(
+            &id,
+            "agent-a",
+            300,
+            "working",
+            Vec::new(),
+            None,
+            None,
+            None,
+        )
         .unwrap();
     source_store
         .board_check_out(&id, "agent-a", Some("done"))

@@ -473,6 +473,9 @@ fn apply_board_filter_excludes_tracked_candidates_and_surfaces_warnings() {
             status: BoardEntryStatus::Active,
             handoff_reason: None,
             completed_at: None,
+            session_id: None,
+            worktree_path: None,
+            branch: None,
         }],
         caller_entries: Vec::new(),
         config: BoardConfig {
@@ -485,6 +488,7 @@ fn apply_board_filter_excludes_tracked_candidates_and_surfaces_warnings() {
         conflict_count: 0,
         wip_limit_reached: true,
         file_ownership: BTreeMap::new(),
+        active_worktrees: Vec::new(),
         warnings: Vec::new(),
     };
 
@@ -528,6 +532,9 @@ fn apply_board_filter_respects_skip_board_but_keeps_warnings() {
             status: BoardEntryStatus::Stale,
             handoff_reason: None,
             completed_at: None,
+            session_id: None,
+            worktree_path: None,
+            branch: None,
         }],
         caller_entries: Vec::new(),
         config: BoardConfig {
@@ -540,6 +547,7 @@ fn apply_board_filter_respects_skip_board_but_keeps_warnings() {
         conflict_count: 0,
         wip_limit_reached: false,
         file_ownership: BTreeMap::new(),
+        active_worktrees: Vec::new(),
         warnings: Vec::new(),
     };
 

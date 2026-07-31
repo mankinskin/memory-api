@@ -423,6 +423,17 @@ pub struct BoardCheckInInput {
     pub files: Vec<String>,
     #[serde(default)]
     pub ttl_secs: Option<u64>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub worktree_path: Option<String>,
+    #[serde(default)]
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BoardWorktreesInput {
+    pub workspace: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
