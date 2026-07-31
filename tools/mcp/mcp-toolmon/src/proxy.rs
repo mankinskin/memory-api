@@ -12,13 +12,7 @@ use serde_json::{
     json,
 };
 
-use crate::gate::{
-    Decision,
-    Gate,
-};
-
-/// The argument name injected into every tool schema and required on each call.
-pub const CALLER_MODEL_ARG: &str = "caller_model";
+use toolmon_policy_api::{CALLER_MODEL_ARG, Decision, Policy, inject_caller_model_schema};
 
 /// Optional grant id argument for budget offset.
 pub const GRANT_ID_ARG: &str = "grant_id";
@@ -182,11 +176,11 @@ fn error_result(id: &Value, text: &str) -> Value {
 /// forwarded unchanged.
 pub fn handle_client_message(
     mut msg: Value,
-    gate: Option<&Gate>,
+    policy: Option<&dyn Policy>,
     pending: &mut PendingList,
     pending_calls: &mut PendingCalls,
 ) -> (ClientAction, Option<CallTelemetry>) {
-    let Some(gate) = gate else {
+    let Some(policy) = policy else {
         return (ClientAction::Forward(msg), None);
     };
 
@@ -258,9 +252,9 @@ pub fn handle_client_message(
             // folded to hyphens) as a fallback, never in place of it.
             let mut effective_model = caller_model.clone();
             let mut soft_warning: Option<String> = None;
-            if !gate.resolves(&caller_model) {
+            if !policy.resolves(&caller_model) {
                 let normalized = normalize_caller_model(&caller_model);
-                if normalized != caller_model && gate.resolves(&normalized) {
+                if normalized != caller_model && policy.resolves(&normalized) {
                     soft_warning = Some(format!(
                         "caller_model '{caller_model}' did not match the price table \
                          exactly; normalized to '{normalized}' (stripped trailing client \
@@ -271,7 +265,7 @@ pub fn handle_client_message(
                 }
             }
 
-            match gate.evaluate(&effective_model, &tool, grant_id.as_deref()) {
+            match policy.evaluate(&effective_model, &tool, grant_id.as_deref()) {
                 Decision::Reject { guidance } => {
                     let telemetry = immediate_telemetry("reject", Some(caller_model));
                     (ClientAction::Respond(error_result(&id, &guidance)), Some(telemetry))
@@ -317,6 +311,7 @@ pub fn handle_client_message(
 /// advertised tool's `inputSchema`. Otherwise pass through unchanged.
 pub fn handle_server_message(
     mut msg: Value,
+    policy: Option<&dyn Policy>,
     pending: &mut PendingList,
     pending_calls: &mut PendingCalls,
 ) -> (Value, Option<CallTelemetry>) {
@@ -367,57 +362,22 @@ pub fn handle_server_message(
         .and_then(Value::as_array_mut)
     {
         for tool in tools.iter_mut() {
-            inject_caller_model_schema(tool);
+            match policy {
+                Some(p) => p.on_tools_list(tool),
+                None => inject_caller_model_schema(tool),
+            }
         }
     }
     (msg, telemetry)
 }
 
-/// Ensure a single tool object requires a `caller_model` string argument.
-pub fn inject_caller_model_schema(tool: &mut Value) {
-    let Some(obj) = tool.as_object_mut() else {
-        return;
-    };
-    let schema = obj
-        .entry("inputSchema")
-        .or_insert_with(|| json!({ "type": "object" }));
-    let Some(schema_obj) = schema.as_object_mut() else {
-        return;
-    };
-    schema_obj
-        .entry("type")
-        .or_insert_with(|| json!("object"));
-
-    let props = schema_obj
-        .entry("properties")
-        .or_insert_with(|| json!({}));
-    if let Some(props_obj) = props.as_object_mut() {
-        props_obj.insert(
-            CALLER_MODEL_ARG.to_string(),
-            json!({
-                "type": "string",
-                "description": "Id of the model issuing this call (e.g. claude-opus-4-8). Required for price-awareness enforcement. Client-appended qualifiers such as 'Claude Sonnet 5 (copilot)', and space/underscore separators, are tolerated as a fallback and normalized to hyphens; prefer the exact price-table model_id."
-            }),
-        );
-    }
-
-    let required = schema_obj
-        .entry("required")
-        .or_insert_with(|| json!([]));
-    if let Some(arr) = required.as_array_mut() {
-        if !arr.iter().any(|v| v.as_str() == Some(CALLER_MODEL_ARG)) {
-            arr.push(json!(CALLER_MODEL_ARG));
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gate::Gate;
     use std::path::Path;
+    use toolmon_costgate::{CostGatePolicy, Gate};
 
-    fn test_gate() -> Gate {
+    fn test_gate() -> CostGatePolicy {
         // Write a tiny fixture table to a unique temp file and load it. A
         // per-call counter avoids collisions between parallel tests (same pid).
         use std::sync::atomic::{
@@ -438,13 +398,13 @@ mod tests {
         .unwrap();
         let g = Gate::load(
             Path::new(&path),
-            crate::gate::ModelBudgetCalibration::default(),
+            toolmon_costgate::ModelBudgetCalibration::default(),
             None,
             None,
         )
         .unwrap();
         let _ = std::fs::remove_file(&path);
-        g
+        CostGatePolicy::new(g)
     }
 
     fn call(tool: &str, model: Option<&str>) -> Value {
@@ -504,13 +464,15 @@ mod tests {
             ]}}"#,
         )
         .unwrap();
-        let g = Gate::load(
-            std::path::Path::new(&path),
-            crate::gate::ModelBudgetCalibration::default(),
-            Some(std::path::Path::new(&rollup_path)),
-            None,
-        )
-        .unwrap();
+        let g = CostGatePolicy::new(
+            Gate::load(
+                std::path::Path::new(&path),
+                toolmon_costgate::ModelBudgetCalibration::default(),
+                Some(std::path::Path::new(&rollup_path)),
+                None,
+            )
+            .unwrap(),
+        );
         // Clean up temp files after loading
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(&rollup_path);
@@ -611,7 +573,7 @@ mod tests {
             "id": 1,
             "result": { "content": [{ "type": "text", "text": "ok" }] }
         });
-        let (out, telemetry) = handle_server_message(resp, &mut p, &mut pc);
+        let (out, telemetry) = handle_server_message(resp, Some(&g), &mut p, &mut pc);
         assert!(out["result"]["costGateWarning"].as_str().unwrap().contains("normalized"));
         assert_eq!(telemetry.unwrap().decision, "allow-normalized");
     }
@@ -640,7 +602,7 @@ mod tests {
             "id": 1,
             "result": { "content": [{ "type": "text", "text": "ok" }] }
         });
-        let (out, _) = handle_server_message(resp, &mut p, &mut pc);
+        let (out, _) = handle_server_message(resp, Some(&g), &mut p, &mut pc);
         assert!(out["result"]["costGateWarning"].is_string());
     }
 
@@ -691,7 +653,7 @@ mod tests {
             "id": 7,
             "result": { "tools": [ { "name": "read_file", "inputSchema": { "type": "object", "properties": {}, "required": [] } } ] }
         });
-        let (out, telemetry) = handle_server_message(resp, &mut p, &mut pc);
+        let (out, telemetry) = handle_server_message(resp, Some(&g), &mut p, &mut pc);
         let tool = &out["result"]["tools"][0];
         assert_eq!(tool["inputSchema"]["properties"][CALLER_MODEL_ARG]["type"], json!("string"));
         let required = tool["inputSchema"]["required"].as_array().unwrap();
@@ -761,7 +723,7 @@ mod tests {
             "id": id,
             "result": { "content": [{ "type": "text", "text": "some tool output" }] }
         });
-        let (_, telemetry) = handle_server_message(resp, &mut p, &mut pc);
+        let (_, telemetry) = handle_server_message(resp, Some(&g), &mut p, &mut pc);
         let telemetry = telemetry.expect("expected telemetry once the response is correlated");
         assert_eq!(telemetry.decision, "allow");
         assert_eq!(telemetry.tool_name, "some_unknown_tool");
@@ -795,7 +757,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(5));
 
         let resp = json!({ "jsonrpc": "2.0", "id": id, "result": { "content": [] } });
-        let (_, telemetry) = handle_server_message(resp, &mut p, &mut pc);
+        let (_, telemetry) = handle_server_message(resp, Some(&g), &mut p, &mut pc);
         let telemetry = telemetry.expect("expected telemetry");
         assert!(
             telemetry.duration_ms >= 5,

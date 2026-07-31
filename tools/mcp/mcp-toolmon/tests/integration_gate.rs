@@ -8,10 +8,9 @@
 //! - Unknown model → Reject
 //! - Missing price table → fail-open (Gate::load error)
 
-use mcp_cost_gate::{
-    gate::{Decision, Gate, ModelBudgetCalibration},
-    proxy::{handle_client_message, ClientAction, PendingCalls, PendingList},
-};
+use mcp_toolmon::proxy::{handle_client_message, ClientAction, PendingCalls, PendingList};
+use toolmon_costgate::{gate::{Gate, ModelBudgetCalibration}, CostGatePolicy};
+use toolmon_policy_api::Decision;
 use serde_json::{json, Value};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -286,10 +285,11 @@ fn test_handle_client_message_expensive_model_refused() {
     )
     .unwrap();
 
+    let policy = CostGatePolicy::new(gate);
     let msg = tools_call_request(1, "get_ticket_description", "claude-opus-4-8");
     let mut pending = PendingList::default();
     let mut pending_calls = PendingCalls::default();
-    let (action, _telemetry) = handle_client_message(msg, Some(&gate), &mut pending, &mut pending_calls);
+    let (action, _telemetry) = handle_client_message(msg, Some(&policy), &mut pending, &mut pending_calls);
 
     // Should be refused with Delegate guidance.
     let error_text = extract_error_text(action);
@@ -333,10 +333,11 @@ fn test_handle_client_message_cheap_model_allowed() {
     )
     .unwrap();
 
+    let policy = CostGatePolicy::new(gate);
     let msg = tools_call_request(1, "get_ticket_description", "claude-haiku-3-7");
     let mut pending = PendingList::default();
     let mut pending_calls = PendingCalls::default();
-    let (action, _telemetry) = handle_client_message(msg, Some(&gate), &mut pending, &mut pending_calls);
+    let (action, _telemetry) = handle_client_message(msg, Some(&policy), &mut pending, &mut pending_calls);
 
     // Should be forwarded (allowed).
     match action {
