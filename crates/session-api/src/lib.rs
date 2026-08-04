@@ -144,6 +144,7 @@ pub use store::{
     PersistedSessionEvents,
     PersistedSessionManifest,
     PersistedSessionTranscript,
+    RelationStrength,
     SessionQuery,
     SessionRuntimePaths,
     SessionStoreConfig,
@@ -151,6 +152,7 @@ pub use store::{
     SessionStorePlan,
     SessionWorktreeCheckInReceipt,
     SessionWorktreeCheckInRequest,
+    TicketSessionMatch,
 };
 pub use subagent_rollup::{
     SubAgentRollup,

@@ -188,6 +188,60 @@ fn query_returns_seeded_session() {
 }
 
 #[test]
+fn sessions_for_ticket_returns_seeded_session_at_strict_tier() {
+    let dir = tempdir().unwrap();
+    let store_root: PathBuf = dir.path().join(".session");
+    let store_root_str = store_root.to_string_lossy().to_string();
+    let worktree = dir.path().join("wt-ticket");
+    let worktree_str = worktree.to_string_lossy().to_string();
+
+    run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "check-in",
+        "--session-id",
+        "sess-ticket",
+        "--owner-id",
+        "agent-ticket",
+        "--ticket-id",
+        "ticket-abc",
+        "--worktree-path",
+        &worktree_str,
+        "--branch",
+        "feature/ticket-abc",
+    ]);
+
+    let result = run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "sessions-for-ticket",
+        "ticket-abc",
+        "--strength",
+        "strict",
+    ]);
+    assert_eq!(result["count"], 1);
+    assert_eq!(result["sessions"][0]["session_id"], "sess-ticket");
+    assert_eq!(result["sessions"][0]["branch"], "feature/ticket-abc");
+    assert_eq!(result["sessions"][0]["matched_strength"], "strict");
+
+    let unrelated = run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "sessions-for-ticket",
+        "ticket-other",
+        "--strength",
+        "mentioned",
+    ]);
+    assert_eq!(unrelated["count"], 0);
+}
+
+#[test]
 fn peek_range_and_skeleton() {
     let dir = tempdir().unwrap();
     let store_root = dir.path().join(".session");

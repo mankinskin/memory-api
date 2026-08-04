@@ -17,6 +17,7 @@ use session_api::{
     DEFAULT_PROMPT_SUMMARIZE_THRESHOLD_CHARS,
     DEFAULT_SKELETON_PREVIEW_CHARS,
     PromptPackOptions,
+    RelationStrength,
     SessionError,
     SessionQuery,
     SessionRuntimeInitRequest,
@@ -114,6 +115,8 @@ pub enum SessionCommand {
     Lookup(LookupArgs),
     /// Query stored sessions with optional filters.
     Query(QueryArgs),
+    /// Query sessions related to a ticket at a selectable relation-strength tier.
+    SessionsForTicket(SessionsForTicketArgs),
     /// Move a UUID-addressed session to another workspace store.
     Move(MoveArgs),
     /// Peek a bounded window of transcript turns for a session.
@@ -230,6 +233,15 @@ pub struct QueryArgs {
     /// Maximum number of sessions to return.
     #[arg(long)]
     pub limit: Option<usize>,
+}
+
+#[derive(Debug, Args)]
+pub struct SessionsForTicketArgs {
+    /// Ticket id to find related sessions for.
+    pub ticket_id: String,
+    /// Relation-strength tier: strict, linked, or mentioned.
+    #[arg(long, default_value = "strict")]
+    pub strength: String,
 }
 
 #[derive(Debug, Args)]
@@ -739,6 +751,15 @@ fn dispatch(
                 "sessions": sessions,
             }))
         },
+        SessionCommand::SessionsForTicket(args) => {
+            let strength = parse_relation_strength(&args.strength)?;
+            let sessions =
+                config.sessions_for_ticket(&args.ticket_id, strength)?;
+            to_value(&json!({
+                "count": sessions.len(),
+                "sessions": sessions,
+            }))
+        },
         SessionCommand::Move(args) => move_command(config, args),
         SessionCommand::PeekRange(args) => {
             let range =
@@ -1075,6 +1096,20 @@ fn parse_validation_gates(
             "invalid --validation-json payload: {err}"
         ))
     })
+}
+
+fn parse_relation_strength(
+    value: &str
+) -> Result<RelationStrength, CliRunError> {
+    match value {
+        "strict" => Ok(RelationStrength::Strict),
+        "linked" => Ok(RelationStrength::Linked),
+        "mentioned" => Ok(RelationStrength::Mentioned),
+        _ => Err(CliRunError::BadRequest(format!(
+            "invalid relation strength: {value}. allowed values: \
+             strict, linked, mentioned"
+        ))),
+    }
 }
 
 fn parse_node_kind(
@@ -1694,6 +1729,26 @@ mod tests {
                     args.to_workspace_root,
                     Some(PathBuf::from("/repo/target"))
                 );
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_sessions_for_ticket_command() {
+        let cli = parse_cli_from([
+            "session",
+            "sessions-for-ticket",
+            "ticket-abc",
+            "--strength",
+            "linked",
+        ])
+        .expect("parse sessions-for-ticket");
+
+        match cli.command {
+            SessionCommand::SessionsForTicket(args) => {
+                assert_eq!(args.ticket_id, "ticket-abc");
+                assert_eq!(args.strength, "linked");
             },
             other => panic!("unexpected command: {other:?}"),
         }

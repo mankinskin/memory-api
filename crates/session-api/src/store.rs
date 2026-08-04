@@ -12,6 +12,10 @@ use std::{
 };
 use uuid::Uuid;
 
+use chrono::{
+    DateTime,
+    Utc,
+};
 use serde::{
     Deserialize,
     Serialize,
@@ -102,6 +106,33 @@ pub struct SessionQuery {
     pub limit: Option<usize>,
 }
 
+/// Widening relation tiers for [`SessionStoreConfig::sessions_for_ticket`].
+/// Each tier includes every match from the tiers before it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RelationStrength {
+    Strict,
+    Linked,
+    Mentioned,
+}
+
+/// One session row matched by [`SessionStoreConfig::sessions_for_ticket`].
+/// Does not inline the handoff package body — callers fetch handoff content
+/// separately via the existing handoff read paths.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TicketSessionMatch {
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree_path: Option<PathBuf>,
+    pub matched_strength: RelationStrength,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionStoreConfig {
     pub root: PathBuf,
@@ -147,6 +178,7 @@ mod config {
     include!("store/config/worktree_conflicts.rs");
     include!("store/config/tool_metrics.rs");
     include!("store/config/subagent_rollup_query.rs");
+    include!("store/config/ticket_relation.rs");
 }
 
 #[path = "store_routing_types.rs"]

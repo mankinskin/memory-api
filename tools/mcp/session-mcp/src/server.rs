@@ -27,6 +27,7 @@ use uuid::Uuid;
 use memory_api::workspace;
 use session_api::{
     DEFAULT_SKELETON_PREVIEW_CHARS,
+    RelationStrength,
     SessionError,
     SessionHandoffPackage,
     SessionQuery,
@@ -94,6 +95,17 @@ enum WorkflowNodeStatusSchema {
     Deferred,
 }
 
+/// Legal `session_sessions_for_ticket.strength` values, mirroring
+/// `session_api::RelationStrength` exactly (widening tiers).
+#[derive(JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+enum RelationStrengthSchema {
+    Strict,
+    Linked,
+    Mentioned,
+}
+
 // ── Input types ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -138,6 +150,16 @@ pub struct QueryInput {
     /// Maximum number of sessions to return.
     #[serde(default)]
     pub limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SessionsForTicketInput {
+    /// Ticket id to find related sessions for.
+    pub ticket_id: String,
+    /// Relation-strength tier. Legal values: strict, linked, mentioned
+    /// (widening: each includes the tiers before it).
+    #[schemars(with = "RelationStrengthSchema")]
+    pub strength: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -1439,6 +1461,38 @@ impl SessionServer {
     }
 
     #[tool(
+        name = "session_sessions_for_ticket",
+        description = "Query sessions related to ticket_id by ticket-relation strength tier: strict, linked, or mentioned (widening)."
+    )]
+    pub async fn session_sessions_for_ticket(
+        &self,
+        Parameters(input): Parameters<SessionsForTicketInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let strength = match input.strength.as_str() {
+            "strict" => RelationStrength::Strict,
+            "linked" => RelationStrength::Linked,
+            "mentioned" => RelationStrength::Mentioned,
+            other => {
+                return Err(McpError::invalid_params(
+                    format!(
+                        "invalid relation strength: {other}. allowed values: \
+                         strict, linked, mentioned"
+                    ),
+                    None,
+                ));
+            },
+        };
+        let sessions = self
+            .config()
+            .sessions_for_ticket(&input.ticket_id, strength)
+            .map_err(Self::session_err)?;
+        Self::json_result(&serde_json::json!({
+            "count": sessions.len(),
+            "sessions": sessions,
+        }))
+    }
+
+    #[tool(
         name = "session_peek_range",
         description = "Peek a bounded window of transcript turns for a session."
     )]
@@ -2007,6 +2061,51 @@ mod tests {
             .await
             .expect("lookup");
         assert!(!lookup.is_error.unwrap_or(false));
+    }
+
+    #[tokio::test]
+    async fn sessions_for_ticket_returns_matches_at_requested_tier() {
+        let dir = tempdir().unwrap();
+        let store_root = dir.path().join(".session");
+        let worktree = dir.path().join("wt");
+        let server =
+            SessionServer::new(store_root.clone(), "default".to_string());
+
+        server
+            .session_check_in(Parameters(CheckInInput {
+                workspace: store_root.display().to_string(),
+                session_id: "s-ticket".to_string(),
+                owner_id: "agent-ticket".to_string(),
+                ticket_id: "ticket-mcp".to_string(),
+                worktree_path: worktree.to_string_lossy().to_string(),
+                branch: "feature/ticket-mcp".to_string(),
+                predecessor_session_id: None,
+            }))
+            .await
+            .expect("check-in");
+
+        let result = server
+            .session_sessions_for_ticket(Parameters(SessionsForTicketInput {
+                ticket_id: "ticket-mcp".to_string(),
+                strength: "strict".to_string(),
+            }))
+            .await
+            .expect("sessions-for-ticket");
+        assert!(!result.is_error.unwrap_or(false));
+        let payload = extract_json(result);
+        assert_eq!(payload["count"], 1);
+        assert_eq!(payload["sessions"][0]["session_id"], "s-ticket");
+        assert_eq!(payload["sessions"][0]["matched_strength"], "strict");
+
+        let unrelated = server
+            .session_sessions_for_ticket(Parameters(SessionsForTicketInput {
+                ticket_id: "ticket-other".to_string(),
+                strength: "mentioned".to_string(),
+            }))
+            .await
+            .expect("sessions-for-ticket unrelated");
+        let unrelated_payload = extract_json(unrelated);
+        assert_eq!(unrelated_payload["count"], 0);
     }
 
     #[tokio::test]
