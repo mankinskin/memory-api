@@ -117,6 +117,10 @@ pub enum SessionCommand {
     Query(QueryArgs),
     /// Query sessions related to a ticket at a selectable relation-strength tier.
     SessionsForTicket(SessionsForTicketArgs),
+    /// Backfill ticket linkage for historical sessions from structured
+    /// signals only (branch shape, worktree_path shape, handoff
+    /// target_tickets). Defaults to a dry run; pass `--write` to persist.
+    BackfillTicketLinks(BackfillTicketLinksArgs),
     /// Move a UUID-addressed session to another workspace store.
     Move(MoveArgs),
     /// Peek a bounded window of transcript turns for a session.
@@ -242,6 +246,14 @@ pub struct SessionsForTicketArgs {
     /// Relation-strength tier: strict, linked, or mentioned.
     #[arg(long, default_value = "strict")]
     pub strength: String,
+}
+
+#[derive(Debug, Args)]
+pub struct BackfillTicketLinksArgs {
+    /// Persist the computed linkage. Without this flag the command only
+    /// reports what would change; no session file is touched.
+    #[arg(long)]
+    pub write: bool,
 }
 
 #[derive(Debug, Args)]
@@ -759,6 +771,10 @@ fn dispatch(
                 "count": sessions.len(),
                 "sessions": sessions,
             }))
+        },
+        SessionCommand::BackfillTicketLinks(args) => {
+            let report = config.backfill_ticket_links(args.write)?;
+            to_value(&report)
         },
         SessionCommand::Move(args) => move_command(config, args),
         SessionCommand::PeekRange(args) => {

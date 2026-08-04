@@ -150,6 +150,7 @@ pub use store::{
     SessionStoreConfig,
     SessionStorePaths,
     SessionStorePlan,
+    SessionTicketBackfillReport,
     SessionWorktreeCheckInReceipt,
     SessionWorktreeCheckInRequest,
     TicketSessionMatch,

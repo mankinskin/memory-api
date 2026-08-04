@@ -86,7 +86,10 @@ use test_api::{
     TestStoreConfig,
     ValidationOutcome,
 };
-use ticket_api::storage::TicketStore;
+use ticket_api::{
+    query_helpers::resolve_uuid_with_prefix,
+    storage::TicketStore,
+};
 
 #[path = "store_persistence_types.rs"]
 mod store_persistence_types;
@@ -131,6 +134,27 @@ pub struct TicketSessionMatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree_path: Option<PathBuf>,
     pub matched_strength: RelationStrength,
+}
+
+/// Result of [`SessionStoreConfig::backfill_ticket_links`]. Counts describe
+/// individual signal instances, not distinct sessions: one session can
+/// contribute to more than one counter (e.g. a strict-tier `ticket_id` write
+/// plus several linked-tier handoff targets).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionTicketBackfillReport {
+    pub total_sessions: usize,
+    pub linked_via_branch: usize,
+    pub linked_via_worktree_path: usize,
+    pub linked_via_handoff: usize,
+    pub skipped_unresolvable_shortid: usize,
+    pub skipped_corrupt: usize,
+    pub already_linked_untouched: usize,
+    pub total_would_link: usize,
+    /// True when at least one scanned session already surfaces a handoff
+    /// `target_tickets` entry at the mentioned tier without any backfill
+    /// write — writing to `links.ticket_ids` still promotes that session to
+    /// the strictly stronger linked tier.
+    pub handoff_already_at_mentioned: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -179,6 +203,7 @@ mod config {
     include!("store/config/tool_metrics.rs");
     include!("store/config/subagent_rollup_query.rs");
     include!("store/config/ticket_relation.rs");
+    include!("store/config/ticket_backfill.rs");
 }
 
 #[path = "store_routing_types.rs"]
