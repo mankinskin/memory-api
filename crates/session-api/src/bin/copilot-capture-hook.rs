@@ -86,7 +86,26 @@ fn run() -> Result<(), SessionError> {
         &plan,
         memory_api::workspace::working_dir().as_deref(),
     );
-    
+
+    // Best-effort worktree/branch/ticket-id inference from the current git
+    // environment (ticket bba9b313): must never fail capture — a lost
+    // session record would be a far worse bug than the linkage this fixes.
+    match memory_api::workspace::working_dir() {
+        Some(working_dir) => {
+            if let Err(error) = config.infer_worktree_from_environment(
+                &plan.record.session_id,
+                &working_dir,
+            ) {
+                eprintln!(
+                    "[copilot-capture-hook] worktree/ticket inference skipped: {error}"
+                );
+            }
+        },
+        None => eprintln!(
+            "[copilot-capture-hook] worktree/ticket inference skipped: no working directory available"
+        ),
+    }
+
     // Refresh tool metrics rollup (best-effort)
     refresh_tool_metrics_rollup(&config);
     

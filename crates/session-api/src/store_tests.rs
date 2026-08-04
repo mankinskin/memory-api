@@ -2,6 +2,7 @@ include!("store_tests/capture/basics.rs");
 include!("store_tests/capture/query_and_worktree.rs");
 include!("store_tests/capture/ticket_relation.rs");
 include!("store_tests/capture/ticket_backfill.rs");
+include!("store_tests/capture/worktree_capture_inference.rs");
 include!("store_tests/worktree/audit_and_runtime.rs");
 include!("store_tests/runtime/pins_and_workflow_mutation.rs");
 include!("store_tests/workflow/snapshot_and_handoff.rs");

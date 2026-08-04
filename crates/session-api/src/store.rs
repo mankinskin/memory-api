@@ -204,6 +204,7 @@ mod config {
     include!("store/config/subagent_rollup_query.rs");
     include!("store/config/ticket_relation.rs");
     include!("store/config/ticket_backfill.rs");
+    include!("store/config/worktree_capture_inference.rs");
 }
 
 #[path = "store_routing_types.rs"]
