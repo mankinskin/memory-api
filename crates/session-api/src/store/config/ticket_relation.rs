@@ -101,7 +101,19 @@ impl SessionStoreConfig {
             }
 
             let session_id = entry.file_name().to_string_lossy().into_owned();
-            let record = self.read_session(&session_id)?;
+            let record = match self.read_session(&session_id) {
+                Ok(record) => record,
+                Err(error) => {
+                    // A single corrupt/malformed session entry must never
+                    // abort the whole scan; skip it but keep the failure
+                    // visible.
+                    eprintln!(
+                        "[session-api] skipping unreadable session \
+                         {session_id} in sessions_for_ticket scan: {error}"
+                    );
+                    continue;
+                }
+            };
             let Some(matched_strength) = self.ticket_relation_signal(
                 &record,
                 &entry.path(),

@@ -166,3 +166,40 @@ fn sessions_for_ticket_mentioned_includes_all_structured_tiers_only() {
         .unwrap();
     assert_eq!(mentioned.matched_strength, RelationStrength::Mentioned);
 }
+
+/// Ticket e4d4c667: a single corrupt/malformed session entry must not
+/// abort the whole scan; skip it and keep returning the readable ones.
+#[test]
+fn sessions_for_ticket_skips_unreadable_session_and_returns_the_rest() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    config
+        .check_in_worktree(SessionWorktreeCheckInRequest {
+            session_id: "session-good".to_string(),
+            owner_id: "agent-good".to_string(),
+            ticket_id: TARGET_TICKET.to_string(),
+            worktree_path: tempdir.path().join("wt-good"),
+            branch: "agent/good-branch".to_string(),
+            predecessor_session_id: None,
+        })
+        .unwrap();
+
+    let corrupt_dir = tempdir
+        .path()
+        .join("store")
+        .join("sessions")
+        .join("session-corrupt");
+    std::fs::create_dir_all(&corrupt_dir).unwrap();
+    std::fs::write(corrupt_dir.join("session.json"), b"{ not valid json")
+        .unwrap();
+    std::fs::write(corrupt_dir.join("transcript.json"), b"{}").unwrap();
+
+    let matches = config
+        .sessions_for_ticket(TARGET_TICKET, RelationStrength::Strict)
+        .unwrap();
+
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].session_id, "session-good");
+}
