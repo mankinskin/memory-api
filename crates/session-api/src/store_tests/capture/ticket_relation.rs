@@ -167,6 +167,36 @@ fn sessions_for_ticket_mentioned_includes_all_structured_tiers_only() {
     assert_eq!(mentioned.matched_strength, RelationStrength::Mentioned);
 }
 
+/// Ticket 2b75bac2: a session checked in against a ticket must be
+/// discoverable at the strict tier immediately afterward, with no
+/// backfill or transcript reading involved.
+#[test]
+fn check_in_worktree_forward_captures_ticket_linkage_for_immediate_discovery()
+{
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+
+    config
+        .check_in_worktree(SessionWorktreeCheckInRequest {
+            session_id: "session-forward-capture".to_string(),
+            owner_id: "agent-forward-capture".to_string(),
+            ticket_id: TARGET_TICKET.to_string(),
+            worktree_path: tempdir.path().join("wt-forward-capture"),
+            branch: "agent/forward-capture-branch".to_string(),
+            predecessor_session_id: None,
+        })
+        .unwrap();
+
+    let matches = config
+        .sessions_for_ticket(TARGET_TICKET, RelationStrength::Strict)
+        .unwrap();
+
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].session_id, "session-forward-capture");
+    assert_eq!(matches[0].matched_strength, RelationStrength::Strict);
+}
+
 /// Ticket e4d4c667: a single corrupt/malformed session entry must not
 /// abort the whole scan; skip it and keep returning the readable ones.
 #[test]
