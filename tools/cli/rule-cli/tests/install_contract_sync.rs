@@ -8,8 +8,10 @@ use std::{
 
 const INSTALL_CONTRACT_SLUG: &str =
     "memory-api/install-contracts/cli-and-viewer-installation";
-const README_RULE_PATH: &str =
-    ".rule/rules/84278ede-0aaa-4382-83db-e6ee5d80106c/body.md";
+// The rule store was retired in favor of hand-maintained instructions
+// (commit 99820bf6); the "## Tool Use Examples" section of the top-level
+// README.md is now the canonical hand-maintained copy of this content.
+const README_SECTION_HEADING: &str = "## Tool Use Examples";
 
 fn memory_api_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -52,13 +54,29 @@ fn normalize_newlines(input: &str) -> String {
     input.replace("\r\n", "\n")
 }
 
+/// Extracts a top-level (`## `) section from README.md by heading text,
+/// returning the heading line through the next `## ` heading or EOF.
+fn readme_section(heading: &str) -> String {
+    let readme = fs::read_to_string(memory_api_root().join("README.md"))
+        .expect("memory-api README.md should exist");
+    let normalized = normalize_newlines(&readme);
+    let start = normalized
+        .find(heading)
+        .unwrap_or_else(|| panic!("README.md missing heading {heading}"));
+    let after_heading = &normalized[start + heading.len()..];
+    let end = after_heading
+        .find("\n## ")
+        .map(|offset| start + heading.len() + offset)
+        .unwrap_or(normalized.len());
+    normalized[start..end].trim_end().to_string()
+}
+
 #[test]
 fn readme_install_flow_section_matches_readme_rule_entry() {
     let expected = section("readme-install-flow");
-    let actual =
-        fs::read_to_string(memory_api_root().join(README_RULE_PATH)).unwrap();
+    let actual = readme_section(README_SECTION_HEADING);
 
-    assert_eq!(normalize_newlines(&actual), normalize_newlines(&expected));
+    assert_eq!(actual, normalize_newlines(&expected).trim_end());
 }
 
 #[test]
