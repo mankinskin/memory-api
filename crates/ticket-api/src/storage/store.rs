@@ -329,10 +329,20 @@ impl TicketStore {
             manifest.extra.insert(k, v);
         }
 
-        // Validate against type schema if known.
-        if let Some(schema) = self.schema_registry.get(type_id) {
-            schema.validate_manifest(&manifest)?;
-        }
+        // Validate against the registered type schema; an unregistered type
+        // must fail here rather than silently persist an unvalidated ticket
+        // that later explodes at transition resolution.
+        let schema = self.schema_registry.get(type_id).ok_or_else(|| {
+            StorageError::Validation(crate::error::SchemaValidationError::UnknownType {
+                type_id: type_id.to_string(),
+                registered: self
+                    .schema_registry
+                    .type_ids()
+                    .map(str::to_string)
+                    .collect(),
+            })
+        })?;
+        schema.validate_manifest(&manifest)?;
 
         let ticket_path = Self::normalize_existing_path(&TicketFs::create(
             &manifest, &root, body,

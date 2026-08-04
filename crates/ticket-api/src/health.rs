@@ -589,7 +589,7 @@ mod tests {
         let id = store
             .create(
                 None,
-                "made-up-type",
+                "tracker-improvement",
                 Some("Ticket with an unregistered type"),
                 Some("planned"),
                 extra_with_effort("500"),
@@ -597,6 +597,25 @@ mod tests {
                 Some("This description is definitely long enough to pass the 50-character threshold."),
             )
             .unwrap();
+
+        // `create` now rejects unregistered types outright, so simulate
+        // legacy data whose type predates schema registration by editing the
+        // manifest on disk directly and reindexing, mirroring how existing
+        // unregistered-type tickets already on disk came to exist.
+        let mut manifest = store.get(&id).unwrap();
+        manifest.extra.insert(
+            "type".to_string(),
+            serde_json::Value::String("made-up-type".to_string()),
+        );
+        let ticket_path = store.get_indexed(&id).unwrap().unwrap().path;
+        let toml_str =
+            memory_api::model::manifest_format::format_manifest_toml(&manifest);
+        fs::write(
+            ticket_path.join(crate::model::filesystem::TICKET_MANIFEST_FILE),
+            toml_str,
+        )
+        .unwrap();
+        store.scan(true).unwrap();
 
         let tickets = store.list(None, None, None).unwrap();
         let edges = store.list_all_edges().unwrap();

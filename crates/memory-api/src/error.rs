@@ -57,6 +57,17 @@ pub enum SchemaValidationError {
         kind: String,
         urn: String,
     },
+    /// Ticket creation named a `type` with no registered schema (ticket
+    /// 161454bd). Creation now fails loudly instead of silently persisting
+    /// an unvalidated ticket that later explodes at transition time.
+    #[error(
+        "unknown ticket type '{type_id}': no schema is registered for it; registered types are [{registered}]",
+        registered = .registered.join(", "),
+    )]
+    UnknownType {
+        type_id: String,
+        registered: Vec<String>,
+    },
 }
 
 /// Render the human-readable recovery clause for [`SchemaValidationError::InvalidTransition`].

@@ -59,3 +59,55 @@ fn recovers_ticket_paths_from_relative_index_entries() {
     );
     assert!(store.get(&ticket_id).is_ok());
 }
+
+#[test]
+fn create_rejects_unregistered_type_naming_offender_and_registered_types() {
+    let tmp = tempdir().unwrap();
+    let store_root = tmp.path().join(".ticket");
+    std::fs::create_dir_all(&store_root).unwrap();
+    let store = TicketStore::init(&store_root).unwrap();
+
+    let err = store
+        .create(
+            None,
+            "made-up-type",
+            Some("Should be rejected"),
+            None,
+            Default::default(),
+            None,
+            None,
+        )
+        .expect_err("unregistered type must fail creation");
+
+    let message = err.to_string();
+    assert!(
+        message.contains("made-up-type"),
+        "error must name the offending type: {message}"
+    );
+    assert!(
+        message.contains("tracker-improvement"),
+        "error must list a registered type id: {message}"
+    );
+}
+
+#[test]
+fn create_still_succeeds_for_registered_type() {
+    let tmp = tempdir().unwrap();
+    let store_root = tmp.path().join(".ticket");
+    std::fs::create_dir_all(&store_root).unwrap();
+    let store = TicketStore::init(&store_root).unwrap();
+
+    let ticket_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Registered type still works"),
+            None,
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    assert!(store.get(&ticket_id).is_ok());
+}

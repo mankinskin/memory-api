@@ -329,7 +329,7 @@ fn workflow_finish_resolves_ticket_from_nested_workspace_store() {
     nested_store
         .create(
             Some(ticket_id),
-            "nested-ticket",
+            "tracker-improvement",
             Some("lives in the nested store"),
             Some("done"),
             std::collections::BTreeMap::new(),
