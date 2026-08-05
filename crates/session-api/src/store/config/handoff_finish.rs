@@ -184,7 +184,8 @@ impl SessionStoreConfig {
         write_json(&handoff_json_path, &record)?;
 
         let handoff_md_path = handoff_folder.join("handoff.md");
-        let markdown_content = render_handoff_record_markdown(&record);
+        let ticket_store = TicketStore::open(&self.ticket_store_root()).ok();
+        let markdown_content = render_handoff_record_markdown(&record, ticket_store.as_ref());
         fs::write(&handoff_md_path, markdown_content).map_err(|source| {
             SessionError::Io {
                 path: handoff_md_path.clone(),

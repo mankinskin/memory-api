@@ -31,6 +31,8 @@ use session_api::{
     SessionError,
     SessionHandoffPackage,
     SessionHandoffTargetTicket,
+    SessionHandoffUpwardContextEntry,
+    SessionHandoffUpwardContextRole,
     SessionQuery,
     SessionRuntimeInitRequest,
     SessionStoreConfig,
@@ -540,9 +542,19 @@ pub struct RuntimeHandoffInput {
     /// implementation-ready package).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub objective: String,
-    /// Ticket ids expected to be worked in the next session.
+    /// Tickets expected to be worked in the next session. Accepts legacy ticket
+    /// id strings or objects with `id`, author-supplied `why`, and optional
+    /// cached `state` and `acceptance_criteria`.
     #[serde(default)]
-    pub target_tickets: Vec<String>,
+    pub target_tickets: Vec<HandoffTargetTicketInput>,
+    /// Why the next implementation unit matters to the broader program.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub higher_level_objective: String,
+    /// Ordered ancestor chain for the next implementation unit. Every entry
+    /// supplies `entity_urn`, `title`, and `role`; legal roles are `epic`,
+    /// `phase`, and `parent`.
+    #[serde(default)]
+    pub upward_context: Vec<HandoffUpwardContextInput>,
     /// Workspace-relative file paths expected to be touched.
     #[serde(default)]
     pub target_files: Vec<String>,
@@ -564,6 +576,81 @@ pub struct RuntimeHandoffInput {
     /// Id of the handoff this one supersedes (optional).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub predecessor_handoff: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum HandoffTargetTicketInput {
+    Legacy(String),
+    Structured {
+        id: String,
+        #[serde(default)]
+        why: String,
+        #[serde(default)]
+        state: String,
+        #[serde(default)]
+        acceptance_criteria: Vec<String>,
+    },
+}
+
+impl From<HandoffTargetTicketInput> for SessionHandoffTargetTicket {
+    fn from(value: HandoffTargetTicketInput) -> Self {
+        match value {
+            HandoffTargetTicketInput::Legacy(id) => Self {
+                id,
+                why: String::new(),
+                state: String::new(),
+                acceptance_criteria: Vec::new(),
+            },
+            HandoffTargetTicketInput::Structured {
+                id,
+                why,
+                state,
+                acceptance_criteria,
+            } => Self {
+                id,
+                why,
+                state,
+                acceptance_criteria,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct HandoffUpwardContextInput {
+    pub entity_urn: String,
+    pub title: String,
+    /// Legal values are `epic`, `phase`, and `parent`.
+    pub role: HandoffUpwardContextRoleInput,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum HandoffUpwardContextRoleInput {
+    Epic,
+    Phase,
+    Parent,
+}
+
+impl From<HandoffUpwardContextInput> for SessionHandoffUpwardContextEntry {
+    fn from(value: HandoffUpwardContextInput) -> Self {
+        Self {
+            entity_urn: value.entity_urn,
+            title: value.title,
+            role: match value.role {
+                HandoffUpwardContextRoleInput::Epic => {
+                    SessionHandoffUpwardContextRole::Epic
+                },
+                HandoffUpwardContextRoleInput::Phase => {
+                    SessionHandoffUpwardContextRole::Phase
+                },
+                HandoffUpwardContextRoleInput::Parent => {
+                    SessionHandoffUpwardContextRole::Parent
+                },
+            },
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -1350,6 +1437,8 @@ impl SessionServer {
             || !input.non_goals.is_empty()
             || !input.context_anchors.is_empty()
             || !input.open_escalations.is_empty()
+            || !input.higher_level_objective.is_empty()
+            || !input.upward_context.is_empty()
             || input.risk_notes.is_some()
             || input.predecessor_handoff.is_some()
         {
@@ -1358,15 +1447,10 @@ impl SessionServer {
                 target_tickets: input
                     .target_tickets
                     .into_iter()
-                    .map(|id| SessionHandoffTargetTicket {
-                        id,
-                        why: String::new(),
-                        state: String::new(),
-                        acceptance_criteria: Vec::new(),
-                    })
+                    .map(Into::into)
                     .collect(),
-                higher_level_objective: String::new(),
-                upward_context: Vec::new(),
+                higher_level_objective: input.higher_level_objective,
+                upward_context: input.upward_context.into_iter().map(Into::into).collect(),
                 target_files: input.target_files,
                 decisions: input.decisions,
                 non_goals: input.non_goals,

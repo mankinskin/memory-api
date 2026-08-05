@@ -10,7 +10,10 @@ use session_api::{
     SessionWorkflowEdge, SessionWorkflowEdgeKind, SessionWorkflowNodeDraft,
     SessionWorkflowNodeKind, SessionWorkflowNodeRequirement,
 };
-use std::path::PathBuf;
+use std::{
+    collections::BTreeMap,
+    path::PathBuf,
+};
 
 fn setup_test_store() -> (SessionStoreConfig, PathBuf) {
     let temp_dir = tempfile::tempdir().expect("create temp dir");
@@ -39,11 +42,23 @@ fn target_ticket(id: &str) -> SessionHandoffTargetTicket {
 }
 
 fn upward_context() -> Vec<SessionHandoffUpwardContextEntry> {
-    vec![SessionHandoffUpwardContextEntry {
-        entity_urn: "ce://default/ticket/program".to_string(),
-        title: "Program objective".to_string(),
-        role: SessionHandoffUpwardContextRole::Epic,
-    }]
+    vec![
+        SessionHandoffUpwardContextEntry {
+            entity_urn: "ce://default/ticket/program".to_string(),
+            title: "Program objective".to_string(),
+            role: SessionHandoffUpwardContextRole::Epic,
+        },
+        SessionHandoffUpwardContextEntry {
+            entity_urn: "ce://default/ticket/phase".to_string(),
+            title: "Delivery phase".to_string(),
+            role: SessionHandoffUpwardContextRole::Phase,
+        },
+        SessionHandoffUpwardContextEntry {
+            entity_urn: "ce://default/ticket/leaf".to_string(),
+            title: "Leaf work".to_string(),
+            role: SessionHandoffUpwardContextRole::Parent,
+        },
+    ]
 }
 
 #[test]
@@ -282,7 +297,12 @@ fn handoff_markdown_includes_workflow_mermaid_diagram_when_nodes_exist() {
     };
 
     let result = config
-        .create_handoff_result(workspace_session_id, Some(package), vec![], None)
+        .create_handoff_result(
+            workspace_session_id,
+            Some(package),
+            vec![],
+            Some(&AvailableTicketResolver),
+        )
         .expect("create handoff result");
 
     let handoff_folder = PathBuf::from(&result.record_path);
@@ -328,6 +348,101 @@ fn handoff_markdown_omits_mermaid_diagram_when_workflow_empty() {
         .expect("read handoff.md");
 
     assert!(!md_content.contains("```mermaid"), "markdown should not contain a fenced mermaid block when workflow has no nodes");
+}
+
+#[test]
+fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
+    let (config, store_root) = setup_test_store();
+    let workspace_session_id = "test-session-rendered-context";
+    let ticket_id = uuid::Uuid::parse_str("11111111-1111-4111-8111-111111111111")
+        .expect("valid ticket id");
+    let ticket_store_root = store_root.join(".ticket");
+    let ticket_store = ticket_api::storage::TicketStore::open_or_init(&ticket_store_root)
+        .expect("open ticket store");
+    ticket_store
+        .create(
+            Some(ticket_id),
+            "task",
+            Some("Resolved ticket title"),
+            None,
+            BTreeMap::new(),
+            None,
+            Some("Resolve the handoff rendering transport."),
+        )
+        .expect("create ticket");
+    init_test_session(&config, workspace_session_id);
+
+    let mut ticket = target_ticket(&ticket_id.to_string());
+    ticket.why = "The next session needs the renderer contract.".to_string();
+    let package = SessionHandoffPackage {
+        objective: "Render the handoff".to_string(),
+        target_tickets: vec![ticket],
+        higher_level_objective: "Ship a useful handoff package.".to_string(),
+        upward_context: upward_context(),
+        target_files: vec![],
+        decisions: vec![],
+        non_goals: vec![],
+        context_anchors: vec![],
+        open_escalations: vec![],
+        risk_notes: None,
+        predecessor_handoff: None,
+    };
+
+    let result = config
+        .create_handoff_result(workspace_session_id, Some(package), vec![], None)
+        .expect("create handoff result");
+    let markdown = std::fs::read_to_string(PathBuf::from(result.record_path).join("handoff.md"))
+        .expect("read handoff markdown");
+
+    assert!(markdown.starts_with(&format!(
+        "# Handoff: {}\n\nShip a useful handoff package.",
+        result.record.handoff_id
+    )));
+    assert!(markdown.contains("Program objective (epic) -> Delivery phase (phase) -> Leaf work (parent)"));
+    assert!(markdown.contains("| Ticket | What it does | Why |"));
+    assert!(markdown.contains("[11111111 Resolved ticket title](.ticket/tickets/11111111-1111-4111-8111-111111111111/ticket.toml)"));
+    assert!(markdown.contains("Resolve the handoff rendering transport."));
+    assert!(markdown.contains("The next session needs the renderer contract."));
+}
+
+#[test]
+fn handoff_markdown_degrades_when_target_ticket_is_unresolvable() {
+    let (config, _temp_dir) = setup_test_store();
+    let workspace_session_id = "test-session-unresolved-ticket";
+    let ticket_id = "22222222-2222-4222-8222-222222222222";
+    init_test_session(&config, workspace_session_id);
+    let package = SessionHandoffPackage {
+        objective: "Degrade gracefully".to_string(),
+        target_tickets: vec![target_ticket(ticket_id)],
+        higher_level_objective: "Keep rendered handoffs available.".to_string(),
+        upward_context: upward_context(),
+        target_files: vec![],
+        decisions: vec![],
+        non_goals: vec![],
+        context_anchors: vec![],
+        open_escalations: vec![],
+        risk_notes: None,
+        predecessor_handoff: None,
+    };
+
+    let result = config
+        .create_handoff_result(workspace_session_id, Some(package), vec![], None)
+        .expect("create handoff result");
+    let markdown = std::fs::read_to_string(PathBuf::from(result.record_path).join("handoff.md"))
+        .expect("read handoff markdown");
+
+    assert!(markdown.contains("22222222-2222-4222-8222-222222222222"));
+}
+
+struct AvailableTicketResolver;
+
+impl SessionTicketStateResolver for AvailableTicketResolver {
+    fn resolve_ticket_state(
+        &self,
+        _ticket_urn: &str,
+    ) -> Result<Option<String>, String> {
+        Ok(Some("ready".to_string()))
+    }
 }
 
 /// A resolver that always fails ticket state resolution, to exercise the

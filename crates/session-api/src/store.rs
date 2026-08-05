@@ -87,8 +87,12 @@ use test_api::{
     ValidationOutcome,
 };
 use ticket_api::{
+    model::parts::ViewProfile,
     query_helpers::resolve_uuid_with_prefix,
-    storage::TicketStore,
+    storage::{
+        ReadProjection,
+        TicketStore,
+    },
 };
 
 #[path = "store_persistence_types.rs"]
@@ -509,12 +513,31 @@ fn render_handoff_record_terminal(record: &SessionHandoffRecord) -> String {
     lines.join("\n")
 }
 
-fn render_handoff_record_markdown(record: &SessionHandoffRecord) -> String {
+fn render_handoff_record_markdown(
+    record: &SessionHandoffRecord,
+    ticket_store: Option<&TicketStore>,
+) -> String {
     let mut sections = Vec::new();
 
     // Header
     sections.push(format!("# Handoff: {}", record.handoff_id));
     sections.push(String::new());
+
+    if !record.higher_level_objective.is_empty() {
+        sections.push(record.higher_level_objective.clone());
+        sections.push(String::new());
+    }
+
+    if !record.upward_context.is_empty() {
+        sections.push("## Upward Context".to_string());
+        sections.push(record
+            .upward_context
+            .iter()
+            .map(|entry| format!("{} ({})", entry.title, format!("{:?}", entry.role).to_lowercase()))
+            .collect::<Vec<_>>()
+            .join(" -> "));
+        sections.push(String::new());
+    }
 
     // Summary section
     sections.push("## Summary".to_string());
@@ -545,8 +568,16 @@ fn render_handoff_record_markdown(record: &SessionHandoffRecord) -> String {
     // Target Tickets
     if !record.target_tickets.is_empty() {
         sections.push("## Target Tickets".to_string());
+        sections.push("| Ticket | What it does | Why |".to_string());
+        sections.push("| --- | --- | --- |".to_string());
         for ticket in &record.target_tickets {
-            sections.push(format!("- `{}`", ticket.id));
+            let display = resolve_handoff_ticket_display(record, ticket, ticket_store);
+            sections.push(format!(
+                "| {} | {} | {} |",
+                display.reference,
+                markdown_table_cell(&display.what),
+                markdown_table_cell(&ticket.why),
+            ));
         }
         sections.push(String::new());
     }
@@ -677,6 +708,65 @@ fn render_handoff_record_markdown(record: &SessionHandoffRecord) -> String {
     }
 
     sections.join("\n")
+}
+
+struct HandoffTicketDisplay {
+    reference: String,
+    what: String,
+}
+
+fn resolve_handoff_ticket_display(
+    record: &SessionHandoffRecord,
+    ticket: &crate::SessionHandoffTargetTicket,
+    ticket_store: Option<&TicketStore>,
+) -> HandoffTicketDisplay {
+    let cached_title = record
+        .workflow
+        .workflow
+        .nodes
+        .iter()
+        .find(|node| node.ticket_urn.as_deref().is_some_and(|urn| urn.ends_with(&ticket.id)))
+        .and_then(|node| node.cached_ticket_title.as_deref())
+        .unwrap_or(&ticket.id);
+    let resolved = Uuid::parse_str(&ticket.id)
+        .ok()
+        .and_then(|id| ticket_store.and_then(|store| store.project(
+            &id,
+            &ReadProjection::Profile(ViewProfile::Summary),
+        ).ok()))
+        .map(|projection| {
+            let title = projection
+                .fields
+                .get("title")
+                .and_then(|value| value.as_str())
+                .unwrap_or(cached_title);
+            let what = projection
+                .parts
+                .iter()
+                .find(|part| part.kind == "objective")
+                .map(|part| part.content.clone())
+                .unwrap_or_default();
+            (title.to_string(), what)
+        });
+    match resolved {
+        Some((title, what)) => HandoffTicketDisplay {
+            reference: format!(
+                "[{} {}](.ticket/tickets/{}/ticket.toml)",
+                ticket.id.chars().take(8).collect::<String>(),
+                title,
+                ticket.id,
+            ),
+            what,
+        },
+        None => HandoffTicketDisplay {
+            reference: format!("{} {}", ticket.id, cached_title),
+            what: String::new(),
+        },
+    }
+}
+
+fn markdown_table_cell(value: &str) -> String {
+    value.replace('|', "\\|").replace('\n', "<br>")
 }
 
 fn sort_workflow_graph(graph: &mut crate::SessionWorkflowGraph) {

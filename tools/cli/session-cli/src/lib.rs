@@ -19,6 +19,9 @@ use session_api::{
     PromptPackOptions,
     RelationStrength,
     SessionError,
+    SessionHandoffPackage,
+    SessionHandoffTargetTicket,
+    SessionHandoffUpwardContextEntry,
     SessionQuery,
     SessionRuntimeInitRequest,
     SessionStoreConfig,
@@ -573,6 +576,39 @@ pub struct WorkflowPromoteArgs {
 pub struct HandoffArgs {
     #[arg(long)]
     pub workspace_session_id: String,
+    /// The single goal of the next implementation unit.
+    #[arg(long)]
+    pub objective: Option<String>,
+    /// A target ticket id or JSON object with `id`, `why`, and optional cached fields.
+    #[arg(long = "target-ticket")]
+    pub target_tickets: Vec<String>,
+    /// Why the next implementation unit matters to the broader program.
+    #[arg(long)]
+    pub higher_level_objective: Option<String>,
+    /// JSON ancestor entry with `entity_urn`, `title`, and role `epic`, `phase`, or `parent`.
+    #[arg(long = "upward-context")]
+    pub upward_context: Vec<String>,
+    /// Workspace-relative file expected to be touched; repeat for multiple files.
+    #[arg(long = "target-file")]
+    pub target_files: Vec<String>,
+    /// Resolved design choice; repeat for multiple decisions.
+    #[arg(long = "decision")]
+    pub decisions: Vec<String>,
+    /// Explicit out-of-scope boundary; repeat for multiple non-goals.
+    #[arg(long = "non-goal")]
+    pub non_goals: Vec<String>,
+    /// Prior finding or id needed for the next implementation unit; repeat as needed.
+    #[arg(long = "context-anchor")]
+    pub context_anchors: Vec<String>,
+    /// Open escalation; repeat as needed.
+    #[arg(long = "open-escalation")]
+    pub open_escalations: Vec<String>,
+    /// Known risk or fragile area.
+    #[arg(long)]
+    pub risk_notes: Option<String>,
+    /// Id of the handoff this record supersedes.
+    #[arg(long)]
+    pub predecessor_handoff: Option<String>,
     /// JSON array of validation gates.
     #[arg(long)]
     pub validation_json: Option<String>,
@@ -716,9 +752,10 @@ fn dispatch(
             WorkflowCommand::RenderMermaid(args),
         ),
         SessionCommand::Handoff(args) => {
+            let package = handoff_package_from_args(&args)?;
             let result = config.create_handoff_result(
                 &args.workspace_session_id,
-                None,
+                package,
                 parse_validation_gates(args.validation_json.as_deref())?,
                 None,
             )?;
@@ -1112,6 +1149,70 @@ fn parse_validation_gates(
             "invalid --validation-json payload: {err}"
         ))
     })
+}
+
+fn handoff_package_from_args(
+    args: &HandoffArgs,
+) -> Result<Option<SessionHandoffPackage>, CliRunError> {
+    let target_tickets = args
+        .target_tickets
+        .iter()
+        .map(|raw| {
+            if raw.starts_with('{') {
+                serde_json::from_str(raw).map_err(|error| {
+                    CliRunError::BadRequest(format!(
+                        "invalid --target-ticket JSON payload: {error}"
+                    ))
+                })
+            } else {
+                Ok(SessionHandoffTargetTicket {
+                    id: raw.clone(),
+                    why: String::new(),
+                    state: String::new(),
+                    acceptance_criteria: Vec::new(),
+                })
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let upward_context = args
+        .upward_context
+        .iter()
+        .map(|raw| {
+            serde_json::from_str::<SessionHandoffUpwardContextEntry>(raw).map_err(
+                |error| {
+                    CliRunError::BadRequest(format!(
+                        "invalid --upward-context JSON payload: {error}"
+                    ))
+                },
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let objective = args.objective.clone().unwrap_or_default();
+    let higher_level_objective = args.higher_level_objective.clone().unwrap_or_default();
+    let has_package = !objective.is_empty()
+        || !target_tickets.is_empty()
+        || !higher_level_objective.is_empty()
+        || !upward_context.is_empty()
+        || !args.target_files.is_empty()
+        || !args.decisions.is_empty()
+        || !args.non_goals.is_empty()
+        || !args.context_anchors.is_empty()
+        || !args.open_escalations.is_empty()
+        || args.risk_notes.is_some()
+        || args.predecessor_handoff.is_some();
+    Ok(has_package.then_some(SessionHandoffPackage {
+        objective,
+        target_tickets,
+        higher_level_objective,
+        upward_context,
+        target_files: args.target_files.clone(),
+        decisions: args.decisions.clone(),
+        non_goals: args.non_goals.clone(),
+        context_anchors: args.context_anchors.clone(),
+        open_escalations: args.open_escalations.clone(),
+        risk_notes: args.risk_notes.clone(),
+        predecessor_handoff: args.predecessor_handoff.clone(),
+    }))
 }
 
 fn parse_relation_strength(
