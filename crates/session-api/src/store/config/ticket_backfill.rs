@@ -1,9 +1,8 @@
 impl SessionStoreConfig {
     /// Backfill ticket linkage for historical sessions using ONLY
     /// structured signals: `branch` shape, `worktree_path` shape, and
-    /// handoff-package `target_tickets`. Never reads `transcript.json` text
-    /// (spec e5f8a2c1 forbids transcript scanning for linkage at every
-    /// tier). Idempotent: an already-populated `metadata.ticket_id` is never
+    /// handoff-package `target_tickets`, and ticket-tool transcript signals.
+    /// Idempotent: an already-populated `metadata.ticket_id` is never
     /// overwritten, and a ticket id already present in `links.ticket_ids` is
     /// never duplicated. When `write` is `false` this only computes the
     /// report; no session file is touched.
@@ -92,6 +91,43 @@ impl SessionStoreConfig {
                 }
             }
 
+            let transcript_signals =
+                extract_transcript_ticket_signals(&record.turns);
+            if record.metadata.ticket_id.is_none()
+                && transcript_signals.claimed_ticket_ids.len() == 1
+            {
+                let ticket_id = transcript_signals
+                    .claimed_ticket_ids
+                    .first()
+                    .expect("one claimed ticket id");
+                match resolve_ticket_prefix(ticket_store.as_ref(), ticket_id) {
+                    Some(full_id) => {
+                        record.metadata.ticket_id = Some(full_id);
+                        changed = true;
+                    },
+                    None => {
+                        report.skipped_unresolvable_shortid += 1;
+                    },
+                }
+            }
+
+            for ticket_id in transcript_signals.linked_ticket_ids {
+                if record.links.links_to_ticket(&ticket_id) {
+                    continue;
+                }
+                match resolve_ticket_prefix(ticket_store.as_ref(), &ticket_id) {
+                    Some(full_id) => {
+                        if !record.links.links_to_ticket(&full_id) {
+                            record.links.ticket_ids.push(full_id);
+                            changed = true;
+                        }
+                    },
+                    None => {
+                        report.skipped_unresolvable_shortid += 1;
+                    },
+                }
+            }
+
             let handoff_targets =
                 self.session_handoff_target_tickets(&entry.path())?;
             if !handoff_targets.is_empty() {
@@ -115,6 +151,9 @@ impl SessionStoreConfig {
                     },
                 }
             }
+
+            record.links.ticket_ids.sort();
+            record.links.ticket_ids.dedup();
 
             if changed {
                 report.total_would_link += 1;
@@ -211,4 +250,141 @@ fn resolve_ticket_prefix(
     resolve_uuid_with_prefix(store, prefix)
         .ok()
         .map(|uuid| uuid.to_string())
+}
+
+#[derive(Default)]
+struct TranscriptTicketSignals {
+    linked_ticket_ids: BTreeSet<String>,
+    claimed_ticket_ids: Vec<String>,
+}
+
+fn extract_transcript_ticket_signals(
+    turns: &[SessionTurn],
+) -> TranscriptTicketSignals {
+    let mut signals = TranscriptTicketSignals::default();
+    let mut claimed_ticket_ids = BTreeSet::new();
+
+    for turn in turns {
+        for ticket_id in ticket_ids_from_content(&turn.content) {
+            signals.linked_ticket_ids.insert(ticket_id);
+        }
+
+        let Some(event_meta) = turn.event_meta.as_ref() else {
+            continue;
+        };
+        for payload in [
+            event_meta.tool_requests_json.as_ref(),
+            event_meta.tool_arguments_json.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            collect_ticket_tool_signals(
+                payload,
+                turn.tool_name.as_deref(),
+                &mut signals.linked_ticket_ids,
+                &mut claimed_ticket_ids,
+            );
+        }
+    }
+
+    signals.claimed_ticket_ids = claimed_ticket_ids.into_iter().collect();
+    signals
+}
+
+fn collect_ticket_tool_signals(
+    payload: &serde_json::Value,
+    fallback_tool_name: Option<&str>,
+    linked_ticket_ids: &mut BTreeSet<String>,
+    claimed_ticket_ids: &mut BTreeSet<String>,
+) {
+    match payload {
+        serde_json::Value::Array(payloads) => {
+            for payload in payloads {
+                collect_ticket_tool_signals(
+                    payload,
+                    fallback_tool_name,
+                    linked_ticket_ids,
+                    claimed_ticket_ids,
+                );
+            }
+        },
+        serde_json::Value::Object(object) => {
+            let tool_name = object
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .or(fallback_tool_name);
+            let arguments = object.get("arguments").unwrap_or(payload);
+            let Some(tool_name) = tool_name else {
+                return;
+            };
+            if !is_ticket_tool_name(tool_name) {
+                return;
+            }
+
+            let Some(arguments) = arguments.as_object() else {
+                return;
+            };
+            for key in ["id", "ticket_id", "from", "to", "root"] {
+                if let Some(ticket_id) = arguments
+                    .get(key)
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(ticket_id_candidate)
+                {
+                    linked_ticket_ids.insert(ticket_id.clone());
+                    if key == "ticket_id" && is_work_claim_tool_name(tool_name) {
+                        claimed_ticket_ids.insert(ticket_id);
+                    }
+                }
+            }
+        },
+        _ => {},
+    }
+}
+
+fn is_ticket_tool_name(tool_name: &str) -> bool {
+    const SUFFIXES: &[&str] = &[
+        "add_edge", "board_check_in", "board_check_out", "board_update_files",
+        "board_release_lease", "cancel_ticket", "close_ticket", "create_ticket",
+        "delete_ticket", "get_part", "get_ticket", "get_ticket_description",
+        "health_check", "list_edges", "list_parts", "list_tickets", "list_workspaces",
+        "move_apply", "move_preflight", "move_resume", "move_rollback", "next_tickets",
+        "prune_dangling_edges", "remove_edge", "subgraph", "ticket_capabilities",
+        "topgraph", "undo_part", "update_ticket", "workflow", "write_amendment",
+        "write_part",
+    ];
+    SUFFIXES
+        .iter()
+        .any(|suffix| tool_name.ends_with(suffix))
+}
+
+fn is_work_claim_tool_name(tool_name: &str) -> bool {
+    [
+        "board_check_in",
+        "board_check_out",
+        "board_update_files",
+        "board_release_lease",
+    ]
+    .iter()
+    .any(|suffix| tool_name.ends_with(suffix))
+}
+
+fn ticket_id_candidate(value: &str) -> Option<String> {
+    if uuid::Uuid::parse_str(value).is_ok() {
+        Some(value.to_ascii_lowercase())
+    } else if value.len() == 8 && value.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        Some(value.to_ascii_lowercase())
+    } else {
+        None
+    }
+}
+
+fn ticket_ids_from_content(content: &str) -> impl Iterator<Item = String> + '_ {
+    content.match_indices("ce://").filter_map(|(start, _)| {
+        let urn = content[start..]
+            .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '/' || ch == '-'))
+            .next()?;
+        let (_, ticket_id) = urn.strip_prefix("ce://")?.split_once("/ticket/")?;
+        ticket_id_candidate(ticket_id)
+    })
 }

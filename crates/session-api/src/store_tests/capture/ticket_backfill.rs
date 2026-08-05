@@ -8,6 +8,8 @@ use crate::{
     SessionLinks,
     SessionMetadata,
     SessionRecord,
+    SessionTurn,
+    SessionTurnEventMeta,
     SessionWorktreeAssignment,
 };
 
@@ -22,6 +24,24 @@ fn write_raw_session(
     ticket_id: Option<&str>,
     branch: Option<&str>,
     worktree_path: Option<PathBuf>,
+) {
+    write_raw_session_with_turns(
+        store_root,
+        session_id,
+        ticket_id,
+        branch,
+        worktree_path,
+        vec![],
+    );
+}
+
+fn write_raw_session_with_turns(
+    store_root: &std::path::Path,
+    session_id: &str,
+    ticket_id: Option<&str>,
+    branch: Option<&str>,
+    worktree_path: Option<PathBuf>,
+    turns: Vec<SessionTurn>,
 ) {
     let session_dir = store_root.join("sessions").join(session_id);
     fs::create_dir_all(&session_dir).unwrap();
@@ -58,7 +78,7 @@ fn write_raw_session(
             protocol_version: None,
             worktree,
         },
-        turns: vec![],
+        turns,
         links: SessionLinks::default(),
         track_id: None,
         anchor_ticket_id: None,
@@ -80,6 +100,27 @@ fn write_raw_session(
         serde_json::to_string_pretty(&transcript).unwrap(),
     )
     .unwrap();
+}
+
+fn ticket_tool_turn(
+    tool_name: &str,
+    tool_requests_json: Option<serde_json::Value>,
+    tool_arguments_json: Option<serde_json::Value>,
+    content: &str,
+) -> SessionTurn {
+    SessionTurn {
+        sequence: 0,
+        role: SessionRole::Tool,
+        content: content.to_string(),
+        captured_at: sample_time(),
+        tool_name: Some(tool_name.to_string()),
+        model: None,
+        event_meta: Some(SessionTurnEventMeta {
+            tool_requests_json,
+            tool_arguments_json,
+            ..Default::default()
+        }),
+    }
 }
 
 /// Writes only `context.json`, mirroring the two deliberate corrupt fixture
@@ -394,4 +435,149 @@ fn backfill_is_idempotent_and_never_overwrites_real_check_in() {
         config.read_session("session-branch").unwrap().metadata.ticket_id.as_deref(),
         Some(ticket_id.to_string().as_str())
     );
+}
+
+#[test]
+fn backfill_matches_ticket_tool_suffixes_across_server_prefixes() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let ticket_id = uuid::Uuid::parse_str("33333333-8888-4888-8888-888888888888").unwrap();
+    seed_ticket(&store_root.join(".ticket"), ticket_id);
+
+    for (index, prefix) in ["mcp_ticket-mcp", "mcp_rmcp5", "mcp_rmcp6"].iter().enumerate() {
+        write_raw_session_with_turns(
+            &store_root,
+            &format!("session-suffix-{index}"),
+            None,
+            None,
+            None,
+            vec![ticket_tool_turn(
+                &format!("{prefix}_update_ticket"),
+                Some(serde_json::json!({"name": format!("{prefix}_update_ticket"), "arguments": {"id": ticket_id}})),
+                None,
+                "",
+            )],
+        );
+    }
+
+    config.backfill_ticket_links(true).unwrap();
+    for index in 0..3 {
+        let record = config.read_session(&format!("session-suffix-{index}")).unwrap();
+        assert_eq!(record.links.ticket_ids, vec![ticket_id.to_string()]);
+    }
+}
+
+#[test]
+fn backfill_keeps_ambiguous_claims_linked_without_a_primary_ticket() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let first = uuid::Uuid::parse_str("44444444-9999-4999-8999-999999999999").unwrap();
+    let second = uuid::Uuid::parse_str("55555555-aaaa-4aaa-8aaa-aaaaaaaaaaaa").unwrap();
+    seed_ticket(&store_root.join(".ticket"), first);
+    seed_ticket(&store_root.join(".ticket"), second);
+    write_raw_session_with_turns(
+        &store_root,
+        "session-ambiguous-claims",
+        None,
+        None,
+        None,
+        vec![
+            ticket_tool_turn("mcp_rmcp5_board_check_in", Some(serde_json::json!({"arguments": {"ticket_id": first}})), None, ""),
+            ticket_tool_turn("mcp_rmcp6_board_check_out", None, Some(serde_json::json!({"ticket_id": second})), ""),
+        ],
+    );
+
+    config.backfill_ticket_links(true).unwrap();
+    let record = config.read_session("session-ambiguous-claims").unwrap();
+    assert_eq!(record.metadata.ticket_id, None);
+    assert_eq!(record.links.ticket_ids, vec![first.to_string(), second.to_string()]);
+}
+
+#[test]
+fn backfill_sets_one_explicit_board_claim_as_primary_ticket() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let ticket_id = uuid::Uuid::parse_str("66666666-bbbb-4bbb-8bbb-bbbbbbbbbbbb").unwrap();
+    seed_ticket(&store_root.join(".ticket"), ticket_id);
+    write_raw_session_with_turns(
+        &store_root,
+        "session-one-claim",
+        None,
+        None,
+        None,
+        vec![ticket_tool_turn("mcp_ticket-mcp_board_check_in", Some(serde_json::json!({"arguments": {"ticket_id": ticket_id}})), None, "")],
+    );
+
+    config.backfill_ticket_links(true).unwrap();
+    let record = config.read_session("session-one-claim").unwrap();
+    assert_eq!(record.metadata.ticket_id.as_deref(), Some(ticket_id.to_string().as_str()));
+    assert_eq!(record.links.ticket_ids, vec![ticket_id.to_string()]);
+}
+
+#[test]
+fn backfill_discards_unresolvable_transcript_candidates() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let missing = "77777777-cccc-4ccc-8ccc-cccccccccccc";
+    write_raw_session_with_turns(
+        &store_root,
+        "session-missing-ticket",
+        None,
+        None,
+        None,
+        vec![ticket_tool_turn("mcp_rmcp6_board_check_in", Some(serde_json::json!({"arguments": {"ticket_id": missing}})), None, "")],
+    );
+
+    config.backfill_ticket_links(true).unwrap();
+    let record = config.read_session("session-missing-ticket").unwrap();
+    assert_eq!(record.metadata.ticket_id, None);
+    assert!(record.links.ticket_ids.is_empty());
+}
+
+#[test]
+fn backfill_resolves_short_ids_and_content_ticket_urns() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    let ticket_id = uuid::Uuid::parse_str("88888888-dddd-4ddd-8ddd-dddddddddddd").unwrap();
+    seed_ticket(&store_root.join(".ticket"), ticket_id);
+    write_raw_session_with_turns(
+        &store_root,
+        "session-short-id",
+        None,
+        None,
+        None,
+        vec![ticket_tool_turn("mcp_rmcp5_get_ticket", Some(serde_json::json!({"arguments": {"id": "88888888"}})), None, "See ce://default/ticket/88888888-dddd-4ddd-8ddd-dddddddddddd.")],
+    );
+
+    config.backfill_ticket_links(true).unwrap();
+    let record = config.read_session("session-short-id").unwrap();
+    assert_eq!(record.links.ticket_ids, vec![ticket_id.to_string()]);
+}
+
+#[test]
+fn backfill_skips_malformed_or_missing_tool_request_payloads() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
+    write_raw_session_with_turns(
+        &store_root,
+        "session-malformed-payload",
+        None,
+        None,
+        None,
+        vec![
+            ticket_tool_turn("mcp_rmcp5_get_ticket", Some(serde_json::json!("not an object")), None, ""),
+            ticket_tool_turn("mcp_rmcp6_get_ticket", None, None, ""),
+        ],
+    );
+
+    config.backfill_ticket_links(true).unwrap();
+    let record = config.read_session("session-malformed-payload").unwrap();
+    assert_eq!(record.metadata.ticket_id, None);
+    assert!(record.links.ticket_ids.is_empty());
 }
