@@ -29,6 +29,30 @@ impl SessionStoreConfig {
         } else {
             None
         };
+        let known_ticket_ids = ticket_store
+            .as_ref()
+            .map(|store| {
+                store
+                    .list(None, None, None)
+                    .map(|tickets| {
+                        tickets
+                            .into_iter()
+                            .map(|ticket| ticket.id)
+                            .collect::<BTreeSet<_>>()
+                    })
+                    .map_err(|error| {
+                        SessionError::InvalidHookInput(format!(
+                            "ticket store unavailable at {}: {error}",
+                            ticket_store_root.display()
+                        ))
+                    })
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let known_ticket_prefixes = known_ticket_ids
+            .iter()
+            .map(|ticket_id| ticket_id.simple().to_string()[..8].to_string())
+            .collect::<BTreeSet<_>>();
         let mut transcript_ticket_resolution_cache = BTreeMap::new();
 
         for entry in
@@ -99,7 +123,18 @@ impl SessionStoreConfig {
                 let resolved_ticket_id = transcript_ticket_resolution_cache
                     .entry(ticket_id.clone())
                     .or_insert_with(|| {
-                        resolve_ticket_prefix(ticket_store.as_ref(), &ticket_id)
+                        if let Ok(ticket_id) = uuid::Uuid::parse_str(&ticket_id) {
+                            known_ticket_ids
+                                .contains(&ticket_id)
+                                .then(|| ticket_id.to_string())
+                        } else if known_ticket_prefixes.contains(&ticket_id) {
+                            resolve_ticket_prefix(
+                                ticket_store.as_ref(),
+                                &ticket_id,
+                            )
+                        } else {
+                            None
+                        }
                     })
                     .clone();
                 match resolved_ticket_id {
@@ -253,81 +288,72 @@ fn extract_transcript_ticket_ids(turns: &[SessionTurn]) -> BTreeSet<String> {
         let Some(event_meta) = turn.event_meta.as_ref() else {
             continue;
         };
-        for payload in [
-            event_meta.tool_requests_json.as_ref(),
-            event_meta.tool_arguments_json.as_ref(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            collect_ticket_tool_signals(
-                payload,
-                turn.tool_name.as_deref(),
-                &mut ticket_ids,
-            );
+        let Some(requests) = event_meta
+            .tool_requests_json
+            .as_ref()
+            .and_then(serde_json::Value::as_array)
+        else {
+            continue;
+        };
+        for request in requests {
+            let Some(arguments) = request
+                .as_object()
+                .and_then(|request| request.get("arguments"))
+            else {
+                continue;
+            };
+            collect_ticket_id_candidates(arguments, &mut ticket_ids);
         }
     }
 
     ticket_ids
 }
 
-fn collect_ticket_tool_signals(
-    payload: &serde_json::Value,
-    fallback_tool_name: Option<&str>,
+fn collect_ticket_id_candidates(
+    value: &serde_json::Value,
     ticket_ids: &mut BTreeSet<String>,
 ) {
-    match payload {
-        serde_json::Value::Array(payloads) => {
-            for payload in payloads {
-                collect_ticket_tool_signals(
-                    payload,
-                    fallback_tool_name,
-                    ticket_ids,
-                );
+    match value {
+        serde_json::Value::Array(values) => {
+            for value in values {
+                collect_ticket_id_candidates(value, ticket_ids);
             }
         },
         serde_json::Value::Object(object) => {
-            let tool_name = object
-                .get("name")
-                .and_then(serde_json::Value::as_str)
-                .or(fallback_tool_name);
-            let arguments = object.get("arguments").unwrap_or(payload);
-            let Some(tool_name) = tool_name else {
-                return;
-            };
-            if !is_ticket_tool_name(tool_name) {
-                return;
+            for value in object.values() {
+                collect_ticket_id_candidates(value, ticket_ids);
             }
-
-            let Some(arguments) = arguments.as_object() else {
-                return;
-            };
-            for key in ["id", "ticket_id", "from", "to", "root"] {
-                if let Some(ticket_id) = arguments
-                    .get(key)
-                    .and_then(serde_json::Value::as_str)
-                    .and_then(ticket_id_candidate)
-                {
-                    ticket_ids.insert(ticket_id);
-                }
+        },
+        serde_json::Value::String(value) => {
+            if uuid::Uuid::parse_str(value).is_ok() {
+                ticket_ids.insert(value.to_ascii_lowercase());
+            } else {
+                collect_short_id_candidates(value, ticket_ids);
+            }
+            if matches!(value.as_bytes().first(), Some(b'{' | b'['))
+                && let Ok(parsed) = serde_json::from_str(value)
+            {
+                collect_ticket_id_candidates(&parsed, ticket_ids);
             }
         },
         _ => {},
     }
 }
 
-fn is_ticket_tool_name(tool_name: &str) -> bool {
-    let tool_name = tool_name.to_ascii_lowercase();
-    tool_name.contains("ticket") || tool_name.contains("board")
+fn collect_short_id_candidates(value: &str, ticket_ids: &mut BTreeSet<String>) {
+    let bytes = value.as_bytes();
+    for start in 0..bytes.len().saturating_sub(7) {
+        let end = start + 8;
+        if bytes[start..end].iter().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+            && is_non_word_byte(bytes.get(start.wrapping_sub(1)))
+            && is_non_word_byte(bytes.get(end))
+        {
+            ticket_ids.insert(value[start..end].to_string());
+        }
+    }
 }
 
-fn ticket_id_candidate(value: &str) -> Option<String> {
-    if uuid::Uuid::parse_str(value).is_ok() {
-        Some(value.to_ascii_lowercase())
-    } else if value.len() == 8 && value.chars().all(|ch| ch.is_ascii_hexdigit()) {
-        Some(value.to_ascii_lowercase())
-    } else {
-        None
-    }
+fn is_non_word_byte(byte: Option<&u8>) -> bool {
+    byte.is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
 }
 

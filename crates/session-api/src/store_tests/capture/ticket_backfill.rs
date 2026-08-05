@@ -104,20 +104,23 @@ fn write_raw_session_with_turns(
 
 fn ticket_tool_turn(
     tool_name: &str,
-    tool_requests_json: Option<serde_json::Value>,
-    tool_arguments_json: Option<serde_json::Value>,
+    arguments: serde_json::Value,
     content: &str,
 ) -> SessionTurn {
     SessionTurn {
         sequence: 0,
-        role: SessionRole::Tool,
+        role: SessionRole::Assistant,
         content: content.to_string(),
         captured_at: sample_time(),
-        tool_name: Some(tool_name.to_string()),
+        tool_name: None,
         model: None,
         event_meta: Some(SessionTurnEventMeta {
-            tool_requests_json,
-            tool_arguments_json,
+            tool_requests_json: Some(serde_json::json!([{
+                "name": tool_name,
+                "arguments": arguments,
+                "toolCallId": "fixture-call",
+                "type": "function"
+            }])),
             ..Default::default()
         }),
     }
@@ -470,8 +473,7 @@ fn backfill_matches_ticket_tool_suffixes_across_server_prefixes() {
             None,
             vec![ticket_tool_turn(
                 &format!("{prefix}_update_ticket"),
-                Some(serde_json::json!({"name": format!("{prefix}_update_ticket"), "arguments": {"id": ticket_id}})),
-                None,
+                serde_json::json!({"id": ticket_id}),
                 "",
             )],
         );
@@ -500,8 +502,8 @@ fn backfill_keeps_ambiguous_claims_linked_without_a_primary_ticket() {
         None,
         None,
         vec![
-            ticket_tool_turn("mcp_rmcp5_board_check_in", Some(serde_json::json!({"arguments": {"ticket_id": first}})), None, ""),
-            ticket_tool_turn("mcp_rmcp6_board_check_out", None, Some(serde_json::json!({"ticket_id": second})), ""),
+            ticket_tool_turn("mcp_rmcp5_board_check_in", serde_json::json!({"ticket_id": first}), ""),
+            ticket_tool_turn("mcp_rmcp6_board_check_out", serde_json::json!({"ticket_id": second}), ""),
         ],
     );
 
@@ -524,7 +526,7 @@ fn backfill_ticket_tool_call_never_sets_strict_ticket_id() {
         None,
         None,
         None,
-        vec![ticket_tool_turn("mcp_ticket-mcp_board_check_in", Some(serde_json::json!({"arguments": {"ticket_id": ticket_id}})), None, "")],
+        vec![ticket_tool_turn("mcp_ticket-mcp_board_check_in", serde_json::json!({"ticket_id": ticket_id}), "")],
     );
 
     config.backfill_ticket_links(true).unwrap();
@@ -545,7 +547,7 @@ fn backfill_discards_unresolvable_transcript_short_id() {
         None,
         None,
         None,
-        vec![ticket_tool_turn("mcp_rmcp6_board_check_in", Some(serde_json::json!({"arguments": {"ticket_id": missing}})), None, "")],
+        vec![ticket_tool_turn("mcp_rmcp6_board_check_in", serde_json::json!({"ticket_id": missing}), "")],
     );
 
     config.backfill_ticket_links(true).unwrap();
@@ -567,7 +569,7 @@ fn backfill_resolves_ticket_tool_short_ids_without_mining_content() {
         None,
         None,
         None,
-        vec![ticket_tool_turn("mcp_rmcp5_get_ticket", Some(serde_json::json!({"arguments": {"id": "88888888"}})), None, "See ce://default/ticket/99999999-dddd-4ddd-8ddd-dddddddddddd.")],
+        vec![ticket_tool_turn("mcp_context-mcp_execute", serde_json::json!({"nested": [{"payload": "{\"id\":\"88888888\"}"}]}), "See ce://default/ticket/99999999-dddd-4ddd-8ddd-dddddddddddd.")],
     );
 
     config.backfill_ticket_links(true).unwrap();
@@ -588,7 +590,7 @@ fn backfill_transcript_dry_run_preserves_session_artifacts() {
         None,
         None,
         None,
-        vec![ticket_tool_turn("mcp_ticket-mcp_get_ticket", Some(serde_json::json!({"arguments": {"id": ticket_id}})), None, "")],
+        vec![ticket_tool_turn("mcp_ticket-mcp_get_ticket", serde_json::json!({"id": ticket_id}), "")],
     );
 
     let session_dir = store_root.join("sessions/session-dry-run");
@@ -614,7 +616,7 @@ fn backfill_transcript_ticket_links_are_idempotent() {
         None,
         None,
         None,
-        vec![ticket_tool_turn("mcp_ticket-mcp_update_ticket", Some(serde_json::json!({"arguments": {"id": ticket_id}})), None, "")],
+        vec![ticket_tool_turn("mcp_ticket-mcp_update_ticket", serde_json::json!({"id": ticket_id}), "")],
     );
 
     config.backfill_ticket_links(true).unwrap();
@@ -636,8 +638,8 @@ fn backfill_skips_malformed_or_missing_tool_request_payloads() {
         None,
         None,
         vec![
-            ticket_tool_turn("mcp_rmcp5_get_ticket", Some(serde_json::json!("not an object")), None, ""),
-            ticket_tool_turn("mcp_rmcp6_get_ticket", None, None, ""),
+            ticket_tool_turn("mcp_rmcp5_get_ticket", serde_json::json!("not an object"), ""),
+            ticket_tool_turn("mcp_rmcp6_get_ticket", serde_json::Value::Null, ""),
         ],
     );
 
