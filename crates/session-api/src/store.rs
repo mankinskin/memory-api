@@ -524,18 +524,33 @@ fn render_handoff_record_markdown(
     sections.push(String::new());
 
     if !record.higher_level_objective.is_empty() {
-        sections.push(record.higher_level_objective.clone());
+        sections.push(linkify_handoff_prose(
+            &record.higher_level_objective,
+            ticket_store,
+        ));
         sections.push(String::new());
     }
 
     if !record.upward_context.is_empty() {
         sections.push("## Upward Context".to_string());
-        sections.push(record
+        let mut breadcrumb = record
             .upward_context
             .iter()
-            .map(|entry| format!("{} ({})", entry.title, format!("{:?}", entry.role).to_lowercase()))
-            .collect::<Vec<_>>()
-            .join(" -> "));
+            .map(render_handoff_upward_context_entry)
+            .collect::<Vec<_>>();
+        if !record.target_tickets.is_empty() {
+            breadcrumb.push(
+                record
+                    .target_tickets
+                    .iter()
+                    .map(|ticket| {
+                        resolve_handoff_ticket_display(record, ticket, ticket_store).reference
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+        }
+        sections.push(breadcrumb.join(" -> "));
         sections.push(String::new());
     }
 
@@ -576,7 +591,7 @@ fn render_handoff_record_markdown(
                 "| {} | {} | {} |",
                 display.reference,
                 markdown_table_cell(&display.what),
-                markdown_table_cell(&ticket.why),
+                markdown_table_cell(&linkify_handoff_prose(&ticket.why, ticket_store)),
             ));
         }
         sections.push(String::new());
@@ -595,7 +610,7 @@ fn render_handoff_record_markdown(
     if !record.decisions.is_empty() {
         sections.push("## Decisions".to_string());
         for decision in &record.decisions {
-            sections.push(format!("- {}", decision));
+            sections.push(format!("- {}", linkify_handoff_prose(decision, ticket_store)));
         }
         sections.push(String::new());
     }
@@ -604,7 +619,7 @@ fn render_handoff_record_markdown(
     if !record.non_goals.is_empty() {
         sections.push("## Non-Goals".to_string());
         for non_goal in &record.non_goals {
-            sections.push(format!("- {}", non_goal));
+            sections.push(format!("- {}", linkify_handoff_prose(non_goal, ticket_store)));
         }
         sections.push(String::new());
     }
@@ -613,7 +628,7 @@ fn render_handoff_record_markdown(
     if !record.context_anchors.is_empty() {
         sections.push("## Context Anchors".to_string());
         for anchor in &record.context_anchors {
-            sections.push(format!("- {}", anchor));
+            sections.push(format!("- {}", linkify_handoff_prose(anchor, ticket_store)));
         }
         sections.push(String::new());
     }
@@ -630,7 +645,7 @@ fn render_handoff_record_markdown(
     // Risk Notes
     if let Some(ref risk_notes) = record.risk_notes {
         sections.push("## Risk Notes".to_string());
-        sections.push(risk_notes.clone());
+        sections.push(linkify_handoff_prose(risk_notes, ticket_store));
         sections.push(String::new());
     }
 
@@ -715,6 +730,12 @@ struct HandoffTicketDisplay {
     what: String,
 }
 
+struct ResolvedHandoffTicket {
+    id: Uuid,
+    title: Option<String>,
+    what: String,
+}
+
 fn resolve_handoff_ticket_display(
     record: &SessionHandoffRecord,
     ticket: &crate::SessionHandoffTargetTicket,
@@ -728,34 +749,18 @@ fn resolve_handoff_ticket_display(
         .find(|node| node.ticket_urn.as_deref().is_some_and(|urn| urn.ends_with(&ticket.id)))
         .and_then(|node| node.cached_ticket_title.as_deref())
         .unwrap_or(&ticket.id);
-    let resolved = Uuid::parse_str(&ticket.id)
-        .ok()
-        .and_then(|id| ticket_store.and_then(|store| store.project(
-            &id,
-            &ReadProjection::Profile(ViewProfile::Summary),
-        ).ok()))
-        .map(|projection| {
-            let title = projection
-                .fields
-                .get("title")
-                .and_then(|value| value.as_str())
-                .unwrap_or(cached_title);
-            let what = projection
-                .parts
-                .iter()
-                .find(|part| part.kind == "objective")
-                .map(|part| part.content.clone())
-                .unwrap_or_default();
-            (title.to_string(), what)
-        });
-    match resolved {
-        Some((title, what)) => HandoffTicketDisplay {
-            reference: format!(
-                "[{} {}](.ticket/tickets/{}/ticket.toml)",
-                ticket.id.chars().take(8).collect::<String>(),
-                title,
+    let resolved = ticket_store.and_then(|store| {
+        resolve_handoff_ticket(store, &ticket.id).map(|ticket| {
+            (
                 ticket.id,
-            ),
+                ticket.title.unwrap_or_else(|| cached_title.to_string()),
+                ticket.what,
+            )
+        })
+    });
+    match resolved {
+        Some((id, title, what)) => HandoffTicketDisplay {
+            reference: handoff_ticket_reference(&id.to_string(), &title),
             what,
         },
         None => HandoffTicketDisplay {
@@ -763,6 +768,151 @@ fn resolve_handoff_ticket_display(
             what: String::new(),
         },
     }
+}
+
+fn resolve_handoff_ticket(
+    ticket_store: &TicketStore,
+    ticket_id: &str,
+) -> Option<ResolvedHandoffTicket> {
+    let id = resolve_uuid_with_prefix(ticket_store, ticket_id).ok()?;
+    let projection = ticket_store
+        .project(&id, &ReadProjection::Profile(ViewProfile::Summary))
+        .ok()?;
+    let title = projection
+        .fields
+        .get("title")
+        .and_then(|value| value.as_str())
+        .map(str::to_string);
+    let what = projection
+        .parts
+        .iter()
+        .find(|part| part.kind == "objective")
+        .map(|part| part.content.clone())
+        .unwrap_or_default();
+    Some(ResolvedHandoffTicket { id, title, what })
+}
+
+fn handoff_ticket_reference(ticket_id: &str, title: &str) -> String {
+    format!(
+        "[{} {}](.ticket/tickets/{ticket_id}/ticket.toml)",
+        ticket_id.chars().take(8).collect::<String>(),
+        title,
+    )
+}
+
+fn render_handoff_upward_context_entry(
+    entry: &crate::SessionHandoffUpwardContextEntry,
+) -> String {
+    let title = parse_entity_urn(&entry.entity_urn)
+        .ok()
+        .filter(|parsed| parsed.kind == SessionPinnedEntityKind::Ticket)
+        .map(|parsed| handoff_ticket_reference(&parsed.entity_id, &entry.title))
+        .unwrap_or_else(|| entry.title.clone());
+    format!("{} ({})", title, format!("{:?}", entry.role).to_lowercase())
+}
+
+const MAX_HANDOFF_PROSE_TICKET_REFERENCES: usize = 128;
+
+fn linkify_handoff_prose(value: &str, ticket_store: Option<&TicketStore>) -> String {
+    let Some(ticket_store) = ticket_store else {
+        return value.to_string();
+    };
+
+    let mut output = String::with_capacity(value.len());
+    let mut in_fence = false;
+    let mut replacements = 0;
+    for line in value.split_inclusive('\n') {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            output.push_str(line);
+        } else if in_fence {
+            output.push_str(line);
+        } else {
+            output.push_str(&linkify_handoff_prose_line(
+                line,
+                ticket_store,
+                &mut replacements,
+            ));
+        }
+    }
+    output
+}
+
+fn linkify_handoff_prose_line(
+    line: &str,
+    ticket_store: &TicketStore,
+    replacements: &mut usize,
+) -> String {
+    let bytes = line.as_bytes();
+    let mut output = String::with_capacity(line.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'`' {
+            let end = line[index + 1..]
+                .find('`')
+                .map(|offset| index + offset + 2)
+                .unwrap_or(bytes.len());
+            output.push_str(&line[index..end]);
+            index = end;
+            continue;
+        }
+        if bytes[index] == b'['
+            && let Some(label_end) = line[index..].find("](")
+            && let Some(target_end) = line[index + label_end + 2..].find(')')
+        {
+            let end = index + label_end + target_end + 3;
+            output.push_str(&line[index..end]);
+            index = end;
+            continue;
+        }
+        if *replacements < MAX_HANDOFF_PROSE_TICKET_REFERENCES
+            && let Some(ticket_id) = bare_ticket_id_at(line, index)
+            && let Some(resolved) = resolve_handoff_ticket(ticket_store, ticket_id)
+            && let Some(title) = resolved.title
+        {
+            output.push_str(&handoff_ticket_reference(&resolved.id.to_string(), &title));
+            index += ticket_id.len();
+            *replacements += 1;
+            continue;
+        }
+        let character = line[index..].chars().next().expect("valid UTF-8");
+        output.push(character);
+        index += character.len_utf8();
+    }
+    output
+}
+
+fn bare_ticket_id_at(value: &str, index: usize) -> Option<&str> {
+    let bytes = value.as_bytes();
+    if index > 0 && is_ticket_id_word_byte(bytes[index - 1]) {
+        return None;
+    }
+    let remaining = &value[index..];
+    let length = if remaining.len() >= 36 && is_uuid_token(&remaining[..36]) {
+        36
+    } else if remaining.len() >= 8 && remaining[..8].bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        8
+    } else {
+        return None;
+    };
+    if bytes
+        .get(index + length)
+        .is_some_and(|byte| is_ticket_id_word_byte(*byte))
+    {
+        return None;
+    }
+    Some(&value[index..index + length])
+}
+
+fn is_uuid_token(value: &str) -> bool {
+    value.bytes().enumerate().all(|(index, byte)| {
+        matches!(index, 8 | 13 | 18 | 23) && byte == b'-'
+            || !matches!(index, 8 | 13 | 18 | 23) && byte.is_ascii_hexdigit()
+    })
+}
+
+fn is_ticket_id_word_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
 fn markdown_table_cell(value: &str) -> String {

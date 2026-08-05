@@ -354,11 +354,23 @@ fn handoff_markdown_omits_mermaid_diagram_when_workflow_empty() {
 fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
     let (config, store_root) = setup_test_store();
     let workspace_session_id = "test-session-rendered-context";
+    let epic_id = uuid::Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .expect("valid epic id");
+    let phase_id = uuid::Uuid::parse_str("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .expect("valid phase id");
     let ticket_id = uuid::Uuid::parse_str("11111111-1111-4111-8111-111111111111")
         .expect("valid ticket id");
     let ticket_store_root = store_root.join(".ticket");
     let ticket_store = ticket_api::storage::TicketStore::open_or_init(&ticket_store_root)
         .expect("open ticket store");
+    for (id, title) in [
+        (epic_id, "Program objective"),
+        (phase_id, "Delivery phase"),
+    ] {
+        ticket_store
+            .create(Some(id), "task", Some(title), None, BTreeMap::new(), None, None)
+            .expect("create ticket");
+    }
     ticket_store
         .create(
             Some(ticket_id),
@@ -371,6 +383,23 @@ fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
         )
         .expect("create ticket");
     init_test_session(&config, workspace_session_id);
+    config
+        .workflow_add_node(
+            workspace_session_id,
+            SessionWorkflowNodeDraft {
+                node_id: Some("workflow-ticket".to_string()),
+                kind: SessionWorkflowNodeKind::Task,
+                requirement: SessionWorkflowNodeRequirement::Required,
+                title: format!("Keep {ticket_id} literal in Mermaid"),
+                ticket_urn: None,
+                spec_urn: None,
+                anchor_urn: None,
+                category: None,
+                cached_ticket_title: None,
+                validation_spec_id: None,
+            },
+        )
+        .expect("add workflow node");
 
     let mut ticket = target_ticket(&ticket_id.to_string());
     ticket.why = "The next session needs the renderer contract.".to_string();
@@ -378,11 +407,24 @@ fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
         objective: "Render the handoff".to_string(),
         target_tickets: vec![ticket],
         higher_level_objective: "Ship a useful handoff package.".to_string(),
-        upward_context: upward_context(),
+        upward_context: vec![
+            SessionHandoffUpwardContextEntry {
+                entity_urn: format!("ce://default/ticket/{epic_id}"),
+                title: "Program objective".to_string(),
+                role: SessionHandoffUpwardContextRole::Epic,
+            },
+            SessionHandoffUpwardContextEntry {
+                entity_urn: format!("ce://default/ticket/{phase_id}"),
+                title: "Delivery phase".to_string(),
+                role: SessionHandoffUpwardContextRole::Phase,
+            },
+        ],
         target_files: vec![],
         decisions: vec![],
         non_goals: vec![],
-        context_anchors: vec![],
+        context_anchors: vec![format!(
+            "Program {epic_id} is linked; [already {phase_id}](https://example.test) and `{ticket_id}` stay literal; 22222222 is unresolved."
+        )],
         open_escalations: vec![],
         risk_notes: None,
         predecessor_handoff: None,
@@ -398,11 +440,23 @@ fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
         "# Handoff: {}\n\nShip a useful handoff package.",
         result.record.handoff_id
     )));
-    assert!(markdown.contains("Program objective (epic) -> Delivery phase (phase) -> Leaf work (parent)"));
+    assert!(markdown.contains(&format!(
+        "[aaaaaaaa Program objective](.ticket/tickets/{epic_id}/ticket.toml) (epic) -> [bbbbbbbb Delivery phase](.ticket/tickets/{phase_id}/ticket.toml) (phase) -> [11111111 Resolved ticket title](.ticket/tickets/{ticket_id}/ticket.toml)"
+    )));
     assert!(markdown.contains("| Ticket | What it does | Why |"));
     assert!(markdown.contains("[11111111 Resolved ticket title](.ticket/tickets/11111111-1111-4111-8111-111111111111/ticket.toml)"));
     assert!(markdown.contains("Resolve the handoff rendering transport."));
     assert!(markdown.contains("The next session needs the renderer contract."));
+    assert!(markdown.contains(&format!(
+        "Program [aaaaaaaa Program objective](.ticket/tickets/{epic_id}/ticket.toml) is linked; [already {phase_id}](https://example.test) and `{ticket_id}` stay literal; 22222222 is unresolved."
+    )));
+    assert!(markdown.contains(&format!(
+        "```bash\n{}\n```",
+        result.record.resume_command
+    )));
+    assert!(markdown.contains(&format!(
+        "workflow_ticket[\"Keep {ticket_id} literal in Mermaid"
+    )));
 }
 
 #[test]
