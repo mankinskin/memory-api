@@ -29,6 +29,9 @@ pub use handoff::{
     SessionHandoffPackage,
     SessionHandoffRecord,
     SessionHandoffResult,
+    SessionHandoffTargetTicket,
+    SessionHandoffUpwardContextEntry,
+    SessionHandoffUpwardContextRole,
 };
 pub use links::SessionLinks;
 pub use pin_feedback::SessionPinFeedbackSink;

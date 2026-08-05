@@ -4,9 +4,11 @@
 //! and handoff.md, with deterministic markdown content and full JSON round-trip.
 
 use session_api::{
-    PersistedRuntimeContext, SessionError, SessionHandoffPackage, SessionRuntimeInitRequest,
-    SessionStoreConfig, SessionTicketStateResolver, SessionWorkflowEdge, SessionWorkflowEdgeKind,
-    SessionWorkflowNodeDraft, SessionWorkflowNodeKind, SessionWorkflowNodeRequirement,
+    PersistedRuntimeContext, SessionError, SessionHandoffPackage, SessionHandoffTargetTicket,
+    SessionHandoffUpwardContextEntry, SessionHandoffUpwardContextRole,
+    SessionRuntimeInitRequest, SessionStoreConfig, SessionTicketStateResolver,
+    SessionWorkflowEdge, SessionWorkflowEdgeKind, SessionWorkflowNodeDraft,
+    SessionWorkflowNodeKind, SessionWorkflowNodeRequirement,
 };
 use std::path::PathBuf;
 
@@ -27,6 +29,23 @@ fn init_test_session(config: &SessionStoreConfig, workspace_session_id: &str) {
         .expect("init runtime context");
 }
 
+fn target_ticket(id: &str) -> SessionHandoffTargetTicket {
+    SessionHandoffTargetTicket {
+        id: id.to_string(),
+        why: "Required by the implementation unit".to_string(),
+        state: "ready".to_string(),
+        acceptance_criteria: vec!["The implementation unit completes".to_string()],
+    }
+}
+
+fn upward_context() -> Vec<SessionHandoffUpwardContextEntry> {
+    vec![SessionHandoffUpwardContextEntry {
+        entity_urn: "ce://default/ticket/program".to_string(),
+        title: "Program objective".to_string(),
+        role: SessionHandoffUpwardContextRole::Epic,
+    }]
+}
+
 #[test]
 fn handoff_persists_as_folder_with_json_and_markdown() {
     let (config, _temp_dir) = setup_test_store();
@@ -36,7 +55,9 @@ fn handoff_persists_as_folder_with_json_and_markdown() {
 
     let package = SessionHandoffPackage {
         objective: "Implement the feature".to_string(),
-        target_tickets: vec!["ticket-123".to_string()],
+        target_tickets: vec![target_ticket("ticket-123")],
+        higher_level_objective: "Deliver the program objective".to_string(),
+        upward_context: upward_context(),
         target_files: vec!["memory-api/crates/session-api/src/lib.rs".to_string()],
         decisions: vec!["Use async/await".to_string()],
         non_goals: vec!["No refactoring".to_string()],
@@ -117,7 +138,9 @@ fn handoff_markdown_shows_open_escalations_warning() {
 
     let package = SessionHandoffPackage {
         objective: "Fix the bug".to_string(),
-        target_tickets: vec!["ticket-456".to_string()],
+        target_tickets: vec![target_ticket("ticket-456")],
+        higher_level_objective: String::new(),
+        upward_context: vec![],
         target_files: vec!["memory-api/crates/session-api/src/error.rs".to_string()],
         decisions: vec!["Decision made".to_string()],
         non_goals: vec!["Non-goal".to_string()],
@@ -160,7 +183,9 @@ fn legacy_flat_json_handoffs_still_load() {
     // Create a handoff using the new folder structure first
     let package = SessionHandoffPackage {
         objective: "Test objective".to_string(),
-        target_tickets: vec!["ticket-789".to_string()],
+        target_tickets: vec![target_ticket("ticket-789")],
+        higher_level_objective: "Deliver the program objective".to_string(),
+        upward_context: upward_context(),
         target_files: vec!["memory-api/crates/session-api/src/store.rs".to_string()],
         decisions: vec!["Test decision".to_string()],
         non_goals: vec!["Test non-goal".to_string()],
@@ -245,6 +270,8 @@ fn handoff_markdown_includes_workflow_mermaid_diagram_when_nodes_exist() {
     let package = SessionHandoffPackage {
         objective: "Ship the workflow".to_string(),
         target_tickets: vec![],
+        higher_level_objective: "Deliver the program objective".to_string(),
+        upward_context: upward_context(),
         target_files: vec![],
         decisions: vec![],
         non_goals: vec![],
@@ -281,6 +308,8 @@ fn handoff_markdown_omits_mermaid_diagram_when_workflow_empty() {
     let package = SessionHandoffPackage {
         objective: "No workflow yet".to_string(),
         target_tickets: vec![],
+        higher_level_objective: "Deliver the program objective".to_string(),
+        upward_context: upward_context(),
         target_files: vec![],
         decisions: vec![],
         non_goals: vec![],

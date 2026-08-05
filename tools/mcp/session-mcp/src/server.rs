@@ -30,6 +30,7 @@ use session_api::{
     RelationStrength,
     SessionError,
     SessionHandoffPackage,
+    SessionHandoffTargetTicket,
     SessionQuery,
     SessionRuntimeInitRequest,
     SessionStoreConfig,
@@ -1354,7 +1355,18 @@ impl SessionServer {
         {
             Some(SessionHandoffPackage {
                 objective: input.objective,
-                target_tickets: input.target_tickets,
+                target_tickets: input
+                    .target_tickets
+                    .into_iter()
+                    .map(|id| SessionHandoffTargetTicket {
+                        id,
+                        why: String::new(),
+                        state: String::new(),
+                        acceptance_criteria: Vec::new(),
+                    })
+                    .collect(),
+                higher_level_objective: String::new(),
+                upward_context: Vec::new(),
                 target_files: input.target_files,
                 decisions: input.decisions,
                 non_goals: input.non_goals,

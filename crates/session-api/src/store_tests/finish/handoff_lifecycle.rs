@@ -83,7 +83,18 @@ fn pickup_binds_target_session_and_updates_target_record() {
     let source_session = init_workspace(&config, "source-session");
     let package = crate::SessionHandoffPackage {
         objective: "Fix the bug".to_string(),
-        target_tickets: vec!["ticket-1".to_string()],
+        target_tickets: vec![crate::SessionHandoffTargetTicket {
+            id: "ticket-1".to_string(),
+            why: "Fix the ticket".to_string(),
+            state: "ready".to_string(),
+            acceptance_criteria: vec![],
+        }],
+        higher_level_objective: "Complete the program work".to_string(),
+        upward_context: vec![crate::SessionHandoffUpwardContextEntry {
+            entity_urn: "ce://default/ticket/program".to_string(),
+            title: "Program".to_string(),
+            role: crate::SessionHandoffUpwardContextRole::Epic,
+        }],
         target_files: vec![],
         decisions: vec!["decision".to_string()],
         non_goals: vec!["non-goal".to_string()],
@@ -141,7 +152,18 @@ fn backlog_query_filters_by_source_session_and_track() {
 
     let package = |objective: &str| crate::SessionHandoffPackage {
         objective: objective.to_string(),
-        target_tickets: vec!["ticket-1".to_string()],
+        target_tickets: vec![crate::SessionHandoffTargetTicket {
+            id: "ticket-1".to_string(),
+            why: String::new(),
+            state: String::new(),
+            acceptance_criteria: Vec::new(),
+        }],
+        higher_level_objective: "broader program objective".to_string(),
+        upward_context: vec![crate::SessionHandoffUpwardContextEntry {
+            entity_urn: "ce://default/epic/example".to_string(),
+            title: "Example epic".to_string(),
+            role: crate::SessionHandoffUpwardContextRole::Epic,
+        }],
         target_files: vec![],
         decisions: vec!["decision".to_string()],
         non_goals: vec!["non-goal".to_string()],

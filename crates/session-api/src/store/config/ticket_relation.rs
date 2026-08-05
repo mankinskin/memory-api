@@ -58,7 +58,11 @@ impl SessionStoreConfig {
             if let Some(record) = read_json_if_exists::<SessionHandoffRecord>(
                 &handoff_json_path,
             )? {
-                if record.target_tickets.iter().any(|id| id == ticket_id) {
+                if record
+                    .target_tickets
+                    .iter()
+                    .any(|target_ticket| target_ticket.id == ticket_id)
+                {
                     return Ok(true);
                 }
             }

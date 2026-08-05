@@ -298,8 +298,18 @@ fn handoff_package_round_trip_persists_schema_fields() {
 
     let package = crate::SessionHandoffPackage {
         objective: "Implement required-field enforcement".to_string(),
-        target_tickets: vec!["d3af78d7-9486-43c0-aae7-ddd5681d9807"
-            .to_string()],
+        target_tickets: vec![crate::SessionHandoffTargetTicket {
+            id: "d3af78d7-9486-43c0-aae7-ddd5681d9807".to_string(),
+            why: "Implement the handoff contract".to_string(),
+            state: "ready".to_string(),
+            acceptance_criteria: vec![],
+        }],
+        higher_level_objective: "Complete the program work".to_string(),
+        upward_context: vec![crate::SessionHandoffUpwardContextEntry {
+            entity_urn: "ce://default/ticket/program".to_string(),
+            title: "Program".to_string(),
+            role: crate::SessionHandoffUpwardContextRole::Epic,
+        }],
         target_files: vec![
             "memory-api/crates/session-api/src/model/handoff.rs".to_string(),
         ],
@@ -361,7 +371,18 @@ fn handoff_package_with_nonexistent_target_file_fails_at_creation_time() {
 
     let package = crate::SessionHandoffPackage {
         objective: "Implement a nonexistent-path regression".to_string(),
-        target_tickets: vec!["d3af78d7-9486-43c0-aae7-ddd5681d9807".to_string()],
+        target_tickets: vec![crate::SessionHandoffTargetTicket {
+            id: "d3af78d7-9486-43c0-aae7-ddd5681d9807".to_string(),
+            why: "Verify creation-time validation".to_string(),
+            state: "ready".to_string(),
+            acceptance_criteria: vec![],
+        }],
+        higher_level_objective: "Complete the program work".to_string(),
+        upward_context: vec![crate::SessionHandoffUpwardContextEntry {
+            entity_urn: "ce://default/ticket/program".to_string(),
+            title: "Program".to_string(),
+            role: crate::SessionHandoffUpwardContextRole::Epic,
+        }],
         target_files: vec![
             "memory-api/crates/session-api/src/does_not_exist.rs".to_string(),
         ],
@@ -409,7 +430,18 @@ fn handoff_package_normalizes_backslash_target_files_to_forward_slash() {
     let package = crate::SessionHandoffPackage {
         objective: "Verify repo-root-relative forward-slash normalization"
             .to_string(),
-        target_tickets: vec!["d3af78d7-9486-43c0-aae7-ddd5681d9807".to_string()],
+        target_tickets: vec![crate::SessionHandoffTargetTicket {
+            id: "d3af78d7-9486-43c0-aae7-ddd5681d9807".to_string(),
+            why: "Verify path normalization".to_string(),
+            state: "ready".to_string(),
+            acceptance_criteria: vec![],
+        }],
+        higher_level_objective: "Complete the program work".to_string(),
+        upward_context: vec![crate::SessionHandoffUpwardContextEntry {
+            entity_urn: "ce://default/ticket/program".to_string(),
+            title: "Program".to_string(),
+            role: crate::SessionHandoffUpwardContextRole::Epic,
+        }],
         // A real, existing repo file referenced with backslashes, as a
         // Windows-authored handoff payload might supply.
         target_files: vec![

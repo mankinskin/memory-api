@@ -13,6 +13,80 @@ use super::{
     SessionWorkflowSnapshot,
 };
 
+/// Role of an entry in the ordered program context above a handoff's leaf work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionHandoffUpwardContextRole {
+    #[serde(alias = "initiative")]
+    Epic,
+    #[serde(alias = "stage")]
+    Phase,
+    #[serde(alias = "parent-work")]
+    Parent,
+}
+
+/// A higher-level program entity that gives the handoff's implementation work context.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionHandoffUpwardContextEntry {
+    pub entity_urn: String,
+    pub title: String,
+    pub role: SessionHandoffUpwardContextRole,
+}
+
+/// A ticket included in a handoff together with its local implementation context.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SessionHandoffTargetTicket {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub why: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub acceptance_criteria: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum SessionHandoffTargetTicketRepr {
+    Legacy(String),
+    Structured {
+        id: String,
+        #[serde(default)]
+        why: String,
+        #[serde(default)]
+        state: String,
+        #[serde(default)]
+        acceptance_criteria: Vec<String>,
+    },
+}
+
+impl<'de> Deserialize<'de> for SessionHandoffTargetTicket {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match SessionHandoffTargetTicketRepr::deserialize(deserializer)? {
+            SessionHandoffTargetTicketRepr::Legacy(id) => Ok(Self {
+                id,
+                why: String::new(),
+                state: String::new(),
+                acceptance_criteria: Vec::new(),
+            }),
+            SessionHandoffTargetTicketRepr::Structured {
+                id,
+                why,
+                state,
+                acceptance_criteria,
+            } => Ok(Self {
+                id,
+                why,
+                state,
+                acceptance_criteria,
+            }),
+        }
+    }
+}
+
 /// Handoff-package schema fields supplied by the caller to describe the next
 /// implementation unit.  All fields are optional at the type level but the
 /// store enforces required-field completeness when a package is provided.
@@ -21,9 +95,15 @@ pub struct SessionHandoffPackage {
     /// The single goal of the next implementation unit.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub objective: String,
-    /// Ticket ids expected to be worked in the next session.
+    /// Tickets expected to be worked in the next session and their local context.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub target_tickets: Vec<String>,
+    pub target_tickets: Vec<SessionHandoffTargetTicket>,
+    /// Why the current implementation unit matters to the broader program.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub higher_level_objective: String,
+    /// Ordered ancestor chain from program context to the current leaf work.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub upward_context: Vec<SessionHandoffUpwardContextEntry>,
     /// Workspace-relative file paths expected to be touched.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub target_files: Vec<String>,
@@ -83,6 +163,18 @@ impl SessionHandoffPackage {
         }
         missing
     }
+
+    /// Returns required upward-context fields that are absent or empty.
+    pub fn missing_upward_context_fields(&self) -> Vec<&'static str> {
+        let mut missing = Vec::new();
+        if self.higher_level_objective.trim().is_empty() {
+            missing.push("higher_level_objective");
+        }
+        if self.upward_context.is_empty() {
+            missing.push("upward_context");
+        }
+        missing
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,7 +197,11 @@ pub struct SessionHandoffRecord {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub objective: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub target_tickets: Vec<String>,
+    pub target_tickets: Vec<SessionHandoffTargetTicket>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub higher_level_objective: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub upward_context: Vec<SessionHandoffUpwardContextEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub target_files: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

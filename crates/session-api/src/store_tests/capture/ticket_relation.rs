@@ -49,7 +49,18 @@ fn seed_mentioned_session(config: &SessionStoreConfig) {
             "session-mentioned",
             Some(SessionHandoffPackage {
                 objective: "Follow up on target ticket".to_string(),
-                target_tickets: vec![TARGET_TICKET.to_string()],
+                target_tickets: vec![crate::SessionHandoffTargetTicket {
+                    id: TARGET_TICKET.to_string(),
+                    why: "Follow-up ownership".to_string(),
+                    state: "ready".to_string(),
+                    acceptance_criteria: vec![],
+                }],
+                higher_level_objective: "Complete the program work".to_string(),
+                upward_context: vec![crate::SessionHandoffUpwardContextEntry {
+                    entity_urn: "ce://default/ticket/program".to_string(),
+                    title: "Program".to_string(),
+                    role: crate::SessionHandoffUpwardContextRole::Epic,
+                }],
                 ..Default::default()
             }),
             vec![],

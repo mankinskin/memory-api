@@ -194,7 +194,7 @@ impl SessionStoreConfig {
             if let Some(record) = read_json_if_exists::<SessionHandoffRecord>(
                 &handoff_json_path,
             )? {
-                targets.extend(record.target_tickets);
+                targets.extend(record.target_tickets.into_iter().map(|ticket| ticket.id));
             }
         }
 

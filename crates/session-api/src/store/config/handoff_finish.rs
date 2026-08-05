@@ -16,6 +16,20 @@ impl SessionStoreConfig {
                     fields: "objective".to_string(),
                 });
             }
+            let readiness_holds = !pkg.objective.trim().is_empty()
+                && pkg.open_escalations.is_empty();
+            let missing_upward_context = pkg.missing_upward_context_fields();
+            if !missing_upward_context.is_empty() {
+                let fields = missing_upward_context.join(", ");
+                if readiness_holds {
+                    return Err(SessionError::HandoffPackageIncomplete { fields });
+                }
+                eprintln!(
+                    "[session-api] handoff package is missing required upward \
+                     context fields ({fields}); the handoff persists but is not \
+                     implementation-ready"
+                );
+            }
             if !missing.is_empty() {
                 eprintln!(
                     "[session-api] handoff package is missing required list \
@@ -99,6 +113,8 @@ impl SessionStoreConfig {
         let (
             objective,
             target_tickets,
+            higher_level_objective,
+            upward_context,
             target_files,
             decisions,
             non_goals,
@@ -111,6 +127,8 @@ impl SessionStoreConfig {
                 (
                     pkg.objective,
                     pkg.target_tickets,
+                    pkg.higher_level_objective,
+                    pkg.upward_context,
                     pkg.target_files,
                     pkg.decisions,
                     pkg.non_goals,
@@ -134,6 +152,8 @@ impl SessionStoreConfig {
             validation,
             objective,
             target_tickets: target_tickets.clone(),
+            higher_level_objective,
+            upward_context,
             target_files,
             decisions,
             non_goals,
@@ -203,7 +223,7 @@ impl SessionStoreConfig {
     fn mirror_handoff_to_tickets(
         &self,
         record: &SessionHandoffRecord,
-        target_tickets: &[String],
+        target_tickets: &[crate::SessionHandoffTargetTicket],
     ) -> Result<(), SessionError> {
         let store =
             TicketStore::open_or_init(&self.ticket_store_root()).map_err(
@@ -228,7 +248,12 @@ impl SessionStoreConfig {
         if !record.target_tickets.is_empty() {
             content.push_str(&format!(
                 "\n**Target tickets:** {}\n",
-                record.target_tickets.join(", ")
+                record
+                    .target_tickets
+                    .iter()
+                    .map(|ticket| ticket.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
         }
         if !record.target_files.is_empty() {
@@ -252,8 +277,8 @@ impl SessionStoreConfig {
             ));
         }
 
-        for ticket_id_str in target_tickets {
-            let ticket_id = match Uuid::parse_str(ticket_id_str) {
+        for target_ticket in target_tickets {
+            let ticket_id = match Uuid::parse_str(&target_ticket.id) {
                 Ok(id) => id,
                 Err(_) => continue,
             };

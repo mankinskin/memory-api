@@ -454,7 +454,12 @@ fn render_handoff_record_terminal(record: &SessionHandoffRecord) -> String {
     if !record.target_tickets.is_empty() {
         lines.push(format!(
             "target_tickets: {}",
-            record.target_tickets.join(", ")
+            record
+                .target_tickets
+                .iter()
+                .map(|ticket| ticket.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
     if !record.target_files.is_empty() {
@@ -541,7 +546,7 @@ fn render_handoff_record_markdown(record: &SessionHandoffRecord) -> String {
     if !record.target_tickets.is_empty() {
         sections.push("## Target Tickets".to_string());
         for ticket in &record.target_tickets {
-            sections.push(format!("- `{}`", ticket));
+            sections.push(format!("- `{}`", ticket.id));
         }
         sections.push(String::new());
     }
