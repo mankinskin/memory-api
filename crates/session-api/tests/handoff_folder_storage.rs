@@ -136,6 +136,23 @@ fn handoff_persists_as_folder_with_json_and_markdown() {
     assert_eq!(deserialized.handoff_id, result.record.handoff_id);
     assert_eq!(deserialized.objective, result.record.objective);
     assert_eq!(deserialized.target_tickets, result.record.target_tickets);
+    assert_eq!(
+        deserialized.higher_level_objective,
+        result.record.higher_level_objective
+    );
+    assert_eq!(deserialized.upward_context, result.record.upward_context);
+    assert_eq!(
+        deserialized.upward_context[0].entity_urn,
+        result.record.upward_context[0].entity_urn
+    );
+    assert_eq!(
+        deserialized.upward_context[0].title,
+        result.record.upward_context[0].title
+    );
+    assert_eq!(
+        deserialized.upward_context[0].role,
+        result.record.upward_context[0].role
+    );
     assert_eq!(deserialized.target_files, result.record.target_files);
     assert_eq!(deserialized.decisions, result.record.decisions);
     assert_eq!(deserialized.non_goals, result.record.non_goals);
