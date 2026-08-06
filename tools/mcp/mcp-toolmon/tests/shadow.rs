@@ -22,16 +22,23 @@ async fn shadow_copy_spawns_from_shadow_path() {
     let command = vec![canonical.to_string_lossy().to_string()];
 
     let supervisor =
-        Supervisor::spawn_with_shadow_dir(&command, Some(shadow_root.path())).unwrap();
+        Supervisor::spawn_with_shadow_dir(&command, Some(shadow_root.path()))
+            .unwrap();
 
     let shadow_path = supervisor
         .shadow_path()
         .expect("shadow copy should have been created")
         .to_path_buf();
 
-    assert_ne!(shadow_path, canonical, "spawned exe path must differ from canonical path P");
+    assert_ne!(
+        shadow_path, canonical,
+        "spawned exe path must differ from canonical path P"
+    );
     assert!(shadow_path.starts_with(shadow_root.path()));
-    assert!(shadow_path.is_file(), "shadow copy must actually exist on disk at {shadow_path:?}");
+    assert!(
+        shadow_path.is_file(),
+        "shadow copy must actually exist on disk at {shadow_path:?}"
+    );
 
     let _ = supervisor.shutdown().await;
 }
@@ -97,8 +104,14 @@ fn startup_sweep_removes_dead_shadow() {
 
     mcp_toolmon::shadow::sweep_startup(root.path());
 
-    assert!(!dead_dir.exists(), "shadow dir owned by a dead pid must be removed");
-    assert!(alive_dir.exists(), "shadow dir owned by a live pid must be retained");
+    assert!(
+        !dead_dir.exists(),
+        "shadow dir owned by a dead pid must be removed"
+    );
+    assert!(
+        alive_dir.exists(),
+        "shadow dir owned by a live pid must be retained"
+    );
 }
 
 #[cfg(windows)]
@@ -116,7 +129,8 @@ async fn windows_lock_freedom() {
 
     let command = vec![canonical.to_string_lossy().to_string()];
     let supervisor =
-        Supervisor::spawn_with_shadow_dir(&command, Some(shadow_root.path())).unwrap();
+        Supervisor::spawn_with_shadow_dir(&command, Some(shadow_root.path()))
+            .unwrap();
 
     assert!(
         supervisor.shadow_path().is_some(),
@@ -136,7 +150,10 @@ async fn windows_lock_freedom() {
     // The proxy must still be alive/serving after the overwrite: it accepts
     // a write on its stdin pipe to the still-running shadow-spawned child.
     let still_writable = supervisor.write_line("{}").await;
-    assert!(still_writable, "supervisor should remain writable after P was overwritten");
+    assert!(
+        still_writable,
+        "supervisor should remain writable after P was overwritten"
+    );
 
     let _ = supervisor.shutdown().await;
 }

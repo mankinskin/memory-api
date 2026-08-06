@@ -4,7 +4,10 @@
 use std::time::Duration;
 
 use mcp_toolmon::supervisor::Supervisor;
-use serde_json::{Value, json};
+use serde_json::{
+    Value,
+    json,
+};
 use tempfile::TempDir;
 
 fn fake_v1_bytes() -> Vec<u8> {
@@ -15,7 +18,10 @@ fn fake_v2_bytes() -> Vec<u8> {
     std::fs::read(env!("CARGO_BIN_EXE_fake-mcp-v2")).unwrap()
 }
 
-fn write_exe(path: &std::path::Path, bytes: &[u8]) {
+fn write_exe(
+    path: &std::path::Path,
+    bytes: &[u8],
+) {
     std::fs::write(path, bytes).unwrap();
     #[cfg(unix)]
     {
@@ -27,30 +33,54 @@ fn write_exe(path: &std::path::Path, bytes: &[u8]) {
 }
 
 fn canonical_exe_name() -> &'static str {
-    if cfg!(windows) { "canonical.exe" } else { "canonical" }
+    if cfg!(windows) {
+        "canonical.exe"
+    } else {
+        "canonical"
+    }
 }
 
-async fn do_handshake(supervisor: &Supervisor, init_id: i64) -> Value {
+async fn do_handshake(
+    supervisor: &Supervisor,
+    init_id: i64,
+) -> Value {
     let init = json!({
         "jsonrpc": "2.0",
         "id": init_id,
         "method": "initialize",
         "params": { "protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": { "name": "test-client" } }
     });
-    assert!(supervisor.write_line(&init.to_string()).await, "write initialize failed");
-    let line = supervisor.read_line().await.expect("child closed without responding to initialize");
+    assert!(
+        supervisor.write_line(&init.to_string()).await,
+        "write initialize failed"
+    );
+    let line = supervisor
+        .read_line()
+        .await
+        .expect("child closed without responding to initialize");
     let resp: Value = serde_json::from_str(&line).unwrap();
-    let notif = json!({ "jsonrpc": "2.0", "method": "notifications/initialized" });
-    assert!(supervisor.write_line(&notif.to_string()).await, "write notifications/initialized failed");
+    let notif =
+        json!({ "jsonrpc": "2.0", "method": "notifications/initialized" });
+    assert!(
+        supervisor.write_line(&notif.to_string()).await,
+        "write notifications/initialized failed"
+    );
     resp
 }
 
-async fn call_generation(supervisor: &Supervisor, id: i64, timeout: Duration) -> Value {
+async fn call_generation(
+    supervisor: &Supervisor,
+    id: i64,
+    timeout: Duration,
+) -> Value {
     let req = json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"generation","arguments":{}}});
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         if supervisor.write_line(&req.to_string()).await {
-            let line = supervisor.read_line().await.expect("child closed without responding");
+            let line = supervisor
+                .read_line()
+                .await
+                .expect("child closed without responding");
             return serde_json::from_str(&line).unwrap();
         }
         if tokio::time::Instant::now() >= deadline {
@@ -60,10 +90,14 @@ async fn call_generation(supervisor: &Supervisor, id: i64, timeout: Duration) ->
     }
 }
 
-fn spawn_v1(shadow_root: &TempDir, canonical: &std::path::Path) -> Supervisor {
+fn spawn_v1(
+    shadow_root: &TempDir,
+    canonical: &std::path::Path,
+) -> Supervisor {
     write_exe(canonical, &fake_v1_bytes());
     let command = vec![canonical.to_string_lossy().to_string()];
-    Supervisor::spawn_with_shadow_dir(&command, Some(shadow_root.path())).unwrap()
+    Supervisor::spawn_with_shadow_dir(&command, Some(shadow_root.path()))
+        .unwrap()
 }
 
 /// R5 ordering: after a direct `swap_child()` call, the very next
@@ -87,7 +121,10 @@ async fn handshake_replayed_before_tool_calls() {
     // initialize, the fixture would answer with an `error` object instead
     // of `result` (see fake-mcp-v{1,2}.rs `seen_initialize` guard).
     let resp = call_generation(&supervisor, 2, Duration::from_secs(2)).await;
-    assert!(resp.get("error").is_none(), "new child rejected tools/call as pre-handshake: {resp}");
+    assert!(
+        resp.get("error").is_none(),
+        "new child rejected tools/call as pre-handshake: {resp}"
+    );
     assert_eq!(resp["result"]["content"][0]["text"].as_str().unwrap(), "v2");
 
     let _ = supervisor.shutdown().await;
@@ -117,7 +154,10 @@ async fn handshake_response_never_forwarded() {
     // would carry `result.serverInfo`/`result.protocolVersion` instead of
     // `result.content`).
     let resp = call_generation(&supervisor, 2, Duration::from_secs(2)).await;
-    assert!(resp["result"].get("serverInfo").is_none(), "a second initialize response leaked to the client: {resp}");
+    assert!(
+        resp["result"].get("serverInfo").is_none(),
+        "a second initialize response leaked to the client: {resp}"
+    );
     assert_eq!(resp["result"]["content"][0]["text"].as_str().unwrap(), "v2");
 
     let _ = supervisor.shutdown().await;
@@ -154,4 +194,3 @@ async fn capability_divergence_logged_not_fatal() {
 
     let _ = supervisor.shutdown().await;
 }
-

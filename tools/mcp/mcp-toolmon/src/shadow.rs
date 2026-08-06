@@ -5,10 +5,18 @@
 //! previously caused `cargo install --force` to fail with a Windows file
 //! lock (`os error 5`) while a proxy was running.
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-use std::io;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{
+        Hash,
+        Hasher,
+    },
+    io,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
 /// Resolve `name` to an absolute canonical path.
 ///
@@ -28,7 +36,8 @@ pub fn resolve_canonical(name: &str) -> io::Result<PathBuf> {
             return std::fs::canonicalize(plain);
         }
         if cfg!(windows) && Path::new(name).extension().is_none() {
-            let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".EXE;.CMD;.BAT;.COM".to_string());
+            let pathext = std::env::var("PATHEXT")
+                .unwrap_or_else(|_| ".EXE;.CMD;.BAT;.COM".to_string());
             for ext in pathext.split(';') {
                 if ext.is_empty() {
                     continue;
@@ -63,7 +72,10 @@ pub fn shadow_root(override_dir: Option<&Path>) -> PathBuf {
 /// child name + this process's pid + a path hash, so concurrent proxy
 /// instances (and repeated runs against the same binary) never collide.
 /// Returns the path to the copied executable.
-pub fn make_shadow_copy(canonical: &Path, root: &Path) -> io::Result<PathBuf> {
+pub fn make_shadow_copy(
+    canonical: &Path,
+    root: &Path,
+) -> io::Result<PathBuf> {
     let pid = std::process::id();
     let name = canonical
         .file_stem()
@@ -77,7 +89,10 @@ pub fn make_shadow_copy(canonical: &Path, root: &Path) -> io::Result<PathBuf> {
     std::fs::create_dir_all(&dir)?;
 
     let file_name = canonical.file_name().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "canonical path has no file name")
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "canonical path has no file name",
+        )
     })?;
     let dest = dir.join(file_name);
     std::fs::copy(canonical, &dest)?;
@@ -149,7 +164,8 @@ fn is_process_alive(pid: u32) -> bool {
         .args(["/FI", &format!("PID eq {pid}"), "/NH"])
         .output()
     {
-        Ok(out) => String::from_utf8_lossy(&out.stdout).contains(&pid.to_string()),
+        Ok(out) =>
+            String::from_utf8_lossy(&out.stdout).contains(&pid.to_string()),
         // Command failed to run: assume alive so we never delete a live shadow.
         Err(_) => true,
     }

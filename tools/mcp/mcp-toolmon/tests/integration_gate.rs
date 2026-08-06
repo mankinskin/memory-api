@@ -8,26 +8,59 @@
 //! - Unknown model → Reject
 //! - Missing price table → fail-open (Gate::load error)
 
-use mcp_toolmon::proxy::{handle_client_message, ClientAction, PendingCalls, PendingList};
-use session_api::{SessionStoreConfig, SessionWorktreeCheckInRequest};
-use session_workspace_resolver::{
-    RepositoryRoot, ResolverConfig, SessionWorkspaceResolver, SessionWorktreeRegistry,
+use mcp_toolmon::proxy::{
+    ClientAction,
+    PendingCalls,
+    PendingList,
+    handle_client_message,
 };
-use toolmon_costgate::{gate::{Gate, ModelBudgetCalibration}, CostGatePolicy};
-use toolmon_policy_api::Decision;
-use serde_json::{json, Value};
-use std::fs;
-use std::ffi::OsString;
-use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
-use std::sync::Mutex;
+use serde_json::{
+    Value,
+    json,
+};
+use session_api::{
+    SessionStoreConfig,
+    SessionWorktreeCheckInRequest,
+};
+use session_workspace_resolver::{
+    RepositoryRoot,
+    ResolverConfig,
+    SessionWorkspaceResolver,
+    SessionWorktreeRegistry,
+};
+use std::{
+    ffi::OsString,
+    fs,
+    io::{
+        BufRead,
+        BufReader,
+        Write,
+    },
+    path::PathBuf,
+    process::{
+        Command,
+        Stdio,
+    },
+    sync::Mutex,
+};
 use tempfile::TempDir;
+use toolmon_costgate::{
+    CostGatePolicy,
+    gate::{
+        Gate,
+        ModelBudgetCalibration,
+    },
+};
+use toolmon_policy_api::Decision;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 /// Helper: write JSON to a temp file.
-fn write_json(dir: &TempDir, name: &str, value: &Value) -> PathBuf {
+fn write_json(
+    dir: &TempDir,
+    name: &str,
+    value: &Value,
+) -> PathBuf {
     let path = dir.path().join(name);
     fs::write(&path, serde_json::to_string_pretty(value).unwrap()).unwrap();
     path
@@ -37,7 +70,13 @@ fn active_session_fixture() -> (TempDir, PathBuf) {
     let temp = TempDir::new().unwrap();
     let main_checkout = temp.path().join("repository");
     let worktree = main_checkout.join(".worktrees").join("feature");
+    fs::create_dir_all(main_checkout.join(".git")).unwrap();
     fs::create_dir_all(&worktree).unwrap();
+    fs::write(
+        worktree.join(".git"),
+        "gitdir: ../../.git/worktrees/feature\n",
+    )
+    .unwrap();
     SessionWorkspaceResolver::new(ResolverConfig {
         main_checkout: main_checkout.clone(),
         workspace_slug: "default".to_string(),
@@ -94,7 +133,11 @@ fn get_binary_path() -> PathBuf {
 }
 
 /// Helper: construct a tools/call JSON-RPC request.
-fn tools_call_request(id: u32, tool: &str, caller_model: &str) -> Value {
+fn tools_call_request(
+    id: u32,
+    tool: &str,
+    caller_model: &str,
+) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -112,12 +155,10 @@ fn tools_call_request(id: u32, tool: &str, caller_model: &str) -> Value {
 /// Extract decision guidance from ClientAction::Respond error payload.
 fn extract_error_text(action: ClientAction) -> String {
     match action {
-        ClientAction::Respond(val) => {
-            val["result"]["content"][0]["text"]
-                .as_str()
-                .unwrap_or("")
-                .to_string()
-        }
+        ClientAction::Respond(val) => val["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
         _ => String::new(),
     }
 }
@@ -167,7 +208,7 @@ fn test_expensive_model_expensive_tool_delegate() {
         Decision::Delegate { guidance } => {
             assert!(guidance.contains("expensive_tool"));
             assert!(guidance.contains("cost 50"));
-        }
+        },
         _ => panic!("Expected Delegate, got {:?}", decision),
     }
 }
@@ -293,7 +334,7 @@ fn test_unknown_model_reject() {
     match decision {
         Decision::Reject { guidance } => {
             assert!(guidance.to_lowercase().contains("unrecognized"));
-        }
+        },
         _ => panic!("Expected Reject, got {:?}", decision),
     }
 }
@@ -310,7 +351,10 @@ fn test_missing_price_table_fail_open() {
         None,
         None,
     );
-    assert!(result.is_err(), "Expected Gate::load to fail for missing table");
+    assert!(
+        result.is_err(),
+        "Expected Gate::load to fail for missing table"
+    );
 }
 
 #[test]
@@ -350,10 +394,16 @@ fn test_handle_client_message_expensive_model_refused() {
     .unwrap();
 
     let policy = CostGatePolicy::new(gate);
-    let msg = tools_call_request(1, "get_ticket_description", "claude-opus-4-8");
+    let msg =
+        tools_call_request(1, "get_ticket_description", "claude-opus-4-8");
     let mut pending = PendingList::default();
     let mut pending_calls = PendingCalls::default();
-    let (action, _telemetry) = handle_client_message(msg, Some(&policy), &mut pending, &mut pending_calls);
+    let (action, _telemetry) = handle_client_message(
+        msg,
+        Some(&policy),
+        &mut pending,
+        &mut pending_calls,
+    );
 
     // Should be refused with Delegate guidance.
     let error_text = extract_error_text(action);
@@ -399,10 +449,16 @@ fn test_handle_client_message_cheap_model_allowed() {
     .unwrap();
 
     let policy = CostGatePolicy::new(gate);
-    let msg = tools_call_request(1, "get_ticket_description", "claude-haiku-3-7");
+    let msg =
+        tools_call_request(1, "get_ticket_description", "claude-haiku-3-7");
     let mut pending = PendingList::default();
     let mut pending_calls = PendingCalls::default();
-    let (action, _telemetry) = handle_client_message(msg, Some(&policy), &mut pending, &mut pending_calls);
+    let (action, _telemetry) = handle_client_message(
+        msg,
+        Some(&policy),
+        &mut pending,
+        &mut pending_calls,
+    );
 
     // Should be forwarded (allowed).
     match action {
@@ -410,10 +466,10 @@ fn test_handle_client_message_cheap_model_allowed() {
             // Verify caller_model was stripped from arguments.
             assert!(val["params"]["arguments"].get("caller_model").is_none());
             assert!(val["params"]["arguments"].get("session_id").is_none());
-        }
+        },
         ClientAction::Respond(val) => {
             panic!("Expected Forward, got Respond: {:?}", val);
-        }
+        },
     }
 }
 
@@ -422,14 +478,18 @@ fn test_handle_client_message_no_gate_fail_open() {
     let msg = tools_call_request(1, "some_tool", "claude-opus-4-8");
     let mut pending = PendingList::default();
     let mut pending_calls = PendingCalls::default();
-    let (action, _telemetry) = handle_client_message(msg, None, &mut pending, &mut pending_calls);
+    let (action, _telemetry) =
+        handle_client_message(msg, None, &mut pending, &mut pending_calls);
 
     // No gate (fail-open) → should forward unchanged.
     match action {
-        ClientAction::Forward(_) => {}
+        ClientAction::Forward(_) => {},
         ClientAction::Respond(val) => {
-            panic!("Expected Forward in fail-open mode, got Respond: {:?}", val);
-        }
+            panic!(
+                "Expected Forward in fail-open mode, got Respond: {:?}",
+                val
+            );
+        },
     }
 }
 
@@ -510,7 +570,8 @@ fn test_stdio_expensive_model_refused() {
     // Read the response.
     line.clear();
     reader.read_line(&mut line).unwrap();
-    let response: Value = serde_json::from_str(&line).expect("Failed to parse response JSON");
+    let response: Value =
+        serde_json::from_str(&line).expect("Failed to parse response JSON");
 
     // Verify it's a refusal response with the correct structure.
     assert_eq!(response["jsonrpc"], "2.0");
@@ -522,7 +583,10 @@ fn test_stdio_expensive_model_refused() {
     assert!(!content.as_array().unwrap().is_empty());
 
     let text = content[0]["text"].as_str().unwrap();
-    assert!(text.contains("cost 50"), "Expected cost 50 in refusal guidance");
+    assert!(
+        text.contains("cost 50"),
+        "Expected cost 50 in refusal guidance"
+    );
     assert!(
         text.contains("budget") || text.contains("Delegate"),
         "Expected budget/delegate guidance"
@@ -608,7 +672,8 @@ fn test_stdio_cheap_model_allowed() {
     // Read the response - should be forwarded to the cat command, which echoes it.
     line.clear();
     reader.read_line(&mut line).unwrap();
-    let response: Value = serde_json::from_str(&line).expect("Failed to parse response JSON");
+    let response: Value =
+        serde_json::from_str(&line).expect("Failed to parse response JSON");
 
     // Verify the call was forwarded (not refused).
     // The cat command will echo the forwarded request.
@@ -617,7 +682,9 @@ fn test_stdio_cheap_model_allowed() {
 
     // Verify caller_model was stripped.
     assert!(
-        response["params"]["arguments"].get("caller_model").is_none(),
+        response["params"]["arguments"]
+            .get("caller_model")
+            .is_none(),
         "caller_model should be stripped"
     );
     assert!(
@@ -668,7 +735,10 @@ fn test_stdio_telemetry_recorded_for_allowed_call() {
         .arg("cat")
         .env("COST_GATE_TABLE", table_path.display().to_string())
         .env("COST_GATE_TOOL_METRICS", rollup_path.display().to_string())
-        .env("COST_GATE_TELEMETRY_LOG", telemetry_path.display().to_string())
+        .env(
+            "COST_GATE_TELEMETRY_LOG",
+            telemetry_path.display().to_string(),
+        )
         .env("MCP_MAIN_CHECKOUT", main_checkout)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -693,8 +763,12 @@ fn test_stdio_telemetry_recorded_for_allowed_call() {
 
     let contents = fs::read_to_string(&telemetry_path)
         .expect("expected telemetry JSONL file to be written");
-    let last_line = contents.lines().last().expect("expected at least one telemetry line");
-    let telemetry: Value = serde_json::from_str(last_line).expect("telemetry line should be valid JSON");
+    let last_line = contents
+        .lines()
+        .last()
+        .expect("expected at least one telemetry line");
+    let telemetry: Value = serde_json::from_str(last_line)
+        .expect("telemetry line should be valid JSON");
 
     assert_eq!(telemetry["tool_name"], "expensive_tool");
     assert_eq!(telemetry["decision"], "allow");
@@ -731,7 +805,10 @@ fn test_stdio_tokens_estimated_increases_with_larger_payload() {
         .arg("cat")
         .env("COST_GATE_TABLE", table_path.display().to_string())
         .env("COST_GATE_TOOL_METRICS", rollup_path.display().to_string())
-        .env("COST_GATE_TELEMETRY_LOG", telemetry_path.display().to_string())
+        .env(
+            "COST_GATE_TELEMETRY_LOG",
+            telemetry_path.display().to_string(),
+        )
         .env("MCP_MAIN_CHECKOUT", main_checkout)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -787,11 +864,17 @@ fn test_stdio_tokens_estimated_increases_with_larger_payload() {
     let lines: Vec<&str> = contents.lines().collect();
     assert!(lines.len() >= 2, "expected at least two telemetry lines");
 
-    let first: Value = serde_json::from_str(lines[0]).expect("first telemetry line should be valid JSON");
-    let second: Value = serde_json::from_str(lines[1]).expect("second telemetry line should be valid JSON");
+    let first: Value = serde_json::from_str(lines[0])
+        .expect("first telemetry line should be valid JSON");
+    let second: Value = serde_json::from_str(lines[1])
+        .expect("second telemetry line should be valid JSON");
 
-    let first_tokens = first["tokens_estimated"].as_u64().expect("first tokens_estimated should be present");
-    let second_tokens = second["tokens_estimated"].as_u64().expect("second tokens_estimated should be present");
+    let first_tokens = first["tokens_estimated"]
+        .as_u64()
+        .expect("first tokens_estimated should be present");
+    let second_tokens = second["tokens_estimated"]
+        .as_u64()
+        .expect("second tokens_estimated should be present");
     assert!(
         second_tokens > first_tokens,
         "larger payload should produce larger tokens_estimated ({} !< {})",
@@ -893,7 +976,10 @@ fn test_verdict_delegate() {
 
     assert!(output.status.success(), "verdict should exit 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.starts_with("Delegate:"), "Expected 'Delegate:' verdict");
+    assert!(
+        stdout.starts_with("Delegate:"),
+        "Expected 'Delegate:' verdict"
+    );
     assert!(stdout.contains("cost 50"), "Expected cost in guidance");
 }
 

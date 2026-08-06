@@ -6,16 +6,40 @@
 //! directly and skipping the `record_pending()` step `main.rs` always
 //! performs before writing).
 
-use std::fs;
-use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::{
+    fs,
+    io::{
+        BufRead,
+        BufReader,
+        Write,
+    },
+    path::{
+        Path,
+        PathBuf,
+    },
+    process::{
+        Command,
+        Stdio,
+    },
+    sync::{
+        Arc,
+        Mutex,
+        atomic::{
+            AtomicBool,
+            Ordering,
+        },
+    },
+    thread,
+    time::{
+        Duration,
+        Instant,
+    },
+};
 
-use serde_json::{json, Value};
+use serde_json::{
+    Value,
+    json,
+};
 use tempfile::TempDir;
 
 fn get_binary_path() -> PathBuf {
@@ -27,10 +51,17 @@ fn fake_v1_bytes() -> Vec<u8> {
 }
 
 fn canonical_exe_name() -> &'static str {
-    if cfg!(windows) { "canonical.exe" } else { "canonical" }
+    if cfg!(windows) {
+        "canonical.exe"
+    } else {
+        "canonical"
+    }
 }
 
-fn write_exe(path: &Path, bytes: &[u8]) {
+fn write_exe(
+    path: &Path,
+    bytes: &[u8],
+) {
     fs::write(path, bytes).unwrap();
     #[cfg(unix)]
     {
@@ -58,15 +89,21 @@ fn spawn_collector(stdout: std::process::ChildStdout) -> Transcript {
                 Ok(0) | Err(_) => {
                     eof2.store(true, Ordering::SeqCst);
                     break;
-                }
-                Ok(_) => lines2.lock().unwrap().push(line.trim_end().to_string()),
+                },
+                Ok(_) =>
+                    lines2.lock().unwrap().push(line.trim_end().to_string()),
             }
         }
     });
     Transcript { lines, eof }
 }
 
-fn wait_until<F: Fn(&[String]) -> bool>(t: &Transcript, timeout: Duration, msg: &str, pred: F) {
+fn wait_until<F: Fn(&[String]) -> bool>(
+    t: &Transcript,
+    timeout: Duration,
+    msg: &str,
+    pred: F,
+) {
     let deadline = Instant::now() + timeout;
     loop {
         if pred(&t.lines.lock().unwrap()) {
@@ -80,17 +117,28 @@ fn wait_until<F: Fn(&[String]) -> bool>(t: &Transcript, timeout: Duration, msg: 
 }
 
 fn parsed(lines: &[String]) -> Vec<Value> {
-    lines.iter().filter_map(|l| serde_json::from_str::<Value>(l).ok()).collect()
+    lines
+        .iter()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .collect()
 }
 
-fn find_response(lines: &[String], id: i64) -> Option<Value> {
-    parsed(lines).into_iter().find(|v| v.get("id").and_then(Value::as_i64) == Some(id))
+fn find_response(
+    lines: &[String],
+    id: i64,
+) -> Option<Value> {
+    parsed(lines)
+        .into_iter()
+        .find(|v| v.get("id").and_then(Value::as_i64) == Some(id))
 }
 
 /// Find the immediate child PID of `parent_pid` (the shadow-copied fake-mcp
 /// process mcp-toolmon spawned), retrying up to `timeout` since the spawn
 /// races the test's own polling.
-fn find_child_pid(parent_pid: u32, timeout: Duration) -> Option<u32> {
+fn find_child_pid(
+    parent_pid: u32,
+    timeout: Duration,
+) -> Option<u32> {
     let deadline = Instant::now() + timeout;
     loop {
         #[cfg(windows)]
@@ -104,7 +152,9 @@ fn find_child_pid(parent_pid: u32, timeout: Duration) -> Option<u32> {
             ])
             .output();
         #[cfg(unix)]
-        let out = Command::new("pgrep").args(["-P", &parent_pid.to_string()]).output();
+        let out = Command::new("pgrep")
+            .args(["-P", &parent_pid.to_string()])
+            .output();
 
         if let Ok(out) = out
             && let Some(pid) = String::from_utf8_lossy(&out.stdout)
@@ -122,7 +172,9 @@ fn find_child_pid(parent_pid: u32, timeout: Duration) -> Option<u32> {
 
 fn kill_pid(pid: u32) {
     #[cfg(windows)]
-    let _ = Command::new("taskkill").args(["/PID", &pid.to_string(), "/F"]).output();
+    let _ = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/F"])
+        .output();
     #[cfg(unix)]
     let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
 }
@@ -157,8 +209,15 @@ fn crash_mid_flight_every_id_answered() {
         stdin.flush().unwrap();
     };
 
-    send(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}));
-    wait_until(&transcript, Duration::from_secs(5), "no initialize response", |lines| find_response(lines, 1).is_some());
+    send(
+        &json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}),
+    );
+    wait_until(
+        &transcript,
+        Duration::from_secs(5),
+        "no initialize response",
+        |lines| find_response(lines, 1).is_some(),
+    );
     send(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
 
     let child_pid = find_child_pid(proxy_pid, Duration::from_secs(3))
@@ -169,7 +228,9 @@ fn crash_mid_flight_every_id_answered() {
     // in-flight at the moment of the crash.
     let ids: Vec<i64> = (10..13).collect();
     for id in &ids {
-        send(&json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"generation","arguments":{}}}));
+        send(
+            &json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"generation","arguments":{}}}),
+        );
     }
     kill_pid(child_pid);
 
@@ -177,17 +238,29 @@ fn crash_mid_flight_every_id_answered() {
         wait_until(
             &transcript,
             Duration::from_secs(10),
-            &format!("id={id} received no response (real or synthesized) after the child was killed mid-flight"),
+            &format!(
+                "id={id} received no response (real or synthesized) after the child was killed mid-flight"
+            ),
             |lines| find_response(lines, *id).is_some(),
         );
     }
 
-    assert!(!transcript.eof.load(Ordering::SeqCst), "client stdout must never hit EOF as a result of the child crash (R7)");
+    assert!(
+        !transcript.eof.load(Ordering::SeqCst),
+        "client stdout must never hit EOF as a result of the child crash (R7)"
+    );
 
     // The proxy itself must still be alive and serving (R7): the automatic
     // crash-recovery respawn must have restored a healthy child.
-    send(&json!({"jsonrpc":"2.0","id":99,"method":"tools/call","params":{"name":"generation","arguments":{}}}));
-    wait_until(&transcript, Duration::from_secs(5), "proxy did not recover a healthy child after the crash", |lines| find_response(lines, 99).is_some());
+    send(
+        &json!({"jsonrpc":"2.0","id":99,"method":"tools/call","params":{"name":"generation","arguments":{}}}),
+    );
+    wait_until(
+        &transcript,
+        Duration::from_secs(5),
+        "proxy did not recover a healthy child after the crash",
+        |lines| find_response(lines, 99).is_some(),
+    );
 
     // Force-kill the proxy rather than a graceful stdin-close shutdown: a
     // graceful shutdown immediately after this crash-recovery cycle was

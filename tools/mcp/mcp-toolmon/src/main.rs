@@ -85,19 +85,22 @@ async fn run() {
 
     let command = server_command(&argv);
     if command.is_empty() {
-        log("no server command provided; usage: mcp-toolmon -- <server> [args...]");
+        log(
+            "no server command provided; usage: mcp-toolmon -- <server> [args...]",
+        );
         std::process::exit(2);
     }
 
     let policy = toolmon_costgate::config::build_policy_from_env();
-    let telemetry_log = toolmon_costgate::config::telemetry_log_path_from_env().map(Arc::new);
+    let telemetry_log =
+        toolmon_costgate::config::telemetry_log_path_from_env().map(Arc::new);
 
     let supervisor = match Supervisor::spawn(&command) {
         Ok(s) => Arc::new(s),
         Err(e) => {
             log(&format!("failed to launch server {command:?}: {e}"));
             std::process::exit(2);
-        }
+        },
     };
 
     // Shared client-stdout writer (both the reader task and this loop may
@@ -115,7 +118,8 @@ async fn run() {
     // reload-interruption errors plus the post-swap `tools/list_changed`
     // notification) arrives on this channel and is drained straight to the
     // client's stdout by a dedicated task, same as the reader task below.
-    let (watcher_tx, mut watcher_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let (watcher_tx, mut watcher_rx) =
+        tokio::sync::mpsc::unbounded_channel::<String>();
     let watcher_drain_out = Arc::clone(&client_out);
     let watcher_drain_task = tokio::spawn(async move {
         while let Some(line) = watcher_rx.recv().await {
@@ -138,7 +142,7 @@ async fn run() {
                     command[0]
                 ));
                 None
-            }
+            },
         }
     } else {
         log("binary watcher disabled via TOOLMON_RELOAD");
@@ -179,10 +183,13 @@ async fn run() {
                         &mut reader_pending_calls.lock().unwrap(),
                     );
                     if let Some(telemetry) = &telemetry {
-                        toolmon_costgate::config::emit_telemetry_jsonl(reader_telemetry_log.as_deref(), telemetry);
+                        toolmon_costgate::config::emit_telemetry_jsonl(
+                            reader_telemetry_log.as_deref(),
+                            telemetry,
+                        );
                     }
                     serde_json::to_string(&rewritten).unwrap_or(line)
-                }
+                },
                 Err(_) => line,
             };
             write_client_line(&reader_out, &out_line).await;
@@ -204,13 +211,17 @@ async fn run() {
                     &mut pending_calls.lock().unwrap(),
                 );
                 if let Some(telemetry) = &telemetry {
-                    toolmon_costgate::config::emit_telemetry_jsonl(telemetry_log.as_deref(), telemetry);
+                    toolmon_costgate::config::emit_telemetry_jsonl(
+                        telemetry_log.as_deref(),
+                        telemetry,
+                    );
                 }
                 match action {
                     ClientAction::Forward(v) => {
                         // Record the id (if any) as in-flight BEFORE writing,
                         // so a swap racing this write always sees it (R6).
-                        let id = v.get("id").cloned().filter(|id| !id.is_null());
+                        let id =
+                            v.get("id").cloned().filter(|id| !id.is_null());
                         if let Some(id) = &id {
                             supervisor.record_pending(id).await;
                         }
@@ -221,22 +232,24 @@ async fn run() {
                             // reload-interruption error instead of hanging
                             // the client or exiting the proxy (R6).
                             if let Some(id) = id {
-                                let err = supervisor.synthesize_and_clear(&id).await;
-                                let s = serde_json::to_string(&err).unwrap_or_default();
+                                let err =
+                                    supervisor.synthesize_and_clear(&id).await;
+                                let s = serde_json::to_string(&err)
+                                    .unwrap_or_default();
                                 write_client_line(&client_out, &s).await;
                             }
                         }
-                    }
+                    },
                     ClientAction::Respond(v) => {
                         let s = serde_json::to_string(&v).unwrap_or_default();
                         write_client_line(&client_out, &s).await;
-                    }
+                    },
                 }
-            }
+            },
             Err(_) => {
                 // Not JSON we understand; forward verbatim (no id to track).
                 let _ = supervisor.write_line(&line).await;
-            }
+            },
         }
     }
 
@@ -255,7 +268,10 @@ async fn run() {
     watcher_drain_task.abort();
 }
 
-async fn write_client_line(out: &tokio::sync::Mutex<tokio::io::Stdout>, line: &str) {
+async fn write_client_line(
+    out: &tokio::sync::Mutex<tokio::io::Stdout>,
+    line: &str,
+) {
     let mut out = out.lock().await;
     let _ = out.write_all(line.as_bytes()).await;
     let _ = out.write_all(b"\n").await;

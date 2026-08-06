@@ -4,20 +4,50 @@
 //! direct `swap_child()` call — no in-process shortcut is available once the
 //! proxy is an external process).
 
-use std::fs;
-use std::ffi::OsString;
-use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::{
+    ffi::OsString,
+    fs,
+    io::{
+        BufRead,
+        BufReader,
+        Write,
+    },
+    path::{
+        Path,
+        PathBuf,
+    },
+    process::{
+        Command,
+        Stdio,
+    },
+    sync::{
+        Arc,
+        Mutex,
+        atomic::{
+            AtomicBool,
+            Ordering,
+        },
+    },
+    thread,
+    time::{
+        Duration,
+        Instant,
+    },
+};
 
-use serde_json::{json, Value};
-use session_api::{SessionStoreConfig, SessionWorktreeCheckInRequest};
+use serde_json::{
+    Value,
+    json,
+};
+use session_api::{
+    SessionStoreConfig,
+    SessionWorktreeCheckInRequest,
+};
 use session_workspace_resolver::{
-    RepositoryRoot, ResolverConfig, SessionWorkspaceResolver, SessionWorktreeRegistry,
+    RepositoryRoot,
+    ResolverConfig,
+    SessionWorkspaceResolver,
+    SessionWorktreeRegistry,
 };
 use tempfile::TempDir;
 
@@ -93,10 +123,17 @@ fn fake_v2_bytes() -> Vec<u8> {
 }
 
 fn canonical_exe_name() -> &'static str {
-    if cfg!(windows) { "canonical.exe" } else { "canonical" }
+    if cfg!(windows) {
+        "canonical.exe"
+    } else {
+        "canonical"
+    }
 }
 
-fn write_exe(path: &Path, bytes: &[u8]) {
+fn write_exe(
+    path: &Path,
+    bytes: &[u8],
+) {
     fs::write(path, bytes).unwrap();
     #[cfg(unix)]
     {
@@ -127,8 +164,9 @@ fn spawn_collector(stdout: std::process::ChildStdout) -> Transcript {
                 Ok(0) | Err(_) => {
                     eof2.store(true, Ordering::SeqCst);
                     break;
-                }
-                Ok(_) => lines2.lock().unwrap().push(line.trim_end().to_string()),
+                },
+                Ok(_) =>
+                    lines2.lock().unwrap().push(line.trim_end().to_string()),
             }
         }
     });
@@ -136,7 +174,12 @@ fn spawn_collector(stdout: std::process::ChildStdout) -> Transcript {
 }
 
 /// Bounded wait (deadline, not a bare sleep as the sync primitive).
-fn wait_until<F: Fn(&[String]) -> bool>(t: &Transcript, timeout: Duration, msg: &str, pred: F) {
+fn wait_until<F: Fn(&[String]) -> bool>(
+    t: &Transcript,
+    timeout: Duration,
+    msg: &str,
+    pred: F,
+) {
     let deadline = Instant::now() + timeout;
     loop {
         if pred(&t.lines.lock().unwrap()) {
@@ -150,11 +193,19 @@ fn wait_until<F: Fn(&[String]) -> bool>(t: &Transcript, timeout: Duration, msg: 
 }
 
 fn parsed(lines: &[String]) -> Vec<Value> {
-    lines.iter().filter_map(|l| serde_json::from_str::<Value>(l).ok()).collect()
+    lines
+        .iter()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .collect()
 }
 
-fn find_response(lines: &[String], id: i64) -> Option<Value> {
-    parsed(lines).into_iter().find(|v| v.get("id").and_then(Value::as_i64) == Some(id))
+fn find_response(
+    lines: &[String],
+    id: i64,
+) -> Option<Value> {
+    parsed(lines)
+        .into_iter()
+        .find(|v| v.get("id").and_then(Value::as_i64) == Some(id))
 }
 
 #[test]
@@ -186,29 +237,45 @@ fn transparent_reload_end_to_end_subprocess() {
     };
 
     // 1) Real handshake.
-    send(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}));
-    wait_until(&transcript, Duration::from_secs(5), "no initialize response observed", |lines| {
-        find_response(lines, 1).is_some()
-    });
+    send(
+        &json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}),
+    );
+    wait_until(
+        &transcript,
+        Duration::from_secs(5),
+        "no initialize response observed",
+        |lines| find_response(lines, 1).is_some(),
+    );
     send(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
 
     // 2) tools/call served by v1.
-    send(&json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"test-session-id"}}}));
-    wait_until(&transcript, Duration::from_secs(5), "no response to pre-swap generation call", |lines| {
-        find_response(lines, 2).is_some()
-    });
+    send(
+        &json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"test-session-id"}}}),
+    );
+    wait_until(
+        &transcript,
+        Duration::from_secs(5),
+        "no response to pre-swap generation call",
+        |lines| find_response(lines, 2).is_some(),
+    );
     let v1_resp = find_response(&transcript.lines.lock().unwrap(), 2).unwrap();
     assert_eq!(v1_resp["result"]["content"][0]["text"], "v1");
 
     // 3) Overwrite the canonical path while the proxy runs — the
     // lock-freedom property; this must succeed because mcp-toolmon only
     // ever executes a shadow copy of P, never P itself.
-    let overwrite = std::panic::catch_unwind(|| write_exe(&canonical, &fake_v2_bytes()));
-    assert!(overwrite.is_ok(), "overwriting canonical path P while mcp-toolmon runs must succeed");
+    let overwrite =
+        std::panic::catch_unwind(|| write_exe(&canonical, &fake_v2_bytes()));
+    assert!(
+        overwrite.is_ok(),
+        "overwriting canonical path P while mcp-toolmon runs must succeed"
+    );
 
     // Race a request right at the swap boundary: this must be answered
     // (real v1/v2 result or a synthesized JSON-RPC error), never hang.
-    send(&json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"test-session-id"}}}));
+    send(
+        &json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"test-session-id"}}}),
+    );
 
     // 4) Bounded wait for the real on-disk watcher to detect the change and
     // notify the client — no direct swap_child() call is possible against
@@ -217,22 +284,37 @@ fn transparent_reload_end_to_end_subprocess() {
         &transcript,
         Duration::from_secs(10),
         "notifications/tools/list_changed was never observed after the real file swap",
-        |lines| parsed(lines).iter().any(|v| v.get("method").and_then(Value::as_str) == Some("notifications/tools/list_changed")),
+        |lines| {
+            parsed(lines).iter().any(|v| {
+                v.get("method").and_then(Value::as_str)
+                    == Some("notifications/tools/list_changed")
+            })
+        },
     );
 
     // Connection must never have dropped up to this point.
-    assert!(!transcript.eof.load(Ordering::SeqCst), "client stdout hit EOF before the session ended");
+    assert!(
+        !transcript.eof.load(Ordering::SeqCst),
+        "client stdout hit EOF before the session ended"
+    );
 
     // The racing id=3 request must have been answered by now (never a hang).
-    wait_until(&transcript, Duration::from_secs(5), "request id=3 (in flight at swap boundary) was never answered", |lines| {
-        find_response(lines, 3).is_some()
-    });
+    wait_until(
+        &transcript,
+        Duration::from_secs(5),
+        "request id=3 (in flight at swap boundary) was never answered",
+        |lines| find_response(lines, 3).is_some(),
+    );
 
     // 5) Post-swap call served by v2 (retry loop: the swap may still be
     // finishing draining/respawning for a brief moment after list_changed
     // was queued). Each attempt gets its own bounded (non-panicking) wait
     // so a slow-but-eventual respawn doesn't abort the whole assertion.
-    fn wait_or_none(t: &Transcript, timeout: Duration, id: i64) -> Option<Value> {
+    fn wait_or_none(
+        t: &Transcript,
+        timeout: Duration,
+        id: i64,
+    ) -> Option<Value> {
         let deadline = Instant::now() + timeout;
         loop {
             if let Some(v) = find_response(&t.lines.lock().unwrap(), id) {
@@ -249,8 +331,11 @@ fn transparent_reload_end_to_end_subprocess() {
     let mut next_id = 4i64;
     let mut got_v2 = false;
     while Instant::now() < overall_deadline {
-        send(&json!({"jsonrpc":"2.0","id":next_id,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"test-session-id"}}}));
-        if let Some(resp) = wait_or_none(&transcript, Duration::from_secs(2), next_id)
+        send(
+            &json!({"jsonrpc":"2.0","id":next_id,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"test-session-id"}}}),
+        );
+        if let Some(resp) =
+            wait_or_none(&transcript, Duration::from_secs(2), next_id)
             && resp["result"]["content"][0]["text"] == "v2"
         {
             got_v2 = true;
@@ -259,22 +344,38 @@ fn transparent_reload_end_to_end_subprocess() {
         next_id += 1;
         thread::sleep(Duration::from_millis(100));
     }
-    assert!(got_v2, "a post-swap generation call must eventually be served by v2 within the overall bound");
+    assert!(
+        got_v2,
+        "a post-swap generation call must eventually be served by v2 within the overall bound"
+    );
 
     // 6) Never asked to re-initialize: exactly one line carrying an
     // initialize-shaped result (protocolVersion) across the whole session.
     let init_like = parsed(&transcript.lines.lock().unwrap())
         .into_iter()
-        .filter(|v| v.get("result").and_then(|r| r.get("protocolVersion")).is_some())
+        .filter(|v| {
+            v.get("result")
+                .and_then(|r| r.get("protocolVersion"))
+                .is_some()
+        })
         .count();
-    assert_eq!(init_like, 1, "client must receive exactly one initialize response for the whole session");
+    assert_eq!(
+        init_like, 1,
+        "client must receive exactly one initialize response for the whole session"
+    );
 
     // 7) No request id went unanswered across the entire session.
     for id in [1i64, 2, 3] {
-        assert!(find_response(&transcript.lines.lock().unwrap(), id).is_some(), "id={id} was never answered");
+        assert!(
+            find_response(&transcript.lines.lock().unwrap(), id).is_some(),
+            "id={id} was never answered"
+        );
     }
 
     drop(stdin);
     let status = child.wait().unwrap();
-    assert!(status.success() || cfg!(windows), "proxy should exit cleanly on client stdin EOF, got {status:?}");
+    assert!(
+        status.success() || cfg!(windows),
+        "proxy should exit cleanly on client stdin EOF, got {status:?}"
+    );
 }
