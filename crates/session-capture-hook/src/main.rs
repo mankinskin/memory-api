@@ -525,12 +525,40 @@ mod tests {
     static CWD_LOCK: Mutex<()> = Mutex::new(());
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+    enum CheckoutFixtureKind {
+        Main,
+        LinkedWorktree,
+    }
+
+    fn create_checkout(
+        path: &Path,
+        kind: CheckoutFixtureKind,
+    ) {
+        std::fs::create_dir_all(path).unwrap();
+        match kind {
+            CheckoutFixtureKind::Main => {
+                std::fs::create_dir_all(path.join(".git")).unwrap();
+            },
+            CheckoutFixtureKind::LinkedWorktree => {
+                std::fs::write(
+                    path.join(".git"),
+                    format!(
+                        "gitdir: {}\n",
+                        path.join(".git-worktree").display()
+                    ),
+                )
+                .unwrap();
+            },
+        }
+    }
+
     fn register_active_worktree(
         main_checkout: &Path,
         session_id: &str,
     ) -> PathBuf {
+        create_checkout(main_checkout, CheckoutFixtureKind::Main);
         let worktree = main_checkout.join(".worktrees").join("capture");
-        std::fs::create_dir_all(&worktree).unwrap();
+        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
         SessionStoreConfig::new(worktree.join(".session"), "default")
             .check_in_worktree(SessionWorktreeCheckInRequest {
                 session_id: session_id.to_string(),
@@ -593,6 +621,7 @@ mod tests {
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
+        create_checkout(&main_checkout, CheckoutFixtureKind::Main);
         std::fs::create_dir_all(main_checkout.join(".session")).unwrap();
         let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
         unsafe { env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
@@ -704,7 +733,8 @@ mod tests {
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
         let worktree = main_checkout.join("worktree");
-        std::fs::create_dir_all(&worktree).unwrap();
+        create_checkout(&main_checkout, CheckoutFixtureKind::Main);
+        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
 
         run_user_prompt_submit(&main_checkout, &worktree, Some("session-one"));
 
@@ -723,7 +753,8 @@ mod tests {
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
         let worktree = main_checkout.join("worktree");
-        std::fs::create_dir_all(&worktree).unwrap();
+        create_checkout(&main_checkout, CheckoutFixtureKind::Main);
+        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
 
         run_user_prompt_submit(&main_checkout, &worktree, Some("session-one"));
         run_user_prompt_submit(&main_checkout, &worktree, Some("session-one"));
@@ -745,7 +776,8 @@ mod tests {
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
         let worktree = main_checkout.join("worktree");
-        std::fs::create_dir_all(&worktree).unwrap();
+        create_checkout(&main_checkout, CheckoutFixtureKind::Main);
+        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
 
         run_user_prompt_submit(&main_checkout, &worktree, Some("session-one"));
         run_user_prompt_submit(&main_checkout, &worktree, Some("session-two"));
@@ -763,7 +795,8 @@ mod tests {
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
         let worktree = main_checkout.join("worktree");
-        std::fs::create_dir_all(&worktree).unwrap();
+        create_checkout(&main_checkout, CheckoutFixtureKind::Main);
+        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
 
         run_user_prompt_submit(&main_checkout, &worktree, None);
 
@@ -781,7 +814,8 @@ mod tests {
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
         let worktree = main_checkout.join("worktree");
-        std::fs::create_dir_all(&worktree).unwrap();
+        create_checkout(&main_checkout, CheckoutFixtureKind::Main);
+        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
         let original_cwd = env::current_dir().unwrap();
         let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
         unsafe { env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
@@ -810,7 +844,7 @@ mod tests {
         let fixture = tempdir().unwrap();
         let worktree = fixture.path().join("worktree");
         let invalid_main_checkout = fixture.path().join("missing-main");
-        std::fs::create_dir_all(&worktree).unwrap();
+        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
         let original_cwd = env::current_dir().unwrap();
         let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
         unsafe { env::set_var("MCP_MAIN_CHECKOUT", &invalid_main_checkout) };
