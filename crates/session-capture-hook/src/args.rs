@@ -125,8 +125,7 @@ pub(super) fn args_from_hook_stdin(
     {
         args.tool_call_id = Some(tool_call_id);
     }
-    if let Some(session_id) =
-        get_field(&payload, &["session_id", "sessionId"])
+    if let Some(session_id) = get_field(&payload, &["session_id", "sessionId"])
     {
         args.session_id = Some(session_id);
     }

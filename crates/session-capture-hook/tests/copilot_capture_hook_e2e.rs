@@ -163,8 +163,8 @@ fn e2e_hook_binary_populates_tool_metrics_from_captured_tool_events() {
         .join("tool-metrics.json");
     let raw = fs::read_to_string(&tool_metrics_path)
         .expect("tool-metrics.json should exist once a tool call was captured");
-    let summary: serde_json::Value =
-        serde_json::from_str(&raw).expect("tool-metrics.json should be valid json");
+    let summary: serde_json::Value = serde_json::from_str(&raw)
+        .expect("tool-metrics.json should be valid json");
 
     let grep = &summary["tools"]["grep_search"];
     assert_eq!(grep["call_count"], 1);
@@ -238,8 +238,8 @@ fn e2e_val_session_api_tool_metrics_gate_asserts_nonempty_tools_map() {
         "tool-metrics.json should exist once a tool call was captured from \
          a producer-shaped transcript",
     );
-    let summary: serde_json::Value =
-        serde_json::from_str(&raw).expect("tool-metrics.json should be valid json");
+    let summary: serde_json::Value = serde_json::from_str(&raw)
+        .expect("tool-metrics.json should be valid json");
 
     let tools = summary["tools"]
         .as_object()
@@ -333,7 +333,9 @@ fn e2e_hook_binary_captures_output_chars_from_hook_stdin_tool_response() {
         .write_all(stdin_payload.as_bytes())
         .expect("write hook stdin payload");
 
-    let output = child.wait_with_output().expect("wait for copilot-capture-hook");
+    let output = child
+        .wait_with_output()
+        .expect("wait for copilot-capture-hook");
 
     assert!(
         output.status.success(),
@@ -348,8 +350,8 @@ fn e2e_hook_binary_captures_output_chars_from_hook_stdin_tool_response() {
         .join("tool-metrics.json");
     let raw = fs::read_to_string(&tool_metrics_path)
         .expect("tool-metrics.json should exist once a tool call was captured");
-    let summary: serde_json::Value =
-        serde_json::from_str(&raw).expect("tool-metrics.json should be valid json");
+    let summary: serde_json::Value = serde_json::from_str(&raw)
+        .expect("tool-metrics.json should be valid json");
 
     let output_sizes = summary["tools"]["run_in_terminal"]["output_char_sizes"]
         .as_array()
@@ -377,7 +379,7 @@ fn e2e_hook_binary_captures_output_chars_from_hook_stdin_tool_response() {
 /// <session_id>/<tool_use_id>/content.txt`.
 #[test]
 fn e2e_hook_binary_captures_output_chars_from_spill_file_when_hook_payload_empty()
-{
+ {
     let fixture_dir = tempdir().expect("temp fixture dir");
     let chat_root = fixture_dir.path().join("GitHub.copilot-chat");
     let transcripts_dir = chat_root.join("transcripts");
@@ -437,7 +439,9 @@ fn e2e_hook_binary_captures_output_chars_from_spill_file_when_hook_payload_empty
         .write_all(stdin_payload.as_bytes())
         .expect("write hook stdin payload");
 
-    let output = child.wait_with_output().expect("wait for copilot-capture-hook");
+    let output = child
+        .wait_with_output()
+        .expect("wait for copilot-capture-hook");
 
     assert!(
         output.status.success(),
@@ -452,8 +456,8 @@ fn e2e_hook_binary_captures_output_chars_from_spill_file_when_hook_payload_empty
         .join("tool-metrics.json");
     let raw = fs::read_to_string(&tool_metrics_path)
         .expect("tool-metrics.json should exist once a tool call was captured");
-    let summary: serde_json::Value =
-        serde_json::from_str(&raw).expect("tool-metrics.json should be valid json");
+    let summary: serde_json::Value = serde_json::from_str(&raw)
+        .expect("tool-metrics.json should be valid json");
 
     let output_sizes = summary["tools"]["run_in_terminal"]["output_char_sizes"]
         .as_array()
@@ -520,7 +524,7 @@ fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
     };
 
     let manifest_path = repo_root
-        .join("memory-api/crates/session-api/Cargo.toml")
+        .join("memory-api/crates/session-capture-hook/Cargo.toml")
         .to_string_lossy()
         .replace("\\\\?\\", "")
         .replace('\\', "/");

@@ -146,7 +146,7 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
     };
 
     let manifest_path = repo_root
-        .join("memory-api/crates/session-api/Cargo.toml")
+        .join("memory-api/crates/session-capture-hook/Cargo.toml")
         .to_string_lossy()
         .replace("\\\\?\\", "")
         .replace('\\', "/");

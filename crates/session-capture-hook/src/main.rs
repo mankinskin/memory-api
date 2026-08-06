@@ -20,9 +20,15 @@ use session_api::{
     mine_structured_feedback_signals,
     synthesize_follow_up_ticket,
 };
+use session_workspace_resolver::{
+    RepositoryRoot,
+    ResolveRequest,
+    ResolverConfig,
+    SessionWorkspaceResolver,
+    SessionWorktreeRegistry,
+};
 use ticket_api::storage::TicketStore;
 
-#[path = "copilot-capture-hook/args.rs"]
 mod args;
 
 use args::{
@@ -53,6 +59,8 @@ fn run() -> Result<(), SessionError> {
         args
     };
 
+    initialize_session_routing(&args.trigger, args.session_id.as_deref());
+
     let transcript_path = normalize_transcript_path(&args.transcript_path);
     if !transcript_path.is_file() {
         eprintln!(
@@ -63,10 +71,14 @@ fn run() -> Result<(), SessionError> {
         return Ok(());
     }
 
-    let store_root = resolve_store_root(
+    let Some(store_root) = resolve_capture_store_root(
         args.store_root,
-        memory_api::workspace::working_dir().as_deref(),
-    );
+        &args.workspace_slug,
+        args.session_id.as_deref(),
+    ) else {
+        println!("{{}}");
+        return Ok(());
+    };
     let config =
         SessionStoreConfig::new(store_root.clone(), args.workspace_slug);
 
@@ -108,9 +120,64 @@ fn run() -> Result<(), SessionError> {
 
     // Refresh tool metrics rollup (best-effort)
     refresh_tool_metrics_rollup(&config);
-    
+
     println!("{{}}");
     Ok(())
+}
+
+fn initialize_session_routing(
+    trigger: &str,
+    session_id: Option<&str>,
+) {
+    if !trigger.eq_ignore_ascii_case("UserPromptSubmit") {
+        return;
+    }
+    let Some(session_id) =
+        session_id.filter(|session_id| !session_id.trim().is_empty())
+    else {
+        eprintln!(
+            "[copilot-capture-hook] session routing skipped: hook payload has no session id"
+        );
+        return;
+    };
+    let current_dir = match std::env::current_dir() {
+        Ok(current_dir) => current_dir,
+        Err(error) => {
+            eprintln!(
+                "[copilot-capture-hook] session routing skipped: could not determine current directory: {error}"
+            );
+            return;
+        },
+    };
+    let worktree = match RepositoryRoot::new(&current_dir) {
+        Ok(worktree) => worktree,
+        Err(error) => {
+            eprintln!(
+                "[copilot-capture-hook] session routing skipped: could not resolve current checkout: {error}"
+            );
+            return;
+        },
+    };
+    let main_checkout = match std::env::var_os("MCP_MAIN_CHECKOUT") {
+        Some(path) => RepositoryRoot::new(PathBuf::from(path)),
+        None => Ok(worktree.clone()),
+    };
+    let main_checkout = match main_checkout {
+        Ok(main_checkout) => main_checkout,
+        Err(error) => {
+            eprintln!(
+                "[copilot-capture-hook] session routing skipped: could not resolve main checkout: {error}"
+            );
+            return;
+        },
+    };
+    if let Err(error) = SessionWorktreeRegistry::new(main_checkout)
+        .upsert(session_id, worktree.as_path())
+    {
+        eprintln!(
+            "[copilot-capture-hook] session routing skipped: could not register session {session_id}: {error}"
+        );
+    }
 }
 
 /// Build the layered output-size override for the tool call that triggered
@@ -363,71 +430,228 @@ fn synthesize_follow_up_tickets(
 fn refresh_tool_metrics_rollup(config: &SessionStoreConfig) {
     let window = ToolMetricsWindow::default();
     if let Err(error) = config.write_tool_metrics_rollup(window) {
-        eprintln!("[copilot-capture-hook] tool metrics rollup refresh failed (non-fatal): {error}");
+        eprintln!(
+            "[copilot-capture-hook] tool metrics rollup refresh failed (non-fatal): {error}"
+        );
     }
 }
 
-fn resolve_store_root(
+fn resolve_capture_store_root(
     store_root: Option<PathBuf>,
-    cwd: Option<&Path>,
-) -> PathBuf {
-    match store_root {
-        Some(store_root) => store_root,
-        None => match cwd {
-            Some(cwd) =>
-                memory_api::workspace::resolve_local_root_from(cwd, ".session"),
-            None => std::path::PathBuf::from(".session"),
+    workspace_slug: &str,
+    session_id: Option<&str>,
+) -> Option<PathBuf> {
+    if let Some(store_root) = store_root {
+        return Some(store_root);
+    }
+
+    let Some(main_checkout) = std::env::var_os("MCP_MAIN_CHECKOUT") else {
+        eprintln!(
+            "[copilot-capture-hook] capture skipped: MCP_MAIN_CHECKOUT is unset; refusing to write a default .session store"
+        );
+        return None;
+    };
+    let Some(session_id) =
+        session_id.filter(|session_id| !session_id.trim().is_empty())
+    else {
+        eprintln!(
+            "[copilot-capture-hook] capture skipped: hook payload has no session id; refusing to write a default .session store"
+        );
+        return None;
+    };
+    let resolver = match SessionWorkspaceResolver::new(ResolverConfig {
+        main_checkout: PathBuf::from(main_checkout),
+        workspace_slug: workspace_slug.to_string(),
+    }) {
+        Ok(resolver) => resolver,
+        Err(error) => {
+            eprintln!(
+                "[copilot-capture-hook] capture skipped: could not configure session workspace resolver: {error}"
+            );
+            return None;
+        },
+    };
+    match resolver.resolve(ResolveRequest {
+        session_id,
+        relative_workspace: None,
+        store_dir: ".session",
+    }) {
+        Ok(workspace) => match workspace.store_root(".session") {
+            Ok(store_root) => Some(store_root),
+            Err(error) => {
+                eprintln!(
+                    "[copilot-capture-hook] capture skipped: could not resolve worktree session store: {error}"
+                );
+                None
+            },
+        },
+        Err(error) => {
+            eprintln!(
+                "[copilot-capture-hook] capture skipped: no active worktree assignment for session {session_id}: {error}"
+            );
+            None
         },
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        env,
+        path::{
+            Path,
+            PathBuf,
+        },
+        sync::Mutex,
+    };
+
+    use serde_json::Value;
+    use session_api::{
+        SessionStoreConfig,
+        SessionWorktreeCheckInRequest,
+    };
+    use session_workspace_resolver::{
+        RepositoryRoot,
+        SessionWorktreeRegistry,
+    };
     use tempfile::tempdir;
 
-    use std::path::PathBuf;
-
-    use super::resolve_store_root;
+    use super::{
+        initialize_session_routing,
+        resolve_capture_store_root,
+    };
     use crate::args::normalize_transcript_path;
 
-    #[test]
-    fn resolve_store_root_uses_explicit_path_when_present() {
-        let explicit = PathBuf::from("C:/repo/.session");
+    static CWD_LOCK: Mutex<()> = Mutex::new(());
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-        assert_eq!(resolve_store_root(Some(explicit.clone()), None), explicit);
+    fn register_active_worktree(
+        main_checkout: &Path,
+        session_id: &str,
+    ) -> PathBuf {
+        let worktree = main_checkout.join(".worktrees").join("capture");
+        std::fs::create_dir_all(&worktree).unwrap();
+        SessionStoreConfig::new(worktree.join(".session"), "default")
+            .check_in_worktree(SessionWorktreeCheckInRequest {
+                session_id: session_id.to_string(),
+                owner_id: "agent".to_string(),
+                ticket_id: "ticket".to_string(),
+                worktree_path: worktree.clone(),
+                branch: "agent/40349f3f-capture-routing".to_string(),
+                predecessor_session_id: None,
+            })
+            .unwrap();
+        SessionWorktreeRegistry::new(
+            RepositoryRoot::new(main_checkout).unwrap(),
+        )
+        .upsert(session_id, &worktree)
+        .unwrap();
+        worktree
     }
 
     #[test]
-    fn resolve_store_root_defaults_to_hidden_store_in_current_directory() {
-        let cwd = tempdir().unwrap();
+    fn capture_writes_to_worktree_store_while_cwd_is_main_checkout() {
+        let _cwd_lock = CWD_LOCK.lock().unwrap();
+        let _env_lock = ENV_LOCK.lock().unwrap();
+        let fixture = tempdir().unwrap();
+        let main_checkout = fixture.path().join("main");
+        let worktree =
+            register_active_worktree(&main_checkout, "session-worktree");
+        std::fs::create_dir_all(main_checkout.join(".session")).unwrap();
+        let original_cwd = std::env::current_dir().unwrap();
+        let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
+        unsafe { env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
+        std::env::set_current_dir(&main_checkout).unwrap();
 
-        let resolved = resolve_store_root(None, Some(cwd.path()));
+        let result = resolve_capture_store_root(
+            None,
+            "default",
+            Some("session-worktree"),
+        );
 
-        assert_eq!(resolved, cwd.path().join(".session"));
+        std::env::set_current_dir(original_cwd).unwrap();
+        unsafe {
+            match original_main_checkout {
+                Some(value) => env::set_var("MCP_MAIN_CHECKOUT", value),
+                None => env::remove_var("MCP_MAIN_CHECKOUT"),
+            }
+        }
+        let store_root =
+            result.expect("active worktree assignment should resolve");
+
+        assert_eq!(store_root, worktree.join(".session"));
+        assert!(
+            std::fs::read_dir(main_checkout.join(".session"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
     }
 
     #[test]
-    fn resolve_store_root_walks_up_to_ancestor_store() {
-        let repo = tempdir().unwrap();
-        let nested = repo.path().join("memory-viewers").join("memory-api");
-        std::fs::create_dir_all(repo.path().join(".session")).unwrap();
-        std::fs::create_dir_all(&nested).unwrap();
+    fn capture_without_assignment_warns_and_does_not_write_main_checkout() {
+        let _env_lock = ENV_LOCK.lock().unwrap();
+        let fixture = tempdir().unwrap();
+        let main_checkout = fixture.path().join("main");
+        std::fs::create_dir_all(main_checkout.join(".session")).unwrap();
+        let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
+        unsafe { env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
 
-        let resolved = resolve_store_root(None, Some(&nested));
-
-        assert_eq!(resolved, repo.path().join(".session"));
+        assert_eq!(
+            resolve_capture_store_root(None, "default", Some("missing")),
+            None
+        );
+        unsafe {
+            match original_main_checkout {
+                Some(value) => env::set_var("MCP_MAIN_CHECKOUT", value),
+                None => env::remove_var("MCP_MAIN_CHECKOUT"),
+            }
+        }
+        assert!(
+            std::fs::read_dir(main_checkout.join(".session"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
     }
 
     #[test]
-    fn resolve_store_root_does_not_descend_into_submodules() {
-        let repo = tempdir().unwrap();
-        let memory_api = repo.path().join("memory-viewers").join("memory-api");
-        std::fs::create_dir_all(memory_api.join(".session")).unwrap();
+    fn capture_with_inactive_assignment_does_not_write_main_checkout() {
+        assert_eq!(
+            resolve_capture_store_root(None, "default", Some("inactive")),
+            None
+        );
+    }
 
-        // Running from repo root: must NOT descend into the submodule — creates at CWD.
-        let resolved = resolve_store_root(None, Some(repo.path()));
+    #[test]
+    fn capture_store_resolution_ignores_process_current_directory() {
+        let _cwd_lock = CWD_LOCK.lock().unwrap();
+        let _env_lock = ENV_LOCK.lock().unwrap();
+        let fixture = tempdir().unwrap();
+        let main_checkout = fixture.path().join("main");
+        let worktree =
+            register_active_worktree(&main_checkout, "session-third-cwd");
+        let unrelated = fixture.path().join("unrelated");
+        std::fs::create_dir_all(&unrelated).unwrap();
+        let original_cwd = std::env::current_dir().unwrap();
+        let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
+        unsafe { env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
+        std::env::set_current_dir(&unrelated).unwrap();
 
-        assert_eq!(resolved, repo.path().join(".session"));
+        let result = resolve_capture_store_root(
+            None,
+            "default",
+            Some("session-third-cwd"),
+        );
+
+        std::env::set_current_dir(original_cwd).unwrap();
+        unsafe {
+            match original_main_checkout {
+                Some(value) => env::set_var("MCP_MAIN_CHECKOUT", value),
+                None => env::remove_var("MCP_MAIN_CHECKOUT"),
+            }
+        }
+        assert_eq!(result, Some(worktree.join(".session")));
     }
 
     #[test]
@@ -435,5 +659,176 @@ mod tests {
         let path = PathBuf::from("C:/repo/transcript.jsonl");
         let normalized = normalize_transcript_path(&path);
         assert!(!normalized.as_os_str().is_empty());
+    }
+
+    fn read_registry_entries(
+        main_checkout: &Path
+    ) -> serde_json::Map<String, Value> {
+        let contents = std::fs::read_to_string(
+            main_checkout.join(".session-routing/worktree-index.json"),
+        )
+        .unwrap();
+        serde_json::from_str::<Value>(&contents)
+            .unwrap()
+            .get("entries")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap()
+    }
+
+    fn run_user_prompt_submit(
+        main_checkout: &Path,
+        worktree: &Path,
+        session_id: Option<&str>,
+    ) {
+        let original_cwd = env::current_dir().unwrap();
+        let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
+        unsafe { env::set_var("MCP_MAIN_CHECKOUT", main_checkout) };
+        env::set_current_dir(worktree).unwrap();
+
+        initialize_session_routing("UserPromptSubmit", session_id);
+
+        env::set_current_dir(original_cwd).unwrap();
+        unsafe {
+            match original_main_checkout {
+                Some(value) => env::set_var("MCP_MAIN_CHECKOUT", value),
+                None => env::remove_var("MCP_MAIN_CHECKOUT"),
+            }
+        }
+    }
+
+    #[test]
+    fn user_prompt_submit_writes_session_worktree_registry_entry() {
+        let _cwd_lock = CWD_LOCK.lock().unwrap();
+        let _env_lock = ENV_LOCK.lock().unwrap();
+        let fixture = tempdir().unwrap();
+        let main_checkout = fixture.path().join("main");
+        let worktree = main_checkout.join("worktree");
+        std::fs::create_dir_all(&worktree).unwrap();
+
+        run_user_prompt_submit(&main_checkout, &worktree, Some("session-one"));
+
+        let entries = read_registry_entries(&main_checkout);
+        let entry = entries.get("session-one").unwrap();
+        assert_eq!(
+            PathBuf::from(entry["worktree_path"].as_str().unwrap()),
+            RepositoryRoot::new(&worktree).unwrap().as_path()
+        );
+    }
+
+    #[test]
+    fn user_prompt_submit_is_idempotent_for_a_session() {
+        let _cwd_lock = CWD_LOCK.lock().unwrap();
+        let _env_lock = ENV_LOCK.lock().unwrap();
+        let fixture = tempdir().unwrap();
+        let main_checkout = fixture.path().join("main");
+        let worktree = main_checkout.join("worktree");
+        std::fs::create_dir_all(&worktree).unwrap();
+
+        run_user_prompt_submit(&main_checkout, &worktree, Some("session-one"));
+        run_user_prompt_submit(&main_checkout, &worktree, Some("session-one"));
+
+        let entries = read_registry_entries(&main_checkout);
+        assert_eq!(entries.len(), 1);
+        assert!(
+            !entries["session-one"]["updated_at"]
+                .as_str()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn user_prompt_submit_records_distinct_sessions() {
+        let _cwd_lock = CWD_LOCK.lock().unwrap();
+        let _env_lock = ENV_LOCK.lock().unwrap();
+        let fixture = tempdir().unwrap();
+        let main_checkout = fixture.path().join("main");
+        let worktree = main_checkout.join("worktree");
+        std::fs::create_dir_all(&worktree).unwrap();
+
+        run_user_prompt_submit(&main_checkout, &worktree, Some("session-one"));
+        run_user_prompt_submit(&main_checkout, &worktree, Some("session-two"));
+
+        let entries = read_registry_entries(&main_checkout);
+        assert_eq!(entries.len(), 2);
+        assert!(entries.contains_key("session-one"));
+        assert!(entries.contains_key("session-two"));
+    }
+
+    #[test]
+    fn user_prompt_submit_without_session_id_does_not_write_registry() {
+        let _cwd_lock = CWD_LOCK.lock().unwrap();
+        let _env_lock = ENV_LOCK.lock().unwrap();
+        let fixture = tempdir().unwrap();
+        let main_checkout = fixture.path().join("main");
+        let worktree = main_checkout.join("worktree");
+        std::fs::create_dir_all(&worktree).unwrap();
+
+        run_user_prompt_submit(&main_checkout, &worktree, None);
+
+        assert!(
+            !main_checkout
+                .join(".session-routing/worktree-index.json")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn stop_does_not_write_session_worktree_registry() {
+        let _cwd_lock = CWD_LOCK.lock().unwrap();
+        let _env_lock = ENV_LOCK.lock().unwrap();
+        let fixture = tempdir().unwrap();
+        let main_checkout = fixture.path().join("main");
+        let worktree = main_checkout.join("worktree");
+        std::fs::create_dir_all(&worktree).unwrap();
+        let original_cwd = env::current_dir().unwrap();
+        let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
+        unsafe { env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
+        env::set_current_dir(&worktree).unwrap();
+
+        initialize_session_routing("Stop", Some("session-one"));
+
+        env::set_current_dir(original_cwd).unwrap();
+        unsafe {
+            match original_main_checkout {
+                Some(value) => env::set_var("MCP_MAIN_CHECKOUT", value),
+                None => env::remove_var("MCP_MAIN_CHECKOUT"),
+            }
+        }
+        assert!(
+            !main_checkout
+                .join(".session-routing/worktree-index.json")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn user_prompt_submit_swallows_main_checkout_resolution_failure() {
+        let _cwd_lock = CWD_LOCK.lock().unwrap();
+        let _env_lock = ENV_LOCK.lock().unwrap();
+        let fixture = tempdir().unwrap();
+        let worktree = fixture.path().join("worktree");
+        let invalid_main_checkout = fixture.path().join("missing-main");
+        std::fs::create_dir_all(&worktree).unwrap();
+        let original_cwd = env::current_dir().unwrap();
+        let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
+        unsafe { env::set_var("MCP_MAIN_CHECKOUT", &invalid_main_checkout) };
+        env::set_current_dir(&worktree).unwrap();
+
+        initialize_session_routing("UserPromptSubmit", Some("session-one"));
+
+        env::set_current_dir(original_cwd).unwrap();
+        unsafe {
+            match original_main_checkout {
+                Some(value) => env::set_var("MCP_MAIN_CHECKOUT", value),
+                None => env::remove_var("MCP_MAIN_CHECKOUT"),
+            }
+        }
+        assert!(
+            !invalid_main_checkout
+                .join(".session-routing/worktree-index.json")
+                .exists()
+        );
     }
 }
