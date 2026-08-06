@@ -204,6 +204,8 @@ fn listed_ticket_summaries(
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::fs;
+    use std::path::Path;
 
     use serde_json::Value;
     use ticket_api::storage::store::TicketStore;
@@ -222,6 +224,19 @@ mod tests {
                 }
             })
             .expect("text content")
+    }
+
+    fn copy_ticket_dir(source: &Path, destination: &Path) {
+        fs::create_dir_all(destination).expect("create destination");
+        for entry in fs::read_dir(source).expect("read source") {
+            let entry = entry.expect("directory entry");
+            let destination_path = destination.join(entry.file_name());
+            if entry.file_type().expect("file type").is_dir() {
+                copy_ticket_dir(&entry.path(), &destination_path);
+            } else {
+                fs::copy(entry.path(), destination_path).expect("copy ticket file");
+            }
+        }
     }
 
     #[tokio::test]
@@ -398,6 +413,195 @@ mod tests {
 
         assert!(json.get("workspace").is_none());
         assert_eq!(json["items"][0]["type"], "tracker-improvement");
+    }
+
+    #[tokio::test]
+    async fn external_write_to_description_is_visible_to_get_ticket_description() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = TicketStore::init(dir.path()).expect("open store");
+        let id = store
+            .create(
+                None,
+                "tracker-improvement",
+                Some("external description write"),
+                Some("open"),
+                BTreeMap::new(),
+                None,
+                Some("# Existing section"),
+            )
+            .expect("create ticket");
+        let ticket_path = store
+            .get_indexed(&id)
+            .expect("indexed get")
+            .expect("indexed ticket")
+            .path;
+        let server = TicketServer::new(dir.path().to_path_buf());
+
+        server
+            .get_ticket_description_tool(TicketRefInput {
+                workspace: None,
+                id: id.to_string(),
+                view: None,
+                parts: None,
+            })
+            .await
+            .expect("initial description read");
+        fs::write(
+            ticket_path.join("description.md"),
+            "# Existing section\n\n## External section\nvisible after external write\n",
+        )
+        .expect("external description write");
+
+        let result = server
+            .get_ticket_description_tool(TicketRefInput {
+                workspace: None,
+                id: id.to_string(),
+                view: None,
+                parts: None,
+            })
+            .await
+            .expect("description after external write");
+        let json: Value = serde_json::from_str(&extract_text(&result))
+            .expect("valid json");
+
+        assert!(json["description"]
+            .as_str()
+            .expect("description string")
+            .contains("## External section"));
+    }
+
+    #[tokio::test]
+    async fn external_write_of_new_ticket_is_visible_to_list() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let destination = TicketStore::init(dir.path()).expect("destination store");
+        destination
+            .create(
+                None,
+                "tracker-improvement",
+                Some("already indexed ticket"),
+                Some("open"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create indexed ticket");
+        let server = TicketServer::new(dir.path().to_path_buf());
+        server
+            .list_tickets_tool(ListTicketsInput {
+                workspace: "default".to_string(),
+                state: None,
+                type_id: None,
+                query: None,
+                limit: None,
+            })
+            .await
+            .expect("initial list");
+        let source_dir = tempfile::tempdir().expect("source tempdir");
+        let source = TicketStore::init(source_dir.path()).expect("source store");
+        let id = source
+            .create(
+                None,
+                "tracker-improvement",
+                Some("externally added ticket"),
+                Some("open"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create source ticket");
+        let source_path = source
+            .get_indexed(&id)
+            .expect("source indexed get")
+            .expect("source indexed ticket")
+            .path;
+        copy_ticket_dir(
+            &source_path,
+            &destination.index_root.join("tickets").join(id.to_string()),
+        );
+
+        let result = server
+            .list_tickets_tool(ListTicketsInput {
+                workspace: "default".to_string(),
+                state: None,
+                type_id: None,
+                query: None,
+                limit: None,
+            })
+            .await
+            .expect("list after external ticket write");
+        let json: Value = serde_json::from_str(&extract_text(&result))
+            .expect("valid json");
+
+        assert!(json["items"].as_array().expect("items array").iter().any(
+            |item| item["id"].as_str() == Some(id.to_string().as_str()),
+        ));
+    }
+
+    #[tokio::test]
+    async fn residual_staleness_is_surfaced_not_silently_returned() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let destination = TicketStore::init(dir.path()).expect("destination store");
+        destination
+            .create(
+                None,
+                "tracker-improvement",
+                Some("already indexed ticket"),
+                Some("open"),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+            .expect("create indexed ticket");
+        let server = TicketServer::new(dir.path().to_path_buf());
+        server
+            .list_tickets_tool(ListTicketsInput {
+                workspace: "default".to_string(),
+                state: None,
+                type_id: None,
+                query: None,
+                limit: None,
+            })
+            .await
+            .expect("initial list");
+        let source_dir = tempfile::tempdir().expect("source tempdir");
+        let source = TicketStore::init(source_dir.path()).expect("source store");
+        let id = source
+            .create(
+                None,
+                "tracker-improvement",
+                Some("read-time reconciliation"),
+                Some("open"),
+                BTreeMap::new(),
+                None,
+                Some("## Visible without a staleness window"),
+            )
+            .expect("create source ticket");
+        let source_path = source
+            .get_indexed(&id)
+            .expect("source indexed get")
+            .expect("source indexed ticket")
+            .path;
+        copy_ticket_dir(
+            &source_path,
+            &destination.index_root.join("tickets").join(id.to_string()),
+        );
+
+        let result = server
+            .get_ticket_description_tool(TicketRefInput {
+                workspace: None,
+                id: id.to_string(),
+                view: None,
+                parts: None,
+            })
+            .await
+            .expect("read after external ticket write");
+        let json: Value = serde_json::from_str(&extract_text(&result))
+            .expect("valid json");
+
+        assert_eq!(
+            json["description"].as_str(),
+            Some("## Visible without a staleness window")
+        );
     }
 }
 

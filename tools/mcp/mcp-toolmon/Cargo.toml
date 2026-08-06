@@ -31,6 +31,7 @@ path = "src/lib.rs"
 [dependencies]
 toolmon-policy-api = { path = "../toolmon-policy-api" }
 toolmon-costgate = { path = "../toolmon-costgate" }
+session-workspace-resolver = { path = "../../../crates/session-workspace-resolver" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
@@ -38,3 +39,4 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io
 
 [dev-dependencies]
 tempfile = "3"
+session-api = { path = "../../../crates/session-api" }

@@ -9,20 +9,83 @@
 //! - Missing price table → fail-open (Gate::load error)
 
 use mcp_toolmon::proxy::{handle_client_message, ClientAction, PendingCalls, PendingList};
+use session_api::{SessionStoreConfig, SessionWorktreeCheckInRequest};
+use session_workspace_resolver::{
+    RepositoryRoot, ResolverConfig, SessionWorkspaceResolver, SessionWorktreeRegistry,
+};
 use toolmon_costgate::{gate::{Gate, ModelBudgetCalibration}, CostGatePolicy};
 use toolmon_policy_api::Decision;
 use serde_json::{json, Value};
 use std::fs;
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::Mutex;
 use tempfile::TempDir;
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 /// Helper: write JSON to a temp file.
 fn write_json(dir: &TempDir, name: &str, value: &Value) -> PathBuf {
     let path = dir.path().join(name);
     fs::write(&path, serde_json::to_string_pretty(value).unwrap()).unwrap();
     path
+}
+
+fn active_session_fixture() -> (TempDir, PathBuf) {
+    let temp = TempDir::new().unwrap();
+    let main_checkout = temp.path().join("repository");
+    let worktree = main_checkout.join(".worktrees").join("feature");
+    fs::create_dir_all(&worktree).unwrap();
+    SessionWorkspaceResolver::new(ResolverConfig {
+        main_checkout: main_checkout.clone(),
+        workspace_slug: "default".to_string(),
+    })
+    .unwrap();
+    SessionStoreConfig::new(worktree.join(".session"), "default")
+        .check_in_worktree(SessionWorktreeCheckInRequest {
+            session_id: "test-session-id".to_string(),
+            owner_id: "agent".to_string(),
+            ticket_id: "ticket".to_string(),
+            worktree_path: worktree.clone(),
+            branch: "agent/test".to_string(),
+            predecessor_session_id: None,
+        })
+        .unwrap();
+    SessionWorktreeRegistry::new(RepositoryRoot::new(&main_checkout).unwrap())
+        .upsert("test-session-id", &worktree)
+        .unwrap();
+    (temp, main_checkout)
+}
+
+struct ActiveSessionEnvironment {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    _temp: TempDir,
+    previous_main_checkout: Option<OsString>,
+}
+
+impl Drop for ActiveSessionEnvironment {
+    fn drop(&mut self) {
+        unsafe {
+            match &self.previous_main_checkout {
+                Some(value) => std::env::set_var("MCP_MAIN_CHECKOUT", value),
+                None => std::env::remove_var("MCP_MAIN_CHECKOUT"),
+            }
+        }
+    }
+}
+
+fn active_session_environment() -> ActiveSessionEnvironment {
+    let lock = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+    let previous_main_checkout = std::env::var_os("MCP_MAIN_CHECKOUT");
+    let (temp, main_checkout) = active_session_fixture();
+    unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", main_checkout) };
+    ActiveSessionEnvironment {
+        _lock: lock,
+        _temp: temp,
+        previous_main_checkout,
+    }
 }
 
 /// Helper: get the path to the built mcp-toolmon binary.
@@ -39,7 +102,8 @@ fn tools_call_request(id: u32, tool: &str, caller_model: &str) -> Value {
         "params": {
             "name": tool,
             "arguments": {
-                "caller_model": caller_model
+                "caller_model": caller_model,
+                "session_id": "test-session-id"
             }
         }
     })
@@ -300,6 +364,7 @@ fn test_handle_client_message_expensive_model_refused() {
 #[test]
 fn test_handle_client_message_cheap_model_allowed() {
     let tmp = TempDir::new().unwrap();
+    let _routing = active_session_environment();
 
     let price_table = json!({
         "models": [
@@ -344,6 +409,7 @@ fn test_handle_client_message_cheap_model_allowed() {
         ClientAction::Forward(val) => {
             // Verify caller_model was stripped from arguments.
             assert!(val["params"]["arguments"].get("caller_model").is_none());
+            assert!(val["params"]["arguments"].get("session_id").is_none());
         }
         ClientAction::Respond(val) => {
             panic!("Expected Forward, got Respond: {:?}", val);
@@ -470,6 +536,7 @@ fn test_stdio_expensive_model_refused() {
 #[test]
 fn test_stdio_cheap_model_allowed() {
     let tmp = TempDir::new().unwrap();
+    let (_routing, main_checkout) = active_session_fixture();
 
     // Setup fixtures identical to test_cheap_model_expensive_tool_allow.
     let price_table = json!({
@@ -502,6 +569,7 @@ fn test_stdio_cheap_model_allowed() {
         .arg("cat")
         .env("COST_GATE_TABLE", table_path.display().to_string())
         .env("COST_GATE_TOOL_METRICS", rollup_path.display().to_string())
+        .env("MCP_MAIN_CHECKOUT", main_checkout)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -552,6 +620,10 @@ fn test_stdio_cheap_model_allowed() {
         response["params"]["arguments"].get("caller_model").is_none(),
         "caller_model should be stripped"
     );
+    assert!(
+        response["params"]["arguments"].get("session_id").is_none(),
+        "session_id should be stripped"
+    );
 
     // Clean up.
     drop(stdin);
@@ -564,6 +636,7 @@ fn test_stdio_telemetry_recorded_for_allowed_call() {
     // records a CallTelemetry line with a non-zero tokens_estimated and a
     // populated duration_ms once the "cat" passthrough echoes the response.
     let tmp = TempDir::new().unwrap();
+    let (_routing, main_checkout) = active_session_fixture();
 
     let price_table = json!({
         "models": [
@@ -596,6 +669,7 @@ fn test_stdio_telemetry_recorded_for_allowed_call() {
         .env("COST_GATE_TABLE", table_path.display().to_string())
         .env("COST_GATE_TOOL_METRICS", rollup_path.display().to_string())
         .env("COST_GATE_TELEMETRY_LOG", telemetry_path.display().to_string())
+        .env("MCP_MAIN_CHECKOUT", main_checkout)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -634,6 +708,7 @@ fn test_stdio_tokens_estimated_increases_with_larger_payload() {
     // AC3: exercise real proxy telemetry path with two differently sized
     // payloads and assert strict monotonicity for tokens_estimated.
     let tmp = TempDir::new().unwrap();
+    let (_routing, main_checkout) = active_session_fixture();
 
     let price_table = json!({
         "models": [
@@ -657,6 +732,7 @@ fn test_stdio_tokens_estimated_increases_with_larger_payload() {
         .env("COST_GATE_TABLE", table_path.display().to_string())
         .env("COST_GATE_TOOL_METRICS", rollup_path.display().to_string())
         .env("COST_GATE_TELEMETRY_LOG", telemetry_path.display().to_string())
+        .env("MCP_MAIN_CHECKOUT", main_checkout)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -674,6 +750,7 @@ fn test_stdio_tokens_estimated_increases_with_larger_payload() {
             "name": "size_probe",
             "arguments": {
                 "caller_model": "claude-haiku-3-7",
+                "session_id": "test-session-id",
                 "payload": "x"
             }
         }
@@ -686,6 +763,7 @@ fn test_stdio_tokens_estimated_increases_with_larger_payload() {
             "name": "size_probe",
             "arguments": {
                 "caller_model": "claude-haiku-3-7",
+                "session_id": "test-session-id",
                 "payload": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
             }
         }

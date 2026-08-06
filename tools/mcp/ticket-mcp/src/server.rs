@@ -181,6 +181,7 @@ impl TicketServer {
         let index_root = self.resolve_workspace_root(workspace)?;
         let _guard = self.store_lock.lock().await;
         let store = TicketStore::open(&index_root).map_err(Self::store_err)?;
+        store.scan(false).map_err(Self::store_err)?;
         let result = f(&store).map_err(Self::store_err);
         drop(store);
         result
@@ -194,6 +195,7 @@ impl TicketServer {
         let index_root = self.resolve_workspace_root(workspace)?;
         let _guard = self.store_lock.lock().await;
         let store = TicketStore::open(&index_root).map_err(Self::store_err)?;
+        store.scan(false).map_err(Self::store_err)?;
         let result = f(&store);
         drop(store);
         result

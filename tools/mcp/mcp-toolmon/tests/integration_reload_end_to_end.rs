@@ -5,6 +5,7 @@
 //! proxy is an external process).
 
 use std::fs;
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -14,7 +15,70 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+use session_api::{SessionStoreConfig, SessionWorktreeCheckInRequest};
+use session_workspace_resolver::{
+    RepositoryRoot, ResolverConfig, SessionWorkspaceResolver, SessionWorktreeRegistry,
+};
 use tempfile::TempDir;
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+fn active_session_fixture() -> (TempDir, PathBuf) {
+    let temp = TempDir::new().unwrap();
+    let main_checkout = temp.path().join("repository");
+    let worktree = main_checkout.join(".worktrees").join("feature");
+    fs::create_dir_all(&worktree).unwrap();
+    SessionWorkspaceResolver::new(ResolverConfig {
+        main_checkout: main_checkout.clone(),
+        workspace_slug: "default".to_string(),
+    })
+    .unwrap();
+    SessionStoreConfig::new(worktree.join(".session"), "default")
+        .check_in_worktree(SessionWorktreeCheckInRequest {
+            session_id: "test-session-id".to_string(),
+            owner_id: "agent".to_string(),
+            ticket_id: "ticket".to_string(),
+            worktree_path: worktree.clone(),
+            branch: "agent/test".to_string(),
+            predecessor_session_id: None,
+        })
+        .unwrap();
+    SessionWorktreeRegistry::new(RepositoryRoot::new(&main_checkout).unwrap())
+        .upsert("test-session-id", &worktree)
+        .unwrap();
+    (temp, main_checkout)
+}
+
+struct ActiveSessionEnvironment {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    _temp: TempDir,
+    main_checkout: PathBuf,
+    previous_main_checkout: Option<OsString>,
+}
+
+impl Drop for ActiveSessionEnvironment {
+    fn drop(&mut self) {
+        unsafe {
+            match &self.previous_main_checkout {
+                Some(value) => std::env::set_var("MCP_MAIN_CHECKOUT", value),
+                None => std::env::remove_var("MCP_MAIN_CHECKOUT"),
+            }
+        }
+    }
+}
+
+fn active_session_environment() -> ActiveSessionEnvironment {
+    let lock = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+    let previous_main_checkout = std::env::var_os("MCP_MAIN_CHECKOUT");
+    let (temp, main_checkout) = active_session_fixture();
+    unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
+    ActiveSessionEnvironment {
+        _lock: lock,
+        _temp: temp,
+        main_checkout,
+        previous_main_checkout,
+    }
+}
 
 fn get_binary_path() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_mcp-toolmon"))
@@ -95,6 +159,7 @@ fn find_response(lines: &[String], id: i64) -> Option<Value> {
 
 #[test]
 fn transparent_reload_end_to_end_subprocess() {
+    let session_environment = active_session_environment();
     let canonical_dir = TempDir::new().unwrap();
     let canonical = canonical_dir.path().join(canonical_exe_name());
     write_exe(&canonical, &fake_v1_bytes());
@@ -104,6 +169,7 @@ fn transparent_reload_end_to_end_subprocess() {
         .arg(&canonical)
         .env("TOOLMON_POLL_MS", "25")
         .env("TOOLMON_DRAIN_MS", "200")
+        .env("MCP_MAIN_CHECKOUT", &session_environment.main_checkout)
         .env_remove("COST_GATE_TABLE")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -127,7 +193,7 @@ fn transparent_reload_end_to_end_subprocess() {
     send(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
 
     // 2) tools/call served by v1.
-    send(&json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"generation","arguments":{}}}));
+    send(&json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"test-session-id"}}}));
     wait_until(&transcript, Duration::from_secs(5), "no response to pre-swap generation call", |lines| {
         find_response(lines, 2).is_some()
     });
@@ -142,7 +208,7 @@ fn transparent_reload_end_to_end_subprocess() {
 
     // Race a request right at the swap boundary: this must be answered
     // (real v1/v2 result or a synthesized JSON-RPC error), never hang.
-    send(&json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"generation","arguments":{}}}));
+    send(&json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"test-session-id"}}}));
 
     // 4) Bounded wait for the real on-disk watcher to detect the change and
     // notify the client — no direct swap_child() call is possible against
@@ -183,7 +249,7 @@ fn transparent_reload_end_to_end_subprocess() {
     let mut next_id = 4i64;
     let mut got_v2 = false;
     while Instant::now() < overall_deadline {
-        send(&json!({"jsonrpc":"2.0","id":next_id,"method":"tools/call","params":{"name":"generation","arguments":{}}}));
+        send(&json!({"jsonrpc":"2.0","id":next_id,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"test-session-id"}}}));
         if let Some(resp) = wait_or_none(&transcript, Duration::from_secs(2), next_id)
             && resp["result"]["content"][0]["text"] == "v2"
         {

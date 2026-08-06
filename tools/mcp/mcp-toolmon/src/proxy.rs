@@ -4,15 +4,33 @@
 //! tested without spawning processes. The wiring in `main.rs` reads/writes
 //! newline-delimited JSON on stdio and calls into here.
 
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{
     Value,
     json,
 };
+use session_workspace_resolver::{
+    ResolveRequest,
+    ResolverConfig,
+    ResolutionError,
+    SessionWorkspaceResolver,
+};
 
-use toolmon_policy_api::{CALLER_MODEL_ARG, Decision, Policy, inject_caller_model_schema};
+use toolmon_policy_api::{
+    CALLER_MODEL_ARG,
+    SESSION_ID_ARG,
+    Decision,
+    Policy,
+    inject_caller_model_schema,
+};
 
 /// Optional grant id argument for budget offset.
 pub const GRANT_ID_ARG: &str = "grant_id";
@@ -159,6 +177,59 @@ fn error_result(id: &Value, text: &str) -> Value {
     })
 }
 
+const MAIN_CHECKOUT_ENV: &str = "MCP_MAIN_CHECKOUT";
+const STORE_DIR_ENV: &str = "MCP_STORE_DIR";
+const DEFAULT_STORE_DIR: &str = ".session";
+
+fn resolve_workspace(session_id: &str, workspace: Option<&str>) -> Result<(String, PathBuf), String> {
+    let main_checkout = std::env::var(MAIN_CHECKOUT_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| format!("{MAIN_CHECKOUT_ENV} must be set; workspace resolution has no process-cwd fallback"))?;
+    let store_dir = std::env::var(STORE_DIR_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_STORE_DIR.to_string());
+    let resolver = SessionWorkspaceResolver::new(ResolverConfig {
+        main_checkout: PathBuf::from(main_checkout),
+        workspace_slug: "default".to_string(),
+    })
+    .map_err(|error| error.to_string())?;
+    let relative_workspace = workspace
+        .filter(|value| !value.is_empty() && *value != "default")
+        .filter(|value| !Path::new(value).is_absolute())
+        .map(Path::new);
+    let resolved = resolver.resolve(ResolveRequest {
+        session_id,
+        relative_workspace,
+        store_dir: &store_dir,
+    })
+    .map_err(|error| match error {
+        ResolutionError::RegistryEntryMissing { .. } | ResolutionError::RegistryMissing { .. }
+            if workspace.is_none_or(|value| value.is_empty() || value == "default") => {
+            let candidates = resolver.refused_candidates(&store_dir).unwrap_or_default();
+            ResolutionError::UnanchoredDefault {
+                session_id: session_id.to_string(),
+                candidates,
+            }
+            .to_string()
+        }
+        other => other.to_string(),
+    })?;
+    if resolved.target_root() == resolved.repository_root() {
+        return Err(ResolutionError::MainCheckoutMutationBlocked.to_string());
+    }
+    resolved.require_mutation_target().map_err(|error| error.to_string())?;
+    let store_root = resolved.store_root(&store_dir).map_err(|error| error.to_string())?;
+    let target_root = resolved
+        .target_root()
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_string();
+    Ok((target_root, store_root))
+}
+
 /// Handle a client→server message.
 ///
 /// * `tools/list` requests are recorded and forwarded.
@@ -207,6 +278,13 @@ pub fn handle_client_message(
                 .unwrap_or("")
                 .trim()
                 .to_string();
+            let session_id = params
+                .get("arguments")
+                .and_then(|a| a.get(SESSION_ID_ARG))
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string();
             let grant_id = params
                 .get("arguments")
                 .and_then(|a| a.get(GRANT_ID_ARG))
@@ -246,6 +324,22 @@ pub fn handle_client_message(
                 );
             }
 
+            if session_id.is_empty() {
+                let telemetry = immediate_telemetry("reject-missing-session", Some(caller_model));
+                return (
+                    ClientAction::Respond(error_result(
+                        &id,
+                        &format!(
+                            "Missing required '{SESSION_ID_ARG}' argument. Every tool \
+                             call must declare the session it belongs to so the session \
+                             anchors the call to that session's worktree instead of silently \
+                             resolving to the server process working directory."
+                        ),
+                    )),
+                    Some(telemetry),
+                );
+            }
+
             // Resolve the raw caller_model first (exact -> substring, unchanged
             // precedence). Only when that fails do we retry with a normalized
             // candidate (trailing client qualifier stripped; separators
@@ -275,14 +369,35 @@ pub fn handle_client_message(
                     (ClientAction::Respond(error_result(&id, &guidance)), Some(telemetry))
                 }
                 Decision::Allow => {
-                    // Strip caller_model and grant_id before forwarding to the real server.
+                    let workspace = msg
+                        .get("params")
+                        .and_then(|params| params.get("arguments"))
+                        .and_then(|arguments| arguments.get("workspace"))
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
+                    let (target_root, store_root) = match resolve_workspace(&session_id, workspace.as_deref()) {
+                        Ok(resolved) => resolved,
+                        Err(error) => {
+                            let telemetry = immediate_telemetry("reject-workspace", Some(caller_model));
+                            return (ClientAction::Respond(error_result(&id, &error)), Some(telemetry));
+                        }
+                    };
+                    eprintln!("[mcp-toolmon] resolved store root: {}", store_root.to_string_lossy().replace('\\', "/"));
+                    // Strip proxy-only arguments before forwarding to the real server.
                     if let Some(args) = msg
                         .get_mut("params")
                         .and_then(|p| p.get_mut("arguments"))
                         .and_then(Value::as_object_mut)
                     {
                         args.remove(CALLER_MODEL_ARG);
+                        args.remove(SESSION_ID_ARG);
                         args.remove(GRANT_ID_ARG);
+                        if workspace.as_deref().is_none_or(|value| !Path::new(value).is_absolute()) {
+                            args.insert(
+                                "workspace".to_string(),
+                                Value::String(target_root),
+                            );
+                        }
                     }
                     let decision_label = if soft_warning.is_some() { "allow-normalized" } else { "allow" };
                     pending_calls.record(
@@ -374,8 +489,28 @@ pub fn handle_server_message(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
+    use session_api::{
+        SessionStoreConfig,
+        SessionWorktreeCheckInRequest,
+        SessionWorktreeStatus,
+    };
+    use session_workspace_resolver::{
+        RepositoryRoot,
+        ResolverConfig,
+        SessionWorktreeRegistry,
+        SessionWorkspaceResolver,
+    };
+    use std::{
+        path::{
+            Path,
+            PathBuf,
+        },
+        sync::Mutex,
+    };
+    use tempfile::TempDir;
     use toolmon_costgate::{CostGatePolicy, Gate};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn test_gate() -> CostGatePolicy {
         // Write a tiny fixture table to a unique temp file and load it. A
@@ -412,12 +547,182 @@ mod tests {
         if let Some(m) = model {
             args.insert(CALLER_MODEL_ARG.into(), json!(m));
         }
+        args.insert(SESSION_ID_ARG.into(), json!("test-session-id"));
         json!({
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
             "params": { "name": tool, "arguments": args }
         })
+    }
+
+    fn routing_fixture(
+        status: SessionWorktreeStatus,
+        use_main_checkout: bool,
+    ) -> (TempDir, PathBuf, PathBuf) {
+        let temp = tempfile::tempdir().unwrap();
+        let main_checkout = temp.path().join("repository");
+        let worktree = main_checkout.join(".worktrees").join("feature");
+        std::fs::create_dir_all(&worktree).unwrap();
+        let assigned_checkout = if use_main_checkout {
+            main_checkout.clone()
+        } else {
+            worktree.clone()
+        };
+        let _resolver = SessionWorkspaceResolver::new(ResolverConfig {
+            main_checkout: main_checkout.clone(),
+            workspace_slug: "default".to_string(),
+        })
+        .unwrap();
+        SessionStoreConfig::new(assigned_checkout.join(".session"), "default")
+            .check_in_worktree(SessionWorktreeCheckInRequest {
+                session_id: "test-session-id".to_string(),
+                owner_id: "agent".to_string(),
+                ticket_id: "ticket".to_string(),
+                worktree_path: assigned_checkout.clone(),
+                branch: "agent/test".to_string(),
+                predecessor_session_id: None,
+            })
+            .unwrap();
+        SessionWorktreeRegistry::new(RepositoryRoot::new(&main_checkout).unwrap())
+            .upsert("test-session-id", &assigned_checkout)
+            .unwrap();
+        let path = assigned_checkout.join(".session/sessions/test-session-id/session.json");
+        let store = SessionStoreConfig::new(assigned_checkout.join(".session"), "default");
+        let mut record = store.read_session("test-session-id").unwrap();
+        record.metadata.worktree.as_mut().unwrap().status = status;
+        std::fs::write(path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+        (temp, main_checkout, worktree)
+    }
+
+    struct TestRouting {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        _temp: TempDir,
+    }
+
+    impl Drop for TestRouting {
+        fn drop(&mut self) {
+            unsafe { std::env::remove_var(MAIN_CHECKOUT_ENV) };
+        }
+    }
+
+    fn active_routing() -> TestRouting {
+        let guard = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let (temp, main_checkout, _worktree) = routing_fixture(SessionWorktreeStatus::Active, false);
+        unsafe { std::env::set_var(MAIN_CHECKOUT_ENV, main_checkout) };
+        TestRouting {
+            _guard: guard,
+            _temp: temp,
+        }
+    }
+
+    fn allowed_call() -> Value {
+        call("read_file", Some("gpt-5-mini"))
+    }
+
+    fn route(request: Value, gate: &CostGatePolicy) -> (ClientAction, Option<CallTelemetry>) {
+        let mut pending = PendingList::default();
+        let mut pending_calls = PendingCalls::default();
+        handle_client_message(request, Some(gate), &mut pending, &mut pending_calls)
+    }
+
+    fn normalized(path: &Path) -> String {
+        path.to_string_lossy().replace('\\', "/")
+    }
+
+    fn response_text(action: ClientAction) -> String {
+        let ClientAction::Respond(value) = action else {
+            panic!("expected routing rejection");
+        };
+        assert_eq!(value["result"]["isError"], true);
+        value["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn session_resolving_to_worktree_rewrites_workspace_argument() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let (_temp, main_checkout, worktree) = routing_fixture(SessionWorktreeStatus::Active, false);
+        unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
+        let (ClientAction::Forward(forwarded), _) = route(allowed_call(), &test_gate()) else {
+            panic!("expected forwarded request");
+        };
+        assert_eq!(forwarded["params"]["arguments"]["workspace"], json!(normalized(&worktree)));
+        assert_ne!(forwarded["params"]["arguments"]["workspace"], json!(normalized(&main_checkout)));
+        unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
+    }
+
+    #[test]
+    fn unanchored_default_workspace_is_rejected() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let temp = tempfile::tempdir().unwrap();
+        let main_checkout = temp.path().join("repository");
+        let worktree = main_checkout.join(".worktrees").join("feature");
+        std::fs::create_dir_all(worktree.join(".session")).unwrap();
+        unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
+        let text = response_text(route(allowed_call(), &test_gate()).0);
+        assert!(text.contains("unanchored"));
+        assert!(text.contains(&normalized(&main_checkout.join(".session"))));
+        assert!(text.contains(&normalized(&worktree.join(".session"))));
+        unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
+    }
+
+    #[test]
+    fn missing_main_checkout_env_is_rejected() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
+        let text = response_text(route(allowed_call(), &test_gate()).0);
+        assert!(text.contains("MCP_MAIN_CHECKOUT"));
+    }
+
+    #[test]
+    fn main_checkout_scoped_mutation_is_blocked() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let (_temp, main_checkout, _worktree) = routing_fixture(SessionWorktreeStatus::Active, true);
+        unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", main_checkout) };
+        let text = response_text(route(allowed_call(), &test_gate()).0);
+        assert!(text.contains("main checkout mutations are blocked"));
+        unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
+    }
+
+    #[test]
+    fn inactive_session_assignment_is_rejected() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let (_temp, main_checkout, _worktree) = routing_fixture(SessionWorktreeStatus::Superseded, false);
+        unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", main_checkout) };
+        let text = response_text(route(allowed_call(), &test_gate()).0);
+        assert!(text.contains("test-session-id"));
+        assert!(text.contains("Superseded"));
+        unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
+    }
+
+    #[test]
+    fn explicit_absolute_workspace_is_not_overwritten() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let (_temp, main_checkout, _worktree) = routing_fixture(SessionWorktreeStatus::Active, false);
+        let explicit = main_checkout.join("explicit-workspace");
+        unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", main_checkout) };
+        let mut request = allowed_call();
+        request["params"]["arguments"]["workspace"] = json!(explicit.to_string_lossy());
+        let (ClientAction::Forward(forwarded), _) = route(request, &test_gate()) else {
+            panic!("expected forwarded request");
+        };
+        assert_eq!(forwarded["params"]["arguments"]["workspace"], json!(explicit.to_string_lossy()));
+        unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
+    }
+
+    #[test]
+    fn resolved_store_root_is_logged() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let (_temp, main_checkout, worktree) = routing_fixture(SessionWorktreeStatus::Active, false);
+        unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", main_checkout) };
+        let (ClientAction::Forward(forwarded), _) = route(allowed_call(), &test_gate()) else {
+            panic!("expected forwarded request");
+        };
+        assert_eq!(forwarded["params"]["arguments"]["workspace"], json!(normalized(&worktree)));
+        unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
     }
 
     #[test]
@@ -434,6 +739,28 @@ mod tests {
                 assert_eq!(telemetry.decision, "reject-missing-model");
                 assert_eq!(telemetry.duration_ms, 0);
                 assert_eq!(telemetry.response_bytes, Some(0));
+            }
+            other => panic!("expected Respond, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn missing_session_id_is_rejected() {
+        let g = test_gate();
+        let mut p = PendingList::default();
+        let mut pc = PendingCalls::default();
+        let mut request = call("read_file", Some("gpt-5-mini"));
+        request["params"]["arguments"]
+            .as_object_mut()
+            .unwrap()
+            .remove(SESSION_ID_ARG);
+
+        match handle_client_message(request, Some(&g), &mut p, &mut pc) {
+            (ClientAction::Respond(v), telemetry) => {
+                assert_eq!(v["result"]["isError"], json!(true));
+                let text = v["result"]["content"][0]["text"].as_str().unwrap();
+                assert!(text.contains(SESSION_ID_ARG));
+                assert_eq!(telemetry.expect("expected telemetry").decision, "reject-missing-session");
             }
             other => panic!("expected Respond, got {other:?}"),
         }
@@ -491,6 +818,7 @@ mod tests {
 
     #[test]
     fn unmeasured_tool_fail_open() {
+        let _routing = active_routing();
         // Without a rollup, even expensive models can call any tool (fail open)
         let g = test_gate();
         let mut p = PendingList::default();
@@ -507,6 +835,7 @@ mod tests {
 
     #[test]
     fn cheap_forwards_and_strips_caller_model() {
+        let _routing = active_routing();
         let g = test_gate();
         let mut p = PendingList::default();
         let mut pc = PendingCalls::default();
@@ -515,6 +844,7 @@ mod tests {
             (ClientAction::Forward(v), _) => {
                 let args = &v["params"]["arguments"];
                 assert!(args.get(CALLER_MODEL_ARG).is_none(), "caller_model must be stripped");
+                assert!(args.get(SESSION_ID_ARG).is_none(), "session_id must be stripped");
             }
             other => panic!("expected Forward, got {other:?}"),
         }
@@ -522,6 +852,7 @@ mod tests {
 
     #[test]
     fn expensive_light_tool_forwards() {
+        let _routing = active_routing();
         let g = test_gate();
         let mut p = PendingList::default();
         let mut pc = PendingCalls::default();
@@ -549,6 +880,7 @@ mod tests {
 
     #[test]
     fn parenthetical_client_qualifier_is_tolerated() {
+        let _routing = active_routing();
         // "gpt-5-mini (copilot)" doesn't match exactly or by substring, but
         // stripping the trailing "(copilot)" qualifier resolves to "gpt-5-mini".
         let g = test_gate();
@@ -580,6 +912,7 @@ mod tests {
 
     #[test]
     fn space_and_underscore_separators_are_normalized() {
+        let _routing = active_routing();
         // "Claude_Opus 4 1" doesn't match exactly, but normalizing separators
         // to hyphens and lowercasing resolves to "claude-opus-4-1".
         let g = test_gate();
@@ -651,13 +984,19 @@ mod tests {
         let resp = json!({
             "jsonrpc": "2.0",
             "id": 7,
-            "result": { "tools": [ { "name": "read_file", "inputSchema": { "type": "object", "properties": {}, "required": [] } } ] }
+            "result": { "tools": [
+                { "name": "read_file", "inputSchema": { "type": "object", "properties": {}, "required": [] } },
+                { "name": "write_file" }
+            ] }
         });
         let (out, telemetry) = handle_server_message(resp, Some(&g), &mut p, &mut pc);
-        let tool = &out["result"]["tools"][0];
-        assert_eq!(tool["inputSchema"]["properties"][CALLER_MODEL_ARG]["type"], json!("string"));
-        let required = tool["inputSchema"]["required"].as_array().unwrap();
-        assert!(required.iter().any(|v| v == CALLER_MODEL_ARG));
+        for tool in out["result"]["tools"].as_array().unwrap() {
+            assert_eq!(tool["inputSchema"]["properties"][CALLER_MODEL_ARG]["type"], json!("string"));
+            assert_eq!(tool["inputSchema"]["properties"][SESSION_ID_ARG]["type"], json!("string"));
+            let required = tool["inputSchema"]["required"].as_array().unwrap();
+            assert!(required.iter().any(|v| v == CALLER_MODEL_ARG));
+            assert!(required.iter().any(|v| v == SESSION_ID_ARG));
+        }
         assert!(telemetry.is_none(), "tools/list response is not a tools/call, no telemetry expected");
     }
 
@@ -666,7 +1005,9 @@ mod tests {
         let mut tool = json!({ "name": "x" });
         inject_caller_model_schema(&mut tool);
         assert_eq!(tool["inputSchema"]["type"], json!("object"));
+        assert_eq!(tool["inputSchema"]["properties"][SESSION_ID_ARG]["type"], json!("string"));
         assert_eq!(tool["inputSchema"]["required"][0], json!(CALLER_MODEL_ARG));
+        assert_eq!(tool["inputSchema"]["required"][1], json!(SESSION_ID_ARG));
     }
 
     #[test]
@@ -703,6 +1044,7 @@ mod tests {
 
     #[test]
     fn allowed_call_emits_nonzero_tokens_estimated_on_response() {
+        let _routing = active_routing();
         // (a) A forwarded (allowed) tools/call correlates its response by
         // JSON-RPC id and records a non-zero tokens_estimated derived from
         // the combined request+response payload.
@@ -741,6 +1083,7 @@ mod tests {
 
     #[test]
     fn duration_ms_is_populated_for_forwarded_calls() {
+        let _routing = active_routing();
         // (c) duration_ms measures wall-clock from forward to response receipt.
         let g = test_gate();
         let mut p = PendingList::default();

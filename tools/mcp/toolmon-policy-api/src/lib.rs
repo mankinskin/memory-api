@@ -24,6 +24,9 @@ use serde_json::Value;
 /// The argument name injected into every tool schema and required on each call.
 pub const CALLER_MODEL_ARG: &str = "caller_model";
 
+/// The session anchor injected into every tool schema and required on each call.
+pub const SESSION_ID_ARG: &str = "session_id";
+
 /// Outcome of a policy evaluation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
@@ -74,6 +77,13 @@ pub fn inject_caller_model_schema(tool: &mut Value) {
                 "description": "Id of the model issuing this call (e.g. claude-opus-4-8). Required for price-awareness enforcement. Client-appended qualifiers such as 'Claude Sonnet 5 (copilot)', and space/underscore separators, are tolerated as a fallback and normalized to hyphens; prefer the exact price-table model_id."
             }),
         );
+        props_obj.insert(
+            SESSION_ID_ARG.to_string(),
+            serde_json::json!({
+                "type": "string",
+                "description": "Id of the session this call belongs to. Required so the call is anchored to that session's worktree rather than silently resolving to the server process working directory."
+            }),
+        );
     }
 
     let required = schema_obj
@@ -82,6 +92,9 @@ pub fn inject_caller_model_schema(tool: &mut Value) {
     if let Some(arr) = required.as_array_mut() {
         if !arr.iter().any(|v| v.as_str() == Some(CALLER_MODEL_ARG)) {
             arr.push(serde_json::json!(CALLER_MODEL_ARG));
+        }
+        if !arr.iter().any(|v| v.as_str() == Some(SESSION_ID_ARG)) {
+            arr.push(serde_json::json!(SESSION_ID_ARG));
         }
     }
 }
