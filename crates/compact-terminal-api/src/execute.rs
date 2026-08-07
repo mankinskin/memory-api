@@ -1,8 +1,14 @@
 use std::{
     env,
-    io::Write,
+    io::{
+        Read,
+        Write,
+    },
     path::PathBuf,
-    process::{Command, Stdio},
+    process::{
+        Command,
+        Stdio,
+    },
     time::Duration,
 };
 
@@ -24,7 +30,9 @@ pub const DEFAULT_TIMEOUT_SECS: u64 = 60;
 ///
 /// Short outputs (≤ inline_limit bytes) are returned directly.
 /// Long outputs are summarised inline and stored in a transient file.
-pub fn execute(request: &RunRequest) -> Result<RunResult, CompactTerminalError> {
+pub fn execute(
+    request: &RunRequest
+) -> Result<RunResult, CompactTerminalError> {
     let inline_limit = request.inline_limit.unwrap_or(DEFAULT_INLINE_LIMIT);
     let timeout_secs = request.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
     let spill_dir = request
@@ -36,13 +44,27 @@ pub fn execute(request: &RunRequest) -> Result<RunResult, CompactTerminalError> 
 
     // Build the command.
     let mut cmd = Command::new("sh");
+    #[cfg(windows)]
+    let pid_file = env::temp_dir()
+        .join(format!("compact-terminal-{}.pid", Uuid::new_v4()));
+    #[cfg(windows)]
+    {
+        cmd.arg("-c")
+            .arg("printf '%s' \"$$\" > \"$COMPACT_TERMINAL_PID_FILE\"; eval \"$1\"")
+            .arg("sh")
+            .arg(&request.command)
+            .env("COMPACT_TERMINAL_PID_FILE", &pid_file);
+    }
+    #[cfg(not(windows))]
     cmd.arg("-c").arg(&request.command);
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     if let Some(ref cwd) = request.cwd {
         cmd.current_dir(cwd);
     }
 
-    let child = match cmd.spawn() {
+    let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
             return Ok(RunResult::LaunchError {
@@ -51,38 +73,73 @@ pub fn execute(request: &RunRequest) -> Result<RunResult, CompactTerminalError> 
         },
     };
 
-    // Simple timeout implementation using threads.
-    // We spawn a thread to wait for the child, and the main thread waits with timeout.
-    let timeout_duration = Duration::from_secs(timeout_secs);
-
-    // Use a channel to communicate the result.
-    let (tx, rx) = std::sync::mpsc::channel();
-
-    std::thread::spawn(move || {
-        let result = child.wait_with_output();
-        let _ = tx.send(result);
+    let mut stdout = child.stdout.take().expect("stdout is piped");
+    let mut stderr = child.stderr.take().expect("stderr is piped");
+    let (output_tx, output_rx) = std::sync::mpsc::channel();
+    let stdout_tx = output_tx.clone();
+    let stdout_reader = std::thread::spawn(move || {
+        read_output(&mut stdout, true, stdout_tx);
+    });
+    let stderr_reader = std::thread::spawn(move || {
+        read_output(&mut stderr, false, output_tx);
     });
 
-    let output = match rx.recv_timeout(timeout_duration) {
-        Ok(Ok(out)) => out,
-        Ok(Err(e)) => {
-            return Ok(RunResult::LaunchError {
-                message: format!("command failed: {e}"),
-            });
-        },
-        Err(_timeout) => {
-            return Ok(RunResult::TimedOut {
-                timeout_secs,
-                stdout_partial: String::new(),
-                spill_file: None,
-            });
-        },
+    let timeout_duration = Duration::from_secs(timeout_secs);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if start.elapsed() < timeout_duration => {
+                std::thread::sleep(Duration::from_millis(10));
+            },
+            Ok(None) => {
+                #[cfg(windows)]
+                let kill_result = kill_child_tree(&mut child, &pid_file);
+                #[cfg(not(windows))]
+                let kill_result = kill_child_tree(&mut child);
+                if let Err(error) = kill_result {
+                    return Ok(RunResult::LaunchError {
+                        message: format!(
+                            "failed to kill timed out command: {error}"
+                        ),
+                    });
+                }
+                if let Err(error) = child.wait() {
+                    return Ok(RunResult::LaunchError {
+                        message: format!(
+                            "failed to reap timed out command: {error}"
+                        ),
+                    });
+                }
+                #[cfg(windows)]
+                let _ = std::fs::remove_file(&pid_file);
+                let (stdout, _stderr) = collect_available_output(&output_rx);
+                drop(stdout_reader);
+                drop(stderr_reader);
+                return Ok(RunResult::TimedOut {
+                    timeout_secs,
+                    stdout_partial: String::from_utf8_lossy(&stdout)
+                        .into_owned(),
+                    spill_file: None,
+                });
+            },
+            Err(error) => {
+                return Ok(RunResult::LaunchError {
+                    message: format!("failed to wait for command: {error}"),
+                });
+            },
+        }
     };
 
+    let _ = stdout_reader.join();
+    let _ = stderr_reader.join();
+    let (stdout, stderr) = collect_available_output(&output_rx);
+    #[cfg(windows)]
+    let _ = std::fs::remove_file(&pid_file);
+
     let elapsed_ms = start.elapsed().as_millis();
-    let exit_code = output.status.code().unwrap_or(-1);
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let exit_code = status.code().unwrap_or(-1);
+    let stdout = String::from_utf8_lossy(&stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&stderr).into_owned();
 
     let combined_len = stdout.len() + stderr.len();
 
@@ -115,14 +172,10 @@ pub fn execute(request: &RunRequest) -> Result<RunResult, CompactTerminalError> 
         },
     };
 
-    let stdout_preview = stdout
-        .chars()
-        .take(inline_limit / 2)
-        .collect::<String>();
-    let stderr_preview = stderr
-        .chars()
-        .take(inline_limit / 2)
-        .collect::<String>();
+    let stdout_preview =
+        stdout.chars().take(inline_limit / 2).collect::<String>();
+    let stderr_preview =
+        stderr.chars().take(inline_limit / 2).collect::<String>();
 
     let spill_str = spill_file.display().to_string();
     let next_steps = vec![
@@ -144,6 +197,67 @@ pub fn execute(request: &RunRequest) -> Result<RunResult, CompactTerminalError> 
         elapsed_ms,
         next_steps,
     })
+}
+
+fn read_output(
+    reader: &mut impl Read,
+    is_stdout: bool,
+    sender: std::sync::mpsc::Sender<(bool, Vec<u8>)>,
+) {
+    let mut buffer = [0; 8192];
+    loop {
+        let Ok(bytes_read) = reader.read(&mut buffer) else {
+            return;
+        };
+        if bytes_read == 0
+            || sender
+                .send((is_stdout, buffer[..bytes_read].to_vec()))
+                .is_err()
+        {
+            return;
+        }
+    }
+}
+
+fn collect_available_output(
+    receiver: &std::sync::mpsc::Receiver<(bool, Vec<u8>)>
+) -> (Vec<u8>, Vec<u8>) {
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    while let Ok((is_stdout, bytes)) = receiver.try_recv() {
+        if is_stdout {
+            stdout.extend(bytes);
+        } else {
+            stderr.extend(bytes);
+        }
+    }
+    (stdout, stderr)
+}
+
+#[cfg(windows)]
+fn kill_child_tree(
+    child: &mut std::process::Child,
+    pid_file: &std::path::Path,
+) -> std::io::Result<()> {
+    let pid = std::fs::read_to_string(pid_file)?;
+    let status = Command::new("sh")
+        .args([
+            "-c",
+            "children() { ps -ef | awk -v parent=\"$1\" '$3 == parent { print $2 }'; }; kill_tree() { for descendant in $(children \"$1\"); do kill_tree \"$descendant\"; done; kill -KILL \"$1\" 2>/dev/null; }; kill_tree \"$1\"",
+            "sh",
+            &pid,
+        ])
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        child.kill()
+    }
+}
+
+#[cfg(not(windows))]
+fn kill_child_tree(child: &mut std::process::Child) -> std::io::Result<()> {
+    child.kill()
 }
 
 fn write_spill(

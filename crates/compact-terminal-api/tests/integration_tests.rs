@@ -69,8 +69,8 @@ fn test_spilled_long_output() {
             assert!(!next_steps.is_empty());
 
             // Verify the spill file can be read.
-            let spill_content =
-                std::fs::read_to_string(&spill_file).expect("cannot read spill file");
+            let spill_content = std::fs::read_to_string(&spill_file)
+                .expect("cannot read spill file");
             assert!(spill_content.contains("=== stdout ==="));
             assert!(spill_content.contains("1000"));
         },
@@ -125,6 +125,78 @@ fn test_timeout() {
         },
         _ => panic!("expected timeout result"),
     }
+}
+
+#[test]
+fn stdin_reading_command_terminates_and_subsequent_command_succeeds() {
+    let cat_request = RunRequest {
+        command: "cat".to_string(),
+        cwd: None,
+        inline_limit: Some(4096),
+        timeout_secs: Some(5),
+        spill_dir: None,
+    };
+
+    let cat_result = execute(&cat_request).expect("cat execution failed");
+    assert!(matches!(
+        cat_result,
+        RunResult::Inline {
+            exit_code: 0,
+            stdout,
+            ..
+        } if stdout.is_empty()
+    ));
+
+    let echo_request = RunRequest {
+        command: "echo alive".to_string(),
+        cwd: None,
+        inline_limit: Some(4096),
+        timeout_secs: Some(5),
+        spill_dir: None,
+    };
+    let echo_result = execute(&echo_request).expect("echo execution failed");
+    assert!(matches!(
+        echo_result,
+        RunResult::Inline {
+            exit_code: 0,
+            stdout,
+            ..
+        } if stdout.contains("alive")
+    ));
+}
+
+#[test]
+fn timeout_kills_and_reaps_shell_process() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let request = RunRequest {
+        command:
+            "echo $$ > child.pid; sleep 30 & echo $! > grandchild.pid; wait"
+                .to_string(),
+        cwd: Some(temp_dir.path().to_path_buf()),
+        inline_limit: Some(4096),
+        timeout_secs: Some(2),
+        spill_dir: None,
+    };
+
+    let result = execute(&request).expect("execution failed");
+    assert!(matches!(
+        result,
+        RunResult::TimedOut {
+            timeout_secs: 2,
+            ..
+        }
+    ));
+
+    let status = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("for pid in $(cat child.pid grandchild.pid); do kill -0 \"$pid\" 2>/dev/null && exit 0; done; exit 1")
+        .current_dir(temp_dir.path())
+        .status()
+        .expect("failed to check shell process status");
+    assert!(
+        !status.success(),
+        "timed out command process tree is still running"
+    );
 }
 
 #[test]
