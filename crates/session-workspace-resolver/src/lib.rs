@@ -204,10 +204,35 @@ impl SessionWorkspaceResolver {
             .session_store()
             .lookup_worktree(request.session_id)
         {
-            Ok(receipt) => Assignment {
-                worktree_path: receipt.worktree_path,
-                branch: receipt.branch,
-                status: receipt.status,
+            Ok(receipt) => {
+                if paths_refer_to_same_directory(
+                    &receipt.worktree_path,
+                    self.main_checkout.as_path(),
+                ) {
+                    // The capture hook infers its own cwd, so a main-pointing
+                    // record can be an inference artifact rather than an assignment.
+                    if let Some(discovered) =
+                        self.discover_worktree(request.session_id)?
+                    {
+                        Assignment {
+                            worktree_path: discovered.root,
+                            branch: discovered.branch,
+                            status: SessionWorktreeStatus::Active,
+                        }
+                    } else {
+                        Assignment {
+                            worktree_path: receipt.worktree_path,
+                            branch: receipt.branch,
+                            status: receipt.status,
+                        }
+                    }
+                } else {
+                    Assignment {
+                        worktree_path: receipt.worktree_path,
+                        branch: receipt.branch,
+                        status: receipt.status,
+                    }
+                }
             },
             Err(
                 session_api::SessionError::MissingWorktreeAssignment {
@@ -462,6 +487,14 @@ fn canonicalize(path: &Path) -> Result<PathBuf, ResolutionError> {
             )),
         other => ResolutionError::InvalidConfiguration(other.to_string()),
     })
+}
+
+fn paths_refer_to_same_directory(left: &Path, right: &Path) -> bool {
+    match (canonicalize(left), canonicalize(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => normalize_slashes(left)
+            .eq_ignore_ascii_case(&normalize_slashes(right)),
+    }
 }
 
 /// A session-to-worktree assignment, however it was obtained: recorded in the
@@ -1221,6 +1254,30 @@ mod tests {
         assert_eq!(
             resolve_root(&resolver, SESSION).unwrap().target_root(),
             worktree
+        );
+    }
+
+    #[test]
+    fn a_main_pointing_record_does_not_defeat_discovery() {
+        let (_temp, repository, _worktree, resolver) = fixture();
+        check_in(&repository, &repository, SESSION);
+        let expected =
+            make_worktree(&repository, "70abae1b-something", "agent/something");
+
+        assert_eq!(
+            resolve_root(&resolver, SESSION).unwrap().target_root(),
+            expected
+        );
+    }
+
+    #[test]
+    fn a_main_pointing_record_is_honored_when_nothing_is_discoverable() {
+        let (_temp, repository, _worktree, resolver) = fixture();
+        check_in(&repository, &repository, SESSION);
+
+        assert_eq!(
+            resolve_root(&resolver, SESSION).unwrap().target_root(),
+            repository
         );
     }
 }
