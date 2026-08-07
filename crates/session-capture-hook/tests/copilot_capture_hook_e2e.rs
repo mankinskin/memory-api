@@ -109,6 +109,62 @@ fn e2e_hook_binary_persists_fixture_transcript() {
     );
 }
 
+#[test]
+fn e2e_provision_failure_preserves_hook_stdout_sentinel() {
+    let fixture_dir = tempdir().expect("temp fixture dir");
+    let transcript_path = write_fixture_transcript(
+        fixture_dir.path(),
+        "fixture-a.jsonl",
+        local_fixture_a(),
+    );
+    let store_root = fixture_dir.path().join("memory-api-store");
+    let invalid_anchor = fixture_dir.path().join("not-a-git-checkout");
+    fs::create_dir_all(&store_root).expect("create temp store root");
+    fs::create_dir_all(&invalid_anchor).expect("create invalid anchor");
+
+    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
+        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let stdin_payload = serde_json::json!({
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": FIXTURE_SESSION_ID,
+        "transcript_path": transcript_path,
+    })
+    .to_string();
+
+    let mut child = Command::new(hook_bin)
+        .arg("--store-root")
+        .arg(&store_root)
+        .arg("--from-hook-stdin")
+        .env("MCP_MAIN_CHECKOUT", &invalid_anchor)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn copilot-capture-hook");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(stdin_payload.as_bytes())
+        .expect("write hook stdin payload");
+    let output = child
+        .wait_with_output()
+        .expect("wait for copilot-capture-hook");
+
+    assert!(
+        output.status.success(),
+        "copilot-capture-hook failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(output.stdout, b"{}\n");
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("worktree provisioning failed"),
+        "provisioning failure should be diagnosed on stderr"
+    );
+}
+
 const TOOL_CALL_TRANSCRIPT: &str = concat!(
     r#"{"id":"evt-start-t","type":"session.start","timestamp":"2026-06-02T23:06:54.049Z","data":{"sessionId":"fixture-tool-calls","producer":"copilot-agent","startTime":"2026-06-02T23:06:54.049Z"}}"#,
     "\n",

@@ -25,6 +25,16 @@ use session_workspace_resolver::{
     ResolverConfig,
     SessionWorkspaceResolver,
 };
+use session_worktree_provision::{
+    IndexRebuildOutcome,
+    ProvisionError,
+    ProvisionOutcome,
+    ProvisionPolicy,
+    SessionStoreActivity,
+    WorktreeGit,
+    provision_for_session,
+    rebuild_entity_indexes,
+};
 use ticket_api::storage::TicketStore;
 
 mod args;
@@ -104,11 +114,9 @@ fn run() -> Result<(), SessionError> {
         eprintln!(
             "[copilot-capture-hook] worktree/ticket inference skipped: resolved session store has no parent"
         );
-    } else if let Err(error) = infer_capture_worktree(
-        &config,
-        &plan.record.session_id,
-        &store_root,
-    ) {
+    } else if let Err(error) =
+        infer_capture_worktree(&config, &plan.record.session_id, &store_root)
+    {
         eprintln!(
             "[copilot-capture-hook] worktree/ticket inference skipped: {error}"
         );
@@ -143,9 +151,6 @@ fn initialize_session_routing(
     let Some(session_id) =
         session_id.filter(|session_id| !session_id.trim().is_empty())
     else {
-        eprintln!(
-            "[copilot-capture-hook] session routing skipped: hook payload has no session id"
-        );
         return;
     };
     let current_dir = match std::env::current_dir() {
@@ -164,6 +169,9 @@ fn initialize_session_routing(
             anchor.display()
         );
         return;
+    }
+    if eager_provisioning_enabled() {
+        provision_session_worktree(&anchor, session_id);
     }
     let resolver = match SessionWorkspaceResolver::new(ResolverConfig {
         main_checkout: anchor.clone(),
@@ -198,11 +206,9 @@ fn initialize_session_routing(
     };
     let config = SessionStoreConfig::new(anchor.join(".session"), "default");
     let worktree = workspace.target_root();
-    if let Err(error) = config.replace_main_worktree_inference(
-        session_id,
-        &anchor,
-        worktree,
-    ) {
+    if let Err(error) =
+        config.replace_main_worktree_inference(session_id, &anchor, worktree)
+    {
         eprintln!(
             "[copilot-capture-hook] session routing skipped: could not repair a main-checkout assignment for session {session_id}: {error}"
         );
@@ -214,6 +220,85 @@ fn initialize_session_routing(
         eprintln!(
             "[copilot-capture-hook] session routing skipped: could not assign a worktree for session {session_id}: {error}"
         );
+    }
+}
+
+fn eager_provisioning_enabled() -> bool {
+    std::env::var_os("WORKTREE_EAGER_PROVISION")
+        .is_none_or(|value| value != "0")
+}
+
+fn provision_session_worktree(
+    anchor: &Path,
+    session_id: &str,
+) {
+    let git = match WorktreeGit::open(anchor) {
+        Ok(git) => git,
+        Err(error) => {
+            eprintln!(
+                "[copilot-capture-hook] worktree provisioning failed for session {session_id}: {error}"
+            );
+            return;
+        },
+    };
+    let policy = ProvisionPolicy::default();
+    let activity =
+        SessionStoreActivity::new(anchor.join(".session"), policy.stale_after);
+    let worktree =
+        match provision_for_session(&git, &activity, session_id, &policy) {
+            Ok(ProvisionOutcome::AlreadyProvisioned(_)) => return,
+            Ok(ProvisionOutcome::Created(worktree)) => worktree,
+            Ok(ProvisionOutcome::Reclaimed { worktree, .. }) => worktree,
+            Err(error) => {
+                report_provision_error(session_id, error);
+                return;
+            },
+        };
+
+    for outcome in rebuild_entity_indexes(&worktree.path) {
+        report_index_rebuild_outcome(&worktree.path, outcome);
+    }
+}
+
+fn report_provision_error(
+    session_id: &str,
+    error: ProvisionError,
+) {
+    match error {
+        ProvisionError::CapReached {
+            max_worktrees,
+            current_count,
+            reason,
+        } => eprintln!(
+            "[copilot-capture-hook] === WORKTREE PROVISION CAP REACHED ===\n\
+             session: {session_id}\n\
+             cap: {max_worktrees}\n\
+             registered worktrees: {current_count}\n\
+             reclaimable worktrees: none ({reason})\n\
+             remediation: remove a finished worktree, or raise WORKTREE_MAX\n\
+             session will continue on the main checkout\n\
+             [copilot-capture-hook] === END WORKTREE PROVISION CAP MESSAGE ==="
+        ),
+        error => eprintln!(
+            "[copilot-capture-hook] worktree provisioning failed for session {session_id}: {error}"
+        ),
+    }
+}
+
+fn report_index_rebuild_outcome(
+    worktree: &Path,
+    outcome: IndexRebuildOutcome,
+) {
+    match outcome {
+        IndexRebuildOutcome::Rebuilt { .. } => {},
+        IndexRebuildOutcome::Failed { store, error, .. } => eprintln!(
+            "[copilot-capture-hook] index rebuild failed for {store:?} store in {}: {error}",
+            worktree.display()
+        ),
+        IndexRebuildOutcome::Skipped { store, reason, .. } => eprintln!(
+            "[copilot-capture-hook] index rebuild skipped for {store:?} store in {}: {reason}",
+            worktree.display()
+        ),
     }
 }
 
@@ -571,6 +656,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
+        eager_provisioning_enabled,
         infer_capture_worktree,
         initialize_session_routing,
         resolve_capture_store_root,
@@ -749,7 +835,13 @@ mod tests {
         env::set_current_dir(original_cwd).unwrap();
         let record = config.read_session("session-store-parent").unwrap();
         assert_eq!(
-            record.metadata.worktree.unwrap().path.canonicalize().unwrap(),
+            record
+                .metadata
+                .worktree
+                .unwrap()
+                .path
+                .canonicalize()
+                .unwrap(),
             worktree.canonicalize().unwrap()
         );
     }
@@ -840,10 +932,15 @@ mod tests {
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
-        let worktree = main_checkout.join(".worktrees").join("abcdefgh-routing");
+        let worktree =
+            main_checkout.join(".worktrees").join("abcdefgh-routing");
         create_git_worktree(&main_checkout, &worktree, "feature");
 
-        run_user_prompt_submit(&main_checkout, &main_checkout, Some("abcdefgh-session"));
+        run_user_prompt_submit(
+            &main_checkout,
+            &main_checkout,
+            Some("abcdefgh-session"),
+        );
 
         let assigned = assigned_worktree(&main_checkout, "abcdefgh-session")
             .expect("user prompt submit should assign a worktree");
@@ -866,13 +963,24 @@ mod tests {
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
-        let worktree = main_checkout.join(".worktrees").join("abcdefgh-routing");
+        let worktree =
+            main_checkout.join(".worktrees").join("abcdefgh-routing");
         create_git_worktree(&main_checkout, &worktree, "feature");
 
-        run_user_prompt_submit(&main_checkout, &main_checkout, Some("abcdefgh-session"));
-        let first = assigned_worktree(&main_checkout, "abcdefgh-session").unwrap();
-        run_user_prompt_submit(&main_checkout, &main_checkout, Some("abcdefgh-session"));
-        let second = assigned_worktree(&main_checkout, "abcdefgh-session").unwrap();
+        run_user_prompt_submit(
+            &main_checkout,
+            &main_checkout,
+            Some("abcdefgh-session"),
+        );
+        let first =
+            assigned_worktree(&main_checkout, "abcdefgh-session").unwrap();
+        run_user_prompt_submit(
+            &main_checkout,
+            &main_checkout,
+            Some("abcdefgh-session"),
+        );
+        let second =
+            assigned_worktree(&main_checkout, "abcdefgh-session").unwrap();
 
         assert_eq!(first, second);
     }
@@ -883,20 +991,34 @@ mod tests {
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
-        let first_worktree = main_checkout.join(".worktrees").join("abcdefgh-routing");
-        let second_worktree = main_checkout.join(".worktrees").join("ijklmnop-routing");
+        let first_worktree =
+            main_checkout.join(".worktrees").join("abcdefgh-routing");
+        let second_worktree =
+            main_checkout.join(".worktrees").join("ijklmnop-routing");
         create_git_worktree(&main_checkout, &first_worktree, "feature-one");
         create_git_worktree(&main_checkout, &second_worktree, "feature-two");
 
-        run_user_prompt_submit(&main_checkout, &main_checkout, Some("abcdefgh-session"));
-        run_user_prompt_submit(&main_checkout, &main_checkout, Some("ijklmnop-session"));
+        run_user_prompt_submit(
+            &main_checkout,
+            &main_checkout,
+            Some("abcdefgh-session"),
+        );
+        run_user_prompt_submit(
+            &main_checkout,
+            &main_checkout,
+            Some("ijklmnop-session"),
+        );
 
-        assert!(assigned_worktree(&main_checkout, "abcdefgh-session").is_some());
-        assert!(assigned_worktree(&main_checkout, "ijklmnop-session").is_some());
+        assert!(
+            assigned_worktree(&main_checkout, "abcdefgh-session").is_some()
+        );
+        assert!(
+            assigned_worktree(&main_checkout, "ijklmnop-session").is_some()
+        );
     }
 
     #[test]
-    fn user_prompt_submit_without_discoverable_worktree_does_not_assign_main() {
+    fn user_prompt_submit_with_eager_provision_disabled_does_not_assign() {
         let _cwd_lock = CWD_LOCK.lock().unwrap();
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
@@ -906,10 +1028,25 @@ mod tests {
             &main_checkout.join("unrelated-worktree"),
             "feature",
         );
+        let original_eager_provision = env::var_os("WORKTREE_EAGER_PROVISION");
+        unsafe { env::set_var("WORKTREE_EAGER_PROVISION", "0") };
 
-        run_user_prompt_submit(&main_checkout, &main_checkout, Some("abcdefgh-session"));
+        run_user_prompt_submit(
+            &main_checkout,
+            &main_checkout,
+            Some("abcdefgh-session"),
+        );
 
-        assert!(assigned_worktree(&main_checkout, "abcdefgh-session").is_none());
+        unsafe {
+            match original_eager_provision {
+                Some(value) => env::set_var("WORKTREE_EAGER_PROVISION", value),
+                None => env::remove_var("WORKTREE_EAGER_PROVISION"),
+            }
+        }
+        assert!(
+            assigned_worktree(&main_checkout, "abcdefgh-session").is_none()
+        );
+        assert!(!main_checkout.join(".worktrees").exists());
     }
 
     #[test]
@@ -918,9 +1055,11 @@ mod tests {
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
-        let worktree = main_checkout.join(".worktrees").join("abcdefgh-routing");
+        let worktree =
+            main_checkout.join(".worktrees").join("abcdefgh-routing");
         create_git_worktree(&main_checkout, &worktree, "feature");
-        let config = SessionStoreConfig::new(main_checkout.join(".session"), "default");
+        let config =
+            SessionStoreConfig::new(main_checkout.join(".session"), "default");
         config
             .check_in_worktree(SessionWorktreeCheckInRequest {
                 session_id: "abcdefgh-session".to_string(),
@@ -932,7 +1071,11 @@ mod tests {
             })
             .unwrap();
 
-        run_user_prompt_submit(&main_checkout, &main_checkout, Some("abcdefgh-session"));
+        run_user_prompt_submit(
+            &main_checkout,
+            &main_checkout,
+            Some("abcdefgh-session"),
+        );
 
         let assignment = config.lookup_worktree("abcdefgh-session").unwrap();
         assert_eq!(
@@ -943,7 +1086,8 @@ mod tests {
     }
 
     #[test]
-    fn user_prompt_submit_without_session_id_does_not_assign() {
+    fn user_prompt_submit_without_session_id_or_with_blank_id_does_not_assign()
+    {
         let _cwd_lock = CWD_LOCK.lock().unwrap();
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
@@ -952,12 +1096,14 @@ mod tests {
         create_git_worktree(&main_checkout, &worktree, "feature");
 
         run_user_prompt_submit(&main_checkout, &worktree, None);
+        run_user_prompt_submit(&main_checkout, &worktree, Some("   "));
 
         assert!(!main_checkout.join(".session").exists());
+        assert!(!main_checkout.join(".worktrees").exists());
     }
 
     #[test]
-    fn stop_does_not_assign_a_session_worktree() {
+    fn non_user_prompt_submit_does_not_provision_or_assign() {
         let _cwd_lock = CWD_LOCK.lock().unwrap();
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
@@ -979,6 +1125,23 @@ mod tests {
             }
         }
         assert!(!main_checkout.join(".session").exists());
+        assert!(!main_checkout.join(".worktrees").exists());
+    }
+
+    #[test]
+    fn eager_provision_kill_switch_disables_provisioning() {
+        let _env_lock = ENV_LOCK.lock().unwrap();
+        let original = env::var_os("WORKTREE_EAGER_PROVISION");
+        unsafe { env::set_var("WORKTREE_EAGER_PROVISION", "0") };
+
+        assert!(!eager_provisioning_enabled());
+
+        unsafe {
+            match original {
+                Some(value) => env::set_var("WORKTREE_EAGER_PROVISION", value),
+                None => env::remove_var("WORKTREE_EAGER_PROVISION"),
+            }
+        }
     }
 
     #[test]

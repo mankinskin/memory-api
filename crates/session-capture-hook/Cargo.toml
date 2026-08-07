@@ -12,6 +12,7 @@ path = "src/main.rs"
 memory-api = { path = "../memory-api" }
 serde_json = "1"
 session-api = { path = "../session-api" }
+session-worktree-provision = { path = "../session-worktree-provision" }
 session-workspace-resolver = { path = "../session-workspace-resolver" }
 ticket-api = { path = "../ticket-api" }
 

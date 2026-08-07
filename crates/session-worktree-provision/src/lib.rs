@@ -1,0 +1,828 @@
+use std::{
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
+    time::Duration,
+};
+
+use git2::{
+    Config,
+    Repository,
+    Status,
+    StatusOptions,
+};
+use thiserror::Error;
+
+pub mod policy;
+
+pub use policy::{
+    NeverActive,
+    ProvisionError,
+    ProvisionOutcome,
+    ProvisionPolicy,
+    SessionActivity,
+    SessionStoreActivity,
+    provision_for_session,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorktreeRef {
+    pub name: String,
+    pub path: PathBuf,
+    pub branch: Option<String>,
+}
+
+pub struct WorktreeGit {
+    main_checkout: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntityStore {
+    Ticket,
+    Spec,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IndexRebuildOutcome {
+    Rebuilt {
+        store: EntityStore,
+        elapsed: Duration,
+    },
+    Failed {
+        store: EntityStore,
+        elapsed: Duration,
+        error: String,
+    },
+    Skipped {
+        store: EntityStore,
+        elapsed: Duration,
+        reason: String,
+    },
+}
+
+#[derive(Debug, Error)]
+pub enum WorktreeGitError {
+    #[error("invalid main checkout {}", path.display())]
+    InvalidMainCheckout { path: PathBuf },
+    #[error("invalid worktree name '{name}'")]
+    InvalidWorktreeName { name: String },
+    #[error("worktree '{name}' was not found")]
+    WorktreeNotFound { name: String },
+    #[error("worktree '{name}' is detached and has no branch to rename")]
+    DetachedWorktree { name: String },
+    #[error("git operation failed: {source}")]
+    Git {
+        #[from]
+        source: git2::Error,
+    },
+    #[error("I/O failed for {}: {source}", path.display())]
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[error("git command failed ({status}): {command}\nstderr: {stderr}")]
+    CommandFailed {
+        command: String,
+        status: std::process::ExitStatus,
+        stderr: String,
+    },
+    #[error("rollback failed after {original}: {rollback}")]
+    Rollback {
+        original: Box<Self>,
+        rollback: String,
+    },
+}
+
+impl WorktreeGit {
+    pub fn open(
+        main_checkout: impl Into<PathBuf>
+    ) -> Result<Self, WorktreeGitError> {
+        let supplied = main_checkout.into();
+        let main_checkout = fs::canonicalize(&supplied).map_err(|source| {
+            WorktreeGitError::Io {
+                path: supplied,
+                source,
+            }
+        })?;
+        Repository::open(&main_checkout).map_err(|_| {
+            WorktreeGitError::InvalidMainCheckout {
+                path: main_checkout.clone(),
+            }
+        })?;
+        Ok(Self { main_checkout })
+    }
+
+    pub fn main_checkout(&self) -> &Path {
+        &self.main_checkout
+    }
+
+    pub fn list_worktrees(&self) -> Result<Vec<WorktreeRef>, WorktreeGitError> {
+        let repository = self.repository()?;
+        let mut worktrees = Vec::new();
+        for name in repository.worktrees()?.iter().flatten() {
+            let worktree = repository.find_worktree(name)?;
+            let path = fs::canonicalize(worktree.path()).map_err(|source| {
+                WorktreeGitError::Io {
+                    path: worktree.path().to_path_buf(),
+                    source,
+                }
+            })?;
+            let branch = branch_for_worktree(&path)?;
+            worktrees.push(WorktreeRef {
+                name: path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or(name)
+                    .to_string(),
+                path,
+                branch,
+            });
+        }
+        worktrees.sort_by(|left, right| left.name.cmp(&right.name));
+        Ok(worktrees)
+    }
+
+    pub fn branch_exists(
+        &self,
+        branch: &str,
+    ) -> Result<bool, WorktreeGitError> {
+        let repository = self.repository()?;
+        match repository.find_branch(branch, git2::BranchType::Local) {
+            Ok(_) => Ok(true),
+            Err(error) if error.code() == git2::ErrorCode::NotFound =>
+                Ok(false),
+            Err(source) => Err(source.into()),
+        }
+    }
+
+    pub fn is_dirty(
+        &self,
+        worktree: &Path,
+    ) -> Result<bool, WorktreeGitError> {
+        let repository = Repository::open(worktree)?;
+        let mut options = StatusOptions::new();
+        options.include_untracked(true).recurse_untracked_dirs(true);
+        Ok(repository
+            .statuses(Some(&mut options))?
+            .iter()
+            .any(|entry| {
+                let status = entry.status();
+                status != Status::CURRENT && !status.contains(Status::IGNORED)
+            }))
+    }
+
+    pub fn ahead_behind(
+        &self,
+        worktree: &Path,
+        base: &str,
+    ) -> Result<(usize, usize), WorktreeGitError> {
+        let repository = Repository::open(worktree)?;
+        let head = repository.head()?.peel_to_commit()?;
+        let base = repository.revparse_single(base)?.peel_to_commit()?;
+        Ok(repository.graph_ahead_behind(head.id(), base.id())?)
+    }
+
+    pub fn gitlink_sha(
+        &self,
+        worktree: &Path,
+        submodule_path: &str,
+    ) -> Result<String, WorktreeGitError> {
+        let repository = Repository::open(worktree)?;
+        let tree = repository.head()?.peel_to_commit()?.tree()?;
+        Ok(tree.get_path(Path::new(submodule_path))?.id().to_string())
+    }
+
+    pub fn submodule_paths(&self) -> Result<Vec<String>, WorktreeGitError> {
+        let path = self.main_checkout.join(".gitmodules");
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let config = Config::open(&path)?;
+        let mut entries = config.entries(None)?;
+        let mut paths = Vec::new();
+        while let Some(entry) = entries.next() {
+            let entry = entry?;
+            let Some(name) = entry.name() else {
+                continue;
+            };
+            if name
+                .strip_prefix("submodule.")
+                .and_then(|name| name.strip_suffix(".path"))
+                .is_some()
+                && let Some(value) = entry.value()
+            {
+                paths.push(value.to_string());
+            }
+        }
+        paths.sort();
+        paths.dedup();
+        Ok(paths)
+    }
+
+    pub fn worktree_add_new_branch(
+        &self,
+        path: &Path,
+        branch: &str,
+        base: &str,
+    ) -> Result<(), WorktreeGitError> {
+        subprocess::run(
+            &self.main_checkout,
+            ["worktree", "add", "-b", branch],
+            [path, Path::new(base)],
+        )
+    }
+
+    pub fn submodule_worktree_add_detached(
+        &self,
+        submodule_path: &str,
+        worktree: &Path,
+        sha: &str,
+    ) -> Result<(), WorktreeGitError> {
+        let submodule = self.main_checkout.join(submodule_path);
+        if let Some(parent) = worktree.parent() {
+            fs::create_dir_all(parent).map_err(|source| {
+                WorktreeGitError::Io {
+                    path: parent.to_path_buf(),
+                    source,
+                }
+            })?;
+        }
+        subprocess::run(
+            &submodule,
+            ["worktree", "add", "--detach"],
+            [worktree, Path::new(sha)],
+        )
+    }
+
+    fn submodule_worktree_remove_force(
+        &self,
+        submodule_path: &str,
+        worktree: &Path,
+    ) -> Result<(), WorktreeGitError> {
+        subprocess::run(
+            &self.main_checkout.join(submodule_path),
+            ["worktree", "remove", "--force"],
+            [worktree],
+        )
+    }
+
+    pub fn worktree_remove_force(
+        &self,
+        path: &Path,
+    ) -> Result<(), WorktreeGitError> {
+        subprocess::run(
+            &self.main_checkout,
+            ["worktree", "remove", "--force"],
+            [path],
+        )
+    }
+
+    pub fn worktree_prune(&self) -> Result<(), WorktreeGitError> {
+        subprocess::run(&self.main_checkout, ["worktree", "prune"], [])
+    }
+
+    pub fn worktree_move(
+        &self,
+        from: &Path,
+        to: &Path,
+    ) -> Result<(), WorktreeGitError> {
+        subprocess::run(&self.main_checkout, ["worktree", "move"], [from, to])
+    }
+
+    pub fn branch_rename(
+        &self,
+        old: &str,
+        new: &str,
+    ) -> Result<(), WorktreeGitError> {
+        subprocess::run(&self.main_checkout, ["branch", "-m", old, new], [])
+    }
+
+    pub fn branch_delete(
+        &self,
+        branch: &str,
+        force: bool,
+    ) -> Result<(), WorktreeGitError> {
+        let flag = if force { "-D" } else { "-d" };
+        subprocess::run(&self.main_checkout, ["branch", flag, branch], [])
+    }
+
+    pub fn create_worktree(
+        &self,
+        name: &str,
+        branch: &str,
+        base: &str,
+    ) -> Result<WorktreeRef, WorktreeGitError> {
+        validate_name(name)?;
+        let path = self.main_checkout.join(".worktrees").join(name);
+        self.worktree_add_new_branch(&path, branch, base)?;
+        let result = self.populate_submodules_offline(&path).and_then(|_| {
+            Ok(WorktreeRef {
+                name: name.to_string(),
+                path: fs::canonicalize(&path).map_err(|source| {
+                    WorktreeGitError::Io {
+                        path: path.clone(),
+                        source,
+                    }
+                })?,
+                branch: Some(branch.to_string()),
+            })
+        });
+        result.map_err(|original| self.rollback_create(&path, branch, original))
+    }
+
+    pub fn rename_worktree(
+        &self,
+        old_name: &str,
+        new_name: &str,
+        new_branch: &str,
+    ) -> Result<WorktreeRef, WorktreeGitError> {
+        validate_name(old_name)?;
+        validate_name(new_name)?;
+        let old = self
+            .list_worktrees()?
+            .into_iter()
+            .find(|worktree| worktree.name == old_name)
+            .ok_or_else(|| WorktreeGitError::WorktreeNotFound {
+                name: old_name.to_string(),
+            })?;
+        let old_branch =
+            old.branch
+                .ok_or_else(|| WorktreeGitError::DetachedWorktree {
+                    name: old_name.to_string(),
+                })?;
+        let new_path = self.main_checkout.join(".worktrees").join(new_name);
+        self.worktree_move(&old.path, &new_path)?;
+        self.branch_rename(&old_branch, new_branch)?;
+        Ok(WorktreeRef {
+            name: new_name.to_string(),
+            path: fs::canonicalize(&new_path).map_err(|source| {
+                WorktreeGitError::Io {
+                    path: new_path,
+                    source,
+                }
+            })?,
+            branch: Some(new_branch.to_string()),
+        })
+    }
+
+    fn repository(&self) -> Result<Repository, WorktreeGitError> {
+        Ok(Repository::open(&self.main_checkout)?)
+    }
+
+    fn populate_submodules_offline(
+        &self,
+        worktree: &Path,
+    ) -> Result<(), WorktreeGitError> {
+        // `submodule update` in a linked worktree repoints the shared
+        // `.git/modules/<name>/core.worktree` and empties the main checkout.
+        // Each nested linked worktree instead gets a private worktree git dir,
+        // uses the already-present object store, and needs no network access.
+        for submodule in self.submodule_paths()? {
+            let source = self.main_checkout.join(&submodule);
+            if !source.join(".git").exists() {
+                eprintln!(
+                    "warning: submodule {submodule} is not initialized in main checkout; skipping"
+                );
+                continue;
+            }
+            let sha = self.gitlink_sha(worktree, &submodule)?;
+            self.submodule_worktree_add_detached(
+                &submodule,
+                &worktree.join(&submodule),
+                &sha,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn rollback_create(
+        &self,
+        path: &Path,
+        branch: &str,
+        original: WorktreeGitError,
+    ) -> WorktreeGitError {
+        let mut failures = Vec::new();
+        for submodule in self.submodule_paths().unwrap_or_default() {
+            let nested = path.join(&submodule);
+            if nested.exists()
+                && self
+                    .submodule_worktree_remove_force(&submodule, &nested)
+                    .is_err()
+            {
+                failures.push(format!("remove nested {}", nested.display()));
+            }
+        }
+        if path.exists() && self.worktree_remove_force(path).is_err() {
+            failures.push(format!("remove {}", path.display()));
+        }
+        if self.worktree_prune().is_err() {
+            failures.push("prune worktrees".to_string());
+        }
+        if self.branch_exists(branch).unwrap_or(false)
+            && self.branch_delete(branch, true).is_err()
+        {
+            failures.push(format!("delete branch {branch}"));
+        }
+        if failures.is_empty() {
+            original
+        } else {
+            WorktreeGitError::Rollback {
+                original: Box::new(original),
+                rollback: failures.join(", "),
+            }
+        }
+    }
+}
+
+/// Rebuild the machine-local derived indexes carried by a newly created
+/// worktree. Each store is handled independently so one failed rebuild does
+/// not prevent the other entity type from becoming usable.
+pub fn rebuild_entity_indexes(worktree: &Path) -> Vec<IndexRebuildOutcome> {
+    vec![
+        rebuild_ticket_index(&worktree.join(".ticket")),
+        rebuild_spec_index(&worktree.join(".spec")),
+    ]
+}
+
+fn rebuild_ticket_index(store_root: &Path) -> IndexRebuildOutcome {
+    let started = std::time::Instant::now();
+    if !store_root.is_dir() {
+        return IndexRebuildOutcome::Skipped {
+            store: EntityStore::Ticket,
+            elapsed: started.elapsed(),
+            reason: format!(
+                "ticket store is absent at {}",
+                store_root.display()
+            ),
+        };
+    }
+
+    match ticket_api::storage::TicketStore::init(store_root)
+        .and_then(|store| store.scan(true))
+    {
+        Ok(_) => IndexRebuildOutcome::Rebuilt {
+            store: EntityStore::Ticket,
+            elapsed: started.elapsed(),
+        },
+        Err(error) => IndexRebuildOutcome::Failed {
+            store: EntityStore::Ticket,
+            elapsed: started.elapsed(),
+            error: error.to_string(),
+        },
+    }
+}
+
+fn rebuild_spec_index(store_root: &Path) -> IndexRebuildOutcome {
+    let started = std::time::Instant::now();
+    if !store_root.is_dir() {
+        return IndexRebuildOutcome::Skipped {
+            store: EntityStore::Spec,
+            elapsed: started.elapsed(),
+            reason: format!("spec store is absent at {}", store_root.display()),
+        };
+    }
+
+    match spec_api::SpecStore::init(store_root)
+        .and_then(|mut store| store.scan(true))
+    {
+        Ok(_) => IndexRebuildOutcome::Rebuilt {
+            store: EntityStore::Spec,
+            elapsed: started.elapsed(),
+        },
+        Err(error) => IndexRebuildOutcome::Failed {
+            store: EntityStore::Spec,
+            elapsed: started.elapsed(),
+            error: error.to_string(),
+        },
+    }
+}
+
+fn validate_name(name: &str) -> Result<(), WorktreeGitError> {
+    if name.is_empty() || Path::new(name).components().count() != 1 {
+        return Err(WorktreeGitError::InvalidWorktreeName {
+            name: name.to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn branch_for_worktree(
+    path: &Path
+) -> Result<Option<String>, WorktreeGitError> {
+    let repository = Repository::open(path)?;
+    if repository.head_detached()? {
+        return Ok(None);
+    }
+    let head = repository.head()?;
+    Ok(head.shorthand().map(str::to_string))
+}
+
+/// Git writes deliberately remain subprocess calls. With git2 0.20.4 and
+/// libgit2-sys 0.18.7, `worktree add --detach <path> <sha>` cannot be expressed
+/// because `WorktreeAddOptions::reference` accepts only a ref; remove and move
+/// have no bound libgit2 symbols; and branch-creating add is only partial.
+/// Do not migrate these commands to git2: reads belong to git2, these writes do not.
+mod subprocess {
+    use std::{
+        ffi::OsString,
+        path::Path,
+        process::Command,
+    };
+
+    use super::WorktreeGitError;
+
+    pub(super) fn run<const N: usize, const P: usize>(
+        directory: &Path,
+        arguments: [&str; N],
+        paths: [&Path; P],
+    ) -> Result<(), WorktreeGitError> {
+        let mut command = Command::new("git");
+        command.arg("-C").arg(git_path(directory));
+        command.args(arguments);
+        command.args(paths.into_iter().map(git_path));
+        let rendered = render(&command);
+        let output =
+            command.output().map_err(|source| WorktreeGitError::Io {
+                path: directory.to_path_buf(),
+                source,
+            })?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(WorktreeGitError::CommandFailed {
+                command: rendered,
+                status: output.status,
+                stderr: String::from_utf8_lossy(&output.stderr)
+                    .trim()
+                    .to_string(),
+            })
+        }
+    }
+
+    fn render(command: &Command) -> String {
+        std::iter::once(command.get_program().to_os_string())
+            .chain(command.get_args().map(OsString::from))
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn git_path(path: &Path) -> OsString {
+        let path = path.as_os_str().to_string_lossy();
+        let path = path.strip_prefix(r"\\?\").unwrap_or(&path);
+        OsString::from(path)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use std::{
+        fs,
+        path::Path,
+        process::Command,
+    };
+
+    use git2::{
+        IndexAddOption,
+        Repository,
+        Signature,
+    };
+    use tempfile::TempDir;
+
+    use super::WorktreeGit;
+
+    pub(crate) struct Fixture {
+        temp: TempDir,
+        pub(crate) main: std::path::PathBuf,
+    }
+
+    impl Fixture {
+        pub(crate) fn new() -> Self {
+            let temp = TempDir::new().unwrap();
+            let main = temp.path().join("main");
+            let repository = Repository::init(&main).unwrap();
+            repository.set_head("refs/heads/main").unwrap();
+            fs::write(main.join("tracked.txt"), "initial\n").unwrap();
+            commit_all(&repository, "initial");
+            Self { temp, main }
+        }
+
+        pub(crate) fn git(&self) -> WorktreeGit {
+            WorktreeGit::open(&self.main).unwrap()
+        }
+
+        fn add_submodule(&self) -> String {
+            self.add_submodule_named("nested")
+        }
+
+        fn add_submodule_named(
+            &self,
+            name: &str,
+        ) -> String {
+            let inner = self.temp.path().join("inner");
+            let repository = Repository::open(&inner).unwrap_or_else(|_| {
+                let repository = Repository::init(&inner).unwrap();
+                fs::write(inner.join("inner.txt"), "inner\n").unwrap();
+                commit_all(&repository, "inner");
+                repository
+            });
+            let sha = repository.head().unwrap().target().unwrap().to_string();
+            command(
+                &self.main,
+                [
+                    "-c",
+                    "protocol.file.allow=always",
+                    "submodule",
+                    "add",
+                    inner.to_str().unwrap(),
+                    name,
+                ],
+            );
+            command(&self.main, ["commit", "-am", "add nested"]);
+            sha
+        }
+    }
+
+    fn command<const N: usize>(
+        directory: &Path,
+        arguments: [&str; N],
+    ) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(directory)
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn commit_all(
+        repository: &Repository,
+        message: &str,
+    ) {
+        let mut index = repository.index().unwrap();
+        index
+            .add_all(["*"].iter(), IndexAddOption::DEFAULT, None)
+            .unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repository.find_tree(tree_id).unwrap();
+        let signature = Signature::now("test", "test@example.com").unwrap();
+        let parents = repository
+            .head()
+            .ok()
+            .and_then(|head| head.peel_to_commit().ok());
+        let parent_refs = parents.iter().collect::<Vec<_>>();
+        repository
+            .commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                message,
+                &tree,
+                &parent_refs,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn list_worktrees_and_branch_existence_use_git_metadata() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        git.create_worktree("one", "session-one", "HEAD").unwrap();
+        git.create_worktree("two", "session-two", "HEAD").unwrap();
+        assert_eq!(
+            git.list_worktrees()
+                .unwrap()
+                .iter()
+                .map(|worktree| worktree.name.as_str())
+                .collect::<Vec<_>>(),
+            ["one", "two"]
+        );
+        assert!(git.branch_exists("session-one").unwrap());
+        assert!(!git.branch_exists("missing").unwrap());
+    }
+
+    #[test]
+    fn dirty_and_ahead_behind_report_worktree_state() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let worktree =
+            git.create_worktree("one", "session-one", "HEAD").unwrap();
+        assert!(!git.is_dirty(&worktree.path).unwrap());
+        fs::write(worktree.path.join("untracked.txt"), "untracked\n").unwrap();
+        assert!(git.is_dirty(&worktree.path).unwrap());
+        fs::remove_file(worktree.path.join("untracked.txt")).unwrap();
+        fs::write(worktree.path.join("tracked.txt"), "changed\n").unwrap();
+        assert!(git.is_dirty(&worktree.path).unwrap());
+        fs::write(worktree.path.join("tracked.txt"), "advanced\n").unwrap();
+        assert_eq!(git.ahead_behind(&worktree.path, "HEAD~0").unwrap(), (0, 0));
+        command(&worktree.path, ["add", "tracked.txt"]);
+        command(
+            &worktree.path,
+            [
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-m",
+                "advance",
+            ],
+        );
+        assert_eq!(git.ahead_behind(&worktree.path, "HEAD~1").unwrap(), (1, 0));
+    }
+
+    #[test]
+    fn create_worktree_populates_submodules_and_reports_gitlink() {
+        let fixture = Fixture::new();
+        let sha = fixture.add_submodule();
+        let git = fixture.git();
+        let worktree = git
+            .create_worktree("with-submodule", "session-submodule", "HEAD")
+            .unwrap();
+        assert!(worktree.path.is_dir());
+        assert_eq!(worktree.branch.as_deref(), Some("session-submodule"));
+        assert!(worktree.path.join("nested").is_dir());
+        assert_eq!(git.gitlink_sha(&worktree.path, "nested").unwrap(), sha);
+    }
+
+    #[test]
+    fn create_worktree_rolls_back_when_submodule_commit_is_unavailable() {
+        let fixture = Fixture::new();
+        fixture.add_submodule_named("good");
+        fixture.add_submodule();
+        let fake_sha = "0123456789012345678901234567890123456789";
+        command(
+            &fixture.main,
+            [
+                "update-index",
+                "--cacheinfo",
+                &format!("160000,{fake_sha},nested"),
+            ],
+        );
+        command(&fixture.main, ["commit", "-m", "broken gitlink"]);
+        let git = fixture.git();
+        assert!(
+            git.create_worktree("broken", "session-broken", "HEAD")
+                .is_err()
+        );
+        assert!(!fixture.main.join(".worktrees/broken").exists());
+        assert!(!git.branch_exists("session-broken").unwrap());
+        assert!(git.list_worktrees().unwrap().is_empty());
+    }
+
+    #[test]
+    fn rename_worktree_moves_in_place_and_preserves_marker() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let old = git.create_worktree("old", "session-old", "HEAD").unwrap();
+        fs::write(old.path.join("marker.txt"), "keep\n").unwrap();
+        let renamed = git.rename_worktree("old", "new", "session-new").unwrap();
+        assert!(!old.path.exists());
+        assert_eq!(
+            fs::read_to_string(renamed.path.join("marker.txt")).unwrap(),
+            "keep\n"
+        );
+        assert!(!git.branch_exists("session-old").unwrap());
+        assert!(git.branch_exists("session-new").unwrap());
+        assert_eq!(renamed.branch.as_deref(), Some("session-new"));
+    }
+
+    #[test]
+    fn remove_and_prune_clear_worktree_registration() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let worktree =
+            git.create_worktree("one", "session-one", "HEAD").unwrap();
+        git.worktree_remove_force(&worktree.path).unwrap();
+        git.worktree_prune().unwrap();
+        assert!(git.list_worktrees().unwrap().is_empty());
+    }
+
+    #[test]
+    fn index_rebuild_skips_missing_store_paths() {
+        let fixture = TempDir::new().unwrap();
+        let outcomes = super::rebuild_entity_indexes(fixture.path());
+
+        assert!(matches!(
+            outcomes.as_slice(),
+            [
+                super::IndexRebuildOutcome::Skipped {
+                    store: super::EntityStore::Ticket,
+                    ..
+                },
+                super::IndexRebuildOutcome::Skipped {
+                    store: super::EntityStore::Spec,
+                    ..
+                },
+            ]
+        ));
+    }
+}
