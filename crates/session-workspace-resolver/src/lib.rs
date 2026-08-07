@@ -1,10 +1,12 @@
 use std::{
+    collections::HashMap,
     fs,
     path::{
         Component,
         Path,
         PathBuf,
     },
+    sync::Mutex,
 };
 
 use memory_api::workspace::{
@@ -150,6 +152,20 @@ impl ResolverConfig {
 pub struct SessionWorkspaceResolver {
     config: ResolverConfig,
     main_checkout: RepositoryRoot,
+    /// Memoizes successful discoveries for the process lifetime.
+    ///
+    /// Only successes are cached. A miss is not a stable fact: the
+    /// `UserPromptSubmit` hook may create the worktree moments after a failed
+    /// lookup, and a cached miss would outlive the condition that produced it.
+    discovery_cache: Mutex<HashMap<String, DiscoveredWorktree>>,
+}
+
+/// A worktree located by filesystem discovery rather than by an assignment
+/// recorded in the session store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DiscoveredWorktree {
+    root: PathBuf,
+    branch: String,
 }
 
 impl SessionWorkspaceResolver {
@@ -163,6 +179,7 @@ impl SessionWorkspaceResolver {
         Ok(Self {
             config,
             main_checkout,
+            discovery_cache: Mutex::new(HashMap::new()),
         })
     }
 
@@ -183,30 +200,47 @@ impl SessionWorkspaceResolver {
         validate_session_id(request.session_id)?;
         validate_store_dir(request.store_dir)?;
         let repository = self.main_checkout.clone();
-        let receipt = match self
+        let assignment = match self
             .session_store()
             .lookup_worktree(request.session_id)
         {
-            Ok(receipt) => receipt,
+            Ok(receipt) => Assignment {
+                worktree_path: receipt.worktree_path,
+                branch: receipt.branch,
+                status: receipt.status,
+            },
             Err(
                 session_api::SessionError::MissingWorktreeAssignment {
                     ..
                 }
                 | session_api::SessionError::NotFound { .. },
-            ) =>
-                return Err(ResolutionError::MissingSessionWorktree {
-                    session_id: request.session_id.to_string(),
-                }),
+            ) => {
+                // The session store holds no assignment. Fall back to
+                // discovery: the worktree may exist on disk having been
+                // created without a check-in.
+                let discovered = self.discover_worktree(request.session_id)?;
+                let Some(discovered) = discovered else {
+                    return Err(ResolutionError::MissingSessionWorktree {
+                        session_id: request.session_id.to_string(),
+                    });
+                };
+                Assignment {
+                    worktree_path: discovered.root,
+                    branch: discovered.branch,
+                    status: SessionWorktreeStatus::Active,
+                }
+            },
             Err(error) => return Err(ResolutionError::SessionLookup(error)),
         };
-        let worktree_root =
-            canonicalize(&receipt.worktree_path).map_err(|error| match error {
+        let worktree_root = canonicalize(&assignment.worktree_path).map_err(
+            |error| match error {
                 ResolutionError::InvalidConfiguration(_) =>
                     ResolutionError::SessionWorktreeMissing {
-                        path: receipt.worktree_path.clone(),
+                        path: assignment.worktree_path.clone(),
                     },
                 other => other,
-            })?;
+            },
+        )?;
         if !worktree_root.starts_with(repository.as_path()) {
             return Err(ResolutionError::SessionWorktreeOutsideRepository {
                 path: worktree_root,
@@ -218,10 +252,10 @@ impl SessionWorkspaceResolver {
                 path: worktree_root,
             });
         }
-        if receipt.status != SessionWorktreeStatus::Active {
+        if assignment.status != SessionWorktreeStatus::Active {
             return Err(ResolutionError::InactiveSessionWorktree {
                 session_id: request.session_id.to_string(),
-                status: receipt.status,
+                status: assignment.status,
             });
         }
 
@@ -234,7 +268,7 @@ impl SessionWorkspaceResolver {
         } else {
             CheckoutScope::Worktree {
                 worktree_root: worktree_root.clone(),
-                branch: receipt.branch,
+                branch: assignment.branch,
             }
         };
         Ok(ResolvedWorkspace {
@@ -243,6 +277,86 @@ impl SessionWorkspaceResolver {
             target_root: worktree_root.join(&relative_path),
             relative_path,
         })
+    }
+
+    /// Locates a session's worktree on disk when the session store holds no
+    /// assignment.
+    ///
+    /// Two strategies, in order:
+    ///
+    /// 1. A glob over `.worktrees/<short-id>-*`, where `<short-id>` is the
+    ///    leading eight characters of the session id. This is the naming
+    ///    convention every worktree bootstrapped by the repository tooling
+    ///    follows, so it resolves without reading any file.
+    /// 2. Failing that, a scan of `.worktrees/*/` for a worktree whose own
+    ///    `.session` store contains a record for this session. This catches
+    ///    worktrees named by ticket id rather than session id.
+    ///
+    /// Returns `Ok(None)` when neither strategy finds a candidate. Two or more
+    /// glob candidates is an error, never an arbitrary choice.
+    fn discover_worktree(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<DiscoveredWorktree>, ResolutionError> {
+        if let Some(cached) = self
+            .discovery_cache
+            .lock()
+            .expect("discovery cache mutex poisoned")
+            .get(session_id)
+        {
+            return Ok(Some(cached.clone()));
+        }
+
+        let worktrees_dir = self.main_checkout.as_path().join(".worktrees");
+        let Some(entries) = read_worktree_entries(&worktrees_dir)? else {
+            return Ok(None);
+        };
+
+        let short_id = session_short_id(session_id);
+        let prefix = format!("{short_id}-");
+        let mut matches: Vec<PathBuf> = entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with(&prefix))
+            })
+            .cloned()
+            .collect();
+        matches.sort();
+
+        let root = match matches.len() {
+            1 => matches.remove(0),
+            0 => {
+                let Some(scanned) = scan_for_session_record(&entries, session_id)?
+                else {
+                    return Ok(None);
+                };
+                scanned
+            },
+            _ =>
+                return Err(ResolutionError::AmbiguousSessionWorktree {
+                    session_id: session_id.to_string(),
+                    candidates: matches,
+                }),
+        };
+
+        if !is_git_checkout(&root)? {
+            return Err(ResolutionError::SessionWorktreeNotGitCheckout {
+                path: root,
+            });
+        }
+
+        let discovered = DiscoveredWorktree {
+            branch: read_checked_out_branch(&root)?,
+            root,
+        };
+        self.discovery_cache
+            .lock()
+            .expect("discovery cache mutex poisoned")
+            .insert(session_id.to_string(), discovered.clone());
+        Ok(Some(discovered))
     }
 
     /// Enumerates store candidates for diagnostics without selecting a default.
@@ -280,6 +394,15 @@ pub enum ResolutionError {
         "session '{session_id}' has no worktree assignment in the session store"
     )]
     MissingSessionWorktree { session_id: String },
+    #[error(
+        "session '{session_id}' matches {} worktrees; refusing to choose: {}",
+        candidates.len(),
+        candidates.iter().map(|path| normalize_slashes(path)).collect::<Vec<_>>().join(", ")
+    )]
+    AmbiguousSessionWorktree {
+        session_id: String,
+        candidates: Vec<PathBuf>,
+    },
     #[error(
         "assigned session worktree is missing: {}",
         normalize_slashes(path)
@@ -339,6 +462,127 @@ fn canonicalize(path: &Path) -> Result<PathBuf, ResolutionError> {
             )),
         other => ResolutionError::InvalidConfiguration(other.to_string()),
     })
+}
+
+/// A session-to-worktree assignment, however it was obtained: recorded in the
+/// session store, or discovered on disk.
+struct Assignment {
+    worktree_path: PathBuf,
+    branch: String,
+    status: SessionWorktreeStatus,
+}
+
+/// The leading eight characters of a session id, which is the prefix the
+/// worktree naming convention uses.
+fn session_short_id(session_id: &str) -> &str {
+    let end = session_id
+        .char_indices()
+        .nth(8)
+        .map_or(session_id.len(), |(index, _)| index);
+    &session_id[..end]
+}
+
+/// Lists the directories directly under `.worktrees`, or `None` when that
+/// directory does not exist. A missing `.worktrees` is ordinary, not an error.
+fn read_worktree_entries(
+    worktrees_dir: &Path
+) -> Result<Option<Vec<PathBuf>>, ResolutionError> {
+    let entries = match fs::read_dir(worktrees_dir) {
+        Ok(entries) => entries,
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound =>
+            return Ok(None),
+        Err(source) =>
+            return Err(ResolutionError::Io {
+                path: worktrees_dir.to_path_buf(),
+                source,
+            }),
+    };
+    let mut directories = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|source| ResolutionError::Io {
+            path: worktrees_dir.to_path_buf(),
+            source,
+        })?;
+        if entry.path().is_dir() {
+            directories.push(entry.path());
+        }
+    }
+    directories.sort();
+    Ok(Some(directories))
+}
+
+/// Finds the worktree whose own `.session` store holds a record for this
+/// session. Used when the name-based glob finds nothing.
+fn scan_for_session_record(
+    entries: &[PathBuf],
+    session_id: &str,
+) -> Result<Option<PathBuf>, ResolutionError> {
+    for entry in entries {
+        let record = entry
+            .join(".session")
+            .join("sessions")
+            .join(session_id)
+            .join("session.json");
+        if record.is_file() {
+            return Ok(Some(entry.clone()));
+        }
+    }
+    Ok(None)
+}
+
+/// Reads the branch checked out in a linked worktree.
+///
+/// A linked worktree's `.git` is a file pointing at its private git directory
+/// under the main checkout's `.git/worktrees/<name>`; that directory holds the
+/// worktree's own `HEAD`. A detached head has no branch name, which is
+/// reported as an empty string rather than an error, matching how the session
+/// store records an unnamed branch.
+fn read_checked_out_branch(
+    worktree_root: &Path
+) -> Result<String, ResolutionError> {
+    let git_entry = worktree_root.join(".git");
+    let metadata =
+        fs::metadata(&git_entry).map_err(|source| ResolutionError::Io {
+            path: git_entry.clone(),
+            source,
+        })?;
+
+    let git_dir = if metadata.is_dir() {
+        git_entry
+    } else {
+        let contents = fs::read_to_string(&git_entry).map_err(|source| {
+            ResolutionError::Io {
+                path: git_entry.clone(),
+                source,
+            }
+        })?;
+        let pointer = contents
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("gitdir:"))
+            .map(str::trim)
+            .ok_or_else(|| ResolutionError::SessionWorktreeNotGitCheckout {
+                path: worktree_root.to_path_buf(),
+            })?;
+        let pointer = Path::new(pointer);
+        if pointer.is_absolute() {
+            pointer.to_path_buf()
+        } else {
+            worktree_root.join(pointer)
+        }
+    };
+
+    let head_path = git_dir.join("HEAD");
+    let head = fs::read_to_string(&head_path).map_err(|source| {
+        ResolutionError::Io {
+            path: head_path,
+            source,
+        }
+    })?;
+    Ok(head
+        .trim()
+        .strip_prefix("ref: refs/heads/")
+        .unwrap_or_default()
+        .to_string())
 }
 
 fn validate_session_id(session_id: &str) -> Result<(), ResolutionError> {
@@ -792,5 +1036,191 @@ mod tests {
         link: &Path,
     ) -> std::io::Result<()> {
         std::os::windows::fs::symlink_dir(target, link)
+    }
+
+    // ---- discovery ----------------------------------------------------
+    //
+    // Discovery is what runs when the session store holds no assignment,
+    // which is the ordinary case for a worktree created outside a check-in.
+
+    const SESSION: &str = "70abae1b-14c4-4033-9265-d37fe08b02b2";
+
+    /// Creates a worktree directory whose `.git` is a real directory, as an
+    /// ordinary repository has.
+    fn make_worktree(
+        repository: &Path,
+        name: &str,
+        branch: &str,
+    ) -> PathBuf {
+        let root = repository.join(".worktrees").join(name);
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::write(
+            root.join(".git").join("HEAD"),
+            format!("ref: refs/heads/{branch}\n"),
+        )
+        .unwrap();
+        root
+    }
+
+    /// Writes a session record into a worktree's own `.session` store, which
+    /// is what the scan fallback looks for.
+    fn seed_session_record(
+        worktree: &Path,
+        session_id: &str,
+    ) {
+        let dir = worktree.join(".session").join("sessions").join(session_id);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("session.json"), "{}").unwrap();
+    }
+
+    #[test]
+    fn discovers_worktree_by_session_id_prefix() {
+        let (_temp, repository, _worktree, resolver) = fixture();
+        let expected =
+            make_worktree(&repository, "70abae1b-some-slug", "agent/some-slug");
+
+        let resolved = resolver
+            .resolve(ResolveRequest {
+                session_id: SESSION,
+                relative_workspace: None,
+                store_dir: ".ticket",
+            })
+            .unwrap();
+
+        assert_eq!(resolved.target_root(), expected);
+        assert_eq!(
+            resolved.checkout(),
+            &CheckoutScope::Worktree {
+                worktree_root: expected,
+                branch: "agent/some-slug".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn discovery_ignores_worktrees_belonging_to_other_sessions() {
+        let (_temp, repository, _worktree, resolver) = fixture();
+        make_worktree(&repository, "deadbeef-other-slug", "agent/other");
+
+        assert!(matches!(
+            resolve_root(&resolver, SESSION),
+            Err(ResolutionError::MissingSessionWorktree { .. })
+        ));
+    }
+
+    #[test]
+    fn discovery_falls_back_to_scanning_session_records() {
+        let (_temp, repository, _worktree, resolver) = fixture();
+        // Named after a ticket rather than the session, so the prefix glob
+        // cannot find it.
+        let expected =
+            make_worktree(&repository, "a1b911ab-by-ticket-id", "agent/ticket");
+        seed_session_record(&expected, SESSION);
+
+        let resolved = resolver
+            .resolve(ResolveRequest {
+                session_id: SESSION,
+                relative_workspace: None,
+                store_dir: ".ticket",
+            })
+            .unwrap();
+
+        assert_eq!(resolved.target_root(), expected);
+    }
+
+    #[test]
+    fn ambiguous_prefix_matches_are_refused() {
+        let (_temp, repository, _worktree, resolver) = fixture();
+        make_worktree(&repository, "70abae1b-first", "agent/first");
+        make_worktree(&repository, "70abae1b-second", "agent/second");
+
+        let error = resolve_root(&resolver, SESSION).unwrap_err();
+
+        let ResolutionError::AmbiguousSessionWorktree { candidates, .. } = error
+        else {
+            panic!("expected an ambiguity error, got: {error}");
+        };
+        assert_eq!(candidates.len(), 2, "both candidates must be reported");
+    }
+
+    #[test]
+    fn missing_worktree_hard_fails_without_falling_back_to_main_checkout() {
+        let (_temp, _repository, _worktree, resolver) = fixture();
+
+        assert!(matches!(
+            resolve_root(&resolver, SESSION),
+            Err(ResolutionError::MissingSessionWorktree { .. })
+        ));
+    }
+
+    #[test]
+    fn discovery_is_cached_for_the_process_lifetime() {
+        let (_temp, repository, _worktree, resolver) = fixture();
+        let expected =
+            make_worktree(&repository, "70abae1b-some-slug", "agent/some-slug");
+        assert_eq!(
+            resolve_root(&resolver, SESSION).unwrap().target_root(),
+            expected
+        );
+
+        // A second prefix match would make a fresh walk ambiguous. Resolution
+        // still succeeding proves no second walk happened.
+        make_worktree(&repository, "70abae1b-appeared-later", "agent/later");
+
+        assert_eq!(
+            resolve_root(&resolver, SESSION).unwrap().target_root(),
+            expected
+        );
+    }
+
+    #[test]
+    fn linked_worktree_git_file_pointer_is_followed_for_the_branch() {
+        let (_temp, repository, _worktree, resolver) = fixture();
+        // A linked worktree's `.git` is a file pointing at its private git
+        // directory under the main checkout, which holds its own HEAD.
+        let private_git_dir =
+            repository.join(".git").join("worktrees").join("linked");
+        fs::create_dir_all(&private_git_dir).unwrap();
+        fs::write(
+            private_git_dir.join("HEAD"),
+            "ref: refs/heads/agent/linked\n",
+        )
+        .unwrap();
+
+        let root = repository.join(".worktrees").join("70abae1b-linked");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join(".git"),
+            format!("gitdir: {}\n", private_git_dir.display()),
+        )
+        .unwrap();
+
+        let resolved = resolver
+            .resolve(ResolveRequest {
+                session_id: SESSION,
+                relative_workspace: None,
+                store_dir: ".ticket",
+            })
+            .unwrap();
+
+        assert_eq!(
+            resolved.checkout(),
+            &CheckoutScope::Worktree {
+                worktree_root: canonicalize(&root).unwrap(),
+                branch: "agent/linked".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_recorded_assignment_wins_over_a_discoverable_worktree() {
+        let (_temp, repository, worktree, resolver) = fixture();
+        check_in(&repository, &worktree, SESSION);
+        make_worktree(&repository, "70abae1b-would-be-discovered", "agent/no");
+
+        assert_eq!(
+            resolve_root(&resolver, SESSION).unwrap().target_root(),
+            worktree
+        );
     }
 }
