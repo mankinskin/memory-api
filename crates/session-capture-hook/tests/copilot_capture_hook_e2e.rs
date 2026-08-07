@@ -70,6 +70,7 @@ fn e2e_hook_binary_persists_fixture_transcript() {
         .expect("cargo should expose copilot-capture-hook binary path for integration tests");
 
     let output = Command::new(hook_bin)
+        .env("MCP_MAIN_CHECKOUT", fixture_dir.path())
         .arg("--transcript-path")
         .arg(&transcript_path)
         .arg("--store-root")
@@ -110,17 +111,33 @@ fn e2e_hook_binary_persists_fixture_transcript() {
 }
 
 #[test]
-fn e2e_provision_failure_preserves_hook_stdout_sentinel() {
+fn e2e_user_prompt_with_external_store_does_not_provision_cwd_checkout() {
     let fixture_dir = tempdir().expect("temp fixture dir");
     let transcript_path = write_fixture_transcript(
         fixture_dir.path(),
         "fixture-a.jsonl",
         local_fixture_a(),
     );
-    let store_root = fixture_dir.path().join("memory-api-store");
-    let invalid_anchor = fixture_dir.path().join("not-a-git-checkout");
-    fs::create_dir_all(&store_root).expect("create temp store root");
-    fs::create_dir_all(&invalid_anchor).expect("create invalid anchor");
+    let store_dir = tempdir().expect("external session store tempdir");
+    let store_root = store_dir.path().join("session-store");
+    fs::create_dir_all(&store_root).expect("create external session store");
+
+    let cwd_checkout = tempdir().expect("temporary cwd checkout");
+    for args in [
+        vec!["init", "--quiet"],
+        vec!["config", "user.email", "hook@example.com"],
+        vec!["config", "user.name", "hook"],
+        vec!["commit", "--quiet", "--allow-empty", "-m", "init"],
+    ] {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(cwd_checkout.path())
+            .status()
+            .expect("run git fixture command");
+        assert!(status.success(), "git fixture command should succeed");
+    }
+    fs::create_dir_all(cwd_checkout.path().join(".session"))
+        .expect("create cwd session store");
 
     let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
         .expect("cargo should expose copilot-capture-hook binary path for integration tests");
@@ -130,12 +147,15 @@ fn e2e_provision_failure_preserves_hook_stdout_sentinel() {
         "transcript_path": transcript_path,
     })
     .to_string();
-
     let mut child = Command::new(hook_bin)
+        .env_remove("MCP_MAIN_CHECKOUT")
+        .env("WORKTREE_EAGER_PROVISION", "1")
         .arg("--store-root")
         .arg(&store_root)
+        .arg("--workspace-slug")
+        .arg("default")
         .arg("--from-hook-stdin")
-        .env("MCP_MAIN_CHECKOUT", &invalid_anchor)
+        .current_dir(cwd_checkout.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -160,8 +180,66 @@ fn e2e_provision_failure_preserves_hook_stdout_sentinel() {
     assert_eq!(output.stdout, b"{}\n");
     assert!(
         String::from_utf8_lossy(&output.stderr)
-            .contains("worktree provisioning failed"),
-        "provisioning failure should be diagnosed on stderr"
+            .contains("worktree provisioning skipped"),
+        "mismatched store should be diagnosed on stderr"
+    );
+    assert!(
+        !cwd_checkout.path().join(".worktrees").exists(),
+        "hook must not provision a worktree beneath the unrelated current directory"
+    );
+}
+
+#[test]
+fn e2e_mismatched_store_preserves_hook_stdout_sentinel() {
+    let fixture_dir = tempdir().expect("temp fixture dir");
+    let transcript_path = write_fixture_transcript(
+        fixture_dir.path(),
+        "fixture-a.jsonl",
+        local_fixture_a(),
+    );
+    let store_root = fixture_dir.path().join("memory-api-store");
+    fs::create_dir_all(&store_root).expect("create temp store root");
+
+    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
+        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let stdin_payload = serde_json::json!({
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": FIXTURE_SESSION_ID,
+        "transcript_path": transcript_path,
+    })
+    .to_string();
+
+    let mut child = Command::new(hook_bin)
+        .arg("--store-root")
+        .arg(&store_root)
+        .arg("--from-hook-stdin")
+        .env("MCP_MAIN_CHECKOUT", fixture_dir.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn copilot-capture-hook");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(stdin_payload.as_bytes())
+        .expect("write hook stdin payload");
+    let output = child
+        .wait_with_output()
+        .expect("wait for copilot-capture-hook");
+
+    assert!(
+        output.status.success(),
+        "copilot-capture-hook failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(output.stdout, b"{}\n");
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("worktree provisioning skipped"),
+        "mismatched provisioning should be diagnosed on stderr"
     );
 }
 
@@ -195,6 +273,7 @@ fn e2e_hook_binary_populates_tool_metrics_from_captured_tool_events() {
         .expect("cargo should expose copilot-capture-hook binary path for integration tests");
 
     let output = Command::new(hook_bin)
+        .env("MCP_MAIN_CHECKOUT", fixture_dir.path())
         .arg("--transcript-path")
         .arg(&transcript_path)
         .arg("--store-root")
@@ -268,6 +347,7 @@ fn e2e_val_session_api_tool_metrics_gate_asserts_nonempty_tools_map() {
         .expect("cargo should expose copilot-capture-hook binary path for integration tests");
 
     let output = Command::new(hook_bin)
+        .env("MCP_MAIN_CHECKOUT", fixture_dir.path())
         .arg("--transcript-path")
         .arg(&transcript_path)
         .arg("--store-root")
@@ -367,6 +447,7 @@ fn e2e_hook_binary_captures_output_chars_from_hook_stdin_tool_response() {
     .to_string();
 
     let mut child = Command::new(hook_bin)
+        .env("MCP_MAIN_CHECKOUT", fixture_dir.path())
         .arg("--transcript-path")
         .arg(&transcript_path)
         .arg("--store-root")
@@ -473,6 +554,7 @@ fn e2e_hook_binary_captures_output_chars_from_spill_file_when_hook_payload_empty
     .to_string();
 
     let mut child = Command::new(hook_bin)
+        .env("MCP_MAIN_CHECKOUT", fixture_dir.path())
         .arg("--transcript-path")
         .arg(&transcript_path)
         .arg("--store-root")
@@ -601,6 +683,7 @@ fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    workspace_fixture.configure_hook_command(&mut command);
 
     let mut child = match command.spawn() {
         Ok(child) => child,

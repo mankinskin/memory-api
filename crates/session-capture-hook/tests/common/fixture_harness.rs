@@ -169,6 +169,13 @@ impl ScriptWorkspaceFixture {
         }
     }
 
+    pub fn configure_hook_command(
+        &self,
+        command: &mut Command,
+    ) {
+        command.env("MCP_MAIN_CHECKOUT", &self.root);
+    }
+
     pub fn transcript_path(
         &self,
         file_name: &str,

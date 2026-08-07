@@ -67,8 +67,6 @@ fn run() -> Result<(), SessionError> {
         args
     };
 
-    initialize_session_routing(&args.trigger, args.session_id.as_deref());
-
     let transcript_path = normalize_transcript_path(&args.transcript_path);
     if !transcript_path.is_file() {
         eprintln!(
@@ -87,6 +85,11 @@ fn run() -> Result<(), SessionError> {
         println!("{{}}");
         return Ok(());
     };
+    initialize_session_routing(
+        &args.trigger,
+        args.session_id.as_deref(),
+        &store_root,
+    );
     let config =
         SessionStoreConfig::new(store_root.clone(), args.workspace_slug);
 
@@ -144,6 +147,7 @@ fn anchor_checkout(current_dir: &Path) -> PathBuf {
 fn initialize_session_routing(
     trigger: &str,
     session_id: Option<&str>,
+    store_root: &Path,
 ) {
     if !trigger.eq_ignore_ascii_case("UserPromptSubmit") {
         return;
@@ -171,7 +175,7 @@ fn initialize_session_routing(
         return;
     }
     if eager_provisioning_enabled() {
-        provision_session_worktree(&anchor, session_id);
+        provision_session_worktree(&anchor, store_root, session_id);
     }
     let resolver = match SessionWorkspaceResolver::new(ResolverConfig {
         main_checkout: anchor.clone(),
@@ -230,8 +234,25 @@ fn eager_provisioning_enabled() -> bool {
 
 fn provision_session_worktree(
     anchor: &Path,
+    store_root: &Path,
     session_id: &str,
 ) {
+    let anchor_store = anchor.join(".session");
+    let anchor_root = anchor.canonicalize();
+    let resolved_store_root = store_root.canonicalize();
+    let store_belongs_to_anchor = anchor_store.is_dir()
+        && matches!(
+            (&anchor_root, &resolved_store_root),
+            (Ok(anchor_root), Ok(store_root)) if store_root.starts_with(anchor_root)
+        );
+    if !store_belongs_to_anchor {
+        eprintln!(
+            "[copilot-capture-hook] worktree provisioning skipped for session {session_id}: anchor checkout '{}' and resolved session store '{}' do not match",
+            anchor.display(),
+            store_root.display()
+        );
+        return;
+    }
     let git = match WorktreeGit::open(anchor) {
         Ok(git) => git,
         Err(error) => {
@@ -910,12 +931,16 @@ mod tests {
         process_directory: &Path,
         session_id: Option<&str>,
     ) {
+        let store_root = main_checkout.join(".session");
+        if session_id.is_some_and(|session_id| !session_id.trim().is_empty()) {
+            std::fs::create_dir_all(&store_root).unwrap();
+        }
         let original_cwd = env::current_dir().unwrap();
         let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
         unsafe { env::set_var("MCP_MAIN_CHECKOUT", main_checkout) };
         env::set_current_dir(process_directory).unwrap();
 
-        initialize_session_routing("UserPromptSubmit", session_id);
+        initialize_session_routing("UserPromptSubmit", session_id, &store_root);
 
         env::set_current_dir(original_cwd).unwrap();
         unsafe {
@@ -1115,7 +1140,11 @@ mod tests {
         unsafe { env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
         env::set_current_dir(&worktree).unwrap();
 
-        initialize_session_routing("Stop", Some("session-one"));
+        initialize_session_routing(
+            "Stop",
+            Some("session-one"),
+            &main_checkout.join(".session"),
+        );
 
         env::set_current_dir(original_cwd).unwrap();
         unsafe {
@@ -1158,7 +1187,11 @@ mod tests {
         unsafe { env::set_var("MCP_MAIN_CHECKOUT", &invalid_main_checkout) };
         env::set_current_dir(&worktree).unwrap();
 
-        initialize_session_routing("UserPromptSubmit", Some("session-one"));
+        initialize_session_routing(
+            "UserPromptSubmit",
+            Some("session-one"),
+            &invalid_main_checkout.join(".session"),
+        );
 
         env::set_current_dir(original_cwd).unwrap();
         unsafe {

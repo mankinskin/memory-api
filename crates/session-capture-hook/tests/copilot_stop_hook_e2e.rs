@@ -71,6 +71,7 @@ fn e2e_hook_binary_persists_fixture_transcript() {
         .expect("cargo should expose stop or capture hook binary path for integration tests");
 
     let output = Command::new(hook_bin)
+        .env("MCP_MAIN_CHECKOUT", fixture_dir.path())
         .arg("--transcript-path")
         .arg(&transcript_path)
         .arg("--store-root")
@@ -167,6 +168,7 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    workspace_fixture.configure_hook_command(&mut command);
 
     let mut child = match command.spawn() {
         Ok(child) => child,
