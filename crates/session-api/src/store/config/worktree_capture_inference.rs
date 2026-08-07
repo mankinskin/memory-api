@@ -72,6 +72,50 @@ impl SessionStoreConfig {
         Ok(())
     }
 
+    /// Replaces a worktree inference only when the stored assignment points
+    /// at the main checkout rather than a real worktree.
+    ///
+    /// Returns whether an existing main-checkout assignment was repaired.
+    pub fn replace_main_worktree_inference(
+        &self,
+        session_id: &str,
+        main_checkout: &Path,
+        working_dir: &Path,
+    ) -> Result<bool, SessionError> {
+        let mut record = match self.read_session(session_id) {
+            Ok(record) => record,
+            Err(SessionError::NotFound { .. }) => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        let Some(existing_assignment) = &record.metadata.worktree else {
+            return Ok(false);
+        };
+        if !paths_refer_to_same_directory(
+            &existing_assignment.path,
+            main_checkout,
+        ) {
+            return Ok(false);
+        }
+
+        let Some(branch) = current_git_branch(working_dir) else {
+            return Ok(false);
+        };
+        let worktree_path = current_git_toplevel(working_dir)
+            .unwrap_or_else(|| working_dir.to_path_buf());
+        record.metadata.worktree = Some(SessionWorktreeAssignment {
+            path: worktree_path,
+            branch,
+            allocation_mode: SessionWorktreeAllocationMode::New,
+            status: SessionWorktreeStatus::Active,
+            predecessor_session_id: None,
+            predecessor_path: None,
+        });
+        record.captured_at = chrono::Utc::now();
+
+        self.persist_record(record)?;
+        Ok(true)
+    }
+
     /// Minimal record for a session that has not been captured yet.
     fn new_inferred_record(
         &self,
@@ -141,4 +185,17 @@ fn current_git_toplevel(working_dir: &Path) -> Option<PathBuf> {
     }
     let path = String::from_utf8(output.stdout).ok()?.trim().to_string();
     (!path.is_empty()).then_some(PathBuf::from(path))
+}
+
+fn paths_refer_to_same_directory(
+    left: &Path,
+    right: &Path,
+) -> bool {
+    match (left.canonicalize(), right.canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => left
+            .to_string_lossy()
+            .replace('\\', "/")
+            .eq_ignore_ascii_case(&right.to_string_lossy().replace('\\', "/")),
+    }
 }

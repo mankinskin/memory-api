@@ -14,15 +14,24 @@ impl SessionStoreConfig {
                     }
                 })?;
 
-            if existing_record.metadata.agent_id.as_deref()
-                != Some(request.owner_id.as_str())
-                || existing_record.metadata.ticket_id.as_deref()
-                    != Some(request.ticket_id.as_str())
+            let is_unclaimed = existing_record
+                .metadata
+                .ticket_id
+                .as_deref()
+                .is_none_or(|ticket_id| ticket_id.trim().is_empty());
+            if !is_unclaimed
+                && (existing_record.metadata.agent_id.as_deref()
+                    != Some(request.owner_id.as_str())
+                    || existing_record.metadata.ticket_id.as_deref()
+                        != Some(request.ticket_id.as_str()))
             {
                 return Err(SessionError::SessionOwnershipMismatch {
                     session_id: request.session_id,
                 });
             }
+
+            existing_record.metadata.agent_id = Some(request.owner_id.clone());
+            existing_record.metadata.ticket_id = Some(request.ticket_id.clone());
 
             if can_reuse_assignment(&existing_assignment, &request) {
                 existing_record.metadata.worktree =

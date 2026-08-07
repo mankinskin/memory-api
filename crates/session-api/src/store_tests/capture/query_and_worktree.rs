@@ -321,6 +321,89 @@ fn check_in_worktree_reuses_existing_assignment_for_same_session() {
 }
 
 #[test]
+fn check_in_worktree_claims_unclaimed_hook_record() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let worktree_path = tempdir.path().join("worktrees").join("session-a");
+
+    config
+        .check_in_worktree(sample_worktree_request(
+            "session-a",
+            "copilot-agent",
+            "initial-ticket",
+            worktree_path.clone(),
+            "agent/initial",
+        ))
+        .unwrap();
+    let manifest_path = tempdir
+        .path()
+        .join("store/sessions/session-a/session.json");
+    let mut manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&manifest_path).unwrap(),
+    )
+    .unwrap();
+    manifest["metadata"]["agent_id"] = serde_json::json!("copilot-agent");
+    manifest["metadata"].as_object_mut().unwrap().remove("ticket_id");
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let receipt = config
+        .check_in_worktree(sample_worktree_request(
+            "session-a",
+            "copilot-agent-70abae1b",
+            "a1b911ab-9394-4ba8-9134-1b2687e96ccd",
+            worktree_path,
+            "agent/initial",
+        ))
+        .unwrap();
+    let record = config.read_session("session-a").unwrap();
+
+    assert_eq!(receipt.owner_id, "copilot-agent-70abae1b");
+    assert_eq!(
+        record.metadata.agent_id.as_deref(),
+        Some("copilot-agent-70abae1b")
+    );
+    assert_eq!(
+        record.metadata.ticket_id.as_deref(),
+        Some("a1b911ab-9394-4ba8-9134-1b2687e96ccd")
+    );
+}
+
+#[test]
+fn check_in_worktree_rejects_mismatched_claimed_owner() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let worktree_path = tempdir.path().join("worktrees").join("session-a");
+
+    config
+        .check_in_worktree(sample_worktree_request(
+            "session-a",
+            "claimed-owner",
+            "claimed-ticket",
+            worktree_path.clone(),
+            "agent/claimed",
+        ))
+        .unwrap();
+
+    let error = config
+        .check_in_worktree(sample_worktree_request(
+            "session-a",
+            "other-owner",
+            "claimed-ticket",
+            worktree_path,
+            "agent/claimed",
+        ))
+        .unwrap_err();
+
+    assert!(matches!(error, SessionError::SessionOwnershipMismatch { .. }));
+}
+
+#[test]
 fn check_in_worktree_rotates_for_handoff_and_supersedes_predecessor() {
     let tempdir = TempDir::new().unwrap();
     let config =
