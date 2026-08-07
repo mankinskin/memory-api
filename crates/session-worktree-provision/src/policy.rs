@@ -25,6 +25,7 @@ use crate::{
 
 const DEFAULT_MAX_WORKTREES: usize = 8;
 const DEFAULT_STALE_AFTER: Duration = Duration::from_secs(4 * 60 * 60);
+const DEFAULT_IDLE_BEFORE_RECLAIM: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Determines whether a live session currently owns a worktree.
 pub trait SessionActivity {
@@ -93,6 +94,7 @@ impl SessionActivity for NeverActive {
 pub struct ProvisionPolicy {
     pub max_worktrees: usize,
     pub stale_after: Duration,
+    pub idle_before_reclaim: Duration,
     pub base_ref: String,
 }
 
@@ -104,6 +106,10 @@ impl Default for ProvisionPolicy {
             stale_after: Duration::from_secs(
                 env_u64("WORKTREE_STALE_SECS")
                     .unwrap_or(DEFAULT_STALE_AFTER.as_secs()),
+            ),
+            idle_before_reclaim: Duration::from_secs(
+                env_u64("WORKTREE_IDLE_SECS")
+                    .unwrap_or(DEFAULT_IDLE_BEFORE_RECLAIM.as_secs()),
             ),
             base_ref: "main".to_string(),
         }
@@ -155,20 +161,26 @@ pub fn provision_for_session(
 
     let mut candidates = Vec::new();
     for worktree in &worktrees {
-        if reclaimable(git, activity, worktree)? {
+        if reclaimable(git, activity, worktree, policy)? {
             candidates.push(worktree);
         }
     }
-    let candidate = candidates.into_iter().min_by(reclaim_order);
-
-    if let Some(candidate) = candidate {
+    candidates.sort_by(reclaim_order);
+    for candidate in candidates {
         let previous_name = candidate.name.clone();
         // TODO(5e6cf4f8): update reclaimed worktrees from main in a later provisioning unit.
-        let worktree = git.rename_worktree(&previous_name, &name, &branch)?;
-        return Ok(ProvisionOutcome::Reclaimed {
-            worktree,
-            previous_name,
-        });
+        match git.rename_worktree(&previous_name, &name, &branch) {
+            Ok(worktree) => {
+                return Ok(ProvisionOutcome::Reclaimed {
+                    worktree,
+                    previous_name,
+                });
+            },
+            Err(error) => eprintln!(
+                "worktree reclaim failed for {}: {error}; trying another candidate or creating a fresh worktree",
+                candidate.path.display()
+            ),
+        }
     }
 
     if worktrees.len() >= policy.max_worktrees {
@@ -201,10 +213,13 @@ fn reclaimable(
     git: &WorktreeGit,
     activity: &dyn SessionActivity,
     worktree: &WorktreeRef,
+    policy: &ProvisionPolicy,
 ) -> Result<bool, WorktreeGitError> {
     if activity.is_active(&worktree.path)
         || worktree.branch.is_none()
         || git.is_dirty(&worktree.path)?
+        || current_directory_is_within_worktree(&worktree.path)
+        || !worktree_is_idle(git, worktree, policy.idle_before_reclaim)
     {
         return Ok(false);
     }
@@ -215,6 +230,66 @@ fn reclaimable(
         }
     }
     Ok(git.ahead_behind(&worktree.path, "main")?.0 == 0)
+}
+
+fn current_directory_is_within_worktree(worktree: &Path) -> bool {
+    std::env::current_dir()
+        .ok()
+        .is_some_and(|current_dir| path_is_within(&current_dir, worktree))
+}
+
+fn path_is_within(
+    path: &Path,
+    worktree: &Path,
+) -> bool {
+    let Some(path) = normalized_path(path) else {
+        return false;
+    };
+    let Some(worktree) = normalized_path(worktree) else {
+        return false;
+    };
+    path == worktree
+        || path
+            .strip_prefix(&worktree)
+            .is_some_and(|suffix| suffix.starts_with('/'))
+}
+
+fn worktree_is_idle(
+    git: &WorktreeGit,
+    worktree: &WorktreeRef,
+    idle_before_reclaim: Duration,
+) -> bool {
+    let Some(last_activity) = worktree_last_activity(git, worktree) else {
+        return false;
+    };
+    let Some(cutoff) = SystemTime::now().checked_sub(idle_before_reclaim)
+    else {
+        return false;
+    };
+    last_activity < cutoff
+}
+
+fn worktree_last_activity(
+    git: &WorktreeGit,
+    worktree: &WorktreeRef,
+) -> Option<SystemTime> {
+    // Git updates the linked-worktree admin directory and index for Git activity;
+    // the worktree root tracks agent filesystem writes without scanning its tree.
+    // Requiring all three cheap signals makes missing metadata fail closed.
+    let admin = git
+        .main_checkout()
+        .join(".git/worktrees")
+        .join(&worktree.name);
+    [
+        worktree.path.as_path(),
+        admin.as_path(),
+        admin.join("index").as_path(),
+    ]
+    .into_iter()
+    .map(|path| fs::metadata(path).ok()?.modified().ok())
+    .collect::<Option<Vec<_>>>()?
+    .into_iter()
+    .max()
 }
 
 fn reclaim_order(
@@ -299,9 +374,16 @@ mod tests {
             PathBuf,
         },
         process::Command,
-        time::Duration,
+        time::{
+            Duration,
+            SystemTime,
+        },
     };
 
+    use filetime::{
+        FileTime,
+        set_file_mtime,
+    };
     use time::{
         OffsetDateTime,
         format_description::well_known::Rfc3339,
@@ -316,7 +398,10 @@ mod tests {
         SessionStoreActivity,
         provision_for_session,
     };
-    use crate::tests::Fixture;
+    use crate::{
+        WorktreeRef,
+        tests::Fixture,
+    };
 
     const SESSION_ID: &str = "12345678-1234-4234-8234-123456789abc";
 
@@ -335,7 +420,27 @@ mod tests {
         ProvisionPolicy {
             max_worktrees,
             stale_after: Duration::from_secs(60),
+            idle_before_reclaim: Duration::ZERO,
             base_ref: "main".to_string(),
+        }
+    }
+
+    fn backdate_activity_signals(
+        git: &crate::WorktreeGit,
+        worktree: &WorktreeRef,
+        age: Duration,
+    ) {
+        let timestamp = FileTime::from_system_time(SystemTime::now() - age);
+        let admin = git
+            .main_checkout()
+            .join(".git/worktrees")
+            .join(&worktree.name);
+        for path in [
+            worktree.path.as_path(),
+            admin.as_path(),
+            admin.join("index").as_path(),
+        ] {
+            set_file_mtime(path, timestamp).unwrap();
         }
     }
 
@@ -524,6 +629,89 @@ mod tests {
                 .unwrap();
         assert!(matches!(outcome, ProvisionOutcome::Reclaimed { .. }));
         assert_eq!(git.list_worktrees().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn recently_active_worktree_is_not_reclaimed() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let old = git.create_worktree("old", "agent/old", "main").unwrap();
+        let mut policy = policy(1);
+        policy.idle_before_reclaim = Duration::from_secs(60 * 60);
+
+        assert_cap_reached(provision_for_session(
+            &git,
+            &NeverActive,
+            SESSION_ID,
+            &policy,
+        ));
+        assert!(old.path.exists());
+        assert!(!fixture.main.join(".worktrees/12345678-session").exists());
+    }
+
+    #[test]
+    fn idle_worktree_is_reclaimed_after_activity_signals_are_backdated() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let old = git.create_worktree("old", "agent/old", "main").unwrap();
+        let mut policy = policy(1);
+        policy.idle_before_reclaim = Duration::from_secs(60 * 60);
+        backdate_activity_signals(&git, &old, Duration::from_secs(2 * 60 * 60));
+
+        let outcome =
+            provision_for_session(&git, &NeverActive, SESSION_ID, &policy)
+                .unwrap();
+        assert!(matches!(outcome, ProvisionOutcome::Reclaimed { .. }));
+    }
+
+    #[test]
+    fn worktree_containing_the_current_directory_is_not_reclaimed() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let old = git.create_worktree("old", "agent/old", "main").unwrap();
+        let original = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&old.path).unwrap();
+
+        let result =
+            provision_for_session(&git, &NeverActive, SESSION_ID, &policy(1));
+
+        std::env::set_current_dir(original).unwrap();
+        assert_cap_reached(result);
+        assert!(old.path.exists());
+    }
+
+    #[test]
+    fn failed_reclaim_falls_through_to_fresh_creation() {
+        let fixture = Fixture::new();
+        fixture.add_submodule();
+        let git = fixture.git();
+        let old = git.create_worktree("old", "agent/old", "main").unwrap();
+        fs::remove_dir_all(fixture.main.join("nested")).unwrap();
+
+        let outcome =
+            provision_for_session(&git, &NeverActive, SESSION_ID, &policy(2))
+                .unwrap();
+        assert!(matches!(outcome, ProvisionOutcome::Created(_)));
+        assert!(old.path.exists());
+        assert!(fixture.main.join(".worktrees/12345678-session").exists());
+    }
+
+    #[test]
+    fn failed_reclaim_at_cap_returns_cap_reached_without_creating() {
+        let fixture = Fixture::new();
+        fixture.add_submodule();
+        let git = fixture.git();
+        let old = git.create_worktree("old", "agent/old", "main").unwrap();
+        fs::remove_dir_all(fixture.main.join("nested")).unwrap();
+
+        assert_cap_reached(provision_for_session(
+            &git,
+            &NeverActive,
+            SESSION_ID,
+            &policy(1),
+        ));
+        assert!(old.path.exists());
+        assert!(!fixture.main.join(".worktrees/12345678-session").exists());
     }
 
     #[test]

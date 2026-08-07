@@ -93,6 +93,27 @@ pub enum WorktreeGitError {
         original: Box<Self>,
         rollback: String,
     },
+    #[error(
+        "worktree relocation from {} to {} failed: {original}; rollback also failed ({rollback}). Manual `git worktree repair` is required for both paths",
+        from.display(),
+        to.display()
+    )]
+    MoveRollbackFailed {
+        from: PathBuf,
+        to: PathBuf,
+        original: Box<Self>,
+        rollback: String,
+    },
+    #[error(
+        "filesystem move from {} to {} crossed devices and recursive copy/delete fallback failed: {source}",
+        from.display(),
+        to.display()
+    )]
+    MoveFallback {
+        from: PathBuf,
+        to: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 impl WorktreeGit {
@@ -288,7 +309,24 @@ impl WorktreeGit {
         from: &Path,
         to: &Path,
     ) -> Result<(), WorktreeGitError> {
-        subprocess::run(&self.main_checkout, ["worktree", "move"], [from, to])
+        if to.exists() {
+            return Err(WorktreeGitError::Io {
+                path: to.to_path_buf(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    "destination already exists",
+                ),
+            });
+        }
+
+        relocate_directory(from, to)?;
+        if let Err(original) = self
+            .repair_worktree(to)
+            .and_then(|_| self.verify_worktree_move(from, to))
+        {
+            return Err(self.rollback_worktree_move(from, to, original));
+        }
+        Ok(())
     }
 
     pub fn branch_rename(
@@ -369,6 +407,68 @@ impl WorktreeGit {
 
     fn repository(&self) -> Result<Repository, WorktreeGitError> {
         Ok(Repository::open(&self.main_checkout)?)
+    }
+
+    fn repair_worktree(
+        &self,
+        worktree: &Path,
+    ) -> Result<(), WorktreeGitError> {
+        subprocess::run(
+            &self.main_checkout,
+            ["worktree", "repair"],
+            [worktree],
+        )?;
+        for submodule in self.submodule_paths()? {
+            let nested_worktree = worktree.join(&submodule);
+            if nested_worktree.exists() {
+                subprocess::run(
+                    &self.main_checkout.join(submodule),
+                    ["worktree", "repair"],
+                    [&nested_worktree],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn verify_worktree_move(
+        &self,
+        from: &Path,
+        to: &Path,
+    ) -> Result<(), WorktreeGitError> {
+        subprocess::run(to, ["rev-parse", "--git-dir"], [])?;
+        let worktrees = self.list_worktrees()?;
+        if worktrees
+            .iter()
+            .any(|worktree| paths_equal(&worktree.path, from))
+            || !worktrees
+                .iter()
+                .any(|worktree| paths_equal(&worktree.path, to))
+        {
+            return Err(WorktreeGitError::WorktreeNotFound {
+                name: to.display().to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    fn rollback_worktree_move(
+        &self,
+        from: &Path,
+        to: &Path,
+        original: WorktreeGitError,
+    ) -> WorktreeGitError {
+        let rollback = relocate_directory(to, from)
+            .and_then(|_| self.repair_worktree(from));
+        match rollback {
+            Ok(()) => original,
+            Err(rollback) => WorktreeGitError::MoveRollbackFailed {
+                from: from.to_path_buf(),
+                to: to.to_path_buf(),
+                original: Box::new(original),
+                rollback: rollback.to_string(),
+            },
+        }
     }
 
     fn populate_submodules_offline(
@@ -519,10 +619,97 @@ fn branch_for_worktree(
     Ok(head.shorthand().map(str::to_string))
 }
 
+fn relocate_directory(
+    from: &Path,
+    to: &Path,
+) -> Result<(), WorktreeGitError> {
+    match fs::rename(from, to) {
+        Ok(()) => Ok(()),
+        Err(source) if source.kind() == std::io::ErrorKind::CrossesDevices => {
+            copy_directory_recursively(from, to).map_err(|source| {
+                WorktreeGitError::MoveFallback {
+                    from: from.to_path_buf(),
+                    to: to.to_path_buf(),
+                    source,
+                }
+            })?;
+            fs::remove_dir_all(from).map_err(|source| {
+                WorktreeGitError::MoveFallback {
+                    from: from.to_path_buf(),
+                    to: to.to_path_buf(),
+                    source,
+                }
+            })
+        },
+        Err(source) => Err(WorktreeGitError::Io {
+            path: from.to_path_buf(),
+            source,
+        }),
+    }
+}
+
+fn copy_directory_recursively(
+    from: &Path,
+    to: &Path,
+) -> Result<(), std::io::Error> {
+    fs::create_dir(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let source = entry.path();
+        let destination = to.join(entry.file_name());
+        let metadata = fs::symlink_metadata(&source)?;
+        if metadata.is_dir() {
+            copy_directory_recursively(&source, &destination)?;
+        } else if metadata.is_symlink() {
+            copy_symlink(&source, &destination)?;
+        } else {
+            fs::copy(&source, &destination)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn copy_symlink(
+    source: &Path,
+    destination: &Path,
+) -> Result<(), std::io::Error> {
+    std::os::unix::fs::symlink(fs::read_link(source)?, destination)
+}
+
+#[cfg(windows)]
+fn copy_symlink(
+    source: &Path,
+    destination: &Path,
+) -> Result<(), std::io::Error> {
+    let target = fs::read_link(source)?;
+    if fs::metadata(source)?.is_dir() {
+        std::os::windows::fs::symlink_dir(target, destination)
+    } else {
+        std::os::windows::fs::symlink_file(target, destination)
+    }
+}
+
+fn paths_equal(
+    left: &Path,
+    right: &Path,
+) -> bool {
+    let normalize = |path: &Path| {
+        fs::canonicalize(path)
+            .unwrap_or_else(|_| path.to_path_buf())
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_lowercase()
+    };
+    normalize(left) == normalize(right)
+}
+
 /// Git writes deliberately remain subprocess calls. With git2 0.20.4 and
 /// libgit2-sys 0.18.7, `worktree add --detach <path> <sha>` cannot be expressed
-/// because `WorktreeAddOptions::reference` accepts only a ref; remove and move
-/// have no bound libgit2 symbols; and branch-creating add is only partial.
+/// because `WorktreeAddOptions::reference` accepts only a ref; remove has no
+/// bound libgit2 symbol; branch-creating add is only partial; and `git worktree
+/// move` refuses worktrees containing submodules outright, so move is replaced
+/// with a filesystem relocation followed by Git's documented `worktree repair`.
 /// Do not migrate these commands to git2: reads belong to git2, these writes do not.
 mod subprocess {
     use std::{
@@ -613,7 +800,7 @@ pub(crate) mod tests {
             WorktreeGit::open(&self.main).unwrap()
         }
 
-        fn add_submodule(&self) -> String {
+        pub(crate) fn add_submodule(&self) -> String {
             self.add_submodule_named("nested")
         }
 
@@ -776,6 +963,62 @@ pub(crate) mod tests {
         assert!(!fixture.main.join(".worktrees/broken").exists());
         assert!(!git.branch_exists("session-broken").unwrap());
         assert!(git.list_worktrees().unwrap().is_empty());
+    }
+
+    #[test]
+    fn worktree_move_repairs_a_worktree_containing_a_submodule() {
+        let fixture = Fixture::new();
+        fixture.add_submodule();
+        fs::write(fixture.main.join(".git/info/exclude"), "marker.txt\n")
+            .unwrap();
+        let git = fixture.git();
+        let old = git.create_worktree("old", "session-old", "HEAD").unwrap();
+        fs::write(old.path.join("marker.txt"), "keep\n").unwrap();
+        let new = fixture.main.join(".worktrees/new");
+
+        git.worktree_move(&old.path, &new).unwrap();
+
+        command(&new, ["rev-parse", "--git-dir"]);
+        command(&new.join("nested"), ["rev-parse", "--git-dir"]);
+        assert_eq!(
+            fs::read_to_string(new.join("marker.txt")).unwrap(),
+            "keep\n"
+        );
+        let paths = git
+            .list_worktrees()
+            .unwrap()
+            .into_iter()
+            .map(|worktree| worktree.path)
+            .collect::<Vec<_>>();
+        assert!(paths.iter().any(|path| super::paths_equal(path, &new)));
+        assert!(!paths.iter().any(|path| super::paths_equal(path, &old.path)));
+    }
+
+    #[test]
+    fn worktree_move_refuses_an_existing_destination() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let old = git.create_worktree("old", "session-old", "HEAD").unwrap();
+        let destination = fixture.main.join(".worktrees/existing");
+        fs::create_dir_all(&destination).unwrap();
+
+        assert!(git.worktree_move(&old.path, &destination).is_err());
+        assert!(old.path.exists());
+    }
+
+    #[test]
+    fn worktree_move_rolls_back_when_nested_repair_fails() {
+        let fixture = Fixture::new();
+        fixture.add_submodule();
+        let git = fixture.git();
+        let old = git.create_worktree("old", "session-old", "HEAD").unwrap();
+        let destination = fixture.main.join(".worktrees/new");
+        fs::remove_dir_all(fixture.main.join("nested")).unwrap();
+
+        assert!(git.worktree_move(&old.path, &destination).is_err());
+        assert!(old.path.exists());
+        command(&old.path, ["rev-parse", "--git-dir"]);
+        assert!(!destination.exists());
     }
 
     #[test]
