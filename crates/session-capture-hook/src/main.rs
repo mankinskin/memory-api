@@ -77,6 +77,13 @@ fn run() -> Result<(), SessionError> {
         return Ok(());
     }
 
+    if args.store_root.is_none() {
+        initialize_session_routing(
+            &args.trigger,
+            args.session_id.as_deref(),
+            None,
+        );
+    }
     let Some(store_root) = resolve_capture_store_root(
         args.store_root,
         &args.workspace_slug,
@@ -88,7 +95,7 @@ fn run() -> Result<(), SessionError> {
     initialize_session_routing(
         &args.trigger,
         args.session_id.as_deref(),
-        &store_root,
+        Some(&store_root),
     );
     let config =
         SessionStoreConfig::new(store_root.clone(), args.workspace_slug);
@@ -147,7 +154,7 @@ fn anchor_checkout(current_dir: &Path) -> PathBuf {
 fn initialize_session_routing(
     trigger: &str,
     session_id: Option<&str>,
-    store_root: &Path,
+    store_root: Option<&Path>,
 ) {
     if !trigger.eq_ignore_ascii_case("UserPromptSubmit") {
         return;
@@ -234,24 +241,26 @@ fn eager_provisioning_enabled() -> bool {
 
 fn provision_session_worktree(
     anchor: &Path,
-    store_root: &Path,
+    store_root: Option<&Path>,
     session_id: &str,
 ) {
-    let anchor_store = anchor.join(".session");
-    let anchor_root = anchor.canonicalize();
-    let resolved_store_root = store_root.canonicalize();
-    let store_belongs_to_anchor = anchor_store.is_dir()
-        && matches!(
-            (&anchor_root, &resolved_store_root),
-            (Ok(anchor_root), Ok(store_root)) if store_root.starts_with(anchor_root)
-        );
-    if !store_belongs_to_anchor {
-        eprintln!(
-            "[copilot-capture-hook] worktree provisioning skipped for session {session_id}: anchor checkout '{}' and resolved session store '{}' do not match",
-            anchor.display(),
-            store_root.display()
-        );
-        return;
+    if let Some(store_root) = store_root {
+        let anchor_store = anchor.join(".session");
+        let anchor_root = anchor.canonicalize();
+        let resolved_store_root = store_root.canonicalize();
+        let store_belongs_to_anchor = anchor_store.is_dir()
+            && matches!(
+                (&anchor_root, &resolved_store_root),
+                (Ok(anchor_root), Ok(store_root)) if store_root.starts_with(anchor_root)
+            );
+        if !store_belongs_to_anchor {
+            eprintln!(
+                "[copilot-capture-hook] worktree provisioning skipped for session {session_id}: anchor checkout '{}' and resolved session store '{}' do not match",
+                anchor.display(),
+                store_root.display()
+            );
+            return;
+        }
     }
     let git = match WorktreeGit::open(anchor) {
         Ok(git) => git,
@@ -940,7 +949,11 @@ mod tests {
         unsafe { env::set_var("MCP_MAIN_CHECKOUT", main_checkout) };
         env::set_current_dir(process_directory).unwrap();
 
-        initialize_session_routing("UserPromptSubmit", session_id, &store_root);
+        initialize_session_routing(
+            "UserPromptSubmit",
+            session_id,
+            Some(&store_root),
+        );
 
         env::set_current_dir(original_cwd).unwrap();
         unsafe {
@@ -1143,7 +1156,7 @@ mod tests {
         initialize_session_routing(
             "Stop",
             Some("session-one"),
-            &main_checkout.join(".session"),
+            Some(&main_checkout.join(".session")),
         );
 
         env::set_current_dir(original_cwd).unwrap();
@@ -1190,7 +1203,7 @@ mod tests {
         initialize_session_routing(
             "UserPromptSubmit",
             Some("session-one"),
-            &invalid_main_checkout.join(".session"),
+            Some(&invalid_main_checkout.join(".session")),
         );
 
         env::set_current_dir(original_cwd).unwrap();

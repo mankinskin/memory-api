@@ -33,6 +33,125 @@ fn repo_root() -> PathBuf {
     repo_root_from_manifest(env!("CARGO_MANIFEST_DIR"))
 }
 
+fn create_fixture_checkout(path: &std::path::Path) {
+    fs::create_dir_all(path).expect("create fixture checkout");
+    for args in [
+        vec!["init", "--quiet"],
+        vec!["config", "user.email", "hook@example.com"],
+        vec!["config", "user.name", "hook"],
+        vec!["commit", "--quiet", "--allow-empty", "-m", "init"],
+    ] {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .status()
+            .expect("run git fixture command");
+        assert!(status.success(), "git fixture command should succeed");
+    }
+    fs::create_dir_all(path.join(".session"))
+        .expect("create fixture session store");
+}
+
+fn run_hook_with_payload(
+    hook_bin: &str,
+    checkout: &std::path::Path,
+    payload: serde_json::Value,
+) -> std::process::Output {
+    let mut child = Command::new(hook_bin)
+        .arg("--from-hook-stdin")
+        .current_dir(checkout)
+        .env("MCP_MAIN_CHECKOUT", checkout)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn copilot-capture-hook");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(payload.to_string().as_bytes())
+        .expect("write hook stdin payload");
+    child
+        .wait_with_output()
+        .expect("wait for copilot-capture-hook")
+}
+
+#[test]
+fn e2e_user_prompt_provisions_and_captures_a_fresh_session() {
+    let fixture = tempdir().expect("temp fixture dir");
+    let checkout = fixture.path().join("checkout");
+    create_fixture_checkout(&checkout);
+    let session_id = format!("fresh-session-{}", unique_suffix());
+    let transcript = local_fixture_a().replace(FIXTURE_SESSION_ID, &session_id);
+    let transcript_path =
+        write_fixture_transcript(&checkout, "fresh-session.jsonl", &transcript);
+    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
+        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+
+    let output = run_hook_with_payload(
+        &hook_bin,
+        &checkout,
+        serde_json::json!({
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": session_id,
+            "transcript_path": transcript_path,
+        }),
+    );
+
+    assert!(
+        output.status.success(),
+        "copilot-capture-hook failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let worktree_name = format!("{}-session", &session_id[..8]);
+    assert!(
+        checkout.join(".worktrees").join(&worktree_name).is_dir(),
+        "fresh UserPromptSubmit must provision a worktree; stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        checkout
+            .join(".worktrees")
+            .join(worktree_name)
+            .join(".session")
+            .join("sessions")
+            .join(&session_id)
+            .is_dir(),
+        "fresh UserPromptSubmit must capture a session record in its worktree"
+    );
+}
+
+#[test]
+fn e2e_stop_does_not_provision_a_fresh_session() {
+    let fixture = tempdir().expect("temp fixture dir");
+    let checkout = fixture.path().join("checkout");
+    create_fixture_checkout(&checkout);
+    let session_id = format!("fresh-session-{}", unique_suffix());
+    let transcript = local_fixture_a().replace(FIXTURE_SESSION_ID, &session_id);
+    let transcript_path =
+        write_fixture_transcript(&checkout, "fresh-session.jsonl", &transcript);
+    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
+        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+
+    let output = run_hook_with_payload(
+        &hook_bin,
+        &checkout,
+        serde_json::json!({
+            "hook_event_name": "Stop",
+            "session_id": session_id,
+            "transcript_path": transcript_path,
+        }),
+    );
+
+    assert!(output.status.success());
+    assert!(
+        !checkout.join(".worktrees").exists(),
+        "Stop must not provision a worktree"
+    );
+}
+
 #[test]
 fn e2e_parses_fixture_transcript_payload() {
     let fixture_dir = tempdir().expect("temp fixture dir");
