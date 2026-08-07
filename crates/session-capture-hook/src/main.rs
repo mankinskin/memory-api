@@ -68,6 +68,11 @@ fn run() -> Result<(), SessionError> {
     };
 
     let transcript_path = normalize_transcript_path(&args.transcript_path);
+    initialize_session_routing(
+        &args.trigger,
+        args.session_id.as_deref(),
+        args.store_root.as_deref(),
+    );
     if !transcript_path.is_file() {
         eprintln!(
             "[copilot-capture-hook] skip: transcript not found at {}",
@@ -77,13 +82,6 @@ fn run() -> Result<(), SessionError> {
         return Ok(());
     }
 
-    if args.store_root.is_none() {
-        initialize_session_routing(
-            &args.trigger,
-            args.session_id.as_deref(),
-            None,
-        );
-    }
     let Some(store_root) = resolve_capture_store_root(
         args.store_root,
         &args.workspace_slug,

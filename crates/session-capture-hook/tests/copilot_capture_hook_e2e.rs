@@ -153,6 +153,58 @@ fn e2e_stop_does_not_provision_a_fresh_session() {
 }
 
 #[test]
+fn e2e_missing_transcript_user_prompt_provisions_but_stop_does_not() {
+    let fixture = tempdir().expect("temp fixture dir");
+    let prompt_checkout = fixture.path().join("prompt-checkout");
+    create_fixture_checkout(&prompt_checkout);
+    let prompt_session_id = format!("missing-transcript-{}", unique_suffix());
+    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
+        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+
+    let output = run_hook_with_payload(
+        &hook_bin,
+        &prompt_checkout,
+        serde_json::json!({
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": prompt_session_id,
+            "transcript_path": prompt_checkout.join("missing.jsonl"),
+        }),
+    );
+
+    assert!(
+        output.status.success(),
+        "copilot-capture-hook failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let worktree_name = format!("{}-session", &prompt_session_id[..8]);
+    assert!(
+        prompt_checkout.join(".worktrees").join(worktree_name).is_dir(),
+        "UserPromptSubmit must provision despite a missing transcript; stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stop_checkout = fixture.path().join("stop-checkout");
+    create_fixture_checkout(&stop_checkout);
+    let stop_session_id = format!("missing-transcript-{}", unique_suffix());
+    let output = run_hook_with_payload(
+        &hook_bin,
+        &stop_checkout,
+        serde_json::json!({
+            "hook_event_name": "Stop",
+            "session_id": stop_session_id,
+            "transcript_path": stop_checkout.join("missing.jsonl"),
+        }),
+    );
+
+    assert!(output.status.success());
+    assert!(
+        !stop_checkout.join(".worktrees").exists(),
+        "Stop must not provision when the transcript is missing"
+    );
+}
+
+#[test]
 fn e2e_parses_fixture_transcript_payload() {
     let fixture_dir = tempdir().expect("temp fixture dir");
     let transcript_path = write_fixture_transcript(
