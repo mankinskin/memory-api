@@ -21,11 +21,9 @@ use session_api::{
     synthesize_follow_up_ticket,
 };
 use session_workspace_resolver::{
-    RepositoryRoot,
     ResolveRequest,
     ResolverConfig,
     SessionWorkspaceResolver,
-    SessionWorktreeRegistry,
 };
 use ticket_api::storage::TicketStore;
 
@@ -125,6 +123,18 @@ fn run() -> Result<(), SessionError> {
     Ok(())
 }
 
+/// Resolves the checkout the hook was launched in, which anchors the session
+/// store that records worktree assignments.
+///
+/// `MCP_MAIN_CHECKOUT` stays available as an override for callers that cannot
+/// control the working directory, but it is not required.
+fn anchor_checkout(current_dir: &Path) -> PathBuf {
+    std::env::var_os("MCP_MAIN_CHECKOUT")
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| current_dir.to_path_buf())
+}
+
 fn initialize_session_routing(
     trigger: &str,
     session_id: Option<&str>,
@@ -149,33 +159,20 @@ fn initialize_session_routing(
             return;
         },
     };
-    let worktree = match RepositoryRoot::new(&current_dir) {
-        Ok(worktree) => worktree,
-        Err(error) => {
-            eprintln!(
-                "[copilot-capture-hook] session routing skipped: could not resolve current checkout: {error}"
-            );
-            return;
-        },
-    };
-    let main_checkout = match std::env::var_os("MCP_MAIN_CHECKOUT") {
-        Some(path) => RepositoryRoot::new(PathBuf::from(path)),
-        None => Ok(worktree.clone()),
-    };
-    let main_checkout = match main_checkout {
-        Ok(main_checkout) => main_checkout,
-        Err(error) => {
-            eprintln!(
-                "[copilot-capture-hook] session routing skipped: could not resolve main checkout: {error}"
-            );
-            return;
-        },
-    };
-    if let Err(error) = SessionWorktreeRegistry::new(main_checkout)
-        .upsert(session_id, worktree.as_path())
+    let anchor = anchor_checkout(&current_dir);
+    if !anchor.is_dir() {
+        eprintln!(
+            "[copilot-capture-hook] session routing skipped: anchor checkout '{}' does not exist",
+            anchor.display()
+        );
+        return;
+    }
+    if let Err(error) =
+        SessionStoreConfig::new(anchor.join(".session"), "default")
+            .infer_worktree_from_environment(session_id, &current_dir)
     {
         eprintln!(
-            "[copilot-capture-hook] session routing skipped: could not register session {session_id}: {error}"
+            "[copilot-capture-hook] session routing skipped: could not assign a worktree for session {session_id}: {error}"
         );
     }
 }
@@ -445,12 +442,6 @@ fn resolve_capture_store_root(
         return Some(store_root);
     }
 
-    let Some(main_checkout) = std::env::var_os("MCP_MAIN_CHECKOUT") else {
-        eprintln!(
-            "[copilot-capture-hook] capture skipped: MCP_MAIN_CHECKOUT is unset; refusing to write a default .session store"
-        );
-        return None;
-    };
     let Some(session_id) =
         session_id.filter(|session_id| !session_id.trim().is_empty())
     else {
@@ -459,8 +450,25 @@ fn resolve_capture_store_root(
         );
         return None;
     };
+    let current_dir = match std::env::current_dir() {
+        Ok(current_dir) => current_dir,
+        Err(error) => {
+            eprintln!(
+                "[copilot-capture-hook] capture skipped: could not determine current directory: {error}"
+            );
+            return None;
+        },
+    };
+    let anchor = anchor_checkout(&current_dir);
+    if !anchor.join(".session").is_dir() {
+        eprintln!(
+            "[copilot-capture-hook] capture skipped: no session store beneath '{}'; refusing to write a default .session store",
+            anchor.display()
+        );
+        return None;
+    }
     let resolver = match SessionWorkspaceResolver::new(ResolverConfig {
-        main_checkout: PathBuf::from(main_checkout),
+        main_checkout: anchor,
         workspace_slug: workspace_slug.to_string(),
     }) {
         Ok(resolver) => resolver,
@@ -505,14 +513,9 @@ mod tests {
         sync::Mutex,
     };
 
-    use serde_json::Value;
     use session_api::{
         SessionStoreConfig,
         SessionWorktreeCheckInRequest,
-    };
-    use session_workspace_resolver::{
-        RepositoryRoot,
-        SessionWorktreeRegistry,
     };
     use tempfile::tempdir;
 
@@ -559,7 +562,7 @@ mod tests {
         create_checkout(main_checkout, CheckoutFixtureKind::Main);
         let worktree = main_checkout.join(".worktrees").join("capture");
         create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
-        SessionStoreConfig::new(worktree.join(".session"), "default")
+        SessionStoreConfig::new(main_checkout.join(".session"), "default")
             .check_in_worktree(SessionWorktreeCheckInRequest {
                 session_id: session_id.to_string(),
                 owner_id: "agent".to_string(),
@@ -569,11 +572,6 @@ mod tests {
                 predecessor_session_id: None,
             })
             .unwrap();
-        SessionWorktreeRegistry::new(
-            RepositoryRoot::new(main_checkout).unwrap(),
-        )
-        .upsert(session_id, &worktree)
-        .unwrap();
         worktree
     }
 
@@ -608,12 +606,10 @@ mod tests {
             result.expect("active worktree assignment should resolve");
 
         assert_eq!(store_root, worktree.join(".session"));
-        assert!(
-            std::fs::read_dir(main_checkout.join(".session"))
-                .unwrap()
-                .next()
-                .is_none()
-        );
+        // The anchor store legitimately holds the worktree assignment, so the
+        // guarantee is that capture is routed away from it, not that it is
+        // empty.
+        assert_ne!(store_root, main_checkout.join(".session"));
     }
 
     #[test]
@@ -690,19 +686,56 @@ mod tests {
         assert!(!normalized.as_os_str().is_empty());
     }
 
-    fn read_registry_entries(
-        main_checkout: &Path
-    ) -> serde_json::Map<String, Value> {
-        let contents = std::fs::read_to_string(
-            main_checkout.join(".session-routing/worktree-index.json"),
-        )
-        .unwrap();
-        serde_json::from_str::<Value>(&contents)
-            .unwrap()
-            .get("entries")
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap()
+    fn git(
+        args: &[&str],
+        cwd: &Path,
+    ) {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?} failed in {}", cwd.display());
+    }
+
+    /// Creates a real repository plus a real linked worktree.
+    ///
+    /// Worktree inference shells out to `git rev-parse`, so a fixture that only
+    /// fabricates a `.git` entry would silently no-op instead of assigning.
+    fn create_git_worktree(
+        main_checkout: &Path,
+        worktree: &Path,
+        branch: &str,
+    ) {
+        std::fs::create_dir_all(main_checkout).unwrap();
+        git(&["init", "--quiet"], main_checkout);
+        git(&["config", "user.email", "hook@example.com"], main_checkout);
+        git(&["config", "user.name", "hook"], main_checkout);
+        git(
+            &["commit", "--quiet", "--allow-empty", "-m", "init"],
+            main_checkout,
+        );
+        git(
+            &[
+                "worktree",
+                "add",
+                "--quiet",
+                "-b",
+                branch,
+                worktree.to_str().unwrap(),
+            ],
+            main_checkout,
+        );
+    }
+
+    fn assigned_worktree(
+        main_checkout: &Path,
+        session_id: &str,
+    ) -> Option<PathBuf> {
+        SessionStoreConfig::new(main_checkout.join(".session"), "default")
+            .lookup_worktree(session_id)
+            .ok()
+            .map(|receipt| receipt.worktree_path)
     }
 
     fn run_user_prompt_submit(
@@ -727,22 +760,21 @@ mod tests {
     }
 
     #[test]
-    fn user_prompt_submit_writes_session_worktree_registry_entry() {
+    fn user_prompt_submit_assigns_the_session_worktree() {
         let _cwd_lock = CWD_LOCK.lock().unwrap();
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
         let worktree = main_checkout.join("worktree");
-        create_checkout(&main_checkout, CheckoutFixtureKind::Main);
-        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
+        create_git_worktree(&main_checkout, &worktree, "feature");
 
         run_user_prompt_submit(&main_checkout, &worktree, Some("session-one"));
 
-        let entries = read_registry_entries(&main_checkout);
-        let entry = entries.get("session-one").unwrap();
+        let assigned = assigned_worktree(&main_checkout, "session-one")
+            .expect("user prompt submit should assign a worktree");
         assert_eq!(
-            PathBuf::from(entry["worktree_path"].as_str().unwrap()),
-            RepositoryRoot::new(&worktree).unwrap().as_path()
+            assigned.canonicalize().unwrap(),
+            worktree.canonicalize().unwrap()
         );
     }
 
@@ -753,20 +785,14 @@ mod tests {
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
         let worktree = main_checkout.join("worktree");
-        create_checkout(&main_checkout, CheckoutFixtureKind::Main);
-        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
+        create_git_worktree(&main_checkout, &worktree, "feature");
 
         run_user_prompt_submit(&main_checkout, &worktree, Some("session-one"));
+        let first = assigned_worktree(&main_checkout, "session-one").unwrap();
         run_user_prompt_submit(&main_checkout, &worktree, Some("session-one"));
+        let second = assigned_worktree(&main_checkout, "session-one").unwrap();
 
-        let entries = read_registry_entries(&main_checkout);
-        assert_eq!(entries.len(), 1);
-        assert!(
-            !entries["session-one"]["updated_at"]
-                .as_str()
-                .unwrap()
-                .is_empty()
-        );
+        assert_eq!(first, second);
     }
 
     #[test]
@@ -776,46 +802,37 @@ mod tests {
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
         let worktree = main_checkout.join("worktree");
-        create_checkout(&main_checkout, CheckoutFixtureKind::Main);
-        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
+        create_git_worktree(&main_checkout, &worktree, "feature");
 
         run_user_prompt_submit(&main_checkout, &worktree, Some("session-one"));
         run_user_prompt_submit(&main_checkout, &worktree, Some("session-two"));
 
-        let entries = read_registry_entries(&main_checkout);
-        assert_eq!(entries.len(), 2);
-        assert!(entries.contains_key("session-one"));
-        assert!(entries.contains_key("session-two"));
+        assert!(assigned_worktree(&main_checkout, "session-one").is_some());
+        assert!(assigned_worktree(&main_checkout, "session-two").is_some());
     }
 
     #[test]
-    fn user_prompt_submit_without_session_id_does_not_write_registry() {
+    fn user_prompt_submit_without_session_id_does_not_assign() {
         let _cwd_lock = CWD_LOCK.lock().unwrap();
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
         let worktree = main_checkout.join("worktree");
-        create_checkout(&main_checkout, CheckoutFixtureKind::Main);
-        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
+        create_git_worktree(&main_checkout, &worktree, "feature");
 
         run_user_prompt_submit(&main_checkout, &worktree, None);
 
-        assert!(
-            !main_checkout
-                .join(".session-routing/worktree-index.json")
-                .exists()
-        );
+        assert!(!main_checkout.join(".session").exists());
     }
 
     #[test]
-    fn stop_does_not_write_session_worktree_registry() {
+    fn stop_does_not_assign_a_session_worktree() {
         let _cwd_lock = CWD_LOCK.lock().unwrap();
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
         let worktree = main_checkout.join("worktree");
-        create_checkout(&main_checkout, CheckoutFixtureKind::Main);
-        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
+        create_git_worktree(&main_checkout, &worktree, "feature");
         let original_cwd = env::current_dir().unwrap();
         let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
         unsafe { env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
@@ -830,21 +847,18 @@ mod tests {
                 None => env::remove_var("MCP_MAIN_CHECKOUT"),
             }
         }
-        assert!(
-            !main_checkout
-                .join(".session-routing/worktree-index.json")
-                .exists()
-        );
+        assert!(!main_checkout.join(".session").exists());
     }
 
     #[test]
-    fn user_prompt_submit_swallows_main_checkout_resolution_failure() {
+    fn user_prompt_submit_skips_a_missing_anchor_override() {
         let _cwd_lock = CWD_LOCK.lock().unwrap();
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
-        let worktree = fixture.path().join("worktree");
+        let main_checkout = fixture.path().join("main");
+        let worktree = main_checkout.join("worktree");
         let invalid_main_checkout = fixture.path().join("missing-main");
-        create_checkout(&worktree, CheckoutFixtureKind::LinkedWorktree);
+        create_git_worktree(&main_checkout, &worktree, "feature");
         let original_cwd = env::current_dir().unwrap();
         let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
         unsafe { env::set_var("MCP_MAIN_CHECKOUT", &invalid_main_checkout) };
@@ -859,10 +873,6 @@ mod tests {
                 None => env::remove_var("MCP_MAIN_CHECKOUT"),
             }
         }
-        assert!(
-            !invalid_main_checkout
-                .join(".session-routing/worktree-index.json")
-                .exists()
-        );
+        assert!(!invalid_main_checkout.exists());
     }
 }

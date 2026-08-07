@@ -9,10 +9,7 @@ name = "session_workspace_resolver"
 path = "src/lib.rs"
 
 [dependencies]
-chrono = { version = "0.4", features = ["serde"] }
-fs2 = "0.4"
 memory-api = { path = "../memory-api" }
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 session-api = { path = "../session-api" }
 tempfile = "3"

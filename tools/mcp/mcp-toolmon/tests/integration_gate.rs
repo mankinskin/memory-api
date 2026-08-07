@@ -23,10 +23,8 @@ use session_api::{
     SessionWorktreeCheckInRequest,
 };
 use session_workspace_resolver::{
-    RepositoryRoot,
     ResolverConfig,
     SessionWorkspaceResolver,
-    SessionWorktreeRegistry,
 };
 use std::{
     ffi::OsString,
@@ -82,7 +80,8 @@ fn active_session_fixture() -> (TempDir, PathBuf) {
         workspace_slug: "default".to_string(),
     })
     .unwrap();
-    SessionStoreConfig::new(worktree.join(".session"), "default")
+    // The anchor store beneath the main checkout is the worktree registry.
+    SessionStoreConfig::new(main_checkout.join(".session"), "default")
         .check_in_worktree(SessionWorktreeCheckInRequest {
             session_id: "test-session-id".to_string(),
             owner_id: "agent".to_string(),
@@ -91,9 +90,6 @@ fn active_session_fixture() -> (TempDir, PathBuf) {
             branch: "agent/test".to_string(),
             predecessor_session_id: None,
         })
-        .unwrap();
-    SessionWorktreeRegistry::new(RepositoryRoot::new(&main_checkout).unwrap())
-        .upsert("test-session-id", &worktree)
         .unwrap();
     (temp, main_checkout)
 }

@@ -1,10 +1,5 @@
 use std::{
-    collections::BTreeMap,
-    fs::{
-        self,
-        OpenOptions,
-    },
-    io::Write,
+    fs,
     path::{
         Component,
         Path,
@@ -12,16 +7,11 @@ use std::{
     },
 };
 
-use chrono::Utc;
-use fs2::FileExt;
 use memory_api::workspace::{
     WorkspacePathError,
     canonicalize_workspace_root_strict,
     normalize_slashes,
-};
-use serde::{
-    Deserialize,
-    Serialize,
+    working_dir,
 };
 use session_api::{
     SessionStoreConfig,
@@ -29,12 +19,12 @@ use session_api::{
 };
 use thiserror::Error;
 
-const ROUTING_DIR: &str = ".session-routing";
-const INDEX_FILE: &str = "worktree-index.json";
-const LOCK_FILE: &str = "worktree-index.lock";
-const REGISTRY_SCHEMA_VERSION: u32 = 1;
-
-/// Canonical repository root, known independently of any process CWD.
+/// Canonical repository root, discovered from the process working directory.
+///
+/// The MCP servers are always launched at the checkout they serve, so the
+/// working directory is the anchor and the `.session` store beneath it is the
+/// worktree registry. There is no separate index file and no required
+/// environment variable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepositoryRoot(PathBuf);
 
@@ -119,202 +109,6 @@ impl ResolvedWorkspace {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RegistryEntry {
-    pub worktree_path: PathBuf,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct RegistryFile {
-    schema_version: u32,
-    entries: BTreeMap<String, RegistryEntry>,
-}
-
-impl Default for RegistryFile {
-    fn default() -> Self {
-        Self {
-            schema_version: REGISTRY_SCHEMA_VERSION,
-            entries: BTreeMap::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SessionWorktreeRegistry {
-    main_checkout: RepositoryRoot,
-}
-
-impl SessionWorktreeRegistry {
-    pub fn new(main_checkout: RepositoryRoot) -> Self {
-        Self { main_checkout }
-    }
-
-    pub fn index_path(&self) -> PathBuf {
-        self.routing_dir().join(INDEX_FILE)
-    }
-
-    pub fn lookup(
-        &self,
-        session_id: &str,
-    ) -> Result<RegistryEntry, ResolutionError> {
-        validate_session_id(session_id)?;
-        let index = self.read_index()?;
-        index.entries.get(session_id).cloned().ok_or_else(|| {
-            ResolutionError::RegistryEntryMissing {
-                session_id: session_id.to_string(),
-            }
-        })
-    }
-
-    pub fn upsert(
-        &self,
-        session_id: &str,
-        worktree_path: &Path,
-    ) -> Result<(), ResolutionError> {
-        validate_session_id(session_id)?;
-        let canonical_worktree = canonicalize(worktree_path)?;
-        let routing_dir = self.routing_dir();
-        fs::create_dir_all(&routing_dir).map_err(|source| {
-            ResolutionError::Io {
-                path: routing_dir.clone(),
-                source,
-            }
-        })?;
-        let lock_path = routing_dir.join(LOCK_FILE);
-        let lock_file = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .write(true)
-            .truncate(false)
-            .open(&lock_path)
-            .map_err(|source| ResolutionError::Io {
-                path: lock_path,
-                source,
-            })?;
-        lock_file
-            .lock_exclusive()
-            .map_err(|source| ResolutionError::Io {
-                path: self.routing_dir().join(LOCK_FILE),
-                source,
-            })?;
-
-        let mut index = self.read_index_or_default()?;
-        index.entries.insert(
-            session_id.to_string(),
-            RegistryEntry {
-                worktree_path: canonical_worktree,
-                updated_at: Utc::now().to_rfc3339(),
-            },
-        );
-        self.write_index(&index)
-    }
-
-    pub fn remove(
-        &self,
-        session_id: &str,
-    ) -> Result<(), ResolutionError> {
-        validate_session_id(session_id)?;
-        let routing_dir = self.routing_dir();
-        fs::create_dir_all(&routing_dir).map_err(|source| {
-            ResolutionError::Io {
-                path: routing_dir.clone(),
-                source,
-            }
-        })?;
-        let lock_path = routing_dir.join(LOCK_FILE);
-        let lock_file = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .write(true)
-            .truncate(false)
-            .open(&lock_path)
-            .map_err(|source| ResolutionError::Io {
-                path: lock_path,
-                source,
-            })?;
-        lock_file
-            .lock_exclusive()
-            .map_err(|source| ResolutionError::Io {
-                path: self.routing_dir().join(LOCK_FILE),
-                source,
-            })?;
-
-        let mut index = self.read_index_or_default()?;
-        index.entries.remove(session_id);
-        self.write_index(&index)
-    }
-
-    fn routing_dir(&self) -> PathBuf {
-        self.main_checkout.as_path().join(ROUTING_DIR)
-    }
-
-    fn read_index(&self) -> Result<RegistryFile, ResolutionError> {
-        let index_path = self.index_path();
-        let contents = fs::read_to_string(&index_path).map_err(|source| {
-            if source.kind() == std::io::ErrorKind::NotFound {
-                ResolutionError::RegistryMissing {
-                    path: index_path.clone(),
-                }
-            } else {
-                ResolutionError::Io {
-                    path: index_path.clone(),
-                    source,
-                }
-            }
-        })?;
-        parse_index(&index_path, &contents)
-    }
-
-    fn read_index_or_default(&self) -> Result<RegistryFile, ResolutionError> {
-        match self.read_index() {
-            Ok(index) => Ok(index),
-            Err(ResolutionError::RegistryMissing { .. }) =>
-                Ok(RegistryFile::default()),
-            Err(error) => Err(error),
-        }
-    }
-
-    fn write_index(
-        &self,
-        index: &RegistryFile,
-    ) -> Result<(), ResolutionError> {
-        let routing_dir = self.routing_dir();
-        let index_path = self.index_path();
-        let bytes = serde_json::to_vec_pretty(index).map_err(|source| {
-            ResolutionError::RegistryMalformed {
-                path: index_path.clone(),
-                detail: source.to_string(),
-            }
-        })?;
-        let mut temp = tempfile::NamedTempFile::new_in(&routing_dir).map_err(
-            |source| ResolutionError::Io {
-                path: routing_dir.clone(),
-                source,
-            },
-        )?;
-        temp.write_all(&bytes)
-            .map_err(|source| ResolutionError::Io {
-                path: temp.path().to_path_buf(),
-                source,
-            })?;
-        temp.as_file()
-            .sync_all()
-            .map_err(|source| ResolutionError::Io {
-                path: temp.path().to_path_buf(),
-                source,
-            })?;
-        fs::rename(temp.path(), &index_path).map_err(|source| {
-            ResolutionError::Io {
-                path: index_path.clone(),
-                source,
-            }
-        })?;
-        sync_directory(&routing_dir)?;
-        Ok(())
-    }
-}
-
 pub struct ResolveRequest<'a> {
     pub session_id: &'a str,
     /// Optional path relative to the worktree. It is never a selector.
@@ -329,9 +123,33 @@ pub struct ResolverConfig {
     pub workspace_slug: String,
 }
 
+impl ResolverConfig {
+    /// Anchors resolution on the process working directory.
+    ///
+    /// MCP servers are launched at the checkout they serve — including when
+    /// that checkout is a submodule working directory rather than a
+    /// superproject root — so the working directory is the anchor. A
+    /// `git --git-common-dir` walk would escape to the superproject, and an
+    /// environment variable would only restate what the working directory
+    /// already says.
+    pub fn from_working_dir(
+        workspace_slug: impl Into<String>
+    ) -> Result<Self, ResolutionError> {
+        let main_checkout = working_dir().ok_or_else(|| {
+            ResolutionError::InvalidConfiguration(
+                "unable to determine the process working directory".to_string(),
+            )
+        })?;
+        Ok(Self {
+            main_checkout,
+            workspace_slug: workspace_slug.into(),
+        })
+    }
+}
+
 pub struct SessionWorkspaceResolver {
     config: ResolverConfig,
-    registry: SessionWorktreeRegistry,
+    main_checkout: RepositoryRoot,
 }
 
 impl SessionWorkspaceResolver {
@@ -344,8 +162,17 @@ impl SessionWorkspaceResolver {
         let main_checkout = RepositoryRoot::new(&config.main_checkout)?;
         Ok(Self {
             config,
-            registry: SessionWorktreeRegistry::new(main_checkout),
+            main_checkout,
         })
+    }
+
+    /// The `.session` store beneath the anchor, which is the sole registry of
+    /// session-to-worktree assignments.
+    fn session_store(&self) -> SessionStoreConfig {
+        SessionStoreConfig::new(
+            self.main_checkout.as_path().join(".session"),
+            self.config.workspace_slug.clone(),
+        )
     }
 
     /// Resolves the active worktree from current registry and session-store data.
@@ -355,36 +182,40 @@ impl SessionWorkspaceResolver {
     ) -> Result<ResolvedWorkspace, ResolutionError> {
         validate_session_id(request.session_id)?;
         validate_store_dir(request.store_dir)?;
-        let registry_entry = self.registry.lookup(request.session_id)?;
-        let worktree_root = canonicalize(&registry_entry.worktree_path)
-            .map_err(|error| match error {
+        let repository = self.main_checkout.clone();
+        let receipt = match self
+            .session_store()
+            .lookup_worktree(request.session_id)
+        {
+            Ok(receipt) => receipt,
+            Err(
+                session_api::SessionError::MissingWorktreeAssignment {
+                    ..
+                }
+                | session_api::SessionError::NotFound { .. },
+            ) =>
+                return Err(ResolutionError::MissingSessionWorktree {
+                    session_id: request.session_id.to_string(),
+                }),
+            Err(error) => return Err(ResolutionError::SessionLookup(error)),
+        };
+        let worktree_root =
+            canonicalize(&receipt.worktree_path).map_err(|error| match error {
                 ResolutionError::InvalidConfiguration(_) =>
-                    ResolutionError::RegistryWorktreeMissing {
-                        path: registry_entry.worktree_path.clone(),
+                    ResolutionError::SessionWorktreeMissing {
+                        path: receipt.worktree_path.clone(),
                     },
                 other => other,
             })?;
-        let repository = self.registry.main_checkout.clone();
         if !worktree_root.starts_with(repository.as_path()) {
-            return Err(ResolutionError::RegistryWorktreeOutsideRepository {
+            return Err(ResolutionError::SessionWorktreeOutsideRepository {
                 path: worktree_root,
                 repository: repository.as_path().to_path_buf(),
             });
         }
         if !is_git_checkout(&worktree_root)? {
-            return Err(ResolutionError::RegistryWorktreeNotGitCheckout {
+            return Err(ResolutionError::SessionWorktreeNotGitCheckout {
                 path: worktree_root,
-            });
-        }
-
-        let store = SessionStoreConfig::new(
-            worktree_root.join(".session"),
-            self.config.workspace_slug.clone(),
-        );
-        let receipt = store.lookup_worktree(request.session_id)?;
-        if canonicalize(&receipt.worktree_path)? != worktree_root {
-            return Err(ResolutionError::RegistrySessionMismatch {
-                session_id: request.session_id.to_string(),
             });
         }
         if receipt.status != SessionWorktreeStatus::Active {
@@ -421,17 +252,12 @@ impl SessionWorkspaceResolver {
     ) -> Result<Vec<PathBuf>, ResolutionError> {
         validate_store_dir(store_dir)?;
         let mut candidates =
-            vec![self.registry.main_checkout.as_path().join(store_dir)];
-        let worktrees_dir =
-            self.registry.main_checkout.as_path().join(".worktrees");
+            vec![self.main_checkout.as_path().join(store_dir)];
+        let worktrees_dir = self.main_checkout.as_path().join(".worktrees");
         if let Ok(entries) = fs::read_dir(worktrees_dir) {
             for entry in entries {
                 let entry = entry.map_err(|source| ResolutionError::Io {
-                    path: self
-                        .registry
-                        .main_checkout
-                        .as_path()
-                        .join(".worktrees"),
+                    path: self.main_checkout.as_path().join(".worktrees"),
                     source,
                 })?;
                 if entry.path().is_dir() {
@@ -450,35 +276,26 @@ pub enum ResolutionError {
     InvalidConfiguration(String),
     #[error("session id is required")]
     MissingSessionId,
-    #[error("routing registry is missing: {}", normalize_slashes(path))]
-    RegistryMissing { path: PathBuf },
     #[error(
-        "routing registry is malformed at {}: {detail}",
+        "session '{session_id}' has no worktree assignment in the session store"
+    )]
+    MissingSessionWorktree { session_id: String },
+    #[error(
+        "assigned session worktree is missing: {}",
         normalize_slashes(path)
     )]
-    RegistryMalformed { path: PathBuf, detail: String },
-    #[error("routing registry has no entry for session '{session_id}'")]
-    RegistryEntryMissing { session_id: String },
+    SessionWorktreeMissing { path: PathBuf },
     #[error(
-        "routing registry worktree is missing: {}",
-        normalize_slashes(path)
-    )]
-    RegistryWorktreeMissing { path: PathBuf },
-    #[error(
-        "routing registry worktree {} is outside repository {}",
+        "assigned session worktree {} is outside repository {}",
         normalize_slashes(path),
         normalize_slashes(repository)
     )]
-    RegistryWorktreeOutsideRepository { path: PathBuf, repository: PathBuf },
+    SessionWorktreeOutsideRepository { path: PathBuf, repository: PathBuf },
     #[error(
-        "routing registry worktree is not a git checkout: {}",
+        "assigned session worktree is not a git checkout: {}",
         normalize_slashes(path)
     )]
-    RegistryWorktreeNotGitCheckout { path: PathBuf },
-    #[error(
-        "routing registry does not match the session assignment for '{session_id}'"
-    )]
-    RegistrySessionMismatch { session_id: String },
+    SessionWorktreeNotGitCheckout { path: PathBuf },
     #[error(
         "session '{session_id}' has inactive worktree assignment: {status:?}"
     )]
@@ -522,29 +339,6 @@ fn canonicalize(path: &Path) -> Result<PathBuf, ResolutionError> {
             )),
         other => ResolutionError::InvalidConfiguration(other.to_string()),
     })
-}
-
-fn parse_index(
-    path: &Path,
-    contents: &str,
-) -> Result<RegistryFile, ResolutionError> {
-    let index: RegistryFile =
-        serde_json::from_str(contents).map_err(|source| {
-            ResolutionError::RegistryMalformed {
-                path: path.to_path_buf(),
-                detail: source.to_string(),
-            }
-        })?;
-    if index.schema_version != REGISTRY_SCHEMA_VERSION {
-        return Err(ResolutionError::RegistryMalformed {
-            path: path.to_path_buf(),
-            detail: format!(
-                "unsupported schema version {}",
-                index.schema_version
-            ),
-        });
-    }
-    Ok(index)
 }
 
 fn validate_session_id(session_id: &str) -> Result<(), ResolutionError> {
@@ -648,19 +442,6 @@ fn resolve_relative_path(
         })
 }
 
-fn sync_directory(_path: &Path) -> Result<(), ResolutionError> {
-    #[cfg(unix)]
-    {
-        fs::File::open(_path)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|source| ResolutionError::Io {
-                path: _path.to_path_buf(),
-                source,
-            })?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -690,10 +471,11 @@ mod tests {
     }
 
     fn check_in(
+        store_root: &Path,
         worktree: &Path,
         session_id: &str,
     ) {
-        SessionStoreConfig::new(worktree.join(".session"), "default")
+        SessionStoreConfig::new(store_root.join(".session"), "default")
             .check_in_worktree(SessionWorktreeCheckInRequest {
                 session_id: session_id.to_string(),
                 owner_id: "agent".to_string(),
@@ -705,20 +487,11 @@ mod tests {
             .unwrap();
     }
 
-    fn register(
-        resolver: &SessionWorkspaceResolver,
-        session_id: &str,
-        worktree: &Path,
-    ) {
-        resolver.registry.upsert(session_id, worktree).unwrap();
-    }
-
     #[test]
     fn resolves_active_assignment_to_worktree_scope() {
-        let (_temp, _repository, worktree, resolver) = fixture();
+        let (_temp, repository, worktree, resolver) = fixture();
         fs::create_dir_all(worktree.join("nested")).unwrap();
-        check_in(&worktree, "session-a");
-        register(&resolver, "session-a", &worktree);
+        check_in(&repository, &worktree, "session-a");
 
         let resolved = resolver
             .resolve(ResolveRequest {
@@ -737,10 +510,13 @@ mod tests {
 
     #[test]
     fn superseded_assignment_is_inactive() {
-        let (_temp, _repository, worktree, resolver) = fixture();
-        check_in(&worktree, "session-a");
-        register(&resolver, "session-a", &worktree);
-        set_status(&worktree, "session-a", SessionWorktreeStatus::Superseded);
+        let (_temp, repository, worktree, resolver) = fixture();
+        check_in(&repository, &worktree, "session-a");
+        set_status(
+            &repository,
+            "session-a",
+            SessionWorktreeStatus::Superseded,
+        );
 
         assert!(matches!(
             resolve_root(&resolver, "session-a"),
@@ -750,10 +526,13 @@ mod tests {
 
     #[test]
     fn invalidated_assignment_is_inactive() {
-        let (_temp, _repository, worktree, resolver) = fixture();
-        check_in(&worktree, "session-a");
-        register(&resolver, "session-a", &worktree);
-        set_status(&worktree, "session-a", SessionWorktreeStatus::Invalidated);
+        let (_temp, repository, worktree, resolver) = fixture();
+        check_in(&repository, &worktree, "session-a");
+        set_status(
+            &repository,
+            "session-a",
+            SessionWorktreeStatus::Invalidated,
+        );
 
         assert!(matches!(
             resolve_root(&resolver, "session-a"),
@@ -762,55 +541,45 @@ mod tests {
     }
 
     #[test]
-    fn registry_error_variants_are_distinct() {
-        let (_temp, _repository, worktree, resolver) = fixture();
+    fn session_without_assignment_is_rejected() {
+        let (_temp, _repository, _worktree, resolver) = fixture();
+
         assert!(matches!(
-            resolver.registry.lookup("session-a"),
-            Err(ResolutionError::RegistryMissing { .. })
-        ));
-        register(&resolver, "session-b", &worktree);
-        assert!(matches!(
-            resolver.registry.lookup("session-a"),
-            Err(ResolutionError::RegistryEntryMissing { .. })
-        ));
-        fs::write(resolver.registry.index_path(), "not json").unwrap();
-        assert!(matches!(
-            resolver.registry.lookup("session-b"),
-            Err(ResolutionError::RegistryMalformed { .. })
+            resolve_root(&resolver, "session-a"),
+            Err(ResolutionError::MissingSessionWorktree { .. })
         ));
     }
 
     #[test]
-    fn deleted_registry_worktree_is_rejected() {
-        let (_temp, _repository, worktree, resolver) = fixture();
-        register(&resolver, "session-a", &worktree);
+    fn deleted_session_worktree_is_rejected() {
+        let (_temp, repository, worktree, resolver) = fixture();
+        check_in(&repository, &worktree, "session-a");
         fs::remove_dir_all(worktree).unwrap();
 
         assert!(matches!(
             resolve_root(&resolver, "session-a"),
-            Err(ResolutionError::RegistryWorktreeMissing { .. })
+            Err(ResolutionError::SessionWorktreeMissing { .. })
         ));
     }
 
     #[test]
-    fn registry_worktree_outside_repository_is_rejected() {
-        let (temp, _repository, _worktree, resolver) = fixture();
+    fn session_worktree_outside_repository_is_rejected() {
+        let (temp, repository, _worktree, resolver) = fixture();
         let outside = temp.path().join("outside");
         fs::create_dir_all(&outside).unwrap();
-        register(&resolver, "session-a", &outside);
+        check_in(&repository, &outside, "session-a");
 
         assert!(matches!(
             resolve_root(&resolver, "session-a"),
-            Err(ResolutionError::RegistryWorktreeOutsideRepository { .. })
+            Err(ResolutionError::SessionWorktreeOutsideRepository { .. })
         ));
     }
 
     #[test]
     fn relative_workspace_rejects_escape_and_accepts_nested_path() {
-        let (_temp, _repository, worktree, resolver) = fixture();
+        let (_temp, repository, worktree, resolver) = fixture();
         fs::create_dir_all(worktree.join("nested")).unwrap();
-        check_in(&worktree, "session-a");
-        register(&resolver, "session-a", &worktree);
+        check_in(&repository, &worktree, "session-a");
 
         let escaped = resolver.resolve(ResolveRequest {
             session_id: "session-a",
@@ -919,8 +688,7 @@ mod tests {
     #[test]
     fn resolve_classifies_main_checkout_and_blocks_mutation() {
         let (_temp, repository, _worktree, resolver) = fixture();
-        check_in(&repository, "session-a");
-        register(&resolver, "session-a", &repository);
+        check_in(&repository, &repository, "session-a");
 
         let resolved = resolve_root(&resolver, "session-a").unwrap();
 
@@ -936,12 +704,11 @@ mod tests {
 
     #[test]
     fn resolve_accepts_linked_worktree_git_file() {
-        let (_temp, _repository, worktree, resolver) = fixture();
+        let (_temp, repository, worktree, resolver) = fixture();
         fs::remove_dir(worktree.join(".git")).unwrap();
         fs::write(worktree.join(".git"), "gitdir: /temporary/git/dir\n")
             .unwrap();
-        check_in(&worktree, "session-a");
-        register(&resolver, "session-a", &worktree);
+        check_in(&repository, &worktree, "session-a");
 
         let resolved = resolve_root(&resolver, "session-a").unwrap();
 
@@ -953,34 +720,15 @@ mod tests {
     }
 
     #[test]
-    fn resolve_rejects_registry_worktree_without_git_entry() {
-        let (_temp, _repository, worktree, resolver) = fixture();
+    fn resolve_rejects_session_worktree_without_git_entry() {
+        let (_temp, repository, worktree, resolver) = fixture();
         fs::remove_dir(worktree.join(".git")).unwrap();
-        check_in(&worktree, "session-a");
-        register(&resolver, "session-a", &worktree);
+        check_in(&repository, &worktree, "session-a");
 
         assert!(matches!(
             resolve_root(&resolver, "session-a"),
-            Err(ResolutionError::RegistryWorktreeNotGitCheckout { .. })
+            Err(ResolutionError::SessionWorktreeNotGitCheckout { .. })
         ));
-    }
-
-    #[test]
-    fn upsert_round_trips_without_clobbering_other_entries() {
-        let (_temp, repository, worktree, resolver) = fixture();
-        let second = repository.join(".worktrees").join("second");
-        fs::create_dir_all(&second).unwrap();
-        register(&resolver, "session-a", &worktree);
-        register(&resolver, "session-b", &second);
-
-        assert_eq!(
-            resolver.registry.lookup("session-a").unwrap().worktree_path,
-            canonicalize(&worktree).unwrap()
-        );
-        assert_eq!(
-            resolver.registry.lookup("session-b").unwrap().worktree_path,
-            canonicalize(&second).unwrap()
-        );
     }
 
     #[test]
@@ -1014,15 +762,15 @@ mod tests {
     }
 
     fn set_status(
-        worktree: &Path,
+        store_root: &Path,
         session_id: &str,
         status: SessionWorktreeStatus,
     ) {
         let config =
-            SessionStoreConfig::new(worktree.join(".session"), "default");
+            SessionStoreConfig::new(store_root.join(".session"), "default");
         let mut record = config.read_session(session_id).unwrap();
         record.metadata.worktree.as_mut().unwrap().status = status;
-        let path = worktree
+        let path = store_root
             .join(".session")
             .join("sessions")
             .join(session_id)

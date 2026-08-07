@@ -16,12 +16,24 @@ impl SessionStoreConfig {
     /// inference) always outranks a fresh guess. Never writes an
     /// unresolved ticket id — a branch shape that resolves to no real
     /// ticket leaves `ticket_id` untouched.
+    ///
+    /// Bootstraps a minimal record when the session has none yet: session
+    /// initialization runs on the first user prompt, before any capture has
+    /// persisted a record, and the assignment must exist before the first
+    /// tool call routes on it. Nothing is written unless a branch resolves,
+    /// so a non-git directory still leaves the store untouched.
     pub fn infer_worktree_from_environment(
         &self,
         session_id: &str,
         working_dir: &Path,
     ) -> Result<(), SessionError> {
-        let mut record = self.read_session(session_id)?;
+        let mut record = match self.read_session(session_id) {
+            Ok(record) => record,
+            Err(SessionError::NotFound { .. }) => {
+                self.new_inferred_record(session_id)
+            },
+            Err(error) => return Err(error),
+        };
         if record.metadata.worktree.is_some() {
             return Ok(());
         }
@@ -58,6 +70,42 @@ impl SessionStoreConfig {
 
         self.persist_record(record)?;
         Ok(())
+    }
+
+    /// Minimal record for a session that has not been captured yet.
+    fn new_inferred_record(
+        &self,
+        session_id: &str,
+    ) -> SessionRecord {
+        let now = chrono::Utc::now();
+        SessionRecord {
+            schema_version: SESSION_SCHEMA_VERSION,
+            session_id: session_id.to_string(),
+            source: "session-worktree-inference".to_string(),
+            started_at: now,
+            captured_at: now,
+            metadata: SessionMetadata {
+                workspace_slug: self.workspace_slug.clone(),
+                conversation_id: None,
+                agent_id: None,
+                ticket_id: None,
+                model: None,
+                trigger: Some("session-worktree-inference".to_string()),
+                producer: None,
+                copilot_version: None,
+                vscode_version: None,
+                protocol_version: None,
+                worktree: None,
+            },
+            turns: vec![],
+            links: SessionLinks::default(),
+            track_id: None,
+            anchor_ticket_id: None,
+            parent_session_id: None,
+            spawned_session_id: None,
+            emitted_handoff_ids: Vec::new(),
+            picked_up_handoff_ids: Vec::new(),
+        }
     }
 }
 

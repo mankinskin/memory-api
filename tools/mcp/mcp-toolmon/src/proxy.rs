@@ -197,26 +197,35 @@ fn error_result(
 }
 
 const MAIN_CHECKOUT_ENV: &str = "MCP_MAIN_CHECKOUT";
-const STORE_DIR_ENV: &str = "MCP_STORE_DIR";
 const DEFAULT_STORE_DIR: &str = ".session";
+
+/// Builds the resolver anchored on the checkout the servers were launched in.
+///
+/// The anchor is inferred from the process working directory, which is the
+/// checkout the MCP servers were started in. `MCP_MAIN_CHECKOUT` remains an
+/// override for callers that cannot control that working directory; it is not
+/// required for normal operation.
+fn anchored_resolver() -> Result<SessionWorkspaceResolver, String> {
+    let config = match std::env::var(MAIN_CHECKOUT_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    {
+        Some(override_path) => ResolverConfig {
+            main_checkout: PathBuf::from(override_path),
+            workspace_slug: "default".to_string(),
+        },
+        None => ResolverConfig::from_working_dir("default")
+            .map_err(|error| error.to_string())?,
+    };
+    SessionWorkspaceResolver::new(config).map_err(|error| error.to_string())
+}
 
 fn resolve_workspace(
     session_id: &str,
     workspace: Option<&str>,
 ) -> Result<(String, PathBuf), String> {
-    let main_checkout = std::env::var(MAIN_CHECKOUT_ENV)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| format!("{MAIN_CHECKOUT_ENV} must be set; workspace resolution has no process-cwd fallback"))?;
-    let store_dir = std::env::var(STORE_DIR_ENV)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_STORE_DIR.to_string());
-    let resolver = SessionWorkspaceResolver::new(ResolverConfig {
-        main_checkout: PathBuf::from(main_checkout),
-        workspace_slug: "default".to_string(),
-    })
-    .map_err(|error| error.to_string())?;
+    let store_dir = DEFAULT_STORE_DIR.to_string();
+    let resolver = anchored_resolver()?;
     let absolute_workspace = workspace
         .filter(|value| Path::new(value).is_absolute())
         .map(PathBuf::from);
@@ -231,8 +240,7 @@ fn resolve_workspace(
             store_dir: &store_dir,
         })
         .map_err(|error| match error {
-            ResolutionError::RegistryEntryMissing { .. }
-            | ResolutionError::RegistryMissing { .. }
+            ResolutionError::MissingSessionWorktree { .. }
                 if workspace.is_none_or(|value| {
                     value.is_empty() || value == "default"
                 }) =>
@@ -588,10 +596,8 @@ mod tests {
         SessionWorktreeStatus,
     };
     use session_workspace_resolver::{
-        RepositoryRoot,
         ResolverConfig,
         SessionWorkspaceResolver,
-        SessionWorktreeRegistry,
     };
     use std::{
         path::{
@@ -683,7 +689,11 @@ mod tests {
             workspace_slug: "default".to_string(),
         })
         .unwrap();
-        SessionStoreConfig::new(assigned_checkout.join(".session"), "default")
+        // The anchor store is the worktree registry: assignments always live
+        // beneath the checkout the servers were launched in.
+        let store =
+            SessionStoreConfig::new(main_checkout.join(".session"), "default");
+        store
             .check_in_worktree(SessionWorktreeCheckInRequest {
                 session_id: "test-session-id".to_string(),
                 owner_id: "agent".to_string(),
@@ -693,17 +703,8 @@ mod tests {
                 predecessor_session_id: None,
             })
             .unwrap();
-        SessionWorktreeRegistry::new(
-            RepositoryRoot::new(&main_checkout).unwrap(),
-        )
-        .upsert("test-session-id", &assigned_checkout)
-        .unwrap();
-        let path = assigned_checkout
+        let path = main_checkout
             .join(".session/sessions/test-session-id/session.json");
-        let store = SessionStoreConfig::new(
-            assigned_checkout.join(".session"),
-            "default",
-        );
         let mut record = store.read_session("test-session-id").unwrap();
         record.metadata.worktree.as_mut().unwrap().status = status;
         std::fs::write(path, serde_json::to_vec_pretty(&record).unwrap())
@@ -810,11 +811,23 @@ mod tests {
     }
 
     #[test]
-    fn missing_main_checkout_env_is_rejected() {
+    fn anchor_falls_back_to_the_process_working_directory() {
         let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
-        unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
-        let text = response_text(route(allowed_call(), &test_gate()).0);
-        assert!(text.contains("MCP_MAIN_CHECKOUT"));
+        unsafe { std::env::remove_var(MAIN_CHECKOUT_ENV) };
+        let resolver = anchored_resolver()
+            .expect("working directory should anchor the resolver");
+        let candidates = resolver
+            .refused_candidates(DEFAULT_STORE_DIR)
+            .expect("candidates should enumerate");
+        let working_dir =
+            canonicalized_normalized(&std::env::current_dir().unwrap());
+        assert!(
+            candidates
+                .iter()
+                .any(|candidate| normalized(candidate)
+                    .starts_with(&working_dir)),
+            "expected a candidate anchored on {working_dir}, got {candidates:?}"
+        );
     }
 
     #[test]
