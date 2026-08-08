@@ -67,7 +67,7 @@ fn e2e_hook_binary_persists_fixture_transcript() {
     fs::create_dir_all(&store_root).expect("create temp store root");
 
     let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-stop-hook")
-        .or_else(|_| std::env::var("CARGO_BIN_EXE_copilot-capture-hook"))
+        .or_else(|_| std::env::var("CARGO_BIN_EXE_session-capture-hook"))
         .expect("cargo should expose stop or capture hook binary path for integration tests");
 
     let output = Command::new(hook_bin)
@@ -117,6 +117,14 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
     let workspace_fixture = ScriptWorkspaceFixture::new(&script_source);
     let fixture_root = &workspace_fixture.root;
     let fixture_store_root = &workspace_fixture.store_root;
+    let fixture_hook_bin = fixture_root.join("session-capture-hook.exe");
+    fs::copy(
+        std::env::var("CARGO_BIN_EXE_session-capture-hook").expect(
+            "cargo should expose session-capture-hook binary path for integration tests",
+        ),
+        &fixture_hook_bin,
+    )
+    .expect("copy session-capture-hook binary into shell fixture");
 
     let rel_transcript_path =
         PathBuf::from("transcripts").join("copilot.jsonl");
@@ -153,10 +161,11 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
         .replace('\\', "/");
     let script_path_shell = ScriptWorkspaceFixture::script_path_shell();
     let command_line = format!(
-        "SESSION_CAPTURE_STORE_ROOT={} SESSION_CAPTURE_MANIFEST_PATH={} SESSION_CAPTURE_CARGO_BIN={} bash {}",
+        "SESSION_CAPTURE_STORE_ROOT={} SESSION_CAPTURE_MANIFEST_PATH={} SESSION_CAPTURE_CARGO_BIN={} SESSION_CAPTURE_HOOK_BIN={} bash {}",
         shell_single_quote("session-store"),
         shell_single_quote(&manifest_path),
         shell_single_quote(&cargo_bin),
+        shell_single_quote("./session-capture-hook.exe"),
         shell_single_quote(&script_path_shell)
     );
 

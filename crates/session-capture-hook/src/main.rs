@@ -54,7 +54,7 @@ fn main() {
             print_usage();
         },
         Err(error) => {
-            eprintln!("[copilot-capture-hook] {error}");
+            eprintln!("[session-capture-hook] {error}");
             process::exit(1);
         },
     }
@@ -86,7 +86,7 @@ fn run() -> Result<(), SessionError> {
     );
     if !transcript_path.is_file() {
         eprintln!(
-            "[copilot-capture-hook] skip: transcript not found at {}",
+            "[session-capture-hook] skip: transcript not found at {}",
             transcript_path.display()
         );
         emit_hook_payload(routing_outcome.as_ref());
@@ -122,13 +122,13 @@ fn run() -> Result<(), SessionError> {
     // session record would be a far worse bug than the linkage this fixes.
     if store_root.parent().is_none() {
         eprintln!(
-            "[copilot-capture-hook] worktree/ticket inference skipped: resolved session store has no parent"
+            "[session-capture-hook] worktree/ticket inference skipped: resolved session store has no parent"
         );
     } else if let Err(error) =
         infer_capture_worktree(&config, &plan.record.session_id, &store_root)
     {
         eprintln!(
-            "[copilot-capture-hook] worktree/ticket inference skipped: {error}"
+            "[session-capture-hook] worktree/ticket inference skipped: {error}"
         );
     }
 
@@ -226,7 +226,7 @@ fn persist_provisioning_diagnostic(
         }
     }
     let path = std::env::temp_dir()
-        .join("copilot-capture-hook")
+        .join("session-capture-hook")
         .join("provisioning-outcomes")
         .join(format!("{file_name}.json"));
     let _ = write_provisioning_diagnostic(&path, &payload);
@@ -287,7 +287,7 @@ fn initialize_session_routing(
         Ok(current_dir) => current_dir,
         Err(error) => {
             eprintln!(
-                "[copilot-capture-hook] session routing skipped: could not determine current directory: {error}"
+                "[session-capture-hook] session routing skipped: could not determine current directory: {error}"
             );
             return Some(ProvisioningDiagnostic::Skipped {
                 reason: "current_directory_unavailable",
@@ -298,7 +298,7 @@ fn initialize_session_routing(
     let anchor = anchor_checkout(&current_dir);
     if !anchor.is_dir() {
         eprintln!(
-            "[copilot-capture-hook] session routing skipped: anchor checkout '{}' does not exist",
+                "[session-capture-hook] session routing skipped: anchor checkout '{}' does not exist",
             anchor.display()
         );
         return Some(ProvisioningDiagnostic::Skipped {
@@ -321,7 +321,7 @@ fn initialize_session_routing(
         Ok(resolver) => resolver,
         Err(error) => {
             eprintln!(
-                "[copilot-capture-hook] session routing skipped: could not configure session workspace resolver: {error}"
+                "[session-capture-hook] session routing skipped: could not configure session workspace resolver: {error}"
             );
             return Some(diagnostic);
         },
@@ -334,13 +334,13 @@ fn initialize_session_routing(
         Ok(workspace) if workspace.is_worktree() => workspace,
         Ok(_) => {
             eprintln!(
-                "[copilot-capture-hook] session routing skipped: resolver selected the main checkout for session {session_id}"
+                "[session-capture-hook] session routing skipped: resolver selected the main checkout for session {session_id}"
             );
             return Some(diagnostic);
         },
         Err(error) => {
             eprintln!(
-                "[copilot-capture-hook] session routing skipped: no active worktree assignment for session {session_id}: {error}"
+                "[session-capture-hook] session routing skipped: no active worktree assignment for session {session_id}: {error}"
             );
             return Some(diagnostic);
         },
@@ -351,7 +351,7 @@ fn initialize_session_routing(
         config.replace_main_worktree_inference(session_id, &anchor, worktree)
     {
         eprintln!(
-            "[copilot-capture-hook] session routing skipped: could not repair a main-checkout assignment for session {session_id}: {error}"
+            "[session-capture-hook] session routing skipped: could not repair a main-checkout assignment for session {session_id}: {error}"
         );
         return Some(diagnostic);
     }
@@ -359,7 +359,7 @@ fn initialize_session_routing(
         config.infer_worktree_from_environment(session_id, worktree)
     {
         eprintln!(
-            "[copilot-capture-hook] session routing skipped: could not assign a worktree for session {session_id}: {error}"
+            "[session-capture-hook] session routing skipped: could not assign a worktree for session {session_id}: {error}"
         );
     }
     diagnostic.set_worktree(worktree);
@@ -387,7 +387,7 @@ fn provision_session_worktree(
             );
         if !store_belongs_to_anchor {
             eprintln!(
-                "[copilot-capture-hook] worktree provisioning skipped for session {session_id}: anchor checkout '{}' and resolved session store '{}' do not match",
+                "[session-capture-hook] worktree provisioning skipped for session {session_id}: anchor checkout '{}' and resolved session store '{}' do not match",
                 anchor.display(),
                 store_root.display()
             );
@@ -401,7 +401,7 @@ fn provision_session_worktree(
         Ok(git) => git,
         Err(error) => {
             eprintln!(
-                "[copilot-capture-hook] worktree provisioning failed for session {session_id}: {error}"
+                "[session-capture-hook] worktree provisioning failed for session {session_id}: {error}"
             );
             return ProvisioningDiagnostic::Failed {
                 reason: format!("worktree_git_open_failed: {error}"),
@@ -443,17 +443,17 @@ fn report_provision_error(
             current_count,
             reason,
         } => eprintln!(
-            "[copilot-capture-hook] === WORKTREE PROVISION CAP REACHED ===\n\
+            "[session-capture-hook] === WORKTREE PROVISION CAP REACHED ===\n\
              session: {session_id}\n\
              cap: {max_worktrees}\n\
              registered worktrees: {current_count}\n\
              reclaimable worktrees: none ({reason})\n\
              remediation: remove a finished worktree, or raise WORKTREE_MAX\n\
              session will continue on the main checkout\n\
-             [copilot-capture-hook] === END WORKTREE PROVISION CAP MESSAGE ==="
+             [session-capture-hook] === END WORKTREE PROVISION CAP MESSAGE ==="
         ),
         error => eprintln!(
-            "[copilot-capture-hook] worktree provisioning failed for session {session_id}: {error}"
+            "[session-capture-hook] worktree provisioning failed for session {session_id}: {error}"
         ),
     }
 }
@@ -465,11 +465,11 @@ fn report_index_rebuild_outcome(
     match outcome {
         IndexRebuildOutcome::Rebuilt { .. } => {},
         IndexRebuildOutcome::Failed { store, error, .. } => eprintln!(
-            "[copilot-capture-hook] index rebuild failed for {store:?} store in {}: {error}",
+            "[session-capture-hook] index rebuild failed for {store:?} store in {}: {error}",
             worktree.display()
         ),
         IndexRebuildOutcome::Skipped { store, reason, .. } => eprintln!(
-            "[copilot-capture-hook] index rebuild skipped for {store:?} store in {}: {reason}",
+            "[session-capture-hook] index rebuild skipped for {store:?} store in {}: {reason}",
             worktree.display()
         ),
     }
@@ -636,7 +636,7 @@ fn report_structured_feedback_signals(plan: &SessionStorePlan) {
 
     match serde_json::to_string(&signals) {
         Ok(json) => eprintln!(
-            "[copilot-capture-hook] structured feedback signals for session {}: {} total ({} failed tool calls, {} explicit ingestions) {}",
+            "[session-capture-hook] structured feedback signals for session {}: {} total ({} failed tool calls, {} explicit ingestions) {}",
             plan.record.session_id,
             signals.len(),
             failed_tool_calls,
@@ -644,7 +644,7 @@ fn report_structured_feedback_signals(plan: &SessionStorePlan) {
             json
         ),
         Err(error) => eprintln!(
-            "[copilot-capture-hook] structured feedback signals for session {}: {} total ({} failed tool calls, {} explicit ingestions); summary serialization failed: {error}",
+            "[session-capture-hook] structured feedback signals for session {}: {} total ({} failed tool calls, {} explicit ingestions); summary serialization failed: {error}",
             plan.record.session_id,
             signals.len(),
             failed_tool_calls,
@@ -680,7 +680,7 @@ fn synthesize_follow_up_tickets(
         Ok(store) => store,
         Err(error) => {
             eprintln!(
-                "[copilot-capture-hook] follow-up synthesis skipped: failed to open ticket store at {}: {error}",
+                "[session-capture-hook] follow-up synthesis skipped: failed to open ticket store at {}: {error}",
                 ticket_root.display()
             );
             return;
@@ -696,7 +696,7 @@ fn synthesize_follow_up_tickets(
             Ok(None) => continue,
             Err(error) => {
                 eprintln!(
-                    "[copilot-capture-hook] follow-up draft build failed for session {}: {error}",
+                    "[session-capture-hook] follow-up draft build failed for session {}: {error}",
                     plan.record.session_id
                 );
                 continue;
@@ -705,15 +705,15 @@ fn synthesize_follow_up_tickets(
 
         match synthesize_follow_up_ticket(&ticket_store, &draft, None) {
             Ok(FollowUpSynthesisOutcome::Created(id)) => eprintln!(
-                "[copilot-capture-hook] synthesized follow-up ticket {id} ({})",
+                "[session-capture-hook] synthesized follow-up ticket {id} ({})",
                 draft.dedupe_key
             ),
             Ok(FollowUpSynthesisOutcome::AlreadyExists(id)) => eprintln!(
-                "[copilot-capture-hook] follow-up ticket {id} already exists for {} (no duplicate created)",
+                "[session-capture-hook] follow-up ticket {id} already exists for {} (no duplicate created)",
                 draft.dedupe_key
             ),
             Err(error) => eprintln!(
-                "[copilot-capture-hook] follow-up ticket synthesis failed for {}: {error}",
+                "[session-capture-hook] follow-up ticket synthesis failed for {}: {error}",
                 draft.dedupe_key
             ),
         }
@@ -726,7 +726,7 @@ fn refresh_tool_metrics_rollup(config: &SessionStoreConfig) {
     let window = ToolMetricsWindow::default();
     if let Err(error) = config.write_tool_metrics_rollup(window) {
         eprintln!(
-            "[copilot-capture-hook] tool metrics rollup refresh failed (non-fatal): {error}"
+            "[session-capture-hook] tool metrics rollup refresh failed (non-fatal): {error}"
         );
     }
 }
@@ -744,7 +744,7 @@ fn resolve_capture_store_root(
         session_id.filter(|session_id| !session_id.trim().is_empty())
     else {
         eprintln!(
-            "[copilot-capture-hook] capture skipped: hook payload has no session id; refusing to write a default .session store"
+            "[session-capture-hook] capture skipped: hook payload has no session id; refusing to write a default .session store"
         );
         return None;
     };
@@ -752,7 +752,7 @@ fn resolve_capture_store_root(
         Ok(current_dir) => current_dir,
         Err(error) => {
             eprintln!(
-                "[copilot-capture-hook] capture skipped: could not determine current directory: {error}"
+                "[session-capture-hook] capture skipped: could not determine current directory: {error}"
             );
             return None;
         },
@@ -760,7 +760,7 @@ fn resolve_capture_store_root(
     let anchor = anchor_checkout(&current_dir);
     if !anchor.join(".session").is_dir() {
         eprintln!(
-            "[copilot-capture-hook] capture skipped: no session store beneath '{}'; refusing to write a default .session store",
+            "[session-capture-hook] capture skipped: no session store beneath '{}'; refusing to write a default .session store",
             anchor.display()
         );
         return None;
@@ -772,7 +772,7 @@ fn resolve_capture_store_root(
         Ok(resolver) => resolver,
         Err(error) => {
             eprintln!(
-                "[copilot-capture-hook] capture skipped: could not configure session workspace resolver: {error}"
+                "[session-capture-hook] capture skipped: could not configure session workspace resolver: {error}"
             );
             return None;
         },
@@ -786,14 +786,14 @@ fn resolve_capture_store_root(
             Ok(store_root) => Some(store_root),
             Err(error) => {
                 eprintln!(
-                    "[copilot-capture-hook] capture skipped: could not resolve worktree session store: {error}"
+                    "[session-capture-hook] capture skipped: could not resolve worktree session store: {error}"
                 );
                 None
             },
         },
         Err(error) => {
             eprintln!(
-                "[copilot-capture-hook] capture skipped: no active worktree assignment for session {session_id}: {error}"
+                "[session-capture-hook] capture skipped: no active worktree assignment for session {session_id}: {error}"
             );
             None
         },
@@ -900,11 +900,27 @@ mod tests {
         unsafe { env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
         std::env::set_current_dir(&main_checkout).unwrap();
 
-        let result = resolve_capture_store_root(
+        let store_root = resolve_capture_store_root(
             None,
             "default",
             Some("session-worktree"),
-        );
+        )
+        .expect("active worktree assignment should resolve");
+
+        let transcript_path = fixture.path().join("capture.jsonl");
+        std::fs::write(
+            &transcript_path,
+            include_str!("../tests/fixtures/local_parse_fixture_a.jsonl"),
+        )
+        .unwrap();
+        let config = SessionStoreConfig::new(&store_root, "default");
+        let plan = config
+            .capture_copilot_transcript_with_tool_response(
+                &transcript_path,
+                "Stop",
+                None,
+            )
+            .expect("capture should persist into the resolved worktree store");
 
         std::env::set_current_dir(original_cwd).unwrap();
         unsafe {
@@ -913,14 +929,19 @@ mod tests {
                 None => env::remove_var("MCP_MAIN_CHECKOUT"),
             }
         }
-        let store_root =
-            result.expect("active worktree assignment should resolve");
-
         assert_eq!(store_root, worktree.join(".session"));
-        // The anchor store legitimately holds the worktree assignment, so the
-        // guarantee is that capture is routed away from it, not that it is
-        // empty.
-        assert_ne!(store_root, main_checkout.join(".session"));
+        let record = config.read_session(&plan.record.session_id).expect(
+            "captured session should be readable from the worktree store",
+        );
+        assert_eq!(record.session_id, plan.record.session_id);
+        assert!(
+            !main_checkout
+                .join(".session")
+                .join("sessions")
+                .join(&plan.record.session_id)
+                .exists(),
+            "capture must not write a same-session record into the main-checkout store"
+        );
     }
 
     #[test]

@@ -65,7 +65,7 @@ fn run_hook_with_payload(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("spawn copilot-capture-hook");
+        .expect("spawn session-capture-hook");
     child
         .stdin
         .take()
@@ -74,7 +74,7 @@ fn run_hook_with_payload(
         .expect("write hook stdin payload");
     child
         .wait_with_output()
-        .expect("wait for copilot-capture-hook")
+        .expect("wait for session-capture-hook")
 }
 
 #[test]
@@ -86,8 +86,8 @@ fn e2e_user_prompt_provisions_and_captures_a_fresh_session() {
     let transcript = local_fixture_a().replace(FIXTURE_SESSION_ID, &session_id);
     let transcript_path =
         write_fixture_transcript(&checkout, "fresh-session.jsonl", &transcript);
-    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
-        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
 
     let output = run_hook_with_payload(
         &hook_bin,
@@ -101,7 +101,7 @@ fn e2e_user_prompt_provisions_and_captures_a_fresh_session() {
 
     assert!(
         output.status.success(),
-        "copilot-capture-hook failed: stdout={} stderr={}",
+        "session-capture-hook failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -132,8 +132,8 @@ fn e2e_stop_does_not_provision_a_fresh_session() {
     let transcript = local_fixture_a().replace(FIXTURE_SESSION_ID, &session_id);
     let transcript_path =
         write_fixture_transcript(&checkout, "fresh-session.jsonl", &transcript);
-    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
-        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
 
     let output = run_hook_with_payload(
         &hook_bin,
@@ -158,8 +158,8 @@ fn e2e_missing_transcript_user_prompt_provisions_but_stop_does_not() {
     let prompt_checkout = fixture.path().join("prompt-checkout");
     create_fixture_checkout(&prompt_checkout);
     let prompt_session_id = format!("missing-transcript-{}", unique_suffix());
-    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
-        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
 
     let output = run_hook_with_payload(
         &hook_bin,
@@ -173,7 +173,7 @@ fn e2e_missing_transcript_user_prompt_provisions_but_stop_does_not() {
 
     assert!(
         output.status.success(),
-        "copilot-capture-hook failed: stdout={} stderr={}",
+        "session-capture-hook failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -237,8 +237,8 @@ fn e2e_hook_binary_persists_fixture_transcript() {
     let store_root = store_dir.path().join("memory-api-store");
     fs::create_dir_all(&store_root).expect("create temp store root");
 
-    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
-        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
 
     let output = Command::new(hook_bin)
         .env("MCP_MAIN_CHECKOUT", fixture_dir.path())
@@ -251,11 +251,11 @@ fn e2e_hook_binary_persists_fixture_transcript() {
         .arg("--trigger")
         .arg("UserPromptSubmit")
         .output()
-        .expect("run copilot-capture-hook");
+        .expect("run session-capture-hook");
 
     assert!(
         output.status.success(),
-        "copilot-capture-hook failed: stdout={} stderr={}",
+        "session-capture-hook failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -310,8 +310,8 @@ fn e2e_user_prompt_with_external_store_does_not_provision_cwd_checkout() {
     fs::create_dir_all(cwd_checkout.path().join(".session"))
         .expect("create cwd session store");
 
-    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
-        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
     let stdin_payload = serde_json::json!({
         "hook_event_name": "UserPromptSubmit",
         "session_id": FIXTURE_SESSION_ID,
@@ -331,7 +331,7 @@ fn e2e_user_prompt_with_external_store_does_not_provision_cwd_checkout() {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("spawn copilot-capture-hook");
+        .expect("spawn session-capture-hook");
     child
         .stdin
         .take()
@@ -340,11 +340,11 @@ fn e2e_user_prompt_with_external_store_does_not_provision_cwd_checkout() {
         .expect("write hook stdin payload");
     let output = child
         .wait_with_output()
-        .expect("wait for copilot-capture-hook");
+        .expect("wait for session-capture-hook");
 
     assert!(
         output.status.success(),
-        "copilot-capture-hook failed: stdout={} stderr={}",
+        "session-capture-hook failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -387,8 +387,8 @@ fn e2e_mismatched_store_emits_nonblocking_observability_payload() {
     let store_root = fixture_dir.path().join("memory-api-store");
     fs::create_dir_all(&store_root).expect("create temp store root");
 
-    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
-        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
     let stdin_payload = serde_json::json!({
         "hook_event_name": "UserPromptSubmit",
         "session_id": FIXTURE_SESSION_ID,
@@ -405,7 +405,7 @@ fn e2e_mismatched_store_emits_nonblocking_observability_payload() {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("spawn copilot-capture-hook");
+        .expect("spawn session-capture-hook");
     child
         .stdin
         .take()
@@ -414,11 +414,11 @@ fn e2e_mismatched_store_emits_nonblocking_observability_payload() {
         .expect("write hook stdin payload");
     let output = child
         .wait_with_output()
-        .expect("wait for copilot-capture-hook");
+        .expect("wait for session-capture-hook");
 
     assert!(
         output.status.success(),
-        "copilot-capture-hook failed: stdout={} stderr={}",
+        "session-capture-hook failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -466,8 +466,8 @@ fn e2e_hook_binary_populates_tool_metrics_from_captured_tool_events() {
     let store_root = store_dir.path().join("memory-api-store");
     fs::create_dir_all(&store_root).expect("create temp store root");
 
-    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
-        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
 
     let output = Command::new(hook_bin)
         .env("MCP_MAIN_CHECKOUT", fixture_dir.path())
@@ -480,11 +480,11 @@ fn e2e_hook_binary_populates_tool_metrics_from_captured_tool_events() {
         .arg("--trigger")
         .arg("Stop")
         .output()
-        .expect("run copilot-capture-hook");
+        .expect("run session-capture-hook");
 
     assert!(
         output.status.success(),
-        "copilot-capture-hook failed: stdout={} stderr={}",
+        "session-capture-hook failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -512,7 +512,7 @@ fn e2e_hook_binary_populates_tool_metrics_from_captured_tool_events() {
 /// `tool_metrics.rs` hand-construct `role: Tool` turns the real Copilot
 /// producer never emits, so a green unit-test count proved nothing about the
 /// artifact the hook binary actually writes. This test drives the real
-/// `copilot-capture-hook` binary end-to-end and reads back the persisted
+/// `session-capture-hook` binary end-to-end and reads back the persisted
 /// `tool-metrics.json`.
 const PRODUCER_SHAPED_TOOL_TRANSCRIPT: &str = concat!(
     r#"{"id":"evt-start-g","type":"session.start","timestamp":"2026-07-30T10:00:00.000Z","data":{"sessionId":"fixture-tool-metrics-gate","producer":"copilot-agent","startTime":"2026-07-30T10:00:00.000Z"}}"#,
@@ -540,8 +540,8 @@ fn e2e_val_session_api_tool_metrics_gate_asserts_nonempty_tools_map() {
     let store_root = store_dir.path().join("memory-api-store");
     fs::create_dir_all(&store_root).expect("create temp store root");
 
-    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
-        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
 
     let output = Command::new(hook_bin)
         .env("MCP_MAIN_CHECKOUT", fixture_dir.path())
@@ -554,11 +554,11 @@ fn e2e_val_session_api_tool_metrics_gate_asserts_nonempty_tools_map() {
         .arg("--trigger")
         .arg("Stop")
         .output()
-        .expect("run copilot-capture-hook");
+        .expect("run session-capture-hook");
 
     assert!(
         output.status.success(),
-        "copilot-capture-hook failed: stdout={} stderr={}",
+        "session-capture-hook failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -586,7 +586,7 @@ fn e2e_val_session_api_tool_metrics_gate_asserts_nonempty_tools_map() {
     assert_eq!(tools["read_file"]["call_count"], 1);
 }
 
-/// AC3 of ticket `44119807` (T2): drives the real `copilot-capture-hook`
+/// AC3 of ticket `44119807` (T2): drives the real `session-capture-hook`
 /// binary with `--from-hook-stdin`, feeding a PostToolUse-shaped stdin
 /// payload whose `tool_response` carries real output text and whose
 /// `tool_use_id` matches the transcript's `toolCallId`. Asserts the
@@ -632,8 +632,8 @@ fn e2e_hook_binary_captures_output_chars_from_hook_stdin_tool_response() {
     let store_root = store_dir.path().join("memory-api-store");
     fs::create_dir_all(&store_root).expect("create temp store root");
 
-    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
-        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
 
     let stdin_payload = serde_json::json!({
         "hook_event_name": "PostToolUse",
@@ -658,7 +658,7 @@ fn e2e_hook_binary_captures_output_chars_from_hook_stdin_tool_response() {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("spawn copilot-capture-hook");
+        .expect("spawn session-capture-hook");
 
     child
         .stdin
@@ -669,11 +669,11 @@ fn e2e_hook_binary_captures_output_chars_from_hook_stdin_tool_response() {
 
     let output = child
         .wait_with_output()
-        .expect("wait for copilot-capture-hook");
+        .expect("wait for session-capture-hook");
 
     assert!(
         output.status.success(),
-        "copilot-capture-hook failed: stdout={} stderr={}",
+        "session-capture-hook failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -738,8 +738,8 @@ fn e2e_hook_binary_captures_output_chars_from_spill_file_when_hook_payload_empty
     let store_root = store_dir.path().join("memory-api-store");
     fs::create_dir_all(&store_root).expect("create temp store root");
 
-    let hook_bin = std::env::var("CARGO_BIN_EXE_copilot-capture-hook")
-        .expect("cargo should expose copilot-capture-hook binary path for integration tests");
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
 
     let stdin_payload = serde_json::json!({
         "hook_event_name": "PostToolUse",
@@ -765,7 +765,7 @@ fn e2e_hook_binary_captures_output_chars_from_spill_file_when_hook_payload_empty
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("spawn copilot-capture-hook");
+        .expect("spawn session-capture-hook");
 
     child
         .stdin
@@ -776,11 +776,11 @@ fn e2e_hook_binary_captures_output_chars_from_spill_file_when_hook_payload_empty
 
     let output = child
         .wait_with_output()
-        .expect("wait for copilot-capture-hook");
+        .expect("wait for session-capture-hook");
 
     assert!(
         output.status.success(),
-        "copilot-capture-hook failed: stdout={} stderr={}",
+        "session-capture-hook failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -829,6 +829,14 @@ fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
     let workspace_fixture = ScriptWorkspaceFixture::new(&script_source);
     let fixture_root = &workspace_fixture.root;
     let fixture_store_root = &workspace_fixture.store_root;
+    let fixture_hook_bin = fixture_root.join("session-capture-hook.exe");
+    fs::copy(
+        std::env::var("CARGO_BIN_EXE_session-capture-hook").expect(
+            "cargo should expose session-capture-hook binary path for integration tests",
+        ),
+        &fixture_hook_bin,
+    )
+    .expect("copy session-capture-hook binary into shell fixture");
 
     let rel_transcript_path =
         PathBuf::from("transcripts").join("copilot.jsonl");
@@ -865,10 +873,11 @@ fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
         .replace('\\', "/");
     let script_path_shell = ScriptWorkspaceFixture::script_path_shell();
     let command_line = format!(
-        "SESSION_CAPTURE_STORE_ROOT={} SESSION_CAPTURE_MANIFEST_PATH={} SESSION_CAPTURE_CARGO_BIN={} bash {}",
+        "SESSION_CAPTURE_STORE_ROOT={} SESSION_CAPTURE_MANIFEST_PATH={} SESSION_CAPTURE_CARGO_BIN={} SESSION_CAPTURE_HOOK_BIN={} bash {}",
         shell_single_quote("session-store"),
         shell_single_quote(&manifest_path),
         shell_single_quote(&cargo_bin),
+        shell_single_quote("./session-capture-hook.exe"),
         shell_single_quote(&script_path_shell)
     );
 
