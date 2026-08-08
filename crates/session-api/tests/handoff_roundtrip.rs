@@ -76,6 +76,9 @@ fn open_escalations_field_persists_and_round_trips() {
         .create_handoff_record(workspace_session_id, Some(package.clone()), validation, None)
         .expect("create handoff record");
 
+    assert_eq!(record.higher_level_objective, package.higher_level_objective);
+    assert_eq!(record.upward_context, package.upward_context);
+
     // ASSERT: open_escalations should persist unchanged
     assert_eq!(
         record.open_escalations, package.open_escalations,
@@ -111,6 +114,9 @@ fn empty_open_escalations_is_persisted_as_empty_list() {
     let record = config
         .create_handoff_record(workspace_session_id, Some(package.clone()), vec![], None)
         .expect("create handoff record");
+
+    assert_eq!(record.higher_level_objective, package.higher_level_objective);
+    assert_eq!(record.upward_context, package.upward_context);
 
     // ASSERT: empty open_escalations should persist as empty list (not absent/null)
     assert_eq!(record.open_escalations, Vec::<String>::new());
@@ -148,6 +154,12 @@ fn validation_gate_command_field_persists_and_round_trips() {
     let record = config
         .create_handoff_record(workspace_session_id, Some(package), validation.clone(), None)
         .expect("create handoff record");
+
+    assert_eq!(
+        record.higher_level_objective,
+        "Deliver the program objective"
+    );
+    assert_eq!(record.upward_context, upward_context());
 
     // ASSERT: command field should persist unchanged
     assert_eq!(record.validation.len(), 1);
