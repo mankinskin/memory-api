@@ -5,7 +5,7 @@ edition = "2024"
 description = "Copilot session capture hook binary"
 
 [[bin]]
-name = "copilot-capture-hook"
+name = "session-capture-hook"
 path = "src/main.rs"
 
 [dependencies]
