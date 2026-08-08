@@ -5,7 +5,10 @@
 //! newline-delimited JSON on stdio and calls into here.
 
 use std::{
-    collections::HashSet,
+    collections::{
+        HashMap,
+        HashSet,
+    },
     path::{
         Path,
         PathBuf,
@@ -38,6 +41,57 @@ use toolmon_policy_api::{
 /// Optional grant id argument for budget offset.
 pub const GRANT_ID_ARG: &str = "grant_id";
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PathArgumentKind {
+    Workspace,
+    Path,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PathArgument {
+    name: &'static str,
+    kind: PathArgumentKind,
+}
+
+const PATH_ARGUMENT_REGISTRY: &[(&str, PathArgument)] = &[
+    ("fs_list_dir", PathArgument { name: "path", kind: PathArgumentKind::Path }),
+    ("fs_stat", PathArgument { name: "path", kind: PathArgumentKind::Path }),
+    ("fs_move_file", PathArgument { name: "from", kind: PathArgumentKind::Path }),
+    ("fs_move_file", PathArgument { name: "to", kind: PathArgumentKind::Path }),
+    ("fs_move_file", PathArgument { name: "root", kind: PathArgumentKind::Path }),
+    ("fs_rename_file", PathArgument { name: "from", kind: PathArgumentKind::Path }),
+    ("fs_rename_file", PathArgument { name: "root", kind: PathArgumentKind::Path }),
+    ("fs_copy_file", PathArgument { name: "from", kind: PathArgumentKind::Path }),
+    ("fs_copy_file", PathArgument { name: "to", kind: PathArgumentKind::Path }),
+    ("fs_copy_file", PathArgument { name: "root", kind: PathArgumentKind::Path }),
+    ("fs_delete_file", PathArgument { name: "path", kind: PathArgumentKind::Path }),
+    ("fs_delete_file", PathArgument { name: "root", kind: PathArgumentKind::Path }),
+    ("fs_delete_dir", PathArgument { name: "path", kind: PathArgumentKind::Path }),
+    ("fs_delete_dir", PathArgument { name: "root", kind: PathArgumentKind::Path }),
+    ("peek_read", PathArgument { name: "path", kind: PathArgumentKind::Path }),
+    ("peek_grep", PathArgument { name: "path", kind: PathArgumentKind::Path }),
+    ("peek_count", PathArgument { name: "path", kind: PathArgumentKind::Path }),
+    ("peek_skeleton", PathArgument { name: "path", kind: PathArgumentKind::Path }),
+];
+
+fn registered_path_argument(
+    tool: &str,
+    name: &str,
+) -> Option<PathArgument> {
+    if name == "workspace" {
+        return Some(PathArgument {
+            name: "workspace",
+            kind: PathArgumentKind::Workspace,
+        });
+    }
+    PATH_ARGUMENT_REGISTRY
+        .iter()
+        .find(|(registered_tool, argument)| {
+            *registered_tool == tool && argument.name == name
+        })
+        .map(|(_, argument)| *argument)
+}
+
 /// What the proxy should do with a client→server message.
 #[derive(Debug)]
 pub enum ClientAction {
@@ -52,6 +106,7 @@ pub enum ClientAction {
 #[derive(Default)]
 pub struct PendingList {
     ids: HashSet<String>,
+    path_arguments: HashMap<String, Vec<PathArgument>>,
 }
 
 impl PendingList {
@@ -67,6 +122,39 @@ impl PendingList {
         id: &Value,
     ) -> bool {
         self.ids.remove(&id_key(id))
+    }
+
+    fn record_path_arguments(
+        &mut self,
+        tool: &Value,
+    ) {
+        let Some(name) = tool.get("name").and_then(Value::as_str) else {
+            return;
+        };
+        let Some(properties) = tool
+            .get("inputSchema")
+            .and_then(|schema| schema.get("properties"))
+            .and_then(Value::as_object)
+        else {
+            self.path_arguments.remove(name);
+            return;
+        };
+        let arguments = properties
+            .keys()
+            .filter_map(|argument| registered_path_argument(name, argument))
+            .collect::<Vec<_>>();
+        if arguments.is_empty() {
+            self.path_arguments.remove(name);
+        } else {
+            self.path_arguments.insert(name.to_string(), arguments);
+        }
+    }
+
+    fn path_arguments(
+        &self,
+        tool: &str,
+    ) -> Vec<PathArgument> {
+        self.path_arguments.get(tool).cloned().unwrap_or_default()
     }
 }
 
@@ -449,15 +537,22 @@ pub fn handle_client_message(
                     )
                 },
                 Decision::Allow => {
-                    let workspace = msg
-                        .get("params")
-                        .and_then(|params| params.get("arguments"))
-                        .and_then(|arguments| arguments.get("workspace"))
-                        .and_then(Value::as_str)
-                        .map(str::to_string);
+                    let path_arguments = pending.path_arguments(&tool);
+                    let workspace = path_arguments
+                        .iter()
+                        .find(|argument| {
+                            argument.kind == PathArgumentKind::Workspace
+                        })
+                        .and_then(|argument| {
+                            msg
+                                .get("params")
+                                .and_then(|params| params.get("arguments"))
+                                .and_then(|arguments| arguments.get(argument.name))
+                                .and_then(Value::as_str)
+                        });
                     let (target_root, store_root) = match resolve_workspace(
                         &session_id,
-                        workspace.as_deref(),
+                        workspace,
                     ) {
                         Ok(resolved) => resolved,
                         Err(error) => {
@@ -473,6 +568,54 @@ pub fn handle_client_message(
                             );
                         },
                     };
+                    let mut rewrites = Vec::new();
+                    for argument in &path_arguments {
+                        let value = msg
+                            .get("params")
+                            .and_then(|params| params.get("arguments"))
+                            .and_then(|arguments| arguments.get(argument.name))
+                            .and_then(Value::as_str);
+                        let Some(value) = value else {
+                            if argument.kind == PathArgumentKind::Workspace {
+                                rewrites.push((argument.name, target_root.clone()));
+                            }
+                            continue;
+                        };
+                        if Path::new(value).is_absolute() {
+                            if let Err(error) =
+                                resolve_workspace(&session_id, Some(value))
+                            {
+                                let telemetry = immediate_telemetry(
+                                    "reject-workspace",
+                                    Some(caller_model),
+                                );
+                                return (
+                                    ClientAction::Respond(error_result(
+                                        &id, &error,
+                                    )),
+                                    Some(telemetry),
+                                );
+                            }
+                            continue;
+                        }
+                        match resolve_workspace(&session_id, Some(value)) {
+                            Ok((rewritten, _)) => {
+                                rewrites.push((argument.name, rewritten));
+                            },
+                            Err(error) => {
+                                let telemetry = immediate_telemetry(
+                                    "reject-workspace",
+                                    Some(caller_model),
+                                );
+                                return (
+                                    ClientAction::Respond(error_result(
+                                        &id, &error,
+                                    )),
+                                    Some(telemetry),
+                                );
+                            },
+                        }
+                    }
                     eprintln!(
                         "[mcp-toolmon] resolved store root: {}",
                         store_root.to_string_lossy().replace('\\', "/")
@@ -486,10 +629,9 @@ pub fn handle_client_message(
                         args.remove(CALLER_MODEL_ARG);
                         args.remove(SESSION_ID_ARG);
                         args.remove(GRANT_ID_ARG);
-                        args.insert(
-                            "workspace".to_string(),
-                            Value::String(target_root),
-                        );
+                        for (name, value) in rewrites {
+                            args.insert(name.to_string(), Value::String(value));
+                        }
                     }
                     let decision_label = if soft_warning.is_some() {
                         "allow-normalized"
@@ -578,6 +720,7 @@ pub fn handle_server_message(
         .and_then(Value::as_array_mut)
     {
         for tool in tools.iter_mut() {
+            pending.record_path_arguments(tool);
             match policy {
                 Some(p) => p.on_tools_list(tool),
                 None => inject_caller_model_schema(tool),
@@ -752,6 +895,41 @@ mod tests {
         )
     }
 
+    fn route_with_schema(
+        request: Value,
+        gate: &CostGatePolicy,
+        tool: &str,
+        properties: Value,
+    ) -> (ClientAction, Option<CallTelemetry>) {
+        let mut pending = PendingList::default();
+        let mut pending_calls = PendingCalls::default();
+        let _ = handle_client_message(
+            json!({"jsonrpc":"2.0","id":99,"method":"tools/list","params":{}}),
+            Some(gate),
+            &mut pending,
+            &mut pending_calls,
+        );
+        let _ = handle_server_message(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 99,
+                "result": { "tools": [{
+                    "name": tool,
+                    "inputSchema": { "type": "object", "properties": properties }
+                }] }
+            }),
+            Some(gate),
+            &mut pending,
+            &mut pending_calls,
+        );
+        handle_client_message(
+            request,
+            Some(gate),
+            &mut pending,
+            &mut pending_calls,
+        )
+    }
+
     fn normalized(path: &Path) -> String {
         path.to_string_lossy().replace('\\', "/")
     }
@@ -779,8 +957,12 @@ mod tests {
         let (_temp, main_checkout, worktree) =
             routing_fixture(SessionWorktreeStatus::Active, false);
         unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
-        let (ClientAction::Forward(forwarded), _) =
-            route(allowed_call(), &test_gate())
+        let (ClientAction::Forward(forwarded), _) = route_with_schema(
+            allowed_call(),
+            &test_gate(),
+            "read_file",
+            json!({"workspace": {"type": "string"}}),
+        )
         else {
             panic!("expected forwarded request");
         };
@@ -865,36 +1047,51 @@ mod tests {
         let mut request = allowed_call();
         request["params"]["arguments"]["workspace"] =
             json!(inside.to_string_lossy());
-        let (ClientAction::Forward(forwarded), _) =
-            route(request, &test_gate())
+        let (ClientAction::Forward(forwarded), _) = route_with_schema(
+            request,
+            &test_gate(),
+            "read_file",
+            json!({"workspace": {"type": "string"}}),
+        )
         else {
             panic!("expected forwarded request");
         };
-        assert_eq!(
-            forwarded["params"]["arguments"]["workspace"],
-            json!(canonicalized_normalized(&inside))
-        );
+        assert_eq!(forwarded["params"]["arguments"]["workspace"], json!(inside));
 
         let outside = main_checkout.join("outside");
         std::fs::create_dir_all(&outside).unwrap();
         let mut request = allowed_call();
         request["params"]["arguments"]["workspace"] =
             json!(outside.to_string_lossy());
-        let text = response_text(route(request, &test_gate()).0);
+        let text = response_text(route_with_schema(
+            request,
+            &test_gate(),
+            "read_file",
+            json!({"workspace": {"type": "string"}}),
+        ).0);
         assert!(text.contains(outside.to_string_lossy().as_ref()));
         assert!(text.contains("resolved session worktree"));
 
         let mut request = allowed_call();
         request["params"]["arguments"]["workspace"] =
             json!(main_checkout.to_string_lossy());
-        let text = response_text(route(request, &test_gate()).0);
+        let text = response_text(route_with_schema(
+            request,
+            &test_gate(),
+            "read_file",
+            json!({"workspace": {"type": "string"}}),
+        ).0);
         assert!(text.contains(main_checkout.to_string_lossy().as_ref()));
         assert!(text.contains("resolved session worktree"));
 
         let mut request = allowed_call();
         request["params"]["arguments"]["workspace"] = json!("nested");
-        let (ClientAction::Forward(forwarded), _) =
-            route(request, &test_gate())
+        let (ClientAction::Forward(forwarded), _) = route_with_schema(
+            request,
+            &test_gate(),
+            "read_file",
+            json!({"workspace": {"type": "string"}}),
+        )
         else {
             panic!("expected forwarded request");
         };
@@ -911,8 +1108,12 @@ mod tests {
         let (_temp, main_checkout, worktree) =
             routing_fixture(SessionWorktreeStatus::Active, false);
         unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", main_checkout) };
-        let (ClientAction::Forward(forwarded), _) =
-            route(allowed_call(), &test_gate())
+        let (ClientAction::Forward(forwarded), _) = route_with_schema(
+            allowed_call(),
+            &test_gate(),
+            "read_file",
+            json!({"workspace": {"type": "string"}}),
+        )
         else {
             panic!("expected forwarded request");
         };
@@ -921,6 +1122,71 @@ mod tests {
             json!(normalized(&worktree))
         );
         unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
+    }
+
+    #[test]
+    fn registered_paths_rewrite_only_declared_schema_arguments() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let (_temp, main_checkout, worktree) =
+            routing_fixture(SessionWorktreeStatus::Active, false);
+        let nested = worktree.join("nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        unsafe { std::env::set_var(MAIN_CHECKOUT_ENV, &main_checkout) };
+
+        let mut request = call("peek_read", Some("gpt-5-mini"));
+        request["params"]["arguments"]["path"] = json!("nested");
+        request["params"]["arguments"]["untouched"] = json!("value");
+        let (ClientAction::Forward(forwarded), _) = route_with_schema(
+            request,
+            &test_gate(),
+            "peek_read",
+            json!({
+                "path": {"type": "string"},
+                "untouched": {"type": "string"}
+            }),
+        ) else {
+            panic!("expected forwarded request");
+        };
+        assert_eq!(forwarded["params"]["arguments"]["path"], json!(normalized(&nested)));
+        assert_eq!(forwarded["params"]["arguments"]["untouched"], json!("value"));
+        assert!(forwarded["params"]["arguments"].get("workspace").is_none());
+
+        let mut request = call("peek_read", Some("gpt-5-mini"));
+        request["params"]["arguments"]["path"] = json!(nested);
+        let (ClientAction::Forward(forwarded), _) = route_with_schema(
+            request,
+            &test_gate(),
+            "peek_read",
+            json!({"path": {"type": "string"}}),
+        ) else {
+            panic!("expected forwarded request");
+        };
+        assert_eq!(forwarded["params"]["arguments"]["path"], json!(nested));
+
+        let outside = main_checkout.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        let mut request = call("peek_read", Some("gpt-5-mini"));
+        request["params"]["arguments"]["path"] = json!(outside);
+        let text = response_text(route_with_schema(
+            request,
+            &test_gate(),
+            "peek_read",
+            json!({"path": {"type": "string"}}),
+        ).0);
+        assert!(text.contains("outside"));
+
+        let mut request = call("unknown_tool", Some("gpt-5-mini"));
+        request["params"]["arguments"]["workspace"] = json!("unchanged");
+        let (ClientAction::Forward(forwarded), _) = route_with_schema(
+            request,
+            &test_gate(),
+            "unknown_tool",
+            json!({"untouched": {"type": "string"}}),
+        ) else {
+            panic!("expected forwarded request");
+        };
+        assert_eq!(forwarded["params"]["arguments"]["workspace"], json!("unchanged"));
+        unsafe { std::env::remove_var(MAIN_CHECKOUT_ENV) };
     }
 
     #[test]
