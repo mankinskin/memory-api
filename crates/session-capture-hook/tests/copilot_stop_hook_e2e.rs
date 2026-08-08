@@ -203,10 +203,11 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
         output.status.success(),
         "session-capture-stop.sh failed: stdout={stdout} stderr={stderr}"
     );
-    assert_eq!(
-        stdout.trim(),
-        "{}",
-        "stop hook should emit empty JSON sentinel"
+    let payload: serde_json::Value = serde_json::from_str(stdout.trim())
+        .expect("stop hook should emit valid JSON");
+    assert!(
+        payload.get("decision").is_none(),
+        "stop-hook observability output must not alter hook control flow"
     );
     assert!(
         !stderr.contains("skip: transcript not found"),

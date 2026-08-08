@@ -348,7 +348,23 @@ fn e2e_user_prompt_with_external_store_does_not_provision_cwd_checkout() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(output.stdout, b"{}\n");
+    let payload: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("hook stdout should remain valid JSON");
+    assert_eq!(payload["provisioning"]["outcome"], "skipped");
+    assert_eq!(
+        payload["provisioning"]["reason"],
+        "external_store_mismatch"
+    );
+    let diagnostic_path = store_root
+        .join("sessions")
+        .join(FIXTURE_SESSION_ID)
+        .join("provisioning.json");
+    let diagnostic: serde_json::Value = serde_json::from_slice(
+        &fs::read(&diagnostic_path)
+            .expect("provisioning diagnostic should remain readable after the hook exits"),
+    )
+    .expect("provisioning diagnostic should be valid JSON");
+    assert_eq!(diagnostic["provisioning"], payload["provisioning"]);
     assert!(
         String::from_utf8_lossy(&output.stderr)
             .contains("worktree provisioning skipped"),
@@ -361,7 +377,7 @@ fn e2e_user_prompt_with_external_store_does_not_provision_cwd_checkout() {
 }
 
 #[test]
-fn e2e_mismatched_store_preserves_hook_stdout_sentinel() {
+fn e2e_mismatched_store_emits_nonblocking_observability_payload() {
     let fixture_dir = tempdir().expect("temp fixture dir");
     let transcript_path = write_fixture_transcript(
         fixture_dir.path(),
@@ -406,7 +422,17 @@ fn e2e_mismatched_store_preserves_hook_stdout_sentinel() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(output.stdout, b"{}\n");
+    let payload: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("hook stdout should remain valid JSON");
+    assert_eq!(payload["provisioning"]["outcome"], "skipped");
+    assert_eq!(
+        payload["provisioning"]["reason"],
+        "external_store_mismatch"
+    );
+    assert!(
+        payload.get("decision").is_none(),
+        "observability output must not alter hook control flow"
+    );
     assert!(
         String::from_utf8_lossy(&output.stderr)
             .contains("worktree provisioning skipped"),
@@ -889,11 +915,14 @@ fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
         output.status.success(),
         "session-capture-stop.sh failed: stdout={stdout} stderr={stderr}"
     );
+    let payload: serde_json::Value = serde_json::from_str(stdout.trim())
+        .expect("capture hook should emit valid JSON");
+    assert_eq!(payload["provisioning"]["outcome"], "skipped");
     assert_eq!(
-        stdout.trim(),
-        "{}",
-        "capture hook should emit empty JSON sentinel"
+        payload["provisioning"]["reason"],
+        "external_store_mismatch"
     );
+    assert!(payload.get("decision").is_none());
     assert!(
         !stderr.contains("skip: transcript not found"),
         "hook skipped transcript unexpectedly: stdout={stdout} stderr={stderr}"

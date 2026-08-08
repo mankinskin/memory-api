@@ -1,4 +1,5 @@
 use std::{
+    fs,
     path::{
         Path,
         PathBuf,
@@ -68,33 +69,34 @@ fn run() -> Result<(), SessionError> {
     };
 
     let transcript_path = normalize_transcript_path(&args.transcript_path);
-    initialize_session_routing(
+    let routing_outcome = initialize_session_routing(
         &args.trigger,
         args.session_id.as_deref(),
         args.store_root.as_deref(),
+    );
+    let store_root = resolve_capture_store_root(
+        args.store_root.clone(),
+        &args.workspace_slug,
+        args.session_id.as_deref(),
+    );
+    persist_provisioning_diagnostic(
+        routing_outcome.as_ref(),
+        args.session_id.as_deref(),
+        store_root.as_deref(),
     );
     if !transcript_path.is_file() {
         eprintln!(
             "[copilot-capture-hook] skip: transcript not found at {}",
             transcript_path.display()
         );
-        println!("{{}}");
+        emit_hook_payload(routing_outcome.as_ref());
         return Ok(());
     }
 
-    let Some(store_root) = resolve_capture_store_root(
-        args.store_root,
-        &args.workspace_slug,
-        args.session_id.as_deref(),
-    ) else {
-        println!("{{}}");
+    let Some(store_root) = store_root else {
+        emit_hook_payload(routing_outcome.as_ref());
         return Ok(());
     };
-    initialize_session_routing(
-        &args.trigger,
-        args.session_id.as_deref(),
-        Some(&store_root),
-    );
     let config =
         SessionStoreConfig::new(store_root.clone(), args.workspace_slug);
 
@@ -133,8 +135,121 @@ fn run() -> Result<(), SessionError> {
     // Refresh tool metrics rollup (best-effort)
     refresh_tool_metrics_rollup(&config);
 
-    println!("{{}}");
+    emit_hook_payload(routing_outcome.as_ref());
     Ok(())
+}
+
+#[derive(Debug)]
+enum ProvisioningDiagnostic {
+    Provisioned {
+        outcome: &'static str,
+        worktree: PathBuf,
+    },
+    Skipped {
+        reason: &'static str,
+        worktree: Option<PathBuf>,
+    },
+    Failed {
+        reason: String,
+    },
+}
+
+impl ProvisioningDiagnostic {
+    fn set_worktree(&mut self, resolved_worktree: &Path) {
+        match self {
+            Self::Provisioned {
+                worktree: diagnostic_worktree,
+                ..
+            }
+            | Self::Skipped {
+                worktree: Some(diagnostic_worktree),
+                ..
+            } => *diagnostic_worktree = resolved_worktree.to_path_buf(),
+            Self::Skipped { worktree, .. } => {
+                *worktree = Some(resolved_worktree.to_path_buf());
+            },
+            Self::Failed { .. } => {},
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        match self {
+            Self::Provisioned { outcome, worktree } => serde_json::json!({
+                "provisioning": {
+                    "outcome": outcome,
+                    "worktree": worktree,
+                }
+            }),
+            Self::Skipped { reason, worktree } => serde_json::json!({
+                "provisioning": {
+                    "outcome": "skipped",
+                    "reason": reason,
+                    "worktree": worktree,
+                }
+            }),
+            Self::Failed { reason } => serde_json::json!({
+                "provisioning": {
+                    "outcome": "failed",
+                    "reason": reason,
+                }
+            }),
+        }
+    }
+}
+
+fn emit_hook_payload(outcome: Option<&ProvisioningDiagnostic>) {
+    println!("{}", outcome.map_or_else(|| serde_json::json!({}), ProvisioningDiagnostic::json));
+}
+
+fn persist_provisioning_diagnostic(
+    outcome: Option<&ProvisioningDiagnostic>,
+    session_id: Option<&str>,
+    store_root: Option<&Path>,
+) {
+    let Some(outcome) = outcome else {
+        return;
+    };
+    let provisioning = outcome.json();
+    let payload = serde_json::json!({
+        "session_id": session_id,
+        "provisioning": provisioning["provisioning"].clone(),
+    });
+    let Ok(payload) = serde_json::to_vec(&payload) else {
+        return;
+    };
+
+    let file_name = provisioning_file_name(session_id);
+    if let Some(store_root) = store_root {
+        let path = store_root.join("sessions").join(&file_name).join("provisioning.json");
+        if write_provisioning_diagnostic(&path, &payload) {
+            return;
+        }
+    }
+    let path = std::env::temp_dir()
+        .join("copilot-capture-hook")
+        .join("provisioning-outcomes")
+        .join(format!("{file_name}.json"));
+    let _ = write_provisioning_diagnostic(&path, &payload);
+}
+
+fn provisioning_file_name(session_id: Option<&str>) -> String {
+    let session_id = session_id.unwrap_or("missing-session-id");
+    let file_name: String = session_id
+        .chars()
+        .map(|character| match character {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' => character,
+            _ => '_',
+        })
+        .collect();
+    (!file_name.is_empty()).then_some(file_name).unwrap_or_else(|| "missing-session-id".to_string())
+}
+
+fn write_provisioning_diagnostic(
+    path: &Path,
+    payload: &[u8],
+) -> bool {
+    path.parent().is_some_and(|parent| fs::create_dir_all(parent).is_ok())
+        && fs::write(path, payload).is_ok()
 }
 
 /// Resolves the checkout the hook was launched in, which anchors the session
@@ -153,14 +268,20 @@ fn initialize_session_routing(
     trigger: &str,
     session_id: Option<&str>,
     store_root: Option<&Path>,
-) {
+) -> Option<ProvisioningDiagnostic> {
     if !trigger.eq_ignore_ascii_case("UserPromptSubmit") {
-        return;
+        return Some(ProvisioningDiagnostic::Skipped {
+            reason: "trigger_not_user_prompt_submit",
+            worktree: None,
+        });
     }
     let Some(session_id) =
         session_id.filter(|session_id| !session_id.trim().is_empty())
     else {
-        return;
+        return Some(ProvisioningDiagnostic::Skipped {
+            reason: "missing_session_id",
+            worktree: None,
+        });
     };
     let current_dir = match std::env::current_dir() {
         Ok(current_dir) => current_dir,
@@ -168,7 +289,10 @@ fn initialize_session_routing(
             eprintln!(
                 "[copilot-capture-hook] session routing skipped: could not determine current directory: {error}"
             );
-            return;
+            return Some(ProvisioningDiagnostic::Skipped {
+                reason: "current_directory_unavailable",
+                worktree: None,
+            });
         },
     };
     let anchor = anchor_checkout(&current_dir);
@@ -177,11 +301,19 @@ fn initialize_session_routing(
             "[copilot-capture-hook] session routing skipped: anchor checkout '{}' does not exist",
             anchor.display()
         );
-        return;
+        return Some(ProvisioningDiagnostic::Skipped {
+            reason: "anchor_checkout_invalid",
+            worktree: None,
+        });
     }
-    if eager_provisioning_enabled() {
-        provision_session_worktree(&anchor, store_root, session_id);
-    }
+    let mut diagnostic = if eager_provisioning_enabled() {
+        provision_session_worktree(&anchor, store_root, session_id)
+    } else {
+        ProvisioningDiagnostic::Skipped {
+            reason: "eager_provisioning_disabled",
+            worktree: None,
+        }
+    };
     let resolver = match SessionWorkspaceResolver::new(ResolverConfig {
         main_checkout: anchor.clone(),
         workspace_slug: "default".to_string(),
@@ -191,7 +323,7 @@ fn initialize_session_routing(
             eprintln!(
                 "[copilot-capture-hook] session routing skipped: could not configure session workspace resolver: {error}"
             );
-            return;
+            return Some(diagnostic);
         },
     };
     let workspace = match resolver.resolve(ResolveRequest {
@@ -204,13 +336,13 @@ fn initialize_session_routing(
             eprintln!(
                 "[copilot-capture-hook] session routing skipped: resolver selected the main checkout for session {session_id}"
             );
-            return;
+            return Some(diagnostic);
         },
         Err(error) => {
             eprintln!(
                 "[copilot-capture-hook] session routing skipped: no active worktree assignment for session {session_id}: {error}"
             );
-            return;
+            return Some(diagnostic);
         },
     };
     let config = SessionStoreConfig::new(anchor.join(".session"), "default");
@@ -221,7 +353,7 @@ fn initialize_session_routing(
         eprintln!(
             "[copilot-capture-hook] session routing skipped: could not repair a main-checkout assignment for session {session_id}: {error}"
         );
-        return;
+        return Some(diagnostic);
     }
     if let Err(error) =
         config.infer_worktree_from_environment(session_id, worktree)
@@ -230,6 +362,8 @@ fn initialize_session_routing(
             "[copilot-capture-hook] session routing skipped: could not assign a worktree for session {session_id}: {error}"
         );
     }
+    diagnostic.set_worktree(worktree);
+    Some(diagnostic)
 }
 
 fn eager_provisioning_enabled() -> bool {
@@ -241,7 +375,7 @@ fn provision_session_worktree(
     anchor: &Path,
     store_root: Option<&Path>,
     session_id: &str,
-) {
+) -> ProvisioningDiagnostic {
     if let Some(store_root) = store_root {
         let anchor_store = anchor.join(".session");
         let anchor_root = anchor.canonicalize();
@@ -257,7 +391,10 @@ fn provision_session_worktree(
                 anchor.display(),
                 store_root.display()
             );
-            return;
+            return ProvisioningDiagnostic::Skipped {
+                reason: "external_store_mismatch",
+                worktree: None,
+            };
         }
     }
     let git = match WorktreeGit::open(anchor) {
@@ -266,25 +403,33 @@ fn provision_session_worktree(
             eprintln!(
                 "[copilot-capture-hook] worktree provisioning failed for session {session_id}: {error}"
             );
-            return;
+            return ProvisioningDiagnostic::Failed {
+                reason: format!("worktree_git_open_failed: {error}"),
+            };
         },
     };
     let policy = ProvisionPolicy::default();
     let activity =
         SessionStoreActivity::new(anchor.join(".session"), policy.stale_after);
-    let worktree =
+    let (outcome, worktree) =
         match provision_for_session(&git, &activity, session_id, &policy) {
-            Ok(ProvisionOutcome::AlreadyProvisioned(_)) => return,
-            Ok(ProvisionOutcome::Created(worktree)) => worktree,
-            Ok(ProvisionOutcome::Reclaimed { worktree, .. }) => worktree,
+            Ok(ProvisionOutcome::AlreadyProvisioned(worktree)) => ("reused", worktree),
+            Ok(ProvisionOutcome::Created(worktree)) => ("created", worktree),
+            Ok(ProvisionOutcome::Reclaimed { worktree, .. }) => ("reclaimed", worktree),
             Err(error) => {
                 report_provision_error(session_id, error);
-                return;
+                return ProvisioningDiagnostic::Failed {
+                    reason: "provisioning_failed".to_string(),
+                };
             },
         };
 
     for outcome in rebuild_entity_indexes(&worktree.path) {
         report_index_rebuild_outcome(&worktree.path, outcome);
+    }
+    ProvisioningDiagnostic::Provisioned {
+        outcome,
+        worktree: worktree.path,
     }
 }
 
