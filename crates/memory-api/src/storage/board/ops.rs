@@ -229,6 +229,13 @@ impl RedbIndexStore {
             }
 
             if let Some(requested_worktree_path) = worktree_path.as_deref() {
+                if session_id.is_none() {
+                    conn.execute_batch("ROLLBACK;").ok();
+                    return Err(BoardError::WorktreeRequiresSession {
+                        worktree_path: requested_worktree_path.to_string(),
+                    });
+                }
+
                 if let Some(existing) = all_entries.iter().find(|entry| {
                     entry.status == BoardEntryStatus::Active
                         && entry.worktree_path.as_deref() == Some(requested_worktree_path)

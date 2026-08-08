@@ -188,10 +188,10 @@ fn write_current_work(
     if has_worktree_metadata {
         let _ = writeln!(
             out,
-            "  {:<10}  {:<8}  {:<24}  {:<14}  {:<16}  {:<16}  {:<18}  {:>6}",
-            "STATUS", "TICKET", "TITLE", "AGENT", "BRANCH", "WORKTREE", "INTENT", "HB AGE"
+            "  {:<10}  {:<8}  {:<24}  {:<14}  {:<16}  {:<16}  {:<16}  {:<18}  {:>6}",
+            "STATUS", "TICKET", "TITLE", "AGENT", "SESSION", "BRANCH", "WORKTREE", "INTENT", "HB AGE"
         );
-        let _ = writeln!(out, "  {}", "-".repeat(132));
+        let _ = writeln!(out, "  {}", "-".repeat(150));
         for entry in current_work {
             let worktree = entry
                 .worktree_path
@@ -200,11 +200,12 @@ fn write_current_work(
                 .unwrap_or_default();
             let _ = writeln!(
                 out,
-                "  {:<10}  {:<8}  {:<24}  {:<14}  {:<16}  {:<16}  {:<18}  {:>6}",
+                "  {:<10}  {:<8}  {:<24}  {:<14}  {:<16}  {:<16}  {:<16}  {:<18}  {:>6}",
                 truncate_field(&entry.status, 10),
                 short_ticket_id(&entry.ticket_id),
                 truncate_field(&entry.title, 24),
                 truncate_field(&entry.agent_id, 14),
+                truncate_field(entry.session_id.as_deref().unwrap_or(""), 16),
                 truncate_field(entry.branch.as_deref().unwrap_or(""), 16),
                 truncate_field(worktree, 16),
                 truncate_field(&entry.intent, 18),
@@ -433,4 +434,52 @@ fn format_completed_at(completed_at: Option<DateTime<Utc>>) -> String {
     completed_at
         .map(|timestamp| timestamp.format("%Y-%m-%d %H:%M").to_string())
         .unwrap_or_else(|| "-".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn human_board_render_includes_session_id() {
+        let ticket_id = Uuid::new_v4();
+        let snapshot = BoardSnapshot {
+            captured_at: Utc::now(),
+            entries: Vec::new(),
+            caller_entries: Vec::new(),
+            config: BoardConfig::default(),
+            active_count: 1,
+            stale_count: 0,
+            conflict_count: 0,
+            wip_limit_reached: false,
+            file_ownership: Default::default(),
+            active_worktrees: Vec::new(),
+            warnings: Vec::new(),
+        };
+        let display = BoardDisplay {
+            current_work: vec![BoardDisplayEntry {
+                entry_id: Uuid::new_v4(),
+                ticket_id,
+                title: "Session metadata".to_string(),
+                state: None,
+                agent_id: "agent-a".to_string(),
+                intent: "work".to_string(),
+                status: "active".to_string(),
+                heartbeat_age_secs: 0,
+                owned_files: Vec::new(),
+                handoff_reason: None,
+                completed_at: None,
+                session_id: Some("session-a".to_string()),
+                worktree_path: Some("/tmp/worktree-a".to_string()),
+                branch: Some("agent/metadata".to_string()),
+            }],
+            recommended_next: Vec::new(),
+            actions: Vec::new(),
+        };
+
+        let rendered = render_board_human(&snapshot, &display);
+
+        assert!(rendered.contains("SESSION"));
+        assert!(rendered.contains("session-a"));
+    }
 }

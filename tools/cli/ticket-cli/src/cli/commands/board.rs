@@ -792,6 +792,11 @@ fn board_err_to_cli(err: BoardError) -> CliRunError {
         } => CliRunError::BadRequest(format!(
             "worktree conflict: '{worktree_path}' already held by agent '{conflicting_agent}' on ticket {conflicting_ticket}"
         )),
+        BoardError::WorktreeRequiresSession { worktree_path } => {
+            CliRunError::BadRequest(format!(
+                "worktree path '{worktree_path}' requires a session id"
+            ))
+        }
         BoardError::AlreadyCheckedIn { ticket_id, agent_id } => {
             CliRunError::BadRequest(format!(
                 "agent '{agent_id}' is already checked in for ticket {ticket_id}"

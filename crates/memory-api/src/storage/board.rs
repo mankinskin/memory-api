@@ -199,6 +199,8 @@ pub enum BoardError {
         conflicting_agent: String,
         conflicting_ticket: Uuid,
     },
+    #[error("worktree path '{worktree_path}' requires a session id")]
+    WorktreeRequiresSession { worktree_path: String },
     #[error("Already checked in: ticket {ticket_id} by {agent_id}")]
     AlreadyCheckedIn { ticket_id: Uuid, agent_id: String },
     #[error("Not checked in: ticket {ticket_id} by {agent_id}")]

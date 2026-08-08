@@ -716,3 +716,44 @@ fn board_check_in_rejects_worktree_owned_by_another_session() {
         .unwrap_err();
     assert!(matches!(error, BoardError::WorktreeConflict { .. }));
 }
+
+#[test]
+fn board_check_in_requires_session_for_worktree_and_allows_unbound_entry() {
+    use crate::storage::board::BoardError;
+
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let ticket = store
+        .create(None, "tracker-improvement", Some("Worktree binding"), Some("planned"), Default::default(), None, None)
+        .unwrap();
+
+    let error = store
+        .board_check_in(
+            &ticket,
+            "agent-a",
+            3600,
+            "work",
+            vec![],
+            None,
+            Some("/tmp/worktree-a".to_string()),
+            None,
+        )
+        .unwrap_err();
+    assert!(matches!(error, BoardError::WorktreeRequiresSession { .. }));
+
+    let entry = store
+        .board_check_in(
+            &ticket,
+            "agent-a",
+            3600,
+            "work",
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+    assert!(entry.session_id.is_none());
+    assert!(entry.worktree_path.is_none());
+    assert!(entry.branch.is_none());
+}
