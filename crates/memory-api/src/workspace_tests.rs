@@ -122,6 +122,35 @@ fn resolve_requested_store_root_from_prefers_explicit_store_root() {
 }
 
 #[test]
+fn resolve_requested_store_root_from_workspace_pins_index_unless_overridden() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let sibling = dir.path().join("sibling");
+    let explicit_index = dir.path().join("explicit-index");
+    std::fs::create_dir_all(repo.join(".ticket")).unwrap();
+    std::fs::create_dir_all(sibling.join(".ticket")).unwrap();
+    std::fs::create_dir_all(explicit_index.join(".ticket")).unwrap();
+
+    let workspace_selected = resolve_requested_store_root_from(
+        None,
+        Some(&repo),
+        Some(&sibling.join(".ticket")),
+        Some(&sibling),
+        ".ticket",
+    );
+    let explicit_selected = resolve_requested_store_root_from(
+        Some(&explicit_index),
+        Some(&repo),
+        Some(&sibling.join(".ticket")),
+        Some(&sibling),
+        ".ticket",
+    );
+
+    assert_eq!(workspace_selected, repo.join(".ticket"));
+    assert_eq!(explicit_selected, explicit_index.join(".ticket"));
+}
+
+#[test]
 fn resolve_requested_store_root_from_falls_back_to_local_discovery() {
     let dir = tempdir().unwrap();
     let repo = dir.path().join("repo");

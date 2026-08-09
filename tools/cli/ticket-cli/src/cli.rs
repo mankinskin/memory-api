@@ -58,7 +58,8 @@ pub struct TicketCli {
     pub request_id: Option<String>,
 
     /// Root directory for the SQLite index and Tantivy search index.
-    /// Defaults to $TICKET_INDEX_ROOT, then the nearest local .ticket/.
+    /// Overrides --workspace; otherwise --workspace selects its .ticket/ root
+    /// before $TICKET_INDEX_ROOT and local discovery.
     #[arg(long, global = true)]
     pub index_root: Option<PathBuf>,
 

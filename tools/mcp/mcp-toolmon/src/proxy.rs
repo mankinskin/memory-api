@@ -23,6 +23,10 @@ use serde_json::{
     Value,
     json,
 };
+use session_api::{
+    SessionError,
+    store::SessionStoreConfig,
+};
 use session_workspace_resolver::{
     ResolutionError,
     ResolveRequest,
@@ -335,11 +339,19 @@ fn resolve_workspace(
             {
                 let candidates =
                     resolver.refused_candidates(&store_dir).unwrap_or_default();
+                let looks_like_repository_root = candidates.len() == 1
+                    && candidates[0]
+                        .parent()
+                        .is_some_and(|root| root.join(".worktrees").is_dir());
+                if looks_like_repository_root {
+                    ResolutionError::MainCheckoutMutationBlocked.to_string()
+                } else {
                 ResolutionError::UnanchoredDefault {
                     session_id: session_id.to_string(),
                     candidates,
                 }
                 .to_string()
+                }
             },
             other => other.to_string(),
         })?;
@@ -381,6 +393,122 @@ fn resolve_workspace(
         .trim_end_matches('/')
         .to_string();
     Ok((target_root, store_root))
+}
+
+fn normalized_path(path: &Path) -> String {
+    path.to_string_lossy()
+        .replace('\\', "/")
+        .trim_start_matches("//?/")
+        .to_string()
+}
+
+fn session_is_unassigned(
+    repository_root: &Path,
+    session_id: &str,
+) -> Result<bool, String> {
+    let config = SessionStoreConfig::new(
+        repository_root.join(DEFAULT_STORE_DIR),
+        "default",
+    );
+    match config.read_session(session_id) {
+        Ok(record) => Ok(record.metadata.worktree.is_none()),
+        Err(SessionError::NotFound { .. }) => Ok(true),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn try_resolve_session_check_in_bootstrap_workspace(
+    tool: &str,
+    session_id: &str,
+    workspace: Option<&str>,
+) -> Result<Option<(String, PathBuf)>, String> {
+    if tool != "session_check_in" {
+        return Ok(None);
+    }
+    let Some(selector) = workspace else {
+        return Ok(None);
+    };
+    if selector.is_empty() || selector == "default" {
+        return Ok(None);
+    }
+    let workspace_path = PathBuf::from(selector);
+    if !workspace_path.is_absolute() {
+        return Ok(None);
+    }
+
+    let resolver = anchored_resolver()?;
+    let canonical_workspace = std::fs::canonicalize(&workspace_path).map_err(|error| {
+        format!(
+            "workspace '{}' could not be canonicalized: {error}",
+            workspace_path.display()
+        )
+    })?;
+    let anchor_candidate = resolver
+        .refused_candidates(DEFAULT_STORE_DIR)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            "session_check_in bootstrap could not derive repository anchor"
+                .to_string()
+        })?;
+    let repository = anchor_candidate
+        .parent()
+        .ok_or_else(|| {
+            format!(
+                "session_check_in bootstrap anchor '{}' has no repository parent",
+                normalized_path(&anchor_candidate)
+            )
+        })?
+        .to_path_buf();
+    let canonical_repository = std::fs::canonicalize(&repository).map_err(|error| {
+        format!(
+            "session_check_in bootstrap repository '{}' could not be canonicalized: {error}",
+            normalized_path(&repository)
+        )
+    })?;
+    if !session_is_unassigned(&canonical_repository, session_id)? {
+        return Ok(None);
+    }
+    let canonical_worktrees = canonical_repository.join(".worktrees");
+    if canonical_workspace.parent() != Some(canonical_worktrees.as_path()) {
+        return Err(format!(
+            "session_check_in bootstrap workspace '{}' must be a direct child of '{}'; received '{}'.",
+            workspace_path.display(),
+            normalized_path(&canonical_worktrees),
+            normalized_path(&canonical_workspace)
+        ));
+    }
+    let git_entry = canonical_workspace.join(".git");
+    if !git_entry.exists() {
+        return Err(format!(
+            "session_check_in bootstrap workspace '{}' is missing required '.git' entry",
+            normalized_path(&canonical_workspace)
+        ));
+    }
+    Ok(Some((
+        normalized_path(&canonical_workspace),
+        canonical_workspace.join(DEFAULT_STORE_DIR),
+    )))
+}
+
+fn resolve_workspace_for_tool(
+    tool: &str,
+    session_id: &str,
+    workspace: Option<&str>,
+) -> Result<(String, PathBuf), String> {
+    match resolve_workspace(session_id, workspace) {
+        Ok(resolved) => Ok(resolved),
+        Err(error) => {
+            match try_resolve_session_check_in_bootstrap_workspace(
+                tool, session_id, workspace,
+            ) {
+                Ok(Some(resolved)) => Ok(resolved),
+                Ok(None) => Err(error),
+                Err(bootstrap_error) => Err(bootstrap_error),
+            }
+        },
+    }
 }
 
 /// Handle a client→server message.
@@ -550,10 +678,12 @@ pub fn handle_client_message(
                                 .and_then(|arguments| arguments.get(argument.name))
                                 .and_then(Value::as_str)
                         });
-                    let (target_root, store_root) = match resolve_workspace(
-                        &session_id,
-                        workspace,
-                    ) {
+                    let (target_root, store_root) =
+                        match resolve_workspace_for_tool(
+                            &tool,
+                            &session_id,
+                            workspace,
+                        ) {
                         Ok(resolved) => resolved,
                         Err(error) => {
                             let telemetry = immediate_telemetry(
@@ -567,7 +697,7 @@ pub fn handle_client_message(
                                 Some(telemetry),
                             );
                         },
-                    };
+                        };
                     let mut rewrites = Vec::new();
                     for argument in &path_arguments {
                         let value = msg
@@ -582,8 +712,11 @@ pub fn handle_client_message(
                             continue;
                         };
                         if Path::new(value).is_absolute() {
-                            if let Err(error) =
-                                resolve_workspace(&session_id, Some(value))
+                            if let Err(error) = resolve_workspace_for_tool(
+                                &tool,
+                                &session_id,
+                                Some(value),
+                            )
                             {
                                 let telemetry = immediate_telemetry(
                                     "reject-workspace",
@@ -598,7 +731,11 @@ pub fn handle_client_message(
                             }
                             continue;
                         }
-                        match resolve_workspace(&session_id, Some(value)) {
+                        match resolve_workspace_for_tool(
+                            &tool,
+                            &session_id,
+                            Some(value),
+                        ) {
                             Ok((rewritten, _)) => {
                                 rewrites.push((argument.name, rewritten));
                             },
@@ -978,18 +1115,95 @@ mod tests {
     }
 
     #[test]
-    fn unanchored_default_workspace_is_rejected() {
+    fn default_workspace_from_repo_root_resolves_root_store_then_blocks_main_checkout() {
         let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let temp = tempfile::tempdir().unwrap();
         let main_checkout = temp.path().join("repository");
         let worktree = main_checkout.join(".worktrees").join("feature");
+        std::fs::create_dir_all(main_checkout.join(".git")).unwrap();
+        std::fs::create_dir_all(main_checkout.join(".session")).unwrap();
         std::fs::create_dir_all(worktree.join(".session")).unwrap();
         unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
+        let resolver = anchored_resolver().unwrap();
+        assert_eq!(
+            resolver.refused_candidates(DEFAULT_STORE_DIR).unwrap(),
+            vec![main_checkout.join(".session")]
+        );
         let text = response_text(route(allowed_call(), &test_gate()).0);
-        assert!(text.contains("unanchored"));
-        assert!(text.contains(&normalized(&main_checkout.join(".session"))));
-        assert!(text.contains(&normalized(&worktree.join(".session"))));
+        assert!(text.contains("main checkout mutations are blocked"));
+        assert!(text.contains("run session_check_in"));
+        assert!(!text.contains(&normalized(&worktree.join(".session"))));
         unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
+    }
+
+    #[test]
+    fn unassigned_session_check_in_with_direct_worktree_workspace_is_forwarded() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let temp = tempfile::tempdir().unwrap();
+        let main_checkout = temp.path().join("repository");
+        let worktree = main_checkout.join(".worktrees").join("bootstrap");
+        std::fs::create_dir_all(main_checkout.join(".git")).unwrap();
+        std::fs::create_dir_all(main_checkout.join(".session")).unwrap();
+        std::fs::create_dir_all(&worktree).unwrap();
+        std::fs::write(
+            worktree.join(".git"),
+            "gitdir: ../../.git/worktrees/bootstrap\n",
+        )
+        .unwrap();
+        unsafe { std::env::set_var(MAIN_CHECKOUT_ENV, &main_checkout) };
+
+        let mut request = call("session_check_in", Some("gpt-5-mini"));
+        request["params"]["arguments"]["workspace"] =
+            json!(normalized(&worktree));
+        let (ClientAction::Forward(forwarded), _) = route_with_schema(
+            request,
+            &test_gate(),
+            "session_check_in",
+            json!({"workspace": {"type": "string"}}),
+        ) else {
+            panic!("expected forwarded request");
+        };
+        assert_eq!(
+            forwarded["params"]["arguments"]["workspace"],
+            json!(normalized(&worktree))
+        );
+        unsafe { std::env::remove_var(MAIN_CHECKOUT_ENV) };
+    }
+
+    #[test]
+    fn unassigned_session_check_in_rejects_non_direct_worktree_target() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let temp = tempfile::tempdir().unwrap();
+        let main_checkout = temp.path().join("repository");
+        let worktree = main_checkout.join(".worktrees").join("bootstrap");
+        let nested = worktree.join("nested");
+        std::fs::create_dir_all(main_checkout.join(".git")).unwrap();
+        std::fs::create_dir_all(main_checkout.join(".session")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(
+            worktree.join(".git"),
+            "gitdir: ../../.git/worktrees/bootstrap\n",
+        )
+        .unwrap();
+        std::fs::write(nested.join(".git"), "gitdir: ../../.git/fake\n")
+            .unwrap();
+        unsafe { std::env::set_var(MAIN_CHECKOUT_ENV, &main_checkout) };
+
+        let mut request = call("session_check_in", Some("gpt-5-mini"));
+        request["params"]["arguments"]["workspace"] =
+            json!(nested.to_string_lossy());
+        let text = response_text(
+            route_with_schema(
+                request,
+                &test_gate(),
+                "session_check_in",
+                json!({"workspace": {"type": "string"}}),
+            )
+            .0,
+        );
+        assert!(text.contains("must be a direct child"));
+        assert!(text.contains(&normalized(&main_checkout.join(".worktrees"))));
+        unsafe { std::env::remove_var(MAIN_CHECKOUT_ENV) };
     }
 
     #[test]
