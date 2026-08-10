@@ -30,6 +30,7 @@ fn seed_session(
         agent_id: Some(agent.to_string()),
         model: None,
         trigger: None,
+        provisioning: None,
         messages: vec![
             CopilotHookMessage {
                 role: SessionRole::User,
@@ -67,6 +68,7 @@ fn seed_compaction_session(
         agent_id: Some(agent.to_string()),
         model: None,
         trigger: None,
+        provisioning: None,
         messages: vec![
             CopilotHookMessage {
                 role: SessionRole::Tool,

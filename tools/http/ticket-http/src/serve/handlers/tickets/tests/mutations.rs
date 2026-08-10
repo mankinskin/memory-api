@@ -238,7 +238,7 @@ async fn release_ticket_lease_clears_stale_orphaned_lease() {
         .expect("create");
 
     store
-        .board_check_in(&id, "agent-a", 0, "work", vec![])
+        .board_check_in(&id, "agent-a", 0, "work", vec![], None, None, None)
         .expect("check in");
     let preview = store
         .board_clean_preview(true)

@@ -1904,6 +1904,7 @@ mod tests {
             agent_id: Some("agent-1".to_string()),
             model: None,
             trigger: None,
+            provisioning: None,
             messages: vec![CopilotHookMessage {
                 role: SessionRole::User,
                 content: "move me".to_string(),

@@ -286,6 +286,9 @@ async fn workflow_next_filters_board_active_candidates_into_excluded_by_board()
             3600,
             "in flight",
             Vec::new(),
+            None,
+            None,
+            None,
         )
         .unwrap();
 

@@ -485,6 +485,9 @@ async fn board_aware_next_parity_across_http_and_mcp() {
             3600,
             "in-flight work",
             vec!["parity.rs".to_string()],
+            None,
+            None,
+            None,
         )
         .expect("board check-in");
 

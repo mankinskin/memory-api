@@ -120,6 +120,7 @@ fn run_latest_session_emits_session_audit_payload() {
         agent_id: Some("copilot".to_string()),
         model: Some("GPT-5.3-Codex".to_string()),
         trigger: Some("test".to_string()),
+        provisioning: None,
         messages: vec![CopilotHookMessage {
             role: SessionRole::Assistant,
             content: "audit me".to_string(),

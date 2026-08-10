@@ -2098,6 +2098,7 @@ mod tests {
             agent_id: Some(agent.to_string()),
             model: None,
             trigger: None,
+            provisioning: None,
             messages: vec![CopilotHookMessage {
                 role: SessionRole::User,
                 content: "alpha body\nbeta".to_string(),

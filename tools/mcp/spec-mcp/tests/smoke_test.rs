@@ -93,6 +93,7 @@ async fn spec_crud_lifecycle() {
             fields: Some(vec!["title=Updated Title".to_string()]),
             to_state: Some("reviewed".to_string()),
             body: None,
+            force_body: false,
             field_map: None,
         }))
         .await
@@ -110,6 +111,7 @@ async fn spec_crud_lifecycle() {
             fields: None,
             to_state: None,
             body: Some("# Updated body".to_string()),
+            force_body: false,
             field_map: None,
         }))
         .await
@@ -183,6 +185,7 @@ async fn spec_update_accepts_sparse_payload_and_returns_minimal_response() {
             fields: None,
             to_state: Some("reviewed".to_string()),
             body: None,
+            force_body: false,
             field_map: None,
         }))
         .await

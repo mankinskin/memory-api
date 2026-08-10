@@ -514,6 +514,7 @@ mod tests {
                     fields: None,
                     to_state: None,
                     body: None,
+                    force_body: false,
                     field_map: Some(fixture.fulfillment_update.clone()),
                 })
                 .await
