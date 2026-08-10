@@ -155,6 +155,17 @@ enum ProvisioningDiagnostic {
 }
 
 impl ProvisioningDiagnostic {
+    fn worktree(&self) -> Option<&Path> {
+        match self {
+            Self::Provisioned { worktree, .. } => Some(worktree.as_path()),
+            Self::Skipped {
+                worktree: Some(worktree),
+                ..
+            } => Some(worktree.as_path()),
+            Self::Skipped { worktree: None, .. } | Self::Failed { .. } => None,
+        }
+    }
+
     fn set_worktree(&mut self, resolved_worktree: &Path) {
         match self {
             Self::Provisioned {
@@ -314,41 +325,49 @@ fn initialize_session_routing(
             worktree: None,
         }
     };
-    let resolver = match SessionWorkspaceResolver::new(ResolverConfig {
-        main_checkout: anchor.clone(),
-        workspace_slug: "default".to_string(),
-    }) {
-        Ok(resolver) => resolver,
-        Err(error) => {
-            eprintln!(
-                "[session-capture-hook] session routing skipped: could not configure session workspace resolver: {error}"
-            );
-            return Some(diagnostic);
-        },
+
+    // UserPromptSubmit can provision a worktree before an assignment exists;
+    // in that case route assignment repair through the provisioned path first.
+    let resolved_worktree = if let Some(worktree) = diagnostic.worktree() {
+        worktree.to_path_buf()
+    } else {
+        let resolver = match SessionWorkspaceResolver::new(ResolverConfig {
+            main_checkout: anchor.clone(),
+            workspace_slug: "default".to_string(),
+        }) {
+            Ok(resolver) => resolver,
+            Err(error) => {
+                eprintln!(
+                    "[session-capture-hook] session routing skipped: could not configure session workspace resolver: {error}"
+                );
+                return Some(diagnostic);
+            },
+        };
+        let workspace = match resolver.resolve(ResolveRequest {
+            session_id,
+            relative_workspace: None,
+            store_dir: ".session",
+        }) {
+            Ok(workspace) if workspace.is_worktree() => workspace,
+            Ok(_) => {
+                eprintln!(
+                    "[session-capture-hook] session routing skipped: resolver selected the main checkout for session {session_id}"
+                );
+                return Some(diagnostic);
+            },
+            Err(error) => {
+                eprintln!(
+                    "[session-capture-hook] session routing skipped: no active worktree assignment for session {session_id}: {error}"
+                );
+                return Some(diagnostic);
+            },
+        };
+        workspace.target_root().to_path_buf()
     };
-    let workspace = match resolver.resolve(ResolveRequest {
-        session_id,
-        relative_workspace: None,
-        store_dir: ".session",
-    }) {
-        Ok(workspace) if workspace.is_worktree() => workspace,
-        Ok(_) => {
-            eprintln!(
-                "[session-capture-hook] session routing skipped: resolver selected the main checkout for session {session_id}"
-            );
-            return Some(diagnostic);
-        },
-        Err(error) => {
-            eprintln!(
-                "[session-capture-hook] session routing skipped: no active worktree assignment for session {session_id}: {error}"
-            );
-            return Some(diagnostic);
-        },
-    };
+
     let config = SessionStoreConfig::new(anchor.join(".session"), "default");
-    let worktree = workspace.target_root();
     if let Err(error) =
-        config.replace_main_worktree_inference(session_id, &anchor, worktree)
+        config.replace_main_worktree_inference(session_id, &anchor, &resolved_worktree)
     {
         eprintln!(
             "[session-capture-hook] session routing skipped: could not repair a main-checkout assignment for session {session_id}: {error}"
@@ -356,13 +375,13 @@ fn initialize_session_routing(
         return Some(diagnostic);
     }
     if let Err(error) =
-        config.infer_worktree_from_environment(session_id, worktree)
+        config.infer_worktree_from_environment(session_id, &resolved_worktree)
     {
         eprintln!(
             "[session-capture-hook] session routing skipped: could not assign a worktree for session {session_id}: {error}"
         );
     }
-    diagnostic.set_worktree(worktree);
+    diagnostic.set_worktree(&resolved_worktree);
     Some(diagnostic)
 }
 
@@ -782,7 +801,7 @@ fn resolve_capture_store_root(
         relative_workspace: None,
         store_dir: ".session",
     }) {
-        Ok(workspace) => match workspace.store_root(".session") {
+        Ok(workspace) => match workspace.mutation_store_root(".session") {
             Ok(store_root) => Some(store_root),
             Err(error) => {
                 eprintln!(

@@ -106,6 +106,15 @@ impl ResolvedWorkspace {
         Ok(store_root)
     }
 
+    /// Returns a validated store root only when the resolved target permits mutation.
+    pub fn mutation_store_root(
+        &self,
+        store_dir: &str,
+    ) -> Result<PathBuf, ResolutionError> {
+        self.require_mutation_target()?;
+        self.store_root(store_dir)
+    }
+
     pub fn relative_path(&self) -> &Path {
         &self.relative_path
     }
@@ -256,7 +265,14 @@ impl SessionWorkspaceResolver {
 
         let relative_path =
             resolve_relative_path(&worktree_root, request.relative_workspace)?;
-        let checkout = if worktree_root == repository.as_path() {
+        let invocation_is_linked_worktree = repository
+            .as_path()
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|name| name == ".worktrees");
+        let checkout = if worktree_root == repository.as_path()
+            && !invocation_is_linked_worktree
+        {
             CheckoutScope::MainCheckout {
                 checkout_root: worktree_root.clone(),
             }
@@ -932,6 +948,10 @@ mod tests {
             resolved.require_mutation_target(),
             Err(ResolutionError::MainCheckoutMutationBlocked)
         ));
+        assert!(matches!(
+            resolved.mutation_store_root(".ticket"),
+            Err(ResolutionError::MainCheckoutMutationBlocked)
+        ));
     }
 
     #[test]
@@ -1006,6 +1026,10 @@ mod tests {
         assert_eq!(resolved.target_root(), worktree);
         assert_eq!(
             resolved.store_root(".ticket").unwrap(),
+            resolved.target_root().join(".ticket")
+        );
+        assert_eq!(
+            resolved.mutation_store_root(".ticket").unwrap(),
             resolved.target_root().join(".ticket")
         );
         assert_ne!(resolved.target_root(), repository);
