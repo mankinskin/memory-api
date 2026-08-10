@@ -446,6 +446,23 @@ fn provision_session_worktree(
     for outcome in rebuild_entity_indexes(&worktree.path) {
         report_index_rebuild_outcome(&worktree.path, outcome);
     }
+    let config = SessionStoreConfig::new(anchor.join(".session"), "default");
+    if let Err(error) =
+        config.infer_worktree_from_environment(session_id, &worktree.path)
+    {
+        eprintln!(
+            "[session-capture-hook] worktree assignment persistence failed for session {session_id}: {error}"
+        );
+    }
+    if let Err(error) = config.replace_main_worktree_inference(
+        session_id,
+        anchor,
+        &worktree.path,
+    ) {
+        eprintln!(
+            "[session-capture-hook] main worktree assignment repair failed for session {session_id}: {error}"
+        );
+    }
     ProvisioningDiagnostic::Provisioned {
         outcome,
         worktree: worktree.path,
@@ -838,7 +855,10 @@ mod tests {
             Path,
             PathBuf,
         },
-        sync::Mutex,
+        sync::{
+            Mutex,
+            MutexGuard,
+        },
     };
 
     use session_api::{
@@ -855,8 +875,28 @@ mod tests {
     };
     use crate::args::normalize_transcript_path;
 
-    static CWD_LOCK: Mutex<()> = Mutex::new(());
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    struct PoisonTolerantMutex(Mutex<()>);
+
+    impl PoisonTolerantMutex {
+        const fn new() -> Self {
+            Self(Mutex::new(()))
+        }
+
+        fn lock(&self) -> PoisonTolerantLock<'_> {
+            PoisonTolerantLock(self.0.lock())
+        }
+    }
+
+    struct PoisonTolerantLock<'a>(std::sync::LockResult<MutexGuard<'a, ()>>);
+
+    impl<'a> PoisonTolerantLock<'a> {
+        fn unwrap(self) -> MutexGuard<'a, ()> {
+            self.0.unwrap_or_else(|poisoned| poisoned.into_inner())
+        }
+    }
+
+    static CWD_LOCK: PoisonTolerantMutex = PoisonTolerantMutex::new();
+    static ENV_LOCK: PoisonTolerantMutex = PoisonTolerantMutex::new();
 
     enum CheckoutFixtureKind {
         Main,

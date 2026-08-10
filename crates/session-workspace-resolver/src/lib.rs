@@ -226,12 +226,17 @@ impl SessionWorkspaceResolver {
                 }
                 | session_api::SessionError::NotFound { .. },
             ) => {
-                // The configured checkout contains the invocation. Do not
-                // enumerate sibling worktrees to infer a different store.
-                Assignment {
-                    worktree_path: self.main_checkout.as_path().to_path_buf(),
-                    branch: String::new(),
-                    status: SessionWorktreeStatus::Active,
+                match self.discover_worktree(request.session_id)? {
+                    Some(discovered) => Assignment {
+                        worktree_path: discovered.root,
+                        branch: discovered.branch,
+                        status: SessionWorktreeStatus::Active,
+                    },
+                    None => {
+                        return Err(ResolutionError::MissingSessionWorktree {
+                            session_id: request.session_id.to_string(),
+                        });
+                    },
                 }
             },
             Err(error) => return Err(ResolutionError::SessionLookup(error)),
@@ -335,17 +340,13 @@ impl SessionWorkspaceResolver {
             })
             .cloned()
             .collect();
+        matches.extend(scan_for_session_record(&entries, session_id)?);
         matches.sort();
+        matches.dedup();
 
         let root = match matches.len() {
             1 => matches.remove(0),
-            0 => {
-                let Some(scanned) = scan_for_session_record(&entries, session_id)?
-                else {
-                    return Ok(None);
-                };
-                scanned
-            },
+            0 => return Ok(None),
             _ =>
                 return Err(ResolutionError::AmbiguousSessionWorktree {
                     session_id: session_id.to_string(),
@@ -520,18 +521,19 @@ fn read_worktree_entries(
 fn scan_for_session_record(
     entries: &[PathBuf],
     session_id: &str,
-) -> Result<Option<PathBuf>, ResolutionError> {
-    for entry in entries {
+) -> Result<Vec<PathBuf>, ResolutionError> {
+    Ok(entries
+        .iter()
+        .filter(|entry| {
         let record = entry
             .join(".session")
             .join("sessions")
             .join(session_id)
             .join("session.json");
-        if record.is_file() {
-            return Ok(Some(entry.clone()));
-        }
-    }
-    Ok(None)
+            record.is_file()
+        })
+        .cloned()
+        .collect())
 }
 
 /// Reads the branch checked out in a linked worktree.
@@ -789,13 +791,13 @@ mod tests {
     }
 
     #[test]
-    fn session_without_assignment_uses_invocation_checkout() {
-        let (_temp, repository, _worktree, resolver) = fixture();
+    fn session_without_assignment_is_rejected() {
+        let (_temp, _repository, _worktree, resolver) = fixture();
 
-        assert_eq!(
-            resolve_root(&resolver, "session-a").unwrap().target_root(),
-            repository
-        );
+        assert!(matches!(
+            resolve_root(&resolver, "session-a"),
+            Err(ResolutionError::MissingSessionWorktree { .. })
+        ));
     }
 
     #[test]
@@ -984,7 +986,7 @@ mod tests {
     }
 
     #[test]
-    fn root_invocation_ignores_sibling_worktree_stores() {
+    fn root_invocation_without_assignment_is_rejected() {
         let (_temp, repository, worktree, resolver) = fixture();
         fs::create_dir_all(repository.join(".ticket")).unwrap();
         fs::create_dir_all(worktree.join(".ticket")).unwrap();
@@ -998,13 +1000,10 @@ mod tests {
             .unwrap();
         }
 
-        let resolved = resolve_root(&resolver, "unassigned").unwrap();
-
-        assert_eq!(resolved.target_root(), repository);
-        assert_eq!(
-            resolved.store_root(".ticket").unwrap(),
-            repository.join(".ticket")
-        );
+        assert!(matches!(
+            resolve_root(&resolver, "unassigned"),
+            Err(ResolutionError::MissingSessionWorktree { .. })
+        ));
         assert_eq!(
             resolver.refused_candidates(".ticket").unwrap(),
             vec![repository.join(".ticket")]
@@ -1012,8 +1011,8 @@ mod tests {
     }
 
     #[test]
-    fn worktree_invocation_uses_its_own_store() {
-        let (_temp, repository, worktree, _resolver) = fixture();
+    fn worktree_invocation_without_assignment_is_rejected() {
+        let (_temp, _repository, worktree, _resolver) = fixture();
         fs::create_dir_all(worktree.join(".ticket")).unwrap();
         let resolver = SessionWorkspaceResolver::new(ResolverConfig {
             main_checkout: worktree.clone(),
@@ -1021,18 +1020,10 @@ mod tests {
         })
         .unwrap();
 
-        let resolved = resolve_root(&resolver, "unassigned").unwrap();
-
-        assert_eq!(resolved.target_root(), worktree);
-        assert_eq!(
-            resolved.store_root(".ticket").unwrap(),
-            resolved.target_root().join(".ticket")
-        );
-        assert_eq!(
-            resolved.mutation_store_root(".ticket").unwrap(),
-            resolved.target_root().join(".ticket")
-        );
-        assert_ne!(resolved.target_root(), repository);
+        assert!(matches!(
+            resolve_root(&resolver, "unassigned"),
+            Err(ResolutionError::MissingSessionWorktree { .. })
+        ));
     }
 
     fn resolve_root(
@@ -1115,7 +1106,7 @@ mod tests {
     }
 
     #[test]
-    fn sibling_matching_session_id_does_not_change_root_resolution() {
+    fn matching_session_prefix_discovers_worktree() {
         let (_temp, repository, _worktree, resolver) = fixture();
         make_worktree(&repository, "70abae1b-some-slug", "agent/some-slug");
 
@@ -1127,19 +1118,38 @@ mod tests {
             })
             .unwrap();
 
-        assert_eq!(resolved.target_root(), repository);
+        assert_eq!(
+            resolved.target_root(),
+            repository.join(".worktrees").join("70abae1b-some-slug")
+        );
     }
 
     #[test]
-    fn sibling_for_another_session_does_not_change_root_resolution() {
+    fn sibling_for_another_session_is_not_discovered() {
         let (_temp, repository, _worktree, resolver) = fixture();
         make_worktree(&repository, "deadbeef-other-slug", "agent/other");
 
-        assert_eq!(resolve_root(&resolver, SESSION).unwrap().target_root(), repository);
+        assert!(matches!(
+            resolve_root(&resolver, SESSION),
+            Err(ResolutionError::MissingSessionWorktree { .. })
+        ));
     }
 
     #[test]
-    fn sibling_session_record_does_not_change_root_resolution() {
+    fn sibling_session_record_is_not_discovered() {
+        let (_temp, repository, _worktree, resolver) = fixture();
+        let worktree =
+            make_worktree(&repository, "a1b911ab-by-ticket-id", "agent/ticket");
+        seed_session_record(&worktree, "sibling-session");
+
+        assert!(matches!(
+            resolve_root(&resolver, SESSION),
+            Err(ResolutionError::MissingSessionWorktree { .. })
+        ));
+    }
+
+    #[test]
+    fn matching_session_record_discovers_worktree() {
         let (_temp, repository, _worktree, resolver) = fixture();
         let worktree =
             make_worktree(&repository, "a1b911ab-by-ticket-id", "agent/ticket");
@@ -1153,23 +1163,29 @@ mod tests {
             })
             .unwrap();
 
-        assert_eq!(resolved.target_root(), repository);
+        assert_eq!(resolved.target_root(), worktree);
     }
 
     #[test]
-    fn sibling_prefix_matches_do_not_make_resolution_ambiguous() {
+    fn sibling_prefix_matches_are_ambiguous() {
         let (_temp, repository, _worktree, resolver) = fixture();
         make_worktree(&repository, "70abae1b-first", "agent/first");
         make_worktree(&repository, "70abae1b-second", "agent/second");
 
-        assert_eq!(resolve_root(&resolver, SESSION).unwrap().target_root(), repository);
+        assert!(matches!(
+            resolve_root(&resolver, SESSION),
+            Err(ResolutionError::AmbiguousSessionWorktree { .. })
+        ));
     }
 
     #[test]
-    fn missing_assignment_falls_back_to_invocation_checkout() {
-        let (_temp, repository, _worktree, resolver) = fixture();
+    fn missing_assignment_is_rejected() {
+        let (_temp, _repository, _worktree, resolver) = fixture();
 
-        assert_eq!(resolve_root(&resolver, SESSION).unwrap().target_root(), repository);
+        assert!(matches!(
+            resolve_root(&resolver, SESSION),
+            Err(ResolutionError::MissingSessionWorktree { .. })
+        ));
     }
 
     #[test]
@@ -1178,19 +1194,19 @@ mod tests {
         make_worktree(&repository, "70abae1b-some-slug", "agent/some-slug");
         assert_eq!(
             resolve_root(&resolver, SESSION).unwrap().target_root(),
-            repository
+            repository.join(".worktrees").join("70abae1b-some-slug")
         );
 
         make_worktree(&repository, "70abae1b-appeared-later", "agent/later");
 
         assert_eq!(
             resolve_root(&resolver, SESSION).unwrap().target_root(),
-            repository
+            repository.join(".worktrees").join("70abae1b-some-slug")
         );
     }
 
     #[test]
-    fn linked_sibling_worktree_does_not_change_root_resolution() {
+    fn linked_matching_worktree_is_discovered() {
         let (_temp, repository, _worktree, resolver) = fixture();
         // A linked worktree's `.git` is a file pointing at its private git
         // directory under the main checkout, which holds its own HEAD.
@@ -1219,8 +1235,8 @@ mod tests {
             })
             .unwrap();
 
-        assert_eq!(resolved.target_root(), repository);
-        assert!(matches!(resolved.checkout(), CheckoutScope::MainCheckout { .. }));
+        assert_eq!(resolved.target_root(), root);
+        assert!(matches!(resolved.checkout(), CheckoutScope::Worktree { .. }));
     }
 
     #[test]
