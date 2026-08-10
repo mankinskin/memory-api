@@ -26,4 +26,5 @@ thiserror = "2"
 uuid = { version = "1", features = ["serde", "v4"] }
 
 [dev-dependencies]
+memory-fixtures = { path = "../../../crates/memory-fixtures" }
 tempfile = "3"

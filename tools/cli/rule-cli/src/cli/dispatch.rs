@@ -95,7 +95,7 @@ pub(super) fn dispatch_with_workspace_root(
         }));
     }
 
-    let mut store = RuleStore::open_or_init(index_root)?;
+    let mut store = RuleStore::open(index_root)?;
     bootstrap_rule_store(
         &mut store,
         &command,

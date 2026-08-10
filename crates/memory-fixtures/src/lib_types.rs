@@ -23,6 +23,8 @@ pub enum FixtureError {
     },
     #[error("fixture root not found: {0}")]
     MissingFixtureRoot(PathBuf),
+    #[error("no writable storeless workspace base found from {start}")]
+    NoStorelessWorkspaceBase { start: PathBuf },
     #[error("git command {args:?} failed in {dir}: {detail}")]
     Git {
         dir: PathBuf,
@@ -57,6 +59,75 @@ pub struct LoadedFixture {
     pub workspace_root: PathBuf,
     pub manifest: FixtureManifest,
     pub store_roots: BTreeMap<String, PathBuf>,
+}
+
+#[derive(Debug)]
+pub struct EmptyWorkspace {
+    pub(crate) tempdir: TempDir,
+}
+
+impl EmptyWorkspace {
+    pub fn path(&self) -> &Path {
+        self.tempdir.path()
+    }
+
+    pub fn snapshot(&self) -> Result<WorkspaceSnapshot, FixtureError> {
+        crate::snapshot_workspace(self.path())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceSnapshot {
+    pub(crate) entries: BTreeMap<PathBuf, WorkspaceEntry>,
+}
+
+impl WorkspaceSnapshot {
+    pub fn diff(
+        &self,
+        after: &Self,
+    ) -> WorkspaceDelta {
+        let mut delta = WorkspaceDelta::default();
+
+        for (path, entry) in &after.entries {
+            match self.entries.get(path) {
+                None => delta.added.push(path.clone()),
+                Some(before_entry) if before_entry != entry => {
+                    delta.changed.push(path.clone());
+                },
+                Some(_) => {},
+            }
+        }
+
+        for path in self.entries.keys() {
+            if !after.entries.contains_key(path) {
+                delta.removed.push(path.clone());
+            }
+        }
+
+        delta
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum WorkspaceEntry {
+    Directory,
+    File(Vec<u8>),
+    Symlink(PathBuf),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WorkspaceDelta {
+    pub added: Vec<PathBuf>,
+    pub removed: Vec<PathBuf>,
+    pub changed: Vec<PathBuf>,
+}
+
+impl WorkspaceDelta {
+    pub fn is_empty(&self) -> bool {
+        self.added.is_empty()
+            && self.removed.is_empty()
+            && self.changed.is_empty()
+    }
 }
 
 impl LoadedFixture {

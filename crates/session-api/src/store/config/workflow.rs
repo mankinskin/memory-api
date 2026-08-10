@@ -262,11 +262,7 @@ impl SessionStoreConfig {
         let context = self.read_runtime_context(workspace_session_id)?;
         let mut resolutions = Vec::new();
         let mut diagnostics = Vec::new();
-        let owned_resolver = if resolver.is_none() {
-            Some(self.default_ticket_state_resolver()?)
-        } else {
-            None
-        };
+        let owned_resolver = resolver.is_none().then(|| self.default_ticket_state_resolver());
         let resolver = resolver.or(owned_resolver
             .as_ref()
             .map(|item| item as &dyn SessionTicketStateResolver));

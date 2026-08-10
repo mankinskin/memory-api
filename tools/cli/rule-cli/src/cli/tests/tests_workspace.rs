@@ -148,7 +148,7 @@ fn generate_target_from_child_workspace_bootstraps_empty_local_index() {
 #[test]
 fn sync_targets_prunes_removed_outputs_from_previous_sync() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
 
     store
         .create(
@@ -223,7 +223,7 @@ fn sync_targets_prunes_removed_outputs_from_previous_sync() {
 #[test]
 fn sync_targets_prunes_decoupled_hand_owned_outputs_without_deleting_them() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
 
     store
         .create(
@@ -318,7 +318,7 @@ fn sync_targets_prunes_decoupled_hand_owned_outputs_without_deleting_them() {
 #[test]
 fn sync_targets_refuses_zero_match_writes_before_touching_outputs() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
 
     let mut rule = sample_rule(
         "shared/agents/root-readme",
@@ -362,7 +362,7 @@ fn sync_targets_refuses_zero_match_writes_before_touching_outputs() {
 
 #[test]
 fn store_index_writes_catalog_then_check_is_clean_and_detects_drift() {
-    let dir = tempdir().unwrap();
+    let dir = empty_workspace().unwrap();
     let index_root = dir.path().join(".rule");
     let workspace_root = dir.path();
 

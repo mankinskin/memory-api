@@ -1,6 +1,30 @@
 use super::*;
 
 #[test]
+fn empty_workspace_is_storeless_and_snapshots_detect_retained_artifacts() {
+    let workspace = empty_workspace().expect("empty workspace should load");
+    let before = workspace.snapshot().expect("snapshot before startup");
+
+    let artifact = workspace.path().join("test-logs/startup.log");
+    fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+    fs::write(&artifact, "created during startup").unwrap();
+
+    let after_write = workspace.snapshot().expect("snapshot after write");
+    let delta = before.diff(&after_write);
+    assert_eq!(
+        delta.added,
+        vec![
+            PathBuf::from("test-logs"),
+            PathBuf::from("test-logs/startup.log")
+        ]
+    );
+
+    fs::remove_dir_all(workspace.path().join("test-logs")).unwrap();
+    let after_cleanup = workspace.snapshot().expect("snapshot after cleanup");
+    assert!(before.diff(&after_cleanup).is_empty());
+}
+
+#[test]
 fn materializes_fixture_and_exposes_store_roots() {
     let fixture = materialize_fixture().expect("fixture should load");
 
@@ -27,36 +51,26 @@ fn materializes_fixture_and_exposes_store_roots() {
 fn materializes_representative_domain_seeds() {
     let fixture = materialize_fixture().expect("fixture should load");
 
-    assert!(
-        fixture
-            .workspace_root
-            .join(".rule/rules/00000000-0000-0000-0000-0000000000c1/rule.toml")
-            .is_file()
-    );
-    assert!(
-        fixture
-            .workspace_root
-            .join(".session/sessions/default/fixture-session/session.json")
-            .is_file()
-    );
-    assert!(
-        fixture
-            .workspace_root
-            .join(".test-domain/default/executions/fixture-execution.json")
-            .is_file()
-    );
-    assert!(
-        fixture
-            .workspace_root
-            .join(".log/default/captures/fixture-log-capture.json")
-            .is_file()
-    );
-    assert!(
-        fixture
-            .workspace_root
-            .join("src/fixture_module.rs")
-            .is_file()
-    );
+    assert!(fixture
+        .workspace_root
+        .join(".rule/rules/00000000-0000-0000-0000-0000000000c1/rule.toml")
+        .is_file());
+    assert!(fixture
+        .workspace_root
+        .join(".session/sessions/default/fixture-session/session.json")
+        .is_file());
+    assert!(fixture
+        .workspace_root
+        .join(".test-domain/default/executions/fixture-execution.json")
+        .is_file());
+    assert!(fixture
+        .workspace_root
+        .join(".log/default/captures/fixture-log-capture.json")
+        .is_file());
+    assert!(fixture
+        .workspace_root
+        .join("src/fixture_module.rs")
+        .is_file());
     assert!(fixture.workspace_root.join("docs/fixture.md").is_file());
 }
 

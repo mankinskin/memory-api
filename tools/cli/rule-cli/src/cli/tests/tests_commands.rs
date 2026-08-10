@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn scan_command_reports_diagnostics_and_explains_counts() {
-    let dir = tempdir().unwrap();
+    let dir = empty_workspace().unwrap();
     let index_root = dir.path().join(".rule");
     let mut store = RuleStore::init(&index_root).unwrap();
     store
@@ -534,7 +534,7 @@ fn generate_target_respects_explicit_workspace_root_over_config_path() {
 #[test]
 fn delete_command_removes_rule_by_slug() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let rule = sample_rule(
         "shared/agents/delete-me",
         "Delete Me",
@@ -553,7 +553,7 @@ fn delete_command_removes_rule_by_slug() {
     )
     .unwrap();
 
-    let reopened = RuleStore::init(dir.path()).unwrap();
+    let reopened = RuleStore::init(&dir.path().join(".rule")).unwrap();
     assert!(matches!(
         reopened.get("shared/agents/delete-me"),
         Err(rule_api::error::RuleError::NotFound(_))
@@ -669,7 +669,7 @@ fn delete_command_from_ancestor_root_does_not_remove_child_rule() {
 #[test]
 fn generate_file_writes_deterministic_markdown_with_provenance() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let first = sample_rule(
         "shared/agents/validation",
         "Validation",
@@ -716,7 +716,7 @@ fn generate_file_writes_deterministic_markdown_with_provenance() {
 fn generate_file_keeps_frontmatter_first_and_emits_provenance_for_prompt_output()
  {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let mut prompt = RuleManifest::new(
         "context-engine/prompts/spec",
         "Spec Prompt",
@@ -761,7 +761,7 @@ fn import_file_creates_rules_from_markdown_blocks() {
     )
     .unwrap();
 
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let items = importing::import_file(
         &mut store,
         &ImportFileArgs {
@@ -811,7 +811,7 @@ fn import_file_creates_rules_from_markdown_blocks() {
 #[test]
 fn generate_target_uses_config_output_path() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let mut first = sample_rule(
         "shared/agents/opening",
         "Opening",
@@ -866,8 +866,8 @@ fn generate_target_uses_config_output_path() {
 
 #[test]
 fn generate_target_accepts_output_path_selector() {
-    let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let dir = empty_workspace().unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let mut rule = RuleManifest::new(
         "shared/copilot/rtk",
         "RTK",

@@ -8,8 +8,14 @@ description = "Shared E2E fixture loader for multi-store and multi-worktree memo
 name = "memory_fixtures"
 path = "src/lib.rs"
 
+[[bin]]
+name = "startup-matrix"
+path = "src/bin/startup-matrix.rs"
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 toml = "0.8"
 thiserror = "2"
 tempfile = "3"
+toon-format = "0.5"

@@ -196,27 +196,13 @@ impl SessionStoreConfig {
         )
     }
 
-    fn default_ticket_state_resolver(
-        &self
-    ) -> Result<DefaultTicketStateResolver, SessionError> {
-        // Eagerly opening (or initializing) the session's own ticket store here
-        // preserves the pre-existing error-on-construction behavior for the
-        // default/own-workspace case; other workspace slugs are opened lazily
-        // and cached on first resolution.
-        let root = self.ticket_store_root();
-        let store = TicketStore::open_or_init(&root).map_err(|error| {
-            SessionError::InvalidHookInput(format!(
-                "ticket store resolver unavailable: {error}"
-            ))
-        })?;
-        let mut ticket_stores = BTreeMap::new();
-        ticket_stores.insert(root, store);
-        Ok(DefaultTicketStateResolver {
+    fn default_ticket_state_resolver(&self) -> DefaultTicketStateResolver {
+        DefaultTicketStateResolver {
             session_store_root: self.root.clone(),
             workspace_slug: self.workspace_slug.clone(),
-            ticket_stores: std::sync::Mutex::new(ticket_stores),
+            ticket_stores: std::sync::Mutex::new(BTreeMap::new()),
             spec_stores: std::sync::Mutex::new(BTreeMap::new()),
-        })
+        }
     }
 
     fn resolve_workspace_session_id(

@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fs,
     path::{
         Path,
@@ -6,6 +7,135 @@ use std::{
     },
     process::Command,
 };
+
+mod startup_matrix;
+mod startup_probe;
+
+pub use startup_matrix::{
+    run_startup_matrix,
+    run_startup_matrix_for,
+    startup_matrix_succeeded,
+    StartupMatrixClass,
+    StartupMatrixOutcome,
+    StartupMatrixResult,
+};
+pub use startup_probe::{
+    BrowserFrontendPort,
+    BrowserFrontendProbe,
+    ProbeClass,
+    StartupProbe,
+    StartupProbeError,
+    StartupProbeReport,
+    StdioServerProbe,
+};
+
+const STORE_MARKERS: &[&str] = &[
+    ".ticket",
+    ".spec",
+    ".rule",
+    ".session",
+    ".feedback",
+    ".test",
+    ".log",
+    "test-logs",
+];
+
+pub fn empty_workspace() -> Result<EmptyWorkspace, FixtureError> {
+    let start = std::env::current_dir().map_err(|source| FixtureError::Io {
+        path: PathBuf::from("<current directory>"),
+        source,
+    })?;
+
+    for base in start.ancestors() {
+        if ancestor_chain_has_store_marker(base) {
+            continue;
+        }
+
+        let tempdir = match tempfile::Builder::new()
+            .prefix("memory-fixtures-empty-workspace-")
+            .tempdir_in(base)
+        {
+            Ok(tempdir) => tempdir,
+            Err(_) => continue,
+        };
+
+        if !ancestor_chain_has_store_marker(tempdir.path()) {
+            return Ok(EmptyWorkspace { tempdir });
+        }
+    }
+
+    Err(FixtureError::NoStorelessWorkspaceBase { start })
+}
+
+pub fn snapshot_workspace(
+    workspace_root: &Path
+) -> Result<WorkspaceSnapshot, FixtureError> {
+    let mut entries = BTreeMap::new();
+    snapshot_directory(workspace_root, workspace_root, &mut entries)?;
+    Ok(WorkspaceSnapshot { entries })
+}
+
+fn ancestor_chain_has_store_marker(path: &Path) -> bool {
+    path.ancestors().any(|ancestor| {
+        STORE_MARKERS.iter().any(|marker| {
+            ancestor.join(marker).exists()
+                || ancestor.join("target").join(marker).exists()
+        })
+    })
+}
+
+fn snapshot_directory(
+    workspace_root: &Path,
+    directory: &Path,
+    entries: &mut BTreeMap<PathBuf, WorkspaceEntry>,
+) -> Result<(), FixtureError> {
+    let children =
+        fs::read_dir(directory).map_err(|source| FixtureError::Io {
+            path: directory.to_path_buf(),
+            source,
+        })?;
+
+    for child in children {
+        let child = child.map_err(|source| FixtureError::Io {
+            path: directory.to_path_buf(),
+            source,
+        })?;
+        let path = child.path();
+        let relative_path = path
+            .strip_prefix(workspace_root)
+            .expect("workspace child must be within workspace root")
+            .to_path_buf();
+        let metadata =
+            fs::symlink_metadata(&path).map_err(|source| FixtureError::Io {
+                path: path.clone(),
+                source,
+            })?;
+        let entry = if metadata.file_type().is_symlink() {
+            WorkspaceEntry::Symlink(fs::read_link(&path).map_err(|source| {
+                FixtureError::Io {
+                    path: path.clone(),
+                    source,
+                }
+            })?)
+        } else if metadata.is_dir() {
+            WorkspaceEntry::Directory
+        } else {
+            WorkspaceEntry::File(fs::read(&path).map_err(|source| {
+                FixtureError::Io {
+                    path: path.clone(),
+                    source,
+                }
+            })?)
+        };
+        entries.insert(relative_path, entry);
+
+        if metadata.is_dir() {
+            snapshot_directory(workspace_root, &path, entries)?;
+        }
+    }
+
+    Ok(())
+}
 
 pub fn append_fixture_ticket(
     store_root: &Path,

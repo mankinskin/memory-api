@@ -2,8 +2,8 @@ use super::*;
 
 #[test]
 fn generate_target_supports_directory_config() {
-    let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let dir = empty_workspace().unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let config_dir = dir.path().join("rule-targets");
     fs::create_dir_all(&config_dir).unwrap();
     let mut rule = RuleManifest::new(
@@ -60,7 +60,7 @@ fn generate_target_supports_directory_config() {
 
 #[test]
 fn sync_targets_writes_spec_doc_targets_into_spec_entries() {
-    let dir = tempdir().unwrap();
+    let dir = empty_workspace().unwrap();
     let workspace_root = dir.path().join("repo");
     fs::create_dir_all(&workspace_root).unwrap();
 
@@ -129,7 +129,7 @@ fn sync_targets_writes_spec_doc_targets_into_spec_entries() {
 #[test]
 fn generate_target_preserves_existing_crlf_output() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let mut rule = sample_rule(
         "shared/agents/opening",
         "Opening",
@@ -194,7 +194,7 @@ fn generate_target_preserves_existing_crlf_output() {
 #[test]
 fn generate_target_supports_folder_tree_config_output() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let mut rule = sample_rule(
         "shared/agents/opening",
         "Opening",
@@ -253,7 +253,7 @@ fn generate_target_supports_folder_tree_config_output() {
 #[test]
 fn generate_target_supports_dot_prefixed_prompt_tree_output() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let mut prompt = RuleManifest::new(
         "context-engine/prompts/spec",
         "Spec Prompt",
@@ -324,7 +324,7 @@ fn generate_target_supports_dot_prefixed_prompt_tree_output() {
 #[test]
 fn sync_rules_round_trip_preserves_frontmatter_for_generated_target() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let mut rule = RuleManifest::new(
         "context-engine/agents/roast/roast-agent",
         "Roast Agent",
@@ -454,7 +454,7 @@ fn add_root_command_creates_missing_directory() {
 #[test]
 fn feedback_command_self_heals_after_missing_rule_folder() {
     let dir = tempdir().unwrap();
-    let mut store = RuleStore::init(dir.path()).unwrap();
+    let mut store = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let stale = sample_rule(
         "shared/agents/stale-rule",
         "Stale Rule",
@@ -496,7 +496,7 @@ fn feedback_command_self_heals_after_missing_rule_folder() {
 
     assert_eq!(result["status"], "ok");
 
-    let reopened = RuleStore::init(dir.path()).unwrap();
+    let reopened = RuleStore::init(&dir.path().join(".rule")).unwrap();
     let healthy_rule = reopened.get("shared/agents/healthy-rule").unwrap();
     assert_eq!(healthy_rule.feedback_helpful_count(), Some(1));
     assert!(
@@ -551,7 +551,7 @@ fn move_command_dry_run_returns_supported_preflight_plan() {
 
 #[test]
 fn sync_targets_emits_forward_slash_path_fields() {
-    let dir = tempdir().unwrap();
+    let dir = empty_workspace().unwrap();
     let workspace_root = dir.path().join("repo");
     fs::create_dir_all(&workspace_root).unwrap();
 
@@ -620,7 +620,7 @@ fn sync_targets_emits_forward_slash_path_fields() {
 
 #[test]
 fn sync_targets_reports_changed_flag_and_skips_unchanged_writes() {
-    let dir = tempdir().unwrap();
+    let dir = empty_workspace().unwrap();
     let workspace_root = dir.path().join("repo");
     fs::create_dir_all(&workspace_root).unwrap();
 

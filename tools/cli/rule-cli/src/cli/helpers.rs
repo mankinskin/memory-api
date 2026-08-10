@@ -188,6 +188,7 @@ pub(super) fn rule_json(rule: &RuleManifest) -> Value {
 
 #[cfg(test)]
 mod tests {
+    use memory_fixtures::empty_workspace;
     use tempfile::tempdir;
 
     use super::*;
@@ -207,7 +208,7 @@ mod tests {
 
     #[test]
     fn resolve_index_root_defaults_to_current_directory_rule_dir() {
-        let dir = tempdir().unwrap();
+        let dir = empty_workspace().unwrap();
         let nested = dir.path().join("repo");
         std::fs::create_dir_all(&nested).unwrap();
 

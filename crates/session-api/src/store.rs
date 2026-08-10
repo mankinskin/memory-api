@@ -288,9 +288,8 @@ struct DefaultTicketStateResolver {
 impl DefaultTicketStateResolver {
     /// Runs `f` against the cached (or freshly opened) ticket store for
     /// `slug`, opening and caching it at most once per resolved store root.
-    /// Never creates a store as a side effect: the session's own store still
-    /// uses `open_or_init` (unchanged from prior behavior), but any other
-    /// resolved slug requires the store root to already exist.
+    /// Never creates a store as a side effect: every resolved store must
+    /// already exist.
     fn with_ticket_store<T>(
         &self,
         slug: &str,
@@ -304,21 +303,19 @@ impl DefaultTicketStateResolver {
         )?;
         let mut stores = self.ticket_stores.lock().unwrap();
         if !stores.contains_key(&root) {
-            let is_own_workspace =
-                slug == "default" || slug == self.workspace_slug;
-            let store = if is_own_workspace {
-                TicketStore::open_or_init(&root)
-                    .map_err(|error| error.to_string())?
-            } else {
-                if !root.exists() {
-                    return Err(format!(
-                        "ticket store for workspace `{slug}` is unavailable \
-                         at {}: not initialized",
-                        root.display()
-                    ));
-                }
-                TicketStore::open(&root).map_err(|error| error.to_string())?
-            };
+            if !root.exists() {
+                return Err(format!(
+                    "ticket store for workspace `{slug}` is unavailable at {}: \
+                     not initialized",
+                    root.display()
+                ));
+            }
+            let store = TicketStore::open(&root).map_err(|error| {
+                format!(
+                    "ticket store for workspace `{slug}` is unavailable at {}: {error}",
+                    root.display()
+                )
+            })?;
             stores.insert(root.clone(), store);
         }
         f(stores.get(&root).expect("just inserted"))
