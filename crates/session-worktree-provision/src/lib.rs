@@ -20,12 +20,16 @@ pub mod policy;
 pub use policy::{
     NeverActive,
     ProvisionError,
+    ReclaimEligibility,
+    ReclaimRejectionReason,
     ProvisionOutcome,
     ProvisionPolicy,
     SessionActivity,
     SessionStoreActivity,
     WorktreeOwnership,
+    evaluate_reclaim_candidate,
     provision_for_session,
+    reclaim_candidates,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +41,18 @@ pub struct WorktreeRef {
 
 pub struct WorktreeGit {
     main_checkout: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DirtyPathKind {
+    Tracked,
+    Untracked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirtyPath {
+    pub path: PathBuf,
+    pub kind: DirtyPathKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -193,6 +209,60 @@ impl WorktreeGit {
                 let status = entry.status();
                 status != Status::CURRENT && !status.contains(Status::IGNORED)
             }))
+    }
+
+    pub fn dirty_paths(
+        &self,
+        worktree: &Path,
+    ) -> Result<Vec<DirtyPath>, WorktreeGitError> {
+        let repository = Repository::open(worktree)?;
+        let mut options = StatusOptions::new();
+        options.include_untracked(true).recurse_untracked_dirs(true);
+        let mut paths = repository
+            .statuses(Some(&mut options))?
+            .iter()
+            .filter_map(|entry| {
+                let status = entry.status();
+                if status == Status::CURRENT || status.contains(Status::IGNORED) {
+                    return None;
+                }
+                let path = entry.path()?;
+                let kind = if status.intersects(Status::INDEX_NEW | Status::WT_NEW) {
+                    DirtyPathKind::Untracked
+                } else {
+                    DirtyPathKind::Tracked
+                };
+                Some(DirtyPath {
+                    path: PathBuf::from(path),
+                    kind,
+                })
+            })
+            .collect::<Vec<_>>();
+        paths.sort_by(|left, right| left.path.cmp(&right.path));
+        Ok(paths)
+    }
+
+    pub fn stash_push(
+        &self,
+        message: &str,
+    ) -> Result<(), WorktreeGitError> {
+        subprocess::run_arguments(
+            &self.main_checkout,
+            ["stash", "push", "-m", message],
+        )
+    }
+
+    pub fn stash_contains_message(
+        &self,
+        message: &str,
+    ) -> Result<bool, WorktreeGitError> {
+        let mut repository = self.repository()?;
+        let mut found = false;
+        repository.stash_foreach(|_, stash_message, _| {
+            found = stash_message.contains(message);
+            !found
+        })?;
+        Ok(found)
     }
 
     pub fn ahead_behind(
@@ -749,6 +819,32 @@ mod subprocess {
         }
     }
 
+    pub(super) fn run_arguments<const N: usize>(
+        directory: &Path,
+        arguments: [&str; N],
+    ) -> Result<(), WorktreeGitError> {
+        let mut command = Command::new("git");
+        command.arg("-C").arg(git_path(directory));
+        command.args(arguments);
+        let rendered = render(&command);
+        let output =
+            command.output().map_err(|source| WorktreeGitError::Io {
+                path: directory.to_path_buf(),
+                source,
+            })?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(WorktreeGitError::CommandFailed {
+                command: rendered,
+                status: output.status,
+                stderr: String::from_utf8_lossy(&output.stderr)
+                    .trim()
+                    .to_string(),
+            })
+        }
+    }
+
     fn render(command: &Command) -> String {
         std::iter::once(command.get_program().to_os_string())
             .chain(command.get_args().map(OsString::from))
@@ -925,6 +1021,40 @@ pub(crate) mod tests {
             ],
         );
         assert_eq!(git.ahead_behind(&worktree.path, "HEAD~1").unwrap(), (1, 0));
+    }
+
+    #[test]
+    fn dirty_paths_report_tracked_and_untracked_files() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        fs::write(fixture.main.join("tracked.txt"), "changed\n").unwrap();
+        fs::write(fixture.main.join("untracked.txt"), "new\n").unwrap();
+
+        assert_eq!(
+            git.dirty_paths(&fixture.main).unwrap(),
+            vec![
+                super::DirtyPath {
+                    path: "tracked.txt".into(),
+                    kind: super::DirtyPathKind::Tracked,
+                },
+                super::DirtyPath {
+                    path: "untracked.txt".into(),
+                    kind: super::DirtyPathKind::Untracked,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn stash_push_creates_an_entry_with_the_requested_message() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let message = "preserve-main-changes";
+        fs::write(fixture.main.join("tracked.txt"), "changed\n").unwrap();
+
+        git.stash_push(message).unwrap();
+
+        assert!(git.stash_contains_message(message).unwrap());
     }
 
     #[test]

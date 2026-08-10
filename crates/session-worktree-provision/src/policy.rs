@@ -170,6 +170,24 @@ pub enum ProvisionOutcome {
     Created(WorktreeRef),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReclaimEligibility {
+    Reclaimable,
+    Rejected(ReclaimRejectionReason),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReclaimRejectionReason {
+    OutsideWorktreeRoot,
+    SessionActive,
+    Detached,
+    Dirty,
+    ContainsCurrentDirectory,
+    NotIdle,
+    DirtySubmodule { path: PathBuf },
+    AheadOfMain,
+}
+
 #[derive(Debug, Error)]
 pub enum ProvisionError {
     #[error(transparent)]
@@ -196,6 +214,70 @@ pub enum ProvisionError {
         worktree.display()
     )]
     AmbiguousSessionWorktreeOwnership { worktree: PathBuf },
+}
+
+pub fn evaluate_reclaim_candidate(
+    git: &WorktreeGit,
+    activity: &dyn SessionActivity,
+    worktree: &WorktreeRef,
+    policy: &ProvisionPolicy,
+) -> Result<ReclaimEligibility, WorktreeGitError> {
+    let root = git.main_checkout().join(".worktrees");
+    if worktree.path.parent() != Some(root.as_path()) {
+        return Ok(ReclaimEligibility::Rejected(
+            ReclaimRejectionReason::OutsideWorktreeRoot,
+        ));
+    }
+    if activity.is_active(&worktree.path) {
+        return Ok(ReclaimEligibility::Rejected(
+            ReclaimRejectionReason::SessionActive,
+        ));
+    }
+    if worktree.branch.is_none() {
+        return Ok(ReclaimEligibility::Rejected(
+            ReclaimRejectionReason::Detached,
+        ));
+    }
+    if current_directory_is_within_worktree(&worktree.path) {
+        return Ok(ReclaimEligibility::Rejected(
+            ReclaimRejectionReason::ContainsCurrentDirectory,
+        ));
+    }
+    if !worktree_is_idle(git, worktree, policy.idle_before_reclaim) {
+        return Ok(ReclaimEligibility::Rejected(
+            ReclaimRejectionReason::NotIdle,
+        ));
+    }
+    for submodule in git.submodule_paths()? {
+        let path = worktree.path.join(&submodule);
+        if path.exists() && git.is_dirty(&path)? {
+            return Ok(ReclaimEligibility::Rejected(
+                ReclaimRejectionReason::DirtySubmodule {
+                    path: PathBuf::from(submodule),
+                },
+            ));
+        }
+    }
+    if git.is_dirty(&worktree.path)? {
+        return Ok(ReclaimEligibility::Rejected(
+            ReclaimRejectionReason::Dirty,
+        ));
+    }
+    if git.ahead_behind(&worktree.path, "main")?.0 != 0 {
+        return Ok(ReclaimEligibility::Rejected(
+            ReclaimRejectionReason::AheadOfMain,
+        ));
+    }
+    Ok(ReclaimEligibility::Reclaimable)
+}
+
+pub fn reclaim_candidates(
+    git: &WorktreeGit,
+    activity: &dyn SessionActivity,
+    policy: &ProvisionPolicy,
+) -> Result<Vec<WorktreeRef>, WorktreeGitError> {
+    let worktrees = registered_worktrees(git)?;
+    reclaim_candidates_from_registered(git, activity, &worktrees, policy)
 }
 
 pub fn provision_for_session(
@@ -238,14 +320,12 @@ pub fn provision_for_session(
         };
     }
 
-    let mut candidates = Vec::new();
-    for worktree in &worktrees {
-        if reclaimable(git, activity, worktree, policy)? {
-            candidates.push(worktree);
-        }
-    }
-    candidates.sort_by(reclaim_order);
-    for candidate in candidates {
+    for candidate in reclaim_candidates_from_registered(
+        git,
+        activity,
+        &worktrees,
+        policy,
+    )? {
         let previous_name = candidate.name.clone();
         // TODO(5e6cf4f8): update reclaimed worktrees from main in a later provisioning unit.
         match git.rename_worktree(&previous_name, &name, &branch) {
@@ -288,27 +368,22 @@ fn registered_worktrees(
         .collect())
 }
 
-fn reclaimable(
+fn reclaim_candidates_from_registered(
     git: &WorktreeGit,
     activity: &dyn SessionActivity,
-    worktree: &WorktreeRef,
+    worktrees: &[WorktreeRef],
     policy: &ProvisionPolicy,
-) -> Result<bool, WorktreeGitError> {
-    if activity.is_active(&worktree.path)
-        || worktree.branch.is_none()
-        || git.is_dirty(&worktree.path)?
-        || current_directory_is_within_worktree(&worktree.path)
-        || !worktree_is_idle(git, worktree, policy.idle_before_reclaim)
-    {
-        return Ok(false);
-    }
-    for submodule in git.submodule_paths()? {
-        let path = worktree.path.join(submodule);
-        if path.exists() && git.is_dirty(&path)? {
-            return Ok(false);
+) -> Result<Vec<WorktreeRef>, WorktreeGitError> {
+    let mut candidates = Vec::new();
+    for worktree in worktrees {
+        if evaluate_reclaim_candidate(git, activity, worktree, policy)?
+            == ReclaimEligibility::Reclaimable
+        {
+            candidates.push(worktree.clone());
         }
     }
-    Ok(git.ahead_behind(&worktree.path, "main")?.0 == 0)
+    candidates.sort_by(reclaim_order);
+    Ok(candidates)
 }
 
 fn current_directory_is_within_worktree(worktree: &Path) -> bool {
@@ -372,8 +447,8 @@ fn worktree_last_activity(
 }
 
 fn reclaim_order(
-    left: &&WorktreeRef,
-    right: &&WorktreeRef,
+    left: &WorktreeRef,
+    right: &WorktreeRef,
 ) -> std::cmp::Ordering {
     modified_at(&left.path)
         .cmp(&modified_at(&right.path))
@@ -486,11 +561,15 @@ mod tests {
     use super::{
         NeverActive,
         ProvisionError,
+        ReclaimEligibility,
+        ReclaimRejectionReason,
         ProvisionOutcome,
         ProvisionPolicy,
         SessionActivity,
         SessionStoreActivity,
+        evaluate_reclaim_candidate,
         provision_for_session,
+        reclaim_candidates,
     };
     use crate::{
         WorktreeRef,
@@ -592,6 +671,218 @@ mod tests {
             .to_string(),
         )
         .unwrap();
+    }
+
+    fn only_worktree(git: &crate::WorktreeGit) -> WorktreeRef {
+        let mut worktrees = git.list_worktrees().unwrap();
+        assert_eq!(worktrees.len(), 1);
+        worktrees.remove(0)
+    }
+
+    #[test]
+    fn evaluate_reclaim_candidate_reports_outside_worktree_root() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let candidate = WorktreeRef {
+            name: "outside".to_string(),
+            path: fixture.main.clone(),
+            branch: Some("main".to_string()),
+        };
+
+        let eligibility = evaluate_reclaim_candidate(
+            &git,
+            &NeverActive,
+            &candidate,
+            &policy(1),
+        )
+        .unwrap();
+        assert_eq!(
+            eligibility,
+            ReclaimEligibility::Rejected(
+                ReclaimRejectionReason::OutsideWorktreeRoot
+            )
+        );
+    }
+
+    #[test]
+    fn evaluate_reclaim_candidate_reports_session_active() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let worktree = git.create_worktree("old", "agent/old", "main").unwrap();
+        let activity = ActiveWorktree(worktree.path.clone());
+
+        let eligibility = evaluate_reclaim_candidate(
+            &git,
+            &activity,
+            &only_worktree(&git),
+            &policy(1),
+        )
+        .unwrap();
+        assert_eq!(
+            eligibility,
+            ReclaimEligibility::Rejected(ReclaimRejectionReason::SessionActive)
+        );
+    }
+
+    #[test]
+    fn evaluate_reclaim_candidate_reports_detached() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let worktree = git.create_worktree("old", "agent/old", "main").unwrap();
+        let candidate = WorktreeRef {
+            name: worktree.name,
+            path: worktree.path,
+            branch: None,
+        };
+
+        let eligibility = evaluate_reclaim_candidate(
+            &git,
+            &NeverActive,
+            &candidate,
+            &policy(1),
+        )
+        .unwrap();
+        assert_eq!(
+            eligibility,
+            ReclaimEligibility::Rejected(ReclaimRejectionReason::Detached)
+        );
+    }
+
+    #[test]
+    fn evaluate_reclaim_candidate_reports_dirty() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let worktree = git.create_worktree("old", "agent/old", "main").unwrap();
+        fs::write(worktree.path.join("untracked.txt"), "dirty\n").unwrap();
+
+        let eligibility = evaluate_reclaim_candidate(
+            &git,
+            &NeverActive,
+            &only_worktree(&git),
+            &policy(1),
+        )
+        .unwrap();
+        assert_eq!(
+            eligibility,
+            ReclaimEligibility::Rejected(ReclaimRejectionReason::Dirty)
+        );
+    }
+
+    #[test]
+    fn evaluate_reclaim_candidate_reports_contains_current_directory() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let worktree = git.create_worktree("old", "agent/old", "main").unwrap();
+        let original = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&worktree.path).unwrap();
+
+        let eligibility = evaluate_reclaim_candidate(
+            &git,
+            &NeverActive,
+            &only_worktree(&git),
+            &policy(1),
+        )
+        .unwrap();
+
+        std::env::set_current_dir(original).unwrap();
+        assert_eq!(
+            eligibility,
+            ReclaimEligibility::Rejected(
+                ReclaimRejectionReason::ContainsCurrentDirectory
+            )
+        );
+    }
+
+    #[test]
+    fn evaluate_reclaim_candidate_reports_not_idle() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        git.create_worktree("old", "agent/old", "main").unwrap();
+        let mut not_idle_policy = policy(1);
+        not_idle_policy.idle_before_reclaim = Duration::from_secs(60 * 60);
+
+        let eligibility = evaluate_reclaim_candidate(
+            &git,
+            &NeverActive,
+            &only_worktree(&git),
+            &not_idle_policy,
+        )
+        .unwrap();
+        assert_eq!(
+            eligibility,
+            ReclaimEligibility::Rejected(ReclaimRejectionReason::NotIdle)
+        );
+    }
+
+    #[test]
+    fn evaluate_reclaim_candidate_reports_dirty_submodule() {
+        let fixture = Fixture::new();
+        fixture.add_submodule();
+        let git = fixture.git();
+        let worktree = git.create_worktree("old", "agent/old", "main").unwrap();
+        fs::write(
+            worktree.path.join("nested").join("inner.txt"),
+            "dirty submodule\n",
+        )
+        .unwrap();
+
+        let eligibility = evaluate_reclaim_candidate(
+            &git,
+            &NeverActive,
+            &only_worktree(&git),
+            &policy(1),
+        )
+        .unwrap();
+        assert_eq!(
+            eligibility,
+            ReclaimEligibility::Rejected(ReclaimRejectionReason::DirtySubmodule {
+                path: PathBuf::from("nested"),
+            })
+        );
+    }
+
+    #[test]
+    fn evaluate_reclaim_candidate_reports_ahead_of_main() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let worktree = git.create_worktree("old", "agent/old", "main").unwrap();
+        fs::write(worktree.path.join("tracked.txt"), "advance\n").unwrap();
+        commit(&worktree.path, "advance");
+
+        let eligibility = evaluate_reclaim_candidate(
+            &git,
+            &NeverActive,
+            &only_worktree(&git),
+            &policy(1),
+        )
+        .unwrap();
+        assert_eq!(
+            eligibility,
+            ReclaimEligibility::Rejected(ReclaimRejectionReason::AheadOfMain)
+        );
+    }
+
+    #[test]
+    fn reclaim_candidates_are_ordered_by_oldest_mtime_then_name() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let old = git.create_worktree("a-old", "agent/a-old", "main").unwrap();
+        let newer = git.create_worktree("b-new", "agent/b-new", "main").unwrap();
+        let age = Duration::from_secs(2 * 60 * 60);
+        backdate_activity_signals(&git, &old, age);
+
+        let candidates = reclaim_candidates(&git, &NeverActive, &policy(8)).unwrap();
+        let names = candidates
+            .iter()
+            .map(|worktree| worktree.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["a-old", "b-new"]);
+        assert!(candidates.iter().any(|worktree| worktree.path == old.path));
+        assert!(
+            candidates
+                .iter()
+                .any(|worktree| worktree.path == newer.path)
+        );
     }
 
     #[test]
