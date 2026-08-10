@@ -200,6 +200,7 @@ mod tests {
                 ticket_id: None,
                 model: Some("claude-3-5-sonnet".to_string()),
                 trigger: None,
+                provisioning: None,
                 producer: None,
                 copilot_version: None,
                 vscode_version: None,
@@ -328,6 +329,7 @@ mod tests {
             agent_id: None,
             model: Some("claude-opus-4".to_string()),
             trigger: Some("test".to_string()),
+            provisioning: None,
             messages: vec![
                 CopilotHookMessage {
                     role: SessionRole::User,
@@ -409,6 +411,7 @@ mod tests {
                 ticket_id: None,
                 model: Some("claude-opus-4".to_string()),
                 trigger: None,
+                provisioning: None,
                 producer: None,
                 copilot_version: None,
                 vscode_version: None,
@@ -574,6 +577,7 @@ mod tests {
                 ticket_id: None,
                 model: Some("gpt-4".to_string()),
                 trigger: None,
+                provisioning: None,
                 producer: None,
                 copilot_version: None,
                 vscode_version: None,

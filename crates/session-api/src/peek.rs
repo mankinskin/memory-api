@@ -80,6 +80,7 @@ mod tests {
                 ticket_id: None,
                 model: None,
                 trigger: None,
+                provisioning: None,
                 producer: None,
                 copilot_version: None,
                 vscode_version: None,

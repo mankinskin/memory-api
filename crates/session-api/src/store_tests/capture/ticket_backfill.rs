@@ -72,6 +72,7 @@ fn write_raw_session_with_turns(
             ticket_id: ticket_id.map(str::to_string),
             model: None,
             trigger: None,
+            provisioning: None,
             producer: None,
             copilot_version: None,
             vscode_version: None,

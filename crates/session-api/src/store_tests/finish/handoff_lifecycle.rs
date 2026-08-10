@@ -22,6 +22,7 @@ fn capture_session(config: &SessionStoreConfig, session_id: &str) {
             agent_id: None,
             model: None,
             trigger: None,
+            provisioning: None,
             messages: vec![crate::CopilotHookMessage {
                 role: crate::SessionRole::User,
                 content: "hello".to_string(),

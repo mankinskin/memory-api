@@ -116,6 +116,7 @@ impl SessionStoreConfig {
                 ticket_id: Some(request.ticket_id),
                 model: None,
                 trigger: Some("session-check-in".to_string()),
+                provisioning: None,
                 producer: None,
                 copilot_version: None,
                 vscode_version: None,

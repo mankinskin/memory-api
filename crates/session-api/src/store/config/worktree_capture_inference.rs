@@ -135,6 +135,7 @@ impl SessionStoreConfig {
                 ticket_id: None,
                 model: None,
                 trigger: Some("session-worktree-inference".to_string()),
+                provisioning: None,
                 producer: None,
                 copilot_version: None,
                 vscode_version: None,

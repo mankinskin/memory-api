@@ -209,6 +209,7 @@ mod tests {
             agent_id: Some("github-copilot".to_string()),
             model: Some("GPT".to_string()),
             trigger: Some("test".to_string()),
+            provisioning: None,
             messages: vec![CopilotHookMessage {
                 role: SessionRole::User,
                 content: "move this session".to_string(),

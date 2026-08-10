@@ -29,6 +29,7 @@ fn capture_request_maps_hook_payload_into_session_record() {
         agent_id: Some("github-copilot-gpt-5.4".to_string()),
         model: Some("GPT-5.4".to_string()),
         trigger: Some("post-turn".to_string()),
+        provisioning: None,
         messages: vec![
             CopilotHookMessage {
                 role: SessionRole::User,
@@ -76,6 +77,7 @@ fn capture_request_rejects_missing_session_id() {
         agent_id: None,
         model: None,
         trigger: None,
+        provisioning: None,
         messages: vec![CopilotHookMessage {
             role: SessionRole::User,
             content: "hello".to_string(),
