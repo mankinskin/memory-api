@@ -24,6 +24,7 @@ pub use policy::{
     ProvisionPolicy,
     SessionActivity,
     SessionStoreActivity,
+    WorktreeOwnership,
     provision_for_session,
 };
 

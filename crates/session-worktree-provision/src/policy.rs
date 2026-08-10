@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     fs,
     path::{
         Path,
@@ -34,6 +35,20 @@ pub trait SessionActivity {
         &self,
         worktree: &Path,
     ) -> bool;
+
+    fn worktree_ownership(
+        &self,
+        _worktree: &Path,
+    ) -> WorktreeOwnership {
+        WorktreeOwnership::Unowned
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorktreeOwnership {
+    Unowned,
+    Owned(String),
+    Ambiguous,
 }
 
 /// Session activity backed by records in a `.session` store.
@@ -74,6 +89,35 @@ impl SessionActivity for SessionStoreActivity {
             let record = entry.path().join("session.json");
             session_record_is_active(&record, &worktree, self.stale_after)
         })
+    }
+
+    fn worktree_ownership(
+        &self,
+        worktree: &Path,
+    ) -> WorktreeOwnership {
+        let Some(worktree) = normalized_path(worktree) else {
+            return WorktreeOwnership::Ambiguous;
+        };
+        let Ok(entries) = fs::read_dir(self.session_store.join("sessions"))
+        else {
+            return WorktreeOwnership::Unowned;
+        };
+        let owners = entries
+            .flatten()
+            .filter_map(|entry| {
+                session_record_owner(
+                    &entry.path().join("session.json"),
+                    &worktree,
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        match owners.len() {
+            0 => WorktreeOwnership::Unowned,
+            1 => WorktreeOwnership::Owned(
+                owners.into_iter().next().unwrap(),
+            ),
+            _ => WorktreeOwnership::Ambiguous,
+        }
     }
 }
 
@@ -138,6 +182,20 @@ pub enum ProvisionError {
         current_count: usize,
         reason: String,
     },
+    #[error(
+        "worktree {} is owned by session {owner_session_id}, not requesting session {session_id}",
+        worktree.display()
+    )]
+    SessionOwnershipConflict {
+        worktree: PathBuf,
+        session_id: String,
+        owner_session_id: String,
+    },
+    #[error(
+        "worktree {} has ambiguous recorded session ownership",
+        worktree.display()
+    )]
+    AmbiguousSessionWorktreeOwnership { worktree: PathBuf },
 }
 
 pub fn provision_for_session(
@@ -156,7 +214,28 @@ pub fn provision_for_session(
         .iter()
         .find(|worktree| worktree.name.starts_with(&prefix))
     {
-        return Ok(ProvisionOutcome::AlreadyProvisioned(worktree.clone()));
+        return match activity.worktree_ownership(&worktree.path) {
+            WorktreeOwnership::Owned(owner_session_id)
+                if owner_session_id == session_id =>
+            {
+                Ok(ProvisionOutcome::AlreadyProvisioned(worktree.clone()))
+            },
+            WorktreeOwnership::Owned(owner_session_id) => {
+                Err(ProvisionError::SessionOwnershipConflict {
+                    worktree: worktree.path.clone(),
+                    session_id: session_id.to_string(),
+                    owner_session_id,
+                })
+            },
+            WorktreeOwnership::Ambiguous => {
+                Err(ProvisionError::AmbiguousSessionWorktreeOwnership {
+                    worktree: worktree.path.clone(),
+                })
+            },
+            WorktreeOwnership::Unowned => {
+                Ok(ProvisionOutcome::AlreadyProvisioned(worktree.clone()))
+            },
+        };
     }
 
     let mut candidates = Vec::new();
@@ -344,6 +423,21 @@ fn session_record_is_active(
             .is_some_and(|timestamp| timestamp_is_fresh(timestamp, stale_after))
 }
 
+fn session_record_owner(
+    path: &Path,
+    worktree: &str,
+) -> Option<String> {
+    let record = fs::read_to_string(path).ok()?;
+    let record = serde_json::from_str::<Value>(&record).ok()?;
+    let record_path = record
+        .pointer("/metadata/worktree/path")
+        .and_then(Value::as_str)
+        .and_then(normalized_path)?;
+    let session_id = record.get("session_id")?.as_str()?;
+    (record_path == worktree && !session_id.is_empty())
+        .then(|| session_id.to_string())
+}
+
 fn normalized_path(path: impl AsRef<Path>) -> Option<String> {
     fs::canonicalize(path)
         .ok()
@@ -404,6 +498,8 @@ mod tests {
     };
 
     const SESSION_ID: &str = "12345678-1234-4234-8234-123456789abc";
+    const SAME_PREFIX_SESSION_ID: &str =
+        "12345678-5678-4678-9678-123456789abc";
 
     struct ActiveWorktree(PathBuf);
 
@@ -473,6 +569,31 @@ mod tests {
         assert!(matches!(result, Err(ProvisionError::CapReached { .. })));
     }
 
+    fn persist_worktree_owner(
+        session_store: &Path,
+        session_id: &str,
+        worktree: &WorktreeRef,
+    ) {
+        let record = session_store
+            .join("sessions")
+            .join(session_id)
+            .join("session.json");
+        fs::create_dir_all(record.parent().unwrap()).unwrap();
+        fs::write(
+            record,
+            serde_json::json!({
+                "session_id": session_id,
+                "metadata": {
+                    "worktree": {
+                        "path": worktree.path,
+                    },
+                },
+            })
+            .to_string(),
+        )
+        .unwrap();
+    }
+
     #[test]
     fn second_call_for_session_is_idempotent() {
         let fixture = Fixture::new();
@@ -494,6 +615,138 @@ mod tests {
             ProvisionOutcome::AlreadyProvisioned(worktree) if worktree == expected
         ));
         assert_eq!(git.list_worktrees().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn session_reuses_its_own_persisted_worktree_assignment() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let session_store = fixture.main.join(".session");
+        let worktree = match provision_for_session(
+            &git,
+            &NeverActive,
+            SESSION_ID,
+            &policy(8),
+        )
+        .unwrap()
+        {
+            ProvisionOutcome::Created(worktree) => worktree,
+            other => panic!("expected creation, got {other:?}"),
+        };
+        persist_worktree_owner(&session_store, SESSION_ID, &worktree);
+
+        let fresh_activity = SessionStoreActivity::with_default_staleness(
+            &session_store,
+        );
+        let reuse = provision_for_session(
+            &git,
+            &fresh_activity,
+            SESSION_ID,
+            &policy(8),
+        )
+        .unwrap();
+
+        assert!(matches!(
+            reuse,
+            ProvisionOutcome::AlreadyProvisioned(reused) if reused == worktree
+        ));
+    }
+
+    #[test]
+    fn sessions_sharing_prefix_do_not_receive_the_same_worktree() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let session_store = fixture.main.join(".session");
+        let worktree = git
+            .create_worktree(
+                "12345678-session",
+                "agent/12345678-session",
+                "main",
+            )
+            .unwrap();
+        persist_worktree_owner(&session_store, SESSION_ID, &worktree);
+
+        let fresh_activity = SessionStoreActivity::with_default_staleness(
+            &session_store,
+        );
+        let result = provision_for_session(
+            &git,
+            &fresh_activity,
+            SAME_PREFIX_SESSION_ID,
+            &policy(8),
+        );
+
+        assert!(matches!(
+            result,
+            Err(ProvisionError::SessionOwnershipConflict {
+                session_id,
+                owner_session_id,
+                ..
+            }) if session_id == SAME_PREFIX_SESSION_ID
+                && owner_session_id == SESSION_ID
+        ));
+        assert_eq!(git.list_worktrees().unwrap(), vec![worktree]);
+    }
+
+    #[test]
+    fn foreign_owned_prefix_candidate_returns_ownership_conflict() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let session_store = fixture.main.join(".session");
+        let worktree = git
+            .create_worktree(
+                "12345678-session",
+                "agent/12345678-session",
+                "main",
+            )
+            .unwrap();
+        persist_worktree_owner(&session_store, SESSION_ID, &worktree);
+
+        let fresh_activity = SessionStoreActivity::with_default_staleness(
+            &session_store,
+        );
+        let result = provision_for_session(
+            &git,
+            &fresh_activity,
+            SAME_PREFIX_SESSION_ID,
+            &policy(8),
+        );
+
+        assert!(matches!(
+            result,
+            Err(ProvisionError::SessionOwnershipConflict { worktree: path, .. })
+                if path == worktree.path
+        ));
+    }
+
+    #[test]
+    fn unowned_legacy_prefix_candidate_remains_claimable() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let worktree = git
+            .create_worktree(
+                "12345678-session",
+                "agent/12345678-session",
+                "main",
+            )
+            .unwrap();
+        let session_store = fixture.main.join(".session");
+        let fresh_activity = SessionStoreActivity::with_default_staleness(
+            &session_store,
+        );
+
+        let reuse = provision_for_session(
+            &git,
+            &fresh_activity,
+            SAME_PREFIX_SESSION_ID,
+            &policy(8),
+        )
+        .unwrap();
+
+        assert!(matches!(
+            reuse,
+            ProvisionOutcome::AlreadyProvisioned(reused) if reused == worktree
+        ));
     }
 
     #[test]
