@@ -242,6 +242,18 @@ pub(super) fn merge_metadata(
         ticket_id: incoming.ticket_id.or(existing.ticket_id),
         model: incoming.model.or(existing.model),
         trigger: incoming.trigger.or(existing.trigger),
+        provisioning: match (existing.provisioning, incoming.provisioning) {
+            (Some(existing), Some(incoming))
+                if incoming.hook_event_name.eq_ignore_ascii_case("UserPromptSubmit")
+                    && !existing
+                        .hook_event_name
+                        .eq_ignore_ascii_case("UserPromptSubmit") =>
+            {
+                Some(incoming)
+            }
+            (Some(existing), _) => Some(existing),
+            (None, incoming) => incoming,
+        },
         producer: incoming.producer.or(existing.producer),
         copilot_version: incoming.copilot_version.or(existing.copilot_version),
         vscode_version: incoming.vscode_version.or(existing.vscode_version),

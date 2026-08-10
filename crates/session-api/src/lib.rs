@@ -92,6 +92,7 @@ pub use model::{
     SessionRecord,
     SessionRole,
     SessionRunLineage,
+    SessionProvisioningDiagnostic,
     SessionRuntimeContext,
     SessionRuntimeInitRequest,
     SessionRuntimeInitResult,

@@ -355,16 +355,22 @@ fn e2e_user_prompt_with_external_store_does_not_provision_cwd_checkout() {
         payload["provisioning"]["reason"],
         "external_store_mismatch"
     );
-    let diagnostic_path = store_root
-        .join("sessions")
-        .join(FIXTURE_SESSION_ID)
-        .join("provisioning.json");
-    let diagnostic: serde_json::Value = serde_json::from_slice(
-        &fs::read(&diagnostic_path)
-            .expect("provisioning diagnostic should remain readable after the hook exits"),
-    )
-    .expect("provisioning diagnostic should be valid JSON");
-    assert_eq!(diagnostic["provisioning"], payload["provisioning"]);
+    let config = SessionStoreConfig::new(&store_root, "default");
+    let record = config
+        .read_session(FIXTURE_SESSION_ID)
+        .expect("provisioning diagnostic should remain readable after the hook exits");
+    let diagnostic = record.metadata.provisioning.expect("provisioning diagnostic");
+    assert_eq!(diagnostic.outcome, "skipped");
+    assert_eq!(diagnostic.reason.as_deref(), Some("external_store_mismatch"));
+    assert_eq!(diagnostic.hook_event_name, "UserPromptSubmit");
+    assert!(
+        !store_root
+            .join("sessions")
+            .join(FIXTURE_SESSION_ID)
+            .join("provisioning.json")
+            .exists(),
+        "provisioning.json must not be written under the session store"
+    );
     assert!(
         String::from_utf8_lossy(&output.stderr)
             .contains("worktree provisioning skipped"),

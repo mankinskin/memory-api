@@ -15,6 +15,7 @@ pub(super) struct Args {
     pub(super) store_root: Option<PathBuf>,
     pub(super) workspace_slug: String,
     pub(super) trigger: String,
+    pub(super) hook_event_name: Option<String>,
     pub(super) from_hook_stdin: bool,
     /// PostToolUse hook stdin `tool_use_id`, paired with `tool_response_chars`
     /// to build a `ToolResponseOverride` (ticket 44119807 T2).
@@ -79,6 +80,7 @@ pub(super) fn parse_args() -> Result<Args, SessionError> {
         store_root,
         workspace_slug: workspace_slug.unwrap_or_else(|| "default".to_string()),
         trigger: trigger.unwrap_or_else(|| "stop".to_string()),
+        hook_event_name: None,
         from_hook_stdin,
         tool_call_id: None,
         tool_response_chars: None,
@@ -115,10 +117,12 @@ pub(super) fn args_from_hook_stdin(
     {
         args.workspace_slug = workspace_slug;
     }
-    if let Some(trigger) =
-        get_field(&payload, &["hook_event_name", "hookEventName"])
+    if let Some(hook_event_name) = ["hook_event_name", "hookEventName"]
+        .iter()
+        .find_map(|key| payload.get(*key)?.as_str())
     {
-        args.trigger = normalize_trigger(&trigger);
+        args.trigger = normalize_trigger(hook_event_name);
+        args.hook_event_name = Some(hook_event_name.to_string());
     }
     if let Some(tool_call_id) =
         get_field(&payload, &["tool_use_id", "toolUseId"])

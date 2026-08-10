@@ -15,6 +15,7 @@ use crate::{
     SessionRole,
     SessionRuntimeInitRequest,
     SessionStoreConfig,
+    SessionProvisioningDiagnostic,
     SessionTicketStateResolver,
     SessionWorkflowEdgeKind,
     SessionWorkflowNodeDraft,
@@ -54,6 +55,7 @@ fn sample_payload(
         agent_id: Some("github-copilot-gpt-5.4".to_string()),
         model: Some("GPT-5.4".to_string()),
         trigger: Some("post-turn".to_string()),
+        provisioning: None,
         messages: messages
             .iter()
             .enumerate()
@@ -86,6 +88,20 @@ fn sample_request(
         captured_at,
         messages,
     ))
+}
+
+fn request_with_provisioning(
+    session_id: &str,
+    diagnostic: Option<SessionProvisioningDiagnostic>,
+) -> SessionCaptureRequest {
+    let mut request = sample_request(
+        session_id,
+        Some("conversation-abc"),
+        sample_time(),
+        &["Persist this chat"],
+    );
+    request.payload.provisioning = diagnostic;
+    request
 }
 
 fn sample_worktree_request(
@@ -220,6 +236,106 @@ fn persist_capture_appends_only_new_turns_from_later_capture() {
     assert_eq!(transcript.turns[0].captured_at, sample_time());
     assert_eq!(transcript.turns[1].content, "second");
     assert_eq!(transcript.turns[1].captured_at, sample_time_later());
+}
+
+#[test]
+fn persist_capture_retains_user_prompt_submit_provisioning_diagnostic() {
+    let tempdir = TempDir::new().unwrap();
+    let store_path = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(&store_path, "context-engine");
+
+    let post_tool_use = SessionProvisioningDiagnostic {
+        outcome: "skipped".to_string(),
+        reason: Some("trigger_not_user_prompt_submit".to_string()),
+        hook_event_name: "PostToolUse".to_string(),
+    };
+    let user_prompt_submit = SessionProvisioningDiagnostic {
+        outcome: "created".to_string(),
+        reason: None,
+        hook_event_name: "userpromptsubmit".to_string(),
+    };
+    let stop = SessionProvisioningDiagnostic {
+        outcome: "skipped".to_string(),
+        reason: Some("trigger_not_user_prompt_submit".to_string()),
+        hook_event_name: "Stop".to_string(),
+    };
+
+    config
+        .persist_capture(request_with_provisioning(
+            "session-non-user-then-user",
+            Some(post_tool_use.clone()),
+        ))
+        .unwrap();
+    config
+        .persist_capture(request_with_provisioning(
+            "session-non-user-then-user",
+            Some(user_prompt_submit.clone()),
+        ))
+        .unwrap();
+
+    let fresh_config = SessionStoreConfig::new(&store_path, "context-engine");
+    assert_eq!(
+        fresh_config
+            .read_session("session-non-user-then-user")
+            .unwrap()
+            .metadata
+            .provisioning,
+        Some(user_prompt_submit.clone())
+    );
+
+    config
+        .persist_capture(request_with_provisioning(
+            "session-non-user-then-user",
+            Some(post_tool_use.clone()),
+        ))
+        .unwrap();
+    assert_eq!(
+        fresh_config
+            .read_session("session-non-user-then-user")
+            .unwrap()
+            .metadata
+            .provisioning,
+        Some(user_prompt_submit.clone())
+    );
+
+    config
+        .persist_capture(request_with_provisioning(
+            "session-non-user-first-wins",
+            Some(post_tool_use.clone()),
+        ))
+        .unwrap();
+    config
+        .persist_capture(request_with_provisioning(
+            "session-non-user-first-wins",
+            Some(stop),
+        ))
+        .unwrap();
+    assert_eq!(
+        config
+            .read_session("session-non-user-first-wins")
+            .unwrap()
+            .metadata
+            .provisioning,
+        Some(post_tool_use)
+    );
+
+    config
+        .persist_capture(request_with_provisioning("session-none-then-user", None))
+        .unwrap();
+    config
+        .persist_capture(request_with_provisioning(
+            "session-none-then-user",
+            Some(user_prompt_submit.clone()),
+        ))
+        .unwrap();
+    assert_eq!(
+        config
+            .read_session("session-none-then-user")
+            .unwrap()
+            .metadata
+            .provisioning,
+        Some(user_prompt_submit)
+    );
 }
 
 #[test]

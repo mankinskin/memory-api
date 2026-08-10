@@ -292,6 +292,14 @@ pub struct SessionTurn {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionProvisioningDiagnostic {
+    pub outcome: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub hook_event_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionMetadata {
     pub workspace_slug: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -304,6 +312,8 @@ pub struct SessionMetadata {
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trigger: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provisioning: Option<SessionProvisioningDiagnostic>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub producer: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -420,6 +430,7 @@ mod tests {
                 ticket_id: Some("ticket-1".to_string()),
                 model: Some("GPT-5.4".to_string()),
                 trigger: Some("post-turn".to_string()),
+                provisioning: None,
                 producer: Some("copilot-agent".to_string()),
                 copilot_version: Some("0.55.0".to_string()),
                 vscode_version: Some("1.127.0".to_string()),
@@ -563,5 +574,14 @@ mod tests {
             !reserialized.contains("spawned_session_id"),
             "spawned_session_id must not appear in JSON when None"
         );
+    }
+
+    #[test]
+    fn existing_sessions_deserialize_without_provisioning_metadata() {
+        let legacy_json = r#"{"schema_version":1,"session_id":"93d9261e-93e8-4ae3-9f4c-02c17e7c8568","source":"copilot-hook","started_at":"2026-08-10T17:57:22.617Z","captured_at":"2026-08-10T18:53:14.528Z","metadata":{"workspace_slug":"default","agent_id":"copilot-agent","trigger":"Stop","producer":"copilot-agent","copilot_version":"0.60.0","vscode_version":"1.132.0","protocol_version":1,"worktree":{"path":"C:/Users/linus/git/context-engine","branch":"main","allocation_mode":"new","status":"active"}},"links":{}}"#;
+
+        let record: SessionRecord = serde_json::from_str(legacy_json).unwrap();
+
+        assert_eq!(record.metadata.provisioning, None);
     }
 }

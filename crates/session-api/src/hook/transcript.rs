@@ -233,6 +233,7 @@ fn copilot_payload_from_transcript_reader_with_path<R: BufRead>(
         agent_id,
         model: None,
         trigger,
+        provisioning: None,
         messages,
         events: apply_tool_response_override(events, tool_response_override),
         runtime,

@@ -1,5 +1,4 @@
 use std::{
-    fs,
     path::{
         Path,
         PathBuf,
@@ -11,6 +10,7 @@ use session_api::{
     FeedbackSignalKind,
     FollowUpSynthesisOutcome,
     SessionError,
+    SessionProvisioningDiagnostic,
     SessionStoreConfig,
     SessionStorePlan,
     ToolMetricsWindow,
@@ -79,11 +79,6 @@ fn run() -> Result<(), SessionError> {
         &args.workspace_slug,
         args.session_id.as_deref(),
     );
-    persist_provisioning_diagnostic(
-        routing_outcome.as_ref(),
-        args.session_id.as_deref(),
-        store_root.as_deref(),
-    );
     if !transcript_path.is_file() {
         eprintln!(
             "[session-capture-hook] skip: transcript not found at {}",
@@ -106,11 +101,20 @@ fn run() -> Result<(), SessionError> {
         args.session_id.as_deref(),
         &transcript_path,
     );
-    let plan = config.capture_copilot_transcript_with_tool_response(
+    let hook_event_name =
+        args.hook_event_name
+            .as_deref()
+            .unwrap_or(&args.trigger)
+            .to_owned();
+    let mut plan = config.capture_copilot_transcript_with_tool_response(
         transcript_path,
-        args.trigger,
+        args.trigger.clone(),
         tool_response_override,
     )?;
+    if let Some(outcome) = routing_outcome.as_ref() {
+        plan.record.metadata.provisioning = Some(outcome.metadata(&hook_event_name));
+        plan.persist()?;
+    }
     report_structured_feedback_signals(&plan);
     synthesize_follow_up_tickets(
         &plan,
@@ -206,61 +210,33 @@ impl ProvisioningDiagnostic {
             }),
         }
     }
+
+    fn metadata(
+        &self,
+        hook_event_name: &str,
+    ) -> SessionProvisioningDiagnostic {
+        match self {
+            Self::Provisioned { outcome, .. } => SessionProvisioningDiagnostic {
+                outcome: (*outcome).to_string(),
+                reason: None,
+                hook_event_name: hook_event_name.to_string(),
+            },
+            Self::Skipped { reason, .. } => SessionProvisioningDiagnostic {
+                outcome: "skipped".to_string(),
+                reason: Some((*reason).to_string()),
+                hook_event_name: hook_event_name.to_string(),
+            },
+            Self::Failed { reason } => SessionProvisioningDiagnostic {
+                outcome: "failed".to_string(),
+                reason: Some(reason.clone()),
+                hook_event_name: hook_event_name.to_string(),
+            },
+        }
+    }
 }
 
 fn emit_hook_payload(outcome: Option<&ProvisioningDiagnostic>) {
     println!("{}", outcome.map_or_else(|| serde_json::json!({}), ProvisioningDiagnostic::json));
-}
-
-fn persist_provisioning_diagnostic(
-    outcome: Option<&ProvisioningDiagnostic>,
-    session_id: Option<&str>,
-    store_root: Option<&Path>,
-) {
-    let Some(outcome) = outcome else {
-        return;
-    };
-    let provisioning = outcome.json();
-    let payload = serde_json::json!({
-        "session_id": session_id,
-        "provisioning": provisioning["provisioning"].clone(),
-    });
-    let Ok(payload) = serde_json::to_vec(&payload) else {
-        return;
-    };
-
-    let file_name = provisioning_file_name(session_id);
-    if let Some(store_root) = store_root {
-        let path = store_root.join("sessions").join(&file_name).join("provisioning.json");
-        if write_provisioning_diagnostic(&path, &payload) {
-            return;
-        }
-    }
-    let path = std::env::temp_dir()
-        .join("session-capture-hook")
-        .join("provisioning-outcomes")
-        .join(format!("{file_name}.json"));
-    let _ = write_provisioning_diagnostic(&path, &payload);
-}
-
-fn provisioning_file_name(session_id: Option<&str>) -> String {
-    let session_id = session_id.unwrap_or("missing-session-id");
-    let file_name: String = session_id
-        .chars()
-        .map(|character| match character {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' => character,
-            _ => '_',
-        })
-        .collect();
-    (!file_name.is_empty()).then_some(file_name).unwrap_or_else(|| "missing-session-id".to_string())
-}
-
-fn write_provisioning_diagnostic(
-    path: &Path,
-    payload: &[u8],
-) -> bool {
-    path.parent().is_some_and(|parent| fs::create_dir_all(parent).is_ok())
-        && fs::write(path, payload).is_ok()
 }
 
 /// Resolves the checkout the hook was launched in, which anchors the session

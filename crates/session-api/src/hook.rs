@@ -12,6 +12,7 @@ use crate::{
     SessionError,
     SessionLinks,
     SessionMetadata,
+    SessionProvisioningDiagnostic,
     SessionRecord,
     SessionRole,
     SessionTurn,
@@ -115,6 +116,8 @@ pub struct CopilotHookPayload {
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trigger: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provisioning: Option<SessionProvisioningDiagnostic>,
     #[serde(default)]
     pub messages: Vec<CopilotHookMessage>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -206,6 +209,7 @@ impl SessionCaptureRequest {
                     ticket_id: None,
                     model: payload.model,
                     trigger: payload.trigger,
+                    provisioning: payload.provisioning,
                     producer: runtime.producer,
                     copilot_version: runtime.copilot_version,
                     vscode_version: runtime.vscode_version,
