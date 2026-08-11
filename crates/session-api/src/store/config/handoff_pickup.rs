@@ -5,27 +5,9 @@ impl SessionStoreConfig {
         &self,
         handoff_id: &str,
     ) -> Result<(SessionHandoffRecord, PathBuf), SessionError> {
-        let sessions_root = self.sessions_root()?;
-        if !sessions_root.exists() {
-            return Err(SessionError::HandoffNotFound {
-                handoff_id: handoff_id.to_string(),
-            });
-        }
-
-        let entries = fs::read_dir(&sessions_root).map_err(|source| {
-            SessionError::Io {
-                path: sessions_root.clone(),
-                source,
-            }
-        })?;
-
-        for entry in entries {
-            let entry = entry.map_err(|source| SessionError::Io {
-                path: sessions_root.clone(),
-                source,
-            })?;
+        for entry in self.federated_sessions()? {
             let handoff_json_path = entry
-                .path()
+                .session_dir
                 .join("handoffs")
                 .join(handoff_id)
                 .join("handoff.json");
@@ -82,30 +64,9 @@ impl SessionStoreConfig {
         &self,
         filter: &HandoffBacklogFilter,
     ) -> Result<Vec<SessionHandoffRecord>, SessionError> {
-        let sessions_root = self.sessions_root()?;
-        if !sessions_root.exists() {
-            return Ok(vec![]);
-        }
-
         let mut backlog = Vec::new();
-        let entries = fs::read_dir(&sessions_root).map_err(|source| {
-            SessionError::Io {
-                path: sessions_root.clone(),
-                source,
-            }
-        })?;
-
-        for entry in entries {
-            let entry = entry.map_err(|source| SessionError::Io {
-                path: sessions_root.clone(),
-                source,
-            })?;
-            let session_dir = entry.path();
-            if !session_dir.is_dir() {
-                continue;
-            }
-
-            let handoffs_dir = session_dir.join("handoffs");
+        for entry in self.federated_sessions()? {
+            let handoffs_dir = entry.session_dir.join("handoffs");
             if !handoffs_dir.exists() {
                 continue;
             }
@@ -139,7 +100,8 @@ impl SessionStoreConfig {
                     }
                 }
                 if let Some(track_id) = &filter.track_id {
-                    let source_track_id = self
+                    let source_track_id = entry
+                        .store
                         .read_session(&record.workspace_session_id)
                         .ok()
                         .and_then(|source_record| source_record.track_id);

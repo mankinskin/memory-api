@@ -10,11 +10,7 @@ impl SessionStoreConfig {
         &self,
         write: bool,
     ) -> Result<SessionTicketBackfillReport, SessionError> {
-        let sessions_root = self.sessions_root()?;
         let mut report = SessionTicketBackfillReport::default();
-        if !sessions_root.exists() {
-            return Ok(report);
-        }
 
         let ticket_store_root = self.ticket_store_root();
         let ticket_store = if ticket_store_root.exists() {
@@ -55,28 +51,9 @@ impl SessionStoreConfig {
             .collect::<BTreeSet<_>>();
         let mut transcript_ticket_resolution_cache = BTreeMap::new();
 
-        for entry in
-            fs::read_dir(&sessions_root).map_err(|source| SessionError::Io {
-                path: sessions_root.clone(),
-                source,
-            })?
-        {
-            let entry = entry.map_err(|source| SessionError::Io {
-                path: sessions_root.clone(),
-                source,
-            })?;
-            let file_type =
-                entry.file_type().map_err(|source| SessionError::Io {
-                    path: entry.path(),
-                    source,
-                })?;
-            if !file_type.is_dir() {
-                continue;
-            }
-
+        for entry in self.federated_sessions()? {
             report.total_sessions += 1;
-            let session_id = entry.file_name().to_string_lossy().into_owned();
-            let mut record = match self.read_session(&session_id) {
+            let mut record = match entry.store.read_session(&entry.session_id) {
                 Ok(record) => record,
                 Err(_) => {
                     report.skipped_corrupt += 1;
@@ -151,7 +128,7 @@ impl SessionStoreConfig {
             }
 
             let handoff_targets =
-                self.session_handoff_target_tickets(&entry.path())?;
+                entry.store.session_handoff_target_tickets(&entry.session_dir)?;
             if !handoff_targets.is_empty() {
                 report.handoff_already_at_mentioned = true;
             }
@@ -180,7 +157,7 @@ impl SessionStoreConfig {
             if changed {
                 report.total_would_link += 1;
                 if write {
-                    self.persist_record(record)?;
+                    entry.store.persist_record(record)?;
                 }
             }
         }

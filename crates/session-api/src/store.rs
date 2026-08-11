@@ -167,6 +167,15 @@ pub struct SessionStoreConfig {
     pub workspace_slug: String,
 }
 
+#[derive(Debug, Clone)]
+struct FederatedSessionEntry {
+    store: SessionStoreConfig,
+    session_id: String,
+    session_dir: PathBuf,
+    source_path: PathBuf,
+    priority: u8,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionWorktreeCheckInRequest {
     pub session_id: String,
@@ -196,6 +205,7 @@ pub struct SessionWorktreeCheckInReceipt {
 mod config {
     use super::*;
 
+    include!("store/config/federated_sessions.rs");
     include!("store/config/capture_query.rs");
     include!("store/config/worktree_runtime.rs");
     include!("store/config/runtime_workflow.rs");

@@ -15,49 +15,21 @@ impl SessionStoreConfig {
         &self,
         window: ToolMetricsWindow,
     ) -> Result<ToolMetricsReport, SessionError> {
-        let sessions_root = self.sessions_root()?;
-        if !sessions_root.exists() {
-            // No sessions, return empty report
-            let estimator = CharsPerTokenEstimator::default();
-            let cal = GradedCostCalibration::default();
-            return Ok(aggregate_with_cost(vec![], window, &estimator, Some(cal)));
-        }
-
         let mut summaries = Vec::new();
-
-        for entry in fs::read_dir(&sessions_root).map_err(|source| {
-            SessionError::Io {
-                path: sessions_root.clone(),
-                source,
-            }
-        })? {
-            let entry = entry.map_err(|source| SessionError::Io {
-                path: sessions_root.clone(),
-                source,
-            })?;
-
-            let file_type = entry.file_type().map_err(|source| {
-                SessionError::Io {
-                    path: entry.path(),
-                    source,
-                }
-            })?;
-
-            if !file_type.is_dir() {
-                continue;
-            }
-
-            let session_id = entry.file_name().to_string_lossy().into_owned();
-
-            // Skip directories that are not readable sessions (e.g. runtime
-            // scratch folders): they must not fail the whole aggregation.
-            let summary = match self
-                .load_or_compute_tool_metrics_summary(&session_id)
+        for entry in self.federated_sessions()? {
+            let summary = match entry
+                .store
+                .load_or_compute_tool_metrics_summary(&entry.session_id)
             {
                 Ok(summary) => summary,
-                Err(SessionError::NotFound { .. }) => continue,
-                Err(SessionError::Deserialize { .. }) => continue,
-                Err(error) => return Err(error),
+                Err(error) => {
+                    eprintln!(
+                        "[session-api] skipping unreadable session {} in tool metrics scan at {}: {error}",
+                        entry.session_id,
+                        entry.source_path.display()
+                    );
+                    continue;
+                },
             };
             summaries.push(summary);
         }

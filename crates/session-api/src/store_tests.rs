@@ -1,5 +1,6 @@
 include!("store_tests/capture/basics.rs");
 include!("store_tests/capture/query_and_worktree.rs");
+include!("store_tests/capture/federated_sessions.rs");
 include!("store_tests/capture/ticket_relation.rs");
 include!("store_tests/capture/ticket_backfill.rs");
 include!("store_tests/capture/worktree_capture_inference.rs");

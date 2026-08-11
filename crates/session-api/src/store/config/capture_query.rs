@@ -120,34 +120,19 @@ impl SessionStoreConfig {
         &self,
         query: &SessionQuery,
     ) -> Result<Vec<SessionRecord>, SessionError> {
-        let sessions_root = self.sessions_root()?;
-        if !sessions_root.exists() {
-            return Ok(vec![]);
-        }
-
         let mut records = vec![];
-        for entry in
-            fs::read_dir(&sessions_root).map_err(|source| SessionError::Io {
-                path: sessions_root.clone(),
-                source,
-            })?
-        {
-            let entry = entry.map_err(|source| SessionError::Io {
-                path: sessions_root.clone(),
-                source,
-            })?;
-            let file_type =
-                entry.file_type().map_err(|source| SessionError::Io {
-                    path: entry.path(),
-                    source,
-                })?;
-
-            if !file_type.is_dir() {
-                continue;
-            }
-
-            let session_id = entry.file_name().to_string_lossy().into_owned();
-            let record = self.read_session(&session_id)?;
+        for entry in self.federated_sessions()? {
+            let record = match entry.store.read_session(&entry.session_id) {
+                Ok(record) => record,
+                Err(error) => {
+                    eprintln!(
+                        "[session-api] skipping unreadable session {} in query scan at {}: {error}",
+                        entry.session_id,
+                        entry.source_path.display()
+                    );
+                    continue;
+                },
+            };
             if session_matches_query(&record, query) {
                 records.push(record);
             }
