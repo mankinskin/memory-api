@@ -467,8 +467,14 @@ impl TicketStore {
         &self,
         id: &Uuid,
     ) -> Result<TicketManifest, StorageError> {
-        let indexed =
+        let mut indexed =
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
+        if self.is_external_worktree_path(&indexed.path) {
+            self.scan(false)?;
+            indexed = self
+                .get_indexed(id)?
+                .ok_or(StorageError::NotFound(*id))?;
+        }
         TicketFs::read(&indexed.path)
     }
 

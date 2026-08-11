@@ -41,6 +41,8 @@ pub(crate) fn cmd_workspace(
             cmd_workspace_patterns("include", pattern_args, &workspace_root),
         WorkspaceCommand::Rescan { apply_policy } =>
             cmd_workspace_rescan(apply_policy, store, &workspace_root),
+        WorkspaceCommand::Roots => cmd_workspace_roots(store),
+        WorkspaceCommand::PruneRoots => cmd_workspace_prune_roots(store),
     }
 }
 
@@ -176,6 +178,47 @@ fn cmd_workspace_rescan(
         "integrated": report.integrated,
         "pruned": report.pruned,
         "skipped_roots": report.skipped_roots,
+    }))
+}
+
+fn cmd_workspace_roots(store: &TicketStore) -> Result<Value, CliRunError> {
+    let roots = store
+        .list_scan_roots_with_metadata()?
+        .into_iter()
+        .map(|root| {
+            json!({
+                "path": root.root.path.display().to_string(),
+                "label": root.root.label,
+                "source": root.metadata.source.as_str(),
+                "policy_decision": root.metadata.policy_decision.as_str(),
+                "workspace_root": root.metadata.workspace_root
+                    .map(|path| path.display().to_string()),
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({
+        "command": "workspace_roots",
+        "status": "ok",
+        "roots": roots,
+    }))
+}
+
+fn cmd_workspace_prune_roots(
+    store: &TicketStore,
+) -> Result<Value, CliRunError> {
+    let pruned = store.prune_worktree_scan_roots()?;
+    let roots = pruned
+        .into_iter()
+        .map(|root| json!({
+            "path": root.path.display().to_string(),
+            "label": root.label,
+        }))
+        .collect::<Vec<_>>();
+    Ok(json!({
+        "command": "workspace_prune_roots",
+        "status": "ok",
+        "pruned": roots.len(),
+        "roots": roots,
     }))
 }
 

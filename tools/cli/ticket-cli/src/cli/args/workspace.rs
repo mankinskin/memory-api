@@ -23,6 +23,11 @@ pub enum WorkspaceCommand {
         #[arg(long)]
         apply_policy: bool,
     },
+    /// List persisted scan roots and their metadata.
+    Roots,
+    /// Delete persisted sibling-worktree scan roots.
+    #[command(name = "prune-roots")]
+    PruneRoots,
 }
 
 #[derive(Debug, Args)]

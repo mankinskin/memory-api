@@ -138,6 +138,30 @@ impl RedbIndexStore {
         Ok(roots)
     }
 
+    pub fn remove_scan_roots(
+        &self,
+        paths: &[std::path::PathBuf],
+    ) -> Result<(), StorageError> {
+        if paths.is_empty() {
+            return Ok(());
+        }
+
+        self.with_write(|conn| {
+            conn.execute_batch("BEGIN IMMEDIATE;")?;
+            for path in paths {
+                if let Err(error) = conn.execute(
+                    &format!("DELETE FROM {TABLE_SCAN_ROOTS} WHERE path = ?1"),
+                    params![path.to_string_lossy().into_owned()],
+                ) {
+                    let _ = conn.execute_batch("ROLLBACK;");
+                    return Err(error.into());
+                }
+            }
+            conn.execute_batch("COMMIT;")?;
+            Ok(())
+        })
+    }
+
     pub fn insert_lease(
         &self,
         lease: &LeaseInfo,

@@ -353,6 +353,24 @@ impl TicketStore {
             "add_default_scan_root_ms".to_string(),
             elapsed_ms(add_root_started),
         );
+        let prune_worktrees_started = Instant::now();
+        let pruned_worktree_roots = store.prune_worktree_scan_roots()?;
+        report.phase_timings_ms.insert(
+            "prune_worktree_scan_roots_ms".to_string(),
+            elapsed_ms(prune_worktrees_started),
+        );
+        if !pruned_worktree_roots.is_empty() {
+            let reconcile_started = Instant::now();
+            let scan_report = store.scan(true)?;
+            report.phase_timings_ms.insert(
+                "reconcile_pruned_worktree_roots_ms".to_string(),
+                elapsed_ms(reconcile_started),
+            );
+            report.scan_reports.insert(
+                "pruned_worktree_root_reconciliation".to_string(),
+                scan_report,
+            );
+        }
         let bootstrap_started = Instant::now();
         let bootstrap =
             store.bootstrap_empty_index_from_manifests_profiled()?;

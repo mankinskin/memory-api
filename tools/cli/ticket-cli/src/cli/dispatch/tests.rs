@@ -6,6 +6,8 @@ use crate::cli::{
     ListArgs,
     ScanArgs,
     TextArgs,
+    WorkspaceArgs,
+    WorkspaceCommand,
 };
 use tempfile::tempdir;
 use ticket_api::storage::index::RedbIndexStore;
@@ -83,6 +85,85 @@ fn resolve_index_root_prefers_explicit_index_root_over_workspace_root() {
     );
 
     assert_eq!(resolved, repo.join(".ticket"));
+}
+
+#[test]
+fn dispatch_explicit_index_root_overrides_workspace_root() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let child = repo.join("memory-api");
+    std::fs::create_dir_all(&child).unwrap();
+    let root_store = TicketStore::init(&repo).unwrap();
+    let child_store = TicketStore::init(&child).unwrap();
+    let ticket_id = Uuid::new_v4();
+    root_store
+        .create(
+            Some(ticket_id),
+            "tracker-improvement",
+            Some("Root ticket"),
+            None,
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .unwrap();
+    child_store
+        .create(
+            Some(ticket_id),
+            "tracker-improvement",
+            Some("Child ticket"),
+            None,
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let payload = dispatch(
+        TicketCommandCli::Get(IdArgs {
+            id: ticket_id.to_string(),
+            view: None,
+            parts: None,
+        }),
+        Some(&root_store.index_root),
+        Some(&child),
+        None,
+        true,
+        false,
+    )
+    .unwrap();
+
+    assert_eq!(payload["ticket"]["fields"]["title"], "Root ticket");
+}
+
+#[test]
+fn dispatch_workspace_roots_and_prune_roots_return_machine_output() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let roots = dispatch_store_command(
+        TicketCommandCli::Workspace(WorkspaceArgs {
+            command: WorkspaceCommand::Roots,
+        }),
+        store,
+        false,
+    )
+    .unwrap();
+    assert_eq!(roots["command"], "workspace_roots");
+    assert_eq!(roots["status"], "ok");
+    assert!(!roots["roots"].as_array().unwrap().is_empty());
+
+    let store = TicketStore::open(dir.path()).unwrap();
+    let pruned = dispatch_store_command(
+        TicketCommandCli::Workspace(WorkspaceArgs {
+            command: WorkspaceCommand::PruneRoots,
+        }),
+        store,
+        false,
+    )
+    .unwrap();
+    assert_eq!(pruned["command"], "workspace_prune_roots");
+    assert_eq!(pruned["pruned"], 0);
 }
 
 #[test]

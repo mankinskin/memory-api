@@ -1,4 +1,109 @@
 use super::*;
+
+#[test]
+fn add_scan_root_rejects_sibling_worktree_root() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let store = TicketStore::init(&repo).unwrap();
+    let sibling_root = repo
+        .join(".worktrees")
+        .join("sibling")
+        .join(".ticket")
+        .join("tickets");
+
+    let error = store
+        .add_scan_root(ScanRoot {
+            path: sibling_root,
+            label: "sibling".to_string(),
+        })
+        .unwrap_err();
+
+    assert!(error.to_string().contains(".worktrees outside store root"));
+}
+
+#[test]
+fn add_scan_root_allows_own_worktree_root() {
+    let dir = tempdir().unwrap();
+    let worktree_store = dir
+        .path()
+        .join("repo")
+        .join(".worktrees")
+        .join("own")
+        .join(".ticket");
+    let store = TicketStore::init(&worktree_store).unwrap();
+    let root = worktree_store.join("additional-tickets");
+
+    store
+        .add_scan_root(ScanRoot {
+            path: root.clone(),
+            label: "own".to_string(),
+        })
+        .unwrap();
+
+    assert!(store
+        .list_scan_roots()
+        .unwrap()
+        .iter()
+        .any(|scan_root| scan_root.path == root));
+}
+
+#[test]
+fn open_reconciles_deleted_worktree_indexed_ticket_to_main_store() {
+    use memory_api::storage::index::RedbIndexStore;
+
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let store = TicketStore::init(&repo).unwrap();
+    let ticket_id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Main store ticket"),
+            Some("in-review"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let index_root = store.index_root.clone();
+    let mut stale_indexed = store.get_indexed(&ticket_id).unwrap().unwrap();
+    let stale_root = repo
+        .join(".worktrees")
+        .join("deleted-worktree")
+        .join(".ticket")
+        .join("tickets");
+    stale_indexed.path = stale_root.join(ticket_id.to_string());
+    drop(store);
+
+    let index = RedbIndexStore::open(&index_root.join("tickets.db")).unwrap();
+    index
+        .add_scan_root(&ScanRoot {
+            path: stale_root.clone(),
+            label: "deleted-worktree".to_string(),
+        })
+        .unwrap();
+    index.upsert_tickets_batch(&[stale_indexed]).unwrap();
+    drop(index);
+
+    let reopened = TicketStore::open(&index_root).unwrap();
+    assert!(
+        !reopened
+            .list_scan_roots()
+            .unwrap()
+            .iter()
+            .any(|root| root.path == stale_root)
+    );
+    assert_eq!(
+        reopened
+            .get(&ticket_id)
+            .unwrap()
+            .extra
+            .get("state")
+            .and_then(|value| value.as_str()),
+        Some("in-review")
+    );
+}
+
 #[test]
 fn scan_force_prunes_row_for_physically_removed_ticket() {
     let dir = tempdir().unwrap();

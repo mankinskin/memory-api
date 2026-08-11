@@ -1,4 +1,39 @@
 use super::*;
+
+#[test]
+fn open_prunes_persisted_sibling_worktree_scan_root() {
+    use memory_api::storage::index::RedbIndexStore;
+
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let store = TicketStore::init(&repo).unwrap();
+    let index_root = store.index_root.clone();
+    drop(store);
+
+    let stale_root = repo
+        .join(".worktrees")
+        .join("stale")
+        .join(".ticket")
+        .join("tickets");
+    let index = RedbIndexStore::open(&index_root.join("tickets.db")).unwrap();
+    index
+        .add_scan_root(&ScanRoot {
+            path: stale_root.clone(),
+            label: "stale".to_string(),
+        })
+        .unwrap();
+    drop(index);
+
+    let reopened = TicketStore::open(&index_root).unwrap();
+    assert!(
+        !reopened
+            .list_scan_roots()
+            .unwrap()
+            .iter()
+            .any(|root| root.path == stale_root)
+    );
+}
+
 #[test]
 fn scan_skips_policy_ignored_scan_roots() {
     use memory_api::model::filesystem::{

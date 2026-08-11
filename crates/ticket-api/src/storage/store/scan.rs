@@ -51,12 +51,49 @@ pub struct ScanReport {
 }
 
 impl TicketStore {
+    pub(super) fn is_external_worktree_path(
+        &self,
+        path: &Path,
+    ) -> bool {
+        match (
+            Self::worktree_scope(path),
+            Self::worktree_scope(&self.index_root),
+        ) {
+            (Some(path_scope), Some(store_scope)) => path_scope != store_scope,
+            (Some(_), None) => true,
+            (None, _) => false,
+        }
+    }
+
+    fn worktree_scope(path: &Path) -> Option<std::path::PathBuf> {
+        let normalized = Self::normalize_path(path.to_path_buf());
+        let mut scope = std::path::PathBuf::new();
+        let mut found_worktrees = false;
+
+        for component in normalized.components() {
+            scope.push(component.as_os_str());
+            if found_worktrees {
+                return Some(scope);
+            }
+            found_worktrees = component.as_os_str() == ".worktrees";
+        }
+
+        None
+    }
+
     pub fn add_scan_root(
         &self,
         root: ScanRoot,
     ) -> Result<(), StorageError> {
+        let path = self.resolve_scan_root_path(&root.path);
+        if self.is_external_worktree_path(&path) {
+            return Err(StorageError::Other(format!(
+                "refusing scan root under .worktrees outside store root: {}",
+                path.display()
+            )));
+        }
         self.index.add_scan_root(&ScanRoot {
-            path: self.resolve_scan_root_path(&root.path),
+            path,
             label: root.label,
         })
     }
@@ -67,13 +104,45 @@ impl TicketStore {
         root: ScanRoot,
         metadata: ScanRootMetadata,
     ) -> Result<(), StorageError> {
+        let path = self.resolve_scan_root_path(&root.path);
+        if self.is_external_worktree_path(&path) {
+            return Err(StorageError::Other(format!(
+                "refusing scan root under .worktrees outside store root: {}",
+                path.display()
+            )));
+        }
         self.index.add_scan_root_with_metadata(
             &ScanRoot {
-                path: self.resolve_scan_root_path(&root.path),
+                path,
                 label: root.label,
             },
             &metadata,
         )
+    }
+
+    /// Delete persisted sibling-worktree scan roots that can outlive the
+    /// worktree and leave stale indexed ticket paths behind.
+    pub fn prune_worktree_scan_roots(
+        &self,
+    ) -> Result<Vec<ScanRoot>, StorageError> {
+        let persisted = self.index.list_scan_roots()?;
+        let paths: Vec<_> = persisted
+            .iter()
+            .filter_map(|root| {
+                let path = self.resolve_scan_root_path(&root.path);
+                self.is_external_worktree_path(&path).then_some(root.path.clone())
+            })
+            .collect();
+        self.index.remove_scan_roots(&paths)?;
+
+        Ok(persisted
+            .into_iter()
+            .filter(|root| paths.iter().any(|path| path == &root.path))
+            .map(|root| ScanRoot {
+                path: self.resolve_scan_root_path(&root.path),
+                label: root.label,
+            })
+            .collect())
     }
 
     pub fn list_scan_roots(&self) -> Result<Vec<ScanRoot>, StorageError> {
