@@ -1,7 +1,7 @@
 id = "0fdce225-9cef-46ed-92d9-83c852c2d084"
 created_at = "2026-06-30T23:16:48.351703900+00:00"
 title = "[memory-api][cli][mcp] Require explicit workspace for entity creation"
-state = "in-review"
+state = "done"
 acceptance_criteria = "CLI create commands for ticket/spec/rule/audit/session/test domains require a concrete --workspace path; MCP create/import/record tools require a concrete workspace path and reject omitted, empty, default, and relative aliases; focused CLI and MCP e2e tests prove entities land in the requested memory-api or viewer-api workspace and not the ambient context-engine store; validation status documents current MCP e2e coverage gaps."
 component = "memory-api"
 effort = "1200"

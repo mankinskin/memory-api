@@ -779,3 +779,24 @@ fn normalize_git_bash_pwd(raw: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "workspace_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod worktree_discovery_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn find_descendant_store_roots_excludes_worktree_stores() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        let nested = repo.join("memory-api");
+        let sibling_worktree = repo.join(".worktrees").join("sibling");
+        std::fs::create_dir_all(repo.join(".ticket")).unwrap();
+        std::fs::create_dir_all(nested.join(".ticket")).unwrap();
+        std::fs::create_dir_all(sibling_worktree.join(".ticket")).unwrap();
+
+        let roots = find_descendant_store_roots_from(&repo, ".ticket");
+
+        assert_eq!(roots, vec![repo.join(".ticket"), nested.join(".ticket")]);
+    }
+}

@@ -1,7 +1,7 @@
 id = "c7542933-3052-45c8-99e6-3e09f40cc9b9"
 created_at = "2026-06-27T14:23:43.800568300+00:00"
 title = "[feedback-api] Core curation surface — URN usage counting + entity ratings (bootstrap gate)"
-state = "in-review"
+state = "done"
 component = "feedback-api"
 depends_on = ["6bd67a7a-2a76-4dd7-a897-b4d325476621"]
 effort = "3500"

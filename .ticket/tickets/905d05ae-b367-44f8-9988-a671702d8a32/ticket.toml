@@ -1,7 +1,7 @@
 id = "905d05ae-b367-44f8-9988-a671702d8a32"
 created_at = "2026-07-13T23:01:28.271658600+00:00"
 title = "[test-api][test-mcp] Fix record/list .test store routing split; aggregate discoverable stores on read"
-state = "in-review"
+state = "done"
 component = "test-api"
 effort = "400"
 implementation_summary = "Added optional workspace param to test_get_spec/test_get_execution/test_list_specs/test_list_executions in test-mcp. When workspace is omitted, reads aggregate across every .test store discoverable from the server workspace root via memory_api::workspace::discover_workspace_store_roots (same policy-aware descendant discovery ticket-api/spec-api/rule-api already use), deduped by id, sort/limit re-applied globally after merge. Explicit workspace still pins to a single store (unchanged single-store resolution via config_for_workspace)."

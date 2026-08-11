@@ -1,7 +1,7 @@
 id = "5b3da351-1c87-4619-a0bc-6d7abe147d60"
 created_at = "2026-07-29T13:38:52.229384+00:00"
 title = "Rename ticket lifecycle states: new -> open, ready -> planned, with store migration"
-state = "in-review"
+state = "done"
 component = "ticket-api"
 effort = "3200"
 parts = [{ id = "49604d4d-6f1f-47aa-9494-c88c49cdc302", kind = "review", path = "parts/49604d4d-6f1f-47aa-9494-c88c49cdc302.md", frozen = false, created_at = "2026-07-30T11:32:48.069483600Z" }, { id = "192397ee-4422-4287-99b4-c6466b24c57a", kind = "notes", path = "parts/192397ee-4422-4287-99b4-c6466b24c57a.md", frozen = false, created_at = "2026-07-30T11:37:41.617014Z" }, { id = "35dc4909-0d99-4c83-8c51-7ad5f20fcc23", kind = "notes", path = "parts/35dc4909-0d99-4c83-8c51-7ad5f20fcc23.md", frozen = false, created_at = "2026-07-30T17:05:35.399905400Z" }]

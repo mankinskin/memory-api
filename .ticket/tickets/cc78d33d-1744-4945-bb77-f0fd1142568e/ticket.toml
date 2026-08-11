@@ -1,7 +1,7 @@
 id = "cc78d33d-1744-4945-bb77-f0fd1142568e"
 created_at = "2026-07-03T00:33:34.418753900+00:00"
 title = "[memory-matrix] Subprocess failure bundle capture for transport cells"
-state = "in-review"
+state = "done"
 component = "memory-matrix"
 depends_on = ["3041d7e3-2b34-4597-b354-e0aa6ffb0459", "d3349747-b2f2-4dd4-b73c-dc016fec80d6"]
 effort = "1.5k tokens"

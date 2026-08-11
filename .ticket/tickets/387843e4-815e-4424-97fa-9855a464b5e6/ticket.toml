@@ -1,7 +1,7 @@
 id = "387843e4-815e-4424-97fa-9855a464b5e6"
 created_at = "2026-06-28T19:01:51.618892500+00:00"
 title = "[test] Transport-layer e2e matrix — CLI/HTTP/MCP x domains"
-state = "in-review"
+state = "done"
 component = "test-api"
 depends_on = ["9138f4e7-2757-4d23-9676-3306608a429e", "a03d8a97-2b31-4f1a-a2cb-b33848af2f2a"]
 effort = "~200k tokens"

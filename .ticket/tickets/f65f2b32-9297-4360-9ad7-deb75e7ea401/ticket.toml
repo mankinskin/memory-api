@@ -1,7 +1,7 @@
 id = "f65f2b32-9297-4360-9ad7-deb75e7ea401"
 created_at = "2026-07-29T12:52:56.523173100+00:00"
 title = "Migrate existing descriptions into typed parts (dry-run then apply, lossless)"
-state = "in-review"
+state = "done"
 component = "ticket-api"
 depends_on = ["4c7b884e-fd9b-4967-9599-5b55495d6e52", "f9e70385-adb7-4942-a8fb-6a383863cc7e"]
 effort = "3800"
