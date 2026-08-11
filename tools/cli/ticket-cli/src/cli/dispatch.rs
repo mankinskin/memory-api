@@ -190,6 +190,10 @@ fn resolve_index_root_from(
     env_root: Option<&Path>,
     cwd: Option<&Path>,
 ) -> PathBuf {
+    if let Some(override_path) = override_path {
+        return absolute_path_from(override_path, cwd);
+    }
+
     ticket_api::workspace::resolve_requested_store_root_from(
         override_path,
         workspace_root_override,
@@ -197,6 +201,16 @@ fn resolve_index_root_from(
         cwd,
         ticket_api::workspace::TICKET_INDEX_DIR,
     )
+}
+
+fn absolute_path_from(path: &Path, cwd: Option<&Path>) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else if let Some(cwd) = cwd {
+        cwd.join(path)
+    } else {
+        path.to_path_buf()
+    }
 }
 
 fn export_command_schema_payload() -> Result<Value, CliRunError> {

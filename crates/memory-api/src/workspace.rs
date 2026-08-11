@@ -745,7 +745,14 @@ fn collect_descendant_store_roots(
 fn should_skip_descendant_dir(name: &str) -> bool {
     matches!(
         name,
-        ".git" | ".hg" | ".svn" | "target" | "node_modules" | "release" | "tmp"
+        ".git"
+            | ".hg"
+            | ".svn"
+            | ".worktrees"
+            | "target"
+            | "node_modules"
+            | "release"
+            | "tmp"
     )
 }
 

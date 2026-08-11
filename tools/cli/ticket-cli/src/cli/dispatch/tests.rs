@@ -86,6 +86,24 @@ fn resolve_index_root_prefers_explicit_index_root_over_workspace_root() {
 }
 
 #[test]
+fn resolve_index_root_preserves_relative_explicit_index_root() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let child = repo.join("memory-api");
+    std::fs::create_dir_all(repo.join(".ticket")).unwrap();
+    std::fs::create_dir_all(child.join(".ticket")).unwrap();
+
+    let resolved = resolve_index_root_from(
+        Some(Path::new(".ticket")),
+        Some(&child),
+        None,
+        Some(&repo),
+    );
+
+    assert_eq!(resolved, repo.join(".ticket"));
+}
+
+#[test]
 fn dispatch_get_reads_child_ticket_from_explicit_workspace_root() {
     let (_dir, _repo, child, ticket_id) = create_nested_ticket_fixture();
 

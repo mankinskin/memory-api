@@ -225,6 +225,10 @@ fn find_descendant_store_roots_from_skips_known_non_workspace_dirs() {
         .unwrap();
     std::fs::create_dir_all(repo.join(".git").join("worktree").join(".spec"))
         .unwrap();
+    std::fs::create_dir_all(
+        repo.join(".worktrees").join("sibling").join(".spec"),
+    )
+    .unwrap();
 
     let roots = find_descendant_store_roots_from(&repo, ".spec");
 
