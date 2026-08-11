@@ -14,8 +14,8 @@ use std::{
 use serde_json::Value;
 use thiserror::Error;
 use time::{
-    OffsetDateTime,
     format_description::well_known::Rfc3339,
+    OffsetDateTime,
 };
 
 use crate::{
@@ -51,6 +51,12 @@ pub enum WorktreeOwnership {
     Ambiguous,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorktreeLayout {
+    Nested { session_id: String, slug: String },
+    LegacyFlat { short_id: String, slug: String },
+}
+
 /// Session activity backed by records in a `.session` store.
 pub struct SessionStoreActivity {
     session_store: PathBuf,
@@ -71,6 +77,41 @@ impl SessionStoreActivity {
     pub fn with_default_staleness(session_store: impl Into<PathBuf>) -> Self {
         Self::new(session_store, DEFAULT_STALE_AFTER)
     }
+
+    fn session_stores(&self) -> Result<Vec<PathBuf>, std::io::Error> {
+        let mut stores = BTreeSet::from([self.session_store.clone()]);
+        let Some(main_checkout) = self.session_store.parent() else {
+            return Ok(stores.into_iter().collect());
+        };
+        let worktree_root = main_checkout.join(".worktrees");
+        let entries = match fs::read_dir(&worktree_root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(stores.into_iter().collect());
+            },
+            Err(error) => return Err(error),
+        };
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let store = path.join(".session");
+            if store.is_dir() {
+                stores.insert(store);
+                continue;
+            }
+            for nested in fs::read_dir(path)? {
+                let nested = nested?;
+                let store = nested.path().join(".session");
+                if store.is_dir() {
+                    stores.insert(store);
+                }
+            }
+        }
+        Ok(stores.into_iter().collect())
+    }
 }
 
 impl SessionActivity for SessionStoreActivity {
@@ -81,13 +122,22 @@ impl SessionActivity for SessionStoreActivity {
         let Some(worktree) = normalized_path(worktree) else {
             return false;
         };
-        let sessions = self.session_store.join("sessions");
-        let Ok(entries) = fs::read_dir(sessions) else {
-            return false;
+        let Ok(stores) = self.session_stores() else {
+            return true;
         };
-        entries.flatten().any(|entry| {
-            let record = entry.path().join("session.json");
-            session_record_is_active(&record, &worktree, self.stale_after)
+        stores.into_iter().any(|store| {
+            match fs::read_dir(store.join("sessions")) {
+                Ok(entries) => entries.flatten().any(|entry| {
+                    session_record_is_active(
+                        &entry.path().join("session.json"),
+                        &worktree,
+                        self.stale_after,
+                    )
+                }),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound =>
+                    false,
+                Err(_) => true,
+            }
         })
     }
 
@@ -98,12 +148,22 @@ impl SessionActivity for SessionStoreActivity {
         let Some(worktree) = normalized_path(worktree) else {
             return WorktreeOwnership::Ambiguous;
         };
-        let Ok(entries) = fs::read_dir(self.session_store.join("sessions"))
-        else {
-            return WorktreeOwnership::Unowned;
+        let Ok(stores) = self.session_stores() else {
+            return WorktreeOwnership::Ambiguous;
         };
-        let owners = entries
-            .flatten()
+        let mut unreadable_store = false;
+        let owners = stores
+            .into_iter()
+            .filter_map(|store| match fs::read_dir(store.join("sessions")) {
+                Ok(entries) => Some(entries),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound =>
+                    None,
+                Err(_) => {
+                    unreadable_store = true;
+                    None
+                },
+            })
+            .flat_map(|entries| entries.flatten())
             .filter_map(|entry| {
                 session_record_owner(
                     &entry.path().join("session.json"),
@@ -111,11 +171,12 @@ impl SessionActivity for SessionStoreActivity {
                 )
             })
             .collect::<BTreeSet<_>>();
+        if unreadable_store {
+            return WorktreeOwnership::Ambiguous;
+        }
         match owners.len() {
             0 => WorktreeOwnership::Unowned,
-            1 => WorktreeOwnership::Owned(
-                owners.into_iter().next().unwrap(),
-            ),
+            1 => WorktreeOwnership::Owned(owners.into_iter().next().unwrap()),
             _ => WorktreeOwnership::Ambiguous,
         }
     }
@@ -214,6 +275,13 @@ pub enum ProvisionError {
         worktree.display()
     )]
     AmbiguousSessionWorktreeOwnership { worktree: PathBuf },
+    #[error(
+        "session {session_id} has ambiguous worktree candidates: {candidates:?}"
+    )]
+    AmbiguousSessionWorktree {
+        session_id: String,
+        candidates: Vec<PathBuf>,
+    },
 }
 
 pub fn evaluate_reclaim_candidate(
@@ -223,7 +291,7 @@ pub fn evaluate_reclaim_candidate(
     policy: &ProvisionPolicy,
 ) -> Result<ReclaimEligibility, WorktreeGitError> {
     let root = git.main_checkout().join(".worktrees");
-    if worktree.path.parent() != Some(root.as_path()) {
+    if !is_discoverable_worktree_path(&root, &worktree.path) {
         return Ok(ReclaimEligibility::Rejected(
             ReclaimRejectionReason::OutsideWorktreeRoot,
         ));
@@ -259,9 +327,7 @@ pub fn evaluate_reclaim_candidate(
         }
     }
     if git.is_dirty(&worktree.path)? {
-        return Ok(ReclaimEligibility::Rejected(
-            ReclaimRejectionReason::Dirty,
-        ));
+        return Ok(ReclaimEligibility::Rejected(ReclaimRejectionReason::Dirty));
     }
     if git.ahead_behind(&worktree.path, "main")?.0 != 0 {
         return Ok(ReclaimEligibility::Rejected(
@@ -287,48 +353,50 @@ pub fn provision_for_session(
     policy: &ProvisionPolicy,
 ) -> Result<ProvisionOutcome, ProvisionError> {
     let short_id = session_short_id(session_id);
-    let name = format!("{short_id}-session");
-    let branch = format!("agent/{name}");
+    let relative_path = PathBuf::from(session_id).join("session");
+    let branch = format!("agent/{session_id}/session");
     let worktrees = registered_worktrees(git)?;
-    let prefix = format!("{short_id}-");
-
-    if let Some(worktree) = worktrees
+    let nested = worktrees
         .iter()
-        .find(|worktree| worktree.name.starts_with(&prefix))
-    {
-        return match activity.worktree_ownership(&worktree.path) {
-            WorktreeOwnership::Owned(owner_session_id)
-                if owner_session_id == session_id =>
-            {
-                Ok(ProvisionOutcome::AlreadyProvisioned(worktree.clone()))
-            },
-            WorktreeOwnership::Owned(owner_session_id) => {
-                Err(ProvisionError::SessionOwnershipConflict {
-                    worktree: worktree.path.clone(),
-                    session_id: session_id.to_string(),
-                    owner_session_id,
-                })
-            },
-            WorktreeOwnership::Ambiguous => {
-                Err(ProvisionError::AmbiguousSessionWorktreeOwnership {
-                    worktree: worktree.path.clone(),
-                })
-            },
-            WorktreeOwnership::Unowned => {
-                Ok(ProvisionOutcome::AlreadyProvisioned(worktree.clone()))
-            },
-        };
+        .filter(|worktree| {
+            matches!(
+                worktree_layout(&git.main_checkout().join(".worktrees"), &worktree.path),
+                Some(WorktreeLayout::Nested { session_id: candidate, .. }) if candidate == session_id
+            )
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if nested.len() > 1 {
+        return Err(ambiguous_session_worktree(session_id, nested));
+    }
+    if let Some(worktree) = nested.first() {
+        return reuse_worktree(activity, session_id, worktree);
     }
 
-    for candidate in reclaim_candidates_from_registered(
-        git,
-        activity,
-        &worktrees,
-        policy,
-    )? {
+    let prefix = format!("{short_id}-");
+    let legacy = worktrees
+        .iter()
+        .filter(|worktree| {
+            matches!(
+                worktree_layout(&git.main_checkout().join(".worktrees"), &worktree.path),
+                Some(WorktreeLayout::LegacyFlat { short_id: candidate, .. }) if candidate == short_id
+            ) && worktree.name.starts_with(&prefix)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if legacy.len() > 1 {
+        return Err(ambiguous_session_worktree(session_id, legacy));
+    }
+    if let Some(worktree) = legacy.first() {
+        return reuse_worktree(activity, session_id, worktree);
+    }
+
+    for candidate in
+        reclaim_candidates_from_registered(git, activity, &worktrees, policy)?
+    {
         let previous_name = candidate.name.clone();
         // TODO(5e6cf4f8): update reclaimed worktrees from main in a later provisioning unit.
-        match git.rename_worktree(&previous_name, &name, &branch) {
+        match git.rename_worktree(&previous_name, &relative_path, &branch) {
             Ok(worktree) => {
                 return Ok(ProvisionOutcome::Reclaimed {
                     worktree,
@@ -350,8 +418,8 @@ pub fn provision_for_session(
         });
     }
 
-    Ok(ProvisionOutcome::Created(git.create_worktree(
-        &name,
+    Ok(ProvisionOutcome::Created(git.create_worktree_at(
+        &relative_path,
         &branch,
         &policy.base_ref,
     )?))
@@ -364,8 +432,82 @@ fn registered_worktrees(
     Ok(git
         .list_worktrees()?
         .into_iter()
-        .filter(|worktree| worktree.path.parent() == Some(root.as_path()))
+        .filter(|worktree| is_discoverable_worktree_path(&root, &worktree.path))
         .collect())
+}
+
+fn reuse_worktree(
+    activity: &dyn SessionActivity,
+    session_id: &str,
+    worktree: &WorktreeRef,
+) -> Result<ProvisionOutcome, ProvisionError> {
+    match activity.worktree_ownership(&worktree.path) {
+        WorktreeOwnership::Owned(owner_session_id)
+            if owner_session_id == session_id =>
+            Ok(ProvisionOutcome::AlreadyProvisioned(worktree.clone())),
+        WorktreeOwnership::Owned(owner_session_id) =>
+            Err(ProvisionError::SessionOwnershipConflict {
+                worktree: worktree.path.clone(),
+                session_id: session_id.to_string(),
+                owner_session_id,
+            }),
+        WorktreeOwnership::Ambiguous =>
+            Err(ProvisionError::AmbiguousSessionWorktreeOwnership {
+                worktree: worktree.path.clone(),
+            }),
+        WorktreeOwnership::Unowned =>
+            Ok(ProvisionOutcome::AlreadyProvisioned(worktree.clone())),
+    }
+}
+
+fn ambiguous_session_worktree(
+    session_id: &str,
+    mut worktrees: Vec<WorktreeRef>,
+) -> ProvisionError {
+    worktrees.sort_by(|left, right| left.path.cmp(&right.path));
+    ProvisionError::AmbiguousSessionWorktree {
+        session_id: session_id.to_string(),
+        candidates: worktrees
+            .into_iter()
+            .map(|worktree| worktree.path)
+            .collect(),
+    }
+}
+
+fn is_discoverable_worktree_path(
+    root: &Path,
+    path: &Path,
+) -> bool {
+    path.parent() == Some(root)
+        || path.parent().and_then(Path::parent) == Some(root)
+}
+
+fn worktree_layout(
+    root: &Path,
+    path: &Path,
+) -> Option<WorktreeLayout> {
+    let relative = path.strip_prefix(root).ok()?;
+    let components = relative
+        .components()
+        .map(|component| component.as_os_str().to_str())
+        .collect::<Option<Vec<_>>>()?;
+    match components.as_slice() {
+        [name] => {
+            let (short_id, slug) = name.split_once('-')?;
+            (short_id.len() == 8 && !slug.is_empty()).then(|| {
+                WorktreeLayout::LegacyFlat {
+                    short_id: (*short_id).to_string(),
+                    slug: (*slug).to_string(),
+                }
+            })
+        },
+        [session_id, slug] if !session_id.is_empty() && !slug.is_empty() =>
+            Some(WorktreeLayout::Nested {
+                session_id: (*session_id).to_string(),
+                slug: (*slug).to_string(),
+            }),
+        _ => None,
+    }
 }
 
 fn reclaim_candidates_from_registered(
@@ -550,35 +692,34 @@ mod tests {
     };
 
     use filetime::{
-        FileTime,
         set_file_mtime,
+        FileTime,
     };
     use time::{
-        OffsetDateTime,
         format_description::well_known::Rfc3339,
+        OffsetDateTime,
     };
 
     use super::{
-        NeverActive,
-        ProvisionError,
-        ReclaimEligibility,
-        ReclaimRejectionReason,
-        ProvisionOutcome,
-        ProvisionPolicy,
-        SessionActivity,
-        SessionStoreActivity,
         evaluate_reclaim_candidate,
         provision_for_session,
         reclaim_candidates,
+        NeverActive,
+        ProvisionError,
+        ProvisionOutcome,
+        ProvisionPolicy,
+        ReclaimEligibility,
+        ReclaimRejectionReason,
+        SessionActivity,
+        SessionStoreActivity,
     };
     use crate::{
-        WorktreeRef,
         tests::Fixture,
+        WorktreeRef,
     };
 
     const SESSION_ID: &str = "12345678-1234-4234-8234-123456789abc";
-    const SAME_PREFIX_SESSION_ID: &str =
-        "12345678-5678-4678-9678-123456789abc";
+    const SAME_PREFIX_SESSION_ID: &str = "12345678-5678-4678-9678-123456789abc";
 
     struct ActiveWorktree(PathBuf);
 
@@ -673,6 +814,34 @@ mod tests {
         .unwrap();
     }
 
+    fn persist_active_worktree_session(
+        session_store: &Path,
+        session_id: &str,
+        worktree: &WorktreeRef,
+    ) {
+        let record = session_store
+            .join("sessions")
+            .join(session_id)
+            .join("session.json");
+        fs::create_dir_all(record.parent().unwrap()).unwrap();
+        fs::write(
+            record,
+            serde_json::json!({
+                "session_id": session_id,
+                "captured_at": OffsetDateTime::now_utc()
+                    .format(&Rfc3339)
+                    .unwrap(),
+                "metadata": {
+                    "worktree": {
+                        "path": worktree.path,
+                    },
+                },
+            })
+            .to_string(),
+        )
+        .unwrap();
+    }
+
     fn only_worktree(git: &crate::WorktreeGit) -> WorktreeRef {
         let mut worktrees = git.list_worktrees().unwrap();
         assert_eq!(worktrees.len(), 1);
@@ -720,6 +889,74 @@ mod tests {
         .unwrap();
         assert_eq!(
             eligibility,
+            ReclaimEligibility::Rejected(ReclaimRejectionReason::SessionActive)
+        );
+    }
+
+    #[test]
+    fn federated_activity_and_unreadable_store_refuse_reclaim() {
+        let active_fixture = Fixture::new();
+        let active_git = active_fixture.git();
+        let active_worktree = active_git
+            .create_worktree("old", "agent/old", "main")
+            .unwrap();
+        let federated_store = active_fixture
+            .main
+            .join(".worktrees")
+            .join("activity-session")
+            .join("nested")
+            .join(".session");
+        persist_active_worktree_session(
+            &federated_store,
+            "session-visible-only-through-federation",
+            &active_worktree,
+        );
+        let active_eligibility = evaluate_reclaim_candidate(
+            &active_git,
+            &SessionStoreActivity::new(
+                active_fixture.main.join(".session"),
+                Duration::from_secs(60),
+            ),
+            &only_worktree(&active_git),
+            &policy(1),
+        )
+        .unwrap();
+        assert_eq!(
+            active_eligibility,
+            ReclaimEligibility::Rejected(ReclaimRejectionReason::SessionActive)
+        );
+
+        let unreadable_fixture = Fixture::new();
+        let unreadable_git = unreadable_fixture.git();
+        unreadable_git
+            .create_worktree("old", "agent/old", "main")
+            .unwrap();
+        let unreadable_sessions = unreadable_fixture
+            .main
+            .join(".worktrees")
+            .join("unreadable-session")
+            .join("nested")
+            .join(".session")
+            .join("sessions");
+        fs::create_dir_all(unreadable_sessions.parent().unwrap()).unwrap();
+        fs::write(
+            &unreadable_sessions,
+            "not a readable session directory
+",
+        )
+        .unwrap();
+        let unreadable_eligibility = evaluate_reclaim_candidate(
+            &unreadable_git,
+            &SessionStoreActivity::new(
+                unreadable_fixture.main.join(".session"),
+                Duration::from_secs(60),
+            ),
+            &only_worktree(&unreadable_git),
+            &policy(1),
+        )
+        .unwrap();
+        assert_eq!(
+            unreadable_eligibility,
             ReclaimEligibility::Rejected(ReclaimRejectionReason::SessionActive)
         );
     }
@@ -835,9 +1072,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             eligibility,
-            ReclaimEligibility::Rejected(ReclaimRejectionReason::DirtySubmodule {
-                path: PathBuf::from("nested"),
-            })
+            ReclaimEligibility::Rejected(
+                ReclaimRejectionReason::DirtySubmodule {
+                    path: PathBuf::from("nested"),
+                }
+            )
         );
     }
 
@@ -867,22 +1106,22 @@ mod tests {
         let fixture = Fixture::new();
         let git = fixture.git();
         let old = git.create_worktree("a-old", "agent/a-old", "main").unwrap();
-        let newer = git.create_worktree("b-new", "agent/b-new", "main").unwrap();
+        let newer =
+            git.create_worktree("b-new", "agent/b-new", "main").unwrap();
         let age = Duration::from_secs(2 * 60 * 60);
         backdate_activity_signals(&git, &old, age);
 
-        let candidates = reclaim_candidates(&git, &NeverActive, &policy(8)).unwrap();
+        let candidates =
+            reclaim_candidates(&git, &NeverActive, &policy(8)).unwrap();
         let names = candidates
             .iter()
             .map(|worktree| worktree.name.as_str())
             .collect::<Vec<_>>();
         assert_eq!(names, vec!["a-old", "b-new"]);
         assert!(candidates.iter().any(|worktree| worktree.path == old.path));
-        assert!(
-            candidates
-                .iter()
-                .any(|worktree| worktree.path == newer.path)
-        );
+        assert!(candidates
+            .iter()
+            .any(|worktree| worktree.path == newer.path));
     }
 
     #[test]
@@ -926,9 +1165,8 @@ mod tests {
         };
         persist_worktree_owner(&session_store, SESSION_ID, &worktree);
 
-        let fresh_activity = SessionStoreActivity::with_default_staleness(
-            &session_store,
-        );
+        let fresh_activity =
+            SessionStoreActivity::with_default_staleness(&session_store);
         let reuse = provision_for_session(
             &git,
             &fresh_activity,
@@ -957,9 +1195,8 @@ mod tests {
             .unwrap();
         persist_worktree_owner(&session_store, SESSION_ID, &worktree);
 
-        let fresh_activity = SessionStoreActivity::with_default_staleness(
-            &session_store,
-        );
+        let fresh_activity =
+            SessionStoreActivity::with_default_staleness(&session_store);
         let result = provision_for_session(
             &git,
             &fresh_activity,
@@ -993,9 +1230,8 @@ mod tests {
             .unwrap();
         persist_worktree_owner(&session_store, SESSION_ID, &worktree);
 
-        let fresh_activity = SessionStoreActivity::with_default_staleness(
-            &session_store,
-        );
+        let fresh_activity =
+            SessionStoreActivity::with_default_staleness(&session_store);
         let result = provision_for_session(
             &git,
             &fresh_activity,
@@ -1022,9 +1258,8 @@ mod tests {
             )
             .unwrap();
         let session_store = fixture.main.join(".session");
-        let fresh_activity = SessionStoreActivity::with_default_staleness(
-            &session_store,
-        );
+        let fresh_activity =
+            SessionStoreActivity::with_default_staleness(&session_store);
 
         let reuse = provision_for_session(
             &git,
@@ -1054,8 +1289,83 @@ mod tests {
         assert!(matches!(
             outcome,
             ProvisionOutcome::Created(worktree)
-                if worktree.name == "12345678-session"
-                    && worktree.branch.as_deref() == Some("agent/12345678-session")
+                if worktree.name == "session"
+                    && worktree
+                        .path
+                        .ends_with(Path::new(SESSION_ID).join("session"))
+                    && worktree.path.exists()
+                    && worktree.branch.as_deref()
+                        == Some("agent/12345678-1234-4234-8234-123456789abc/session")
+        ));
+    }
+
+    #[test]
+    fn discovery_reuses_legacy_flat_worktree() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let legacy = git
+            .create_worktree("12345678-legacy", "agent/12345678-legacy", "main")
+            .unwrap();
+
+        let outcome =
+            provision_for_session(&git, &NeverActive, SESSION_ID, &policy(8))
+                .unwrap();
+
+        assert!(matches!(
+            outcome,
+            ProvisionOutcome::AlreadyProvisioned(worktree) if worktree == legacy
+        ));
+    }
+
+    #[test]
+    fn discovery_reuses_nested_worktree_for_exact_session_id() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let nested_path = PathBuf::from(SESSION_ID).join("exact-match");
+        let nested = git
+            .create_worktree_at(
+                &nested_path,
+                "agent/12345678-1234-4234-8234-123456789abc/exact-match",
+                "main",
+            )
+            .unwrap();
+
+        let outcome =
+            provision_for_session(&git, &NeverActive, SESSION_ID, &policy(8))
+                .unwrap();
+
+        assert!(matches!(
+            outcome,
+            ProvisionOutcome::AlreadyProvisioned(worktree) if worktree == nested
+        ));
+    }
+
+    #[test]
+    fn multiple_nested_slugs_return_sorted_ambiguity_error() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let alpha = git
+            .create_worktree_at(
+                &PathBuf::from(SESSION_ID).join("alpha"),
+                "agent/12345678-1234-4234-8234-123456789abc/alpha",
+                "main",
+            )
+            .unwrap();
+        let beta = git
+            .create_worktree_at(
+                &PathBuf::from(SESSION_ID).join("beta"),
+                "agent/12345678-1234-4234-8234-123456789abc/beta",
+                "main",
+            )
+            .unwrap();
+
+        let result =
+            provision_for_session(&git, &NeverActive, SESSION_ID, &policy(8));
+
+        assert!(matches!(
+            result,
+            Err(ProvisionError::AmbiguousSessionWorktree { candidates, .. })
+                if candidates == vec![alpha.path, beta.path]
         ));
     }
 
@@ -1089,7 +1399,9 @@ mod tests {
             "keep\n"
         );
         assert!(!git.branch_exists("agent/old").unwrap());
-        assert!(git.branch_exists("agent/12345678-session").unwrap());
+        assert!(git
+            .branch_exists("agent/12345678-1234-4234-8234-123456789abc/session")
+            .unwrap());
     }
 
     #[test]
@@ -1107,7 +1419,9 @@ mod tests {
         ));
         assert!(old.path.exists());
         assert!(git.branch_exists("agent/old").unwrap());
-        assert!(!git.branch_exists("agent/12345678-session").unwrap());
+        assert!(!git
+            .branch_exists("agent/12345678-1234-4234-8234-123456789abc/session")
+            .unwrap());
     }
 
     #[test]
@@ -1159,7 +1473,10 @@ mod tests {
             provision_for_session(&git, &NeverActive, SESSION_ID, &policy(1));
         assert_cap_reached(result);
         assert_eq!(git.list_worktrees().unwrap().len(), 1);
-        assert!(!fixture.main.join(".worktrees/12345678-session").exists());
+        assert!(!fixture
+            .main
+            .join(".worktrees/12345678-1234-4234-8234-123456789abc/session")
+            .exists());
     }
 
     #[test]
@@ -1190,7 +1507,10 @@ mod tests {
             &policy,
         ));
         assert!(old.path.exists());
-        assert!(!fixture.main.join(".worktrees/12345678-session").exists());
+        assert!(!fixture
+            .main
+            .join(".worktrees/12345678-1234-4234-8234-123456789abc/session")
+            .exists());
     }
 
     #[test]
@@ -1237,7 +1557,10 @@ mod tests {
                 .unwrap();
         assert!(matches!(outcome, ProvisionOutcome::Created(_)));
         assert!(old.path.exists());
-        assert!(fixture.main.join(".worktrees/12345678-session").exists());
+        assert!(fixture
+            .main
+            .join(".worktrees/12345678-1234-4234-8234-123456789abc/session")
+            .exists());
     }
 
     #[test]
@@ -1255,7 +1578,10 @@ mod tests {
             &policy(1),
         ));
         assert!(old.path.exists());
-        assert!(!fixture.main.join(".worktrees/12345678-session").exists());
+        assert!(!fixture
+            .main
+            .join(".worktrees/12345678-1234-4234-8234-123456789abc/session")
+            .exists());
     }
 
     #[test]
@@ -1292,5 +1618,48 @@ mod tests {
         )
         .unwrap();
         assert!(!activity.is_active(&worktree.path));
+    }
+
+    #[test]
+    fn session_store_activity_prevents_reclaim_for_nested_worktree_record() {
+        let fixture = Fixture::new();
+        let git = fixture.git();
+        let worktree = git
+            .create_worktree_at(
+                &PathBuf::from("other-session").join("active"),
+                "agent/other-session/active",
+                "main",
+            )
+            .unwrap();
+        let record =
+            worktree.path.join(".session/sessions/active/session.json");
+        fs::create_dir_all(record.parent().unwrap()).unwrap();
+        let fresh = OffsetDateTime::now_utc().format(&Rfc3339).unwrap();
+        let worktree_path = worktree.path.to_string_lossy().replace('\\', "/");
+        fs::write(
+            record,
+            format!(
+                r#"{{"captured_at":"{fresh}","metadata":{{"worktree":{{"path":"{}"}}}}}}"#,
+                worktree_path
+            ),
+        )
+        .unwrap();
+
+        let activity = SessionStoreActivity::new(
+            fixture.main.join(".session"),
+            Duration::from_secs(60),
+        );
+        let eligibility = evaluate_reclaim_candidate(
+            &git,
+            &activity,
+            &only_worktree(&git),
+            &policy(1),
+        )
+        .unwrap();
+
+        assert_eq!(
+            eligibility,
+            ReclaimEligibility::Rejected(ReclaimRejectionReason::SessionActive)
+        );
     }
 }

@@ -423,8 +423,30 @@ impl WorktreeGit {
         branch: &str,
         base: &str,
     ) -> Result<WorktreeRef, WorktreeGitError> {
-        validate_name(name)?;
-        let path = self.main_checkout.join(".worktrees").join(name);
+        self.create_worktree_at(Path::new(name), branch, base)
+    }
+
+    pub fn create_worktree_at(
+        &self,
+        relative_path: &Path,
+        branch: &str,
+        base: &str,
+    ) -> Result<WorktreeRef, WorktreeGitError> {
+        validate_relative_worktree_path(relative_path)?;
+        let name = relative_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("validated worktree path has a UTF-8 final component");
+        let path = self
+            .main_checkout
+            .join(".worktrees")
+            .join(relative_path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|source| WorktreeGitError::Io {
+                path: parent.to_path_buf(),
+                source,
+            })?;
+        }
         self.worktree_add_new_branch(&path, branch, base)?;
         let result = self.populate_submodules_offline(&path).and_then(|_| {
             Ok(WorktreeRef {
@@ -444,11 +466,15 @@ impl WorktreeGit {
     pub fn rename_worktree(
         &self,
         old_name: &str,
-        new_name: &str,
+        new_relative_path: &Path,
         new_branch: &str,
     ) -> Result<WorktreeRef, WorktreeGitError> {
         validate_name(old_name)?;
-        validate_name(new_name)?;
+        validate_relative_worktree_path(new_relative_path)?;
+        let new_name = new_relative_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("validated worktree path has a UTF-8 final component");
         let old = self
             .list_worktrees()?
             .into_iter()
@@ -461,7 +487,16 @@ impl WorktreeGit {
                 .ok_or_else(|| WorktreeGitError::DetachedWorktree {
                     name: old_name.to_string(),
                 })?;
-        let new_path = self.main_checkout.join(".worktrees").join(new_name);
+        let new_path = self
+            .main_checkout
+            .join(".worktrees")
+            .join(new_relative_path);
+        if let Some(parent) = new_path.parent() {
+            fs::create_dir_all(parent).map_err(|source| WorktreeGitError::Io {
+                path: parent.to_path_buf(),
+                source,
+            })?;
+        }
         self.worktree_move(&old.path, &new_path)?;
         self.branch_rename(&old_branch, new_branch)?;
         Ok(WorktreeRef {
@@ -674,6 +709,20 @@ fn validate_name(name: &str) -> Result<(), WorktreeGitError> {
     if name.is_empty() || Path::new(name).components().count() != 1 {
         return Err(WorktreeGitError::InvalidWorktreeName {
             name: name.to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_relative_worktree_path(path: &Path) -> Result<(), WorktreeGitError> {
+    if path.as_os_str().is_empty()
+        || path.is_absolute()
+        || path.components().any(|component| {
+            matches!(component, std::path::Component::ParentDir)
+        })
+    {
+        return Err(WorktreeGitError::InvalidWorktreeName {
+            name: path.display().to_string(),
         });
     }
     Ok(())
@@ -1158,7 +1207,9 @@ pub(crate) mod tests {
         let git = fixture.git();
         let old = git.create_worktree("old", "session-old", "HEAD").unwrap();
         fs::write(old.path.join("marker.txt"), "keep\n").unwrap();
-        let renamed = git.rename_worktree("old", "new", "session-new").unwrap();
+        let renamed = git
+            .rename_worktree("old", Path::new("new"), "session-new")
+            .unwrap();
         assert!(!old.path.exists());
         assert_eq!(
             fs::read_to_string(renamed.path.join("marker.txt")).unwrap(),
