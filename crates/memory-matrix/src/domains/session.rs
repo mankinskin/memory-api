@@ -36,6 +36,7 @@ impl SessionDomain {
             agent_id: Some("matrix".to_string()),
             model: None,
             trigger: Some("matrix".to_string()),
+            provisioning: None,
             messages: contents
                 .iter()
                 .map(|content| session_api::CopilotHookMessage {
