@@ -312,26 +312,8 @@ impl TicketStore {
         let root = self.resolve_target_root(target_root)?;
         std::fs::create_dir_all(&root)?;
 
-        let mut manifest = TicketManifest::new(id, now);
-        manifest
-            .extra
-            .insert("type".to_string(), Value::String(type_id.to_string()));
-        if let Some(t) = title {
-            manifest
-                .extra
-                .insert("title".to_string(), Value::String(t.to_string()));
-        }
-        let state = initial_state.unwrap_or("open").to_string();
-        manifest
-            .extra
-            .insert("state".to_string(), Value::String(state.clone()));
-        for (k, v) in extra {
-            manifest.extra.insert(k, v);
-        }
-
-        // Validate against the registered type schema; an unregistered type
-        // must fail here rather than silently persist an unvalidated ticket
-        // that later explodes at transition resolution.
+        // Resolve the schema before selecting the conventional entry state so
+        // creation and off-schema recovery use the same rule.
         let schema = self.schema_registry.get(type_id).ok_or_else(|| {
             StorageError::Validation(crate::error::SchemaValidationError::UnknownType {
                 type_id: type_id.to_string(),
@@ -342,6 +324,30 @@ impl TicketStore {
                     .collect(),
             })
         })?;
+
+        let mut manifest = TicketManifest::new(id, now);
+        manifest
+            .extra
+            .insert("type".to_string(), Value::String(type_id.to_string()));
+        if let Some(t) = title {
+            manifest
+                .extra
+                .insert("title".to_string(), Value::String(t.to_string()));
+        }
+        let state = initial_state
+            .or_else(|| schema.entry_state())
+            .unwrap_or("open")
+            .to_string();
+        manifest
+            .extra
+            .insert("state".to_string(), Value::String(state.clone()));
+        for (k, v) in extra {
+            manifest.extra.insert(k, v);
+        }
+
+        // Validate against the registered type schema; an unregistered type
+        // must fail here rather than silently persist an unvalidated ticket
+        // that later explodes at transition resolution.
         schema.validate_manifest(&manifest)?;
 
         let ticket_path = Self::normalize_existing_path(&TicketFs::create(

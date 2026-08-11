@@ -1,4 +1,80 @@
 use super::*;
+
+#[test]
+fn create_rejects_off_schema_state() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+
+    let err = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Invalid creation state"),
+            Some("archived"),
+            Default::default(),
+            None,
+            None,
+        )
+        .expect_err("off-schema state must be rejected before persistence");
+
+    match err {
+        crate::error::StorageError::Validation(
+            crate::error::SchemaValidationError::OffSchemaState { state, allowed },
+        ) => {
+            assert_eq!(state, "archived");
+            assert!(allowed.contains(&"open".to_string()));
+        },
+        other => panic!("expected OffSchemaState, got {other:?}"),
+    }
+    assert!(store.list(None, None, None).unwrap().is_empty());
+}
+
+#[test]
+fn off_schema_state_recovers_only_to_entry_state_then_transitions_normally() {
+    let dir = tempdir().unwrap();
+    let store = TicketStore::init(dir.path()).unwrap();
+    let id = store
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Legacy off-schema state"),
+            Some("open"),
+            Default::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let mut manifest = store.get(&id).unwrap();
+    manifest.extra.insert(
+        "state".to_string(),
+        Value::String("archived".to_string()),
+    );
+    let ticket_path = store.get_indexed(&id).unwrap().unwrap().path;
+    let toml_str = memory_api::model::manifest_format::format_manifest_toml(&manifest);
+    std::fs::write(
+        ticket_path.join(crate::model::filesystem::TICKET_MANIFEST_FILE),
+        toml_str,
+    )
+    .unwrap();
+    store.scan(true).unwrap();
+
+    let err = store
+        .update(&id, BTreeMap::new(), None, Some("planned"), None, None)
+        .expect_err("recovery must not jump to a non-entry state");
+    assert!(err.to_string().contains("'archived' -> 'planned'"));
+
+    store
+        .update(&id, BTreeMap::new(), None, Some("open"), None, None)
+        .expect("off-schema state should recover to the entry state");
+    store
+        .update(&id, BTreeMap::new(), None, Some("planned"), None, None)
+        .expect("recovered ticket should transition normally");
+
+    let indexed = store.get_indexed(&id).unwrap().unwrap();
+    assert_eq!(indexed.state.as_deref(), Some("planned"));
+}
+
 #[test]
 fn ticket_29a56eef_state_in_field_patch_errors_instead_of_silently_dropping() {
     let dir = tempdir().unwrap();

@@ -64,6 +64,14 @@ impl EntityTypeSchema {
         &self,
         manifest: &EntityManifest,
     ) -> Result<(), SchemaValidationError> {
+        if let Some(state) = manifest.extra.get("state").and_then(|value| value.as_str()) {
+            if !self.states.iter().any(|allowed| allowed == state) {
+                return Err(SchemaValidationError::OffSchemaState {
+                    state: state.to_owned(),
+                    allowed: self.states.clone(),
+                });
+            }
+        }
         for (name, def) in &self.fields {
             if def.required && !manifest.extra.contains_key(name) {
                 return Err(SchemaValidationError::MissingRequiredField(
@@ -72,6 +80,14 @@ impl EntityTypeSchema {
             }
         }
         Ok(())
+    }
+
+    /// The conventional entry state shared by built-in ticket schemas.
+    pub fn entry_state(&self) -> Option<&str> {
+        self.states
+            .iter()
+            .find(|state| state.as_str() == "open")
+            .map(String::as_str)
     }
 
     pub fn allows_transition(
@@ -92,6 +108,9 @@ impl EntityTypeSchema {
         &self,
         from: &str,
     ) -> Vec<String> {
+        if !self.states.iter().any(|state| state == from) {
+            return self.entry_state().map(str::to_owned).into_iter().collect();
+        }
         let mut states = std::collections::BTreeSet::new();
         for t in &self.transitions {
             if t.from == from {
@@ -182,6 +201,9 @@ impl EntityTypeSchema {
         from: &str,
         to: &str,
     ) -> Option<Vec<String>> {
+        if !self.states.iter().any(|state| state == from) {
+            return (self.entry_state() == Some(to)).then(|| vec![to.to_string()]);
+        }
         if from == to {
             return Some(vec![]);
         }

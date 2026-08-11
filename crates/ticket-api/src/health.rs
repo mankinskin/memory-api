@@ -638,21 +638,32 @@ mod tests {
     #[test]
     fn off_schema_state_produces_finding() {
         let (_dir, store) = open_store();
-        // Reproduces the frozen-ticket scenario: a ticket created directly
-        // with a `state` value that is not a member of its type schema's
-        // `states` list (e.g. "archived", which is not in tracker-improvement's
-        // schema). Such a ticket has zero legal transitions.
+        // Reproduce legacy persisted data, which predates create-time state
+        // validation, by patching a valid manifest and reindexing it.
         let id = store
             .create(
                 None,
                 "tracker-improvement",
                 Some("Ticket frozen in an off-schema state"),
-                Some("archived"),
+                Some("open"),
                 extra_with_effort("500"),
                 None,
                 Some("This description is definitely long enough to pass the 50-character threshold."),
             )
             .unwrap();
+        let mut manifest = store.get(&id).unwrap();
+        manifest.extra.insert(
+            "state".to_string(),
+            serde_json::Value::String("archived".to_string()),
+        );
+        let ticket_path = store.get_indexed(&id).unwrap().unwrap().path;
+        let toml_str = memory_api::model::manifest_format::format_manifest_toml(&manifest);
+        fs::write(
+            ticket_path.join(crate::model::filesystem::TICKET_MANIFEST_FILE),
+            toml_str,
+        )
+        .unwrap();
+        store.scan(true).unwrap();
 
         let tickets = store.list(None, None, None).unwrap();
         let edges = store.list_all_edges().unwrap();

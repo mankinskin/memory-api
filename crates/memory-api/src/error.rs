@@ -5,6 +5,14 @@ use uuid::Uuid;
 pub enum SchemaValidationError {
     #[error("required field missing: {0}")]
     MissingRequiredField(String),
+    #[error(
+        "state '{state}' is not allowed by the schema; allowed states are [{allowed}]",
+        allowed = .allowed.join(", "),
+    )]
+    OffSchemaState {
+        state: String,
+        allowed: Vec<String>,
+    },
     /// A rejected state transition, enriched with recovery guidance: the current
     /// state, the states legally reachable in a single hop, and (when the target
     /// is reachable at all) the intermediate states that must be traversed.
