@@ -1,7 +1,18 @@
 use std::{
+    collections::{
+        BTreeMap,
+        BTreeSet,
+    },
     fs,
+    hash::{
+        Hash,
+        Hasher,
+    },
     io::Write,
-    path::PathBuf,
+    path::{
+        Path,
+        PathBuf,
+    },
     process::{
         Command,
         Stdio,
@@ -77,12 +88,55 @@ fn run_hook_with_payload(
         .expect("wait for session-capture-hook")
 }
 
+fn snapshot_directory(root: &Path) -> BTreeMap<PathBuf, u64> {
+    let mut snapshot = BTreeMap::new();
+    snapshot_directory_entries(root, root, &mut snapshot);
+    snapshot
+}
+
+fn snapshot_directory_entries(
+    root: &Path,
+    directory: &Path,
+    snapshot: &mut BTreeMap<PathBuf, u64>,
+) {
+    for entry in fs::read_dir(directory).expect("read snapshot directory") {
+        let entry = entry.expect("read snapshot entry");
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(root)
+            .expect("snapshot path belongs to root")
+            .to_path_buf();
+        if entry.file_type().expect("read snapshot file type").is_dir() {
+            snapshot.insert(relative, 0);
+            snapshot_directory_entries(root, &path, snapshot);
+        } else {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            fs::read(&path).expect("read snapshot file").hash(&mut hasher);
+            snapshot.insert(relative, hasher.finish());
+        }
+    }
+}
+
+fn changed_snapshot_paths(
+    before: &BTreeMap<PathBuf, u64>,
+    after: &BTreeMap<PathBuf, u64>,
+) -> Vec<PathBuf> {
+    before
+        .keys()
+        .chain(after.keys())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .filter(|path| before.get(*path) != after.get(*path))
+        .cloned()
+        .collect()
+}
+
 #[test]
 fn e2e_user_prompt_provisions_and_captures_a_fresh_session() {
     let fixture = tempdir().expect("temp fixture dir");
     let checkout = fixture.path().join("checkout");
     create_fixture_checkout(&checkout);
-    let session_id = format!("fresh-session-{}", unique_suffix());
+    let session_id = "11111111-1111-4111-8111-111111111111";
     let transcript = local_fixture_a().replace(FIXTURE_SESSION_ID, &session_id);
     let transcript_path =
         write_fixture_transcript(&checkout, "fresh-session.jsonl", &transcript);
@@ -105,21 +159,78 @@ fn e2e_user_prompt_provisions_and_captures_a_fresh_session() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let worktree_name = format!("{}-session", &session_id[..8]);
+    let worktree = checkout.join(".worktrees").join(session_id).join("session");
     assert!(
-        checkout.join(".worktrees").join(&worktree_name).is_dir(),
+        worktree.is_dir(),
         "fresh UserPromptSubmit must provision a worktree; stderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        checkout
-            .join(".worktrees")
-            .join(worktree_name)
+        worktree
             .join(".session")
             .join("sessions")
             .join(&session_id)
             .is_dir(),
         "fresh UserPromptSubmit must capture a session record in its worktree"
+    );
+    assert!(
+        fs::read_dir(checkout.join(".session"))
+            .expect("read anchor session store")
+            .next()
+            .is_none(),
+        "fresh UserPromptSubmit must not create anchor session records"
+    );
+    assert_eq!(output.stdout, b"{}\n");
+}
+
+#[test]
+fn e2e_user_prompt_preserves_anchor_session_store_snapshot() {
+    let fixture = tempdir().expect("temp fixture dir");
+    let checkout = fixture.path().join("checkout");
+    create_fixture_checkout(&checkout);
+    let decoy = checkout
+        .join(".session")
+        .join("sessions")
+        .join("different-session")
+        .join("session.json");
+    fs::create_dir_all(decoy.parent().expect("decoy parent"))
+        .expect("create decoy session directory");
+    fs::write(&decoy, "{\"session_id\":\"different-session\"}\n")
+        .expect("write decoy session record");
+    let before = snapshot_directory(&checkout.join(".session"));
+    let session_id = "22222222-2222-4222-8222-222222222222";
+    let transcript = local_fixture_a().replace(FIXTURE_SESSION_ID, session_id);
+    let transcript_path =
+        write_fixture_transcript(&checkout, "anchor-store-snapshot.jsonl", &transcript);
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
+
+    let output = run_hook_with_payload(
+        &hook_bin,
+        &checkout,
+        serde_json::json!({
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": session_id,
+            "transcript_path": transcript_path,
+        }),
+    );
+
+    assert!(
+        output.status.success(),
+        "session-capture-hook failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let after = snapshot_directory(&checkout.join(".session"));
+    assert_eq!(
+        before,
+        after,
+        "UserPromptSubmit must not add, modify, or delete main-checkout .session paths; changed paths: {:?}",
+        changed_snapshot_paths(&before, &after)
+    );
+    assert_eq!(
+        fs::read_to_string(&decoy).expect("read decoy session record"),
+        "{\"session_id\":\"different-session\"}\n"
     );
 }
 
@@ -177,9 +288,12 @@ fn e2e_missing_transcript_user_prompt_provisions_but_stop_does_not() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let worktree_name = format!("{}-session", &prompt_session_id[..8]);
+    let worktree = prompt_checkout
+        .join(".worktrees")
+        .join(&prompt_session_id)
+        .join("session");
     assert!(
-        prompt_checkout.join(".worktrees").join(worktree_name).is_dir(),
+        worktree.is_dir(),
         "UserPromptSubmit must provision despite a missing transcript; stderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -198,6 +312,7 @@ fn e2e_missing_transcript_user_prompt_provisions_but_stop_does_not() {
     );
 
     assert!(output.status.success());
+    assert_eq!(output.stdout, b"{}\n");
     assert!(
         !stop_checkout.join(".worktrees").exists(),
         "Stop must not provision when the transcript is missing"
@@ -348,13 +463,7 @@ fn e2e_user_prompt_with_external_store_does_not_provision_cwd_checkout() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let payload: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .expect("hook stdout should remain valid JSON");
-    assert_eq!(payload["provisioning"]["outcome"], "skipped");
-    assert_eq!(
-        payload["provisioning"]["reason"],
-        "external_store_mismatch"
-    );
+    assert_eq!(output.stdout, b"{}\n");
     let config = SessionStoreConfig::new(&store_root, "default");
     let record = config
         .read_session(FIXTURE_SESSION_ID)
@@ -428,17 +537,7 @@ fn e2e_mismatched_store_emits_nonblocking_observability_payload() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let payload: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .expect("hook stdout should remain valid JSON");
-    assert_eq!(payload["provisioning"]["outcome"], "skipped");
-    assert_eq!(
-        payload["provisioning"]["reason"],
-        "external_store_mismatch"
-    );
-    assert!(
-        payload.get("decision").is_none(),
-        "observability output must not alter hook control flow"
-    );
+    assert_eq!(output.stdout, b"{}\n");
     assert!(
         String::from_utf8_lossy(&output.stderr)
             .contains("worktree provisioning skipped"),
@@ -932,12 +1031,7 @@ fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
     );
     let payload: serde_json::Value = serde_json::from_str(stdout.trim())
         .expect("capture hook should emit valid JSON");
-    assert_eq!(payload["provisioning"]["outcome"], "skipped");
-    assert_eq!(
-        payload["provisioning"]["reason"],
-        "external_store_mismatch"
-    );
-    assert!(payload.get("decision").is_none());
+    assert_eq!(payload, serde_json::json!({}));
     assert!(
         !stderr.contains("skip: transcript not found"),
         "hook skipped transcript unexpectedly: stdout={stdout} stderr={stderr}"
