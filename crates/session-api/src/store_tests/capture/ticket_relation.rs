@@ -8,7 +8,7 @@ const TARGET_TICKET: &str = "ticket-target";
 fn seed_strict_session(config: &SessionStoreConfig, tempdir: &TempDir) {
     config
         .check_in_worktree(SessionWorktreeCheckInRequest {
-            session_id: "session-strict".to_string(),
+            session_id: WORKTREE_SESSION_STRICT.to_string(),
             owner_id: "agent-strict".to_string(),
             ticket_id: TARGET_TICKET.to_string(),
             worktree_path: tempdir.path().join("wt-strict"),
@@ -32,7 +32,7 @@ fn seed_linked_session(config: &SessionStoreConfig) {
 fn seed_mentioned_session(config: &SessionStoreConfig) {
     config
         .capture_copilot_hook(sample_payload(
-            "session-mentioned",
+            RUNTIME_SESSION_MENTIONED,
             Some("conversation-mentioned"),
             sample_time(),
             &["Handed off for follow-up"],
@@ -40,13 +40,13 @@ fn seed_mentioned_session(config: &SessionStoreConfig) {
         .unwrap();
     config
         .init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some("session-mentioned".to_string()),
+            workspace_session_id: Some(RUNTIME_SESSION_MENTIONED.to_string()),
             ..Default::default()
         })
         .unwrap();
     config
         .create_handoff_record(
-            "session-mentioned",
+            RUNTIME_SESSION_MENTIONED,
             Some(SessionHandoffPackage {
                 objective: "Follow up on target ticket".to_string(),
                 target_tickets: vec![crate::SessionHandoffTargetTicket {
@@ -116,7 +116,7 @@ fn sessions_for_ticket_strict_matches_only_metadata_ticket_id() {
 
     assert_eq!(matches.len(), 1);
     let row = &matches[0];
-    assert_eq!(row.session_id, "session-strict");
+    assert_eq!(row.session_id, WORKTREE_SESSION_STRICT);
     assert_eq!(row.agent_id.as_deref(), Some("agent-strict"));
     assert_eq!(row.branch.as_deref(), Some("agent/strict-branch"));
     assert_eq!(
@@ -139,11 +139,11 @@ fn sessions_for_ticket_linked_includes_strict_and_links_but_not_mentioned() {
 
     let ids: Vec<&str> =
         matches.iter().map(|row| row.session_id.as_str()).collect();
-    assert_eq!(ids, vec!["session-linked", "session-strict"]);
+    assert_eq!(ids, vec![WORKTREE_SESSION_STRICT, "session-linked"]);
 
     let strict = matches
         .iter()
-        .find(|row| row.session_id == "session-strict")
+        .find(|row| row.session_id == WORKTREE_SESSION_STRICT)
         .unwrap();
     assert_eq!(strict.matched_strength, RelationStrength::Strict);
 
@@ -168,12 +168,12 @@ fn sessions_for_ticket_mentioned_includes_all_structured_tiers_only() {
         matches.iter().map(|row| row.session_id.as_str()).collect();
     assert_eq!(
         ids,
-        vec!["session-linked", "session-mentioned", "session-strict"]
+        vec![RUNTIME_SESSION_MENTIONED, WORKTREE_SESSION_STRICT, "session-linked"]
     );
 
     let mentioned = matches
         .iter()
-        .find(|row| row.session_id == "session-mentioned")
+        .find(|row| row.session_id == RUNTIME_SESSION_MENTIONED)
         .unwrap();
     assert_eq!(mentioned.matched_strength, RelationStrength::Mentioned);
 }
@@ -190,7 +190,7 @@ fn check_in_worktree_forward_captures_ticket_linkage_for_immediate_discovery()
 
     config
         .check_in_worktree(SessionWorktreeCheckInRequest {
-            session_id: "session-forward-capture".to_string(),
+            session_id: WORKTREE_SESSION_FORWARD.to_string(),
             owner_id: "agent-forward-capture".to_string(),
             ticket_id: TARGET_TICKET.to_string(),
             worktree_path: tempdir.path().join("wt-forward-capture"),
@@ -204,7 +204,7 @@ fn check_in_worktree_forward_captures_ticket_linkage_for_immediate_discovery()
         .unwrap();
 
     assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0].session_id, "session-forward-capture");
+    assert_eq!(matches[0].session_id, WORKTREE_SESSION_FORWARD);
     assert_eq!(matches[0].matched_strength, RelationStrength::Strict);
 }
 
@@ -218,7 +218,7 @@ fn sessions_for_ticket_skips_unreadable_session_and_returns_the_rest() {
 
     config
         .check_in_worktree(SessionWorktreeCheckInRequest {
-            session_id: "session-good".to_string(),
+            session_id: WORKTREE_SESSION_GOOD.to_string(),
             owner_id: "agent-good".to_string(),
             ticket_id: TARGET_TICKET.to_string(),
             worktree_path: tempdir.path().join("wt-good"),
@@ -242,5 +242,5 @@ fn sessions_for_ticket_skips_unreadable_session_and_returns_the_rest() {
         .unwrap();
 
     assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0].session_id, "session-good");
+    assert_eq!(matches[0].session_id, WORKTREE_SESSION_GOOD);
 }

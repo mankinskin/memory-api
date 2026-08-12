@@ -122,7 +122,7 @@ fn federated_handoff_pickup_and_backlog_find_worktree_only_nested_and_legacy_han
     let (main, nested, legacy) = federated_fixture(&tempdir);
     let nested_session = nested
         .init_runtime_context(crate::SessionRuntimeInitRequest {
-            workspace_session_id: Some("session-nested-handoff".to_string()),
+            workspace_session_id: Some("33333333-3333-4333-8333-333333333333".to_string()),
             predecessor_run_id: None,
             force_new_run: false,
         })
@@ -131,7 +131,7 @@ fn federated_handoff_pickup_and_backlog_find_worktree_only_nested_and_legacy_han
         .workspace_session_id;
     let legacy_session = legacy
         .init_runtime_context(crate::SessionRuntimeInitRequest {
-            workspace_session_id: Some("12345678-legacy-handoff".to_string()),
+            workspace_session_id: Some("44444444-4444-4444-8444-444444444444".to_string()),
             predecessor_run_id: None,
             force_new_run: false,
         })
@@ -196,7 +196,7 @@ fn federated_ticket_relation_finds_worktree_only_session_and_skips_malformed_sou
     let (main, nested, _) = federated_fixture(&tempdir);
     nested
         .check_in_worktree(sample_worktree_request(
-            "session-worktree-ticket",
+            "55555555-5555-4555-8555-555555555555",
             "agent-worktree",
             "ticket-federated",
             tempdir.path().join("wt"),
@@ -216,5 +216,5 @@ fn federated_ticket_relation_finds_worktree_only_session_and_skips_malformed_sou
         .sessions_for_ticket("ticket-federated", RelationStrength::Strict)
         .unwrap();
     assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0].session_id, "session-worktree-ticket");
+    assert_eq!(matches[0].session_id, "55555555-5555-4555-8555-555555555555");
 }

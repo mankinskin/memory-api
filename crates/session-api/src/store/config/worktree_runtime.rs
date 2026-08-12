@@ -152,6 +152,7 @@ impl SessionStoreConfig {
         &self,
         session_id: &str,
     ) -> Result<SessionWorktreeCheckInReceipt, SessionError> {
+        validate_runtime_workspace_id(session_id)?;
         let record = self.read_session(session_id)?;
         receipt_from_record(&record)
     }
@@ -303,8 +304,7 @@ impl SessionStoreConfig {
         &self,
         workspace_session_id: &str,
     ) -> Result<SessionRuntimeContext, SessionError> {
-        validate_runtime_workspace_id(workspace_session_id)?;
-        let paths = self.runtime_paths_for_workspace(workspace_session_id)?;
+        let paths = self.runtime_paths_for_read(workspace_session_id)?;
 
         let persisted: PersistedRuntimeContext = match read_json(&paths.context_path) {
             Ok(ctx) => ctx,

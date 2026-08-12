@@ -19,6 +19,12 @@ pub enum SessionError {
     #[error("session id contains invalid path characters: {0}")]
     InvalidSessionId(String),
 
+    #[error("session identity `{0}` must be a UUID; use the capture or provisioning UUID")]
+    SessionIdentityMustBeUuid(String),
+
+    #[error("requested session identity {requested} does not match provisioned worktree identity {provisioned}")]
+    SessionIdentityMismatch { requested: String, provisioned: String },
+
     #[error("workspace slug contains invalid path characters: {0}")]
     InvalidWorkspaceSlug(String),
 

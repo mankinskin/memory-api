@@ -1,9 +1,9 @@
 use crate::HandoffBacklogFilter;
 
-fn init_workspace(config: &SessionStoreConfig, workspace_session_id: &str) -> String {
+fn init_workspace(config: &SessionStoreConfig, _workspace_session_label: &str) -> String {
     config
         .init_runtime_context(crate::SessionRuntimeInitRequest {
-            workspace_session_id: Some(workspace_session_id.to_string()),
+            workspace_session_id: Some(uuid::Uuid::new_v4().to_string()),
             predecessor_run_id: None,
             force_new_run: false,
         })

@@ -261,7 +261,7 @@ fn check_in_worktree_creates_and_returns_new_assignment() {
 
     let receipt = config
         .check_in_worktree(sample_worktree_request(
-            "session-a",
+            WORKTREE_SESSION_A,
             "github-copilot",
             "ticket-a",
             worktree_path.clone(),
@@ -269,7 +269,7 @@ fn check_in_worktree_creates_and_returns_new_assignment() {
         ))
         .unwrap();
 
-    assert_eq!(receipt.session_id, "session-a");
+    assert_eq!(receipt.session_id, WORKTREE_SESSION_A);
     assert_eq!(receipt.owner_id, "github-copilot");
     assert_eq!(receipt.ticket_id, "ticket-a");
     assert_eq!(receipt.worktree_path, worktree_path);
@@ -288,7 +288,7 @@ fn check_in_worktree_reuses_existing_assignment_for_same_session() {
 
     config
         .check_in_worktree(sample_worktree_request(
-            "session-a",
+            WORKTREE_SESSION_A,
             "github-copilot",
             "ticket-a",
             worktree_path.clone(),
@@ -298,7 +298,7 @@ fn check_in_worktree_reuses_existing_assignment_for_same_session() {
 
     let receipt = config
         .check_in_worktree(sample_worktree_request(
-            "session-a",
+            WORKTREE_SESSION_A,
             "github-copilot",
             "ticket-a",
             worktree_path.clone(),
@@ -312,7 +312,7 @@ fn check_in_worktree_reuses_existing_assignment_for_same_session() {
     );
     assert_eq!(receipt.worktree_path, worktree_path);
 
-    let lookup = config.lookup_worktree("session-a").unwrap();
+    let lookup = config.lookup_worktree(WORKTREE_SESSION_A).unwrap();
     assert_eq!(
         lookup.allocation_mode,
         SessionWorktreeAllocationMode::Reused
@@ -329,7 +329,7 @@ fn check_in_worktree_claims_unclaimed_hook_record() {
 
     config
         .check_in_worktree(sample_worktree_request(
-            "session-a",
+            WORKTREE_SESSION_A,
             "copilot-agent",
             "initial-ticket",
             worktree_path.clone(),
@@ -338,7 +338,9 @@ fn check_in_worktree_claims_unclaimed_hook_record() {
         .unwrap();
     let manifest_path = tempdir
         .path()
-        .join("store/sessions/session-a/session.json");
+        .join("store/sessions")
+        .join(WORKTREE_SESSION_A)
+        .join("session.json");
     let mut manifest: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(&manifest_path).unwrap(),
     )
@@ -353,14 +355,14 @@ fn check_in_worktree_claims_unclaimed_hook_record() {
 
     let receipt = config
         .check_in_worktree(sample_worktree_request(
-            "session-a",
+            WORKTREE_SESSION_A,
             "copilot-agent-70abae1b",
             "a1b911ab-9394-4ba8-9134-1b2687e96ccd",
             worktree_path,
             "agent/initial",
         ))
         .unwrap();
-    let record = config.read_session("session-a").unwrap();
+    let record = config.read_session(WORKTREE_SESSION_A).unwrap();
 
     assert_eq!(receipt.owner_id, "copilot-agent-70abae1b");
     assert_eq!(
@@ -382,7 +384,7 @@ fn check_in_worktree_rejects_mismatched_claimed_owner() {
 
     config
         .check_in_worktree(sample_worktree_request(
-            "session-a",
+            WORKTREE_SESSION_A,
             "claimed-owner",
             "claimed-ticket",
             worktree_path.clone(),
@@ -392,7 +394,7 @@ fn check_in_worktree_rejects_mismatched_claimed_owner() {
 
     let error = config
         .check_in_worktree(sample_worktree_request(
-            "session-a",
+            WORKTREE_SESSION_A,
             "other-owner",
             "claimed-ticket",
             worktree_path,
@@ -413,7 +415,7 @@ fn check_in_worktree_rotates_for_handoff_and_supersedes_predecessor() {
 
     config
         .check_in_worktree(sample_worktree_request(
-            "session-a",
+            WORKTREE_SESSION_A,
             "github-copilot",
             "ticket-a",
             first_path.clone(),
@@ -422,22 +424,22 @@ fn check_in_worktree_rotates_for_handoff_and_supersedes_predecessor() {
         .unwrap();
 
     let mut handoff = sample_worktree_request(
-        "session-b",
+        WORKTREE_SESSION_B,
         "github-copilot-2",
         "ticket-a",
         second_path.clone(),
         "session/session-b",
     );
-    handoff.predecessor_session_id = Some("session-a".to_string());
+    handoff.predecessor_session_id = Some(WORKTREE_SESSION_A.to_string());
 
     let receipt = config.check_in_worktree(handoff).unwrap();
-    let predecessor = config.read_session("session-a").unwrap();
+    let predecessor = config.read_session(WORKTREE_SESSION_A).unwrap();
 
     assert_eq!(
         receipt.allocation_mode,
         SessionWorktreeAllocationMode::Rotated
     );
-    assert_eq!(receipt.predecessor_session_id.as_deref(), Some("session-a"));
+    assert_eq!(receipt.predecessor_session_id.as_deref(), Some(WORKTREE_SESSION_A));
     assert_eq!(receipt.predecessor_path, Some(first_path));
     assert_eq!(
         predecessor.metadata.worktree.unwrap().status,

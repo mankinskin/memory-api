@@ -4,6 +4,7 @@ use tempfile::TempDir;
 use crate::{
     CopilotHookMessage,
     CopilotHookPayload,
+    PersistedActiveWorkspaceSession,
     PersistedSessionEvents,
     PersistedSessionManifest,
     PersistedSessionTranscript,
@@ -26,6 +27,17 @@ use crate::{
     SessionWorktreeCheckInRequest,
     SessionWorktreeStatus,
 };
+use crate::store::write_json;
+use uuid::Uuid;
+
+const WORKTREE_SESSION_A: &str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const WORKTREE_SESSION_B: &str = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const WORKTREE_SESSION_STRICT: &str = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const WORKTREE_SESSION_FORWARD: &str = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const WORKTREE_SESSION_GOOD: &str = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const WORKTREE_SESSION_REAL: &str = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+const RUNTIME_SESSION_MENTIONED: &str = "11111111-1111-4111-8111-111111111111";
+const RUNTIME_SESSION_HANDOFF: &str = "22222222-2222-4222-8222-222222222222";
 
 fn sample_time() -> chrono::DateTime<chrono::Utc> {
     chrono::Utc

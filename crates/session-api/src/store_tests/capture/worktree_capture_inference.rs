@@ -210,7 +210,7 @@ fn infer_worktree_from_environment_never_overwrites_real_check_in() {
     let checked_in_ticket = "ticket-checked-in-by-hand";
     config
         .check_in_worktree(SessionWorktreeCheckInRequest {
-            session_id: "session-real-check-in".to_string(),
+            session_id: WORKTREE_SESSION_REAL.to_string(),
             owner_id: "agent-real".to_string(),
             ticket_id: checked_in_ticket.to_string(),
             worktree_path: tempdir.path().join("wt-real"),
@@ -235,10 +235,10 @@ fn infer_worktree_from_environment_never_overwrites_real_check_in() {
     init_git_repo_on_branch(&repo_dir, "agent/cccccccc-other-slug");
 
     config
-        .infer_worktree_from_environment("session-real-check-in", &repo_dir)
+        .infer_worktree_from_environment(WORKTREE_SESSION_REAL, &repo_dir)
         .unwrap();
 
-    let record = config.read_session("session-real-check-in").unwrap();
+    let record = config.read_session(WORKTREE_SESSION_REAL).unwrap();
     assert_eq!(
         record.metadata.ticket_id.as_deref(),
         Some(checked_in_ticket)

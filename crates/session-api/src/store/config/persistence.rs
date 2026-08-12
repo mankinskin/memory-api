@@ -148,6 +148,17 @@ impl SessionStoreConfig {
         workspace_session_id: &str,
     ) -> Result<SessionRuntimePaths, SessionError> {
         validate_runtime_workspace_id(workspace_session_id)?;
+        self.runtime_paths_for_read(workspace_session_id)
+    }
+
+    pub(super) fn runtime_paths_for_read(
+        &self,
+        workspace_session_id: &str,
+    ) -> Result<SessionRuntimePaths, SessionError> {
+        if self.root.as_os_str().is_empty() {
+            return Err(SessionError::EmptyStoreRoot);
+        }
+        validate_segment(workspace_session_id, false)?;
         let workspace_dir = self
             .sessions_root()?
             .join(workspace_session_id);
@@ -209,22 +220,48 @@ impl SessionStoreConfig {
         &self,
         requested: Option<String>,
     ) -> Result<String, SessionError> {
-        if let Some(id) = requested {
+        let requested = requested.map(|id| {
             validate_runtime_workspace_id(&id)?;
-            return Ok(id);
+            Ok(id)
+        }).transpose()?;
+
+        if let Some(provisioned) = self.provisioned_worktree_session_id() {
+            if let Some(requested) = requested {
+                if requested != provisioned {
+                    return Err(SessionError::SessionIdentityMismatch {
+                        requested,
+                        provisioned,
+                    });
+                }
+            }
+            return Ok(provisioned);
         }
 
-        // Try new path first (.session/local/)
-        let active_path = self.active_workspace_session_path()?;
-        if let Some(active) = read_json_if_exists::<
-            PersistedActiveWorkspaceSession,
-        >(&active_path)?
-        {
-            validate_runtime_workspace_id(&active.workspace_session_id)?;
-            return Ok(active.workspace_session_id);
+        if let Some(requested) = requested {
+            return Ok(requested);
         }
 
         Ok(Uuid::new_v4().to_string())
+    }
+
+    fn provisioned_worktree_session_id(&self) -> Option<String> {
+        let mut path = self.root.canonicalize().unwrap_or_else(|_| {
+            if self.root.is_absolute() {
+                self.root.clone()
+            } else {
+                std::env::current_dir()
+                    .map(|current_dir| current_dir.join(&self.root))
+                    .unwrap_or_else(|_| self.root.clone())
+            }
+        });
+        while let Some(parent) = path.parent() {
+            if parent.file_name().is_some_and(|name| name == ".worktrees") {
+                let value = path.file_name()?.to_str()?;
+                return Uuid::parse_str(value).ok().map(|id| id.to_string());
+            }
+            path = parent.to_path_buf();
+        }
+        None
     }
 
     fn persist_active_workspace_session(

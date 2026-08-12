@@ -1,4 +1,5 @@
 use super::*;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionStorePaths {
@@ -19,14 +20,15 @@ pub struct SessionRuntimePaths {
 pub(super) fn validate_runtime_workspace_id(
     value: &str
 ) -> Result<(), SessionError> {
-    if value.trim().is_empty() {
-        return Err(SessionError::InvalidWorkspaceSessionId(value.to_string()));
-    }
-    let invalid = ['/', '\\', ':'];
-    if value.chars().any(|ch| invalid.contains(&ch)) {
-        return Err(SessionError::InvalidWorkspaceSessionId(value.to_string()));
-    }
-    Ok(())
+    validate_session_identity(value)
+}
+
+pub(super) fn validate_session_identity(
+    value: &str,
+) -> Result<(), SessionError> {
+    Uuid::parse_str(value)
+        .map(|_| ())
+        .map_err(|_| SessionError::SessionIdentityMustBeUuid(value.to_string()))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

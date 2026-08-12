@@ -10,7 +10,7 @@ fn check_in_worktree_rotates_when_existing_path_is_missing() {
 
     config
         .check_in_worktree(sample_worktree_request(
-            "session-a",
+            WORKTREE_SESSION_A,
             "github-copilot",
             "ticket-a",
             first_path.clone(),
@@ -21,7 +21,7 @@ fn check_in_worktree_rotates_when_existing_path_is_missing() {
 
     let receipt = config
         .check_in_worktree(sample_worktree_request(
-            "session-a",
+            WORKTREE_SESSION_A,
             "github-copilot",
             "ticket-a",
             second_path.clone(),
@@ -48,7 +48,7 @@ fn cross_session_reuse_requires_adopt_flow() {
 
     config
         .check_in_worktree(sample_worktree_request(
-            "session-a",
+            WORKTREE_SESSION_A,
             "github-copilot",
             "ticket-a",
             shared_path.clone(),
@@ -57,13 +57,13 @@ fn cross_session_reuse_requires_adopt_flow() {
         .unwrap();
 
     let mut handoff = sample_worktree_request(
-        "session-b",
+        WORKTREE_SESSION_B,
         "github-copilot-2",
         "ticket-a",
         shared_path.clone(),
         "session/session-b",
     );
-    handoff.predecessor_session_id = Some("session-a".to_string());
+    handoff.predecessor_session_id = Some(WORKTREE_SESSION_A.to_string());
 
     let error = config.check_in_worktree(handoff).unwrap_err();
 
@@ -101,6 +101,116 @@ fn read_session_rejects_unknown_schema_version() {
 
     let err = config.read_session("session-schema").unwrap_err();
     assert!(matches!(err, SessionError::SchemaVersionMismatch { .. }));
+}
+
+#[test]
+fn runtime_init_ignores_a_stale_slug_marker() {
+    let tempdir = TempDir::new().unwrap();
+    let store_root = tempdir.path().join("store");
+    let config = SessionStoreConfig::new(&store_root, "context-engine");
+    let marker_path = config.active_workspace_session_path().unwrap();
+    let stale_slug = "epic-kickoff-8fdfe135";
+
+    write_json(
+        &marker_path,
+        &PersistedActiveWorkspaceSession {
+            workspace_session_id: stale_slug.to_string(),
+            updated_at: chrono::Utc::now(),
+        },
+    )
+    .unwrap();
+
+    let result = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+
+    assert_ne!(result.context.session_id, stale_slug);
+    assert!(Uuid::parse_str(&result.context.session_id).is_ok());
+    assert_eq!(
+        result.context.workspace_session_id,
+        result.context.session_id
+    );
+    assert!(store_root
+        .join("sessions")
+        .join(&result.context.session_id)
+        .join("context.json")
+        .is_file());
+}
+
+#[test]
+fn runtime_init_uses_the_provisioned_worktree_uuid() {
+    let current_dir = std::env::current_dir().unwrap();
+    let tempdir = TempDir::new_in(&current_dir).unwrap();
+    let session_id = Uuid::new_v4().to_string();
+    let store_root = tempdir
+        .path()
+        .join(".worktrees")
+        .join(&session_id)
+        .join("workspace-policy-refactor")
+        .join(".session");
+    std::fs::create_dir_all(&store_root).unwrap();
+    let config = SessionStoreConfig::new(
+        store_root.strip_prefix(&current_dir).unwrap(),
+        "context-engine",
+    );
+
+    let result = config
+        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .unwrap();
+
+    assert_eq!(result.context.session_id, session_id);
+    assert_eq!(result.context.workspace_session_id, session_id);
+    assert!(store_root
+        .join("sessions")
+        .join(&result.context.session_id)
+        .join("context.json")
+        .is_file());
+}
+
+#[test]
+fn worktree_identity_rejects_slug_values() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let session_id = "epic-kickoff-8fdfe135";
+
+    let error = config
+        .check_in_worktree(sample_worktree_request(
+            session_id,
+            "github-copilot",
+            "ticket-a",
+            tempdir.path().join("worktree"),
+            "agent/example",
+        ))
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        SessionError::SessionIdentityMustBeUuid(ref value) if value == session_id
+    ));
+    assert_eq!(
+        error.to_string(),
+        "session identity `epic-kickoff-8fdfe135` must be a UUID; use the capture or provisioning UUID"
+    );
+}
+
+#[test]
+fn legacy_slug_keyed_session_record_remains_readable() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let session_id = "structured-ticket-entities-iteration";
+
+    config
+        .persist_capture(sample_request(
+            session_id,
+            Some("legacy-conversation"),
+            sample_time(),
+            &["legacy session"],
+        ))
+        .unwrap();
+
+    assert_eq!(config.read_session(session_id).unwrap().session_id, session_id);
 }
 
 #[test]

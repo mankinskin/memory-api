@@ -268,6 +268,7 @@ pub(super) fn validate_worktree_request(
     request: &SessionWorktreeCheckInRequest
 ) -> Result<(), SessionError> {
     validate_segment(&request.session_id, false)?;
+    validate_runtime_workspace_id(&request.session_id)?;
     if request.owner_id.trim().is_empty() {
         return Err(SessionError::MissingOwnerId);
     }

@@ -278,7 +278,7 @@ fn backfill_handoff_links_multiple_target_tickets() {
 
     config
         .capture_copilot_hook(sample_payload(
-            "session-handoff",
+            RUNTIME_SESSION_HANDOFF,
             Some("conversation-handoff"),
             sample_time(),
             &["Handed off for follow-up"],
@@ -286,13 +286,13 @@ fn backfill_handoff_links_multiple_target_tickets() {
         .unwrap();
     config
         .init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some("session-handoff".to_string()),
+            workspace_session_id: Some(RUNTIME_SESSION_HANDOFF.to_string()),
             ..Default::default()
         })
         .unwrap();
     config
         .create_handoff_record(
-            "session-handoff",
+            RUNTIME_SESSION_HANDOFF,
             Some(SessionHandoffPackage {
                 objective: "Follow up on two tickets".to_string(),
                 target_tickets: vec![
@@ -326,7 +326,7 @@ fn backfill_handoff_links_multiple_target_tickets() {
     assert_eq!(report.linked_via_handoff, 2);
     assert!(report.handoff_already_at_mentioned);
 
-    let record = config.read_session("session-handoff").unwrap();
+    let record = config.read_session(RUNTIME_SESSION_HANDOFF).unwrap();
     assert_eq!(record.metadata.ticket_id, None, "handoff writes linked tier, not strict");
     assert!(record.links.links_to_ticket(&ticket_one.to_string()));
     assert!(record.links.links_to_ticket(&ticket_two.to_string()));
@@ -340,7 +340,7 @@ fn backfill_handoff_links_multiple_target_tickets() {
             .sessions_for_ticket(&ticket.to_string(), RelationStrength::Linked)
             .unwrap();
         assert_eq!(linked.len(), 1);
-        assert_eq!(linked[0].session_id, "session-handoff");
+        assert_eq!(linked[0].session_id, RUNTIME_SESSION_HANDOFF);
     }
 }
 
@@ -415,7 +415,7 @@ fn backfill_is_idempotent_and_never_overwrites_real_check_in() {
     // its ticket_id must never be touched by the backfill.
     config
         .check_in_worktree(crate::SessionWorktreeCheckInRequest {
-            session_id: "session-real-checkin".to_string(),
+            session_id: WORKTREE_SESSION_REAL.to_string(),
             owner_id: "agent-real".to_string(),
             ticket_id: "manually-assigned-ticket".to_string(),
             worktree_path: tempdir.path().join("wt-real"),
@@ -443,7 +443,7 @@ fn backfill_is_idempotent_and_never_overwrites_real_check_in() {
 
     assert_eq!(
         config
-            .read_session("session-real-checkin")
+            .read_session(WORKTREE_SESSION_REAL)
             .unwrap()
             .metadata
             .ticket_id

@@ -47,7 +47,7 @@ fn upward_context() -> Vec<SessionHandoffUpwardContextEntry> {
 #[test]
 fn open_escalations_field_persists_and_round_trips() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "test-session-123";
+    let workspace_session_id = "12345678-1234-4123-8123-123456789012";
 
     init_test_session(&config, workspace_session_id);
 
@@ -93,7 +93,7 @@ fn open_escalations_field_persists_and_round_trips() {
 #[test]
 fn empty_open_escalations_is_persisted_as_empty_list() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "test-session-456";
+    let workspace_session_id = "23456789-2345-4234-8234-234567890123";
 
     init_test_session(&config, workspace_session_id);
 
@@ -126,7 +126,7 @@ fn empty_open_escalations_is_persisted_as_empty_list() {
 #[test]
 fn validation_gate_command_field_persists_and_round_trips() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "test-session-789";
+    let workspace_session_id = "34567890-3456-4345-8345-345678901234";
 
     init_test_session(&config, workspace_session_id);
 
@@ -176,7 +176,7 @@ fn validation_gate_command_field_persists_and_round_trips() {
 #[test]
 fn legacy_target_ticket_strings_and_absent_context_fields_deserialize() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "test-session-legacy-target-tickets";
+    let workspace_session_id = "45678901-4567-4456-8456-456789012345";
     init_test_session(&config, workspace_session_id);
 
     let package = SessionHandoffPackage {
@@ -213,7 +213,7 @@ fn legacy_target_ticket_strings_and_absent_context_fields_deserialize() {
 #[test]
 fn ready_handoff_missing_upward_context_fails_before_writing_files() {
     let (config, store_root) = setup_test_store();
-    let workspace_session_id = "test-session-missing-upward-context";
+    let workspace_session_id = "56789012-5678-4567-8567-567890123456";
     init_test_session(&config, workspace_session_id);
 
     let package = SessionHandoffPackage {
@@ -245,7 +245,7 @@ fn ready_handoff_missing_upward_context_fails_before_writing_files() {
 #[test]
 fn non_ready_handoff_missing_upward_context_persists() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "test-session-warning-upward-context";
+    let workspace_session_id = "67890123-6789-4678-8678-678901234567";
     init_test_session(&config, workspace_session_id);
 
     let package = SessionHandoffPackage {

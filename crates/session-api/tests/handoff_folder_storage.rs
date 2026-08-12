@@ -64,7 +64,7 @@ fn upward_context() -> Vec<SessionHandoffUpwardContextEntry> {
 #[test]
 fn handoff_persists_as_folder_with_json_and_markdown() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "test-session-folder";
+    let workspace_session_id = "78901234-7890-4789-8789-789012345678";
 
     init_test_session(&config, workspace_session_id);
 
@@ -164,7 +164,7 @@ fn handoff_persists_as_folder_with_json_and_markdown() {
 #[test]
 fn handoff_markdown_shows_open_escalations_warning() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "test-session-escalations";
+    let workspace_session_id = "89012345-8901-4890-8890-890123456789";
 
     init_test_session(&config, workspace_session_id);
 
@@ -208,7 +208,7 @@ fn handoff_markdown_shows_open_escalations_warning() {
 #[test]
 fn legacy_flat_json_handoffs_still_load() {
     let (config, store_root) = setup_test_store();
-    let workspace_session_id = "test-session-legacy";
+    let workspace_session_id = "90123456-9012-4901-8901-901234567890";
 
     init_test_session(&config, workspace_session_id);
 
@@ -277,7 +277,7 @@ fn legacy_flat_json_handoffs_still_load() {
 #[test]
 fn handoff_markdown_includes_workflow_mermaid_diagram_when_nodes_exist() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "test-session-workflow-mermaid";
+    let workspace_session_id = "01234567-0123-4012-8012-012345678901";
 
     init_test_session(&config, workspace_session_id);
 
@@ -338,7 +338,7 @@ fn handoff_markdown_includes_workflow_mermaid_diagram_when_nodes_exist() {
 #[test]
 fn handoff_markdown_omits_mermaid_diagram_when_workflow_empty() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "test-session-workflow-empty";
+    let workspace_session_id = "11234567-0123-4112-8112-012345678901";
 
     init_test_session(&config, workspace_session_id);
 
@@ -370,7 +370,7 @@ fn handoff_markdown_omits_mermaid_diagram_when_workflow_empty() {
 #[test]
 fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
     let (config, store_root) = setup_test_store();
-    let workspace_session_id = "test-session-rendered-context";
+    let workspace_session_id = "21234567-0123-4212-8212-012345678901";
     let epic_id = uuid::Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
         .expect("valid epic id");
     let phase_id = uuid::Uuid::parse_str("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
@@ -479,7 +479,7 @@ fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
 #[test]
 fn handoff_markdown_degrades_when_target_ticket_is_unresolvable() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "test-session-unresolved-ticket";
+    let workspace_session_id = "31234567-0123-4312-8312-012345678901";
     let ticket_id = "22222222-2222-4222-8222-222222222222";
     init_test_session(&config, workspace_session_id);
     let package = SessionHandoffPackage {
@@ -532,7 +532,7 @@ impl SessionTicketStateResolver for FailingResolver {
 #[test]
 fn create_handoff_result_rejects_dangling_edge_before_writing_files() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "test-session-dangling-edge";
+    let workspace_session_id = "41234567-0123-4412-8412-012345678901";
 
     init_test_session(&config, workspace_session_id);
 
@@ -601,7 +601,7 @@ fn create_handoff_result_rejects_dangling_edge_before_writing_files() {
 #[test]
 fn create_handoff_result_rejects_unresolved_diagnostics_before_writing_files() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "test-session-unresolved-diagnostics";
+    let workspace_session_id = "51234567-0123-4512-8512-012345678901";
 
     init_test_session(&config, workspace_session_id);
 
