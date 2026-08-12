@@ -1,0 +1,9 @@
+id = "76c64b38-25e9-484c-818c-365f15114c89"
+created_at = "2026-08-12T00:42:09.896872500+00:00"
+title = "Decouple Copilot session UUID from workspace runtime context identity"
+state = "open"
+component = "session-api"
+depends_on = ["0a45bedb-6dfe-466e-893f-fddfd225f1f6", "fc86f42d-3fc0-4f07-911a-525098248dcf"]
+priority = "high"
+risk_level = "high"
+type = "bug"
