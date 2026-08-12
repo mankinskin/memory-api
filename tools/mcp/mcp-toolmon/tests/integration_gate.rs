@@ -470,9 +470,8 @@ fn test_handle_client_message_cheap_model_allowed() {
     // Should be forwarded (allowed).
     match action {
         ClientAction::Forward(val) => {
-            // Verify caller_model was stripped from arguments.
             assert!(val["params"]["arguments"].get("caller_model").is_none());
-            assert!(val["params"]["arguments"].get("session_id").is_none());
+            assert!(val["params"]["arguments"].get("session_id").is_some());
         },
         ClientAction::Respond(val) => {
             panic!("Expected Forward, got Respond: {:?}", val);
@@ -687,7 +686,6 @@ fn test_stdio_cheap_model_allowed() {
     assert_eq!(response["method"], "tools/call");
     assert_eq!(response["params"]["name"], "expensive_tool");
 
-    // Verify caller_model was stripped.
     assert!(
         response["params"]["arguments"]
             .get("caller_model")
@@ -695,8 +693,8 @@ fn test_stdio_cheap_model_allowed() {
         "caller_model should be stripped"
     );
     assert!(
-        response["params"]["arguments"].get("session_id").is_none(),
-        "session_id should be stripped"
+        response["params"]["arguments"].get("session_id").is_some(),
+        "session_id should be forwarded"
     );
 
     // Clean up.

@@ -764,7 +764,6 @@ pub fn handle_client_message(
                         .and_then(Value::as_object_mut)
                     {
                         args.remove(CALLER_MODEL_ARG);
-                        args.remove(SESSION_ID_ARG);
                         args.remove(GRANT_ID_ARG);
                         for (name, value) in rewrites {
                             args.insert(name.to_string(), Value::String(value));
@@ -1574,14 +1573,19 @@ mod tests {
     }
 
     #[test]
-    fn cheap_forwards_and_strips_caller_model() {
+    fn cheap_forwards_session_id_and_strips_proxy_arguments() {
         let _routing = active_routing();
         let g = test_gate();
         let mut p = PendingList::default();
         let mut pc = PendingCalls::default();
+        let mut request = call("some_unknown_tool", Some("gpt-5-mini"));
+        request["params"]["arguments"]
+            .as_object_mut()
+            .unwrap()
+            .insert(GRANT_ID_ARG.to_string(), json!("grant-123"));
         // Use a light tool (cost 1) that gpt-5-mini (budget ~97) can afford
         match handle_client_message(
-            call("some_unknown_tool", Some("gpt-5-mini")),
+            request,
             Some(&g),
             &mut p,
             &mut pc,
@@ -1593,9 +1597,36 @@ mod tests {
                     "caller_model must be stripped"
                 );
                 assert!(
-                    args.get(SESSION_ID_ARG).is_none(),
-                    "session_id must be stripped"
+                    args.get(SESSION_ID_ARG).is_some(),
+                    "session_id must be forwarded"
                 );
+                assert!(
+                    args.get(GRANT_ID_ARG).is_none(),
+                    "grant_id must be stripped"
+                );
+            },
+            other => panic!("expected Forward, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn forwarded_session_id_keeps_proxy_arguments_private() {
+        let _routing = active_routing();
+        let g = test_gate();
+        let mut p = PendingList::default();
+        let mut pc = PendingCalls::default();
+        let mut request = call("some_unknown_tool", Some("gpt-5-mini"));
+        request["params"]["arguments"]
+            .as_object_mut()
+            .unwrap()
+            .insert(GRANT_ID_ARG.to_string(), json!("grant-123"));
+
+        match handle_client_message(request, Some(&g), &mut p, &mut pc) {
+            (ClientAction::Forward(v), _) => {
+                let args = &v["params"]["arguments"];
+                assert_eq!(args[SESSION_ID_ARG], json!(TEST_SESSION_ID));
+                assert!(args.get(CALLER_MODEL_ARG).is_none());
+                assert!(args.get(GRANT_ID_ARG).is_none());
             },
             other => panic!("expected Forward, got {other:?}"),
         }
