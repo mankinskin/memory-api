@@ -230,8 +230,9 @@ pub use store_routing_types::{
 use store_routing_types::{
     parse_entity_urn,
     parse_entity_urn_kind,
-    validate_runtime_workspace_id,
+    validate_session_id,
 };
+use crate::SessionWorkflowGraph;
 
 fn sibling_store_base(session_store_root: &Path) -> &Path {
     if session_store_root
@@ -454,8 +455,8 @@ fn render_handoff_record_terminal(record: &SessionHandoffRecord) -> String {
     let mut lines = Vec::new();
     lines.push(format!("handoff {}", record.handoff_id));
     lines.push(format!(
-        "workspace_session_id: {}",
-        record.workspace_session_id
+        "session_id: {}",
+        record.session_id
     ));
     lines.push(format!("outgoing_run_id: {}", record.outgoing_run_id));
     lines.push(format!("resume: {}", record.resume_command));
@@ -565,7 +566,7 @@ fn render_handoff_record_markdown(
     sections.push("## Summary".to_string());
     sections.push(format!(
         "- **Workspace Session**: `{}`",
-        record.workspace_session_id
+        record.session_id
     ));
     sections.push(format!("- **Outgoing Run**: `{}`", record.outgoing_run_id));
     sections.push(format!("- **Created**: {}", record.created_at.to_rfc3339()));

@@ -315,7 +315,7 @@ mod tests {
         );
 
         // Create a simple session using the capture API
-        let session_id = "test-session-1";
+        let session_id = "f5555555-5555-4555-8555-555555555555";
         use crate::hook::{
             CopilotHookMessage,
             CopilotHookPayload,

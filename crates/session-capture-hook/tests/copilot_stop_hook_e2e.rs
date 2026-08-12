@@ -76,10 +76,8 @@ fn e2e_hook_binary_persists_fixture_transcript() {
         .arg(&transcript_path)
         .arg("--store-root")
         .arg(&store_root)
-        .arg("--workspace-slug")
-        .arg("default")
         .arg("--trigger")
-        .arg("UserPromptSubmit")
+        .arg("SessionStart")
         .output()
         .expect("run copilot hook binary");
 
@@ -98,7 +96,7 @@ fn e2e_hook_binary_persists_fixture_transcript() {
     assert!(!record.turns.is_empty());
     assert_eq!(record.session_id, FIXTURE_SESSION_ID);
     assert_eq!(record.metadata.workspace_slug, "default");
-    assert_eq!(record.metadata.trigger.as_deref(), Some("UserPromptSubmit"));
+    assert_eq!(record.metadata.trigger.as_deref(), Some("SessionStart"));
 }
 
 #[test]
@@ -131,7 +129,6 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
     let abs_transcript_path =
         workspace_fixture.transcript_path("copilot.jsonl");
 
-    let workspace_slug = format!("fixture-workspace-{suffix}");
     let session_id = format!("{LOCAL_FIXTURE_SESSION_ID}-{suffix}");
 
     let transcript_text =
@@ -141,8 +138,7 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
 
     let payload = serde_json::json!({
         "transcript_path": rel_transcript_path,
-        "workspace_slug": &workspace_slug,
-        "hook_event_name": "UserPromptSubmit",
+        "hook_event_name": "SessionStart",
         "session_id": &session_id,
     })
     .to_string();
@@ -246,14 +242,14 @@ fn e2e_stop_hook_script_persists_fixture_from_nested_workspace_cwd() {
         leaked_root_manifest.display()
     );
 
-    let config = SessionStoreConfig::new(&fixture_store_root, &workspace_slug);
+    let config = SessionStoreConfig::new(&fixture_store_root, "default");
     let record = config.read_session(&session_id).expect(
         "stop hook should persist fixture transcript into the temp store",
     );
 
     assert_eq!(record.session_id, session_id);
-    assert_eq!(record.metadata.workspace_slug, workspace_slug);
-    assert_eq!(record.metadata.trigger.as_deref(), Some("UserPromptSubmit"));
+    assert_eq!(record.metadata.workspace_slug, "default");
+    assert_eq!(record.metadata.trigger.as_deref(), Some("SessionStart"));
     assert_eq!(record.turns.len(), 2);
     assert_eq!(
         record.turns[0].content,

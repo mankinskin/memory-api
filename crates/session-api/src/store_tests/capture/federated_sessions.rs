@@ -122,22 +122,22 @@ fn federated_handoff_pickup_and_backlog_find_worktree_only_nested_and_legacy_han
     let (main, nested, legacy) = federated_fixture(&tempdir);
     let nested_session = nested
         .init_runtime_context(crate::SessionRuntimeInitRequest {
-            workspace_session_id: Some("33333333-3333-4333-8333-333333333333".to_string()),
+            session_id: Some("66666666-6666-4666-8666-666666666666".to_string()),
             predecessor_run_id: None,
             force_new_run: false,
         })
         .unwrap()
         .context
-        .workspace_session_id;
+        .session_id;
     let legacy_session = legacy
         .init_runtime_context(crate::SessionRuntimeInitRequest {
-            workspace_session_id: Some("44444444-4444-4444-8444-444444444444".to_string()),
+            session_id: Some("77777777-7777-4777-8777-777777777777".to_string()),
             predecessor_run_id: None,
             force_new_run: false,
         })
         .unwrap()
         .context
-        .workspace_session_id;
+        .session_id;
     let nested_handoff = nested
         .create_handoff_record(&nested_session, None, vec![], None)
         .unwrap();
@@ -145,14 +145,14 @@ fn federated_handoff_pickup_and_backlog_find_worktree_only_nested_and_legacy_han
         .create_handoff_record(&legacy_session, None, vec![], None)
         .unwrap();
     main.capture_copilot_hook(sample_payload(
-        "target-nested-handoff",
+        "88888888-8888-4888-8888-888888888888",
         None,
         sample_time(),
         &["target"],
     ))
     .unwrap();
     main.capture_copilot_hook(sample_payload(
-        "target-legacy-handoff",
+        "99999999-9999-4999-8999-999999999999",
         None,
         sample_time(),
         &["target"],
@@ -174,18 +174,18 @@ fn federated_handoff_pickup_and_backlog_find_worktree_only_nested_and_legacy_han
     assert!(backlog_ids.contains(&legacy_handoff.handoff_id.as_str()));
 
     let picked_nested = main
-        .pickup_handoff(&nested_handoff.handoff_id, "target-nested-handoff")
+        .pickup_handoff(&nested_handoff.handoff_id, "88888888-8888-4888-8888-888888888888")
         .unwrap();
     let picked_legacy = main
-        .pickup_handoff(&legacy_handoff.handoff_id, "target-legacy-handoff")
+        .pickup_handoff(&legacy_handoff.handoff_id, "99999999-9999-4999-8999-999999999999")
         .unwrap();
     assert_eq!(
         picked_nested.target_session_id.as_deref(),
-        Some("target-nested-handoff")
+        Some("88888888-8888-4888-8888-888888888888")
     );
     assert_eq!(
         picked_legacy.target_session_id.as_deref(),
-        Some("target-legacy-handoff")
+        Some("99999999-9999-4999-8999-999999999999")
     );
 }
 

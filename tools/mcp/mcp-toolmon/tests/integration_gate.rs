@@ -52,6 +52,7 @@ use toolmon_costgate::{
 use toolmon_policy_api::Decision;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
+const TEST_SESSION_ID: &str = "77777777-7777-4777-8777-777777777777";
 
 /// Helper: write JSON to a temp file.
 fn write_json(
@@ -67,12 +68,22 @@ fn write_json(
 fn active_session_fixture() -> (TempDir, PathBuf) {
     let temp = TempDir::new().unwrap();
     let main_checkout = temp.path().join("repository");
-    let worktree = main_checkout.join(".worktrees").join("feature");
+    let worktree = main_checkout
+        .join(".worktrees")
+        .join(TEST_SESSION_ID)
+        .join("feature");
     fs::create_dir_all(main_checkout.join(".git")).unwrap();
+    fs::create_dir_all(main_checkout.join(".git/worktrees/feature"))
+        .unwrap();
+    fs::write(
+        main_checkout.join(".git/worktrees/feature/HEAD"),
+        "ref: refs/heads/agent/test\n",
+    )
+    .unwrap();
     fs::create_dir_all(&worktree).unwrap();
     fs::write(
         worktree.join(".git"),
-        "gitdir: ../../.git/worktrees/feature\n",
+        "gitdir: ../../../.git/worktrees/feature\n",
     )
     .unwrap();
     SessionWorkspaceResolver::new(ResolverConfig {
@@ -83,7 +94,7 @@ fn active_session_fixture() -> (TempDir, PathBuf) {
     // The anchor store beneath the main checkout is the worktree registry.
     SessionStoreConfig::new(main_checkout.join(".session"), "default")
         .check_in_worktree(SessionWorktreeCheckInRequest {
-            session_id: "test-session-id".to_string(),
+            session_id: TEST_SESSION_ID.to_string(),
             owner_id: "agent".to_string(),
             ticket_id: "ticket".to_string(),
             worktree_path: worktree.clone(),
@@ -142,7 +153,7 @@ fn tools_call_request(
             "name": tool,
             "arguments": {
                 "caller_model": caller_model,
-                "session_id": "test-session-id"
+                "session_id": TEST_SESSION_ID
             }
         }
     })
@@ -823,7 +834,7 @@ fn test_stdio_tokens_estimated_increases_with_larger_payload() {
             "name": "size_probe",
             "arguments": {
                 "caller_model": "claude-haiku-3-7",
-                "session_id": "test-session-id",
+                "session_id": TEST_SESSION_ID,
                 "payload": "x"
             }
         }
@@ -836,7 +847,7 @@ fn test_stdio_tokens_estimated_increases_with_larger_payload() {
             "name": "size_probe",
             "arguments": {
                 "caller_model": "claude-haiku-3-7",
-                "session_id": "test-session-id",
+                "session_id": TEST_SESSION_ID,
                 "payload": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
             }
         }

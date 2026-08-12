@@ -1,7 +1,7 @@
 impl SessionStoreConfig {
     pub fn create_handoff_record(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         package: Option<SessionHandoffPackage>,
         validation: Vec<SessionValidationGate>,
         resolver: Option<&dyn SessionTicketStateResolver>,
@@ -73,14 +73,14 @@ impl SessionStoreConfig {
             }
         }
 
-        let context = self.read_runtime_context(workspace_session_id)?;
+        let context = self.read_runtime_context(session_id)?;
         let workflow =
-            self.workflow_snapshot(workspace_session_id, resolver)?;
+            self.workflow_snapshot(session_id, resolver)?;
         // Fail before any handoff files are written so a bad graph never leaves a partial folder.
         let structural_issues = validate_workflow_graph(&workflow.workflow);
         if !structural_issues.is_empty() {
             return Err(SessionError::WorkflowGraphInvalid {
-                workspace_session_id: workspace_session_id.to_string(),
+                session_id: session_id.to_string(),
                 issues: structural_issues
                     .iter()
                     .map(|issue| format!("{}: {}", issue.code, issue.message))
@@ -90,7 +90,7 @@ impl SessionStoreConfig {
         }
         if !workflow.diagnostics.is_empty() {
             return Err(SessionError::WorkflowDiagnosticsUnresolved {
-                workspace_session_id: workspace_session_id.to_string(),
+                session_id: session_id.to_string(),
                 diagnostics: workflow
                     .diagnostics
                     .iter()
@@ -103,11 +103,11 @@ impl SessionStoreConfig {
         }
         let validation =
             self.resolve_validation_gates(&context, validation, false)?;
-        let view = self.view_runtime_context(workspace_session_id)?;
+        let view = self.view_runtime_context(session_id)?;
         let handoff_id = Uuid::new_v4().to_string();
         let resume_command = format!(
-            "session-cli resume --workspace-session-id {} --predecessor-run-id {}",
-            context.workspace_session_id, context.active_run_id
+            "session-cli resume --session-id {} --predecessor-run-id {}",
+            context.session_id, context.active_run_id
         );
 
         let (
@@ -142,7 +142,7 @@ impl SessionStoreConfig {
 
         let record = SessionHandoffRecord {
             handoff_id: handoff_id.clone(),
-            workspace_session_id: context.workspace_session_id.clone(),
+            session_id: context.session_id.clone(),
             outgoing_run_id: context.active_run_id,
             created_at: chrono::Utc::now(),
             resume_command,
@@ -163,7 +163,7 @@ impl SessionStoreConfig {
             predecessor_handoff,
         };
 
-        let paths = self.runtime_paths_for_workspace(workspace_session_id)?;
+        let paths = self.runtime_paths_for_workspace(session_id)?;
         fs::create_dir_all(&paths.handoffs_dir).map_err(|source| {
             SessionError::Io {
                 path: paths.handoffs_dir.clone(),
@@ -204,7 +204,7 @@ impl SessionStoreConfig {
         // workflow-only workspace session, and the handoff record itself
         // remains the authoritative source of truth).
         if let Ok(mut source_record) =
-            self.read_session(&record.workspace_session_id)
+            self.read_session(&record.session_id)
         {
             if !source_record
                 .emitted_handoff_ids
@@ -297,18 +297,18 @@ impl SessionStoreConfig {
 
     pub fn create_handoff_result(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         package: Option<SessionHandoffPackage>,
         validation: Vec<SessionValidationGate>,
         resolver: Option<&dyn SessionTicketStateResolver>,
     ) -> Result<SessionHandoffResult, SessionError> {
         let record = self.create_handoff_record(
-            workspace_session_id,
+            session_id,
             package,
             validation,
             resolver,
         )?;
-        let paths = self.runtime_paths_for_workspace(workspace_session_id)?;
+        let paths = self.runtime_paths_for_workspace(session_id)?;
         let record_path = paths
             .handoffs_dir
             .join(&record.handoff_id);
@@ -321,13 +321,13 @@ impl SessionStoreConfig {
 
     pub fn render_handoff_terminal(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         package: Option<SessionHandoffPackage>,
         validation: Vec<SessionValidationGate>,
         resolver: Option<&dyn SessionTicketStateResolver>,
     ) -> Result<String, SessionError> {
         let result = self.create_handoff_result(
-            workspace_session_id,
+            session_id,
             package,
             validation,
             resolver,
@@ -337,11 +337,11 @@ impl SessionStoreConfig {
 
     pub fn resume_workspace_context(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         predecessor_run_id: &str,
     ) -> Result<SessionRuntimeInitResult, SessionError> {
         let init = self.init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some(workspace_session_id.to_string()),
+            session_id: Some(session_id.to_string()),
             predecessor_run_id: Some(predecessor_run_id.to_string()),
             force_new_run: true,
         })?;
@@ -356,12 +356,12 @@ impl SessionStoreConfig {
 
     pub fn finish_workflow(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         validation: Vec<SessionValidationGate>,
         deferred_optional_node_ids: Vec<String>,
         resolver: Option<&dyn SessionTicketStateResolver>,
     ) -> Result<SessionFinishResult, SessionError> {
-        let paths = self.runtime_paths_for_workspace(workspace_session_id)?;
+        let paths = self.runtime_paths_for_workspace(session_id)?;
         if let Some(result) = Self::existing_finish_result(&paths.finish_path)?
         {
             return Ok(result);
@@ -369,16 +369,16 @@ impl SessionStoreConfig {
 
         // Hold the mutation lock across evaluation and finish-record write so a
         // concurrent workflow mutation cannot interleave with finish.
-        let _lock = self.acquire_runtime_lock(workspace_session_id)?;
+        let _lock = self.acquire_runtime_lock(session_id)?;
         // Re-check under the lock: another finish may have won the race.
         if let Some(result) = Self::existing_finish_result(&paths.finish_path)?
         {
             return Ok(result);
         }
 
-        let context = self.read_runtime_context(workspace_session_id)?;
+        let context = self.read_runtime_context(session_id)?;
         let snapshot =
-            self.workflow_snapshot(workspace_session_id, resolver)?;
+            self.workflow_snapshot(session_id, resolver)?;
         let deferred = deferred_optional_node_ids
             .into_iter()
             .collect::<BTreeSet<_>>();
@@ -388,7 +388,7 @@ impl SessionStoreConfig {
             self.evaluate_required_validation(&context, validation)?;
 
         let record = SessionFinishRecord {
-            workspace_session_id: workspace_session_id.to_string(),
+            session_id: session_id.to_string(),
             run_id: context.active_run_id,
             finished_at: chrono::Utc::now(),
             deferred_optional_node_ids: deferred.into_iter().collect(),

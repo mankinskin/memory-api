@@ -64,7 +64,7 @@ fn active_session_fixture() -> (TempDir, PathBuf) {
     // The anchor store beneath the main checkout is the worktree registry.
     SessionStoreConfig::new(main_checkout.join(".session"), "default")
         .check_in_worktree(SessionWorktreeCheckInRequest {
-            session_id: "test-session-id".to_string(),
+            session_id: "11111111-1111-4111-8111-111111111111".to_string(),
             owner_id: "agent".to_string(),
             ticket_id: "ticket".to_string(),
             worktree_path: worktree.clone(),
@@ -246,7 +246,7 @@ fn transparent_reload_end_to_end_subprocess() {
 
     // 2) tools/call served by v1.
     send(
-        &json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"test-session-id"}}}),
+        &json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"11111111-1111-4111-8111-111111111111"}}}),
     );
     wait_until(
         &transcript,
@@ -270,7 +270,7 @@ fn transparent_reload_end_to_end_subprocess() {
     // Race a request right at the swap boundary: this must be answered
     // (real v1/v2 result or a synthesized JSON-RPC error), never hang.
     send(
-        &json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"test-session-id"}}}),
+        &json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"11111111-1111-4111-8111-111111111111"}}}),
     );
 
     // 4) Bounded wait for the real on-disk watcher to detect the change and
@@ -328,7 +328,7 @@ fn transparent_reload_end_to_end_subprocess() {
     let mut got_v2 = false;
     while Instant::now() < overall_deadline {
         send(
-            &json!({"jsonrpc":"2.0","id":next_id,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"test-session-id"}}}),
+            &json!({"jsonrpc":"2.0","id":next_id,"method":"tools/call","params":{"name":"generation","arguments":{"session_id":"11111111-1111-4111-8111-111111111111"}}}),
         );
         if let Some(resp) =
             wait_or_none(&transcript, Duration::from_secs(2), next_id)

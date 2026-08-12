@@ -310,9 +310,9 @@ pub struct ToolMetricsArgs {
 
 #[derive(Debug, Args)]
 pub struct SubagentRollupsArgs {
-    /// Workspace session id to get rollups for.
+    /// Copilot session UUID to get rollups for.
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
 }
 
 #[derive(Debug, Args)]
@@ -413,8 +413,9 @@ pub struct MoveArgs {
 
 #[derive(Debug, Args)]
 pub struct InitArgs {
+    /// Copilot session UUID. Required; the CLI does not resolve one implicitly.
     #[arg(long)]
-    pub workspace_session_id: Option<String>,
+    pub session_id: String,
     #[arg(long)]
     pub predecessor_run_id: Option<String>,
     #[arg(long, default_value_t = false)]
@@ -424,7 +425,7 @@ pub struct InitArgs {
 #[derive(Debug, Args)]
 pub struct ResumeArgs {
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
     #[arg(long)]
     pub predecessor_run_id: String,
 }
@@ -432,7 +433,7 @@ pub struct ResumeArgs {
 #[derive(Debug, Args)]
 pub struct PinArgs {
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
     #[arg(long)]
     pub entity_urn: String,
     #[arg(long)]
@@ -444,7 +445,7 @@ pub struct PinArgs {
 #[derive(Debug, Args)]
 pub struct UnpinArgs {
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
     #[arg(long)]
     pub entity_urn: String,
 }
@@ -452,13 +453,13 @@ pub struct UnpinArgs {
 #[derive(Debug, Args)]
 pub struct ViewArgs {
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
 }
 
 #[derive(Debug, Args)]
 pub struct WorkflowAddNodeArgs {
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
     #[arg(long)]
     pub node_id: Option<String>,
     /// Behavioral node kind: ticket, validation, spec, task (deprecated
@@ -493,7 +494,7 @@ pub struct WorkflowAddNodeArgs {
 #[derive(Debug, Args)]
 pub struct WorkflowAddEdgeArgs {
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
     #[arg(long)]
     pub from: String,
     #[arg(long)]
@@ -505,7 +506,7 @@ pub struct WorkflowAddEdgeArgs {
 #[derive(Debug, Args)]
 pub struct WorkflowAddNodesArgs {
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
     /// JSON array of node drafts.
     #[arg(long, value_name = "JSON")]
     pub nodes_json: String,
@@ -514,7 +515,7 @@ pub struct WorkflowAddNodesArgs {
 #[derive(Debug, Args)]
 pub struct WorkflowAddEdgesArgs {
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
     /// JSON array of edge drafts.
     #[arg(long, value_name = "JSON")]
     pub edges_json: String,
@@ -551,7 +552,7 @@ struct WorkflowEdgeDraftJson {
 #[derive(Debug, Args)]
 pub struct WorkflowSetStatusArgs {
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
     #[arg(long)]
     pub node_id: String,
     #[arg(long)]
@@ -563,7 +564,7 @@ pub struct WorkflowSetStatusArgs {
 #[derive(Debug, Args)]
 pub struct WorkflowPromoteArgs {
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
     #[arg(long)]
     pub node_id: String,
     #[arg(long)]
@@ -575,7 +576,7 @@ pub struct WorkflowPromoteArgs {
 #[derive(Debug, Args)]
 pub struct HandoffArgs {
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
     /// The single goal of the next implementation unit.
     #[arg(long)]
     pub objective: Option<String>,
@@ -617,7 +618,7 @@ pub struct HandoffArgs {
 #[derive(Debug, Args)]
 pub struct FinishArgs {
     #[arg(long)]
-    pub workspace_session_id: String,
+    pub session_id: String,
     /// JSON array of validation gates.
     #[arg(long)]
     pub validation_json: Option<String>,
@@ -687,24 +688,24 @@ fn dispatch(
         SessionCommand::Init(args) => {
             let result =
                 config.init_runtime_context(SessionRuntimeInitRequest {
-                    workspace_session_id: args.workspace_session_id,
+                    session_id: Some(args.session_id),
                     predecessor_run_id: args.predecessor_run_id,
                     force_new_run: args.force_new_run,
                 })?;
-            let handle = result.context.workspace_session_id.clone();
+            let handle = result.context.session_id.clone();
             to_value_with_handle(&handle, &result)
         },
         SessionCommand::Resume(args) => {
             let result = config.resume_workspace_context(
-                &args.workspace_session_id,
+                &args.session_id,
                 &args.predecessor_run_id,
             )?;
-            let handle = result.context.workspace_session_id.clone();
+            let handle = result.context.session_id.clone();
             to_value_with_handle(&handle, &result)
         },
         SessionCommand::Pin(args) => {
             let context = config.pin_runtime_entity(
-                &args.workspace_session_id,
+                &args.session_id,
                 &args.entity_urn,
                 args.relation,
                 args.reason,
@@ -713,19 +714,19 @@ fn dispatch(
         },
         SessionCommand::Unpin(args) => {
             let context = config.unpin_runtime_entity(
-                &args.workspace_session_id,
+                &args.session_id,
                 &args.entity_urn,
             )?;
             to_value(&context)
         },
         SessionCommand::View(args) => {
             let view =
-                config.view_runtime_context(&args.workspace_session_id)?;
+                config.view_runtime_context(&args.session_id)?;
             to_value(&view)
         },
         SessionCommand::RenderInstructions(args) => {
             let render = config
-                .render_pinned_rule_instructions(&args.workspace_session_id)?;
+                .render_pinned_rule_instructions(&args.session_id)?;
             to_value(&json!({"render": render}))
         },
         SessionCommand::Workflow { command } =>
@@ -754,7 +755,7 @@ fn dispatch(
         SessionCommand::Handoff(args) => {
             let package = handoff_package_from_args(&args)?;
             let result = config.create_handoff_result(
-                &args.workspace_session_id,
+                &args.session_id,
                 package,
                 parse_validation_gates(args.validation_json.as_deref())?,
                 None,
@@ -763,7 +764,7 @@ fn dispatch(
         },
         SessionCommand::Finish(args) => {
             let result = config.finish_workflow(
-                &args.workspace_session_id,
+                &args.session_id,
                 parse_validation_gates(args.validation_json.as_deref())?,
                 args.deferred_optional_node_ids,
                 None,
@@ -850,7 +851,7 @@ fn dispatch(
             to_value(&report)
         },
         SessionCommand::SubagentRollups(args) => {
-            let rollups = config.subagent_rollups(&args.workspace_session_id)?;
+            let rollups = config.subagent_rollups(&args.session_id)?;
             to_value(&rollups)
         },
         SessionCommand::Grant { command } => handle_grant_command(config, command),
@@ -867,7 +868,7 @@ fn handle_workflow_command(
     match command {
         WorkflowCommand::AddNode(args) => {
             let context = config.workflow_add_node(
-                &args.workspace_session_id,
+                &args.session_id,
                 SessionWorkflowNodeDraft {
                     node_id: args.node_id,
                     kind: parse_node_kind(&args.kind)?,
@@ -914,12 +915,12 @@ fn handle_workflow_command(
             })
             .collect::<Result<Vec<_>, CliRunError>>()?;
             let context =
-                config.workflow_add_nodes(&args.workspace_session_id, nodes)?;
+                config.workflow_add_nodes(&args.session_id, nodes)?;
             to_value(&context)
         },
         WorkflowCommand::AddEdge(args) => {
             let context = config.workflow_add_edge(
-                &args.workspace_session_id,
+                &args.session_id,
                 &args.from,
                 &args.to,
                 parse_edge_kind(&args.kind)?,
@@ -948,12 +949,12 @@ fn handle_workflow_command(
             })
             .collect::<Result<Vec<_>, CliRunError>>()?;
             let context =
-                config.workflow_add_edges(&args.workspace_session_id, edges)?;
+                config.workflow_add_edges(&args.session_id, edges)?;
             to_value(&context)
         },
         WorkflowCommand::SetStatus(args) => {
             let context = config.workflow_update_node_status(
-                &args.workspace_session_id,
+                &args.session_id,
                 &args.node_id,
                 parse_node_status(&args.status)?,
                 args.deferred_reason,
@@ -962,7 +963,7 @@ fn handle_workflow_command(
         },
         WorkflowCommand::Promote(args) => {
             let context = config.workflow_promote_node_to_ticket(
-                &args.workspace_session_id,
+                &args.session_id,
                 &args.node_id,
                 &args.ticket_urn,
                 args.cached_ticket_title,
@@ -971,12 +972,12 @@ fn handle_workflow_command(
         },
         WorkflowCommand::RenderTerminal(args) => {
             let rendered = config
-                .workflow_render_terminal(&args.workspace_session_id, None)?;
+                .workflow_render_terminal(&args.session_id, None)?;
             to_value(&json!({"render": rendered}))
         },
         WorkflowCommand::RenderMermaid(args) => {
             let rendered = config
-                .workflow_render_mermaid(&args.workspace_session_id, None)?;
+                .workflow_render_mermaid(&args.session_id, None)?;
             to_value(&json!({"render": rendered}))
         },
     }
@@ -1480,18 +1481,18 @@ fn to_value<T: serde::Serialize>(value: &T) -> Result<Value, CliRunError> {
         .map_err(|err| CliRunError::Serialization(err.to_string()))
 }
 
-/// Serialize `value` and guarantee `workspace_session_id` is present as a
-/// prominent top-line field, so the handle required by every workflow call is
-/// visible on init/resume output without a separate read.
+/// Serialize `value` and guarantee the Copilot session UUID is present as a
+/// prominent top-line `session_id` field, so every workflow call receives an
+/// explicit handle from init/resume output.
 fn to_value_with_handle<T: serde::Serialize>(
-    workspace_session_id: &str,
+    session_id: &str,
     value: &T,
 ) -> Result<Value, CliRunError> {
     let mut payload = to_value(value)?;
     if let Some(object) = payload.as_object_mut() {
         object.insert(
-            "workspace_session_id".to_string(),
-            Value::String(workspace_session_id.to_string()),
+            "session_id".to_string(),
+            Value::String(session_id.to_string()),
         );
     }
     Ok(payload)
@@ -1578,7 +1579,7 @@ mod tests {
             "session",
             "check-in",
             "--session-id",
-            "sess-1",
+            "11111111-1111-4111-8111-111111111111",
             "--owner-id",
             "agent-1",
             "--ticket-id",
@@ -1593,7 +1594,7 @@ mod tests {
         assert_eq!(cli.workspace_slug, "default");
         match cli.command {
             SessionCommand::CheckIn(args) => {
-                assert_eq!(args.session_id, "sess-1");
+                assert_eq!(args.session_id, "11111111-1111-4111-8111-111111111111");
                 assert_eq!(args.branch, "feature/x");
                 assert!(args.predecessor_session_id.is_none());
             },
@@ -1607,8 +1608,8 @@ mod tests {
             "session",
             "workflow",
             "add-node",
-            "--workspace-session-id",
-            "ws-1",
+            "--session-id",
+            "77777777-7777-4777-8777-777777777777",
             "--kind",
             "action",
             "--requirement",
@@ -1622,7 +1623,7 @@ mod tests {
             SessionCommand::Workflow {
                 command: WorkflowCommand::AddNode(args),
             } => {
-                assert_eq!(args.workspace_session_id, "ws-1");
+                assert_eq!(args.session_id, "77777777-7777-4777-8777-777777777777");
                 assert_eq!(args.kind, "action");
                 assert_eq!(args.requirement, "required");
                 assert_eq!(args.title, "do the thing");
@@ -1637,14 +1638,20 @@ mod tests {
         let config =
             SessionStoreConfig::new(dir.path().join(".session"), "default");
         let init = config
-            .init_runtime_context(SessionRuntimeInitRequest::default())
+            .init_runtime_context(SessionRuntimeInitRequest {
+                session_id: Some(
+                    "11111111-1111-4111-8111-111111111111".to_string(),
+                ),
+                predecessor_run_id: None,
+                force_new_run: false,
+            })
             .unwrap();
-        let workspace_session_id = init.context.workspace_session_id;
+        let session_id = init.context.session_id;
 
         let error = handle_workflow_command(
             &config,
             WorkflowCommand::AddNodes(WorkflowAddNodesArgs {
-                workspace_session_id: workspace_session_id.clone(),
+                session_id: session_id.clone(),
                 nodes_json: r#"[
                     {"node_id":"a","kind":"task","requirement":"optional","title":"a"},
                     {"node_id":"bad","kind":"review-criterion","requirement":"optional","title":"bad"}
@@ -1656,7 +1663,7 @@ mod tests {
         assert!(error.to_string().contains("nodes[1]"));
         assert!(
             config
-                .read_runtime_context(&workspace_session_id)
+                .read_runtime_context(&session_id)
                 .unwrap()
                 .workflow
                 .nodes
@@ -1666,7 +1673,7 @@ mod tests {
         let nodes = handle_workflow_command(
             &config,
             WorkflowCommand::AddNodes(WorkflowAddNodesArgs {
-                workspace_session_id: workspace_session_id.clone(),
+                session_id: session_id.clone(),
                 nodes_json: r#"[
                     {"node_id":"a","kind":"task","requirement":"optional","title":"a"},
                     {"node_id":"b","kind":"task","requirement":"optional","title":"b"}
@@ -1680,7 +1687,7 @@ mod tests {
         let edges = handle_workflow_command(
             &config,
             WorkflowCommand::AddEdges(WorkflowAddEdgesArgs {
-                workspace_session_id,
+                session_id,
                 edges_json: r#"[
                     {"from":"a","to":"b","kind":"depends-on"},
                     {"from":"b","to":"a","kind":"order"}
@@ -1697,14 +1704,14 @@ mod tests {
         let cli = parse_cli_from([
             "session",
             "render-instructions",
-            "--workspace-session-id",
-            "ws-1",
+            "--session-id",
+            "77777777-7777-4777-8777-777777777777",
         ])
         .expect("parse render-instructions");
 
         match cli.command {
             SessionCommand::RenderInstructions(args) => {
-                assert_eq!(args.workspace_session_id, "ws-1");
+                assert_eq!(args.session_id, "77777777-7777-4777-8777-777777777777");
             },
             other => panic!("unexpected command: {other:?}"),
         }
@@ -1716,7 +1723,13 @@ mod tests {
         let session_root = dir.path().join(".session");
         let config = SessionStoreConfig::new(&session_root, "default");
         let init = config
-            .init_runtime_context(SessionRuntimeInitRequest::default())
+            .init_runtime_context(SessionRuntimeInitRequest {
+                session_id: Some(
+                    "22222222-2222-4222-8222-222222222222".to_string(),
+                ),
+                predecessor_run_id: None,
+                force_new_run: false,
+            })
             .unwrap();
         let mut rule_store =
             rule_api::RuleStore::open_or_init(&dir.path().join(".rule"))
@@ -1731,7 +1744,7 @@ mod tests {
         let rule_id = rule_store.create(&rule, None).unwrap();
         config
             .pin_runtime_entity(
-                &init.context.workspace_session_id,
+                &init.context.session_id,
                 &format!("ce://default/rules/{rule_id}"),
                 None,
                 None,
@@ -1741,7 +1754,7 @@ mod tests {
         let payload = dispatch(
             &config,
             SessionCommand::RenderInstructions(ViewArgs {
-                workspace_session_id: init.context.workspace_session_id,
+                session_id: init.context.session_id,
             }),
         )
         .unwrap();
@@ -1758,8 +1771,8 @@ mod tests {
         let cli = parse_cli_from([
             "session",
             "workflow-add-node",
-            "--workspace-session-id",
-            "ws-1",
+            "--session-id",
+            "77777777-7777-4777-8777-777777777777",
             "--kind",
             "action",
             "--requirement",
@@ -1771,7 +1784,7 @@ mod tests {
 
         match cli.command {
             SessionCommand::WorkflowAddNode(args) => {
-                assert_eq!(args.workspace_session_id, "ws-1");
+                assert_eq!(args.session_id, "77777777-7777-4777-8777-777777777777");
                 assert_eq!(args.title, "do the thing");
             },
             other => panic!("unexpected command: {other:?}"),
@@ -1784,8 +1797,8 @@ mod tests {
             "session",
             "workflow",
             "render-terminal",
-            "--workspace-session-id",
-            "ws-1",
+            "--session-id",
+            "77777777-7777-4777-8777-777777777777",
         ])
         .expect("parse nested workflow render-terminal");
 
@@ -1800,7 +1813,7 @@ mod tests {
     #[test]
     fn parses_peek_range_defaults() {
         let cli =
-            parse_cli_from(["session", "peek-range", "--session-id", "sess-1"])
+            parse_cli_from(["session", "peek-range", "--session-id", "11111111-1111-4111-8111-111111111111"])
                 .expect("parse peek-range");
 
         match cli.command {
@@ -1820,7 +1833,7 @@ mod tests {
             "--toon",
             "lookup",
             "--session-id",
-            "sess-1",
+            "11111111-1111-4111-8111-111111111111",
         ]);
         assert!(result.is_err());
     }
@@ -1963,13 +1976,19 @@ mod tests {
         );
 
         let init = config
-            .init_runtime_context(SessionRuntimeInitRequest::default())
+            .init_runtime_context(SessionRuntimeInitRequest {
+                session_id: Some(
+                    "33333333-3333-4333-8333-333333333333".to_string(),
+                ),
+                predecessor_run_id: None,
+                force_new_run: false,
+            })
             .expect("init runtime context");
-        let workspace_session_id = init.context.workspace_session_id;
+        let session_id = init.context.session_id;
 
         let rendered = config
             .render_handoff_terminal(
-                &workspace_session_id,
+                &session_id,
                 None,
                 vec![session_api::SessionValidationGate {
                     validation_spec_id: "val-handoff-reference-completeness"
@@ -1982,12 +2001,12 @@ mod tests {
             )
             .expect("render handoff");
 
-        assert!(rendered.contains("workspace_session_id:"));
+        assert!(rendered.contains("session_id:"));
         assert!(rendered.contains("outgoing_run_id:"));
         assert!(rendered.contains("handoff "));
         assert!(
             rendered
-                .contains("resume: session-cli resume --workspace-session-id")
+                .contains("resume: session-cli resume --session-id")
         );
     }
 }

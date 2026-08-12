@@ -7,12 +7,14 @@ use std::{
 };
 
 use session_api::{
+    CopilotHookEvent,
     FeedbackSignalKind,
     FollowUpSynthesisOutcome,
     SessionError,
     SessionProvisioningDiagnostic,
     SessionStoreConfig,
     SessionStorePlan,
+    PersistedSessionEvents,
     ToolMetricsWindow,
     ToolResponseOverride,
     build_follow_up_ticket_draft,
@@ -76,10 +78,23 @@ fn run() -> Result<(), SessionError> {
     );
     let store_root = resolve_capture_store_root(
         args.store_root.clone(),
-        &args.workspace_slug,
         args.session_id.as_deref(),
     );
+    let Some(store_root) = store_root else {
+        emit_hook_payload(routing_outcome.as_ref());
+        return Ok(());
+    };
+    let config = SessionStoreConfig::new(store_root.clone(), "default");
+    let hook_event_name = hook_event_name(&args);
+    let prompt_event = args.prompt.as_deref().map(|prompt| {
+        prompt_event(&hook_event_name, prompt)
+    });
     if !transcript_path.is_file() {
+        if let (Some(session_id), Some(event)) =
+            (args.session_id.as_deref(), prompt_event)
+        {
+            config.persist_hook_event(session_id, event)?;
+        }
         eprintln!(
             "[session-capture-hook] skip: transcript not found at {}",
             transcript_path.display()
@@ -88,33 +103,24 @@ fn run() -> Result<(), SessionError> {
         return Ok(());
     }
 
-    let Some(store_root) = store_root else {
-        emit_hook_payload(routing_outcome.as_ref());
-        return Ok(());
-    };
-    let config =
-        SessionStoreConfig::new(store_root.clone(), args.workspace_slug);
-
     let tool_response_override = build_tool_response_override(
         args.tool_call_id.as_deref(),
         args.tool_response_chars,
         args.session_id.as_deref(),
         &transcript_path,
     );
-    let hook_event_name =
-        args.hook_event_name
-            .as_deref()
-            .unwrap_or(&args.trigger)
-            .to_owned();
     let mut plan = config.capture_copilot_transcript_with_tool_response(
         transcript_path,
         args.trigger.clone(),
         tool_response_override,
     )?;
+    if let Some(event) = prompt_event {
+        append_prompt_event(&mut plan, event);
+    }
     if let Some(outcome) = routing_outcome.as_ref() {
         plan.record.metadata.provisioning = Some(outcome.metadata(&hook_event_name));
-        plan.persist()?;
     }
+    plan.persist()?;
     report_structured_feedback_signals(&plan);
     synthesize_follow_up_tickets(
         &plan,
@@ -233,9 +239,9 @@ fn initialize_session_routing(
     session_id: Option<&str>,
     store_root: Option<&Path>,
 ) -> Option<ProvisioningDiagnostic> {
-    if !trigger.eq_ignore_ascii_case("UserPromptSubmit") {
+    if !trigger.eq_ignore_ascii_case("SessionStart") {
         return Some(ProvisioningDiagnostic::Skipped {
-            reason: "trigger_not_user_prompt_submit",
+            reason: "trigger_not_session_start",
             worktree: None,
         });
     }
@@ -279,7 +285,7 @@ fn initialize_session_routing(
         }
     };
 
-    // UserPromptSubmit can provision a worktree before an assignment exists;
+    // SessionStart can provision a worktree before an assignment exists;
     // in that case route assignment repair through the provisioned path first.
     let resolved_worktree = if let Some(worktree) = diagnostic.worktree() {
         worktree.to_path_buf()
@@ -689,7 +695,6 @@ fn refresh_tool_metrics_rollup(config: &SessionStoreConfig) {
 
 fn resolve_capture_store_root(
     store_root: Option<PathBuf>,
-    workspace_slug: &str,
     session_id: Option<&str>,
 ) -> Option<PathBuf> {
     if let Some(store_root) = store_root {
@@ -723,7 +728,7 @@ fn resolve_capture_store_root(
     }
     let resolver = match SessionWorkspaceResolver::new(ResolverConfig {
         main_checkout: anchor,
-        workspace_slug: workspace_slug.to_string(),
+        workspace_slug: "default".to_string(),
     }) {
         Ok(resolver) => resolver,
         Err(error) => {
@@ -754,6 +759,48 @@ fn resolve_capture_store_root(
             None
         },
     }
+}
+
+fn hook_event_name(args: &args::Args) -> String {
+    args.hook_event_name
+        .as_deref()
+        .unwrap_or(&args.trigger)
+        .to_owned()
+}
+
+fn prompt_event(
+    hook_event_name: &str,
+    prompt: &str,
+) -> CopilotHookEvent {
+    CopilotHookEvent {
+        event_id: None,
+        parent_event_id: None,
+        event_type: Some(hook_event_name.to_string()),
+        captured_at: None,
+        turn_id: None,
+        message_id: None,
+        tool_call_id: None,
+        tool_name: None,
+        tool_success: None,
+        reasoning_text: None,
+        tool_requests_json: None,
+        tool_arguments_json: None,
+        data_json: Some(serde_json::json!({ "prompt": prompt })),
+        raw_event_json: None,
+    }
+}
+
+fn append_prompt_event(
+    plan: &mut SessionStorePlan,
+    event: CopilotHookEvent,
+) {
+    let events = plan.events.get_or_insert_with(|| PersistedSessionEvents {
+        schema_version: plan.record.schema_version,
+        session_id: plan.record.session_id.clone(),
+        captured_at: plan.record.captured_at,
+        events: Vec::new(),
+    });
+    events.events.push(event);
 }
 
 fn infer_capture_worktree(
@@ -849,7 +896,10 @@ mod tests {
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
         let worktree =
-            register_active_worktree(&main_checkout, "session-worktree");
+            register_active_worktree(
+                &main_checkout,
+                "44444444-4444-4444-8444-444444444444",
+            );
         std::fs::create_dir_all(main_checkout.join(".session")).unwrap();
         let original_cwd = std::env::current_dir().unwrap();
         let original_main_checkout = env::var_os("MCP_MAIN_CHECKOUT");
@@ -858,8 +908,7 @@ mod tests {
 
         let store_root = resolve_capture_store_root(
             None,
-            "default",
-            Some("session-worktree"),
+            Some("44444444-4444-4444-8444-444444444444"),
         )
         .expect("active worktree assignment should resolve");
 
@@ -915,7 +964,7 @@ mod tests {
         unsafe { env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
 
         assert_eq!(
-            resolve_capture_store_root(None, "default", Some("missing")),
+            resolve_capture_store_root(None, Some("missing")),
             None
         );
         unsafe {
@@ -935,7 +984,7 @@ mod tests {
     #[test]
     fn capture_with_inactive_assignment_does_not_write_main_checkout() {
         assert_eq!(
-            resolve_capture_store_root(None, "default", Some("inactive")),
+            resolve_capture_store_root(None, Some("inactive")),
             None
         );
     }
@@ -947,7 +996,10 @@ mod tests {
         let fixture = tempdir().unwrap();
         let main_checkout = fixture.path().join("main");
         let worktree =
-            register_active_worktree(&main_checkout, "session-third-cwd");
+            register_active_worktree(
+                &main_checkout,
+                "55555555-5555-4555-8555-555555555555",
+            );
         std::fs::create_dir_all(main_checkout.join(".session")).unwrap();
         let unrelated = fixture.path().join("unrelated");
         std::fs::create_dir_all(&unrelated).unwrap();
@@ -958,8 +1010,7 @@ mod tests {
 
         let result = resolve_capture_store_root(
             None,
-            "default",
-            Some("session-third-cwd"),
+            Some("55555555-5555-4555-8555-555555555555"),
         );
 
         std::env::set_current_dir(original_cwd).unwrap();
@@ -1051,7 +1102,7 @@ mod tests {
         );
     }
 
-    fn run_user_prompt_submit(
+    fn run_session_start(
         main_checkout: &Path,
         process_directory: &Path,
         session_id: Option<&str>,
@@ -1062,7 +1113,7 @@ mod tests {
         env::set_current_dir(process_directory).unwrap();
 
         initialize_session_routing(
-            "UserPromptSubmit",
+            "SessionStart",
             session_id,
             None,
         );
@@ -1077,7 +1128,7 @@ mod tests {
     }
 
     #[test]
-    fn user_prompt_submit_provisions_a_positional_worktree_without_anchor_state() {
+    fn session_start_provisions_a_positional_worktree_without_anchor_state() {
         let _cwd_lock = CWD_LOCK.lock().unwrap();
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
@@ -1086,7 +1137,7 @@ mod tests {
         std::fs::create_dir_all(main_checkout.join(".session")).unwrap();
         let session_id = "99999999-9999-4999-8999-999999999999";
 
-        run_user_prompt_submit(
+        run_session_start(
             &main_checkout,
             &main_checkout,
             Some(session_id),
@@ -1101,7 +1152,7 @@ mod tests {
     }
 
     #[test]
-    fn user_prompt_submit_without_session_id_or_with_blank_id_does_not_assign()
+    fn session_start_without_session_id_or_with_blank_id_does_not_assign()
     {
         let _cwd_lock = CWD_LOCK.lock().unwrap();
         let _env_lock = ENV_LOCK.lock().unwrap();
@@ -1110,15 +1161,15 @@ mod tests {
         let worktree = main_checkout.join("worktree");
         create_git_worktree(&main_checkout, &worktree, "feature");
 
-        run_user_prompt_submit(&main_checkout, &worktree, None);
-        run_user_prompt_submit(&main_checkout, &worktree, Some("   "));
+        run_session_start(&main_checkout, &worktree, None);
+        run_session_start(&main_checkout, &worktree, Some("   "));
 
         assert!(!main_checkout.join(".session").exists());
         assert!(!main_checkout.join(".worktrees").exists());
     }
 
     #[test]
-    fn non_user_prompt_submit_does_not_provision_or_assign() {
+    fn non_session_start_does_not_provision_or_assign() {
         let _cwd_lock = CWD_LOCK.lock().unwrap();
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
@@ -1164,7 +1215,7 @@ mod tests {
     }
 
     #[test]
-    fn user_prompt_submit_skips_a_missing_anchor_override() {
+    fn session_start_skips_a_missing_anchor_override() {
         let _cwd_lock = CWD_LOCK.lock().unwrap();
         let _env_lock = ENV_LOCK.lock().unwrap();
         let fixture = tempdir().unwrap();
@@ -1178,7 +1229,7 @@ mod tests {
         env::set_current_dir(&worktree).unwrap();
 
         initialize_session_routing(
-            "UserPromptSubmit",
+            "SessionStart",
             Some("session-one"),
             Some(&invalid_main_checkout.join(".session")),
         );

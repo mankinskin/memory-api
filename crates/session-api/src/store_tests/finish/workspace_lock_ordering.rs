@@ -2,14 +2,15 @@
 #[test]
 fn finished_workspace_plain_init_is_read_only_and_byte_stable() {
     let (config, workspace_id, _tempdir) = finished_workspace();
-    let paths = config.runtime_paths_for_workspace(&workspace_id).unwrap();
-    let active_path = config.active_workspace_session_path().unwrap();
-    let context_before = std::fs::read(&paths.context_path).unwrap();
-    let active_before = std::fs::read(&active_path).unwrap();
+    let manifest_path = config
+        .paths_for_session_id(&workspace_id)
+        .unwrap()
+        .manifest_path;
+    let manifest_before = std::fs::read(&manifest_path).unwrap();
 
     let init = config
         .init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some(workspace_id.clone()),
+            session_id: Some(workspace_id.clone()),
             predecessor_run_id: None,
             force_new_run: false,
         })
@@ -17,9 +18,8 @@ fn finished_workspace_plain_init_is_read_only_and_byte_stable() {
 
     assert!(!init.created_workspace);
     assert!(!init.created_run);
-    assert_eq!(init.context.workspace_session_id, workspace_id);
-    assert_eq!(std::fs::read(&paths.context_path).unwrap(), context_before);
-    assert_eq!(std::fs::read(active_path).unwrap(), active_before);
+    assert_eq!(init.context.session_id, workspace_id);
+    assert_eq!(std::fs::read(&manifest_path).unwrap(), manifest_before);
 }
 
 /// High: the finished-workspace check runs *under* the mutation lock. When a

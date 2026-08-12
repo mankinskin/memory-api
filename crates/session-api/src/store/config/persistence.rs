@@ -1,3 +1,19 @@
+#[derive(serde::Deserialize)]
+struct LegacyRuntimeContext {
+    #[serde(default)]
+    active_run_id: String,
+    #[serde(default)]
+    runs: Vec<SessionRunLineage>,
+    #[serde(default)]
+    pinned_entities: Vec<SessionPinnedEntity>,
+    #[serde(default)]
+    workflow: SessionWorkflowGraph,
+    #[serde(default)]
+    created_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    updated_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
 impl SessionStoreConfig {
     fn resolve_validation_gates(
         &self,
@@ -132,64 +148,74 @@ impl SessionStoreConfig {
         Ok(self.root.join("sessions"))
     }
 
-    fn local_root(&self) -> Result<PathBuf, SessionError> {
-        if self.root.as_os_str().is_empty() {
-            return Err(SessionError::EmptyStoreRoot);
-        }
-        Ok(self.root.join("local"))
-    }
-
-    pub(super) fn active_workspace_session_path(&self) -> Result<PathBuf, SessionError> {
-        Ok(self.local_root()?.join("active_workspace_session.json"))
-    }
-
     pub(super) fn runtime_paths_for_workspace(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
     ) -> Result<SessionRuntimePaths, SessionError> {
-        validate_runtime_workspace_id(workspace_session_id)?;
-        self.runtime_paths_for_read(workspace_session_id)
-    }
-
-    pub(super) fn runtime_paths_for_read(
-        &self,
-        workspace_session_id: &str,
-    ) -> Result<SessionRuntimePaths, SessionError> {
-        if self.root.as_os_str().is_empty() {
-            return Err(SessionError::EmptyStoreRoot);
-        }
-        validate_segment(workspace_session_id, false)?;
+        validate_session_id(session_id)?;
         let workspace_dir = self
             .sessions_root()?
-            .join(workspace_session_id);
-        let context_path = workspace_dir.join("context.json");
+            .join(session_id);
         let handoffs_dir = workspace_dir.join("handoffs");
         let finish_path = workspace_dir.join("finish.json");
         Ok(SessionRuntimePaths {
             workspace_dir,
-            context_path,
             handoffs_dir,
             finish_path,
         })
     }
 
-    fn persist_runtime_context(
+    fn persist_runtime_state(
         &self,
         context: &SessionRuntimeContext,
     ) -> Result<(), SessionError> {
-        let paths =
-            self.runtime_paths_for_workspace(&context.workspace_session_id)?;
+        let paths = self.runtime_paths_for_workspace(&context.session_id)?;
         fs::create_dir_all(&paths.workspace_dir).map_err(|source| {
             SessionError::Io {
                 path: paths.workspace_dir.clone(),
                 source,
             }
         })?;
-
-        write_json(
-            &paths.context_path,
-            &PersistedRuntimeContext::from(context.clone()),
-        )
+        let session_paths = self.paths_for_session_id(&context.session_id)?;
+        let mut manifest = read_json_if_exists(&session_paths.manifest_path)?
+            .unwrap_or_else(|| PersistedSessionManifest {
+                schema_version: SESSION_SCHEMA_VERSION,
+                session_id: context.session_id.clone(),
+                source: "session-runtime-init".to_string(),
+                started_at: context.created_at,
+                captured_at: context.updated_at,
+                metadata: SessionMetadata {
+                    workspace_slug: self.workspace_slug.clone(),
+                    conversation_id: None,
+                    agent_id: None,
+                    ticket_id: None,
+                    model: None,
+                    trigger: Some("session-runtime-init".to_string()),
+                    provisioning: None,
+                    producer: None,
+                    copilot_version: None,
+                    vscode_version: None,
+                    protocol_version: None,
+                    worktree: None,
+                },
+                links: SessionLinks::default(),
+                track_id: None,
+                anchor_ticket_id: None,
+                parent_session_id: None,
+                spawned_session_id: None,
+                emitted_handoff_ids: Vec::new(),
+                picked_up_handoff_ids: Vec::new(),
+                active_run_id: String::new(),
+                runs: Vec::new(),
+                pinned_entities: Vec::new(),
+                workflow: SessionWorkflowGraph::default(),
+            });
+        manifest.captured_at = context.updated_at;
+        manifest.active_run_id = context.active_run_id.clone();
+        manifest.runs = context.runs.clone();
+        manifest.pinned_entities = context.pinned_entities.clone();
+        manifest.workflow = context.workflow.clone();
+        write_json(&session_paths.manifest_path, &manifest)
     }
 
     fn ticket_store_root(&self) -> PathBuf {
@@ -216,12 +242,12 @@ impl SessionStoreConfig {
         }
     }
 
-    fn resolve_workspace_session_id(
+    fn resolve_session_id(
         &self,
         requested: Option<String>,
     ) -> Result<String, SessionError> {
         let requested = requested.map(|id| {
-            validate_runtime_workspace_id(&id)?;
+            validate_session_id(&id)?;
             Ok(id)
         }).transpose()?;
 
@@ -264,26 +290,12 @@ impl SessionStoreConfig {
         None
     }
 
-    fn persist_active_workspace_session(
+    fn read_legacy_runtime_context(
         &self,
-        workspace_session_id: &str,
-    ) -> Result<(), SessionError> {
-        validate_runtime_workspace_id(workspace_session_id)?;
-        let path = self.active_workspace_session_path()?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|source| SessionError::Io {
-                path: parent.to_path_buf(),
-                source,
-            })?;
-        }
-
-        write_json(
-            &path,
-            &PersistedActiveWorkspaceSession {
-                workspace_session_id: workspace_session_id.to_string(),
-                updated_at: chrono::Utc::now(),
-            },
-        )
+        session_id: &str,
+    ) -> Result<Option<LegacyRuntimeContext>, SessionError> {
+        let paths = self.runtime_paths_for_workspace(session_id)?;
+        read_json_if_exists(&paths.workspace_dir.join("context.json"))
     }
 
     pub fn plan_capture(

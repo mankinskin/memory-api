@@ -141,7 +141,7 @@ fn check_in_and_lookup_roundtrip() {
         &store_root_str,
         "check-in",
         "--session-id",
-        "sess-1",
+        "11111111-1111-4111-8111-111111111111",
         "--owner-id",
         "agent-1",
         "--ticket-id",
@@ -151,7 +151,7 @@ fn check_in_and_lookup_roundtrip() {
         "--branch",
         "feature/x",
     ]);
-    assert_eq!(receipt["session_id"], "sess-1");
+    assert_eq!(receipt["session_id"], "11111111-1111-4111-8111-111111111111");
     assert_eq!(receipt["branch"], "feature/x");
 
     let lookup = run_machine(&[
@@ -161,7 +161,7 @@ fn check_in_and_lookup_roundtrip() {
         &store_root_str,
         "lookup",
         "--session-id",
-        "sess-1",
+        "11111111-1111-4111-8111-111111111111",
     ]);
     assert_eq!(lookup["ticket_id"], "ticket-1");
     assert_eq!(lookup["owner_id"], "agent-1");
@@ -174,7 +174,7 @@ fn query_returns_seeded_session() {
     let store_root_str = store_root.to_string_lossy().to_string();
     let config =
         SessionStoreConfig::new(store_root.clone(), "default".to_string());
-    seed_session(&config, "sess-q", "agent-q");
+    seed_session(&config, "22222222-2222-4222-8222-222222222222", "agent-q");
 
     let result = run_machine(&[
         "session",
@@ -186,7 +186,7 @@ fn query_returns_seeded_session() {
         "agent-q",
     ]);
     assert_eq!(result["count"], 1);
-    assert_eq!(result["sessions"][0]["session_id"], "sess-q");
+    assert_eq!(result["sessions"][0]["session_id"], "22222222-2222-4222-8222-222222222222");
 }
 
 #[test]
@@ -204,7 +204,7 @@ fn sessions_for_ticket_returns_seeded_session_at_strict_tier() {
         &store_root_str,
         "check-in",
         "--session-id",
-        "sess-ticket",
+        "33333333-3333-4333-8333-333333333333",
         "--owner-id",
         "agent-ticket",
         "--ticket-id",
@@ -226,7 +226,7 @@ fn sessions_for_ticket_returns_seeded_session_at_strict_tier() {
         "strict",
     ]);
     assert_eq!(result["count"], 1);
-    assert_eq!(result["sessions"][0]["session_id"], "sess-ticket");
+    assert_eq!(result["sessions"][0]["session_id"], "33333333-3333-4333-8333-333333333333");
     assert_eq!(result["sessions"][0]["branch"], "feature/ticket-abc");
     assert_eq!(result["sessions"][0]["matched_strength"], "strict");
 
@@ -250,7 +250,7 @@ fn peek_range_and_skeleton() {
     let store_root_str = store_root.to_string_lossy().to_string();
     let config =
         SessionStoreConfig::new(store_root.clone(), "default".to_string());
-    seed_session(&config, "sess-p", "agent-p");
+    seed_session(&config, "44444444-4444-4444-8444-444444444444", "agent-p");
 
     let range = run_machine(&[
         "session",
@@ -259,7 +259,7 @@ fn peek_range_and_skeleton() {
         &store_root_str,
         "peek-range",
         "--session-id",
-        "sess-p",
+        "44444444-4444-4444-8444-444444444444",
         "--start",
         "1",
     ]);
@@ -274,7 +274,7 @@ fn peek_range_and_skeleton() {
         &store_root_str,
         "peek-skeleton",
         "--session-id",
-        "sess-p",
+        "44444444-4444-4444-8444-444444444444",
     ]);
     assert_eq!(skeleton["total_turns"], 2);
     assert_eq!(skeleton["entries"][0]["preview"], "first turn body");
@@ -287,7 +287,7 @@ fn peek_prompt_pack_reports_guarded_entries() {
     let store_root_str = store_root.to_string_lossy().to_string();
     let config =
         SessionStoreConfig::new(store_root.clone(), "default".to_string());
-    seed_compaction_session(&config, "sess-c", "agent-c");
+    seed_compaction_session(&config, "55555555-5555-4555-8555-555555555555", "agent-c");
 
     let pack = run_machine(&[
         "session",
@@ -296,7 +296,7 @@ fn peek_prompt_pack_reports_guarded_entries() {
         &store_root_str,
         "peek-prompt-pack",
         "--session-id",
-        "sess-c",
+        "55555555-5555-4555-8555-555555555555",
         "--summarize-threshold-chars",
         "120",
     ]);
@@ -327,7 +327,7 @@ fn peek_prompt_pack_meets_quantitative_compactness_gate() {
     let store_root_str = store_root.to_string_lossy().to_string();
     let config =
         SessionStoreConfig::new(store_root.clone(), "default".to_string());
-    seed_compaction_session(&config, "sess-gate", "agent-gate");
+    seed_compaction_session(&config, "66666666-6666-4666-8666-666666666666", "agent-gate");
 
     let pack = run_machine(&[
         "session",
@@ -336,7 +336,7 @@ fn peek_prompt_pack_meets_quantitative_compactness_gate() {
         &store_root_str,
         "peek-prompt-pack",
         "--session-id",
-        "sess-gate",
+        "66666666-6666-4666-8666-666666666666",
         "--summarize-threshold-chars",
         "120",
     ]);
@@ -355,7 +355,7 @@ fn workflow_nested_and_flat_forms_are_equivalent() {
     let dir = tempdir().unwrap();
     let store_root = dir.path().join(".session");
     let store_root_str = store_root.to_string_lossy().to_string();
-    let workspace_id = "ws-cli-equivalence";
+    let workspace_id = "77777777-7777-4777-8777-777777777777";
 
     run_machine(&[
         "session",
@@ -363,7 +363,7 @@ fn workflow_nested_and_flat_forms_are_equivalent() {
         "--store-root",
         &store_root_str,
         "init",
-        "--workspace-session-id",
+        "--session-id",
         workspace_id,
     ]);
 
@@ -375,7 +375,7 @@ fn workflow_nested_and_flat_forms_are_equivalent() {
         &store_root_str,
         "workflow",
         "add-node",
-        "--workspace-session-id",
+        "--session-id",
         workspace_id,
         "--node-id",
         "nested-node",
@@ -394,7 +394,7 @@ fn workflow_nested_and_flat_forms_are_equivalent() {
         "--store-root",
         &store_root_str,
         "workflow-add-node",
-        "--workspace-session-id",
+        "--session-id",
         workspace_id,
         "--node-id",
         "flat-node",
@@ -423,7 +423,7 @@ fn workflow_nested_and_flat_forms_are_equivalent() {
         &store_root_str,
         "workflow",
         "render-terminal",
-        "--workspace-session-id",
+        "--session-id",
         workspace_id,
     ]);
     assert!(rendered["render"].as_str().unwrap().contains("nested-node"));

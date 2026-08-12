@@ -110,6 +110,12 @@ pub struct SessionWorkflowGraph {
     pub edges: Vec<SessionWorkflowEdge>,
 }
 
+impl SessionWorkflowGraph {
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty() && self.edges.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionWorkflowNodeDraft {
     #[serde(default, skip_serializing_if = "Option::is_none")]

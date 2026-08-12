@@ -1,4 +1,3 @@
-
 #[test]
 fn check_in_worktree_rotates_when_existing_path_is_missing() {
     let tempdir = TempDir::new().unwrap();
@@ -104,40 +103,6 @@ fn read_session_rejects_unknown_schema_version() {
 }
 
 #[test]
-fn runtime_init_ignores_a_stale_slug_marker() {
-    let tempdir = TempDir::new().unwrap();
-    let store_root = tempdir.path().join("store");
-    let config = SessionStoreConfig::new(&store_root, "context-engine");
-    let marker_path = config.active_workspace_session_path().unwrap();
-    let stale_slug = "epic-kickoff-8fdfe135";
-
-    write_json(
-        &marker_path,
-        &PersistedActiveWorkspaceSession {
-            workspace_session_id: stale_slug.to_string(),
-            updated_at: chrono::Utc::now(),
-        },
-    )
-    .unwrap();
-
-    let result = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
-        .unwrap();
-
-    assert_ne!(result.context.session_id, stale_slug);
-    assert!(Uuid::parse_str(&result.context.session_id).is_ok());
-    assert_eq!(
-        result.context.workspace_session_id,
-        result.context.session_id
-    );
-    assert!(store_root
-        .join("sessions")
-        .join(&result.context.session_id)
-        .join("context.json")
-        .is_file());
-}
-
-#[test]
 fn runtime_init_uses_the_provisioned_worktree_uuid() {
     let current_dir = std::env::current_dir().unwrap();
     let tempdir = TempDir::new_in(&current_dir).unwrap();
@@ -159,11 +124,10 @@ fn runtime_init_uses_the_provisioned_worktree_uuid() {
         .unwrap();
 
     assert_eq!(result.context.session_id, session_id);
-    assert_eq!(result.context.workspace_session_id, session_id);
     assert!(store_root
         .join("sessions")
         .join(&result.context.session_id)
-        .join("context.json")
+        .join("session.json")
         .is_file());
 }
 
@@ -186,12 +150,9 @@ fn worktree_identity_rejects_slug_values() {
 
     assert!(matches!(
         error,
-        SessionError::SessionIdentityMustBeUuid(ref value) if value == session_id
+        SessionError::InvalidSessionId(ref value) if value == session_id
     ));
-    assert_eq!(
-        error.to_string(),
-        "session identity `epic-kickoff-8fdfe135` must be a UUID; use the capture or provisioning UUID"
-    );
+    assert!(error.to_string().contains("must be a UUID"));
 }
 
 #[test]
@@ -210,7 +171,10 @@ fn legacy_slug_keyed_session_record_remains_readable() {
         ))
         .unwrap();
 
-    assert_eq!(config.read_session(session_id).unwrap().session_id, session_id);
+    assert_eq!(
+        config.read_session(session_id).unwrap().session_id,
+        session_id
+    );
 }
 
 #[test]
@@ -295,13 +259,14 @@ fn context_schema_init_is_idempotent_without_forcing_a_new_run() {
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
 
     let first = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest {
+            session_id: Some(uuid::Uuid::new_v4().to_string()),
+            ..Default::default()
+        })
         .unwrap();
     let second = config
         .init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some(
-                first.context.workspace_session_id.clone(),
-            ),
+            session_id: Some(first.context.session_id.clone()),
             predecessor_run_id: None,
             force_new_run: false,
         })
@@ -311,10 +276,7 @@ fn context_schema_init_is_idempotent_without_forcing_a_new_run() {
     assert!(first.created_run);
     assert!(!second.created_workspace);
     assert!(!second.created_run);
-    assert_eq!(
-        first.context.workspace_session_id,
-        second.context.workspace_session_id
-    );
+    assert_eq!(first.context.session_id, second.context.session_id);
     assert_eq!(first.context.active_run_id, second.context.active_run_id);
     assert_eq!(second.context.runs.len(), 1);
 }
@@ -326,22 +288,20 @@ fn run_lineage_init_resume_creates_distinct_linked_run() {
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
 
     let first = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest {
+            session_id: Some(uuid::Uuid::new_v4().to_string()),
+            ..Default::default()
+        })
         .unwrap();
     let resumed = config
         .init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some(
-                first.context.workspace_session_id.clone(),
-            ),
+            session_id: Some(first.context.session_id.clone()),
             predecessor_run_id: Some(first.context.active_run_id.clone()),
             force_new_run: true,
         })
         .unwrap();
 
-    assert_eq!(
-        first.context.workspace_session_id,
-        resumed.context.workspace_session_id
-    );
+    assert_eq!(first.context.session_id, resumed.context.session_id);
     assert_ne!(first.context.active_run_id, resumed.context.active_run_id);
     assert_eq!(resumed.context.runs.len(), 2);
     assert_eq!(
@@ -356,9 +316,12 @@ fn context_pin_unpin_is_idempotent_and_persistent() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest {
+            session_id: Some(uuid::Uuid::new_v4().to_string()),
+            ..Default::default()
+        })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
     let urn = "ce://default/tickets/effba966-f0a8-4d7d-b289-b7feba826cf8";
 
     let pinned_once = config
@@ -393,12 +356,15 @@ fn context_pin_rejects_malformed_entity_urn_segments() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest {
+            session_id: Some(uuid::Uuid::new_v4().to_string()),
+            ..Default::default()
+        })
         .unwrap();
 
     let error = config
         .pin_runtime_entity(
-            &init.context.workspace_session_id,
+            &init.context.session_id,
             "ce:///tickets/",
             None,
             None,
@@ -414,9 +380,12 @@ fn context_view_returns_headers_only() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest {
+            session_id: Some(uuid::Uuid::new_v4().to_string()),
+            ..Default::default()
+        })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     config
         .pin_runtime_entity(

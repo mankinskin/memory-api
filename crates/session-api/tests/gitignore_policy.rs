@@ -12,7 +12,6 @@ fn gitignore_tracks_durable_ignores_local() {
 
     // Test paths under .session/sessions/<id>/ (durable artifacts that should be tracked)
     let tracked_paths = vec![
-        ".session/sessions/test-id/context.json",
         ".session/sessions/test-id/handoffs/test-handoff.json",
         ".session/sessions/test-id/finish.json",
         ".session/sessions/test-id/session.json",
@@ -22,7 +21,6 @@ fn gitignore_tracks_durable_ignores_local() {
 
     // Test paths that should be ignored (local state, locks, logs, events)
     let ignored_paths = vec![
-        ".session/local/active_workspace_session.json",
         ".session/local/test-pointer.json",
         ".session/sessions/test-id/test.lock",
         ".session/sessions/test-id/workspace.lock",

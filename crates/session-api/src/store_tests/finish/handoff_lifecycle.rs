@@ -1,15 +1,15 @@
 use crate::HandoffBacklogFilter;
 
-fn init_workspace(config: &SessionStoreConfig, _workspace_session_label: &str) -> String {
+fn init_workspace(config: &SessionStoreConfig, session_id: &str) -> String {
     config
         .init_runtime_context(crate::SessionRuntimeInitRequest {
-            workspace_session_id: Some(uuid::Uuid::new_v4().to_string()),
+            session_id: Some(session_id.to_string()),
             predecessor_run_id: None,
             force_new_run: false,
         })
         .unwrap()
         .context
-        .workspace_session_id
+        .session_id
 }
 
 fn capture_session(config: &SessionStoreConfig, session_id: &str) {
@@ -81,7 +81,7 @@ fn pickup_binds_target_session_and_updates_target_record() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
 
-    let source_session = init_workspace(&config, "source-session");
+    let source_session = init_workspace(&config, "33333333-3333-4333-8333-333333333333");
     let package = crate::SessionHandoffPackage {
         objective: "Fix the bug".to_string(),
         target_tickets: vec![crate::SessionHandoffTargetTicket {
@@ -115,7 +115,7 @@ fn pickup_binds_target_session_and_updates_target_record() {
         .unwrap();
     assert!(backlog.iter().any(|h| h.handoff_id == record.handoff_id));
 
-    let target_session_id = "picking-up-session";
+    let target_session_id = "44444444-4444-4444-8444-444444444444";
     capture_session(&config, target_session_id);
 
     let picked_up = config
@@ -134,7 +134,7 @@ fn pickup_binds_target_session_and_updates_target_record() {
     assert_eq!(target_record.picked_up_handoff_ids, vec![record.handoff_id.clone()]);
 
     // Picking up an already-claimed handoff is rejected.
-    let second_attempt = config.pickup_handoff(&record.handoff_id, "another-session");
+    let second_attempt = config.pickup_handoff(&record.handoff_id, "55555555-5555-4555-8555-555555555555");
     assert!(matches!(
         second_attempt,
         Err(crate::SessionError::HandoffAlreadyClaimed { .. })
@@ -148,8 +148,8 @@ fn backlog_query_filters_by_source_session_and_track() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
 
-    let session_a = init_workspace(&config, "workspace-session-a");
-    let session_b = init_workspace(&config, "workspace-session-b");
+    let session_a = init_workspace(&config, "11111111-1111-4111-8111-111111111111");
+    let session_b = init_workspace(&config, "22222222-2222-4222-8222-222222222222");
 
     let package = |objective: &str| crate::SessionHandoffPackage {
         objective: objective.to_string(),

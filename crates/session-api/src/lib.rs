@@ -73,7 +73,6 @@ pub use hook::{
 };
 pub use model::{
     HandoffBacklogFilter,
-    RUNTIME_CONTEXT_SCHEMA_VERSION,
     SESSION_SCHEMA_VERSION,
     SessionFinishRecord,
     SessionFinishResult,
@@ -117,7 +116,6 @@ pub use model::{
     SessionWorktreeAllocationMode,
     SessionWorktreeAssignment,
     SessionWorktreeStatus,
-    default_runtime_context_schema_version,
     default_session_schema_version,
     validate_workflow_graph,
 };
@@ -143,8 +141,6 @@ pub use quality_gate::{
     pre_delegation_gate,
 };
 pub use store::{
-    PersistedActiveWorkspaceSession,
-    PersistedRuntimeContext,
     PersistedSessionEvents,
     PersistedSessionManifest,
     PersistedSessionTranscript,

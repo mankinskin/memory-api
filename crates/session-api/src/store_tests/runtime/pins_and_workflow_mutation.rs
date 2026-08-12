@@ -4,9 +4,9 @@ fn pinned_rule_render_contains_only_rule_pins_in_canonical_order() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
     let mut rule_store =
         rule_api::RuleStore::open_or_init(&store_root.join(".rule")).unwrap();
 
@@ -72,12 +72,12 @@ fn pinned_rule_render_skips_missing_rule() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
     rule_api::RuleStore::open_or_init(&store_root.join(".rule")).unwrap();
     config
         .pin_runtime_entity(
-            &init.context.workspace_session_id,
+            &init.context.session_id,
             "ce://context-engine/rules/22222222-2222-4222-8222-222222222222",
             None,
             None,
@@ -85,7 +85,7 @@ fn pinned_rule_render_skips_missing_rule() {
         .unwrap();
 
     let rendered = config
-        .render_pinned_rule_instructions(&init.context.workspace_session_id)
+        .render_pinned_rule_instructions(&init.context.session_id)
         .unwrap();
     assert!(!rendered.contains("22222222-2222-4222-8222-222222222222"));
 }
@@ -96,12 +96,12 @@ fn pinned_rule_render_succeeds_when_rule_store_is_absent() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
     // No `.rule` directory created: the store is absent entirely.
     config
         .pin_runtime_entity(
-            &init.context.workspace_session_id,
+            &init.context.session_id,
             "ce://context-engine/rules/22222222-2222-4222-8222-222222222222",
             None,
             None,
@@ -109,7 +109,7 @@ fn pinned_rule_render_succeeds_when_rule_store_is_absent() {
         .unwrap();
 
     let rendered = config
-        .render_pinned_rule_instructions(&init.context.workspace_session_id)
+        .render_pinned_rule_instructions(&init.context.session_id)
         .unwrap();
     assert!(!rendered.contains("22222222-2222-4222-8222-222222222222"));
 }
@@ -133,9 +133,9 @@ fn context_capture_persistence_isolation_is_byte_stable() {
         std::fs::read(&capture.paths.transcript_path).unwrap();
 
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
     config
         .pin_runtime_entity(
             &workspace_id,
@@ -151,9 +151,11 @@ fn context_capture_persistence_isolation_is_byte_stable() {
     assert_eq!(manifest_before, manifest_after);
     assert_eq!(transcript_before, transcript_after);
 
-    let runtime_paths =
-        config.runtime_paths_for_workspace(&workspace_id).unwrap();
-    let runtime_before = std::fs::read(&runtime_paths.context_path).unwrap();
+    let manifest_path = config
+        .paths_for_session_id(&workspace_id)
+        .unwrap()
+        .manifest_path;
+    let runtime_before = std::fs::read(&manifest_path).unwrap();
 
     config
         .persist_capture(sample_request(
@@ -164,7 +166,7 @@ fn context_capture_persistence_isolation_is_byte_stable() {
         ))
         .unwrap();
 
-    let runtime_after = std::fs::read(&runtime_paths.context_path).unwrap();
+    let runtime_after = std::fs::read(&manifest_path).unwrap();
     assert_eq!(runtime_before, runtime_after);
 }
 
@@ -191,9 +193,9 @@ fn workflow_persists_mutation_and_reload() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let after_ticket = config
         .workflow_add_node(
@@ -295,9 +297,9 @@ fn workflow_promotion_preserves_node_identity() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     config
         .workflow_add_node(
@@ -345,12 +347,12 @@ fn workflow_ticket_node_rejects_non_ticket_urn() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
 
     let error = config
         .workflow_add_node(
-            &init.context.workspace_session_id,
+            &init.context.session_id,
             SessionWorkflowNodeDraft {
                 node_id: Some("node-ticket".to_string()),
                 kind: SessionWorkflowNodeKind::Ticket,
@@ -378,9 +380,9 @@ fn workflow_batches_are_atomic_and_preserve_duplicate_no_ops() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
     let draft = |node_id: &str, title: &str| SessionWorkflowNodeDraft {
         node_id: Some(node_id.to_string()),
         kind: SessionWorkflowNodeKind::Task,
@@ -460,7 +462,7 @@ fn session_run_lineage_round_trip() {
 
     // Create the initial runtime context (first run).
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
     let ctx = &init.context;
     let session_id = ctx.canonical_session_id();
@@ -476,7 +478,7 @@ fn session_run_lineage_round_trip() {
     // Force a second run on the same workspace.
     let resume = config
         .init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some(ctx.workspace_session_id.clone()),
+            session_id: Some(ctx.session_id.clone()),
             force_new_run: true,
             predecessor_run_id: None,
         })
@@ -491,7 +493,7 @@ fn session_run_lineage_round_trip() {
 
     // Read back and verify both-direction navigation.
     let ctx2 = config
-        .read_runtime_context(&ctx.workspace_session_id)
+        .read_runtime_context(&ctx.session_id)
         .unwrap();
 
     let runs = ctx2.runs_for_session(&session_id);
@@ -545,9 +547,9 @@ fn writes_never_target_legacy_runtime_tree() {
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
 
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id.clone();
+    let workspace_id = init.context.session_id.clone();
 
     config
         .pin_runtime_entity(

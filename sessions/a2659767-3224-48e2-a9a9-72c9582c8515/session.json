@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
-  "workspace_session_id": "a2659767-3224-48e2-a9a9-72c9582c8515",
-  "workspace_slug": "default",
-  "created_at": "2026-08-12T11:14:13.450095900Z",
-  "updated_at": "2026-08-12T11:14:13.450095900Z",
+  "session_id": "a2659767-3224-48e2-a9a9-72c9582c8515",
+  "source": "migrated-runtime-context",
+  "started_at": "2026-08-12T11:14:13.450095900Z",
+  "captured_at": "2026-08-12T11:14:13.450095900Z",
+  "metadata": {
+    "workspace_slug": "default"
+  },
+  "links": {},
   "active_run_id": "1b2ea9d4-d774-4b1f-8c83-4c571a34be23",
   "runs": [
     {
@@ -11,6 +15,5 @@
       "captured_session_id": "a2659767-3224-48e2-a9a9-72c9582c8515",
       "started_at": "2026-08-12T11:14:13.450095900Z"
     }
-  ],
-  "workflow": {}
+  ]
 }

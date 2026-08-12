@@ -5,9 +5,9 @@ fn workflow_snapshot_resolves_live_state_and_emits_missing_diagnostics() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     config
         .workflow_add_node(
@@ -80,9 +80,9 @@ fn workflow_render_outputs_are_deterministic_and_escaped() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     config
         .workflow_add_node(
@@ -165,9 +165,9 @@ fn workflow_render_is_read_only_for_runtime_persistence() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     config
         .workflow_add_node(
@@ -187,16 +187,18 @@ fn workflow_render_is_read_only_for_runtime_persistence() {
         )
         .unwrap();
 
-    let runtime_paths =
-        config.runtime_paths_for_workspace(&workspace_id).unwrap();
-    let before = std::fs::read(&runtime_paths.context_path).unwrap();
+    let manifest_path = config
+        .paths_for_session_id(&workspace_id)
+        .unwrap()
+        .manifest_path;
+    let before = std::fs::read(&manifest_path).unwrap();
 
     let _ = config
         .workflow_render_terminal(&workspace_id, None)
         .unwrap();
     let _ = config.workflow_render_mermaid(&workspace_id, None).unwrap();
 
-    let after = std::fs::read(&runtime_paths.context_path).unwrap();
+    let after = std::fs::read(&manifest_path).unwrap();
     assert_eq!(before, after);
 }
 
@@ -206,9 +208,9 @@ fn handoff_persists_before_render_and_resume_links_new_run() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let _rendered = config
         .render_handoff_terminal(
@@ -238,7 +240,7 @@ fn handoff_persists_before_render_and_resume_links_new_run() {
     let handoff_json_path = handoff_folder.join("handoff.json");
     let handoff: crate::SessionHandoffRecord =
         serde_json::from_slice(&std::fs::read(handoff_json_path).unwrap()).unwrap();
-    assert_eq!(handoff.workspace_session_id, workspace_id);
+    assert_eq!(handoff.session_id, workspace_id);
     assert_eq!(handoff.outgoing_run_id, init.context.active_run_id);
     assert!(handoff.resume_command.contains(&workspace_id));
     assert!(handoff.resume_command.contains(&handoff.outgoing_run_id));
@@ -246,7 +248,7 @@ fn handoff_persists_before_render_and_resume_links_new_run() {
     let resumed = config
         .resume_workspace_context(&workspace_id, &handoff.outgoing_run_id)
         .unwrap();
-    assert_eq!(resumed.context.workspace_session_id, workspace_id);
+    assert_eq!(resumed.context.session_id, workspace_id);
     assert_ne!(resumed.run.run_id, handoff.outgoing_run_id);
     assert_eq!(
         resumed.run.predecessor_run_id.as_deref(),
@@ -260,9 +262,9 @@ fn handoff_package_missing_objective_is_rejected() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(crate::SessionRuntimeInitRequest::default())
+        .init_runtime_context(crate::SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let result = config.create_handoff_record(
         &workspace_id,
@@ -292,9 +294,9 @@ fn handoff_package_round_trip_persists_schema_fields() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(crate::SessionRuntimeInitRequest::default())
+        .init_runtime_context(crate::SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let package = crate::SessionHandoffPackage {
         objective: "Implement required-field enforcement".to_string(),
@@ -365,9 +367,9 @@ fn handoff_package_with_nonexistent_target_file_fails_at_creation_time() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(crate::SessionRuntimeInitRequest::default())
+        .init_runtime_context(crate::SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let package = crate::SessionHandoffPackage {
         objective: "Implement a nonexistent-path regression".to_string(),
@@ -423,9 +425,9 @@ fn handoff_package_normalizes_backslash_target_files_to_forward_slash() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(crate::SessionRuntimeInitRequest::default())
+        .init_runtime_context(crate::SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let package = crate::SessionHandoffPackage {
         objective: "Verify repo-root-relative forward-slash normalization"
@@ -523,9 +525,9 @@ fn handoff_package_with_open_escalations_persists_but_not_ready() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(crate::SessionRuntimeInitRequest::default())
+        .init_runtime_context(crate::SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let package = crate::SessionHandoffPackage {
         objective: "Implement something".to_string(),

@@ -180,7 +180,8 @@ impl SessionHandoffPackage {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionHandoffRecord {
     pub handoff_id: String,
-    pub workspace_session_id: String,
+    #[serde(alias = "workspace_session_id")]
+    pub session_id: String,
     pub outgoing_run_id: String,
     pub created_at: DateTime<Utc>,
     pub resume_command: String,
@@ -239,7 +240,8 @@ pub struct HandoffBacklogFilter {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionFinishRecord {
-    pub workspace_session_id: String,
+    #[serde(alias = "workspace_session_id")]
+    pub session_id: String,
     pub run_id: String,
     pub finished_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -252,4 +254,28 @@ pub struct SessionFinishRecord {
 pub struct SessionFinishResult {
     pub record: SessionFinishRecord,
     pub already_finished: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn handoff_record_deserializes_legacy_workspace_session_id_alias() {
+        let record: SessionHandoffRecord = serde_json::from_value(json!({
+            "handoff_id": "handoff-1",
+            "workspace_session_id": "11111111-1111-4111-8111-111111111111",
+            "outgoing_run_id": "run-1",
+            "created_at": "2026-08-12T00:00:00Z",
+            "resume_command": "session resume",
+            "pinned_entities": [],
+            "workflow": {
+                "workflow": { "nodes": [], "edges": [] }
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(record.session_id, "11111111-1111-4111-8111-111111111111");
+    }
 }

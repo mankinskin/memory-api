@@ -90,10 +90,7 @@ fn subagent_rollup_links_delegated_session_to_parent() {
     };
 
     let context = SessionRuntimeContext {
-        schema_version: 1,
-        workspace_session_id: "ws-session-789".to_string(),
         session_id: delegated_session_id.to_string(),
-        workspace_slug: "test".to_string(),
         created_at: Utc::now(),
         updated_at: Utc::now(),
         active_run_id: run_id.to_string(),
@@ -228,10 +225,7 @@ fn subagent_rollup_aggregates_token_cost_model_per_delegated_session() {
     };
 
     let context = SessionRuntimeContext {
-        schema_version: 1,
-        workspace_session_id: "ws-session-xyz".to_string(),
         session_id: delegated_session_id.to_string(),
-        workspace_slug: "test".to_string(),
         created_at: Utc::now(),
         updated_at: Utc::now(),
         active_run_id: run_id.to_string(),

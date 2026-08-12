@@ -10,13 +10,16 @@ pub enum SessionError {
     #[error("session capture is missing a session id")]
     MissingSessionId,
 
+    #[error("runtime session id is required; no active-session fallback exists")]
+    MissingRuntimeSessionId,
+
     #[error("session capture did not include any turns")]
     EmptyTurns,
 
     #[error("session store root cannot be empty")]
     EmptyStoreRoot,
 
-    #[error("session id contains invalid path characters: {0}")]
+    #[error("session id '{0}' must be a UUID from the Copilot hook payload")]
     InvalidSessionId(String),
 
     #[error("session identity `{0}` must be a UUID; use the capture or provisioning UUID")]
@@ -85,24 +88,24 @@ pub enum SessionError {
     NotFound { path: PathBuf },
 
     #[error(
-        "runtime context for workspace session {workspace_session_id} was not found"
+        "runtime context for workspace session {session_id} was not found"
     )]
-    RuntimeContextNotFound { workspace_session_id: String },
+    RuntimeContextNotFound { session_id: String },
 
     #[error("session finish is blocked: {reason}")]
     FinishBlocked { reason: String },
 
     #[error(
-        "workspace session {workspace_session_id} is finished and immutable; \
+        "workspace session {session_id} is finished and immutable; \
          a mutation was rejected"
     )]
-    WorkspaceFinished { workspace_session_id: String },
+    WorkspaceFinished { session_id: String },
 
     #[error(
-        "concurrent mutation conflict for workspace session {workspace_session_id}: \
+        "concurrent mutation conflict for workspace session {session_id}: \
          another mutation holds the runtime lock"
     )]
-    RuntimeMutationConflict { workspace_session_id: String },
+    RuntimeMutationConflict { session_id: String },
 
     #[error("no persisted sessions were found under {root}")]
     NoSessionsFound { root: PathBuf },
@@ -164,20 +167,20 @@ pub enum SessionError {
     },
 
     #[error(
-        "workflow graph for workspace session {workspace_session_id} is \
+        "workflow graph for workspace session {session_id} is \
          structurally invalid: {issues}"
     )]
     WorkflowGraphInvalid {
-        workspace_session_id: String,
+        session_id: String,
         issues: String,
     },
 
     #[error(
-        "workflow diagnostics for workspace session {workspace_session_id} \
+        "workflow diagnostics for workspace session {session_id} \
          are unresolved: {diagnostics}"
     )]
     WorkflowDiagnosticsUnresolved {
-        workspace_session_id: String,
+        session_id: String,
         diagnostics: String,
     },
 }

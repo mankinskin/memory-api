@@ -204,8 +204,8 @@ pub struct SessionMoveJournalInput {
 pub struct RuntimeInitInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    #[serde(default)]
-    pub workspace_session_id: Option<String>,
+    /// Copilot session UUID. Required; the MCP tool does not resolve one implicitly.
+    pub session_id: String,
     #[serde(default)]
     pub predecessor_run_id: Option<String>,
     #[serde(default)]
@@ -216,7 +216,7 @@ pub struct RuntimeInitInput {
 pub struct RuntimeResumeInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     pub predecessor_run_id: String,
 }
 
@@ -224,7 +224,7 @@ pub struct RuntimeResumeInput {
 pub struct RuntimePinInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     pub entity_urn: String,
     #[serde(default)]
     pub relation: Option<String>,
@@ -236,7 +236,7 @@ pub struct RuntimePinInput {
 pub struct RuntimeUnpinInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     pub entity_urn: String,
 }
 
@@ -256,8 +256,8 @@ pub struct ToolMetricsInput {
 pub struct SubagentRollupsInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    /// Workspace session id to get rollups for.
-    pub workspace_session_id: String,
+    /// Copilot session UUID to get rollups for.
+    pub session_id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -352,7 +352,7 @@ pub struct EscalationResolveInput {
 pub struct RuntimeViewInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
 }
 
 /// No-argument input for the self-describing capability catalog.
@@ -363,7 +363,7 @@ pub struct CapabilitiesInput {}
 pub struct WorkflowAddNodeInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     #[serde(default)]
     pub node_id: Option<String>,
     /// Behavioral node kind. Legal values: ticket, validation, spec, task
@@ -400,7 +400,7 @@ pub struct WorkflowAddNodeInput {
 pub struct WorkflowAddEdgeInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     pub from: String,
     pub to: String,
     /// Edge kind. Legal values: depends-on (alias depends_on), order.
@@ -440,7 +440,7 @@ pub struct WorkflowNodeDraftInput {
 pub struct WorkflowAddNodesInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     pub nodes: Vec<WorkflowNodeDraftInput>,
 }
 
@@ -456,7 +456,7 @@ pub struct WorkflowEdgeDraftInput {
 pub struct WorkflowAddEdgesInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     pub edges: Vec<WorkflowEdgeDraftInput>,
 }
 
@@ -464,7 +464,7 @@ pub struct WorkflowAddEdgesInput {
 pub struct WorkflowSetStatusInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     pub node_id: String,
     /// Node status. Legal values: pending, in-progress (alias in_progress),
     /// blocked, done, deferred.
@@ -478,7 +478,7 @@ pub struct WorkflowSetStatusInput {
 pub struct WorkflowPromoteInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     pub node_id: String,
     pub ticket_urn: String,
     #[serde(default)]
@@ -489,7 +489,7 @@ pub struct WorkflowPromoteInput {
 pub struct WorkflowUpdateNodeInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     pub node_id: String,
     /// Behavioral node kind to set. Omit to leave unchanged. Legal values:
     /// ticket, validation, spec, task.
@@ -520,7 +520,7 @@ pub struct WorkflowUpdateNodeInput {
 pub struct WorkflowRemoveNodeInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     pub node_id: String,
 }
 
@@ -528,14 +528,14 @@ pub struct WorkflowRemoveNodeInput {
 pub struct WorkflowRenderInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RuntimeHandoffInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     #[serde(default)]
     pub validation: Vec<ValidationGateInput>,
     /// The single goal of the next implementation unit (required for an
@@ -657,7 +657,7 @@ impl From<HandoffUpwardContextInput> for SessionHandoffUpwardContextEntry {
 pub struct RuntimeFinishInput {
     /// Concrete workspace path, repo root, .session store path, or path inside that store. Do not use omitted, empty, 'default', '.', or '..' for entity creation.
     pub workspace: String,
-    pub workspace_session_id: String,
+    pub session_id: String,
     #[serde(default)]
     pub validation: Vec<ValidationGateInput>,
     #[serde(default)]
@@ -744,12 +744,11 @@ impl SessionServer {
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
-    /// Serialize `value` and guarantee `workspace_session_id` is present as a
-    /// prominent top-line field. `workspace_session_id` is the handle required
-    /// by every workflow/runtime call, so it is always echoed in-band and never
-    /// has to be re-fetched from a spilled resource file.
+    /// Serialize `value` and guarantee the Copilot session UUID is present as
+    /// the prominent top-line `session_id` field required by every
+    /// workflow/runtime call.
     fn json_result_with_handle<T: Serialize>(
-        workspace_session_id: &str,
+        session_id: &str,
         value: &T,
     ) -> Result<CallToolResult, McpError> {
         let mut payload = serde_json::to_value(value).map_err(|err| {
@@ -758,13 +757,13 @@ impl SessionServer {
         match payload.as_object_mut() {
             Some(object) => {
                 object.insert(
-                    "workspace_session_id".to_string(),
-                    serde_json::Value::String(workspace_session_id.to_string()),
+                    "session_id".to_string(),
+                    serde_json::Value::String(session_id.to_string()),
                 );
             },
             None => {
                 payload = serde_json::json!({
-                    "workspace_session_id": workspace_session_id,
+                    "session_id": session_id,
                     "result": payload,
                 });
             },
@@ -969,7 +968,7 @@ fn session_capability_catalog() -> serde_json::Value {
     serde_json::json!({
         "surface": "session-mcp",
         "handle": {
-            "field": "workspace_session_id",
+            "field": "session_id",
             "note": "Required by every workflow/runtime tool. Returned as a \
                      top-line field by session_runtime_init/session_runtime_resume \
                      and echoed by every workflow/runtime tool result.",
@@ -979,7 +978,7 @@ fn session_capability_catalog() -> serde_json::Value {
             "nested_roots_supported": true,
             "steps": [
                 {"order": 1, "tool": "session_runtime_init",
-                 "purpose": "Initialize or resume durable runtime context; returns the workspace_session_id handle."},
+                 "purpose": "Initialize or resume durable runtime context; returns the session_id handle."},
                 {"order": 2, "tool": "session_runtime_pin",
                  "purpose": "Pin a ticket/spec/rule entity URN into runtime context."},
                 {"order": 2, "tool": "session_runtime_view",
@@ -1057,7 +1056,7 @@ impl SessionServer {
 
     #[tool(
         name = "session_runtime_init",
-        description = "Initialize or resume durable runtime context for a workspace session."
+        description = "Initialize or resume durable runtime context for an explicit Copilot session UUID."
     )]
     pub async fn session_runtime_init(
         &self,
@@ -1066,18 +1065,18 @@ impl SessionServer {
         let result = self
             .config_for_workspace(&input.workspace)?
             .init_runtime_context(SessionRuntimeInitRequest {
-                workspace_session_id: input.workspace_session_id,
+                session_id: Some(input.session_id),
                 predecessor_run_id: input.predecessor_run_id,
                 force_new_run: input.force_new_run,
             })
             .map_err(Self::session_err)?;
-        let handle = result.context.workspace_session_id.clone();
+        let handle = result.context.session_id.clone();
         Self::json_result_with_handle(&handle, &result)
     }
 
     #[tool(
         name = "session_runtime_resume",
-        description = "Resume an existing durable workspace session using predecessor run lineage."
+        description = "Resume an existing Copilot session UUID using predecessor run lineage."
     )]
     pub async fn session_runtime_resume(
         &self,
@@ -1086,11 +1085,11 @@ impl SessionServer {
         let result = self
             .config_for_workspace(&input.workspace)?
             .resume_workspace_context(
-                &input.workspace_session_id,
+                &input.session_id,
                 &input.predecessor_run_id,
             )
             .map_err(Self::session_err)?;
-        let handle = result.context.workspace_session_id.clone();
+        let handle = result.context.session_id.clone();
         Self::json_result_with_handle(&handle, &result)
     }
 
@@ -1105,13 +1104,13 @@ impl SessionServer {
         let context = self
             .config_for_workspace(&input.workspace)?
             .pin_runtime_entity(
-                &input.workspace_session_id,
+                &input.session_id,
                 &input.entity_urn,
                 input.relation,
                 input.reason,
             )
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &context)
+        Self::json_result_with_handle(&input.session_id, &context)
     }
 
     #[tool(
@@ -1125,11 +1124,11 @@ impl SessionServer {
         let context = self
             .config_for_workspace(&input.workspace)?
             .unpin_runtime_entity(
-                &input.workspace_session_id,
+                &input.session_id,
                 &input.entity_urn,
             )
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &context)
+        Self::json_result_with_handle(&input.session_id, &context)
     }
 
     #[tool(
@@ -1142,14 +1141,14 @@ impl SessionServer {
     ) -> Result<CallToolResult, McpError> {
         let view = self
             .config_for_workspace(&input.workspace)?
-            .view_runtime_context(&input.workspace_session_id)
+            .view_runtime_context(&input.session_id)
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &view)
+        Self::json_result_with_handle(&input.session_id, &view)
     }
 
     #[tool(
         name = "session_runtime_render_instructions",
-        description = "Render a focused instruction set from the workspace session's pinned rule URNs."
+        description = "Render a focused instruction set from the Copilot session UUID's pinned rule URNs."
     )]
     pub async fn session_runtime_render_instructions(
         &self,
@@ -1157,10 +1156,10 @@ impl SessionServer {
     ) -> Result<CallToolResult, McpError> {
         let render = self
             .config_for_workspace(&input.workspace)?
-            .render_pinned_rule_instructions(&input.workspace_session_id)
+            .render_pinned_rule_instructions(&input.session_id)
             .map_err(Self::session_err)?;
         Self::json_result_with_handle(
-            &input.workspace_session_id,
+            &input.session_id,
             &serde_json::json!({"render": render}),
         )
     }
@@ -1178,7 +1177,7 @@ impl SessionServer {
         let context = self
             .config_for_workspace(&input.workspace)?
             .workflow_add_node(
-                &input.workspace_session_id,
+                &input.session_id,
                 SessionWorkflowNodeDraft {
                     node_id: input.node_id,
                     kind: parse_node_kind(&input.kind)?,
@@ -1193,7 +1192,7 @@ impl SessionServer {
                 },
             )
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &context)
+        Self::json_result_with_handle(&input.session_id, &context)
     }
 
     #[tool(
@@ -1232,9 +1231,9 @@ impl SessionServer {
             .collect::<Result<Vec<_>, McpError>>()?;
         let context = self
             .config_for_workspace(&input.workspace)?
-            .workflow_add_nodes(&input.workspace_session_id, drafts)
+            .workflow_add_nodes(&input.session_id, drafts)
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &context)
+        Self::json_result_with_handle(&input.session_id, &context)
     }
 
     #[tool(
@@ -1248,13 +1247,13 @@ impl SessionServer {
         let context = self
             .config_for_workspace(&input.workspace)?
             .workflow_add_edge(
-                &input.workspace_session_id,
+                &input.session_id,
                 &input.from,
                 &input.to,
                 parse_edge_kind(&input.kind)?,
             )
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &context)
+        Self::json_result_with_handle(&input.session_id, &context)
     }
 
     #[tool(
@@ -1281,9 +1280,9 @@ impl SessionServer {
             .collect::<Result<Vec<_>, McpError>>()?;
         let context = self
             .config_for_workspace(&input.workspace)?
-            .workflow_add_edges(&input.workspace_session_id, edges)
+            .workflow_add_edges(&input.session_id, edges)
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &context)
+        Self::json_result_with_handle(&input.session_id, &context)
     }
 
     #[tool(
@@ -1297,13 +1296,13 @@ impl SessionServer {
         let context = self
             .config_for_workspace(&input.workspace)?
             .workflow_update_node_status(
-                &input.workspace_session_id,
+                &input.session_id,
                 &input.node_id,
                 parse_node_status(&input.status)?,
                 input.deferred_reason,
             )
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &context)
+        Self::json_result_with_handle(&input.session_id, &context)
     }
 
     #[tool(
@@ -1331,7 +1330,7 @@ impl SessionServer {
         let context = self
             .config_for_workspace(&input.workspace)?
             .workflow_update_node(
-                &input.workspace_session_id,
+                &input.session_id,
                 &input.node_id,
                 SessionWorkflowNodePatch {
                     kind,
@@ -1346,7 +1345,7 @@ impl SessionServer {
                 },
             )
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &context)
+        Self::json_result_with_handle(&input.session_id, &context)
     }
 
     #[tool(
@@ -1361,9 +1360,9 @@ impl SessionServer {
     ) -> Result<CallToolResult, McpError> {
         let context = self
             .config_for_workspace(&input.workspace)?
-            .workflow_remove_node(&input.workspace_session_id, &input.node_id)
+            .workflow_remove_node(&input.session_id, &input.node_id)
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &context)
+        Self::json_result_with_handle(&input.session_id, &context)
     }
 
     #[tool(
@@ -1377,13 +1376,13 @@ impl SessionServer {
         let context = self
             .config_for_workspace(&input.workspace)?
             .workflow_promote_node_to_ticket(
-                &input.workspace_session_id,
+                &input.session_id,
                 &input.node_id,
                 &input.ticket_urn,
                 input.cached_ticket_title,
             )
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &context)
+        Self::json_result_with_handle(&input.session_id, &context)
     }
 
     #[tool(
@@ -1396,10 +1395,10 @@ impl SessionServer {
     ) -> Result<CallToolResult, McpError> {
         let render = self
             .config_for_workspace(&input.workspace)?
-            .workflow_render_terminal(&input.workspace_session_id, None)
+            .workflow_render_terminal(&input.session_id, None)
             .map_err(Self::session_err)?;
         Self::json_result_with_handle(
-            &input.workspace_session_id,
+            &input.session_id,
             &serde_json::json!({"render": render}),
         )
     }
@@ -1414,10 +1413,10 @@ impl SessionServer {
     ) -> Result<CallToolResult, McpError> {
         let render = self
             .config_for_workspace(&input.workspace)?
-            .workflow_render_mermaid(&input.workspace_session_id, None)
+            .workflow_render_mermaid(&input.session_id, None)
             .map_err(Self::session_err)?;
         Self::json_result_with_handle(
-            &input.workspace_session_id,
+            &input.session_id,
             &serde_json::json!({"render": render}),
         )
     }
@@ -1465,13 +1464,13 @@ impl SessionServer {
         let result = self
             .config_for_workspace(&input.workspace)?
             .create_handoff_result(
-                &input.workspace_session_id,
+                &input.session_id,
                 package,
                 input.validation.into_iter().map(Into::into).collect(),
                 None,
             )
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &result)
+        Self::json_result_with_handle(&input.session_id, &result)
     }
 
     #[tool(
@@ -1485,13 +1484,13 @@ impl SessionServer {
         let result = self
             .config_for_workspace(&input.workspace)?
             .finish_workflow(
-                &input.workspace_session_id,
+                &input.session_id,
                 input.validation.into_iter().map(Into::into).collect(),
                 input.deferred_optional_node_ids,
                 None,
             )
             .map_err(Self::session_err)?;
-        Self::json_result_with_handle(&input.workspace_session_id, &result)
+        Self::json_result_with_handle(&input.session_id, &result)
     }
 
     #[tool(
@@ -1642,7 +1641,7 @@ impl SessionServer {
 
     #[tool(
         name = "session_subagent_rollups",
-        description = "Compute and report per-sub-agent cost and usage rollups for a workspace session."
+        description = "Compute and report per-sub-agent cost and usage rollups for a Copilot session UUID."
     )]
     pub async fn session_subagent_rollups(
         &self,
@@ -1650,7 +1649,7 @@ impl SessionServer {
     ) -> Result<CallToolResult, McpError> {
         let rollups = self
             .config_for_workspace(&input.workspace)?
-            .subagent_rollups(&input.workspace_session_id)
+            .subagent_rollups(&input.session_id)
             .map_err(Self::session_err)?;
         Self::json_result(&rollups)
     }
@@ -2140,7 +2139,7 @@ mod tests {
         let receipt = server
             .session_check_in(Parameters(CheckInInput {
                 workspace: store_root.display().to_string(),
-                session_id: "s1".to_string(),
+                session_id: "11111111-1111-4111-8111-111111111111".to_string(),
                 owner_id: "agent".to_string(),
                 ticket_id: "t1".to_string(),
                 worktree_path: worktree.to_string_lossy().to_string(),
@@ -2153,7 +2152,7 @@ mod tests {
 
         let lookup = server
             .session_lookup(Parameters(LookupInput {
-                session_id: "s1".to_string(),
+                session_id: "11111111-1111-4111-8111-111111111111".to_string(),
             }))
             .await
             .expect("lookup");
@@ -2171,7 +2170,7 @@ mod tests {
         server
             .session_check_in(Parameters(CheckInInput {
                 workspace: store_root.display().to_string(),
-                session_id: "s-ticket".to_string(),
+                session_id: "33333333-3333-4333-8333-333333333333".to_string(),
                 owner_id: "agent-ticket".to_string(),
                 ticket_id: "ticket-mcp".to_string(),
                 worktree_path: worktree.to_string_lossy().to_string(),
@@ -2191,7 +2190,7 @@ mod tests {
         assert!(!result.is_error.unwrap_or(false));
         let payload = extract_json(result);
         assert_eq!(payload["count"], 1);
-        assert_eq!(payload["sessions"][0]["session_id"], "s-ticket");
+        assert_eq!(payload["sessions"][0]["session_id"], "33333333-3333-4333-8333-333333333333");
         assert_eq!(payload["sessions"][0]["matched_strength"], "strict");
 
         let unrelated = server
@@ -2211,7 +2210,13 @@ mod tests {
         let session_root = dir.path().join(".session");
         let config = SessionStoreConfig::new(&session_root, "default");
         let init = config
-            .init_runtime_context(Default::default())
+            .init_runtime_context(SessionRuntimeInitRequest {
+                session_id: Some(
+                    "11111111-1111-4111-8111-111111111111".to_string(),
+                ),
+                predecessor_run_id: None,
+                force_new_run: false,
+            })
             .expect("init runtime");
         let mut rule_store =
             rule_api::RuleStore::open_or_init(&dir.path().join(".rule"))
@@ -2226,7 +2231,7 @@ mod tests {
         let rule_id = rule_store.create(&rule, None).expect("create rule");
         config
             .pin_runtime_entity(
-                &init.context.workspace_session_id,
+                &init.context.session_id,
                 &format!("ce://default/rules/{rule_id}"),
                 None,
                 None,
@@ -2237,7 +2242,7 @@ mod tests {
         let result = server
             .session_runtime_render_instructions(Parameters(RuntimeViewInput {
                 workspace: session_root.display().to_string(),
-                workspace_session_id: init.context.workspace_session_id,
+                session_id: init.context.session_id,
             }))
             .await
             .expect("render instructions");
@@ -2257,7 +2262,7 @@ mod tests {
         let server =
             SessionServer::new(store_root.clone(), "default".to_string());
         let config = SessionStoreConfig::new(store_root, "default".to_string());
-        seed(&config, "s2", "agent-2");
+        seed(&config, "22222222-2222-4222-8222-222222222222", "agent-2");
 
         let query = server
             .session_query(Parameters(QueryInput {
@@ -2273,7 +2278,7 @@ mod tests {
 
         let skeleton = server
             .session_peek_skeleton(Parameters(PeekSkeletonInput {
-                session_id: "s2".to_string(),
+                session_id: "22222222-2222-4222-8222-222222222222".to_string(),
                 preview_chars: None,
             }))
             .await
@@ -2459,10 +2464,10 @@ mod tests {
         );
     }
 
-    // ── T-HANDLE: init/resume + workflow tools echo workspace_session_id ──────
+    // ── T-HANDLE: init/resume + workflow tools echo session_id ──────
 
     #[tokio::test]
-    async fn runtime_init_result_exposes_workspace_session_id_top_line() {
+    async fn runtime_init_result_exposes_session_id_top_line() {
         let dir = tempdir().unwrap();
         let session_root = dir.path().join(".session");
         let server =
@@ -2471,20 +2476,21 @@ mod tests {
         let result = server
             .session_runtime_init(Parameters(RuntimeInitInput {
                 workspace: session_root.display().to_string(),
-                workspace_session_id: None,
+                session_id: "22222222-2222-4222-8222-222222222222"
+                    .to_string(),
                 predecessor_run_id: None,
                 force_new_run: false,
             }))
             .await
             .expect("runtime init");
         let payload = extract_json(result);
-        let handle = payload["workspace_session_id"]
+        let handle = payload["session_id"]
             .as_str()
-            .expect("top-line workspace_session_id");
+            .expect("top-line session_id");
         assert!(!handle.is_empty());
         // The handle matches the nested context handle (no drift).
         assert_eq!(
-            payload["context"]["workspace_session_id"].as_str(),
+            payload["context"]["session_id"].as_str(),
             Some(handle)
         );
 
@@ -2492,7 +2498,7 @@ mod tests {
         let node = server
             .session_workflow_add_node(Parameters(WorkflowAddNodeInput {
                 workspace: session_root.display().to_string(),
-                workspace_session_id: handle.to_string(),
+                session_id: handle.to_string(),
                 node_id: Some("n1".to_string()),
                 kind: "task".to_string(),
                 requirement: "optional".to_string(),
@@ -2507,7 +2513,7 @@ mod tests {
             .await
             .expect("add node");
         let node_payload = extract_json(node);
-        assert_eq!(node_payload["workspace_session_id"].as_str(), Some(handle));
+        assert_eq!(node_payload["session_id"].as_str(), Some(handle));
     }
 
     #[tokio::test]
@@ -2519,9 +2525,15 @@ mod tests {
             SessionServer::new(session_root.clone(), "default".to_string());
         let config = server.config_for_workspace(&workspace).unwrap();
         let init = config
-            .init_runtime_context(SessionRuntimeInitRequest::default())
+            .init_runtime_context(SessionRuntimeInitRequest {
+                session_id: Some(
+                    "33333333-3333-4333-8333-333333333333".to_string(),
+                ),
+                predecessor_run_id: None,
+                force_new_run: false,
+            })
             .unwrap();
-        let workspace_session_id = init.context.workspace_session_id;
+        let session_id = init.context.session_id;
         let node = |node_id: &str, kind: &str| WorkflowNodeDraftInput {
             node_id: Some(node_id.to_string()),
             kind: kind.to_string(),
@@ -2538,7 +2550,7 @@ mod tests {
         let node_error = server
             .session_workflow_add_nodes(Parameters(WorkflowAddNodesInput {
                 workspace: workspace.clone(),
-                workspace_session_id: workspace_session_id.clone(),
+                session_id: session_id.clone(),
                 nodes: vec![node("a", "task"), node("bad", "review-criterion")],
             }))
             .await
@@ -2551,7 +2563,7 @@ mod tests {
         );
         assert!(
             config
-                .read_runtime_context(&workspace_session_id)
+                .read_runtime_context(&session_id)
                 .unwrap()
                 .workflow
                 .nodes
@@ -2561,7 +2573,7 @@ mod tests {
         let node_result = server
             .session_workflow_add_nodes(Parameters(WorkflowAddNodesInput {
                 workspace: workspace.clone(),
-                workspace_session_id: workspace_session_id.clone(),
+                session_id: session_id.clone(),
                 nodes: vec![node("a", "task"), node("b", "task")],
             }))
             .await
@@ -2582,7 +2594,7 @@ mod tests {
         let edge_error = server
             .session_workflow_add_edges(Parameters(WorkflowAddEdgesInput {
                 workspace: workspace.clone(),
-                workspace_session_id: workspace_session_id.clone(),
+                session_id: session_id.clone(),
                 edges: vec![
                     edge("a", "b", "depends-on"),
                     edge("b", "a", "related-to"),
@@ -2594,7 +2606,7 @@ mod tests {
         assert!(edge_error.message.contains("did you mean kind=depends-on?"));
         assert!(
             config
-                .read_runtime_context(&workspace_session_id)
+                .read_runtime_context(&session_id)
                 .unwrap()
                 .workflow
                 .edges
@@ -2604,7 +2616,7 @@ mod tests {
         let edge_result = server
             .session_workflow_add_edges(Parameters(WorkflowAddEdgesInput {
                 workspace,
-                workspace_session_id,
+                session_id,
                 edges: vec![
                     edge("a", "b", "depends-on"),
                     edge("b", "a", "order"),
@@ -2637,7 +2649,7 @@ mod tests {
         let catalog = extract_json(result);
 
         assert_eq!(catalog["surface"], "session-mcp");
-        assert_eq!(catalog["handle"]["field"], "workspace_session_id");
+        assert_eq!(catalog["handle"]["field"], "session_id");
 
         let steps = catalog["lifecycle"]["steps"]
             .as_array()

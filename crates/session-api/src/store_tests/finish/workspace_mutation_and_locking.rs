@@ -7,9 +7,9 @@ fn finished_workspace_rejects_all_mutations() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root, "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     config
         .workflow_add_node(
@@ -94,9 +94,9 @@ fn aged_live_lock_blocks_second_owner_and_releases_safely() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root, "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let paths = config.runtime_paths_for_workspace(&workspace_id).unwrap();
     let lock_path = paths.workspace_dir.join(".context.lock");
@@ -158,9 +158,9 @@ fn finish_excludes_mutation_init_and_resume_until_terminal_commit() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
     let predecessor_run_id = init.run.run_id;
     let ticket_urn =
         "ce://context-engine/tickets/66666666-6666-4666-8666-666666666666";
@@ -227,7 +227,7 @@ fn finish_excludes_mutation_init_and_resume_until_terminal_commit() {
 
     let init_error = config
         .init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some(workspace_id.clone()),
+            session_id: Some(workspace_id.clone()),
             predecessor_run_id: None,
             force_new_run: false,
         })
@@ -267,9 +267,9 @@ fn finished_workspace() -> (SessionStoreConfig, String, TempDir) {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root, "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     config
         .workflow_add_node(
@@ -317,7 +317,7 @@ fn finished_workspace_rejects_resume_run_creation() {
 
     let force_err = config
         .init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some(workspace_id.clone()),
+            session_id: Some(workspace_id.clone()),
             predecessor_run_id: None,
             force_new_run: true,
         })

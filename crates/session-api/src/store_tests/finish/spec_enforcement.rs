@@ -35,9 +35,9 @@ fn spec_workspace() -> (SessionStoreConfig, String, TempDir) {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
     (config, workspace_id, tempdir)
 }
 

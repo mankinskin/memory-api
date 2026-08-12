@@ -870,6 +870,8 @@ pub fn handle_server_message(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TEST_SESSION_ID: &str = "66666666-6666-4666-8666-666666666666";
     use session_api::{
         SessionStoreConfig,
         SessionWorktreeCheckInRequest,
@@ -936,7 +938,7 @@ mod tests {
         if let Some(m) = model {
             args.insert(CALLER_MODEL_ARG.into(), json!(m));
         }
-        args.insert(SESSION_ID_ARG.into(), json!("test-session-id"));
+        args.insert(SESSION_ID_ARG.into(), json!(TEST_SESSION_ID));
         json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -951,12 +953,22 @@ mod tests {
     ) -> (TempDir, PathBuf, PathBuf) {
         let temp = tempfile::tempdir().unwrap();
         let main_checkout = temp.path().join("repository");
-        let worktree = main_checkout.join(".worktrees").join("feature");
+        let worktree = main_checkout
+            .join(".worktrees")
+            .join(TEST_SESSION_ID)
+            .join("feature");
         std::fs::create_dir_all(main_checkout.join(".git")).unwrap();
+        std::fs::create_dir_all(main_checkout.join(".git/worktrees/feature"))
+            .unwrap();
+        std::fs::write(
+            main_checkout.join(".git/worktrees/feature/HEAD"),
+            "ref: refs/heads/agent/test\n",
+        )
+        .unwrap();
         std::fs::create_dir_all(&worktree).unwrap();
         std::fs::write(
             worktree.join(".git"),
-            "gitdir: ../../.git/worktrees/feature\n",
+            "gitdir: ../../../.git/worktrees/feature\n",
         )
         .unwrap();
         let assigned_checkout = if use_main_checkout {
@@ -975,7 +987,7 @@ mod tests {
             SessionStoreConfig::new(main_checkout.join(".session"), "default");
         store
             .check_in_worktree(SessionWorktreeCheckInRequest {
-                session_id: "test-session-id".to_string(),
+                session_id: TEST_SESSION_ID.to_string(),
                 owner_id: "agent".to_string(),
                 ticket_id: "ticket".to_string(),
                 worktree_path: assigned_checkout.clone(),
@@ -984,8 +996,8 @@ mod tests {
             })
             .unwrap();
         let path = main_checkout
-            .join(".session/sessions/test-session-id/session.json");
-        let mut record = store.read_session("test-session-id").unwrap();
+            .join(format!(".session/sessions/{TEST_SESSION_ID}/session.json"));
+        let mut record = store.read_session(TEST_SESSION_ID).unwrap();
         record.metadata.worktree.as_mut().unwrap().status = status;
         std::fs::write(path, serde_json::to_vec_pretty(&record).unwrap())
             .unwrap();
@@ -1227,25 +1239,28 @@ mod tests {
     }
 
     #[test]
-    fn main_checkout_scoped_mutation_is_blocked() {
+    fn positional_worktree_discovery_overrides_legacy_main_checkout_assignment() {
         let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let (_temp, main_checkout, _worktree) =
             routing_fixture(SessionWorktreeStatus::Active, true);
         unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", main_checkout) };
-        let text = response_text(route(allowed_call(), &test_gate()).0);
-        assert!(text.contains("main checkout mutations are blocked"));
+        let (ClientAction::Forward(_), _) = route(allowed_call(), &test_gate())
+        else {
+            panic!("positional UUID worktree should be forwarded");
+        };
         unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
     }
 
     #[test]
-    fn inactive_session_assignment_is_rejected() {
+    fn positional_worktree_discovery_ignores_legacy_assignment_status() {
         let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let (_temp, main_checkout, _worktree) =
             routing_fixture(SessionWorktreeStatus::Superseded, false);
         unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", main_checkout) };
-        let text = response_text(route(allowed_call(), &test_gate()).0);
-        assert!(text.contains("test-session-id"));
-        assert!(text.contains("Superseded"));
+        let (ClientAction::Forward(_), _) = route(allowed_call(), &test_gate())
+        else {
+            panic!("positional UUID worktree should be forwarded");
+        };
         unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
     }
 

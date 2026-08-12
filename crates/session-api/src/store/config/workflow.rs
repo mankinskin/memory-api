@@ -1,13 +1,13 @@
 impl SessionStoreConfig {
     pub fn workflow_update_node_status(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         node_id: &str,
         status: SessionWorkflowNodeStatus,
         deferred_reason: Option<String>,
     ) -> Result<SessionRuntimeContext, SessionError> {
-        let _lock = self.begin_runtime_mutation(workspace_session_id)?;
-        let mut context = self.read_runtime_context(workspace_session_id)?;
+        let _lock = self.begin_runtime_mutation(session_id)?;
+        let mut context = self.read_runtime_context(session_id)?;
         let node = context
             .workflow
             .nodes
@@ -28,7 +28,7 @@ impl SessionStoreConfig {
         };
         node.updated_at = chrono::Utc::now();
         context.updated_at = node.updated_at;
-        self.persist_runtime_context(&context)?;
+        self.persist_runtime_state(&context)?;
         Ok(context)
     }
 
@@ -48,12 +48,12 @@ impl SessionStoreConfig {
     /// so repeated identical patches are idempotent.
     pub fn workflow_update_node(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         node_id: &str,
         patch: crate::SessionWorkflowNodePatch,
     ) -> Result<SessionRuntimeContext, SessionError> {
-        let _lock = self.begin_runtime_mutation(workspace_session_id)?;
-        let mut context = self.read_runtime_context(workspace_session_id)?;
+        let _lock = self.begin_runtime_mutation(session_id)?;
+        let mut context = self.read_runtime_context(session_id)?;
         let index = context
             .workflow
             .nodes
@@ -112,7 +112,7 @@ impl SessionStoreConfig {
         context.workflow.nodes[index] = updated;
         sort_workflow_graph(&mut context.workflow);
         context.updated_at = chrono::Utc::now();
-        self.persist_runtime_context(&context)?;
+        self.persist_runtime_state(&context)?;
         Ok(context)
     }
 
@@ -125,11 +125,11 @@ impl SessionStoreConfig {
     /// pruned so the graph never carries a dangling reference.
     pub fn workflow_remove_node(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         node_id: &str,
     ) -> Result<SessionRuntimeContext, SessionError> {
-        let _lock = self.begin_runtime_mutation(workspace_session_id)?;
-        let mut context = self.read_runtime_context(workspace_session_id)?;
+        let _lock = self.begin_runtime_mutation(session_id)?;
+        let mut context = self.read_runtime_context(session_id)?;
         let existed = context
             .workflow
             .nodes
@@ -147,19 +147,19 @@ impl SessionStoreConfig {
             .edges
             .retain(|edge| edge.from != node_id && edge.to != node_id);
         context.updated_at = chrono::Utc::now();
-        self.persist_runtime_context(&context)?;
+        self.persist_runtime_state(&context)?;
         Ok(context)
     }
 
     pub fn workflow_add_edge(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         from: &str,
         to: &str,
         kind: SessionWorkflowEdgeKind,
     ) -> Result<SessionRuntimeContext, SessionError> {
         self.workflow_add_edges(
-            workspace_session_id,
+            session_id,
             vec![SessionWorkflowEdge {
                 from: from.to_string(),
                 to: to.to_string(),
@@ -170,11 +170,11 @@ impl SessionStoreConfig {
 
     pub fn workflow_add_edges(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         edges: Vec<SessionWorkflowEdge>,
     ) -> Result<SessionRuntimeContext, SessionError> {
-        let _lock = self.begin_runtime_mutation(workspace_session_id)?;
-        let mut context = self.read_runtime_context(workspace_session_id)?;
+        let _lock = self.begin_runtime_mutation(session_id)?;
+        let mut context = self.read_runtime_context(session_id)?;
         let known = context
             .workflow
             .nodes
@@ -212,14 +212,14 @@ impl SessionStoreConfig {
         if changed {
             sort_workflow_graph(&mut context.workflow);
             context.updated_at = chrono::Utc::now();
-            self.persist_runtime_context(&context)?;
+            self.persist_runtime_state(&context)?;
         }
         Ok(context)
     }
 
     pub fn workflow_promote_node_to_ticket(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         node_id: &str,
         ticket_urn: &str,
         cached_ticket_title: Option<String>,
@@ -230,8 +230,8 @@ impl SessionStoreConfig {
                 "promotion requires a ticket URN, got {ticket_urn}"
             )));
         }
-        let _lock = self.begin_runtime_mutation(workspace_session_id)?;
-        let mut context = self.read_runtime_context(workspace_session_id)?;
+        let _lock = self.begin_runtime_mutation(session_id)?;
+        let mut context = self.read_runtime_context(session_id)?;
         let node = context
             .workflow
             .nodes
@@ -250,16 +250,16 @@ impl SessionStoreConfig {
         }
         node.updated_at = chrono::Utc::now();
         context.updated_at = node.updated_at;
-        self.persist_runtime_context(&context)?;
+        self.persist_runtime_state(&context)?;
         Ok(context)
     }
 
     pub fn workflow_snapshot(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         resolver: Option<&dyn SessionTicketStateResolver>,
     ) -> Result<SessionWorkflowSnapshot, SessionError> {
-        let context = self.read_runtime_context(workspace_session_id)?;
+        let context = self.read_runtime_context(session_id)?;
         let mut resolutions = Vec::new();
         let mut diagnostics = Vec::new();
         let owned_resolver = resolver.is_none().then(|| self.default_ticket_state_resolver());
@@ -316,13 +316,13 @@ impl SessionStoreConfig {
 
     pub fn workflow_render_terminal(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         resolver: Option<&dyn SessionTicketStateResolver>,
     ) -> Result<String, SessionError> {
         let snapshot =
-            self.workflow_snapshot(workspace_session_id, resolver)?;
+            self.workflow_snapshot(session_id, resolver)?;
         let mut lines = Vec::new();
-        lines.push(format!("workflow {}", workspace_session_id));
+        lines.push(format!("workflow {}", session_id));
 
         let live_states = snapshot
             .resolutions
@@ -396,11 +396,11 @@ impl SessionStoreConfig {
 
     pub fn workflow_render_mermaid(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         resolver: Option<&dyn SessionTicketStateResolver>,
     ) -> Result<String, SessionError> {
         let snapshot =
-            self.workflow_snapshot(workspace_session_id, resolver)?;
+            self.workflow_snapshot(session_id, resolver)?;
         Ok(render_workflow_mermaid(
             &snapshot.workflow,
             &snapshot.resolutions,

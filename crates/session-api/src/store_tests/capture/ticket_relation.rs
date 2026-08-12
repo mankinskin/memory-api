@@ -8,7 +8,7 @@ const TARGET_TICKET: &str = "ticket-target";
 fn seed_strict_session(config: &SessionStoreConfig, tempdir: &TempDir) {
     config
         .check_in_worktree(SessionWorktreeCheckInRequest {
-            session_id: WORKTREE_SESSION_STRICT.to_string(),
+            session_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_string(),
             owner_id: "agent-strict".to_string(),
             ticket_id: TARGET_TICKET.to_string(),
             worktree_path: tempdir.path().join("wt-strict"),
@@ -20,7 +20,7 @@ fn seed_strict_session(config: &SessionStoreConfig, tempdir: &TempDir) {
 
 fn seed_linked_session(config: &SessionStoreConfig) {
     let mut request = SessionCaptureRequest::copilot(sample_payload(
-        "session-linked",
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
         Some("conversation-linked"),
         sample_time(),
         &["Working on something else"],
@@ -32,7 +32,7 @@ fn seed_linked_session(config: &SessionStoreConfig) {
 fn seed_mentioned_session(config: &SessionStoreConfig) {
     config
         .capture_copilot_hook(sample_payload(
-            RUNTIME_SESSION_MENTIONED,
+            "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
             Some("conversation-mentioned"),
             sample_time(),
             &["Handed off for follow-up"],
@@ -40,13 +40,13 @@ fn seed_mentioned_session(config: &SessionStoreConfig) {
         .unwrap();
     config
         .init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some(RUNTIME_SESSION_MENTIONED.to_string()),
+            session_id: Some("cccccccc-cccc-4ccc-8ccc-cccccccccccc".to_string()),
             ..Default::default()
         })
         .unwrap();
     config
         .create_handoff_record(
-            RUNTIME_SESSION_MENTIONED,
+            "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
             Some(SessionHandoffPackage {
                 objective: "Follow up on target ticket".to_string(),
                 target_tickets: vec![crate::SessionHandoffTargetTicket {
@@ -75,7 +75,7 @@ fn seed_mentioned_session(config: &SessionStoreConfig) {
 fn seed_transcript_only_session(config: &SessionStoreConfig) {
     config
         .capture_copilot_hook(sample_payload(
-            "session-transcript-only",
+            "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
             Some("conversation-transcript-only"),
             sample_time(),
             &[&format!("Discussing {TARGET_TICKET} in passing")],
@@ -86,7 +86,7 @@ fn seed_transcript_only_session(config: &SessionStoreConfig) {
 fn seed_unrelated_session(config: &SessionStoreConfig) {
     config
         .capture_copilot_hook(sample_payload(
-            "session-unrelated",
+            "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
             Some("conversation-unrelated"),
             sample_time(),
             &["Nothing to do with the target ticket"],
@@ -116,7 +116,7 @@ fn sessions_for_ticket_strict_matches_only_metadata_ticket_id() {
 
     assert_eq!(matches.len(), 1);
     let row = &matches[0];
-    assert_eq!(row.session_id, WORKTREE_SESSION_STRICT);
+    assert_eq!(row.session_id, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     assert_eq!(row.agent_id.as_deref(), Some("agent-strict"));
     assert_eq!(row.branch.as_deref(), Some("agent/strict-branch"));
     assert_eq!(
@@ -139,17 +139,17 @@ fn sessions_for_ticket_linked_includes_strict_and_links_but_not_mentioned() {
 
     let ids: Vec<&str> =
         matches.iter().map(|row| row.session_id.as_str()).collect();
-    assert_eq!(ids, vec![WORKTREE_SESSION_STRICT, "session-linked"]);
+    assert_eq!(ids, vec!["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]);
 
     let strict = matches
         .iter()
-        .find(|row| row.session_id == WORKTREE_SESSION_STRICT)
+        .find(|row| row.session_id == "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
         .unwrap();
     assert_eq!(strict.matched_strength, RelationStrength::Strict);
 
     let linked = matches
         .iter()
-        .find(|row| row.session_id == "session-linked")
+        .find(|row| row.session_id == "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
         .unwrap();
     assert_eq!(linked.matched_strength, RelationStrength::Linked);
 }
@@ -168,12 +168,12 @@ fn sessions_for_ticket_mentioned_includes_all_structured_tiers_only() {
         matches.iter().map(|row| row.session_id.as_str()).collect();
     assert_eq!(
         ids,
-        vec![RUNTIME_SESSION_MENTIONED, WORKTREE_SESSION_STRICT, "session-linked"]
+        vec!["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc"]
     );
 
     let mentioned = matches
         .iter()
-        .find(|row| row.session_id == RUNTIME_SESSION_MENTIONED)
+        .find(|row| row.session_id == "cccccccc-cccc-4ccc-8ccc-cccccccccccc")
         .unwrap();
     assert_eq!(mentioned.matched_strength, RelationStrength::Mentioned);
 }
@@ -190,7 +190,7 @@ fn check_in_worktree_forward_captures_ticket_linkage_for_immediate_discovery()
 
     config
         .check_in_worktree(SessionWorktreeCheckInRequest {
-            session_id: WORKTREE_SESSION_FORWARD.to_string(),
+            session_id: "f1111111-1111-4111-8111-111111111111".to_string(),
             owner_id: "agent-forward-capture".to_string(),
             ticket_id: TARGET_TICKET.to_string(),
             worktree_path: tempdir.path().join("wt-forward-capture"),
@@ -204,7 +204,7 @@ fn check_in_worktree_forward_captures_ticket_linkage_for_immediate_discovery()
         .unwrap();
 
     assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0].session_id, WORKTREE_SESSION_FORWARD);
+    assert_eq!(matches[0].session_id, "f1111111-1111-4111-8111-111111111111");
     assert_eq!(matches[0].matched_strength, RelationStrength::Strict);
 }
 
@@ -218,7 +218,7 @@ fn sessions_for_ticket_skips_unreadable_session_and_returns_the_rest() {
 
     config
         .check_in_worktree(SessionWorktreeCheckInRequest {
-            session_id: WORKTREE_SESSION_GOOD.to_string(),
+            session_id: "f2222222-2222-4222-8222-222222222222".to_string(),
             owner_id: "agent-good".to_string(),
             ticket_id: TARGET_TICKET.to_string(),
             worktree_path: tempdir.path().join("wt-good"),
@@ -231,7 +231,7 @@ fn sessions_for_ticket_skips_unreadable_session_and_returns_the_rest() {
         .path()
         .join("store")
         .join("sessions")
-        .join("session-corrupt");
+        .join("f3333333-3333-4333-8333-333333333333");
     std::fs::create_dir_all(&corrupt_dir).unwrap();
     std::fs::write(corrupt_dir.join("session.json"), b"{ not valid json")
         .unwrap();
@@ -242,5 +242,5 @@ fn sessions_for_ticket_skips_unreadable_session_and_returns_the_rest() {
         .unwrap();
 
     assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0].session_id, WORKTREE_SESSION_GOOD);
+    assert_eq!(matches[0].session_id, "f2222222-2222-4222-8222-222222222222");
 }

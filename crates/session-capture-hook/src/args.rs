@@ -13,10 +13,13 @@ use session_api::SessionError;
 pub(super) struct Args {
     pub(super) transcript_path: PathBuf,
     pub(super) store_root: Option<PathBuf>,
-    pub(super) workspace_slug: String,
     pub(super) trigger: String,
     pub(super) hook_event_name: Option<String>,
     pub(super) from_hook_stdin: bool,
+    /// UserPromptSubmit hook stdin `prompt`, persisted with the session event
+    /// stream so the submitted prompt is not lost while waiting for the
+    /// transcript file to flush.
+    pub(super) prompt: Option<String>,
     /// PostToolUse hook stdin `tool_use_id`, paired with `tool_response_chars`
     /// to build a `ToolResponseOverride` (ticket 44119807 T2).
     pub(super) tool_call_id: Option<String>,
@@ -34,7 +37,6 @@ pub(super) struct Args {
 pub(super) fn parse_args() -> Result<Args, SessionError> {
     let mut transcript_path = None;
     let mut store_root = None;
-    let mut workspace_slug = Some("default".to_string());
     let mut trigger = Some("stop".to_string());
     let mut from_hook_stdin = false;
     let mut arguments = env::args().skip(1);
@@ -53,9 +55,6 @@ pub(super) fn parse_args() -> Result<Args, SessionError> {
                     &mut arguments,
                     "--store-root",
                 )?)),
-            "--workspace-slug" =>
-                workspace_slug =
-                    Some(next_value(&mut arguments, "--workspace-slug")?),
             "--trigger" =>
                 trigger = Some(next_value(&mut arguments, "--trigger")?),
             "--from-hook-stdin" => from_hook_stdin = true,
@@ -78,10 +77,10 @@ pub(super) fn parse_args() -> Result<Args, SessionError> {
     Ok(Args {
         transcript_path,
         store_root,
-        workspace_slug: workspace_slug.unwrap_or_else(|| "default".to_string()),
         trigger: trigger.unwrap_or_else(|| "stop".to_string()),
         hook_event_name: None,
         from_hook_stdin,
+        prompt: None,
         tool_call_id: None,
         tool_response_chars: None,
         session_id: None,
@@ -112,10 +111,8 @@ pub(super) fn args_from_hook_stdin(
     {
         args.transcript_path = PathBuf::from(path);
     }
-    if let Some(workspace_slug) =
-        get_field(&payload, &["workspace_slug", "workspaceSlug"])
-    {
-        args.workspace_slug = workspace_slug;
+    if let Some(prompt) = get_field(&payload, &["prompt"]) {
+        args.prompt = Some(prompt);
     }
     if let Some(hook_event_name) = ["hook_event_name", "hookEventName"]
         .iter()
@@ -210,6 +207,6 @@ fn next_value(
 
 pub(super) fn print_usage() {
     println!(
-        "Usage: session-capture-hook (session sync ingest) [--from-hook-stdin] [--transcript-path <PATH>] [--store-root <PATH>] [--workspace-slug <SLUG>] [--trigger <NAME>]"
+        "Usage: session-capture-hook (session sync ingest) [--from-hook-stdin] [--transcript-path <PATH>] [--store-root <PATH>] [--trigger <NAME>]"
     );
 }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::SessionWorkflowGraph;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PersistedSessionManifest {
@@ -23,6 +24,14 @@ pub struct PersistedSessionManifest {
     pub emitted_handoff_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub picked_up_handoff_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub active_run_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runs: Vec<SessionRunLineage>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pinned_entities: Vec<SessionPinnedEntity>,
+    #[serde(default, skip_serializing_if = "SessionWorkflowGraph::is_empty")]
+    pub workflow: SessionWorkflowGraph,
 }
 
 impl From<&SessionRecord> for PersistedSessionManifest {
@@ -41,6 +50,10 @@ impl From<&SessionRecord> for PersistedSessionManifest {
             spawned_session_id: record.spawned_session_id.clone(),
             emitted_handoff_ids: record.emitted_handoff_ids.clone(),
             picked_up_handoff_ids: record.picked_up_handoff_ids.clone(),
+            active_run_id: String::new(),
+            runs: Vec::new(),
+            pinned_entities: Vec::new(),
+            workflow: SessionWorkflowGraph::default(),
         }
     }
 }
@@ -74,60 +87,4 @@ pub struct PersistedSessionEvents {
     pub captured_at: chrono::DateTime<chrono::Utc>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub events: Vec<CopilotHookEvent>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PersistedActiveWorkspaceSession {
-    pub workspace_session_id: String,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PersistedRuntimeContext {
-    #[serde(default = "crate::default_runtime_context_schema_version")]
-    pub schema_version: u32,
-    pub workspace_session_id: String,
-    pub workspace_slug: String,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-    pub active_run_id: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub runs: Vec<SessionRunLineage>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub pinned_entities: Vec<SessionPinnedEntity>,
-    #[serde(default)]
-    pub workflow: crate::SessionWorkflowGraph,
-}
-
-impl From<SessionRuntimeContext> for PersistedRuntimeContext {
-    fn from(value: SessionRuntimeContext) -> Self {
-        Self {
-            schema_version: value.schema_version,
-            workspace_session_id: value.workspace_session_id,
-            workspace_slug: value.workspace_slug,
-            created_at: value.created_at,
-            updated_at: value.updated_at,
-            active_run_id: value.active_run_id,
-            runs: value.runs,
-            pinned_entities: value.pinned_entities,
-            workflow: value.workflow,
-        }
-    }
-}
-
-impl From<PersistedRuntimeContext> for SessionRuntimeContext {
-    fn from(value: PersistedRuntimeContext) -> Self {
-        Self {
-            schema_version: value.schema_version,
-            workspace_session_id: value.workspace_session_id.clone(),
-            session_id: value.workspace_session_id,
-            workspace_slug: value.workspace_slug,
-            created_at: value.created_at,
-            updated_at: value.updated_at,
-            active_run_id: value.active_run_id,
-            runs: value.runs,
-            pinned_entities: value.pinned_entities,
-            workflow: value.workflow,
-        }
-    }
 }

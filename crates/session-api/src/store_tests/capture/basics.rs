@@ -2,21 +2,20 @@ use chrono::TimeZone;
 use tempfile::TempDir;
 
 use crate::{
+    store::write_json,
     CopilotHookMessage,
     CopilotHookPayload,
-    PersistedActiveWorkspaceSession,
     PersistedSessionEvents,
     PersistedSessionManifest,
     PersistedSessionTranscript,
-    SESSION_SCHEMA_VERSION,
     SessionAuditSelector,
     SessionCaptureRequest,
     SessionError,
+    SessionProvisioningDiagnostic,
     SessionQuery,
     SessionRole,
     SessionRuntimeInitRequest,
     SessionStoreConfig,
-    SessionProvisioningDiagnostic,
     SessionTicketStateResolver,
     SessionWorkflowEdgeKind,
     SessionWorkflowNodeDraft,
@@ -26,8 +25,8 @@ use crate::{
     SessionWorktreeAllocationMode,
     SessionWorktreeCheckInRequest,
     SessionWorktreeStatus,
+    SESSION_SCHEMA_VERSION,
 };
-use crate::store::write_json;
 use uuid::Uuid;
 
 const WORKTREE_SESSION_A: &str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -332,7 +331,10 @@ fn persist_capture_retains_user_prompt_submit_provisioning_diagnostic() {
     );
 
     config
-        .persist_capture(request_with_provisioning("session-none-then-user", None))
+        .persist_capture(request_with_provisioning(
+            "session-none-then-user",
+            None,
+        ))
         .unwrap();
     config
         .persist_capture(request_with_provisioning(

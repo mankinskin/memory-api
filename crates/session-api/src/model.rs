@@ -10,14 +10,9 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 pub const SESSION_SCHEMA_VERSION: u32 = 1;
-pub const RUNTIME_CONTEXT_SCHEMA_VERSION: u32 = 1;
 
 pub fn default_session_schema_version() -> u32 {
     SESSION_SCHEMA_VERSION
-}
-
-pub fn default_runtime_context_schema_version() -> u32 {
-    RUNTIME_CONTEXT_SCHEMA_VERSION
 }
 
 mod workflow;
@@ -90,12 +85,7 @@ pub struct SessionRunLineage {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionRuntimeContext {
-    #[serde(default = "default_runtime_context_schema_version")]
-    pub schema_version: u32,
-    pub workspace_session_id: String,
-    #[serde(default)]
     pub session_id: String,
-    pub workspace_slug: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub active_run_id: String,
@@ -109,11 +99,7 @@ pub struct SessionRuntimeContext {
 
 impl SessionRuntimeContext {
     pub fn canonical_session_id(&self) -> String {
-        if self.session_id.trim().is_empty() {
-            self.workspace_session_id.clone()
-        } else {
-            self.session_id.clone()
-        }
+        self.session_id.clone()
     }
 
     pub fn active_run(&self) -> Option<&SessionRunLineage> {
@@ -166,7 +152,7 @@ impl SessionRuntimeContext {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionRuntimeInitRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_session_id: Option<String>,
+    pub session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub predecessor_run_id: Option<String>,
     #[serde(default)]
@@ -193,7 +179,7 @@ pub struct SessionPinnedEntityHeader {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionRuntimeView {
-    pub workspace_session_id: String,
+    pub session_id: String,
     pub active_run_id: String,
     pub pinned_count: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

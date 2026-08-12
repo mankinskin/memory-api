@@ -5,9 +5,9 @@ fn workflow_finish_enforces_gates_and_is_idempotent() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     config
         .workflow_add_node(
@@ -132,9 +132,9 @@ fn workflow_finish_blocks_when_required_validation_guard_is_missing() {
     let config =
         SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     // The spec must exist to be a legal validation_spec_id (AC5), but no
     // execution is ever recorded for it, so finish still blocks on missing
@@ -293,9 +293,9 @@ fn workflow_finish_rejects_caller_passed_when_authoritative_failed() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let spec_id = "val-remediation-authority";
     let test_store = test_store_for(&store_root);
@@ -335,9 +335,9 @@ fn workflow_add_node_rejects_validation_kind_with_absent_spec_id() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let error = config
         .workflow_add_node(
@@ -372,9 +372,9 @@ fn workflow_add_nodes_rejects_unresolvable_validation_spec_id_with_index() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let error = config
         .workflow_add_nodes(
@@ -429,9 +429,9 @@ fn workflow_add_node_rejects_ticket_and_spec_kinds_without_urn() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let ticket_error = config
         .workflow_add_node(
@@ -485,15 +485,12 @@ fn wedged_validation_node_is_repaired_via_update_node_and_finish_then_succeeds()
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     // Directly persist a wedged node, bypassing the create-time validation,
     // to reproduce data left over from before this fix existed.
-    let paths = config
-        .runtime_paths_for_workspace(&workspace_id)
-        .unwrap();
     let mut context = config.read_runtime_context(&workspace_id).unwrap();
     let now = chrono::Utc::now();
     context.workflow.nodes.push(crate::SessionWorkflowNode {
@@ -512,9 +509,17 @@ fn wedged_validation_node_is_repaired_via_update_node_and_finish_then_succeeds()
         deferred_reason: None,
         validation_spec_id: None,
     });
-    let persisted = super::PersistedRuntimeContext::from(context);
+    let manifest_path = config
+        .paths_for_session_id(&workspace_id)
+        .unwrap()
+        .manifest_path;
+    let mut persisted: super::PersistedSessionManifest = serde_json::from_slice(
+        &std::fs::read(&manifest_path).unwrap(),
+    )
+    .unwrap();
+    persisted.workflow = context.workflow;
     std::fs::write(
-        &paths.context_path,
+        &manifest_path,
         serde_json::to_vec_pretty(&persisted).unwrap(),
     )
     .unwrap();
@@ -586,13 +591,10 @@ fn wedged_validation_node_is_repaired_via_remove_node() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
-    let paths = config
-        .runtime_paths_for_workspace(&workspace_id)
-        .unwrap();
     let mut context = config.read_runtime_context(&workspace_id).unwrap();
     let now = chrono::Utc::now();
     context.workflow.nodes.push(crate::SessionWorkflowNode {
@@ -611,9 +613,17 @@ fn wedged_validation_node_is_repaired_via_remove_node() {
         deferred_reason: None,
         validation_spec_id: None,
     });
-    let persisted = super::PersistedRuntimeContext::from(context);
+    let manifest_path = config
+        .paths_for_session_id(&workspace_id)
+        .unwrap()
+        .manifest_path;
+    let mut persisted: super::PersistedSessionManifest = serde_json::from_slice(
+        &std::fs::read(&manifest_path).unwrap(),
+    )
+    .unwrap();
+    persisted.workflow = context.workflow;
     std::fs::write(
-        &paths.context_path,
+        &manifest_path,
         serde_json::to_vec_pretty(&persisted).unwrap(),
     )
     .unwrap();

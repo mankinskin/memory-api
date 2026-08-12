@@ -5,12 +5,12 @@ impl SessionStoreConfig {
     /// returning a stale success from `finish_workflow`.
     fn ensure_workspace_not_finished(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
     ) -> Result<(), SessionError> {
-        let paths = self.runtime_paths_for_workspace(workspace_session_id)?;
+        let paths = self.runtime_paths_for_workspace(session_id)?;
         if paths.finish_path.exists() {
             return Err(SessionError::WorkspaceFinished {
-                workspace_session_id: workspace_session_id.to_string(),
+                session_id: session_id.to_string(),
             });
         }
         Ok(())
@@ -29,10 +29,10 @@ impl SessionStoreConfig {
     /// observes the finish record and is rejected with [`SessionError::WorkspaceFinished`].
     fn begin_runtime_mutation(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
     ) -> Result<RuntimeMutationLock, SessionError> {
-        let lock = self.acquire_runtime_lock(workspace_session_id)?;
-        self.ensure_workspace_not_finished(workspace_session_id)?;
+        let lock = self.acquire_runtime_lock(session_id)?;
+        self.ensure_workspace_not_finished(session_id)?;
         Ok(lock)
     }
 
@@ -44,9 +44,9 @@ impl SessionStoreConfig {
     /// a successor. The operating system releases the lock if the process exits.
     pub(super) fn acquire_runtime_lock(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
     ) -> Result<RuntimeMutationLock, SessionError> {
-        let paths = self.runtime_paths_for_workspace(workspace_session_id)?;
+        let paths = self.runtime_paths_for_workspace(session_id)?;
         fs::create_dir_all(&paths.workspace_dir).map_err(|source| {
             SessionError::Io {
                 path: paths.workspace_dir.clone(),
@@ -69,7 +69,7 @@ impl SessionStoreConfig {
             Ok(()) => Ok(RuntimeMutationLock { file }),
             Err(fs::TryLockError::WouldBlock) =>
                 Err(SessionError::RuntimeMutationConflict {
-                    workspace_session_id: workspace_session_id.to_string(),
+                    session_id: session_id.to_string(),
                 }),
             Err(fs::TryLockError::Error(source)) => Err(SessionError::Io {
                 path: lock_path,
@@ -80,13 +80,13 @@ impl SessionStoreConfig {
 
     pub fn pin_runtime_entity(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         entity_urn: &str,
         relation: Option<String>,
         reason: Option<String>,
     ) -> Result<SessionRuntimeContext, SessionError> {
         self.pin_runtime_entity_with_sink(
-            workspace_session_id,
+            session_id,
             entity_urn,
             relation,
             reason,
@@ -96,14 +96,14 @@ impl SessionStoreConfig {
 
     pub fn pin_runtime_entity_with_sink(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         entity_urn: &str,
         relation: Option<String>,
         reason: Option<String>,
         feedback_sink: Option<&dyn SessionPinFeedbackSink>,
     ) -> Result<SessionRuntimeContext, SessionError> {
-        let _lock = self.begin_runtime_mutation(workspace_session_id)?;
-        let mut context = self.read_runtime_context(workspace_session_id)?;
+        let _lock = self.begin_runtime_mutation(session_id)?;
+        let mut context = self.read_runtime_context(session_id)?;
         let now = chrono::Utc::now();
         let kind = parse_entity_urn_kind(entity_urn)?;
 
@@ -130,11 +130,11 @@ impl SessionStoreConfig {
         }
 
         context.updated_at = now;
-        self.persist_runtime_context(&context)?;
+        self.persist_runtime_state(&context)?;
 
         if let Some(sink) = feedback_sink {
             let _ = sink.record_pin_usage(
-                &context.workspace_session_id,
+                &context.session_id,
                 &context.active_run_id,
                 entity_urn,
             );
@@ -145,25 +145,25 @@ impl SessionStoreConfig {
 
     pub fn unpin_runtime_entity(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         entity_urn: &str,
     ) -> Result<SessionRuntimeContext, SessionError> {
         parse_entity_urn_kind(entity_urn)?;
-        let _lock = self.begin_runtime_mutation(workspace_session_id)?;
-        let mut context = self.read_runtime_context(workspace_session_id)?;
+        let _lock = self.begin_runtime_mutation(session_id)?;
+        let mut context = self.read_runtime_context(session_id)?;
         let changed = context.remove_pin(entity_urn);
         if changed {
             context.updated_at = chrono::Utc::now();
-            self.persist_runtime_context(&context)?;
+            self.persist_runtime_state(&context)?;
         }
         Ok(context)
     }
 
     pub fn view_runtime_context(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
     ) -> Result<SessionRuntimeView, SessionError> {
-        let context = self.read_runtime_context(workspace_session_id)?;
+        let context = self.read_runtime_context(session_id)?;
         let mut pinned_headers = context
             .pinned_entities
             .iter()
@@ -177,7 +177,7 @@ impl SessionStoreConfig {
         pinned_headers.sort_by(|left, right| left.urn.cmp(&right.urn));
 
         Ok(SessionRuntimeView {
-            workspace_session_id: context.workspace_session_id,
+            session_id: context.session_id,
             active_run_id: context.active_run_id,
             pinned_count: pinned_headers.len(),
             pinned_headers,
@@ -186,9 +186,9 @@ impl SessionStoreConfig {
 
     pub fn render_pinned_rule_instructions(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
     ) -> Result<String, SessionError> {
-        let context = self.read_runtime_context(workspace_session_id)?;
+        let context = self.read_runtime_context(session_id)?;
         // Missing/unopenable rule store degrades to no rule pins rather than failing the render.
         let rule_store = match RuleStore::open(&sibling_store_root(&self.root, ".rule")) {
             Ok(store) => Some(store),
@@ -239,15 +239,15 @@ impl SessionStoreConfig {
 
     pub fn workflow_add_node(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         draft: SessionWorkflowNodeDraft,
     ) -> Result<SessionRuntimeContext, SessionError> {
-        self.workflow_add_nodes(workspace_session_id, vec![draft])
+        self.workflow_add_nodes(session_id, vec![draft])
     }
 
     pub fn workflow_add_nodes(
         &self,
-        workspace_session_id: &str,
+        session_id: &str,
         drafts: Vec<SessionWorkflowNodeDraft>,
     ) -> Result<SessionRuntimeContext, SessionError> {
         for (index, draft) in drafts.iter().enumerate() {
@@ -256,8 +256,8 @@ impl SessionStoreConfig {
             })?;
         }
 
-        let _lock = self.begin_runtime_mutation(workspace_session_id)?;
-        let mut context = self.read_runtime_context(workspace_session_id)?;
+        let _lock = self.begin_runtime_mutation(session_id)?;
+        let mut context = self.read_runtime_context(session_id)?;
         let now = chrono::Utc::now();
         let mut changed = false;
 
@@ -297,7 +297,7 @@ impl SessionStoreConfig {
         if changed {
             sort_workflow_graph(&mut context.workflow);
             context.updated_at = now;
-            self.persist_runtime_context(&context)?;
+            self.persist_runtime_state(&context)?;
         }
         Ok(context)
     }

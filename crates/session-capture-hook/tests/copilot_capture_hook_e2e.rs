@@ -22,6 +22,7 @@ use std::{
 mod common;
 
 use session_api::{
+    PersistedSessionEvents,
     SessionStoreConfig,
     copilot_payload_from_transcript_path,
 };
@@ -132,7 +133,7 @@ fn changed_snapshot_paths(
 }
 
 #[test]
-fn e2e_user_prompt_provisions_and_captures_a_fresh_session() {
+fn e2e_session_start_provisions_and_captures_a_fresh_session() {
     let fixture = tempdir().expect("temp fixture dir");
     let checkout = fixture.path().join("checkout");
     create_fixture_checkout(&checkout);
@@ -147,7 +148,7 @@ fn e2e_user_prompt_provisions_and_captures_a_fresh_session() {
         &hook_bin,
         &checkout,
         serde_json::json!({
-            "hook_event_name": "UserPromptSubmit",
+            "hook_event_name": "SessionStart",
             "session_id": session_id,
             "transcript_path": transcript_path,
         }),
@@ -162,7 +163,7 @@ fn e2e_user_prompt_provisions_and_captures_a_fresh_session() {
     let worktree = checkout.join(".worktrees").join(session_id).join("session");
     assert!(
         worktree.is_dir(),
-        "fresh UserPromptSubmit must provision a worktree; stderr={}",
+        "fresh SessionStart must provision a worktree; stderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
@@ -171,20 +172,57 @@ fn e2e_user_prompt_provisions_and_captures_a_fresh_session() {
             .join("sessions")
             .join(&session_id)
             .is_dir(),
-        "fresh UserPromptSubmit must capture a session record in its worktree"
+        "fresh SessionStart must capture a session record in its worktree"
     );
     assert!(
         fs::read_dir(checkout.join(".session"))
             .expect("read anchor session store")
             .next()
             .is_none(),
-        "fresh UserPromptSubmit must not create anchor session records"
+        "fresh SessionStart must not create anchor session records"
     );
+
+    let prompt = "Persist this submitted prompt.";
+    let output = run_hook_with_payload(
+        &hook_bin,
+        &checkout,
+        serde_json::json!({
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": session_id,
+            "transcript_path": transcript_path,
+            "prompt": prompt,
+        }),
+    );
+    assert!(
+        output.status.success(),
+        "UserPromptSubmit capture failed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let events: PersistedSessionEvents = serde_json::from_str(
+        &fs::read_to_string(
+            worktree
+                .join(".session")
+                .join("sessions")
+                .join(session_id)
+                .join("events.json"),
+        )
+        .expect("read persisted hook events"),
+    )
+    .expect("deserialize persisted hook events");
+    assert!(events.events.iter().any(|event| {
+        event.event_type.as_deref() == Some("UserPromptSubmit")
+            && event
+                .data_json
+                .as_ref()
+                .and_then(|data| data.get("prompt"))
+                .and_then(serde_json::Value::as_str)
+                == Some(prompt)
+    }));
     assert_eq!(output.stdout, b"{}\n");
 }
 
 #[test]
-fn e2e_user_prompt_preserves_anchor_session_store_snapshot() {
+fn e2e_session_start_preserves_anchor_session_store_snapshot() {
     let fixture = tempdir().expect("temp fixture dir");
     let checkout = fixture.path().join("checkout");
     create_fixture_checkout(&checkout);
@@ -209,7 +247,7 @@ fn e2e_user_prompt_preserves_anchor_session_store_snapshot() {
         &hook_bin,
         &checkout,
         serde_json::json!({
-            "hook_event_name": "UserPromptSubmit",
+            "hook_event_name": "SessionStart",
             "session_id": session_id,
             "transcript_path": transcript_path,
         }),
@@ -225,7 +263,7 @@ fn e2e_user_prompt_preserves_anchor_session_store_snapshot() {
     assert_eq!(
         before,
         after,
-        "UserPromptSubmit must not add, modify, or delete main-checkout .session paths; changed paths: {:?}",
+        "SessionStart must not add, modify, or delete main-checkout .session paths; changed paths: {:?}",
         changed_snapshot_paths(&before, &after)
     );
     assert_eq!(
@@ -264,11 +302,11 @@ fn e2e_stop_does_not_provision_a_fresh_session() {
 }
 
 #[test]
-fn e2e_missing_transcript_user_prompt_provisions_but_stop_does_not() {
+fn e2e_missing_transcript_session_start_provisions_but_stop_does_not() {
     let fixture = tempdir().expect("temp fixture dir");
     let prompt_checkout = fixture.path().join("prompt-checkout");
     create_fixture_checkout(&prompt_checkout);
-    let prompt_session_id = format!("missing-transcript-{}", unique_suffix());
+    let prompt_session_id = "33333333-3333-4333-8333-333333333333";
     let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
         .expect("cargo should expose session-capture-hook binary path for integration tests");
 
@@ -276,7 +314,7 @@ fn e2e_missing_transcript_user_prompt_provisions_but_stop_does_not() {
         &hook_bin,
         &prompt_checkout,
         serde_json::json!({
-            "hook_event_name": "UserPromptSubmit",
+            "hook_event_name": "SessionStart",
             "session_id": prompt_session_id,
             "transcript_path": prompt_checkout.join("missing.jsonl"),
         }),
@@ -294,9 +332,41 @@ fn e2e_missing_transcript_user_prompt_provisions_but_stop_does_not() {
         .join("session");
     assert!(
         worktree.is_dir(),
-        "UserPromptSubmit must provision despite a missing transcript; stderr={}",
+        "SessionStart must provision despite a missing transcript; stderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
+
+    let prompt = "Preserve this prompt before transcript flush.";
+    let output = run_hook_with_payload(
+        &hook_bin,
+        &prompt_checkout,
+        serde_json::json!({
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": prompt_session_id,
+            "transcript_path": prompt_checkout.join("missing.jsonl"),
+            "prompt": prompt,
+        }),
+    );
+    assert!(output.status.success());
+    let events: PersistedSessionEvents = serde_json::from_str(
+        &fs::read_to_string(
+            worktree
+                .join(".session")
+                .join("sessions")
+                .join(prompt_session_id)
+                .join("events.json"),
+        )
+        .expect("read prompt event sidecar"),
+    )
+    .expect("deserialize prompt event sidecar");
+    assert!(events.events.iter().any(|event| {
+        event
+            .data_json
+            .as_ref()
+            .and_then(|data| data.get("prompt"))
+            .and_then(serde_json::Value::as_str)
+            == Some(prompt)
+    }));
 
     let stop_checkout = fixture.path().join("stop-checkout");
     create_fixture_checkout(&stop_checkout);
@@ -361,10 +431,8 @@ fn e2e_hook_binary_persists_fixture_transcript() {
         .arg(&transcript_path)
         .arg("--store-root")
         .arg(&store_root)
-        .arg("--workspace-slug")
-        .arg("default")
         .arg("--trigger")
-        .arg("UserPromptSubmit")
+        .arg("SessionStart")
         .output()
         .expect("run session-capture-hook");
 
@@ -383,7 +451,7 @@ fn e2e_hook_binary_persists_fixture_transcript() {
     assert!(!record.turns.is_empty());
     assert_eq!(record.session_id, FIXTURE_SESSION_ID);
     assert_eq!(record.metadata.workspace_slug, "default");
-    assert_eq!(record.metadata.trigger.as_deref(), Some("UserPromptSubmit"));
+    assert_eq!(record.metadata.trigger.as_deref(), Some("SessionStart"));
 
     // A transcript with no tool execution must not leave an empty sidecar.
     let tool_metrics_path = store_root
@@ -397,7 +465,7 @@ fn e2e_hook_binary_persists_fixture_transcript() {
 }
 
 #[test]
-fn e2e_user_prompt_with_external_store_does_not_provision_cwd_checkout() {
+fn e2e_session_start_with_external_store_does_not_provision_cwd_checkout() {
     let fixture_dir = tempdir().expect("temp fixture dir");
     let transcript_path = write_fixture_transcript(
         fixture_dir.path(),
@@ -428,7 +496,7 @@ fn e2e_user_prompt_with_external_store_does_not_provision_cwd_checkout() {
     let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
         .expect("cargo should expose session-capture-hook binary path for integration tests");
     let stdin_payload = serde_json::json!({
-        "hook_event_name": "UserPromptSubmit",
+        "hook_event_name": "SessionStart",
         "session_id": FIXTURE_SESSION_ID,
         "transcript_path": transcript_path,
     })
@@ -438,8 +506,6 @@ fn e2e_user_prompt_with_external_store_does_not_provision_cwd_checkout() {
         .env("WORKTREE_EAGER_PROVISION", "1")
         .arg("--store-root")
         .arg(&store_root)
-        .arg("--workspace-slug")
-        .arg("default")
         .arg("--from-hook-stdin")
         .current_dir(cwd_checkout.path())
         .stdin(Stdio::piped())
@@ -471,7 +537,7 @@ fn e2e_user_prompt_with_external_store_does_not_provision_cwd_checkout() {
     let diagnostic = record.metadata.provisioning.expect("provisioning diagnostic");
     assert_eq!(diagnostic.outcome, "skipped");
     assert_eq!(diagnostic.reason.as_deref(), Some("external_store_mismatch"));
-    assert_eq!(diagnostic.hook_event_name, "UserPromptSubmit");
+    assert_eq!(diagnostic.hook_event_name, "SessionStart");
     assert!(
         !store_root
             .join("sessions")
@@ -505,7 +571,7 @@ fn e2e_mismatched_store_emits_nonblocking_observability_payload() {
     let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
         .expect("cargo should expose session-capture-hook binary path for integration tests");
     let stdin_payload = serde_json::json!({
-        "hook_event_name": "UserPromptSubmit",
+        "hook_event_name": "SessionStart",
         "session_id": FIXTURE_SESSION_ID,
         "transcript_path": transcript_path,
     })
@@ -580,8 +646,6 @@ fn e2e_hook_binary_populates_tool_metrics_from_captured_tool_events() {
         .arg(&transcript_path)
         .arg("--store-root")
         .arg(&store_root)
-        .arg("--workspace-slug")
-        .arg("default")
         .arg("--trigger")
         .arg("Stop")
         .output()
@@ -654,8 +718,6 @@ fn e2e_val_session_api_tool_metrics_gate_asserts_nonempty_tools_map() {
         .arg(&transcript_path)
         .arg("--store-root")
         .arg(&store_root)
-        .arg("--workspace-slug")
-        .arg("default")
         .arg("--trigger")
         .arg("Stop")
         .output()
@@ -754,8 +816,6 @@ fn e2e_hook_binary_captures_output_chars_from_hook_stdin_tool_response() {
         .arg(&transcript_path)
         .arg("--store-root")
         .arg(&store_root)
-        .arg("--workspace-slug")
-        .arg("default")
         .arg("--trigger")
         .arg("Stop")
         .arg("--from-hook-stdin")
@@ -861,8 +921,6 @@ fn e2e_hook_binary_captures_output_chars_from_spill_file_when_hook_payload_empty
         .arg(&transcript_path)
         .arg("--store-root")
         .arg(&store_root)
-        .arg("--workspace-slug")
-        .arg("default")
         .arg("--trigger")
         .arg("Stop")
         .arg("--from-hook-stdin")
@@ -948,7 +1006,6 @@ fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
     let abs_transcript_path =
         workspace_fixture.transcript_path("copilot.jsonl");
 
-    let workspace_slug = format!("fixture-workspace-{suffix}");
     let session_id = format!("{LOCAL_FIXTURE_SESSION_ID}-{suffix}");
 
     let transcript_text =
@@ -958,8 +1015,7 @@ fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
 
     let payload = serde_json::json!({
         "transcript_path": rel_transcript_path,
-        "workspace_slug": &workspace_slug,
-        "hook_event_name": "UserPromptSubmit",
+        "hook_event_name": "SessionStart",
         "session_id": &session_id,
     })
     .to_string();
@@ -1060,14 +1116,14 @@ fn e2e_capture_hook_script_persists_fixture_from_nested_workspace_cwd() {
         leaked_root_manifest.display()
     );
 
-    let config = SessionStoreConfig::new(&fixture_store_root, &workspace_slug);
+    let config = SessionStoreConfig::new(&fixture_store_root, "default");
     let record = config.read_session(&session_id).expect(
         "capture hook should persist fixture transcript into the temp store",
     );
 
     assert_eq!(record.session_id, session_id);
-    assert_eq!(record.metadata.workspace_slug, workspace_slug);
-    assert_eq!(record.metadata.trigger.as_deref(), Some("UserPromptSubmit"));
+    assert_eq!(record.metadata.workspace_slug, "default");
+    assert_eq!(record.metadata.trigger.as_deref(), Some("SessionStart"));
     assert_eq!(record.turns.len(), 2);
     assert_eq!(
         record.turns[0].content,

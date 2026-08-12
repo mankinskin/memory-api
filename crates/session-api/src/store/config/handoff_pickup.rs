@@ -95,14 +95,14 @@ impl SessionStoreConfig {
                     continue;
                 }
                 if let Some(source_session_id) = &filter.source_session_id {
-                    if &record.workspace_session_id != source_session_id {
+                    if &record.session_id != source_session_id {
                         continue;
                     }
                 }
                 if let Some(track_id) = &filter.track_id {
                     let source_track_id = entry
                         .store
-                        .read_session(&record.workspace_session_id)
+                        .read_session(&record.session_id)
                         .ok()
                         .and_then(|source_record| source_record.track_id);
                     if source_track_id.as_ref() != Some(track_id) {

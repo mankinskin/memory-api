@@ -127,14 +127,14 @@ fn ticket_tool_turn(
     }
 }
 
-/// Writes only `context.json`, mirroring the two deliberate corrupt fixture
+/// Writes only legacy `context.json`, mirroring the two deliberate corrupt fixture
 /// entries in the real store (`session.json`/`transcript.json` absent).
 fn write_corrupt_session(store_root: &std::path::Path, session_id: &str) {
     let session_dir = store_root.join("sessions").join(session_id);
     fs::create_dir_all(&session_dir).unwrap();
     fs::write(
         session_dir.join("context.json"),
-        r#"{"schema_version":1,"workspace_session_id":"x"}"#,
+        r#"{"schema_version":1,"session_id":"x"}"#,
     )
     .unwrap();
 }
@@ -278,7 +278,7 @@ fn backfill_handoff_links_multiple_target_tickets() {
 
     config
         .capture_copilot_hook(sample_payload(
-            RUNTIME_SESSION_HANDOFF,
+            "f4444444-4444-4444-8444-444444444444",
             Some("conversation-handoff"),
             sample_time(),
             &["Handed off for follow-up"],
@@ -286,13 +286,13 @@ fn backfill_handoff_links_multiple_target_tickets() {
         .unwrap();
     config
         .init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some(RUNTIME_SESSION_HANDOFF.to_string()),
+            session_id: Some("f4444444-4444-4444-8444-444444444444".to_string()),
             ..Default::default()
         })
         .unwrap();
     config
         .create_handoff_record(
-            RUNTIME_SESSION_HANDOFF,
+            "f4444444-4444-4444-8444-444444444444",
             Some(SessionHandoffPackage {
                 objective: "Follow up on two tickets".to_string(),
                 target_tickets: vec![
@@ -326,7 +326,7 @@ fn backfill_handoff_links_multiple_target_tickets() {
     assert_eq!(report.linked_via_handoff, 2);
     assert!(report.handoff_already_at_mentioned);
 
-    let record = config.read_session(RUNTIME_SESSION_HANDOFF).unwrap();
+    let record = config.read_session("f4444444-4444-4444-8444-444444444444").unwrap();
     assert_eq!(record.metadata.ticket_id, None, "handoff writes linked tier, not strict");
     assert!(record.links.links_to_ticket(&ticket_one.to_string()));
     assert!(record.links.links_to_ticket(&ticket_two.to_string()));
@@ -340,7 +340,7 @@ fn backfill_handoff_links_multiple_target_tickets() {
             .sessions_for_ticket(&ticket.to_string(), RelationStrength::Linked)
             .unwrap();
         assert_eq!(linked.len(), 1);
-        assert_eq!(linked[0].session_id, RUNTIME_SESSION_HANDOFF);
+        assert_eq!(linked[0].session_id, "f4444444-4444-4444-8444-444444444444");
     }
 }
 
@@ -380,10 +380,10 @@ fn backfill_skips_corrupt_entry_and_continues() {
             .unwrap();
     seed_ticket(&store_root.join(".ticket"), ticket_id);
 
-    write_corrupt_session(&store_root, "session-corrupt");
+    write_corrupt_session(&store_root, "f3333333-3333-4333-8333-333333333333");
     write_raw_session(
         &store_root,
-        "session-good",
+        "f2222222-2222-4222-8222-222222222222",
         None,
         Some("agent/11111111-good-slug"),
         None,
@@ -393,7 +393,7 @@ fn backfill_skips_corrupt_entry_and_continues() {
     assert_eq!(report.total_sessions, 2);
     assert_eq!(report.skipped_corrupt, 1);
     assert_eq!(report.linked_via_branch, 1);
-    let record = config.read_session("session-good").unwrap();
+    let record = config.read_session("f2222222-2222-4222-8222-222222222222").unwrap();
     assert_eq!(
         record.metadata.ticket_id.as_deref(),
         Some(ticket_id.to_string().as_str())
@@ -415,7 +415,7 @@ fn backfill_is_idempotent_and_never_overwrites_real_check_in() {
     // its ticket_id must never be touched by the backfill.
     config
         .check_in_worktree(crate::SessionWorktreeCheckInRequest {
-            session_id: WORKTREE_SESSION_REAL.to_string(),
+            session_id: "44444444-4444-4444-8444-444444444444".to_string(),
             owner_id: "agent-real".to_string(),
             ticket_id: "manually-assigned-ticket".to_string(),
             worktree_path: tempdir.path().join("wt-real"),
@@ -443,7 +443,7 @@ fn backfill_is_idempotent_and_never_overwrites_real_check_in() {
 
     assert_eq!(
         config
-            .read_session(WORKTREE_SESSION_REAL)
+            .read_session("44444444-4444-4444-8444-444444444444")
             .unwrap()
             .metadata
             .ticket_id

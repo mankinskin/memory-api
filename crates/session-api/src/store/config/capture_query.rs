@@ -1,4 +1,36 @@
 impl SessionStoreConfig {
+    /// Persist a hook event without requiring a transcript snapshot. This is
+    /// used for UserPromptSubmit, which can arrive before VS Code flushes the
+    /// submitted prompt into the transcript file.
+    pub fn persist_hook_event(
+        &self,
+        session_id: &str,
+        event: CopilotHookEvent,
+    ) -> Result<(), SessionError> {
+        let paths = self.paths_for_session_id(session_id)?;
+        fs::create_dir_all(&paths.session_dir).map_err(|source| {
+            SessionError::Io {
+                path: paths.session_dir.clone(),
+                source,
+            }
+        })?;
+        let captured_at = chrono::Utc::now();
+        let incoming = PersistedSessionEvents {
+            schema_version: crate::SESSION_SCHEMA_VERSION,
+            session_id: session_id.to_string(),
+            captured_at,
+            events: vec![event],
+        };
+        let events = merge_events(
+            read_json_if_exists(&paths.events_path)?,
+            Some(incoming),
+            session_id.to_string(),
+            captured_at,
+        )?
+        .expect("a supplied hook event always produces persisted events");
+        write_json(&paths.events_path, &events)
+    }
+
 
 
     pub fn new(

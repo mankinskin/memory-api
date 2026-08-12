@@ -80,7 +80,7 @@ pub fn evaluate(repo_root: &Path) -> SessionWorkflowGraphResult {
     }
 }
 
-/// Walk `.session/sessions/*/context.json` and
+/// Walk legacy `.session/sessions/*/context.json` and
 /// `.session/sessions/*/handoffs/*/handoff.json`, extracting embedded
 /// workflow graphs and skipping files that are missing, unparseable, or
 /// have no nodes.

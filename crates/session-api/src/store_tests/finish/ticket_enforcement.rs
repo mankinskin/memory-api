@@ -7,9 +7,9 @@ fn workflow_finish_rejects_caller_passed_when_no_execution_exists() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let spec_id = "val-remediation-missing-exec";
     let test_store = test_store_for(&store_root);
@@ -42,9 +42,9 @@ fn workflow_finish_accepts_authoritative_passed_execution() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let spec_id = "val-remediation-passed";
     let test_store = test_store_for(&store_root);
@@ -77,9 +77,9 @@ fn workflow_finish_rejects_local_done_when_live_ticket_non_terminal() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root, "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let ticket_urn =
         "ce://context-engine/tickets/11111111-1111-4111-8111-111111111111";
@@ -138,9 +138,9 @@ fn workflow_finish_production_path_blocks_non_terminal_ticket() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let ticket_id =
         uuid::Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap();
@@ -202,9 +202,9 @@ fn workflow_finish_production_path_blocks_missing_ticket() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     // Initialize an empty ticket store so the resolver can open it, but the
     // referenced ticket does not exist.
@@ -259,9 +259,9 @@ fn workflow_finish_rejects_cross_workspace_ticket_routing() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     ticket_api::storage::TicketStore::open_or_init(&store_root.join(".ticket"))
         .unwrap();
@@ -316,9 +316,9 @@ fn workflow_finish_resolves_ticket_from_nested_workspace_store() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let ticket_id =
         uuid::Uuid::parse_str("55555555-5555-4555-8555-555555555555").unwrap();
@@ -379,9 +379,9 @@ fn workflow_finish_rejects_unknown_workspace_slug_without_creating_store() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let ticket_urn =
         "ce://unknown-workspace/tickets/66666666-6666-4666-8666-666666666666";
@@ -435,9 +435,9 @@ fn workflow_finish_rejects_path_traversal_workspace_slug() {
     let store_root = tempdir.path().join("store");
     let config = SessionStoreConfig::new(store_root.clone(), "context-engine");
     let init = config
-        .init_runtime_context(SessionRuntimeInitRequest::default())
+        .init_runtime_context(SessionRuntimeInitRequest { session_id: Some(uuid::Uuid::new_v4().to_string()), ..Default::default() })
         .unwrap();
-    let workspace_id = init.context.workspace_session_id;
+    let workspace_id = init.context.session_id;
 
     let ticket_urn =
         "ce://../tickets/77777777-7777-4777-8777-777777777777";

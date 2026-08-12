@@ -41,9 +41,6 @@ pub(super) fn workspace_root() -> PathBuf {
     }
 }
 
-
-
-
 /// Normalize a path to forward-slash form so persisted handoff paths are
 /// portable across platforms (AC1: repo-root-relative, forward-slash).
 pub(super) fn normalize_repo_relative_path(path: &str) -> String {
@@ -214,14 +211,35 @@ pub(super) fn merge_manifest(
         incoming.metadata =
             merge_metadata(existing.metadata, incoming.metadata);
         incoming.links = merge_links(existing.links, incoming.links);
-        
+
         // Preserve track fields: prefer incoming non-None, else keep existing
         incoming.track_id = incoming.track_id.or(existing.track_id);
-        incoming.anchor_ticket_id = incoming.anchor_ticket_id.or(existing.anchor_ticket_id);
-        incoming.parent_session_id = incoming.parent_session_id.or(existing.parent_session_id);
-        incoming.spawned_session_id = incoming.spawned_session_id.or(existing.spawned_session_id);
-        extend_unique(&mut incoming.emitted_handoff_ids, existing.emitted_handoff_ids);
-        extend_unique(&mut incoming.picked_up_handoff_ids, existing.picked_up_handoff_ids);
+        incoming.anchor_ticket_id =
+            incoming.anchor_ticket_id.or(existing.anchor_ticket_id);
+        incoming.parent_session_id =
+            incoming.parent_session_id.or(existing.parent_session_id);
+        incoming.spawned_session_id =
+            incoming.spawned_session_id.or(existing.spawned_session_id);
+        extend_unique(
+            &mut incoming.emitted_handoff_ids,
+            existing.emitted_handoff_ids,
+        );
+        extend_unique(
+            &mut incoming.picked_up_handoff_ids,
+            existing.picked_up_handoff_ids,
+        );
+        if incoming.active_run_id.is_empty() {
+            incoming.active_run_id = existing.active_run_id;
+        }
+        if incoming.runs.is_empty() {
+            incoming.runs = existing.runs;
+        }
+        if incoming.pinned_entities.is_empty() {
+            incoming.pinned_entities = existing.pinned_entities;
+        }
+        if incoming.workflow.is_empty() {
+            incoming.workflow = existing.workflow;
+        }
     }
 
     incoming
@@ -244,13 +262,13 @@ pub(super) fn merge_metadata(
         trigger: incoming.trigger.or(existing.trigger),
         provisioning: match (existing.provisioning, incoming.provisioning) {
             (Some(existing), Some(incoming))
-                if incoming.hook_event_name.eq_ignore_ascii_case("UserPromptSubmit")
+                if incoming
+                    .hook_event_name
+                    .eq_ignore_ascii_case("UserPromptSubmit")
                     && !existing
                         .hook_event_name
                         .eq_ignore_ascii_case("UserPromptSubmit") =>
-            {
-                Some(incoming)
-            }
+                Some(incoming),
             (Some(existing), _) => Some(existing),
             (None, incoming) => incoming,
         },
@@ -268,7 +286,7 @@ pub(super) fn validate_worktree_request(
     request: &SessionWorktreeCheckInRequest
 ) -> Result<(), SessionError> {
     validate_segment(&request.session_id, false)?;
-    validate_runtime_workspace_id(&request.session_id)?;
+    validate_session_id(&request.session_id)?;
     if request.owner_id.trim().is_empty() {
         return Err(SessionError::MissingOwnerId);
     }

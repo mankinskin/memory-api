@@ -17,10 +17,10 @@ fn setup_test_store() -> (SessionStoreConfig, PathBuf) {
     (config, store_root)
 }
 
-fn init_test_session(config: &SessionStoreConfig, workspace_session_id: &str) {
+fn init_test_session(config: &SessionStoreConfig, session_id: &str) {
     config
         .init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some(workspace_session_id.to_string()),
+            session_id: Some(session_id.to_string()),
             predecessor_run_id: None,
             force_new_run: false,
         })
@@ -47,9 +47,9 @@ fn upward_context() -> Vec<SessionHandoffUpwardContextEntry> {
 #[test]
 fn open_escalations_field_persists_and_round_trips() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "12345678-1234-4123-8123-123456789012";
+    let session_id = "20000000-0000-4000-8000-000000000001";
 
-    init_test_session(&config, workspace_session_id);
+    init_test_session(&config, session_id);
 
     // Create a handoff package with non-empty open_escalations
     let package = SessionHandoffPackage {
@@ -73,7 +73,7 @@ fn open_escalations_field_persists_and_round_trips() {
 
     // Create handoff record
     let record = config
-        .create_handoff_record(workspace_session_id, Some(package.clone()), validation, None)
+        .create_handoff_record(session_id, Some(package.clone()), validation, None)
         .expect("create handoff record");
 
     assert_eq!(record.higher_level_objective, package.higher_level_objective);
@@ -93,9 +93,9 @@ fn open_escalations_field_persists_and_round_trips() {
 #[test]
 fn empty_open_escalations_is_persisted_as_empty_list() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "23456789-2345-4234-8234-234567890123";
+    let session_id = "20000000-0000-4000-8000-000000000002";
 
-    init_test_session(&config, workspace_session_id);
+    init_test_session(&config, session_id);
 
     let package = SessionHandoffPackage {
         objective: "Implement feature".to_string(),
@@ -112,7 +112,7 @@ fn empty_open_escalations_is_persisted_as_empty_list() {
     };
 
     let record = config
-        .create_handoff_record(workspace_session_id, Some(package.clone()), vec![], None)
+        .create_handoff_record(session_id, Some(package.clone()), vec![], None)
         .expect("create handoff record");
 
     assert_eq!(record.higher_level_objective, package.higher_level_objective);
@@ -126,9 +126,9 @@ fn empty_open_escalations_is_persisted_as_empty_list() {
 #[test]
 fn validation_gate_command_field_persists_and_round_trips() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "34567890-3456-4345-8345-345678901234";
+    let session_id = "20000000-0000-4000-8000-000000000003";
 
-    init_test_session(&config, workspace_session_id);
+    init_test_session(&config, session_id);
 
     let package = SessionHandoffPackage {
         objective: "Run tests".to_string(),
@@ -152,7 +152,7 @@ fn validation_gate_command_field_persists_and_round_trips() {
     }];
 
     let record = config
-        .create_handoff_record(workspace_session_id, Some(package), validation.clone(), None)
+        .create_handoff_record(session_id, Some(package), validation.clone(), None)
         .expect("create handoff record");
 
     assert_eq!(
@@ -176,8 +176,8 @@ fn validation_gate_command_field_persists_and_round_trips() {
 #[test]
 fn legacy_target_ticket_strings_and_absent_context_fields_deserialize() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "45678901-4567-4456-8456-456789012345";
-    init_test_session(&config, workspace_session_id);
+    let session_id = "20000000-0000-4000-8000-000000000004";
+    init_test_session(&config, session_id);
 
     let package = SessionHandoffPackage {
         objective: "Implement compatibility".to_string(),
@@ -193,7 +193,7 @@ fn legacy_target_ticket_strings_and_absent_context_fields_deserialize() {
         predecessor_handoff: None,
     };
     let record = config
-        .create_handoff_record(workspace_session_id, Some(package), vec![], None)
+        .create_handoff_record(session_id, Some(package), vec![], None)
         .expect("create handoff record");
 
     let mut legacy_json = serde_json::to_value(record).expect("serialize record");
@@ -213,8 +213,8 @@ fn legacy_target_ticket_strings_and_absent_context_fields_deserialize() {
 #[test]
 fn ready_handoff_missing_upward_context_fails_before_writing_files() {
     let (config, store_root) = setup_test_store();
-    let workspace_session_id = "56789012-5678-4567-8567-567890123456";
-    init_test_session(&config, workspace_session_id);
+    let session_id = "20000000-0000-4000-8000-000000000005";
+    init_test_session(&config, session_id);
 
     let package = SessionHandoffPackage {
         objective: "Implement the current unit".to_string(),
@@ -230,13 +230,13 @@ fn ready_handoff_missing_upward_context_fails_before_writing_files() {
         predecessor_handoff: None,
     };
 
-    let result = config.create_handoff_record(workspace_session_id, Some(package), vec![], None);
+    let result = config.create_handoff_record(session_id, Some(package), vec![], None);
     assert!(matches!(result, Err(session_api::SessionError::HandoffPackageIncomplete { .. })));
     assert!(
         !store_root
             .join(".session")
             .join("sessions")
-            .join(workspace_session_id)
+            .join(session_id)
             .join("handoffs")
             .exists()
     );
@@ -245,8 +245,8 @@ fn ready_handoff_missing_upward_context_fails_before_writing_files() {
 #[test]
 fn non_ready_handoff_missing_upward_context_persists() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "67890123-6789-4678-8678-678901234567";
-    init_test_session(&config, workspace_session_id);
+    let session_id = "20000000-0000-4000-8000-000000000006";
+    init_test_session(&config, session_id);
 
     let package = SessionHandoffPackage {
         objective: "Implement the current unit".to_string(),
@@ -263,7 +263,7 @@ fn non_ready_handoff_missing_upward_context_persists() {
     };
 
     let record = config
-        .create_handoff_record(workspace_session_id, Some(package), vec![], None)
+        .create_handoff_record(session_id, Some(package), vec![], None)
         .expect("non-ready handoff persists");
     assert!(record.higher_level_objective.is_empty());
     assert!(record.upward_context.is_empty());

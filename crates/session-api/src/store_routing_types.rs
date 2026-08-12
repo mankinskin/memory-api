@@ -1,5 +1,4 @@
 use super::*;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionStorePaths {
@@ -12,23 +11,18 @@ pub struct SessionStorePaths {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionRuntimePaths {
     pub workspace_dir: PathBuf,
-    pub context_path: PathBuf,
     pub handoffs_dir: PathBuf,
     pub finish_path: PathBuf,
 }
 
-pub(super) fn validate_runtime_workspace_id(
+pub(super) fn validate_session_id(
     value: &str
 ) -> Result<(), SessionError> {
-    validate_session_identity(value)
-}
-
-pub(super) fn validate_session_identity(
-    value: &str,
-) -> Result<(), SessionError> {
-    Uuid::parse_str(value)
-        .map(|_| ())
-        .map_err(|_| SessionError::SessionIdentityMustBeUuid(value.to_string()))
+    let session_id = value.trim();
+    if session_id.is_empty() || uuid::Uuid::parse_str(session_id).is_err() {
+        return Err(SessionError::InvalidSessionId(value.to_string()));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,4 +70,17 @@ pub(super) fn parse_entity_urn_kind(
     entity_urn: &str
 ) -> Result<SessionPinnedEntityKind, SessionError> {
     Ok(parse_entity_urn(entity_urn)?.kind)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_session_id_rejects_slug_shaped_id() {
+        let error = validate_session_id("epic-kickoff-8fdfe135").unwrap_err();
+
+        assert!(matches!(error, SessionError::InvalidSessionId(_)));
+        assert!(error.to_string().contains("must be a UUID"));
+    }
 }

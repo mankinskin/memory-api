@@ -17,6 +17,7 @@ use memory_api::workspace::{
 };
 use session_api::SessionWorktreeStatus;
 use thiserror::Error;
+use uuid::Uuid;
 
 /// Canonical repository root, discovered from the process working directory.
 ///
@@ -334,6 +335,8 @@ pub enum ResolutionError {
     InvalidConfiguration(String),
     #[error("session id is required")]
     MissingSessionId,
+    #[error("session id '{session_id}' must be a UUID from the Copilot hook payload")]
+    InvalidSessionId { session_id: String },
     #[error(
         "session '{session_id}' has no worktree assignment in the session store"
     )]
@@ -505,8 +508,14 @@ fn read_checked_out_branch(
 }
 
 fn validate_session_id(session_id: &str) -> Result<(), ResolutionError> {
-    if session_id.trim().is_empty() {
+    let session_id = session_id.trim();
+    if session_id.is_empty() {
         return Err(ResolutionError::MissingSessionId);
+    }
+    if Uuid::parse_str(session_id).is_err() {
+        return Err(ResolutionError::InvalidSessionId {
+            session_id: session_id.to_string(),
+        });
     }
     Ok(())
 }
@@ -613,6 +622,8 @@ mod tests {
 
     use super::*;
 
+    const SESSION_ID: &str = "11111111-1111-4111-8111-111111111111";
+
     fn fixture() -> (TempDir, PathBuf, PathBuf, SessionWorkspaceResolver) {
         let temp = TempDir::new().unwrap();
         let repository = temp.path().join("repository");
@@ -633,7 +644,7 @@ mod tests {
         let (_temp, repository, _worktree, resolver) = fixture();
         let worktree = make_nested_worktree(
             &repository,
-            "session-a",
+            SESSION_ID,
             "feature",
             "agent/session-a/feature",
         );
@@ -641,7 +652,7 @@ mod tests {
 
         let resolved = resolver
             .resolve(ResolveRequest {
-                session_id: "session-a",
+                session_id: SESSION_ID,
                 relative_workspace: Some(Path::new("nested")),
                 store_dir: ".ticket",
             })
@@ -659,7 +670,7 @@ mod tests {
         let (_temp, _repository, _worktree, resolver) = fixture();
 
         assert!(matches!(
-            resolve_root(&resolver, "session-a"),
+            resolve_root(&resolver, SESSION_ID),
             Err(ResolutionError::MissingSessionWorktree { .. })
         ));
     }
@@ -669,19 +680,19 @@ mod tests {
         let (_temp, repository, _worktree, resolver) = fixture();
         let worktree = make_nested_worktree(
             &repository,
-            "session-a",
+            SESSION_ID,
             "feature",
             "agent/session-a/feature",
         );
         fs::create_dir_all(worktree.join("nested")).unwrap();
 
         let escaped = resolver.resolve(ResolveRequest {
-            session_id: "session-a",
+            session_id: SESSION_ID,
             relative_workspace: Some(Path::new("nested/../../outside")),
             store_dir: ".ticket",
         });
         let nested = resolver.resolve(ResolveRequest {
-            session_id: "session-a",
+            session_id: SESSION_ID,
             relative_workspace: Some(Path::new("nested")),
             store_dir: ".ticket",
         });
@@ -784,7 +795,7 @@ mod tests {
         let (_temp, repository, _worktree, resolver) = fixture();
         let worktree = repository
             .join(".worktrees")
-            .join("session-a")
+            .join(SESSION_ID)
             .join("linked");
         fs::create_dir_all(&worktree).unwrap();
         let private_git_dir =
@@ -801,7 +812,7 @@ mod tests {
         )
         .unwrap();
 
-        let resolved = resolve_root(&resolver, "session-a").unwrap();
+        let resolved = resolve_root(&resolver, SESSION_ID).unwrap();
 
         assert!(matches!(
             resolved.checkout(),
@@ -816,13 +827,13 @@ mod tests {
         fs::create_dir_all(
             repository
                 .join(".worktrees")
-                .join("session-a")
+                .join(SESSION_ID)
                 .join("missing-git"),
         )
         .unwrap();
 
         assert!(matches!(
-            resolve_root(&resolver, "session-a"),
+            resolve_root(&resolver, SESSION_ID),
             Err(ResolutionError::MissingSessionWorktree { .. })
         ));
     }
@@ -843,7 +854,7 @@ mod tests {
         }
 
         assert!(matches!(
-            resolve_root(&resolver, "unassigned"),
+            resolve_root(&resolver, SESSION_ID),
             Err(ResolutionError::MissingSessionWorktree { .. })
         ));
         assert_eq!(
@@ -863,8 +874,18 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            resolve_root(&resolver, "unassigned"),
+            resolve_root(&resolver, SESSION_ID),
             Err(ResolutionError::MissingSessionWorktree { .. })
+        ));
+    }
+
+    #[test]
+    fn slug_session_id_is_rejected_before_worktree_discovery() {
+        let (_temp, _repository, _worktree, resolver) = fixture();
+
+        assert!(matches!(
+            resolve_root(&resolver, "epic-kickoff-8fdfe135"),
+            Err(ResolutionError::InvalidSessionId { .. })
         ));
     }
 

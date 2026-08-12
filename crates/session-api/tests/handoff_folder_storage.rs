@@ -4,7 +4,7 @@
 //! and handoff.md, with deterministic markdown content and full JSON round-trip.
 
 use session_api::{
-    PersistedRuntimeContext, SessionError, SessionHandoffPackage, SessionHandoffTargetTicket,
+    PersistedSessionManifest, SessionError, SessionHandoffPackage, SessionHandoffTargetTicket,
     SessionHandoffUpwardContextEntry, SessionHandoffUpwardContextRole,
     SessionRuntimeInitRequest, SessionStoreConfig, SessionTicketStateResolver,
     SessionWorkflowEdge, SessionWorkflowEdgeKind, SessionWorkflowNodeDraft,
@@ -22,10 +22,10 @@ fn setup_test_store() -> (SessionStoreConfig, PathBuf) {
     (config, store_root)
 }
 
-fn init_test_session(config: &SessionStoreConfig, workspace_session_id: &str) {
+fn init_test_session(config: &SessionStoreConfig, session_id: &str) {
     config
         .init_runtime_context(SessionRuntimeInitRequest {
-            workspace_session_id: Some(workspace_session_id.to_string()),
+            session_id: Some(session_id.to_string()),
             predecessor_run_id: None,
             force_new_run: false,
         })
@@ -64,9 +64,9 @@ fn upward_context() -> Vec<SessionHandoffUpwardContextEntry> {
 #[test]
 fn handoff_persists_as_folder_with_json_and_markdown() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "78901234-7890-4789-8789-789012345678";
+    let session_id = "10000000-0000-4000-8000-000000000001";
 
-    init_test_session(&config, workspace_session_id);
+    init_test_session(&config, session_id);
 
     let package = SessionHandoffPackage {
         objective: "Implement the feature".to_string(),
@@ -83,7 +83,7 @@ fn handoff_persists_as_folder_with_json_and_markdown() {
     };
 
     let result = config
-        .create_handoff_result(workspace_session_id, Some(package.clone()), vec![], None)
+        .create_handoff_result(session_id, Some(package.clone()), vec![], None)
         .expect("create handoff result");
 
     let handoff_id = &result.record.handoff_id;
@@ -164,9 +164,9 @@ fn handoff_persists_as_folder_with_json_and_markdown() {
 #[test]
 fn handoff_markdown_shows_open_escalations_warning() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "89012345-8901-4890-8890-890123456789";
+    let session_id = "10000000-0000-4000-8000-000000000002";
 
-    init_test_session(&config, workspace_session_id);
+    init_test_session(&config, session_id);
 
     let package = SessionHandoffPackage {
         objective: "Fix the bug".to_string(),
@@ -186,7 +186,7 @@ fn handoff_markdown_shows_open_escalations_warning() {
     };
 
     let result = config
-        .create_handoff_result(workspace_session_id, Some(package.clone()), vec![], None)
+        .create_handoff_result(session_id, Some(package.clone()), vec![], None)
         .expect("create handoff result");
 
     let handoff_folder = PathBuf::from(&result.record_path);
@@ -208,9 +208,9 @@ fn handoff_markdown_shows_open_escalations_warning() {
 #[test]
 fn legacy_flat_json_handoffs_still_load() {
     let (config, store_root) = setup_test_store();
-    let workspace_session_id = "90123456-9012-4901-8901-901234567890";
+    let session_id = "10000000-0000-4000-8000-000000000003";
 
-    init_test_session(&config, workspace_session_id);
+    init_test_session(&config, session_id);
 
     // Create a handoff using the new folder structure first
     let package = SessionHandoffPackage {
@@ -228,7 +228,7 @@ fn legacy_flat_json_handoffs_still_load() {
     };
 
     let result = config
-        .create_handoff_result(workspace_session_id, Some(package.clone()), vec![], None)
+        .create_handoff_result(session_id, Some(package.clone()), vec![], None)
         .expect("create handoff result");
 
     // Verify we can read the JSON from the folder structure
@@ -244,7 +244,7 @@ fn legacy_flat_json_handoffs_still_load() {
     let handoffs_dir = store_root
         .join(".session")
         .join("sessions")
-        .join(workspace_session_id)
+        .join(session_id)
         .join("handoffs");
     
     // Ensure the handoffs directory exists before writing the legacy file
@@ -277,13 +277,13 @@ fn legacy_flat_json_handoffs_still_load() {
 #[test]
 fn handoff_markdown_includes_workflow_mermaid_diagram_when_nodes_exist() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "01234567-0123-4012-8012-012345678901";
+    let session_id = "10000000-0000-4000-8000-000000000004";
 
-    init_test_session(&config, workspace_session_id);
+    init_test_session(&config, session_id);
 
     config
         .workflow_add_node(
-            workspace_session_id,
+            session_id,
             SessionWorkflowNodeDraft {
                 node_id: Some("node-a".to_string()),
                 kind: SessionWorkflowNodeKind::Task,
@@ -315,7 +315,7 @@ fn handoff_markdown_includes_workflow_mermaid_diagram_when_nodes_exist() {
 
     let result = config
         .create_handoff_result(
-            workspace_session_id,
+            session_id,
             Some(package),
             vec![],
             Some(&AvailableTicketResolver),
@@ -338,9 +338,9 @@ fn handoff_markdown_includes_workflow_mermaid_diagram_when_nodes_exist() {
 #[test]
 fn handoff_markdown_omits_mermaid_diagram_when_workflow_empty() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "11234567-0123-4112-8112-012345678901";
+    let session_id = "10000000-0000-4000-8000-000000000005";
 
-    init_test_session(&config, workspace_session_id);
+    init_test_session(&config, session_id);
 
     let package = SessionHandoffPackage {
         objective: "No workflow yet".to_string(),
@@ -357,7 +357,7 @@ fn handoff_markdown_omits_mermaid_diagram_when_workflow_empty() {
     };
 
     let result = config
-        .create_handoff_result(workspace_session_id, Some(package), vec![], None)
+        .create_handoff_result(session_id, Some(package), vec![], None)
         .expect("create handoff result");
 
     let handoff_folder = PathBuf::from(&result.record_path);
@@ -370,7 +370,7 @@ fn handoff_markdown_omits_mermaid_diagram_when_workflow_empty() {
 #[test]
 fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
     let (config, store_root) = setup_test_store();
-    let workspace_session_id = "21234567-0123-4212-8212-012345678901";
+    let session_id = "10000000-0000-4000-8000-000000000006";
     let epic_id = uuid::Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
         .expect("valid epic id");
     let phase_id = uuid::Uuid::parse_str("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
@@ -399,10 +399,10 @@ fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
             Some("Resolve the handoff rendering transport."),
         )
         .expect("create ticket");
-    init_test_session(&config, workspace_session_id);
+    init_test_session(&config, session_id);
     config
         .workflow_add_node(
-            workspace_session_id,
+            session_id,
             SessionWorkflowNodeDraft {
                 node_id: Some("workflow-ticket".to_string()),
                 kind: SessionWorkflowNodeKind::Task,
@@ -448,7 +448,7 @@ fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
     };
 
     let result = config
-        .create_handoff_result(workspace_session_id, Some(package), vec![], None)
+        .create_handoff_result(session_id, Some(package), vec![], None)
         .expect("create handoff result");
     let markdown = std::fs::read_to_string(PathBuf::from(result.record_path).join("handoff.md"))
         .expect("read handoff markdown");
@@ -479,9 +479,9 @@ fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
 #[test]
 fn handoff_markdown_degrades_when_target_ticket_is_unresolvable() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "31234567-0123-4312-8312-012345678901";
+    let session_id = "10000000-0000-4000-8000-000000000009";
     let ticket_id = "22222222-2222-4222-8222-222222222222";
-    init_test_session(&config, workspace_session_id);
+    init_test_session(&config, session_id);
     let package = SessionHandoffPackage {
         objective: "Degrade gracefully".to_string(),
         target_tickets: vec![target_ticket(ticket_id)],
@@ -497,7 +497,7 @@ fn handoff_markdown_degrades_when_target_ticket_is_unresolvable() {
     };
 
     let result = config
-        .create_handoff_result(workspace_session_id, Some(package), vec![], None)
+        .create_handoff_result(session_id, Some(package), vec![], None)
         .expect("create handoff result");
     let markdown = std::fs::read_to_string(PathBuf::from(result.record_path).join("handoff.md"))
         .expect("read handoff markdown");
@@ -532,13 +532,13 @@ impl SessionTicketStateResolver for FailingResolver {
 #[test]
 fn create_handoff_result_rejects_dangling_edge_before_writing_files() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "41234567-0123-4412-8412-012345678901";
+    let session_id = "10000000-0000-4000-8000-000000000007";
 
-    init_test_session(&config, workspace_session_id);
+    init_test_session(&config, session_id);
 
     config
         .workflow_add_node(
-            workspace_session_id,
+            session_id,
             SessionWorkflowNodeDraft {
                 node_id: Some("node-a".to_string()),
                 kind: SessionWorkflowNodeKind::Task,
@@ -555,27 +555,27 @@ fn create_handoff_result_rejects_dangling_edge_before_writing_files() {
         .expect("add workflow node");
 
     // workflow_add_edge validates both endpoints exist, so a dangling edge is
-    // injected directly into the persisted runtime context.
-    let context_path = _temp_dir
+    // injected directly into the persisted session manifest.
+    let manifest_path = _temp_dir
         .join("sessions")
-        .join(workspace_session_id)
-        .join("context.json");
-    let mut context: PersistedRuntimeContext = serde_json::from_str(
-        &std::fs::read_to_string(&context_path).expect("read context.json"),
+        .join(session_id)
+        .join("session.json");
+    let mut manifest: PersistedSessionManifest = serde_json::from_str(
+        &std::fs::read_to_string(&manifest_path).expect("read session.json"),
     )
-    .expect("deserialize context.json");
-    context.workflow.edges.push(SessionWorkflowEdge {
+    .expect("deserialize session.json");
+    manifest.workflow.edges.push(SessionWorkflowEdge {
         from: "node-a".to_string(),
         to: "node-missing".to_string(),
         kind: SessionWorkflowEdgeKind::DependsOn,
     });
     std::fs::write(
-        &context_path,
-        serde_json::to_string_pretty(&context).expect("serialize context.json"),
+        &manifest_path,
+        serde_json::to_string_pretty(&manifest).expect("serialize session.json"),
     )
     .expect("write context.json");
 
-    let result = config.create_handoff_result(workspace_session_id, None, vec![], None);
+    let result = config.create_handoff_result(session_id, None, vec![], None);
 
     assert!(
         matches!(result, Err(SessionError::WorkflowGraphInvalid { .. })),
@@ -585,7 +585,7 @@ fn create_handoff_result_rejects_dangling_edge_before_writing_files() {
 
     let handoffs_dir = _temp_dir
         .join("sessions")
-        .join(workspace_session_id)
+        .join(session_id)
         .join("handoffs");
     if handoffs_dir.exists() {
         let entries: Vec<_> = std::fs::read_dir(&handoffs_dir)
@@ -601,13 +601,13 @@ fn create_handoff_result_rejects_dangling_edge_before_writing_files() {
 #[test]
 fn create_handoff_result_rejects_unresolved_diagnostics_before_writing_files() {
     let (config, _temp_dir) = setup_test_store();
-    let workspace_session_id = "51234567-0123-4512-8512-012345678901";
+    let session_id = "10000000-0000-4000-8000-000000000008";
 
-    init_test_session(&config, workspace_session_id);
+    init_test_session(&config, session_id);
 
     config
         .workflow_add_node(
-            workspace_session_id,
+            session_id,
             SessionWorkflowNodeDraft {
                 node_id: Some("node-ticket".to_string()),
                 kind: SessionWorkflowNodeKind::Ticket,
@@ -625,7 +625,7 @@ fn create_handoff_result_rejects_unresolved_diagnostics_before_writing_files() {
 
     let resolver = FailingResolver;
     let result =
-        config.create_handoff_result(workspace_session_id, None, vec![], Some(&resolver));
+        config.create_handoff_result(session_id, None, vec![], Some(&resolver));
 
     assert!(
         matches!(result, Err(SessionError::WorkflowDiagnosticsUnresolved { .. })),
@@ -635,7 +635,7 @@ fn create_handoff_result_rejects_unresolved_diagnostics_before_writing_files() {
 
     let handoffs_dir = _temp_dir
         .join("sessions")
-        .join(workspace_session_id)
+        .join(session_id)
         .join("handoffs");
     if handoffs_dir.exists() {
         let entries: Vec<_> = std::fs::read_dir(&handoffs_dir)

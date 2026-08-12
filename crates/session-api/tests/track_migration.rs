@@ -120,6 +120,10 @@ fn test_manifest_roundtrip_with_track_fields()
         spawned_session_id: Some("spawned-ghi".to_string()),
         emitted_handoff_ids: vec![],
         picked_up_handoff_ids: vec![],
+        active_run_id: String::new(),
+        runs: vec![],
+        pinned_entities: vec![],
+        workflow: Default::default(),
     };
 
     // Serialize
