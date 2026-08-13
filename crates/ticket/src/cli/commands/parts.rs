@@ -11,6 +11,7 @@ use ticket_api::{
             TicketFs,
         },
     },
+    model::ticket::TicketManifestExt,
 };
 use uuid::Uuid;
 

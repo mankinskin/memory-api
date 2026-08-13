@@ -1,1 +1,1 @@
-pub use memory_api::model::manifest_format::*;
+pub use memory_kernel::model::manifest_format::*;

@@ -95,7 +95,8 @@ impl TicketStore {
         self.index.add_scan_root(&ScanRoot {
             path,
             label: root.label,
-        })
+        })?;
+        Ok(())
     }
 
     /// Persist a scan root together with explicit auditability metadata.
@@ -117,7 +118,8 @@ impl TicketStore {
                 label: root.label,
             },
             &metadata,
-        )
+        )?;
+        Ok(())
     }
 
     /// Delete persisted sibling-worktree scan roots that can outlive the

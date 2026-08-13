@@ -32,7 +32,7 @@ impl TicketStore {
         fs::remove_dir_all(&indexed.path).map_err(StorageError::Io)?;
         self.index.remove_ticket(id)?;
         self.index.remove_workflow_facts(id)?;
-        self.with_search_repair(|| self.search.remove(id))?;
+        self.with_search_repair(|| Ok(self.search.remove(id)?))?;
 
         if let Some(hook) = self.hook() {
             hook.ticket_delete(*id);
@@ -69,7 +69,7 @@ impl TicketStore {
             _ => None,
         });
         self.with_search_repair(|| {
-            self.search.upsert(
+            Ok(self.search.upsert(
                 id,
                 refreshed.title.as_deref(),
                 body.as_deref(),
@@ -77,7 +77,7 @@ impl TicketStore {
                 Some(refreshed.type_id.as_str()),
                 Some(&created_at_str),
                 effort_str.as_deref(),
-            )
+            )?)
         })?;
         let state_progressed = self.state_rank_for_type(
             &refreshed.type_id,
@@ -149,7 +149,7 @@ impl TicketStore {
             _ => None,
         });
         self.with_search_repair(|| {
-            self.search.upsert(
+            Ok(self.search.upsert(
                 id,
                 refreshed.title.as_deref(),
                 body.as_deref(),
@@ -157,7 +157,7 @@ impl TicketStore {
                 Some(refreshed.type_id.as_str()),
                 Some(&created_at_str),
                 effort_str.as_deref(),
-            )
+            )?)
         })?;
         let state_progressed = self.state_rank_for_type(
             &refreshed.type_id,
@@ -213,7 +213,7 @@ impl TicketStore {
                         schema.invalid_transition_error(
                             current_state,
                             target_state,
-                        ),
+                        ).into(),
                     )
                 })?;
 

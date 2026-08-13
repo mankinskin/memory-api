@@ -1,1 +1,1 @@
-pub use memory_api::model::edge::*;
+pub use memory_kernel::model::edge::*;

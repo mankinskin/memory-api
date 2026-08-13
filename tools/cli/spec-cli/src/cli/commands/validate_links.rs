@@ -13,6 +13,8 @@ use uuid::Uuid;
 
 use crate::cli::CliRunError;
 
+use ticket_api::model::ticket::TicketManifestExt;
+
 /// Resolve a `TicketRef.store_root` (repo-root-relative, e.g. ".ticket" or
 /// "memory-api/.ticket") against the workspace root that `spec validate-links`
 /// was invoked against.
@@ -149,7 +151,7 @@ fn count_by_kind(findings: &[Value]) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use memory_api::model::entity::SpecRef;
+    use ticket_api::model::ticket::SpecRef;
     use spec_api::{
         SpecManifest,
         TicketRef,

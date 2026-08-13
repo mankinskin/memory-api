@@ -1,5 +1,5 @@
 use clap::error::ErrorKind;
-use memory_api::runtime::init_transport_tracing;
+use memory_kernel::runtime::init_transport_tracing;
 
 use ticket::cli::{
     CliOutput,

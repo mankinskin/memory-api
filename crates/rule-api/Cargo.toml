@@ -5,7 +5,7 @@ edition = "2024"
 description = "Rule system: canonical instruction/rule manifest model, storage, and schema"
 
 [dependencies]
-memory-api = { path = "../memory-api" }
+memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
 feedback-api = { path = "../feedback-api" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

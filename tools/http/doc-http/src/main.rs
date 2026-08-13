@@ -5,7 +5,7 @@ use doc_http::{
     ServeConfig,
     start_server,
 };
-use memory_api::runtime::init_transport_tracing;
+use memory_kernel::runtime::init_transport_tracing;
 
 #[tokio::main]
 async fn main() {

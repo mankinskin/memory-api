@@ -10,7 +10,7 @@ use std::path::{
     PathBuf,
 };
 
-use memory_api::{
+use memory_kernel::{
     error::StorageError,
     storage::move_kernel::{
         self,
@@ -39,7 +39,7 @@ fn to_move_error(error: RuleError) -> MoveError {
 }
 
 fn rule_entity_root(store_root: &Path) -> PathBuf {
-    memory_api::workspace::resolve_store_root_from(store_root, RULE_INDEX_DIR)
+    memory_kernel::workspace::resolve_store_root_from(store_root, RULE_INDEX_DIR)
         .join("rules")
 }
 
@@ -196,7 +196,7 @@ impl RuleStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use memory_api::{
+    use memory_kernel::{
         model::edge::EdgeRecord,
         storage::move_kernel::{
             MoveBlocker,

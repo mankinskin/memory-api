@@ -163,7 +163,7 @@ fn resolve_index_root(
     override_path: Option<&Path>,
     workspace_root_override: Option<&Path>,
 ) -> PathBuf {
-    let cwd = memory_api::workspace::working_dir();
+    let cwd = memory_kernel::workspace::working_dir();
     let env_root = std::env::var_os("SPEC_INDEX_ROOT").map(PathBuf::from);
     resolve_index_root_from(
         override_path,
@@ -179,7 +179,7 @@ fn resolve_index_root_from(
     env_root: Option<&Path>,
     cwd: Option<&Path>,
 ) -> PathBuf {
-    memory_api::workspace::resolve_requested_store_root_from(
+    memory_kernel::workspace::resolve_requested_store_root_from(
         override_path,
         workspace_root_override,
         env_root,
@@ -194,14 +194,14 @@ fn resolve_workspace_root(
 ) -> PathBuf {
     if let Some(path) = workspace_root_override {
         let store_root =
-            memory_api::workspace::resolve_store_root_from(path, ".spec");
-        return memory_api::workspace::resolve_workspace_root_from_store_root(
+            memory_kernel::workspace::resolve_store_root_from(path, ".spec");
+        return memory_kernel::workspace::resolve_workspace_root_from_store_root(
             &store_root,
             ".spec",
         );
     }
 
-    memory_api::workspace::resolve_workspace_root_from_store_root(
+    memory_kernel::workspace::resolve_workspace_root_from_store_root(
         index_root, ".spec",
     )
 }
@@ -218,7 +218,7 @@ fn register_descendant_scan_roots(
         .collect::<BTreeSet<_>>();
     let mut reindex = false;
 
-    for root in memory_api::workspace::discover_workspace_scan_roots(
+    for root in memory_kernel::workspace::discover_workspace_scan_roots(
         workspace_root,
         ".spec",
         "specs",

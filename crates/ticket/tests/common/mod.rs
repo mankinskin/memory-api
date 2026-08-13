@@ -1,8 +1,8 @@
 //! Shared sandboxed test harness for ticket-cli integration tests.
 //!
-//! The generic sandbox infrastructure lives in `memory_api::testing` and is
+//! The generic sandbox infrastructure lives in `memory_kernel::testing` and is
 //! shared across all domains.  This module supplies two domain-specific
-//! [`memory_api::testing::SandboxSetup`] implementations:
+//! [`memory_kernel::testing::SandboxSetup`] implementations:
 //!
 //! - [`FlatTicketSetup`] — `index_root` == `workspace_root` (the tempdir
 //!   itself acts as the index root).  Used by every test except those that
@@ -13,7 +13,7 @@
 //!
 //! Domain-specific CLI helpers (`ticket_json`, `ticket_fail`, …) are added
 //! via the [`TicketCommands`] extension trait, which is implemented for any
-//! [`memory_api::testing::Sandbox<S>`] regardless of setup type.
+//! [`memory_kernel::testing::Sandbox<S>`] regardless of setup type.
 //!
 //! The `ticket` binary is located via `env!("CARGO_BIN_EXE_ticket")`, which
 //! Cargo resolves at compile time to the correct path in `target/`.
@@ -29,7 +29,7 @@ use std::{
     },
 };
 
-use memory_api::testing::{
+use memory_kernel::testing::{
     Sandbox,
     SandboxPaths,
     SandboxSetup,

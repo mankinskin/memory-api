@@ -2,6 +2,7 @@ use chrono::{
     DateTime,
     Utc,
 };
+use memory_kernel::InteroperableArtifact;
 use serde::{
     Deserialize,
     Serialize,
@@ -9,7 +10,6 @@ use serde::{
 use test_api::{
     ValidationExecution,
     ValidationLinks,
-    InteroperableArtifact,
     IdentifiableArtifact,
     TraceableArtifact,
 };

@@ -55,7 +55,7 @@ pub use render::{
     prepare_generated_output,
     render_markdown_file,
 };
-pub use memory_api::generated_markdown::{
+pub use memory_kernel::generated_markdown::{
     ParseGeneratedMarkdownError,
     ParsedGeneratedMarkdownArtifact,
 };

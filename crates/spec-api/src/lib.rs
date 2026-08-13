@@ -10,7 +10,7 @@ pub mod ticket_ref;
 pub mod verification;
 pub mod workspace;
 
-pub use memory_api::generated_markdown::GeneratedMarkdownSnippet;
+pub use memory_kernel::generated_markdown::GeneratedMarkdownSnippet;
 
 pub use code_ref::{
     CodeRef,

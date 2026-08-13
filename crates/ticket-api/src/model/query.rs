@@ -1,1 +1,1 @@
-pub use memory_api::model::query::*;
+pub use memory_kernel::model::query::*;

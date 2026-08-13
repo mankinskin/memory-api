@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use memory_api::error::StorageError;
+use memory_kernel::error::StorageError;
 use serde_json::json;
 use spec_api::{
     SpecManifest,

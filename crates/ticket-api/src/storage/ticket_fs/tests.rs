@@ -9,6 +9,7 @@ use super::{
 use crate::model::ticket::{
     SpecRef,
     TicketManifest,
+    TicketManifestExt,
     TicketPart,
     TicketRefEntry,
 };

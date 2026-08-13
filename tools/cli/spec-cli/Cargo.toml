@@ -15,9 +15,8 @@ path = "src/lib.rs"
 [dependencies]
 spec-api = { path = "../../../crates/spec-api" }
 ticket-api = { path = "../../../crates/ticket-api" }
-memory-api = { path = "../../../crates/memory-api" }
+memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
 rule-api = { path = "../../../crates/rule-api" }
-
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

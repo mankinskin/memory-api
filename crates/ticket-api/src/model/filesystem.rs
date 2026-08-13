@@ -4,7 +4,7 @@ use serde::{
 };
 
 // Re-export generic types from memory-api — same type identity, no duplication.
-pub use memory_api::model::filesystem::{
+pub use memory_kernel::model::filesystem::{
     ParseDiagnostic,
     PersistedScanRoot,
     PolicyDecision,
@@ -48,7 +48,7 @@ pub fn parse_ticket_manifest_toml(
     path: std::path::PathBuf,
     content: &str,
 ) -> Result<TicketManifest, ParseDiagnostic> {
-    memory_api::model::filesystem::parse_entity_manifest_toml(path, content)
+    memory_kernel::model::filesystem::parse_entity_manifest_toml(path, content)
 }
 
 pub fn has_minimum_ticket_contract(entries: &[&str]) -> bool {

@@ -36,7 +36,7 @@ use chrono::{
 };
 use uuid::Uuid;
 
-use memory_api::{
+use memory_kernel::{
     ContentKind,
     IndexEntry,
     IndexRef,

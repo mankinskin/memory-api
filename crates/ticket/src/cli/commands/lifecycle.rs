@@ -334,7 +334,7 @@ fn recovery_hint() -> Value {
 fn normalize_display_path(
     path: &std::path::Path
 ) -> Result<String, CliRunError> {
-    memory_api::workspace::normalize_path_for_display_strict(path).map_err(
+    memory_kernel::workspace::normalize_path_for_display_strict(path).map_err(
         |error| {
             CliRunError::BadRequest(format!(
                 "path payload normalization failed for '{}': {error}",

@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn open_prunes_persisted_sibling_worktree_scan_root() {
-    use memory_api::storage::index::RedbIndexStore;
+    use memory_kernel::storage::index::RedbIndexStore;
 
     let dir = tempdir().unwrap();
     let repo = dir.path().join("repo");
@@ -36,7 +36,7 @@ fn open_prunes_persisted_sibling_worktree_scan_root() {
 
 #[test]
 fn scan_skips_policy_ignored_scan_roots() {
-    use memory_api::model::filesystem::{
+    use memory_kernel::model::filesystem::{
         PolicyDecision,
         ScanRootMetadata,
         ScanRootSource,
@@ -86,7 +86,7 @@ fn scan_skips_policy_ignored_scan_roots() {
 
 #[test]
 fn query_guard_excludes_tickets_under_ignored_roots() {
-    use memory_api::model::filesystem::{
+    use memory_kernel::model::filesystem::{
         PolicyDecision,
         ScanRootMetadata,
         ScanRootSource,
@@ -182,7 +182,7 @@ fn query_guard_excludes_tickets_under_ignored_roots() {
 #[test]
 fn add_edge_rejects_targets_under_policy_ignored_roots() {
     use crate::error::StorageError;
-    use memory_api::model::filesystem::{
+    use memory_kernel::model::filesystem::{
         PolicyDecision,
         ScanRootMetadata,
         ScanRootSource,

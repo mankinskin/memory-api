@@ -1,4 +1,4 @@
-use memory_api::error::StorageError;
+use memory_kernel::error::StorageError;
 use thiserror::Error;
 use uuid::Uuid;
 

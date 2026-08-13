@@ -33,7 +33,7 @@ impl SpecServer {
         input: CreateSpecInput,
     ) -> Result<CallToolResult, McpError> {
         let workspace =
-            memory_api::workspace::validate_explicit_workspace_selector(Some(
+            memory_kernel::workspace::validate_explicit_workspace_selector(Some(
                 &input.workspace,
             ))
             .map_err(|err| McpError::invalid_params(err.to_string(), None))?

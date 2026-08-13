@@ -3,7 +3,7 @@ use serde_json::{
     json,
 };
 
-use memory_api::{
+use memory_kernel::{
     error::StorageError,
     model::filesystem::ScanRoot,
 };

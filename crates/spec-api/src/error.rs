@@ -21,10 +21,10 @@ pub enum SpecError {
     NoOpUpdate(String),
 
     #[error("storage error: {0}")]
-    Storage(#[from] memory_api::error::StorageError),
+    Storage(#[from] memory_kernel::error::StorageError),
 
     #[error("schema validation: {0}")]
-    Validation(#[from] memory_api::error::SchemaValidationError),
+    Validation(#[from] memory_kernel::error::SchemaValidationError),
 
     #[error("serialization error: {0}")]
     Serialization(String),

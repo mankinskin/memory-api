@@ -65,7 +65,7 @@ impl SpecServer {
         requested_workspace: Option<&str>,
     ) -> Result<CallToolResult, McpError> {
         let workspace_root =
-            memory_api::workspace::resolve_workspace_root_from_store_root(
+            memory_kernel::workspace::resolve_workspace_root_from_store_root(
                 active_index_root,
                 ".spec",
             );
@@ -106,7 +106,7 @@ impl SpecServer {
             _ => McpError::internal_error(format!("spec error: {e}"), None),
         }
     }
-    fn storage_err(e: memory_api::error::StorageError) -> McpError {
+    fn storage_err(e: memory_kernel::error::StorageError) -> McpError {
         McpError::internal_error(format!("storage error: {e}"), None)
     }
     fn is_spec_store_root(path: &Path) -> bool {
@@ -122,7 +122,7 @@ impl SpecServer {
         if workspace.is_empty() || workspace == "default" {
             return Ok(self.index_root.clone());
         }
-        let resolved = memory_api::workspace::resolve_store_root_from(
+        let resolved = memory_kernel::workspace::resolve_store_root_from(
             Path::new(workspace),
             ".spec",
         );

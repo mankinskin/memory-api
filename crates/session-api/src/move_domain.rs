@@ -10,7 +10,7 @@ use std::path::{
     PathBuf,
 };
 
-use memory_api::storage::move_kernel::{
+use memory_kernel::storage::move_kernel::{
     self,
     MoveDomain,
     MoveError,
@@ -177,7 +177,7 @@ impl SessionStoreConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use memory_api::storage::move_kernel::MoveExecutionPhase;
+    use memory_kernel::storage::move_kernel::MoveExecutionPhase;
     use std::process::Command;
     use tempfile::tempdir;
 

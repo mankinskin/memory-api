@@ -1,4 +1,4 @@
-use memory_api::model::{
+use memory_kernel::model::{
     schema::EntityTypeSchema,
     schema_registry::SchemaRegistry,
 };

@@ -8,7 +8,7 @@ use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
-use memory_api::{
+use memory_kernel::{
     error::StorageError,
     model::entity::EntityManifest,
     storage::indexed::IndexedEntity,

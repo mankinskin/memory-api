@@ -12,7 +12,7 @@ use std::{
 use serde::Serialize;
 use uuid::Uuid;
 
-use memory_api::{
+use memory_kernel::{
     ContentKind,
     cross_store_edges::{
         CrossStoreEdgeClassifier,
@@ -103,12 +103,12 @@ pub fn collect_findings(
     workflow: &WorkflowModel,
 ) -> HealthReport {
     let policy = crate::workspace_policy::load_workspace_policy(
-        &memory_api::workspace::resolve_workspace_root_from_store_root(
-            &memory_api::workspace::resolve_store_root_from(
+        &memory_kernel::workspace::resolve_workspace_root_from_store_root(
+            &memory_kernel::workspace::resolve_store_root_from(
                 &store.index_root,
-                memory_api::workspace::TICKET_INDEX_DIR,
+                memory_kernel::workspace::TICKET_INDEX_DIR,
             ),
-            memory_api::workspace::TICKET_INDEX_DIR,
+            memory_kernel::workspace::TICKET_INDEX_DIR,
         ),
     );
     let edge_classifier = CrossStoreEdgeClassifier::for_store(
@@ -505,7 +505,7 @@ mod tests {
         fs,
     };
 
-    use memory_api::workspace_policy::{
+    use memory_kernel::workspace_policy::{
         WORKSPACE_POLICY_FILE,
     };
     use tempfile::tempdir;
@@ -609,7 +609,7 @@ mod tests {
         );
         let ticket_path = store.get_indexed(&id).unwrap().unwrap().path;
         let toml_str =
-            memory_api::model::manifest_format::format_manifest_toml(&manifest);
+            memory_kernel::model::manifest_format::format_manifest_toml(&manifest);
         fs::write(
             ticket_path.join(crate::model::filesystem::TICKET_MANIFEST_FILE),
             toml_str,
@@ -657,7 +657,7 @@ mod tests {
             serde_json::Value::String("archived".to_string()),
         );
         let ticket_path = store.get_indexed(&id).unwrap().unwrap().path;
-        let toml_str = memory_api::model::manifest_format::format_manifest_toml(&manifest);
+        let toml_str = memory_kernel::model::manifest_format::format_manifest_toml(&manifest);
         fs::write(
             ticket_path.join(crate::model::filesystem::TICKET_MANIFEST_FILE),
             toml_str,
@@ -984,15 +984,15 @@ mod tests {
             )
             .unwrap();
 
-        let classifier = memory_api::cross_store_edges::CrossStoreEdgeClassifier::for_store(
+        let classifier = memory_kernel::cross_store_edges::CrossStoreEdgeClassifier::for_store(
             &child_store.index_root,
-            memory_api::ContentKind::Ticket,
+            memory_kernel::ContentKind::Ticket,
             crate::workspace_policy::load_workspace_policy(&child_repo),
         )
         .unwrap();
         assert!(matches!(
             classifier.classify(parent_id),
-            memory_api::cross_store_edges::EdgeReferenceResolution::CrossWorkspaceEdge { .. }
+            memory_kernel::cross_store_edges::EdgeReferenceResolution::CrossWorkspaceEdge { .. }
         ));
 
         let tickets = child_store.list(None, None, None).unwrap();

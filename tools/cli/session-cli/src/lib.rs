@@ -12,7 +12,7 @@ use serde_json::{
 };
 use uuid::Uuid;
 
-use memory_api::workspace;
+use memory_kernel::workspace;
 use session_api::{
     DEFAULT_PROMPT_SUMMARIZE_THRESHOLD_CHARS,
     DEFAULT_SKELETON_PREVIEW_CHARS,
@@ -1403,7 +1403,7 @@ fn move_command(
 }
 
 fn move_plan_json(
-    report: &memory_api::storage::move_kernel::MovePlan
+    report: &memory_kernel::storage::move_kernel::MovePlan
 ) -> Result<Value, CliRunError> {
     Ok(json!({
         "supported": report.supported(),
@@ -1433,7 +1433,7 @@ fn move_plan_json(
 }
 
 fn move_outcome_json(
-    outcome: &memory_api::storage::move_kernel::MoveOutcome
+    outcome: &memory_kernel::storage::move_kernel::MoveOutcome
 ) -> Result<Value, CliRunError> {
     Ok(json!({
         "resumed": outcome.resumed,

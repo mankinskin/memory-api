@@ -28,7 +28,10 @@ use crate::{
             ViewProfile,
             classify_part_kind,
         },
-        ticket::TicketRefEntry,
+        ticket::{
+            TicketManifestExt,
+            TicketRefEntry,
+        },
     },
     storage::ticket_fs::{
         LoadedPart,

@@ -1,21 +1,4 @@
-/// A cross-cutting contract for artifacts that need to interoperate within the
-/// workspace.
-///
-/// Ensures shared baseline standards for self-description, identity,
-/// lineage, and lineage-correlation.
-pub trait InteroperableArtifact {
-    /// The specific class or type of the artifact, e.g. "validation-execution".
-    fn artifact_class(&self) -> &'static str;
-
-    /// Retrieve any genuinely dynamic interoperability gaps.
-    ///
-    /// By default, returns an empty list, assuming the type's structure
-    /// guarantees contract compliance. Genuinely dynamic validation checks
-    /// (e.g. blank field values at runtime) should be listed here.
-    fn interoperability_gaps(&self) -> Vec<&'static str> {
-        Vec::new()
-    }
-}
+pub use memory_kernel::InteroperableArtifact;
 
 /// A contract for artifacts that are uniquely identifiable.
 pub trait IdentifiableArtifact {

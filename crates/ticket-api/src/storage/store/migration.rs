@@ -17,6 +17,7 @@ use uuid::Uuid;
 use super::TicketStore;
 use crate::{
     error::StorageError,
+    model::ticket::TicketManifestExt,
     storage::ticket_fs::TicketFs,
 };
 

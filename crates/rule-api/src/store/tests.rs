@@ -1,6 +1,6 @@
 use std::fs;
 
-use memory_api::model::filesystem::ScanRoot;
+use memory_kernel::model::filesystem::ScanRoot;
 use tempfile::tempdir;
 
 use super::*;

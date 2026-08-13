@@ -1,6 +1,6 @@
 use std::fs;
 
-use memory_api::{
+use memory_kernel::{
     error::StorageError,
     generated_markdown::{
         GeneratedMarkdownSnippet,

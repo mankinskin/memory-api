@@ -38,7 +38,7 @@ use audit_api::{
         summarize_report,
     },
 };
-use memory_api::generated_markdown::prepare_generated_output;
+use memory_kernel::generated_markdown::prepare_generated_output;
 use session_api::{
     SessionAuditReport,
     SessionAuditSelector,
@@ -361,7 +361,7 @@ fn cmd_move(args: MoveArgs) -> Result<Value, CliRunError> {
 }
 
 fn move_plan_json(
-    report: &memory_api::storage::move_kernel::MovePlan
+    report: &memory_kernel::storage::move_kernel::MovePlan
 ) -> Value {
     json!({
         "supported": report.supported(),
@@ -388,7 +388,7 @@ fn move_plan_json(
 }
 
 fn move_outcome_json(
-    outcome: &memory_api::storage::move_kernel::MoveOutcome
+    outcome: &memory_kernel::storage::move_kernel::MoveOutcome
 ) -> Value {
     json!({
         "resumed": outcome.resumed,
@@ -423,7 +423,7 @@ fn recovery_hint() -> Value {
 }
 
 fn path_display(path: &std::path::Path) -> String {
-    memory_api::workspace::normalize_path_for_display(path)
+    memory_kernel::workspace::normalize_path_for_display(path)
 }
 
 fn run_audit(args: &AuditArgs) -> Result<AuditReport, CliRunError> {

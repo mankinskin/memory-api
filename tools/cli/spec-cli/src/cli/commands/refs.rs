@@ -33,7 +33,7 @@ pub(crate) fn cmd_refs(
                 )
             });
             let canonical_workspace_root =
-                memory_api::workspace::canonicalize_workspace_root_strict(
+                memory_kernel::workspace::canonicalize_workspace_root_strict(
                     &workspace_root,
                 )
                 .map_err(|error| {
@@ -100,7 +100,7 @@ pub(crate) fn cmd_refs(
 fn render_workspace_root_for_payload(
     path: &std::path::Path
 ) -> Result<String, CliRunError> {
-    memory_api::workspace::normalize_path_for_display_strict(path).map_err(
+    memory_kernel::workspace::normalize_path_for_display_strict(path).map_err(
         |error| {
             CliRunError::BadRequest(format!(
                 "workspace root payload normalization failed for '{}': {error}",
@@ -121,11 +121,11 @@ fn inferred_workspace_root_for_spec(
         .ok()
         .flatten()
         .map(|indexed| {
-            let store_root = memory_api::workspace::resolve_store_root_from(
+            let store_root = memory_kernel::workspace::resolve_store_root_from(
                 &indexed.path,
                 ".spec",
             );
-            memory_api::workspace::resolve_workspace_root_from_store_root(
+            memory_kernel::workspace::resolve_workspace_root_from_store_root(
                 &store_root,
                 ".spec",
             )

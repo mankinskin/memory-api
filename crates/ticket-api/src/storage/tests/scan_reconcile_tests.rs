@@ -49,7 +49,7 @@ fn add_scan_root_allows_own_worktree_root() {
 
 #[test]
 fn open_reconciles_deleted_worktree_indexed_ticket_to_main_store() {
-    use memory_api::storage::index::RedbIndexStore;
+    use memory_kernel::storage::index::RedbIndexStore;
 
     let dir = tempdir().unwrap();
     let repo = dir.path().join("repo");

@@ -1,9 +1,9 @@
 pub(super) fn path_display(path: &std::path::Path) -> String {
-    memory_api::workspace::normalize_path_for_display(path)
+    memory_kernel::workspace::normalize_path_for_display(path)
 }
 
 pub(super) fn move_plan_json(
-    report: &memory_api::storage::move_kernel::MovePlan
+    report: &memory_kernel::storage::move_kernel::MovePlan
 ) -> serde_json::Value {
     serde_json::json!({
         "supported": report.supported(),
@@ -34,7 +34,7 @@ pub(super) fn move_plan_json(
 }
 
 pub(super) fn move_outcome_json(
-    outcome: &memory_api::storage::move_kernel::MoveOutcome
+    outcome: &memory_kernel::storage::move_kernel::MoveOutcome
 ) -> serde_json::Value {
     serde_json::json!({
         "resumed": outcome.resumed,

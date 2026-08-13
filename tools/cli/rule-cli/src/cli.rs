@@ -23,7 +23,7 @@ pub enum CliRunError {
     #[error("target config error: {0}")]
     TargetConfig(#[from] rule_api::TargetConfigError),
     #[error("storage error: {0}")]
-    Storage(#[from] memory_api::error::StorageError),
+    Storage(#[from] memory_kernel::error::StorageError),
     #[error("{0}")]
     BadRequest(String),
 }

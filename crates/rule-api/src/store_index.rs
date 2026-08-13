@@ -25,7 +25,7 @@ use chrono::{
     Utc,
 };
 
-use memory_api::{
+use memory_kernel::{
     ContentKind,
     IndexEntry,
     IndexRef,

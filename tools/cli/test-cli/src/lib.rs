@@ -13,7 +13,7 @@ use log_api::{
     LogError,
     LogStoreConfig,
 };
-use memory_api::workspace;
+use memory_kernel::workspace;
 use test_api::{
     TestError,
     TestStoreConfig,

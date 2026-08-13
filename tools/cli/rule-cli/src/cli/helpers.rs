@@ -26,7 +26,7 @@ pub(super) fn resolve_index_root(
     explicit: Option<&Path>,
     workspace_root: Option<&Path>,
 ) -> PathBuf {
-    let cwd = memory_api::workspace::working_dir();
+    let cwd = memory_kernel::workspace::working_dir();
     let env_root = std::env::var_os("RULE_INDEX_ROOT").map(PathBuf::from);
     resolve_index_root_from(
         explicit,
@@ -42,7 +42,7 @@ fn resolve_index_root_from(
     env_root: Option<&Path>,
     cwd: Option<&Path>,
 ) -> PathBuf {
-    memory_api::workspace::resolve_requested_store_root_from(
+    memory_kernel::workspace::resolve_requested_store_root_from(
         explicit,
         workspace_root,
         env_root,
@@ -59,8 +59,8 @@ pub(super) fn resolve_workspace_root(
     workspace_root_override
         .map(|path| {
             let store_root =
-                memory_api::workspace::resolve_store_root_from(path, ".rule");
-            memory_api::workspace::resolve_workspace_root_from_store_root(
+                memory_kernel::workspace::resolve_store_root_from(path, ".rule");
+            memory_kernel::workspace::resolve_workspace_root_from_store_root(
                 &store_root,
                 ".rule",
             )
@@ -68,7 +68,7 @@ pub(super) fn resolve_workspace_root(
         .or_else(|| command_config_path(command))
         .or_else(|| rule_api::workspace_root_for_index_root(index_root))
         .or_else(|| {
-            let cwd = memory_api::workspace::working_dir()?;
+            let cwd = memory_kernel::workspace::working_dir()?;
             cwd.join(".rule").exists().then_some(cwd)
         })
 }
@@ -278,7 +278,7 @@ fn command_config_path(command: &RuleCommandCli) -> Option<PathBuf> {
         _ => None,
     }?;
 
-    let cwd = memory_api::workspace::working_dir()?;
+    let cwd = memory_kernel::workspace::working_dir()?;
     let config = if config.is_absolute() {
         config.to_path_buf()
     } else {

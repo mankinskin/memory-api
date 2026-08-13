@@ -2,7 +2,7 @@
 //!
 //! The generic move machinery (preflight planning, journaled execution, git
 //! topology, path-reference rewriting) lives in
-//! [`memory_api::storage::move_kernel`]. This module supplies the ticket-domain
+//! [`memory_kernel::storage::move_kernel`]. This module supplies the ticket-domain
 //! specialization via [`TicketMoveDomain`] and re-exports the kernel types under
 //! the names the ticket surfaces (CLI/MCP/HTTP) consume.
 
@@ -11,7 +11,7 @@ use std::path::{
     PathBuf,
 };
 
-use memory_api::storage::move_kernel::{
+use memory_kernel::storage::move_kernel::{
     self,
     MoveBoardState,
     MoveDomain,
@@ -35,7 +35,7 @@ use crate::{
 // Re-export the neutral kernel types as the ticket move surface. The move
 // command is domain-neutral now; these aliases keep the existing public paths
 // (`ticket_api::storage::move_planner::MovePreflightReport`, etc.) stable.
-pub use memory_api::storage::move_kernel::{
+pub use memory_kernel::storage::move_kernel::{
     GitWorktreeTopology,
     MoveBlocker as MovePreflightBlocker,
     MovePlan as MovePreflightReport,
@@ -44,7 +44,11 @@ pub use memory_api::storage::move_kernel::{
 };
 
 /// Map a ticket [`StorageError`] into a kernel [`MoveError`].
-fn to_move_error(error: StorageError) -> MoveError {
+fn to_move_error<E>(error: E) -> MoveError
+where
+    E: Into<StorageError>,
+{
+    let error: StorageError = error.into();
     match error {
         StorageError::Io(io) => MoveError::Io(io),
         other => MoveError::Domain(other.to_string()),

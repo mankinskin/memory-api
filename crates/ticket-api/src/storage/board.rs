@@ -1,1 +1,1 @@
-pub use memory_api::storage::board::*;
+pub use memory_kernel::storage::board::*;

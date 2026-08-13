@@ -19,7 +19,7 @@
 //! daily).  This is the primary path for capturing the "ticket serialization
 //! error" family of failures.
 
-use memory_api::runtime::init_transport_tracing;
+use memory_kernel::runtime::init_transport_tracing;
 use ticket_api::storage::store::TicketStore;
 use ticket::serve::{
     ServeConfig,

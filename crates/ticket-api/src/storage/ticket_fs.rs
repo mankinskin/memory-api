@@ -40,7 +40,10 @@ use crate::{
             parse_ticket_manifest_toml,
         },
         parts::classify_part_kind,
-        ticket::TicketManifest,
+        ticket::{
+            TicketManifest,
+            TicketManifestExt,
+        },
     },
 };
 

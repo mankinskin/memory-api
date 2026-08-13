@@ -24,7 +24,7 @@ use serde::{
 };
 use uuid::Uuid;
 
-use memory_api::workspace;
+use memory_kernel::workspace;
 use session_api::{
     DEFAULT_SKELETON_PREVIEW_CHARS,
     RelationStrength,
@@ -802,7 +802,7 @@ impl SessionServer {
     }
 
     fn move_plan_json(
-        report: &memory_api::storage::move_kernel::MovePlan
+        report: &memory_kernel::storage::move_kernel::MovePlan
     ) -> Result<serde_json::Value, McpError> {
         Ok(serde_json::json!({
             "supported": report.supported(),
@@ -832,7 +832,7 @@ impl SessionServer {
     }
 
     fn move_outcome_json(
-        outcome: &memory_api::storage::move_kernel::MoveOutcome
+        outcome: &memory_kernel::storage::move_kernel::MoveOutcome
     ) -> Result<serde_json::Value, McpError> {
         Ok(serde_json::json!({
             "resumed": outcome.resumed,

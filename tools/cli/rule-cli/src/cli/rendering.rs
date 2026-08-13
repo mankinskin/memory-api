@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use memory_api::generated_markdown::GeneratedMarkdownSnippet;
+use memory_kernel::generated_markdown::GeneratedMarkdownSnippet;
 use rule_api::{
     GENERATED_FILE_COMMENT,
     RenderTarget,

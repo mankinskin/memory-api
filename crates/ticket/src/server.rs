@@ -86,7 +86,7 @@ impl TicketServer {
     fn board_err(error: ticket_api::BoardError) -> McpError {
         match error {
             ticket_api::BoardError::Storage(storage_error) =>
-                Self::store_err(storage_error),
+                Self::store_err(storage_error.into()),
             other => McpError::invalid_params(other.to_string(), None),
         }
     }

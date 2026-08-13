@@ -6,9 +6,9 @@
 //! hatch), because a ref's `urn` shape is validated per-kind and there is
 //! no way to validate the shape of an unknown kind. Reading a manifest with
 //! a foreign kind already present never fails — see
-//! `memory_api::model::entity::EntityManifest::refs`.
+//! `memory_kernel::model::entity::EntityManifest::refs`.
 
-use memory_api::model::{
+use memory_kernel::model::{
     index_entry::ContentKind,
     urn::Urn,
 };

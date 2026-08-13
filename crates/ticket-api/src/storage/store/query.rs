@@ -69,8 +69,8 @@ impl TicketStore {
         query_expr: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, StorageError> {
-        let expression =
-            parse_query(query_expr).map_err(StorageError::QueryParse)?;
+        let expression = parse_query(query_expr)
+            .map_err(|error| StorageError::QueryParse(error.into()))?;
         // Proactively ensure the search index is valid and complete before the
         // read, repopulating from the on-disk tickets if it is empty or partial.
         self.ensure_search_complete()?;
@@ -87,7 +87,7 @@ impl TicketStore {
                 self.scan(true)?;
                 self.search.search(&expression, limit)?
             },
-            Err(error) => return Err(error),
+            Err(error) => return Err(error.into()),
         };
 
         // Apply the same policy-allowed-root guard as `list`/`list_extended`.
@@ -118,19 +118,19 @@ impl TicketStore {
         &self,
         id: &Uuid,
     ) -> Result<Vec<EdgeRecord>, StorageError> {
-        self.index.edges_from(id)
+        Ok(self.index.edges_from(id)?)
     }
 
     pub fn list_all_edges(&self) -> Result<Vec<EdgeRecord>, StorageError> {
-        self.index.list_all_edges()
+        Ok(self.index.list_all_edges()?)
     }
 
     pub fn count_tickets(&self) -> Result<usize, StorageError> {
-        self.index.count_tickets()
+        Ok(self.index.count_tickets()?)
     }
 
     pub fn count_edges(&self) -> Result<usize, StorageError> {
-        self.index.count_edges()
+        Ok(self.index.count_edges()?)
     }
 
     pub fn add_edge(

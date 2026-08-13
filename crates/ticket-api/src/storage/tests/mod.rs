@@ -2,7 +2,7 @@ use chrono::{
     Duration,
     Utc,
 };
-use memory_api::model::edge::EdgeRecord;
+use memory_kernel::model::edge::EdgeRecord;
 use serde_json::Value;
 use std::{
     collections::{
@@ -16,7 +16,7 @@ use std::{
     },
 };
 
-use memory_api::{
+use memory_kernel::{
     model::filesystem::ScanRoot,
     storage::index::RedbIndexStore,
 };
@@ -31,7 +31,10 @@ use super::{
 };
 use crate::model::{
     manifest_format::format_manifest_toml,
-    ticket::TicketManifest,
+    ticket::{
+        TicketManifest,
+        TicketManifestExt,
+    },
 };
 
 fn canonical_existing_path(path: &Path) -> PathBuf {

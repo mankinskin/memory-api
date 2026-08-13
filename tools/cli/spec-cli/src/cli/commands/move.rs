@@ -95,7 +95,7 @@ pub(crate) fn cmd_move(
 }
 
 fn move_plan_json(
-    report: &memory_api::storage::move_kernel::MovePlan
+    report: &memory_kernel::storage::move_kernel::MovePlan
 ) -> Value {
     json!({
         "supported": report.supported(),
@@ -108,7 +108,7 @@ fn move_plan_json(
 }
 
 fn move_outcome_json(
-    outcome: &memory_api::storage::move_kernel::MoveOutcome
+    outcome: &memory_kernel::storage::move_kernel::MoveOutcome
 ) -> Value {
     json!({
         "resumed": outcome.resumed,
@@ -126,5 +126,5 @@ fn recovery_hint() -> Value {
 }
 
 fn disp(path: &std::path::Path) -> String {
-    memory_api::workspace::normalize_path_for_display(path)
+    memory_kernel::workspace::normalize_path_for_display(path)
 }

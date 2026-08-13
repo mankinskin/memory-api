@@ -16,6 +16,7 @@ use ticket_api::{
     TicketCatalogSource,
     error::StorageError,
     generate_ticket_catalog,
+    model::ticket::TicketManifestExt,
     storage::{
         TicketStore,
         ticket_fs::TicketFs,
@@ -197,7 +198,7 @@ pub(crate) fn cmd_store_index(
         let manifest = TicketFs::read(&ticket.path)?;
         let description =
             TicketFs::read_description(&ticket.path).unwrap_or_default();
-        let source_path = memory_api::index_generator::to_relative_slash(
+        let source_path = memory_kernel::index_generator::to_relative_slash(
             &workspace_root,
             &ticket.path.join("ticket.toml"),
         );
@@ -247,16 +248,16 @@ pub(crate) fn cmd_store_index(
         .encode_toon()
         .map_err(|e| CliRunError::BadRequest(e.to_string()))?;
 
-    let readme_out = memory_api::generated_markdown::prepare_generated_output(
+    let readme_out = memory_kernel::generated_markdown::prepare_generated_output(
         &artifacts.readme_markdown,
         read_existing(&readme_path).as_deref(),
     );
-    let sidecar_out = memory_api::generated_markdown::prepare_generated_output(
+    let sidecar_out = memory_kernel::generated_markdown::prepare_generated_output(
         &sidecar_toon,
         read_existing(&sidecar_path).as_deref(),
     );
     let agent_hook_out =
-        memory_api::generated_markdown::prepare_generated_output(
+        memory_kernel::generated_markdown::prepare_generated_output(
             &artifacts.agent_hook_markdown,
             read_existing(&agent_hook_path).as_deref(),
         );
@@ -295,11 +296,9 @@ pub(crate) fn cmd_store_index(
     let mut written = Vec::new();
     for (path, content) in planned {
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(memory_api::error::StorageError::Io)?;
+            fs::create_dir_all(parent).map_err(StorageError::Io)?;
         }
-        fs::write(path, content)
-            .map_err(memory_api::error::StorageError::Io)?;
+        fs::write(path, content).map_err(StorageError::Io)?;
         written.push(display_path(path));
     }
 
@@ -460,7 +459,7 @@ pub(crate) fn cmd_validate_links(
 mod validate_links_tests {
     use std::collections::BTreeMap;
 
-    use memory_api::model::entity::SpecRef;
+    use ticket_api::model::ticket::SpecRef;
     use spec_api::{
         SpecManifest,
         SpecStore,
@@ -712,35 +711,45 @@ pub(crate) fn cmd_serve(
     args: ServeCliArgs,
     store: TicketStore,
 ) -> Result<Value, CliRunError> {
-    use crate::serve::{
-        ServeConfig,
-        WorkspaceRegistry,
-        serve,
-    };
+    #[cfg(feature = "http")]
+    {
+        use crate::serve::{
+            ServeConfig,
+            WorkspaceRegistry,
+            serve,
+        };
 
-    let registry = WorkspaceRegistry::single_opened(std::sync::Arc::new(store));
+        let registry = WorkspaceRegistry::single_opened(std::sync::Arc::new(store));
 
-    let config = ServeConfig {
-        host: args.host,
-        port: args.port,
-    };
+        let config = ServeConfig {
+            host: args.host,
+            port: args.port,
+        };
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| {
-            CliRunError::BadRequest(format!(
-                "failed to start tokio runtime: {e}"
-            ))
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| {
+                CliRunError::BadRequest(format!(
+                    "failed to start tokio runtime: {e}"
+                ))
+            })?;
+
+        rt.block_on(async {
+            serve(config, registry)
+                .await
+                .map_err(|e| CliRunError::BadRequest(e.to_string()))
         })?;
 
-    rt.block_on(async {
-        serve(config, registry)
-            .await
-            .map_err(|e| CliRunError::BadRequest(e.to_string()))
-    })?;
-
-    Err(CliRunError::BadRequest("server exited unexpectedly".into()))
+        Err(CliRunError::BadRequest("server exited unexpectedly".into()))
+    }
+    #[cfg(not(feature = "http"))]
+    {
+        let _ = (args, store);
+        Err(CliRunError::BadRequest(
+            "ticket was built without the http feature; enable --features http to serve".into(),
+        ))
+    }
 }
 
 pub(crate) fn cmd_watch(

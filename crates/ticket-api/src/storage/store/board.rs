@@ -58,7 +58,7 @@ impl TicketStore {
         &self,
         ticket_id: &Uuid,
     ) -> Result<(), StorageError> {
-        self.index.remove_lease(ticket_id)
+        Ok(self.index.remove_lease(ticket_id)?)
     }
 
     /// Release the lease on `ticket_id` subject to ownership rules: the holder
@@ -74,7 +74,7 @@ impl TicketStore {
             None => Ok(()),
             Some(lease) => {
                 if lease.working_by == requester || lease.is_expired() {
-                    self.index.remove_lease(ticket_id)
+                    Ok(self.index.remove_lease(ticket_id)?)
                 } else {
                     Err(StorageError::LeaseConflict {
                         ticket: *ticket_id,
@@ -86,7 +86,7 @@ impl TicketStore {
     }
 
     pub fn list_leases(&self) -> Result<Vec<LeaseInfo>, StorageError> {
-        self.index.list_active_leases()
+        Ok(self.index.list_active_leases()?)
     }
 
     pub fn board_check_in(
@@ -113,7 +113,13 @@ impl TicketStore {
 
         match self.claim(ticket_id, agent_id, ttl_secs, Some(intent)) {
             Ok(_) | Err(StorageError::LeaseConflict { .. }) => {},
-            Err(error) => return Err(BoardError::Storage(error)),
+            Err(error) => {
+                return Err(BoardError::Storage(
+                    memory_kernel::error::StorageError::Other(
+                        error.to_string(),
+                    ),
+                ));
+            },
         }
 
         Ok(entry)
@@ -133,7 +139,13 @@ impl TicketStore {
 
         match self.release_lease(ticket_id, agent_id) {
             Ok(_) | Err(StorageError::NotFound(_)) => {},
-            Err(error) => return Err(BoardError::Storage(error)),
+            Err(error) => {
+                return Err(BoardError::Storage(
+                    memory_kernel::error::StorageError::Other(
+                        error.to_string(),
+                    ),
+                ));
+            },
         }
 
         entry

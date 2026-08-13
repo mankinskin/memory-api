@@ -1,13 +1,13 @@
 //! Ticket-domain entry points for journaled cross-workspace moves.
 //!
-//! All execution logic lives in [`memory_api::storage::move_kernel`]; these
+//! All execution logic lives in [`memory_kernel::storage::move_kernel`]; these
 //! methods build a [`TicketMoveDomain`] adapter and delegate to the generic
 //! kernel, mapping the kernel error back onto [`StorageError`]. The journal and
 //! outcome types are re-exported so existing surfaces keep their public paths.
 
 use uuid::Uuid;
 
-use memory_api::storage::move_kernel;
+use memory_kernel::storage::move_kernel;
 
 use crate::{
     error::StorageError,
@@ -22,7 +22,7 @@ use crate::{
 };
 
 // Re-export the neutral kernel execution types under their established paths.
-pub use memory_api::storage::move_kernel::{
+pub use memory_kernel::storage::move_kernel::{
     MoveExecutionPhase,
     MoveJournal,
     MoveManualFollowup,

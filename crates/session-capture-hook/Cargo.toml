@@ -9,7 +9,7 @@ name = "session-capture-hook"
 path = "src/main.rs"
 
 [dependencies]
-memory-api = { path = "../memory-api" }
+memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
 serde_json = "1"
 session-api = { path = "../session-api" }
 session-worktree-provision = { path = "../session-worktree-provision" }

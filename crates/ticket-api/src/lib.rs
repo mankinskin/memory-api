@@ -14,7 +14,7 @@ pub mod workspace;
 
 /// Re-export of the workspace-policy model and its load/save helpers.
 pub mod workspace_policy {
-    pub use memory_api::workspace_policy::*;
+    pub use memory_kernel::workspace_policy::*;
 }
 
 // Re-export board types at the crate root for convenient access.

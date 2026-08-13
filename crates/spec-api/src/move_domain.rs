@@ -1,7 +1,7 @@
 //! Spec-domain adapter onto the domain-neutral move kernel.
 //!
 //! This demonstrates that the generic cross-workspace move kernel in
-//! [`memory_api::storage::move_kernel`] is reusable by a second domain: the spec
+//! [`memory_kernel::storage::move_kernel`] is reusable by a second domain: the spec
 //! store implements [`MoveDomain`] and gains the same safe preflight/journaled
 //! move featureset as the ticket store, without copying any move logic.
 //!
@@ -12,7 +12,7 @@ use std::path::{
     PathBuf,
 };
 
-use memory_api::{
+use memory_kernel::{
     error::StorageError,
     storage::move_kernel::{
         self,
@@ -41,7 +41,7 @@ fn to_move_error(error: SpecError) -> MoveError {
 }
 
 fn spec_entity_root(store_root: &Path) -> PathBuf {
-    memory_api::workspace::resolve_store_root_from(store_root, SPEC_INDEX_DIR)
+    memory_kernel::workspace::resolve_store_root_from(store_root, SPEC_INDEX_DIR)
         .join("specs")
 }
 
@@ -201,7 +201,7 @@ impl SpecStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use memory_api::{
+    use memory_kernel::{
         model::edge::EdgeRecord,
         storage::move_kernel::{
             MoveBlocker,

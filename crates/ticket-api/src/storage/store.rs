@@ -17,7 +17,7 @@ use chrono::{
     DateTime,
     Utc,
 };
-use memory_api::{
+use memory_kernel::{
     model::filesystem::ScanRoot,
     storage::ensure_sqlite_index_root,
 };
@@ -29,6 +29,7 @@ use crate::{
     error::StorageError,
     model::{
         filesystem::TICKET_MANIFEST_FILE,
+        schema::TicketTypeSchemaExt,
         schema_registry::SchemaRegistry,
         ticket::{
             TicketId,
@@ -377,7 +378,7 @@ impl TicketStore {
             _ => None,
         });
         self.with_search_repair(|| {
-            self.search.upsert(
+            Ok(self.search.upsert(
                 &id,
                 title,
                 body_for_index.as_deref(),
@@ -385,7 +386,7 @@ impl TicketStore {
                 Some(type_id),
                 Some(&created_at_str),
                 effort_str.as_deref(),
-            )
+            )?)
         })?;
 
         // Append initial history snapshot (rev 1).
@@ -512,7 +513,7 @@ impl TicketStore {
         id: &Uuid,
     ) -> Result<Option<crate::storage::indexed::WorkflowFacts>, StorageError>
     {
-        self.index.get_workflow_facts(id)
+        Ok(self.index.get_workflow_facts(id)?)
     }
 
     pub fn get_workflow_facts_many(
@@ -522,7 +523,7 @@ impl TicketStore {
         HashMap<Uuid, crate::storage::indexed::WorkflowFacts>,
         StorageError,
     > {
-        self.index.get_workflow_facts_many(ids)
+        Ok(self.index.get_workflow_facts_many(ids)?)
     }
 
     /// Update a ticket: apply field patches, optional state transition, and optional description.
@@ -844,7 +845,7 @@ impl TicketStore {
                 _ => None,
             });
         self.with_search_repair(|| {
-            self.search.upsert(
+            Ok(self.search.upsert(
                 id,
                 indexed.title.as_deref(),
                 body.as_deref(),
@@ -852,7 +853,7 @@ impl TicketStore {
                 Some(indexed.type_id.as_str()),
                 Some(&created_at_str),
                 effort_str.as_deref(),
-            )
+            )?)
         })?;
 
         Ok(())
@@ -865,10 +866,6 @@ impl TicketStore {
         target_state: &str,
         single_hop: bool,
     ) -> Result<Vec<String>, StorageError> {
-        let current_state = indexed.state.as_deref().unwrap_or("open");
-        if current_state == target_state && transition_states.is_empty() {
-            return Ok(vec![]);
-        }
         let schema =
             self.schema_registry.get(&indexed.type_id).ok_or_else(|| {
                 StorageError::Other(format!(
@@ -876,6 +873,32 @@ impl TicketStore {
                     indexed.type_id
                 ))
             })?;
+        let current_state = indexed.state.as_deref().unwrap_or("open");
+        if current_state == target_state && transition_states.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Ticket-domain compatibility: an off-schema persisted state may only
+        // recover directly to the schema entry state before normal transitions
+        // resume.
+        if !schema.states.iter().any(|state| state == current_state) {
+            let entry_state = schema.entry_state().unwrap_or("open");
+            if transition_states.is_empty() && target_state == entry_state {
+                return Ok(Vec::new());
+            }
+            return Err(StorageError::Validation(
+                crate::error::SchemaValidationError::InvalidTransition {
+                    from: current_state.to_string(),
+                    to: target_state.to_string(),
+                    allowed_next: vec![entry_state.to_string()],
+                    intermediate: if target_state == entry_state {
+                        vec![entry_state.to_string()]
+                    } else {
+                        Vec::new()
+                    },
+                },
+            ));
+        }
 
         self.enforce_dependency_progress(indexed, target_state)?;
 
@@ -911,7 +934,9 @@ impl TicketStore {
                 // No path exists at all: the target is unreachable from here.
                 None => {
                     return Err(StorageError::Validation(
-                        schema.invalid_transition_error(&from, &checkpoint),
+                        schema
+                            .invalid_transition_error(&from, &checkpoint)
+                            .into(),
                     ));
                 },
             }

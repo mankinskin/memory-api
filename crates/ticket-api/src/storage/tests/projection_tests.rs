@@ -11,6 +11,7 @@ use crate::{
         CORE_PART_KINDS,
         ViewProfile,
     },
+    model::ticket::TicketManifestExt,
     storage::{
         ReadProjection,
         TicketStore,

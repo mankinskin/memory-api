@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use memory_api::generated_markdown::GeneratedMarkdownSnippet;
+use memory_kernel::generated_markdown::GeneratedMarkdownSnippet;
 use rmcp::{
     ErrorData as McpError,
     model::CallToolResult,

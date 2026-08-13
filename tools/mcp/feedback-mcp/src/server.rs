@@ -76,9 +76,9 @@ impl FeedbackServer {
         workspace: &str,
         workspace_slug: &str,
     ) -> Result<EntityFeedbackStore, McpError> {
-        let workspace = memory_api::workspace::validate_explicit_workspace_selector(Some(workspace))
+        let workspace = memory_kernel::workspace::validate_explicit_workspace_selector(Some(workspace))
             .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
-        let root = memory_api::workspace::resolve_store_root_from(
+        let root = memory_kernel::workspace::resolve_store_root_from(
             std::path::Path::new(workspace),
             ".feedback",
         );
@@ -260,7 +260,7 @@ mod tests {
     fn workspace_validation_rejects_ambient_aliases() {
         for value in [None, Some(""), Some("default"), Some("."), Some("..")]
         {
-            let err = memory_api::workspace::validate_explicit_workspace_selector(
+            let err = memory_kernel::workspace::validate_explicit_workspace_selector(
                 value,
             )
             .expect_err("should reject ambient selector");

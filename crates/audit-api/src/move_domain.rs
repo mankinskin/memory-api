@@ -11,7 +11,7 @@ use std::path::{
     PathBuf,
 };
 
-use memory_api::storage::move_kernel::{
+use memory_kernel::storage::move_kernel::{
     self,
     MoveDomain,
     MoveError,
@@ -112,7 +112,7 @@ impl MoveDomain for AuditMoveDomain<'_> {
         store_root: &Path,
     ) -> MoveResult<()> {
         let workspace_root =
-            memory_api::workspace::resolve_workspace_root_from_store_root(
+            memory_kernel::workspace::resolve_workspace_root_from_store_root(
                 store_root,
                 AUDIT_INDEX_DIR,
             );
@@ -167,7 +167,7 @@ impl RepositoryIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use memory_api::storage::move_kernel::MoveBlocker;
+    use memory_kernel::storage::move_kernel::MoveBlocker;
     use std::process::Command;
     use tempfile::tempdir;
 

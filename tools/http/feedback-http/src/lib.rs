@@ -54,9 +54,9 @@ fn store_for(
     workspace_slug: Option<&str>,
 ) -> Result<EntityFeedbackStore, String> {
     let root = if let Some(workspace) = workspace {
-        let workspace = memory_api::workspace::validate_explicit_workspace_selector(Some(workspace))
+        let workspace = memory_kernel::workspace::validate_explicit_workspace_selector(Some(workspace))
             .map_err(|err| err.to_string())?;
-        memory_api::workspace::resolve_store_root_from(
+        memory_kernel::workspace::resolve_store_root_from(
             std::path::Path::new(workspace),
             ".feedback",
         )

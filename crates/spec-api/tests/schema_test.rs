@@ -156,7 +156,7 @@ fn test_specification_schema_workflow_enforcement() {
 #[test]
 fn test_specification_toml_raw_parses() {
     // Verify the raw constant itself is valid TOML for EntityTypeSchema.
-    use memory_api::model::schema::EntityTypeSchema;
+    use memory_kernel::model::schema::EntityTypeSchema;
     let schema: EntityTypeSchema = toml::from_str(SPECIFICATION_SCHEMA_TOML)
         .expect("SPECIFICATION_SCHEMA_TOML must parse as EntityTypeSchema");
     assert_eq!(schema.type_id, "specification");

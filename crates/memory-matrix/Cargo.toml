@@ -18,7 +18,7 @@ harness = false
 
 [dependencies]
 memory-fixtures = { git = "https://github.com/mankinskin/memory-fixtures", branch = "main" }
-memory-api = { path = "../memory-api" }
+memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
 ticket-api = { path = "../ticket-api" }
 spec-api = { path = "../spec-api" }
 rule-api = { path = "../rule-api" }
@@ -31,7 +31,6 @@ spec-cli = { path = "../../tools/cli/spec-cli" }
 rule-cli = { path = "../../tools/cli/rule-cli" }
 spec-mcp = { path = "../../tools/mcp/spec-mcp" }
 rule-mcp = { path = "../../tools/mcp/rule-mcp" }
-
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 rmcp = { version = "0.14", features = ["server", "transport-io"] }

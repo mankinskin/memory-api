@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use memory_api::model::filesystem::ScanRoot;
+use memory_kernel::model::filesystem::ScanRoot;
 use rmcp::{
     ErrorData as McpError,
     model::CallToolResult,

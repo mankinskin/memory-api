@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use memory_api::generated_markdown::GeneratedMarkdownSnippet;
+use memory_kernel::generated_markdown::GeneratedMarkdownSnippet;
 use rule_api::{
     RuleManifest,
     RuleStore,
@@ -199,7 +199,7 @@ fn workspace_root_from_scan_root(scan_root: &Path) -> Option<PathBuf> {
 
 fn workspace_root_from_store_root(store_root: &Path) -> Option<PathBuf> {
     let workspace_root =
-        memory_api::workspace::resolve_workspace_root_from_store_root(
+        memory_kernel::workspace::resolve_workspace_root_from_store_root(
             store_root, ".spec",
         );
     if workspace_root.as_os_str().is_empty() {

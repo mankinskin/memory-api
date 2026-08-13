@@ -14,9 +14,8 @@ path = "src/lib.rs"
 
 [dependencies]
 spec-api = { path = "../../../crates/spec-api" }
-memory-api = { path = "../../../crates/memory-api" }
+memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
 viewer-api = { path = "../../../../viewer-api/viewer-api" }
-
 axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
@@ -32,4 +31,4 @@ futures-util = "0.3"
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 uuid = { version = "1", features = ["v4"] }
-memory-api = { path = "../../../crates/memory-api" }
+memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }

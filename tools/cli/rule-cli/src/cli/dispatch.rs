@@ -8,7 +8,7 @@ use std::{
 };
 
 use feedback_api::EntityFeedbackStore;
-use memory_api::model::filesystem::ScanRoot;
+use memory_kernel::model::filesystem::ScanRoot;
 use rule_api::{
     FeedbackNoteKind,
     FeedbackRating,
@@ -217,9 +217,9 @@ fn missing_rule_command(
         CliRunError::BadRequest("invalid rule index root".to_string())
     })?;
     let ticket_store_root =
-        memory_api::workspace::resolve_store_root_from(workspace_root, ".ticket");
+        memory_kernel::workspace::resolve_store_root_from(workspace_root, ".ticket");
     let feedback_store_root =
-        memory_api::workspace::resolve_store_root_from(workspace_root, ".feedback");
+        memory_kernel::workspace::resolve_store_root_from(workspace_root, ".feedback");
 
     let ticket_store = ticket_api::storage::TicketStore::open_or_init(&ticket_store_root)
         .map_err(|err| CliRunError::BadRequest(err.to_string()))?;
@@ -274,7 +274,7 @@ fn display_scan_path(path: &Path) -> String {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
-        memory_api::workspace::working_dir()
+        memory_kernel::workspace::working_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(path)
     };

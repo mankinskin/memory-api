@@ -3,7 +3,7 @@ use std::{
     path::Path,
 };
 
-use memory_api::{
+use memory_kernel::{
     error::StorageError,
     model::entity::EntityManifest,
 };

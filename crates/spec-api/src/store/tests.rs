@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use memory_api::{
+use memory_kernel::{
     generated_markdown::GeneratedMarkdownSnippet,
     model::{
         edge::EdgeRecord,

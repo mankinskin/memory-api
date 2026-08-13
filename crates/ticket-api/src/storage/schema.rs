@@ -1,1 +1,1 @@
-pub use memory_api::storage::schema::*;
+pub use memory_kernel::storage::schema::*;

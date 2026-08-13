@@ -107,7 +107,7 @@ pub enum CliRunError {
     #[error("spec error: {0}")]
     Spec(#[from] SpecError),
     #[error("storage error: {0}")]
-    Storage(#[from] memory_api::error::StorageError),
+    Storage(#[from] memory_kernel::error::StorageError),
     #[error("rule error: {0}")]
     Rule(#[from] rule_api::error::RuleError),
     #[error("target config error: {0}")]

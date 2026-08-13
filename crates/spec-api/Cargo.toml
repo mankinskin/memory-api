@@ -5,7 +5,7 @@ edition = "2024"
 description = "Specification system: manifest model, storage, and domain logic"
 
 [dependencies]
-memory-api = { path = "../memory-api" }
+memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
 feedback-api = { path = "../feedback-api" }
 test-api = { path = "../test-api" }
 serde = { version = "1", features = ["derive"] }

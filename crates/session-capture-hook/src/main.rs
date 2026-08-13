@@ -124,7 +124,7 @@ fn run() -> Result<(), SessionError> {
     report_structured_feedback_signals(&plan);
     synthesize_follow_up_tickets(
         &plan,
-        memory_api::workspace::working_dir().as_deref(),
+        memory_kernel::workspace::working_dir().as_deref(),
     );
 
     // Best-effort worktree/branch/ticket-id inference from the resolved
@@ -635,7 +635,7 @@ fn synthesize_follow_up_tickets(
 
     let ticket_root = match cwd {
         Some(cwd) =>
-            memory_api::workspace::resolve_local_root_from(cwd, ".ticket"),
+            memory_kernel::workspace::resolve_local_root_from(cwd, ".ticket"),
         None => PathBuf::from(".ticket"),
     };
     let ticket_store = match TicketStore::open_or_init(&ticket_root) {

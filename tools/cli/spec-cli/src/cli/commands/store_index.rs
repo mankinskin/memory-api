@@ -11,7 +11,7 @@ use serde_json::{
     json,
 };
 
-use memory_api::generated_markdown::prepare_generated_output;
+use memory_kernel::generated_markdown::prepare_generated_output;
 use spec_api::{
     SPEC_INDEX_AGENT_HOOK_PATH,
     SPEC_INDEX_TREE_DIR,
@@ -41,7 +41,7 @@ pub(crate) fn cmd_store_index(
     for entity in &indexed {
         if let Ok((manifest, body)) = store.get_full(&entity.id.to_string()) {
             let spec_file = entity.path.join("spec.toml");
-            let source_path = memory_api::index_generator::to_relative_slash(
+            let source_path = memory_kernel::index_generator::to_relative_slash(
                 workspace_root,
                 &spec_file,
             );
@@ -138,16 +138,16 @@ pub(crate) fn cmd_store_index(
     let mut written = Vec::new();
     if tree_root.exists() {
         fs::remove_dir_all(&tree_root)
-            .map_err(memory_api::error::StorageError::Io)?;
+            .map_err(memory_kernel::error::StorageError::Io)?;
     }
 
     for (path, content) in planned {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
-                .map_err(memory_api::error::StorageError::Io)?;
+                .map_err(memory_kernel::error::StorageError::Io)?;
         }
         fs::write(&path, content)
-            .map_err(memory_api::error::StorageError::Io)?;
+            .map_err(memory_kernel::error::StorageError::Io)?;
         written.push(display_path(path.as_path()));
     }
 

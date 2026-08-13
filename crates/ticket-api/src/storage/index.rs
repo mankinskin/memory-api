@@ -1,1 +1,1 @@
-pub use memory_api::storage::index::*;
+pub use memory_kernel::storage::index::*;

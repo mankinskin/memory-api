@@ -53,10 +53,10 @@ pub fn spec_err(
 
 /// Map a `StorageError` to an Axum `Response`.
 pub fn storage_err(
-    e: memory_api::error::StorageError,
+    e: memory_kernel::error::StorageError,
     rid: &str,
 ) -> Response {
-    use memory_api::error::StorageError;
+    use memory_kernel::error::StorageError;
     match e {
         StorageError::NotFound(_) => ApiError::not_found("spec", rid)
             .into_response_with_status(StatusCode::NOT_FOUND),

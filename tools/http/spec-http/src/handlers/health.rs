@@ -125,7 +125,7 @@ pub async fn add_root(
             .to_string()
     });
     match store.entity_store().add_scan_root(
-        memory_api::model::filesystem::ScanRoot {
+        memory_kernel::model::filesystem::ScanRoot {
             path: path.clone(),
             label: label.clone(),
         },

@@ -26,12 +26,12 @@ pub fn evaluate(repo_root: &Path) -> RuleOverlapResult {
     let mut store = match rule_api::RuleStore::open(repo_root) {
         Ok(store) => store,
         Err(rule_api::error::RuleError::Storage(
-            memory_api::error::StorageError::WorkspaceNotFound { path },
+            memory_kernel::error::StorageError::WorkspaceNotFound { path },
         )) => {
             return RuleOverlapResult {
                 metric: RuleOverlapSummary::unavailable(format!(
                     "rule store not initialized at {}; skipping rule-overlap audit",
-                    memory_api::workspace::normalize_path_for_display(&path)
+                    memory_kernel::workspace::normalize_path_for_display(&path)
                 )),
                 findings: Vec::new(),
             };

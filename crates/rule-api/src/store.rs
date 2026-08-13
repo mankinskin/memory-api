@@ -37,7 +37,7 @@ use serde_json::{
 use tracing::field::Empty;
 use uuid::Uuid;
 
-use memory_api::{
+use memory_kernel::{
     error::StorageError,
     model::{
         entity::EntityManifest,
@@ -184,7 +184,7 @@ impl RuleStore {
         );
         let registry = rule_schema_registry();
         let inner = EntityStore::open_with(index_root, fs, registry)?;
-        inner.add_scan_root(memory_api::model::filesystem::ScanRoot {
+        inner.add_scan_root(memory_kernel::model::filesystem::ScanRoot {
             path: index_root.join("rules"),
             label: "rules".to_string(),
         })?;

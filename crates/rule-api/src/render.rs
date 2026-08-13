@@ -1,5 +1,5 @@
 use crate::manifest::RuleManifest;
-use memory_api::generated_markdown::{
+use memory_kernel::generated_markdown::{
     GeneratedMarkdownConfig,
     GeneratedMarkdownSnippet,
     ParseGeneratedMarkdownError,

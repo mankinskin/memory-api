@@ -9,7 +9,7 @@ pub(super) fn make_sandbox() -> (TempDir, SpecServer) {
     let store = SpecStore::init(tmp.path()).expect("open store");
     store
         .entity_store()
-        .add_scan_root(memory_api::model::filesystem::ScanRoot {
+        .add_scan_root(memory_kernel::model::filesystem::ScanRoot {
             path: tmp.path().join("specs"),
             label: "test-specs".to_string(),
         })

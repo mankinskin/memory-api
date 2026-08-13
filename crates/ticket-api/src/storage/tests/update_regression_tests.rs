@@ -51,7 +51,7 @@ fn off_schema_state_recovers_only_to_entry_state_then_transitions_normally() {
         Value::String("archived".to_string()),
     );
     let ticket_path = store.get_indexed(&id).unwrap().unwrap().path;
-    let toml_str = memory_api::model::manifest_format::format_manifest_toml(&manifest);
+    let toml_str = memory_kernel::model::manifest_format::format_manifest_toml(&manifest);
     std::fs::write(
         ticket_path.join(crate::model::filesystem::TICKET_MANIFEST_FILE),
         toml_str,

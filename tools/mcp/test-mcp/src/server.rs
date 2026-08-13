@@ -231,11 +231,11 @@ impl TestServer {
         workspace_selector: &str,
     ) -> Result<TestStoreConfig, McpError> {
         let workspace_selector =
-            memory_api::workspace::validate_explicit_workspace_selector(Some(
+            memory_kernel::workspace::validate_explicit_workspace_selector(Some(
                 workspace_selector,
             ))
             .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
-        let store_root = memory_api::workspace::resolve_store_root_from(
+        let store_root = memory_kernel::workspace::resolve_store_root_from(
             std::path::Path::new(workspace_selector),
             ".test",
         );
@@ -252,7 +252,7 @@ impl TestServer {
     /// `workspace` on write remains discoverable from the aggregated root.
     fn discover_configs(&self) -> Vec<TestStoreConfig> {
         let workspace_root =
-            memory_api::workspace::resolve_workspace_root_from_store_root(
+            memory_kernel::workspace::resolve_workspace_root_from_store_root(
                 &self.store_root,
                 ".test",
             );
@@ -264,7 +264,7 @@ impl TestServer {
             configs.push(self.config());
         }
 
-        for root in memory_api::workspace::discover_workspace_store_roots(
+        for root in memory_kernel::workspace::discover_workspace_store_roots(
             &workspace_root,
             ".test",
             "executions",

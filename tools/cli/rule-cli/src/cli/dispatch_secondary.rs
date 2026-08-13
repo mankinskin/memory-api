@@ -436,7 +436,7 @@ pub(super) fn store_index_command(
             let source_path = entity
                 .map(|e| {
                     let file = e.path.join("rule.toml");
-                    memory_api::index_generator::to_relative_slash(
+                    memory_kernel::index_generator::to_relative_slash(
                         &workspace_root,
                         &file,
                     )
@@ -509,10 +509,10 @@ pub(super) fn store_index_command(
     for (path, content) in planned {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
-                .map_err(memory_api::error::StorageError::Io)?;
+                .map_err(memory_kernel::error::StorageError::Io)?;
         }
         fs::write(path, content)
-            .map_err(memory_api::error::StorageError::Io)?;
+            .map_err(memory_kernel::error::StorageError::Io)?;
         written.push(display_scan_path(path));
     }
 
@@ -540,7 +540,7 @@ pub(super) fn add_root_command(
     args: AddRootArgs,
 ) -> Result<Value, CliRunError> {
     fs::create_dir_all(&args.path)
-        .map_err(memory_api::error::StorageError::Io)?;
+        .map_err(memory_kernel::error::StorageError::Io)?;
     let path =
         fs::canonicalize(&args.path).unwrap_or_else(|_| args.path.clone());
     let label = args.label.unwrap_or_else(|| {

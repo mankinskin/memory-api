@@ -74,8 +74,8 @@ impl SpecDomain {
         plan.blockers.retain(|blocker| {
             !matches!(
                 blocker,
-                memory_api::storage::move_kernel::MoveBlocker::PathReferenceScanUnavailable { .. }
-                    | memory_api::storage::move_kernel::MoveBlocker::DirtyTrackedFiles { .. }
+                memory_kernel::storage::move_kernel::MoveBlocker::PathReferenceScanUnavailable { .. }
+                    | memory_kernel::storage::move_kernel::MoveBlocker::DirtyTrackedFiles { .. }
             )
         });
 

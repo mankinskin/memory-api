@@ -272,7 +272,7 @@ fn dispatch_refs_reads_child_spec_after_scan_root_augmentation() {
     assert_eq!(payload["valid"], true);
     assert_eq!(
         payload["workspace_root"],
-        memory_api::workspace::normalize_path_for_display(&child)
+        memory_kernel::workspace::normalize_path_for_display(&child)
     );
 }
 

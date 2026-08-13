@@ -3,6 +3,7 @@ use serde_json::{
     json,
 };
 use ticket_api::storage::ticket_fs::TicketFs;
+use ticket_api::model::ticket::TicketManifestExt;
 use uuid::Uuid;
 
 use super::{

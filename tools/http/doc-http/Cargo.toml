@@ -14,8 +14,7 @@ path = "src/lib.rs"
 
 [dependencies]
 doc-api = { path = "../../../crates/doc-api" }
-memory-api = { path = "../../../crates/memory-api" }
-
+memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
 axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }

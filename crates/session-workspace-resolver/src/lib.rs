@@ -9,7 +9,7 @@ use std::{
     sync::Mutex,
 };
 
-use memory_api::workspace::{
+use memory_kernel::workspace::{
     WorkspacePathError,
     canonicalize_workspace_root_strict,
     normalize_slashes,

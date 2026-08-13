@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use memory_api::runtime::init_transport_tracing;
+use memory_kernel::runtime::init_transport_tracing;
 use spec_api::SpecStore;
 use spec_http::{
     ServeConfig,

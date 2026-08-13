@@ -31,7 +31,7 @@ fn ensure_scan_root(
     if !has_root {
         store
             .entity_store()
-            .add_scan_root(memory_api::model::filesystem::ScanRoot {
+            .add_scan_root(memory_kernel::model::filesystem::ScanRoot {
                 path: specs_dir.to_path_buf(),
                 label: "default".into(),
             })

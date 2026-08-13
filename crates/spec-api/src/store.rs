@@ -16,7 +16,7 @@ use serde_json::Value;
 use tracing::field::Empty;
 use uuid::Uuid;
 
-use memory_api::{
+use memory_kernel::{
     ContentKind,
     cross_store_edges::{
         CrossStoreEdgeClassifier,
@@ -115,7 +115,7 @@ pub struct SpecStore {
 impl SpecStore {
     /// Open an existing spec store rooted at `index_root`.
     ///
-    /// Returns [`memory_api::error::StorageError::WorkspaceNotFound`] if the
+    /// Returns [`memory_kernel::error::StorageError::WorkspaceNotFound`] if the
     /// workspace has not been initialized. Run `spec init` first.
     pub fn open(index_root: &Path) -> Result<Self, SpecError> {
         let _span_guard = tracing::info_span!(
@@ -127,7 +127,7 @@ impl SpecStore {
         let index_root =
             workspace::resolve_store_root_from(index_root, SPEC_INDEX_DIR);
         if !index_root.join("entities.db").is_file() {
-            return Err(memory_api::error::StorageError::WorkspaceNotFound {
+            return Err(memory_kernel::error::StorageError::WorkspaceNotFound {
                 path: index_root,
             }
             .into());
@@ -529,9 +529,9 @@ impl SpecStore {
             })
             .collect::<Vec<_>>();
 
-        let policy = memory_api::workspace_policy::load_workspace_policy(
-            &memory_api::workspace::resolve_workspace_root_from_store_root(
-                &memory_api::workspace::resolve_store_root_from(
+        let policy = memory_kernel::workspace_policy::load_workspace_policy(
+            &memory_kernel::workspace::resolve_workspace_root_from_store_root(
+                &memory_kernel::workspace::resolve_store_root_from(
                     &self.inner.index_root,
                     SPEC_INDEX_DIR,
                 ),
