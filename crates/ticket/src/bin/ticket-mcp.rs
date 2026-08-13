@@ -1,77 +1,44 @@
-use serde::Deserialize;
-use transport_harness::mcp::rmcp::{
-    self as rmcp,
-    ErrorData as McpError,
-    ServerHandler,
-    handler::server::{
-        tool::ToolRouter,
-        wrapper::Parameters,
-    },
-    model::{
-        CallToolResult,
-        Content,
-    },
-    schemars::{
-        self,
-        JsonSchema,
-    },
-    tool,
-    tool_handler,
-    tool_router,
+#![recursion_limit = "256"]
+
+use ticket::server::{
+    self,
+    open_canonical_store,
 };
 
-#[derive(Clone)]
-struct TicketServer {
-    tool_router: ToolRouter<Self>,
-}
+use std::path::PathBuf;
 
-impl TicketServer {
-    fn new() -> Self {
-        Self {
-            tool_router: Self::tool_router(),
-        }
-    }
-}
+use memory_api::runtime::init_transport_tracing;
 
-#[derive(Debug, Deserialize, JsonSchema)]
-struct GetArgs {
-    /// Ticket ID to retrieve.
-    id: String,
-    /// Store path.
-    store_path: String,
-}
+#[tokio::main]
+async fn main() {
+    init_transport_tracing("ticket_mcp=info", None, None, "warn");
 
-#[tool_router]
-impl TicketServer {
-    /// Get a ticket by ID.
-    #[tool(description = "Get a ticket by ID")]
-    async fn get(
-        &self,
-        Parameters(args): Parameters<GetArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        let store = ticket::storage::TicketStore::open(std::path::Path::new(&args.store_path))
-            .map_err(|e| McpError::invalid_params(format!("failed to open store: {e}"), None))?;
-        
-        let uuid = args.id.parse::<uuid::Uuid>()
-            .map_err(|e| McpError::invalid_params(format!("invalid ticket id: {e}"), None))?;
-        
-        let ticket = store
-            .get(&uuid)
-            .map_err(|e| McpError::invalid_params(format!("ticket not found: {e}"), None))?;
-        
-        let json = serde_json::to_string(&ticket)
-            .map_err(|e| McpError::internal_error(format!("failed to serialize ticket: {e}"), None))?;
-        
-        Ok(CallToolResult::success(vec![Content::text(json)]))
-    }
-}
+    let index_root = std::env::var("TICKET_INDEX_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let (path, _source) = ticket_api::workspace::resolve_workspace();
+            path
+        });
 
-#[tool_handler]
-impl ServerHandler for TicketServer {}
+    let store = open_canonical_store(&index_root).unwrap_or_else(|e| {
+        eprintln!(
+            "Failed to open ticket store at {}: {e}",
+            index_root.display()
+        );
+        std::process::exit(1);
+    });
+    let index_root = store.index_root.clone();
+    drop(store);
 
-fn main() {
-    let server = TicketServer::new();
-    if let Err(err) = transport_harness::mcp::run(server) {
+    let workspace_names = vec!["default".to_string()];
+
+    eprintln!(
+        "ticket-mcp starting (store: {}, workspaces: {:?})",
+        index_root.display(),
+        workspace_names,
+    );
+
+    if let Err(err) = server::run_mcp_server(index_root).await {
         eprintln!("Fatal error: {err}");
         std::process::exit(1);
     }

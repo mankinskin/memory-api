@@ -7,7 +7,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use serde_json::Value;
 
 // Re-use the server under test.
-use ticket_mcp::server::{
+use ticket::server::{
     BoardCheckInInput,
     BoardCheckOutInput,
     BoardCleanApplyInput,

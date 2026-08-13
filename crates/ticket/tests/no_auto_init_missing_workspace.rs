@@ -13,7 +13,7 @@ use axum::{
 use serde_json::Value;
 use tower::ServiceExt;
 
-use ticket_http::serve::{
+use ticket::serve::{
     AppState,
     StreamBroker,
     WorkspaceRegistry,

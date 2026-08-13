@@ -1,48 +1,79 @@
-use transport_harness::{
-    HarnessError,
-    Output,
-    cli::clap::{
-        self,
-        Parser,
-    },
+use clap::error::ErrorKind;
+use memory_api::runtime::init_transport_tracing;
+
+use ticket::cli::{
+    CliOutput,
+    error_output,
+    parse_cli_from,
+    render_machine_output,
+    requested_machine_output_format_from_args,
+    run,
 };
 
-#[derive(Parser)]
-#[command(name = "ticket-cli")]
-struct TicketCommand {
-    #[command(subcommand)]
-    op: Op,
-}
+fn main() {
+    init_transport_tracing("ticket_cli=info", None, None, "warn");
 
-#[derive(clap::Subcommand)]
-enum Op {
-    /// Get a ticket by ID.
-    Get {
-        #[arg(long)]
-        id: String,
-        #[arg(long)]
-        store_path: String,
-    },
-}
+    let cli = match parse_cli_from(std::env::args_os()) {
+        Ok(cli) => cli,
+        Err(err) => {
+            if matches!(
+                err.kind(),
+                ErrorKind::DisplayHelp
+                    | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+                    | ErrorKind::DisplayVersion
+            ) {
+                print!("{err}");
+                std::process::exit(0);
+            }
+            let rendered = error_output(
+                &err.to_string(),
+                requested_machine_output_format_from_args(),
+            );
+            eprintln!("{rendered}");
+            std::process::exit(2);
+        },
+    };
 
-fn dispatch(command: TicketCommand) -> Result<Output, HarnessError> {
-    match command.op {
-        Op::Get { id, store_path } => {
-            let store = ticket::storage::TicketStore::open(std::path::Path::new(&store_path))
-                .map_err(|e| HarnessError::domain(format!("failed to open store: {e}")))?;
-            
-            let uuid = id.parse::<uuid::Uuid>()
-                .map_err(|e| HarnessError::domain(format!("invalid ticket id: {e}")))?;
-            
-            let ticket = store
-                .get(&uuid)
-                .map_err(|e| HarnessError::domain(format!("ticket not found: {e}")))?;
-            
-            Output::json(&ticket)
-        }
+    match run(cli) {
+        Ok(CliOutput::Machine(value, format)) => {
+            let exit_code = validate_links_exit_code(&value);
+            match render_machine_output(&value, format) {
+                Ok(rendered) => {
+                    println!("{rendered}");
+                    if exit_code != 0 {
+                        std::process::exit(exit_code);
+                    }
+                },
+                Err(err) => {
+                    eprintln!("{}", error_output(&err, Some(format)));
+                    std::process::exit(1);
+                },
+            }
+        },
+        Ok(CliOutput::Text(text)) => println!("{text}"),
+        Err(err) => {
+            eprintln!(
+                "{}",
+                error_output(
+                    &err.to_string(),
+                    requested_machine_output_format_from_args(),
+                )
+            );
+            std::process::exit(1);
+        },
     }
 }
 
-fn main() -> Result<(), HarnessError> {
-    transport_harness::cli::run::<TicketCommand, _>(dispatch)
+/// `validate-links` reports findings without treating them as errors, so its
+/// non-zero exit code is decided here rather than via `Result::Err`. The
+/// envelope nests the actual command payload under `"payload"`.
+fn validate_links_exit_code(envelope: &serde_json::Value) -> i32 {
+    let payload = envelope.get("payload").unwrap_or(envelope);
+    if payload.get("command").and_then(|v| v.as_str()) == Some("validate_links")
+        && payload.get("valid").and_then(|v| v.as_bool()) == Some(false)
+    {
+        1
+    } else {
+        0
+    }
 }

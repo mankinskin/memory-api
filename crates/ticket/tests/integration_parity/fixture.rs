@@ -29,10 +29,10 @@ use ticket_api::{
         apply_board_filter,
     },
 };
-use ticket_mcp::server::TicketServer;
+use ticket::server::TicketServer;
 use tower::ServiceExt;
 
-use ticket_http::serve::{
+use ticket::serve::{
     AppState,
     StreamBroker,
     WorkspaceRegistry,

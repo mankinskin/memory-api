@@ -7,7 +7,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use serde_json::Value;
 use tempfile::TempDir;
 use ticket_api::storage::store::TicketStore;
-use ticket_mcp::server::{
+use ticket::server::{
     MoveApplyInput,
     MovePreflightInput,
     TicketServer,

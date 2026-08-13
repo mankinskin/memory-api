@@ -9,7 +9,7 @@ use ticket_api::{
     model::edge::EdgeRecord,
     storage::store::TicketStore,
 };
-use ticket_mcp::server::{
+use ticket::server::{
     BoardShowInput,
     NextTicketsInput,
 };

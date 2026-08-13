@@ -46,7 +46,7 @@ use spec_mcp::server::{
     SpecServer,
     UpdateSpecInput,
 };
-use ticket_mcp::server::{
+use ticket::server::{
     CreateTicketInput,
     DeleteTicketInput,
     ListTicketsInput,
@@ -96,12 +96,12 @@ use ticket_api::{
     model::filesystem::ScanRoot,
     storage::store::TicketStore,
 };
-use ticket_http::{
+use ticket::serve::{
     AppState,
+    StreamBroker,
     WorkspaceRegistry,
-    build_router,
-    serve::StreamBroker,
 };
+use ticket::serve::routes::build_router;
 use tower::ServiceExt;
 
 use crate::domains::{

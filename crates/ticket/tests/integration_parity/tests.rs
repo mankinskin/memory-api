@@ -9,7 +9,7 @@ use ticket_api::{
     model::edge::EdgeRecord,
     workflow::WorkflowModel,
 };
-use ticket_mcp::server::NextTicketsInput;
+use ticket::server::NextTicketsInput;
 
 use super::integration_parity_fixture::*;
 

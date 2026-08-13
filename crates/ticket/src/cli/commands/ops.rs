@@ -712,7 +712,7 @@ pub(crate) fn cmd_serve(
     args: ServeCliArgs,
     store: TicketStore,
 ) -> Result<Value, CliRunError> {
-    use ticket_http::serve::{
+    use crate::serve::{
         ServeConfig,
         WorkspaceRegistry,
         serve,

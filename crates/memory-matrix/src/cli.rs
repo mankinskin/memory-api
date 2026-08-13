@@ -23,8 +23,8 @@ pub(super) fn dispatch_cli(
 
 fn run_ticket_cli(args: Vec<String>) -> Result<(), String> {
     let cli =
-        ticket_cli::cli::parse_cli_from(args).map_err(|err| err.to_string())?;
-    ticket_cli::cli::run(cli).map_err(|err| err.to_string())?;
+        ticket::cli::parse_cli_from(args).map_err(|err| err.to_string())?;
+    ticket::cli::run(cli).map_err(|err| err.to_string())?;
     Ok(())
 }
 

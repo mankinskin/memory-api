@@ -19,7 +19,7 @@ use ticket_api::{
     },
     storage::store::TicketStore,
 };
-use ticket_http::serve::stream::{
+use ticket::serve::stream::{
     HookEmitter,
     StreamBroker,
     event::SseEvent,

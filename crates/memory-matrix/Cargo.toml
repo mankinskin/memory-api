@@ -26,11 +26,9 @@ audit-api = { path = "../audit-api" }
 session-api = { path = "../session-api" }
 test-api = { path = "../test-api" }
 log-api = { path = "../log-api" }
-ticket-http = { path = "../../tools/http/ticket-http" }
-ticket-cli = { path = "../../tools/cli/ticket-cli" }
+ticket = { path = "../ticket", features = ["cli", "mcp", "http"] }
 spec-cli = { path = "../../tools/cli/spec-cli" }
 rule-cli = { path = "../../tools/cli/rule-cli" }
-ticket-mcp = { path = "../../tools/mcp/ticket-mcp" }
 spec-mcp = { path = "../../tools/mcp/spec-mcp" }
 rule-mcp = { path = "../../tools/mcp/rule-mcp" }
 

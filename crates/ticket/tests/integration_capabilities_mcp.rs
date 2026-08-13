@@ -7,7 +7,7 @@
 use rmcp::model::CallToolResult;
 use serde_json::Value;
 use tempfile::TempDir;
-use ticket_mcp::server::TicketServer;
+use ticket::server::TicketServer;
 
 fn make_sandbox() -> (TempDir, TicketServer) {
     let tmp = TempDir::new().expect("tempdir");
