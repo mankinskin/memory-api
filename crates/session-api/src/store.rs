@@ -115,7 +115,9 @@ pub struct SessionQuery {
 
 /// Widening relation tiers for [`SessionStoreConfig::sessions_for_ticket`].
 /// Each tier includes every match from the tiers before it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum RelationStrength {
     Strict,
@@ -223,6 +225,7 @@ mod config {
 
 #[path = "store_routing_types.rs"]
 mod store_routing_types;
+use crate::SessionWorkflowGraph;
 pub use store_routing_types::{
     SessionRuntimePaths,
     SessionStorePaths,
@@ -232,7 +235,6 @@ use store_routing_types::{
     parse_entity_urn_kind,
     validate_session_id,
 };
-use crate::SessionWorkflowGraph;
 
 fn sibling_store_base(session_store_root: &Path) -> &Path {
     if session_store_root
@@ -454,10 +456,7 @@ fn node_is_effectively_done(
 fn render_handoff_record_terminal(record: &SessionHandoffRecord) -> String {
     let mut lines = Vec::new();
     lines.push(format!("handoff {}", record.handoff_id));
-    lines.push(format!(
-        "session_id: {}",
-        record.session_id
-    ));
+    lines.push(format!("session_id: {}", record.session_id));
     lines.push(format!("outgoing_run_id: {}", record.outgoing_run_id));
     lines.push(format!("resume: {}", record.resume_command));
     if !record.objective.is_empty() {
@@ -552,7 +551,12 @@ fn render_handoff_record_markdown(
                     .target_tickets
                     .iter()
                     .map(|ticket| {
-                        resolve_handoff_ticket_display(record, ticket, ticket_store).reference
+                        resolve_handoff_ticket_display(
+                            record,
+                            ticket,
+                            ticket_store,
+                        )
+                        .reference
                     })
                     .collect::<Vec<_>>()
                     .join(", "),
@@ -564,10 +568,7 @@ fn render_handoff_record_markdown(
 
     // Summary section
     sections.push("## Summary".to_string());
-    sections.push(format!(
-        "- **Workspace Session**: `{}`",
-        record.session_id
-    ));
+    sections.push(format!("- **Workspace Session**: `{}`", record.session_id));
     sections.push(format!("- **Outgoing Run**: `{}`", record.outgoing_run_id));
     sections.push(format!("- **Created**: {}", record.created_at.to_rfc3339()));
     if !record.objective.is_empty() {
@@ -594,12 +595,16 @@ fn render_handoff_record_markdown(
         sections.push("| Ticket | What it does | Why |".to_string());
         sections.push("| --- | --- | --- |".to_string());
         for ticket in &record.target_tickets {
-            let display = resolve_handoff_ticket_display(record, ticket, ticket_store);
+            let display =
+                resolve_handoff_ticket_display(record, ticket, ticket_store);
             sections.push(format!(
                 "| {} | {} | {} |",
                 display.reference,
                 markdown_table_cell(&display.what),
-                markdown_table_cell(&linkify_handoff_prose(&ticket.why, ticket_store)),
+                markdown_table_cell(&linkify_handoff_prose(
+                    &ticket.why,
+                    ticket_store
+                )),
             ));
         }
         sections.push(String::new());
@@ -618,7 +623,10 @@ fn render_handoff_record_markdown(
     if !record.decisions.is_empty() {
         sections.push("## Decisions".to_string());
         for decision in &record.decisions {
-            sections.push(format!("- {}", linkify_handoff_prose(decision, ticket_store)));
+            sections.push(format!(
+                "- {}",
+                linkify_handoff_prose(decision, ticket_store)
+            ));
         }
         sections.push(String::new());
     }
@@ -627,7 +635,10 @@ fn render_handoff_record_markdown(
     if !record.non_goals.is_empty() {
         sections.push("## Non-Goals".to_string());
         for non_goal in &record.non_goals {
-            sections.push(format!("- {}", linkify_handoff_prose(non_goal, ticket_store)));
+            sections.push(format!(
+                "- {}",
+                linkify_handoff_prose(non_goal, ticket_store)
+            ));
         }
         sections.push(String::new());
     }
@@ -636,7 +647,10 @@ fn render_handoff_record_markdown(
     if !record.context_anchors.is_empty() {
         sections.push("## Context Anchors".to_string());
         for anchor in &record.context_anchors {
-            sections.push(format!("- {}", linkify_handoff_prose(anchor, ticket_store)));
+            sections.push(format!(
+                "- {}",
+                linkify_handoff_prose(anchor, ticket_store)
+            ));
         }
         sections.push(String::new());
     }
@@ -754,7 +768,11 @@ fn resolve_handoff_ticket_display(
         .workflow
         .nodes
         .iter()
-        .find(|node| node.ticket_urn.as_deref().is_some_and(|urn| urn.ends_with(&ticket.id)))
+        .find(|node| {
+            node.ticket_urn
+                .as_deref()
+                .is_some_and(|urn| urn.ends_with(&ticket.id))
+        })
         .and_then(|node| node.cached_ticket_title.as_deref())
         .unwrap_or(&ticket.id);
     let resolved = ticket_store.and_then(|store| {
@@ -800,7 +818,10 @@ fn resolve_handoff_ticket(
     Some(ResolvedHandoffTicket { id, title, what })
 }
 
-fn handoff_ticket_reference(ticket_id: &str, title: &str) -> String {
+fn handoff_ticket_reference(
+    ticket_id: &str,
+    title: &str,
+) -> String {
     format!(
         "[{} {}](.ticket/tickets/{ticket_id}/ticket.toml)",
         ticket_id.chars().take(8).collect::<String>(),
@@ -809,7 +830,7 @@ fn handoff_ticket_reference(ticket_id: &str, title: &str) -> String {
 }
 
 fn render_handoff_upward_context_entry(
-    entry: &crate::SessionHandoffUpwardContextEntry,
+    entry: &crate::SessionHandoffUpwardContextEntry
 ) -> String {
     let title = parse_entity_urn(&entry.entity_urn)
         .ok()
@@ -821,7 +842,10 @@ fn render_handoff_upward_context_entry(
 
 const MAX_HANDOFF_PROSE_TICKET_REFERENCES: usize = 128;
 
-fn linkify_handoff_prose(value: &str, ticket_store: Option<&TicketStore>) -> String {
+fn linkify_handoff_prose(
+    value: &str,
+    ticket_store: Option<&TicketStore>,
+) -> String {
     let Some(ticket_store) = ticket_store else {
         return value.to_string();
     };
@@ -875,10 +899,14 @@ fn linkify_handoff_prose_line(
         }
         if *replacements < MAX_HANDOFF_PROSE_TICKET_REFERENCES
             && let Some(ticket_id) = bare_ticket_id_at(line, index)
-            && let Some(resolved) = resolve_handoff_ticket(ticket_store, ticket_id)
+            && let Some(resolved) =
+                resolve_handoff_ticket(ticket_store, ticket_id)
             && let Some(title) = resolved.title
         {
-            output.push_str(&handoff_ticket_reference(&resolved.id.to_string(), &title));
+            output.push_str(&handoff_ticket_reference(
+                &resolved.id.to_string(),
+                &title,
+            ));
             index += ticket_id.len();
             *replacements += 1;
             continue;
@@ -890,7 +918,10 @@ fn linkify_handoff_prose_line(
     output
 }
 
-fn bare_ticket_id_at(value: &str, index: usize) -> Option<&str> {
+fn bare_ticket_id_at(
+    value: &str,
+    index: usize,
+) -> Option<&str> {
     let bytes = value.as_bytes();
     if index > 0 && is_ticket_id_word_byte(bytes[index - 1]) {
         return None;
@@ -898,7 +929,9 @@ fn bare_ticket_id_at(value: &str, index: usize) -> Option<&str> {
     let remaining = &value[index..];
     let length = if remaining.len() >= 36 && is_uuid_token(&remaining[..36]) {
         36
-    } else if remaining.len() >= 8 && remaining[..8].bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    } else if remaining.len() >= 8
+        && remaining[..8].bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
         8
     } else {
         return None;

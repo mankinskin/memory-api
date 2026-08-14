@@ -204,7 +204,7 @@ pub struct SessionWorkflowValidationIssue {
 /// Structurally validate a workflow graph: every edge endpoint must
 /// reference an existing node, and node ids must be unique.
 pub fn validate_workflow_graph(
-    graph: &SessionWorkflowGraph,
+    graph: &SessionWorkflowGraph
 ) -> Vec<SessionWorkflowValidationIssue> {
     use std::collections::HashSet;
 

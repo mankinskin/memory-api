@@ -1,6 +1,11 @@
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::Path;
+use serde::{
+    Deserialize,
+    Serialize,
+};
+use std::{
+    collections::HashMap,
+    path::Path,
+};
 
 use crate::SessionError;
 
@@ -34,11 +39,9 @@ pub struct PriceTable {
 pub fn load_price_table(store_root: &Path) -> Result<PriceTable, SessionError> {
     // Resolve repo root: session store is typically at <repo>/.session,
     // so we go up one level.
-    let repo_root = store_root
-        .parent()
-        .ok_or_else(|| {
-            SessionError::InvalidStorePath(store_root.to_path_buf())
-        })?;
+    let repo_root = store_root.parent().ok_or_else(|| {
+        SessionError::InvalidStorePath(store_root.to_path_buf())
+    })?;
     let price_file = repo_root
         .join("tools")
         .join("model-prices")
@@ -51,11 +54,9 @@ pub fn load_price_table(store_root: &Path) -> Result<PriceTable, SessionError> {
         }
     })?;
 
-    serde_json::from_str(&json).map_err(|source| {
-        SessionError::Deserialize {
-            path: price_file,
-            source,
-        }
+    serde_json::from_str(&json).map_err(|source| SessionError::Deserialize {
+        path: price_file,
+        source,
     })
 }
 
@@ -136,14 +137,8 @@ mod tests {
             models: vec![],
         };
 
-        let cost = compute_cost_usd(
-            "unknown-model",
-            100_000,
-            100_000,
-            0,
-            0,
-            &table,
-        );
+        let cost =
+            compute_cost_usd("unknown-model", 100_000, 100_000, 0, 0, &table);
 
         assert_eq!(cost, None);
     }

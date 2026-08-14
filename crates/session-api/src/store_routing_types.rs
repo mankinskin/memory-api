@@ -15,9 +15,7 @@ pub struct SessionRuntimePaths {
     pub finish_path: PathBuf,
 }
 
-pub(super) fn validate_session_id(
-    value: &str
-) -> Result<(), SessionError> {
+pub(super) fn validate_session_id(value: &str) -> Result<(), SessionError> {
     let session_id = value.trim();
     if session_id.is_empty() || uuid::Uuid::parse_str(session_id).is_err() {
         return Err(SessionError::InvalidSessionId(value.to_string()));

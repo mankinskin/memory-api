@@ -10,7 +10,9 @@ pub enum SessionError {
     #[error("session capture is missing a session id")]
     MissingSessionId,
 
-    #[error("runtime session id is required; no active-session fallback exists")]
+    #[error(
+        "runtime session id is required; no active-session fallback exists"
+    )]
     MissingRuntimeSessionId,
 
     #[error("session capture did not include any turns")]
@@ -22,11 +24,18 @@ pub enum SessionError {
     #[error("session id '{0}' must be a UUID from the Copilot hook payload")]
     InvalidSessionId(String),
 
-    #[error("session identity `{0}` must be a UUID; use the capture or provisioning UUID")]
+    #[error(
+        "session identity `{0}` must be a UUID; use the capture or provisioning UUID"
+    )]
     SessionIdentityMustBeUuid(String),
 
-    #[error("requested session identity {requested} does not match provisioned worktree identity {provisioned}")]
-    SessionIdentityMismatch { requested: String, provisioned: String },
+    #[error(
+        "requested session identity {requested} does not match provisioned worktree identity {provisioned}"
+    )]
+    SessionIdentityMismatch {
+        requested: String,
+        provisioned: String,
+    },
 
     #[error("workspace slug contains invalid path characters: {0}")]
     InvalidWorkspaceSlug(String),
@@ -87,9 +96,7 @@ pub enum SessionError {
     #[error("session data was not found at {path}")]
     NotFound { path: PathBuf },
 
-    #[error(
-        "runtime context for workspace session {session_id} was not found"
-    )]
+    #[error("runtime context for workspace session {session_id} was not found")]
     RuntimeContextNotFound { session_id: String },
 
     #[error("session finish is blocked: {reason}")]
@@ -170,10 +177,7 @@ pub enum SessionError {
         "workflow graph for workspace session {session_id} is \
          structurally invalid: {issues}"
     )]
-    WorkflowGraphInvalid {
-        session_id: String,
-        issues: String,
-    },
+    WorkflowGraphInvalid { session_id: String, issues: String },
 
     #[error(
         "workflow diagnostics for workspace session {session_id} \

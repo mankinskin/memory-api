@@ -261,13 +261,14 @@ fn apply_tool_response_override(
         if !is_terminal {
             continue;
         }
-        if event.tool_call_id.as_deref() != Some(override_value.tool_call_id.as_str())
+        if event.tool_call_id.as_deref()
+            != Some(override_value.tool_call_id.as_str())
         {
             continue;
         }
-        let data = event
-            .data_json
-            .get_or_insert_with(|| serde_json::Value::Object(Default::default()));
+        let data = event.data_json.get_or_insert_with(|| {
+            serde_json::Value::Object(Default::default())
+        });
         if let Some(map) = data.as_object_mut() {
             map.insert(
                 "output_chars".to_string(),

@@ -8,14 +8,27 @@
 
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
-use chrono::{DateTime, Duration, Utc};
-use serde::{Deserialize, Serialize};
+use chrono::{
+    DateTime,
+    Duration,
+    Utc,
+};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use uuid::Uuid;
 
-use crate::{SessionError, SessionStoreConfig};
+use crate::{
+    SessionError,
+    SessionStoreConfig,
+};
 
 /// Scope of a budget grant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -99,7 +112,8 @@ pub fn create_grant(
     model: Option<String>,
     ttl_seconds: Option<u64>,
 ) -> Result<BudgetGrant, SessionError> {
-    let expires_at = ttl_seconds.map(|secs| Utc::now() + Duration::seconds(secs as i64));
+    let expires_at =
+        ttl_seconds.map(|secs| Utc::now() + Duration::seconds(secs as i64));
     let grant = BudgetGrant::new(scope, offset, model, expires_at);
 
     let dir = grants_dir(&config.root);
@@ -109,9 +123,11 @@ pub fn create_grant(
     })?;
 
     let path = dir.join(format!("{}.json", grant.grant_id));
-    let json = serde_json::to_string_pretty(&grant).map_err(|e| SessionError::Serialize {
-        path: path.clone(),
-        source: e,
+    let json = serde_json::to_string_pretty(&grant).map_err(|e| {
+        SessionError::Serialize {
+            path: path.clone(),
+            source: e,
+        }
     })?;
 
     fs::write(&path, json).map_err(|e| SessionError::Io {
@@ -126,7 +142,9 @@ pub fn create_grant(
 ///
 /// Returns all valid grant files, skipping any that fail to parse.
 /// Expired grants are included in the list (callers can filter with `is_expired`).
-pub fn list_grants(config: &SessionStoreConfig) -> Result<Vec<BudgetGrant>, SessionError> {
+pub fn list_grants(
+    config: &SessionStoreConfig
+) -> Result<Vec<BudgetGrant>, SessionError> {
     let dir = grants_dir(&config.root);
     if !dir.exists() {
         return Ok(Vec::new());
@@ -157,9 +175,12 @@ pub fn list_grants(config: &SessionStoreConfig) -> Result<Vec<BudgetGrant>, Sess
 /// Revoke a grant by deleting its file.
 ///
 /// Returns `true` if the grant was deleted, `false` if it didn't exist.
-pub fn revoke_grant(config: &SessionStoreConfig, grant_id: &str) -> Result<bool, SessionError> {
+pub fn revoke_grant(
+    config: &SessionStoreConfig,
+    grant_id: &str,
+) -> Result<bool, SessionError> {
     let path = grants_dir(&config.root).join(format!("{}.json", grant_id));
-    
+
     if !path.exists() {
         return Ok(false);
     }
@@ -190,17 +211,19 @@ mod tests {
     #[test]
     fn test_create_grant_writes_correct_json() {
         let (_tmp, config) = test_config();
-        
+
         let grant = create_grant(
             &config,
             BudgetGrantScope::Session,
             30,
             Some("claude-sonnet-4.5".to_string()),
             None,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Read the written file
-        let path = grants_dir(&config.root).join(format!("{}.json", grant.grant_id));
+        let path =
+            grants_dir(&config.root).join(format!("{}.json", grant.grant_id));
         let content = fs::read_to_string(&path).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
 
@@ -216,41 +239,46 @@ mod tests {
     #[test]
     fn test_create_grant_with_ttl() {
         let (_tmp, config) = test_config();
-        
+
         let grant = create_grant(
             &config,
             BudgetGrantScope::Subagent,
             50,
             None,
             Some(3600), // 1 hour
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(grant.scope, BudgetGrantScope::Subagent);
         assert_eq!(grant.offset, 50);
         assert!(grant.model.is_none());
         assert!(grant.expires_at.is_some());
-        
+
         // Verify expires_at is in the future
-        let expires = DateTime::parse_from_rfc3339(grant.expires_at.as_ref().unwrap()).unwrap();
+        let expires =
+            DateTime::parse_from_rfc3339(grant.expires_at.as_ref().unwrap())
+                .unwrap();
         assert!(expires > Utc::now());
     }
 
     #[test]
     fn test_grant_round_trip_with_gate_format() {
         let (_tmp, config) = test_config();
-        
+
         let grant = create_grant(
             &config,
             BudgetGrantScope::Session,
             25,
             Some("claude-opus-4.5".to_string()),
             Some(7200),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Read and parse using the gate's Grant struct fields (simulate gate reader)
-        let path = grants_dir(&config.root).join(format!("{}.json", grant.grant_id));
+        let path =
+            grants_dir(&config.root).join(format!("{}.json", grant.grant_id));
         let content = fs::read_to_string(&path).unwrap();
-        
+
         // Parse with a minimal struct matching the gate's fields
         #[derive(Deserialize)]
         struct GateGrant {
@@ -261,7 +289,7 @@ mod tests {
             #[serde(default)]
             expires_at: Option<String>,
         }
-        
+
         let gate_grant: GateGrant = serde_json::from_str(&content).unwrap();
         assert_eq!(gate_grant.offset, 25);
         assert_eq!(gate_grant.model.as_deref(), Some("claude-opus-4.5"));
@@ -271,14 +299,18 @@ mod tests {
     #[test]
     fn test_list_grants() {
         let (_tmp, config) = test_config();
-        
+
         // Create multiple grants
-        let grant1 = create_grant(&config, BudgetGrantScope::Session, 10, None, None).unwrap();
-        let grant2 = create_grant(&config, BudgetGrantScope::Subagent, 20, None, None).unwrap();
-        
+        let grant1 =
+            create_grant(&config, BudgetGrantScope::Session, 10, None, None)
+                .unwrap();
+        let grant2 =
+            create_grant(&config, BudgetGrantScope::Subagent, 20, None, None)
+                .unwrap();
+
         let grants = list_grants(&config).unwrap();
         assert_eq!(grants.len(), 2);
-        
+
         let ids: Vec<_> = grants.iter().map(|g| g.grant_id.as_str()).collect();
         assert!(ids.contains(&grant1.grant_id.as_str()));
         assert!(ids.contains(&grant2.grant_id.as_str()));
@@ -287,16 +319,17 @@ mod tests {
     #[test]
     fn test_list_grants_skips_malformed() {
         let (_tmp, config) = test_config();
-        
+
         let dir = grants_dir(&config.root);
         fs::create_dir_all(&dir).unwrap();
-        
+
         // Write a valid grant
-        create_grant(&config, BudgetGrantScope::Session, 10, None, None).unwrap();
-        
+        create_grant(&config, BudgetGrantScope::Session, 10, None, None)
+            .unwrap();
+
         // Write a malformed file
         fs::write(dir.join("bad.json"), "not valid json").unwrap();
-        
+
         // list_grants should succeed and return only the valid grant
         let grants = list_grants(&config).unwrap();
         assert_eq!(grants.len(), 1);
@@ -305,18 +338,21 @@ mod tests {
     #[test]
     fn test_revoke_grant() {
         let (_tmp, config) = test_config();
-        
-        let grant = create_grant(&config, BudgetGrantScope::Session, 15, None, None).unwrap();
-        
+
+        let grant =
+            create_grant(&config, BudgetGrantScope::Session, 15, None, None)
+                .unwrap();
+
         // Verify file exists
-        let path = grants_dir(&config.root).join(format!("{}.json", grant.grant_id));
+        let path =
+            grants_dir(&config.root).join(format!("{}.json", grant.grant_id));
         assert!(path.exists());
-        
+
         // Revoke
         let revoked = revoke_grant(&config, &grant.grant_id).unwrap();
         assert!(revoked);
         assert!(!path.exists());
-        
+
         // Revoke again returns false
         let revoked = revoke_grant(&config, &grant.grant_id).unwrap();
         assert!(!revoked);
@@ -325,7 +361,7 @@ mod tests {
     #[test]
     fn test_revoke_nonexistent_returns_false() {
         let (_tmp, config) = test_config();
-        
+
         let revoked = revoke_grant(&config, "nonexistent-id").unwrap();
         assert!(!revoked);
     }
@@ -333,13 +369,15 @@ mod tests {
     #[test]
     fn test_expired_grant_detection() {
         let (_tmp, config) = test_config();
-        
+
         // Create an expired grant (TTL of 0 seconds puts it in the past)
-        let grant = create_grant(&config, BudgetGrantScope::Session, 10, None, Some(0)).unwrap();
-        
+        let grant =
+            create_grant(&config, BudgetGrantScope::Session, 10, None, Some(0))
+                .unwrap();
+
         // Wait a tiny bit to ensure it's in the past
         std::thread::sleep(std::time::Duration::from_millis(10));
-        
+
         assert!(grant.is_expired());
     }
 
@@ -358,11 +396,12 @@ mod tests {
     #[test]
     fn test_list_includes_expired_grants() {
         let (_tmp, config) = test_config();
-        
+
         // Create an expired grant
-        create_grant(&config, BudgetGrantScope::Session, 10, None, Some(0)).unwrap();
+        create_grant(&config, BudgetGrantScope::Session, 10, None, Some(0))
+            .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
-        
+
         // list_grants should still return it (gate filters expired at read time)
         let grants = list_grants(&config).unwrap();
         assert_eq!(grants.len(), 1);

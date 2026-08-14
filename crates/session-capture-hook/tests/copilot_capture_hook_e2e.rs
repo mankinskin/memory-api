@@ -218,6 +218,55 @@ fn e2e_session_start_provisions_and_captures_a_fresh_session() {
                 .and_then(serde_json::Value::as_str)
                 == Some(prompt)
     }));
+
+    for hook_event_name in ["SubagentStart", "SubagentStop"] {
+        let output = run_hook_with_payload(
+            &hook_bin,
+            &checkout,
+            serde_json::json!({
+                "hook_event_name": hook_event_name,
+                "session_id": session_id,
+                "transcript_path": transcript_path,
+                "timestamp": "2026-08-14T12:00:00Z",
+                "agent_id": "agent-42",
+                "agent_type": "Implement Agent",
+                "stop_hook_active": hook_event_name == "SubagentStop",
+            }),
+        );
+        assert!(
+            output.status.success(),
+            "{hook_event_name} capture failed: stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let events: PersistedSessionEvents = serde_json::from_str(
+        &fs::read_to_string(
+            worktree
+                .join(".session")
+                .join("sessions")
+                .join(session_id)
+                .join("events.json"),
+        )
+        .expect("read lifecycle hook events"),
+    )
+    .expect("deserialize lifecycle hook events");
+    for hook_event_name in ["SubagentStart", "SubagentStop"] {
+        assert!(events.events.iter().any(|event| {
+            event.event_type.as_deref() == Some(hook_event_name)
+                && event
+                    .data_json
+                    .as_ref()
+                    .and_then(|data| data.get("agent_id"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some("agent-42")
+                && event
+                    .data_json
+                    .as_ref()
+                    .and_then(|data| data.get("agent_type"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some("Implement Agent")
+        }));
+    }
     assert_eq!(output.stdout, b"{}\n");
 }
 

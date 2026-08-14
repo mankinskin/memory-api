@@ -88,10 +88,10 @@ pub use model::{
     SessionPinnedEntity,
     SessionPinnedEntityHeader,
     SessionPinnedEntityKind,
+    SessionProvisioningDiagnostic,
     SessionRecord,
     SessionRole,
     SessionRunLineage,
-    SessionProvisioningDiagnostic,
     SessionRuntimeContext,
     SessionRuntimeInitRequest,
     SessionRuntimeInitResult,
@@ -158,6 +158,7 @@ pub use store::{
 pub use subagent_rollup::{
     SubAgentRollup,
     compute_subagent_rollups,
+    compute_subagent_rollups_with_events,
 };
 pub use tool_metrics::{
     CharsPerTokenEstimator,
