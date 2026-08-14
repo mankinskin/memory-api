@@ -1,5 +1,6 @@
 use clap::error::ErrorKind;
 use memory_kernel::runtime::init_transport_tracing;
+use std::io::{self, Write};
 
 use ticket::cli::{
     CliOutput,
@@ -22,8 +23,7 @@ fn main() {
                     | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
                     | ErrorKind::DisplayVersion
             ) {
-                print!("{err}");
-                std::process::exit(0);
+                finish_stdout(&err.to_string(), 0);
             }
             let rendered = error_output(
                 &err.to_string(),
@@ -39,10 +39,7 @@ fn main() {
             let exit_code = validate_links_exit_code(&value);
             match render_machine_output(&value, format) {
                 Ok(rendered) => {
-                    println!("{rendered}");
-                    if exit_code != 0 {
-                        std::process::exit(exit_code);
-                    }
+                    finish_stdout(&rendered, exit_code);
                 },
                 Err(err) => {
                     eprintln!("{}", error_output(&err, Some(format)));
@@ -50,7 +47,7 @@ fn main() {
                 },
             }
         },
-        Ok(CliOutput::Text(text)) => println!("{text}"),
+        Ok(CliOutput::Text(text)) => finish_stdout(&text, 0),
         Err(err) => {
             eprintln!(
                 "{}",
@@ -61,6 +58,39 @@ fn main() {
             );
             std::process::exit(1);
         },
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum StdoutWrite {
+    Written,
+    BrokenPipe,
+}
+
+fn finish_stdout(rendered: &str, exit_code: i32) -> ! {
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+
+    match write_stdout(&mut stdout, rendered) {
+        Ok(StdoutWrite::Written) => std::process::exit(exit_code),
+        Ok(StdoutWrite::BrokenPipe) => std::process::exit(0),
+        Err(err) => {
+            eprintln!("failed to write stdout: {err}");
+            std::process::exit(1);
+        },
+    }
+}
+
+fn write_stdout<W: Write>(
+    writer: &mut W,
+    rendered: &str,
+) -> io::Result<StdoutWrite> {
+    match writeln!(writer, "{rendered}") {
+        Ok(()) => Ok(StdoutWrite::Written),
+        Err(err) if err.kind() == io::ErrorKind::BrokenPipe => {
+            Ok(StdoutWrite::BrokenPipe)
+        },
+        Err(err) => Err(err),
     }
 }
 
@@ -75,5 +105,37 @@ fn validate_links_exit_code(envelope: &serde_json::Value) -> i32 {
         1
     } else {
         0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{self, Write};
+
+    use super::{StdoutWrite, write_stdout};
+
+    struct BrokenPipeWriter;
+
+    impl Write for BrokenPipeWriter {
+        fn write(
+            &mut self,
+            _: &[u8],
+        ) -> io::Result<usize> {
+            Err(io::Error::from(io::ErrorKind::BrokenPipe))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn broken_pipe_stdout_is_clean_termination() {
+        let mut writer = BrokenPipeWriter;
+
+        let outcome = write_stdout(&mut writer, "output")
+            .expect("broken pipes should not be propagated as failures");
+
+        assert_eq!(outcome, StdoutWrite::BrokenPipe);
     }
 }

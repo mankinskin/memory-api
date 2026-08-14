@@ -18,6 +18,7 @@ use session_api::{
     DEFAULT_SKELETON_PREVIEW_CHARS,
     PromptPackOptions,
     RelationStrength,
+    SessionAuditSelector,
     SessionError,
     SessionHandoffPackage,
     SessionHandoffTargetTicket,
@@ -136,6 +137,8 @@ pub enum SessionCommand {
     ToolMetrics(ToolMetricsArgs),
     /// Compute and report per-sub-agent cost and usage rollups for a workspace session.
     SubagentRollups(SubagentRollupsArgs),
+    /// Report per-dispatch tool failures and delegation-quality findings.
+    DelegationCost(DelegationCostArgs),
     /// Budget-offset grant management (`session grant <subcommand>`).
     Grant {
         #[command(subcommand)]
@@ -311,6 +314,13 @@ pub struct ToolMetricsArgs {
 #[derive(Debug, Args)]
 pub struct SubagentRollupsArgs {
     /// Copilot session UUID to get rollups for.
+    #[arg(long)]
+    pub session_id: String,
+}
+
+#[derive(Debug, Args)]
+pub struct DelegationCostArgs {
+    /// Copilot session UUID to inspect.
     #[arg(long)]
     pub session_id: String,
 }
@@ -713,20 +723,17 @@ fn dispatch(
             to_value(&context)
         },
         SessionCommand::Unpin(args) => {
-            let context = config.unpin_runtime_entity(
-                &args.session_id,
-                &args.entity_urn,
-            )?;
+            let context = config
+                .unpin_runtime_entity(&args.session_id, &args.entity_urn)?;
             to_value(&context)
         },
         SessionCommand::View(args) => {
-            let view =
-                config.view_runtime_context(&args.session_id)?;
+            let view = config.view_runtime_context(&args.session_id)?;
             to_value(&view)
         },
         SessionCommand::RenderInstructions(args) => {
-            let render = config
-                .render_pinned_rule_instructions(&args.session_id)?;
+            let render =
+                config.render_pinned_rule_instructions(&args.session_id)?;
             to_value(&json!({"render": render}))
         },
         SessionCommand::Workflow { command } =>
@@ -841,21 +848,29 @@ fn dispatch(
                 max_sessions: args.max_sessions,
             };
             let report = config.tool_metrics(window)?;
-            
+
             // If export path specified, write rollup
             if let Some(export_path) = args.export {
                 use session_api::tool_metrics::write_rollup;
                 write_rollup(&export_path, report.clone())?;
             }
-            
+
             to_value(&report)
         },
         SessionCommand::SubagentRollups(args) => {
             let rollups = config.subagent_rollups(&args.session_id)?;
             to_value(&rollups)
         },
-        SessionCommand::Grant { command } => handle_grant_command(config, command),
-        SessionCommand::Escalation { command } => handle_escalation_command(config, command),
+        SessionCommand::DelegationCost(args) => {
+            let report = config.delegation_cost_report(
+                SessionAuditSelector::SessionId(args.session_id),
+            )?;
+            to_value(&report)
+        },
+        SessionCommand::Grant { command } =>
+            handle_grant_command(config, command),
+        SessionCommand::Escalation { command } =>
+            handle_escalation_command(config, command),
     }
 }
 
@@ -914,8 +929,7 @@ fn handle_workflow_command(
                 })
             })
             .collect::<Result<Vec<_>, CliRunError>>()?;
-            let context =
-                config.workflow_add_nodes(&args.session_id, nodes)?;
+            let context = config.workflow_add_nodes(&args.session_id, nodes)?;
             to_value(&context)
         },
         WorkflowCommand::AddEdge(args) => {
@@ -948,8 +962,7 @@ fn handle_workflow_command(
                 })
             })
             .collect::<Result<Vec<_>, CliRunError>>()?;
-            let context =
-                config.workflow_add_edges(&args.session_id, edges)?;
+            let context = config.workflow_add_edges(&args.session_id, edges)?;
             to_value(&context)
         },
         WorkflowCommand::SetStatus(args) => {
@@ -971,13 +984,13 @@ fn handle_workflow_command(
             to_value(&context)
         },
         WorkflowCommand::RenderTerminal(args) => {
-            let rendered = config
-                .workflow_render_terminal(&args.session_id, None)?;
+            let rendered =
+                config.workflow_render_terminal(&args.session_id, None)?;
             to_value(&json!({"render": rendered}))
         },
         WorkflowCommand::RenderMermaid(args) => {
-            let rendered = config
-                .workflow_render_mermaid(&args.session_id, None)?;
+            let rendered =
+                config.workflow_render_mermaid(&args.session_id, None)?;
             to_value(&json!({"render": rendered}))
         },
     }
@@ -988,41 +1001,52 @@ fn handle_grant_command(
     config: &SessionStoreConfig,
     command: GrantCommand,
 ) -> Result<Value, CliRunError> {
-    use session_api::{create_grant, list_grants, revoke_grant, BudgetGrantScope};
-    use chrono::{DateTime, Utc};
-    
+    use chrono::{
+        DateTime,
+        Utc,
+    };
+    use session_api::{
+        BudgetGrantScope,
+        create_grant,
+        list_grants,
+        revoke_grant,
+    };
+
     match command {
         GrantCommand::Create(args) => {
             let scope = match args.scope.to_lowercase().as_str() {
                 "session" => BudgetGrantScope::Session,
                 "subagent" => BudgetGrantScope::Subagent,
-                _ => return Err(CliRunError::BadRequest(format!(
-                    "invalid scope: {}. allowed values: session, subagent",
-                    args.scope
-                ))),
+                _ =>
+                    return Err(CliRunError::BadRequest(format!(
+                        "invalid scope: {}. allowed values: session, subagent",
+                        args.scope
+                    ))),
             };
-            
+
             // Handle expiry: prefer TTL, fall back to explicit expires_at
             let ttl_seconds = if let Some(ttl) = args.ttl_seconds {
                 Some(ttl)
             } else if let Some(expires_at) = &args.expires_at {
                 // Convert RFC3339 to TTL from now
                 let expires = DateTime::parse_from_rfc3339(expires_at)
-                    .map_err(|e| CliRunError::BadRequest(format!(
-                        "invalid expires-at timestamp: {e}"
-                    )))?;
+                    .map_err(|e| {
+                        CliRunError::BadRequest(format!(
+                            "invalid expires-at timestamp: {e}"
+                        ))
+                    })?;
                 let now = Utc::now();
                 let duration = expires.signed_duration_since(now);
                 if duration.num_seconds() < 0 {
                     return Err(CliRunError::BadRequest(
-                        "expires-at is in the past".to_string()
+                        "expires-at is in the past".to_string(),
                     ));
                 }
                 Some(duration.num_seconds() as u64)
             } else {
                 None
             };
-            
+
             let grant = create_grant(
                 config,
                 scope,
@@ -1050,18 +1074,18 @@ fn handle_escalation_command(
     config: &SessionStoreConfig,
     command: EscalationCommand,
 ) -> Result<Value, CliRunError> {
+    use chrono::Utc;
     use session_api::{
+        EscalationAction,
+        EscalationResolution,
+        EscalationStatus,
         create_escalation,
         escalation_marker,
         get_escalation,
         list_escalations,
         resolve_escalation,
-        EscalationAction,
-        EscalationResolution,
-        EscalationStatus,
     };
-    use chrono::Utc;
-    
+
     match command {
         EscalationCommand::Create(args) => {
             let escalation = create_escalation(
@@ -1073,19 +1097,24 @@ fn handle_escalation_command(
                 args.session_id,
                 args.from_model,
             )?;
-            
+
             // Include the marker in the response
-            let mut result = serde_json::to_value(&escalation).map_err(|e| {
-                CliRunError::Serialization(format!("serialization error: {e}"))
-            })?;
-            
+            let mut result =
+                serde_json::to_value(&escalation).map_err(|e| {
+                    CliRunError::Serialization(format!(
+                        "serialization error: {e}"
+                    ))
+                })?;
+
             if let Some(obj) = result.as_object_mut() {
                 obj.insert(
                     "marker".to_string(),
-                    serde_json::Value::String(escalation_marker(&escalation.escalation_id)),
+                    serde_json::Value::String(escalation_marker(
+                        &escalation.escalation_id,
+                    )),
                 );
             }
-            
+
             Ok(result)
         },
         EscalationCommand::List(args) => {
@@ -1093,24 +1122,27 @@ fn handle_escalation_command(
                 match status_str.to_lowercase().as_str() {
                     "open" => Some(EscalationStatus::Open),
                     "resolved" => Some(EscalationStatus::Resolved),
-                    _ => return Err(CliRunError::BadRequest(format!(
-                        "invalid status: {}. allowed values: open, resolved",
-                        status_str
-                    ))),
+                    _ =>
+                        return Err(CliRunError::BadRequest(format!(
+                            "invalid status: {}. allowed values: open, resolved",
+                            status_str
+                        ))),
                 }
             } else {
                 None
             };
-            
+
             let escalations = list_escalations(config, status_filter)?;
             to_value(&escalations)
         },
         EscalationCommand::Get(args) => {
             let escalation = get_escalation(config, &args.escalation_id)
-                .ok_or_else(|| CliRunError::BadRequest(format!(
-                    "escalation not found: {}",
-                    args.escalation_id
-                )))?;
+                .ok_or_else(|| {
+                    CliRunError::BadRequest(format!(
+                        "escalation not found: {}",
+                        args.escalation_id
+                    ))
+                })?;
             to_value(&escalation)
         },
         EscalationCommand::Resolve(args) => {
@@ -1119,12 +1151,13 @@ fn handle_escalation_command(
                 "granted-offset" => EscalationAction::GrantedOffset,
                 "escalated-to-user" => EscalationAction::EscalatedToUser,
                 "spawned-session" => EscalationAction::SpawnedSession,
-                _ => return Err(CliRunError::BadRequest(format!(
-                    "invalid action: {}. allowed values: handled, granted-offset, escalated-to-user, spawned-session",
-                    args.action
-                ))),
+                _ =>
+                    return Err(CliRunError::BadRequest(format!(
+                        "invalid action: {}. allowed values: handled, granted-offset, escalated-to-user, spawned-session",
+                        args.action
+                    ))),
             };
-            
+
             let resolution = EscalationResolution {
                 action,
                 note: args.note,
@@ -1132,8 +1165,9 @@ fn handle_escalation_command(
                 spawned_session_id: args.spawned_session_id,
                 resolved_at: Utc::now(),
             };
-            
-            let escalation = resolve_escalation(config, &args.escalation_id, resolution)?;
+
+            let escalation =
+                resolve_escalation(config, &args.escalation_id, resolution)?;
             to_value(&escalation)
         },
     }
@@ -1153,7 +1187,7 @@ fn parse_validation_gates(
 }
 
 fn handoff_package_from_args(
-    args: &HandoffArgs,
+    args: &HandoffArgs
 ) -> Result<Option<SessionHandoffPackage>, CliRunError> {
     let target_tickets = args
         .target_tickets
@@ -1179,17 +1213,17 @@ fn handoff_package_from_args(
         .upward_context
         .iter()
         .map(|raw| {
-            serde_json::from_str::<SessionHandoffUpwardContextEntry>(raw).map_err(
-                |error| {
+            serde_json::from_str::<SessionHandoffUpwardContextEntry>(raw)
+                .map_err(|error| {
                     CliRunError::BadRequest(format!(
                         "invalid --upward-context JSON payload: {error}"
                     ))
-                },
-            )
+                })
         })
         .collect::<Result<Vec<_>, _>>()?;
     let objective = args.objective.clone().unwrap_or_default();
-    let higher_level_objective = args.higher_level_objective.clone().unwrap_or_default();
+    let higher_level_objective =
+        args.higher_level_objective.clone().unwrap_or_default();
     let has_package = !objective.is_empty()
         || !target_tickets.is_empty()
         || !higher_level_objective.is_empty()
@@ -1594,7 +1628,10 @@ mod tests {
         assert_eq!(cli.workspace_slug, "default");
         match cli.command {
             SessionCommand::CheckIn(args) => {
-                assert_eq!(args.session_id, "11111111-1111-4111-8111-111111111111");
+                assert_eq!(
+                    args.session_id,
+                    "11111111-1111-4111-8111-111111111111"
+                );
                 assert_eq!(args.branch, "feature/x");
                 assert!(args.predecessor_session_id.is_none());
             },
@@ -1623,7 +1660,10 @@ mod tests {
             SessionCommand::Workflow {
                 command: WorkflowCommand::AddNode(args),
             } => {
-                assert_eq!(args.session_id, "77777777-7777-4777-8777-777777777777");
+                assert_eq!(
+                    args.session_id,
+                    "77777777-7777-4777-8777-777777777777"
+                );
                 assert_eq!(args.kind, "action");
                 assert_eq!(args.requirement, "required");
                 assert_eq!(args.title, "do the thing");
@@ -1711,7 +1751,10 @@ mod tests {
 
         match cli.command {
             SessionCommand::RenderInstructions(args) => {
-                assert_eq!(args.session_id, "77777777-7777-4777-8777-777777777777");
+                assert_eq!(
+                    args.session_id,
+                    "77777777-7777-4777-8777-777777777777"
+                );
             },
             other => panic!("unexpected command: {other:?}"),
         }
@@ -1784,7 +1827,10 @@ mod tests {
 
         match cli.command {
             SessionCommand::WorkflowAddNode(args) => {
-                assert_eq!(args.session_id, "77777777-7777-4777-8777-777777777777");
+                assert_eq!(
+                    args.session_id,
+                    "77777777-7777-4777-8777-777777777777"
+                );
                 assert_eq!(args.title, "do the thing");
             },
             other => panic!("unexpected command: {other:?}"),
@@ -1812,9 +1858,13 @@ mod tests {
 
     #[test]
     fn parses_peek_range_defaults() {
-        let cli =
-            parse_cli_from(["session", "peek-range", "--session-id", "11111111-1111-4111-8111-111111111111"])
-                .expect("parse peek-range");
+        let cli = parse_cli_from([
+            "session",
+            "peek-range",
+            "--session-id",
+            "11111111-1111-4111-8111-111111111111",
+        ])
+        .expect("parse peek-range");
 
         match cli.command {
             SessionCommand::PeekRange(args) => {
@@ -2004,9 +2054,6 @@ mod tests {
         assert!(rendered.contains("session_id:"));
         assert!(rendered.contains("outgoing_run_id:"));
         assert!(rendered.contains("handoff "));
-        assert!(
-            rendered
-                .contains("resume: session-cli resume --session-id")
-        );
+        assert!(rendered.contains("resume: session-cli resume --session-id"));
     }
 }

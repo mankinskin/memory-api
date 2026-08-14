@@ -14,9 +14,8 @@ The canonical discovery protocol is owned at the context-engine root and mirrore
 
 Use static references as support:
 
-1. `CHEAT_SHEET.md` for type-level gotchas and common patterns.
-2. crate `README.md` and `HIGH_LEVEL_GUIDE.md` for design context.
-3. existing tests for usage examples and assertions.
+1. crate `README.md` and `HIGH_LEVEL_GUIDE.md` for type-level gotchas, common patterns, and design context.
+2. existing tests for usage examples and assertions.
 
 ## Task Routing
 
@@ -49,7 +48,7 @@ The canonical escalation rules are owned at the context-engine root and mirrored
 
 ## Canonical Sources
 
-- API patterns and gotchas: `CHEAT_SHEET.md`
+- API patterns and gotchas: crate `README.md`, `HIGH_LEVEL_GUIDE.md`, and existing tests
 - Ticket workflow details: `.agents/prompts/tickets.prompt.md`
 - Swarm workflow details: `.agents/prompts/swarm-worker.prompt.md`
 - Path-specific rules: `.agents/instructions/*.instructions.md`

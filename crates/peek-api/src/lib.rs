@@ -509,7 +509,6 @@ pub fn generate_repo_map(root: &Path) -> Result<String, PeekError> {
         &[
             "AGENTS.md",
             ".agents/instructions/token-efficiency.instructions.md",
-            "CHEAT_SHEET.md",
         ],
     );
     let agent_files = collect_agent_files(&root)?;
@@ -688,7 +687,6 @@ fn should_include_structural_file(relative: &Path) -> bool {
             | "README.md"
             | "HIGH_LEVEL_GUIDE.md"
             | "AGENTS.md"
-            | "CHEAT_SHEET.md"
             | "Makefile.toml"
             | "rust-toolchain.toml"
             | "rustfmt.toml"

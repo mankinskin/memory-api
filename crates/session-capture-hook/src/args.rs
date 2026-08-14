@@ -32,6 +32,14 @@ pub(super) struct Args {
     /// `tool_response` is observed to always be empty, so the on-disk spill
     /// convention is the only working source for real sessions.
     pub(super) session_id: Option<String>,
+    /// Subagent lifecycle hook stdin `agent_id`, stable per dispatched agent.
+    pub(super) agent_id: Option<String>,
+    /// Subagent lifecycle hook stdin `agent_type`.
+    pub(super) agent_type: Option<String>,
+    /// SubagentStop hook stdin `stop_hook_active`.
+    pub(super) stop_hook_active: Option<bool>,
+    /// Original hook timestamp retained with the lifecycle event.
+    pub(super) hook_timestamp: Option<String>,
 }
 
 pub(super) fn parse_args() -> Result<Args, SessionError> {
@@ -84,6 +92,10 @@ pub(super) fn parse_args() -> Result<Args, SessionError> {
         tool_call_id: None,
         tool_response_chars: None,
         session_id: None,
+        agent_id: None,
+        agent_type: None,
+        stop_hook_active: None,
+        hook_timestamp: None,
     })
 }
 
@@ -129,6 +141,22 @@ pub(super) fn args_from_hook_stdin(
     if let Some(session_id) = get_field(&payload, &["session_id", "sessionId"])
     {
         args.session_id = Some(session_id);
+    }
+    if let Some(agent_id) = get_field(&payload, &["agent_id", "agentId"]) {
+        args.agent_id = Some(agent_id);
+    }
+    if let Some(agent_type) = get_field(&payload, &["agent_type", "agentType"])
+    {
+        args.agent_type = Some(agent_type);
+    }
+    if let Some(stop_hook_active) = ["stop_hook_active", "stopHookActive"]
+        .iter()
+        .find_map(|key| payload.get(*key)?.as_bool())
+    {
+        args.stop_hook_active = Some(stop_hook_active);
+    }
+    if let Some(timestamp) = get_field(&payload, &["timestamp"]) {
+        args.hook_timestamp = Some(timestamp);
     }
     // `tool_response` presence (even an empty string) is itself a real
     // hook-payload measurement, so this reads the raw field directly instead

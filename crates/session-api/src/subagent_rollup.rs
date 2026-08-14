@@ -1,3 +1,7 @@
+use chrono::{
+    DateTime,
+    Utc,
+};
 use serde::{
     Deserialize,
     Serialize,
@@ -5,6 +9,7 @@ use serde::{
 use std::collections::HashMap;
 
 use crate::{
+    PersistedSessionEvents,
     SessionRecord,
     SessionRole,
     SessionRuntimeContext,
@@ -20,6 +25,12 @@ pub struct SubAgentRollup {
     pub parent_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispatched_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stopped_at: Option<DateTime<Utc>>,
     pub turn_count: usize,
     pub tool_call_count: usize,
     pub input_tokens: u64,
@@ -44,6 +55,27 @@ pub fn compute_subagent_rollups(
     record: &SessionRecord,
     context: Option<&SessionRuntimeContext>,
 ) -> HashMap<String, SubAgentRollup> {
+    compute_subagent_rollups_with_events(record, context, None)
+}
+
+/// Compute sub-agent rollups, enriching transcript spans with lifecycle
+/// records captured by the SubagentStart and SubagentStop hooks.
+pub fn compute_subagent_rollups_with_events(
+    record: &SessionRecord,
+    context: Option<&SessionRuntimeContext>,
+    events: Option<&PersistedSessionEvents>,
+) -> HashMap<String, SubAgentRollup> {
+    let mut rollups = compute_rollup_metrics(record, context);
+    if let Some(events) = events {
+        add_hook_lifecycle_rollups(&mut rollups, record, events);
+    }
+    rollups
+}
+
+fn compute_rollup_metrics(
+    record: &SessionRecord,
+    context: Option<&SessionRuntimeContext>,
+) -> HashMap<String, SubAgentRollup> {
     let mut rollups: HashMap<String, SubAgentRollup> = HashMap::new();
 
     // If there's a runtime context, initialize rollups for all runs
@@ -57,6 +89,9 @@ pub fn compute_subagent_rollups(
                         session_id: session_id.clone(),
                         parent_session_id: Some(record.session_id.clone()),
                         model: None,
+                        agent_type: None,
+                        dispatched_at: None,
+                        stopped_at: None,
                         turn_count: 0,
                         tool_call_count: 0,
                         input_tokens: 0,
@@ -116,6 +151,9 @@ pub fn compute_subagent_rollups(
                             None
                         },
                         model: None,
+                        agent_type: None,
+                        dispatched_at: None,
+                        stopped_at: None,
                         turn_count: 0,
                         tool_call_count: 0,
                         input_tokens: 0,
@@ -174,16 +212,162 @@ pub fn compute_subagent_rollups(
     rollups
 }
 
+fn add_hook_lifecycle_rollups(
+    rollups: &mut HashMap<String, SubAgentRollup>,
+    record: &SessionRecord,
+    events: &PersistedSessionEvents,
+) {
+    for event in &events.events {
+        let Some(event_type) = event.event_type.as_deref() else {
+            continue;
+        };
+        if !matches!(event_type, "SubagentStart" | "SubagentStop") {
+            continue;
+        }
+        let Some(data) = event.data_json.as_ref() else {
+            continue;
+        };
+        let Some(agent_id) =
+            data.get("agent_id").and_then(|value| value.as_str())
+        else {
+            continue;
+        };
+        let timestamp = event.captured_at.clone().or_else(|| {
+            data.get("timestamp")
+                .and_then(|value| value.as_str())
+                .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+                .map(|value| value.with_timezone(&Utc))
+        });
+        let rollup = rollups.entry(agent_id.to_string()).or_insert_with(|| {
+            SubAgentRollup {
+                run_id: agent_id.to_string(),
+                session_id: record.session_id.clone(),
+                parent_session_id: Some(record.session_id.clone()),
+                model: None,
+                agent_type: None,
+                dispatched_at: None,
+                stopped_at: None,
+                turn_count: 0,
+                tool_call_count: 0,
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                cost_usd: None,
+                tokens_estimated: None,
+                wall_time_secs: None,
+                outcome: None,
+            }
+        });
+        if rollup.agent_type.is_none() {
+            rollup.agent_type = data
+                .get("agent_type")
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string);
+        }
+        match event_type {
+            "SubagentStart" => {
+                rollup.dispatched_at = timestamp;
+                rollup.outcome = Some("running".to_string());
+            },
+            "SubagentStop" => {
+                rollup.stopped_at = timestamp;
+                rollup.outcome = Some("stopped".to_string());
+            },
+            _ => {},
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
+        CopilotHookEvent,
         SessionLinks,
         SessionMetadata,
         SessionTurn,
         SessionTurnEventMeta,
     };
     use chrono::Utc;
+
+    #[test]
+    fn hook_lifecycle_events_produce_one_stopped_rollup_per_agent() {
+        let started_at = DateTime::parse_from_rfc3339("2026-08-14T12:00:00Z")
+            .expect("valid dispatch timestamp")
+            .with_timezone(&Utc);
+        let stopped_at = DateTime::parse_from_rfc3339("2026-08-14T12:01:00Z")
+            .expect("valid stop timestamp")
+            .with_timezone(&Utc);
+        let record = SessionRecord {
+            schema_version: 1,
+            session_id: "parent-session".to_string(),
+            source: "test".to_string(),
+            started_at,
+            captured_at: stopped_at,
+            metadata: SessionMetadata {
+                workspace_slug: "test".to_string(),
+                conversation_id: None,
+                agent_id: None,
+                ticket_id: None,
+                model: None,
+                trigger: None,
+                provisioning: None,
+                producer: None,
+                copilot_version: None,
+                vscode_version: None,
+                protocol_version: None,
+                worktree: None,
+            },
+            turns: Vec::new(),
+            links: SessionLinks::default(),
+            track_id: None,
+            anchor_ticket_id: None,
+            parent_session_id: None,
+            spawned_session_id: None,
+            emitted_handoff_ids: Vec::new(),
+            picked_up_handoff_ids: Vec::new(),
+        };
+        let lifecycle_event = |event_type: &str, timestamp| CopilotHookEvent {
+            event_id: None,
+            parent_event_id: None,
+            event_type: Some(event_type.to_string()),
+            captured_at: Some(timestamp),
+            turn_id: None,
+            message_id: None,
+            tool_call_id: None,
+            tool_name: None,
+            tool_success: None,
+            reasoning_text: None,
+            tool_requests_json: None,
+            tool_arguments_json: None,
+            data_json: Some(serde_json::json!({
+                "agent_id": "agent-42",
+                "agent_type": "Implement Agent",
+            })),
+            raw_event_json: None,
+        };
+        let events = PersistedSessionEvents {
+            schema_version: 1,
+            session_id: record.session_id.clone(),
+            captured_at: stopped_at,
+            events: vec![
+                lifecycle_event("SubagentStart", started_at),
+                lifecycle_event("SubagentStop", stopped_at),
+            ],
+        };
+
+        let rollups =
+            compute_subagent_rollups_with_events(&record, None, Some(&events));
+
+        assert_eq!(rollups.len(), 1);
+        let rollup = rollups.get("agent-42").expect("lifecycle rollup");
+        assert_eq!(rollup.parent_session_id.as_deref(), Some("parent-session"));
+        assert_eq!(rollup.agent_type.as_deref(), Some("Implement Agent"));
+        assert_eq!(rollup.dispatched_at, Some(started_at));
+        assert_eq!(rollup.stopped_at, Some(stopped_at));
+        assert_eq!(rollup.outcome.as_deref(), Some("stopped"));
+    }
 
     #[test]
     fn compute_rollup_aggregates_token_counts() {
