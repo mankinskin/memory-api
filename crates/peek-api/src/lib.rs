@@ -541,7 +541,7 @@ pub fn generate_repo_map(root: &Path) -> Result<String, PeekError> {
         "key_tools": [
             {
                 "path": "target/debug/ticket.exe",
-                "description": "ticket-cli (state machine, board, deps)",
+                "description": "ticket (state machine, board, deps)",
             },
             {
                 "path": "target/debug/spec.exe",
