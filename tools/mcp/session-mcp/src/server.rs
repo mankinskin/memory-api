@@ -2165,6 +2165,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn handoff_validates_target_file_in_selected_worktree() {
+        let dir = tempdir().unwrap();
+        let main_store = dir.path().join("main/.session");
+        let worktree = dir.path().join("worktree");
+        let target = worktree.join("handoff-fixtures/assigned-only.txt");
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&target, "assigned worktree target").unwrap();
+        let workspace = worktree.display().to_string();
+        let session_id = "99999999-9999-4999-8999-999999999999";
+        let server = SessionServer::new(main_store, "default".to_string());
+
+        server
+            .session_check_in(Parameters(CheckInInput {
+                workspace: workspace.clone(),
+                session_id: session_id.to_string(),
+                owner_id: "agent".to_string(),
+                ticket_id: "ticket-handoff".to_string(),
+                worktree_path: worktree.display().to_string(),
+                branch: "agent/handoff-worktree".to_string(),
+                predecessor_session_id: None,
+            }))
+            .await
+            .expect("check in assigned worktree");
+        server
+            .session_runtime_init(Parameters(RuntimeInitInput {
+                workspace: workspace.clone(),
+                session_id: session_id.to_string(),
+                predecessor_run_id: None,
+                force_new_run: false,
+            }))
+            .await
+            .expect("initialize worktree runtime");
+
+        let handoff = server
+            .session_handoff(Parameters(RuntimeHandoffInput {
+                workspace,
+                session_id: session_id.to_string(),
+                validation: vec![],
+                objective: "Validate session worktree paths".to_string(),
+                target_tickets: vec![],
+                higher_level_objective: String::new(),
+                upward_context: vec![],
+                target_files: vec![
+                    "handoff-fixtures/assigned-only.txt".to_string(),
+                ],
+                decisions: vec![],
+                non_goals: vec![],
+                context_anchors: vec![],
+                open_escalations: vec!["Regression package".to_string()],
+                risk_notes: None,
+                predecessor_handoff: None,
+            }))
+            .await
+            .expect("handoff path in selected worktree");
+        let payload = extract_json(handoff);
+        assert_eq!(
+            payload["record"]["target_files"][0],
+            "handoff-fixtures/assigned-only.txt"
+        );
+    }
+
+    #[tokio::test]
     async fn sessions_for_ticket_returns_matches_at_requested_tier() {
         let dir = tempdir().unwrap();
         let store_root = dir.path().join(".session");

@@ -42,7 +42,9 @@ impl SessionStoreConfig {
             // AC1/AC2: every `target_files` entry must be a repo-root-relative,
             // forward-slash path that exists on disk, verified at creation
             // time (not left for the consuming Implement Agent to discover).
-            let root = workspace_root();
+            // An active session worktree is authoritative because the session
+            // may be persisted from an MCP server launched in the main checkout.
+            let root = self.handoff_path_validation_root(session_id)?;
             for target in pkg.target_files.iter_mut() {
                 let normalized = normalize_repo_relative_path(target);
                 if !verify_repo_relative_path_exists(&root, &normalized) {
@@ -219,6 +221,23 @@ impl SessionStoreConfig {
         }
 
         Ok(record)
+    }
+
+    fn handoff_path_validation_root(
+        &self,
+        session_id: &str,
+    ) -> Result<PathBuf, SessionError> {
+        let paths = self.paths_for_session_id(session_id)?;
+        let manifest = read_json_if_exists::<PersistedSessionManifest>(
+            &paths.manifest_path,
+        )?;
+        let active_worktree = manifest.and_then(|manifest| {
+            manifest.metadata.worktree
+        }).and_then(|worktree| {
+            (worktree.status == SessionWorktreeStatus::Active)
+                .then_some(worktree.path)
+        });
+        Ok(active_worktree.unwrap_or_else(workspace_root))
     }
 
     fn mirror_handoff_to_tickets(

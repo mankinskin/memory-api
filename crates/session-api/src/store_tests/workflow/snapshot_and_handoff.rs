@@ -420,6 +420,58 @@ fn handoff_package_with_nonexistent_target_file_fails_at_creation_time() {
 }
 
 #[test]
+fn handoff_package_validates_target_files_in_assigned_worktree() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let worktree = tempdir.path().join("assigned-worktree");
+    let target_file = worktree.join("handoff-fixtures/assigned-only.txt");
+    std::fs::create_dir_all(target_file.parent().unwrap()).unwrap();
+    std::fs::write(&target_file, "---\nname: Explainer Agent\n---\n").unwrap();
+
+    config
+        .check_in_worktree(crate::SessionWorktreeCheckInRequest {
+            session_id: session_id.clone(),
+            owner_id: "copilot".to_string(),
+            ticket_id: "ticket-handoff-worktree".to_string(),
+            worktree_path: worktree,
+            branch: "agent/handoff-worktree".to_string(),
+            predecessor_session_id: None,
+        })
+        .unwrap();
+    config
+        .init_runtime_context(crate::SessionRuntimeInitRequest {
+            session_id: Some(session_id.clone()),
+            ..Default::default()
+        })
+        .unwrap();
+
+    let package = crate::SessionHandoffPackage {
+        objective: "Validate an assigned-worktree handoff path".to_string(),
+        target_tickets: vec![],
+        higher_level_objective: "Keep handoffs session-anchored".to_string(),
+        upward_context: vec![],
+        target_files: vec!["handoff-fixtures/assigned-only.txt".to_string()],
+        decisions: vec![],
+        non_goals: vec![],
+        context_anchors: vec![],
+        open_escalations: vec!["Regression test is not implementation-ready".to_string()],
+        risk_notes: None,
+        predecessor_handoff: None,
+    };
+
+    let handoff = config
+        .create_handoff_record(&session_id, Some(package), vec![], None)
+        .expect("target file in the assigned worktree must be accepted");
+
+    assert_eq!(
+        handoff.target_files,
+        vec!["handoff-fixtures/assigned-only.txt".to_string()]
+    );
+}
+
+#[test]
 fn handoff_package_normalizes_backslash_target_files_to_forward_slash() {
     let tempdir = TempDir::new().unwrap();
     let config =
