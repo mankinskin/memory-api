@@ -107,11 +107,6 @@ export const window = {
     show: jest.fn(),
     dispose: jest.fn(),
   })),
-  createTerminal: jest.fn(() => ({
-    show: jest.fn(),
-    dispose: jest.fn(),
-  })),
-  onDidCloseTerminal: jest.fn(() => ({ dispose: () => {} })),
   showErrorMessage: jest.fn(),
   showInformationMessage: jest.fn(),
   showWarningMessage: jest.fn(),
@@ -122,7 +117,6 @@ export const window = {
 
 export const env = {
   clipboard: {
-    readText: jest.fn(() => Promise.resolve('')),
     writeText: jest.fn(() => Promise.resolve()),
   },
   openExternal: jest.fn(() => Promise.resolve(true)),

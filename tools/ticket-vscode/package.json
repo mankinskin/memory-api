@@ -79,18 +79,6 @@
         "category": "Ticket Viewer"
       },
       {
-        "command": "ticket-viewer.openSessionTerminal",
-        "title": "Open Human-Owned Observer Terminal...",
-        "icon": "$(terminal)",
-        "category": "Ticket Viewer"
-      },
-      {
-        "command": "ticket-viewer.captureSessionTerminalOutput",
-        "title": "Capture Observer Output",
-        "icon": "$(save)",
-        "category": "Ticket Viewer"
-      },
-      {
         "command": "ticket-viewer.copyId",
         "title": "Copy Ticket ID",
         "icon": "$(copy)",

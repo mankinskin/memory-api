@@ -4,8 +4,8 @@ const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   rootDir: '.',
-  roots: ['<rootDir>/test/unit'],
-  testMatch: ['**/*.test.ts'],
+  testMatch: ['<rootDir>/test/unit/**/*.test.ts'],
+  modulePathIgnorePatterns: ['<rootDir>/out/'],
   moduleNameMapper: {
     '^vscode$': '<rootDir>/src/__mocks__/vscode.ts',
   },
