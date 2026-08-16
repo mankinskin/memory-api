@@ -1,6 +1,16 @@
 import * as path from 'node:path';
 
 describe('ticket-vscode package contributions', () => {
+  test('contributes human-owned observer terminal commands', () => {
+    const packageJson = require(path.resolve(__dirname, '../../package.json')) as {
+      contributes: { commands: Array<{ command: string }> };
+    };
+    const commands = packageJson.contributes.commands.map(entry => entry.command);
+
+    expect(commands).toContain('ticket-viewer.openSessionTerminal');
+    expect(commands).toContain('ticket-viewer.captureSessionTerminalOutput');
+  });
+
   test('Copy Ticket ID is contributed to the ticket item context menu', () => {
     const packageJson = require(path.resolve(__dirname, '../../package.json')) as {
       contributes: {

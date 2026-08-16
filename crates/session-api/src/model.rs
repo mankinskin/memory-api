@@ -16,6 +16,7 @@ pub fn default_session_schema_version() -> u32 {
 }
 
 mod workflow;
+mod terminal;
 
 pub use handoff::{
     HandoffBacklogFilter,
@@ -30,6 +31,14 @@ pub use handoff::{
 };
 pub use links::SessionLinks;
 pub use pin_feedback::SessionPinFeedbackSink;
+pub use terminal::{
+    SessionTerminalCreateRequest,
+    SessionTerminalEvent,
+    SessionTerminalManifest,
+    SessionTerminalPeekResult,
+    SessionTerminalRecord,
+    SessionTerminalStatus,
+};
 pub use workflow::{
     SessionTicketStateResolver,
     SessionValidationGate,

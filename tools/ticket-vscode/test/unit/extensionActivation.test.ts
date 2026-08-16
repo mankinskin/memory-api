@@ -29,6 +29,10 @@ jest.mock('../../src/extensionCommands', () => ({
   registerExtensionCommands: jest.fn(),
 }));
 
+jest.mock('../../src/terminalObserver', () => ({
+  registerTerminalObserverCommand: jest.fn(),
+}));
+
 jest.mock('../../src/extensionSupport', () => ({
   discoverRunningServerUrl: jest.fn(),
   pingServer: jest.fn(),
@@ -43,6 +47,7 @@ jest.mock('../../src/extensionSupport', () => ({
 
 import { activate, deactivate } from '../../src/extension';
 import { registerExtensionCommands } from '../../src/extensionCommands';
+import { registerTerminalObserverCommand } from '../../src/terminalObserver';
 import * as extensionSupport from '../../src/extensionSupport';
 
 type ProviderMock = {
@@ -135,6 +140,7 @@ describe('extension activation', () => {
       expect.objectContaining({ fsPath: expect.stringContaining('tickets') }),
     );
     expect(registerExtensionCommands).toHaveBeenCalledTimes(1);
+    expect(registerTerminalObserverCommand).toHaveBeenCalledTimes(1);
   });
 
   test('connects to a discovered running server before attempting auto-start', async () => {

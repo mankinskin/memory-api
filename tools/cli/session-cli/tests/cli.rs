@@ -290,6 +290,75 @@ fn peek_range_and_skeleton() {
 }
 
 #[test]
+fn terminal_observer_cli_round_trip() {
+    let dir = tempdir().unwrap();
+    let store_root = dir.path().join(".session");
+    let store_root_str = store_root.to_string_lossy().to_string();
+    let session_id = "77777777-7777-4777-8777-777777777777";
+    let config = SessionStoreConfig::new(store_root.clone(), "default".to_string());
+    config
+        .init_runtime_context(session_api::SessionRuntimeInitRequest {
+            session_id: Some(session_id.to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+
+    let created = run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "terminal-create",
+        "--session-id",
+        session_id,
+        "--label",
+        "human terminal",
+    ]);
+    let terminal_id = created["terminal_id"].as_str().unwrap().to_string();
+
+    let appended = run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "terminal-append-output",
+        "--session-id",
+        session_id,
+        "--terminal-id",
+        &terminal_id,
+        "--output",
+        "human output",
+    ]);
+    assert_eq!(appended["output"], "human output");
+
+    let peek = run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "terminal-peek",
+        "--session-id",
+        session_id,
+        "--terminal-id",
+        &terminal_id,
+    ]);
+    assert_eq!(peek["events"][0]["output"], "human output");
+
+    let closed = run_machine(&[
+        "session",
+        "--json",
+        "--store-root",
+        &store_root_str,
+        "terminal-close",
+        "--session-id",
+        session_id,
+        "--terminal-id",
+        &terminal_id,
+    ]);
+    assert_eq!(closed["status"], "closed");
+}
+
+#[test]
 fn peek_prompt_pack_reports_guarded_entries() {
     let dir = tempdir().unwrap();
     let store_root = dir.path().join(".session");

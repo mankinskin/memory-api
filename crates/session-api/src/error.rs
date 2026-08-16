@@ -24,6 +24,18 @@ pub enum SessionError {
     #[error("session id '{0}' must be a UUID from the Copilot hook payload")]
     InvalidSessionId(String),
 
+    #[error("terminal id '{0}' must be a UUID")]
+    InvalidTerminalId(String),
+
+    #[error("terminal observer {terminal_id} was not found for session {session_id}")]
+    TerminalNotFound {
+        session_id: String,
+        terminal_id: String,
+    },
+
+    #[error("terminal observer {terminal_id} is closed")]
+    TerminalClosed { terminal_id: String },
+
     #[error(
         "session identity `{0}` must be a UUID; use the capture or provisioning UUID"
     )]

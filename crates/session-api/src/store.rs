@@ -47,6 +47,12 @@ use crate::{
     SessionRuntimeInitRequest,
     SessionRuntimeInitResult,
     SessionRuntimeView,
+    SessionTerminalCreateRequest,
+    SessionTerminalEvent,
+    SessionTerminalManifest,
+    SessionTerminalPeekResult,
+    SessionTerminalRecord,
+    SessionTerminalStatus,
     SessionTicketStateResolver,
     SessionTurn,
     SessionValidationGate,
@@ -221,6 +227,7 @@ mod config {
     include!("store/config/ticket_relation.rs");
     include!("store/config/ticket_backfill.rs");
     include!("store/config/worktree_capture_inference.rs");
+    include!("store/config/terminals.rs");
 }
 
 #[path = "store_routing_types.rs"]

@@ -25,6 +25,7 @@ use session_api::{
     SessionHandoffUpwardContextEntry,
     SessionQuery,
     SessionRuntimeInitRequest,
+    SessionTerminalCreateRequest,
     SessionStoreConfig,
     SessionValidationGate,
     SessionWorkflowEdge,
@@ -133,6 +134,16 @@ pub enum SessionCommand {
     PeekSkeleton(PeekSkeletonArgs),
     /// Peek a prompt-facing compact view of a session transcript.
     PeekPromptPack(PeekPromptPackArgs),
+    /// Create a human-owned observer terminal record.
+    TerminalCreate(TerminalCreateArgs),
+    /// Append process output captured by a human-owned terminal UI.
+    TerminalAppendOutput(TerminalAppendOutputArgs),
+    /// Read an observer terminal status.
+    TerminalStatus(TerminalStatusArgs),
+    /// Read a bounded window of observer terminal output.
+    TerminalPeek(TerminalPeekArgs),
+    /// Close an observer terminal record.
+    TerminalClose(TerminalStatusArgs),
     /// Compute and report tool metrics for this store.
     ToolMetrics(ToolMetricsArgs),
     /// Compute and report per-sub-agent cost and usage rollups for a workspace session.
@@ -296,6 +307,46 @@ pub struct PeekPromptPackArgs {
     /// Content-length threshold above which entries are summarized.
     #[arg(long, default_value_t = DEFAULT_PROMPT_SUMMARIZE_THRESHOLD_CHARS)]
     pub summarize_threshold_chars: usize,
+}
+
+#[derive(Debug, Args)]
+pub struct TerminalCreateArgs {
+    #[arg(long)]
+    pub session_id: String,
+    #[arg(long)]
+    pub label: String,
+    #[arg(long)]
+    pub cwd: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct TerminalAppendOutputArgs {
+    #[arg(long)]
+    pub session_id: String,
+    #[arg(long)]
+    pub terminal_id: String,
+    #[arg(long)]
+    pub output: String,
+}
+
+#[derive(Debug, Args)]
+pub struct TerminalStatusArgs {
+    #[arg(long)]
+    pub session_id: String,
+    #[arg(long)]
+    pub terminal_id: String,
+}
+
+#[derive(Debug, Args)]
+pub struct TerminalPeekArgs {
+    #[arg(long)]
+    pub session_id: String,
+    #[arg(long)]
+    pub terminal_id: String,
+    #[arg(long, default_value_t = 0)]
+    pub offset: usize,
+    #[arg(long, default_value_t = 50)]
+    pub limit: usize,
 }
 
 #[derive(Debug, Args)]
@@ -841,6 +892,47 @@ fn dispatch(
                 },
             )?;
             to_value(&pack)
+        },
+        SessionCommand::TerminalCreate(args) => {
+            let manifest = config.create_terminal_observer(
+                SessionTerminalCreateRequest {
+                    session_id: args.session_id,
+                    label: args.label,
+                    cwd: args.cwd,
+                },
+            )?;
+            to_value(&manifest)
+        },
+        SessionCommand::TerminalAppendOutput(args) => {
+            let event = config.append_terminal_output(
+                &args.session_id,
+                &args.terminal_id,
+                args.output,
+            )?;
+            to_value(&event)
+        },
+        SessionCommand::TerminalStatus(args) => {
+            let manifest = config.terminal_status(
+                &args.session_id,
+                &args.terminal_id,
+            )?;
+            to_value(&manifest)
+        },
+        SessionCommand::TerminalPeek(args) => {
+            let result = config.peek_terminal_output(
+                &args.session_id,
+                &args.terminal_id,
+                args.offset,
+                args.limit,
+            )?;
+            to_value(&result)
+        },
+        SessionCommand::TerminalClose(args) => {
+            let manifest = config.close_terminal_observer(
+                &args.session_id,
+                &args.terminal_id,
+            )?;
+            to_value(&manifest)
         },
         SessionCommand::ToolMetrics(args) => {
             let window = ToolMetricsWindow {

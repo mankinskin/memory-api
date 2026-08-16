@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { TicketTreeProvider } from './ticketProvider';
 import { registerExtensionCommands, type ActivationState } from './extensionCommands';
+import { registerTerminalObserverCommand } from './terminalObserver';
 import { initWasmCore, type CoreApi } from './coreLoader';
 import { detectHostKind } from './hostCapabilities';
 import {
@@ -227,6 +228,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
     core,
   });
+  registerTerminalObserverCommand(context, outputChannel);
 }
 
 export function deactivate(): void {

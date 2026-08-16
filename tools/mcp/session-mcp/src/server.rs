@@ -35,6 +35,7 @@ use session_api::{
     SessionHandoffUpwardContextRole,
     SessionQuery,
     SessionRuntimeInitRequest,
+    SessionTerminalCreateRequest,
     SessionStoreConfig,
     SessionValidationGate,
     SessionWorkflowEdge,
@@ -184,6 +185,36 @@ pub struct PeekSkeletonInput {
     /// Maximum preview characters retained per turn.
     #[serde(default)]
     pub preview_chars: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TerminalCreateInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
+    pub workspace: String,
+    pub session_id: String,
+    pub label: String,
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TerminalStatusInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
+    pub workspace: String,
+    pub session_id: String,
+    pub terminal_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TerminalPeekInput {
+    /// Concrete workspace path, repo root, .session store path, or path inside that store.
+    pub workspace: String,
+    pub session_id: String,
+    pub terminal_id: String,
+    #[serde(default)]
+    pub offset: Option<usize>,
+    #[serde(default)]
+    pub limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -1004,6 +1035,15 @@ fn session_capability_catalog() -> serde_json::Value {
                  "purpose": "Finish the workflow, enforcing required node and validation gates."},
             ],
         },
+        "observer_terminal": {
+            "tools": [
+                "session_terminal_create",
+                "session_terminal_status",
+                "session_terminal_peek",
+                "session_terminal_close"
+            ],
+            "note": "Observer tools never accept terminal input or shell commands. Human UI owns input; agents read bounded output only.",
+        },
         "enums": {
             "workflow_node_kind": {
                 "tool": "session_workflow_add_node",
@@ -1465,6 +1505,75 @@ impl SessionServer {
             )
             .map_err(Self::session_err)?;
         Self::json_result_with_handle(&input.session_id, &result)
+    }
+
+    #[tool(
+        name = "session_terminal_create",
+        description = "Create a session-scoped human-owned terminal observer. This tool never starts a command or sends terminal input."
+    )]
+    pub async fn session_terminal_create(
+        &self,
+        Parameters(input): Parameters<TerminalCreateInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let manifest = self
+            .config_for_workspace(&input.workspace)?
+            .create_terminal_observer(SessionTerminalCreateRequest {
+                session_id: input.session_id.clone(),
+                label: input.label,
+                cwd: input.cwd,
+            })
+            .map_err(Self::session_err)?;
+        Self::json_result_with_handle(&input.session_id, &manifest)
+    }
+
+    #[tool(
+        name = "session_terminal_status",
+        description = "Read a human-owned observer terminal status. No terminal input or command execution is available."
+    )]
+    pub async fn session_terminal_status(
+        &self,
+        Parameters(input): Parameters<TerminalStatusInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let manifest = self
+            .config_for_workspace(&input.workspace)?
+            .terminal_status(&input.session_id, &input.terminal_id)
+            .map_err(Self::session_err)?;
+        Self::json_result_with_handle(&input.session_id, &manifest)
+    }
+
+    #[tool(
+        name = "session_terminal_peek",
+        description = "Read a bounded window of human-owned observer terminal output. No terminal input or command execution is available."
+    )]
+    pub async fn session_terminal_peek(
+        &self,
+        Parameters(input): Parameters<TerminalPeekInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self
+            .config_for_workspace(&input.workspace)?
+            .peek_terminal_output(
+                &input.session_id,
+                &input.terminal_id,
+                input.offset.unwrap_or(0),
+                input.limit.unwrap_or(50),
+            )
+            .map_err(Self::session_err)?;
+        Self::json_result_with_handle(&input.session_id, &result)
+    }
+
+    #[tool(
+        name = "session_terminal_close",
+        description = "Close a human-owned observer terminal record so later output cannot be appended."
+    )]
+    pub async fn session_terminal_close(
+        &self,
+        Parameters(input): Parameters<TerminalStatusInput>,
+    ) -> Result<CallToolResult, McpError> {
+        let manifest = self
+            .config_for_workspace(&input.workspace)?
+            .close_terminal_observer(&input.session_id, &input.terminal_id)
+            .map_err(Self::session_err)?;
+        Self::json_result_with_handle(&input.session_id, &manifest)
     }
 
     #[tool(
@@ -2162,6 +2271,65 @@ mod tests {
             .await
             .expect("lookup");
         assert!(!lookup.is_error.unwrap_or(false));
+    }
+
+    #[tokio::test]
+    async fn terminal_observer_tools_read_output_without_input_operation() {
+        let dir = tempdir().unwrap();
+        let session_root = dir.path().join(".session");
+        let workspace = session_root.display().to_string();
+        let session_id = "88888888-8888-4888-8888-888888888888";
+        let server = SessionServer::new(session_root.clone(), "default".to_string());
+        let config = SessionStoreConfig::new(session_root, "default");
+        config
+            .init_runtime_context(SessionRuntimeInitRequest {
+                session_id: Some(session_id.to_string()),
+                predecessor_run_id: None,
+                force_new_run: false,
+            })
+            .unwrap();
+
+        let created = server
+            .session_terminal_create(Parameters(TerminalCreateInput {
+                workspace: workspace.clone(),
+                session_id: session_id.to_string(),
+                label: "human terminal".to_string(),
+                cwd: Some(dir.path().to_path_buf()),
+            }))
+            .await
+            .expect("create observer");
+        let created_payload = extract_json(created);
+        let terminal_id = created_payload["terminal_id"]
+            .as_str()
+            .expect("terminal id")
+            .to_string();
+        config
+            .append_terminal_output(session_id, &terminal_id, "human output\n".to_string())
+            .unwrap();
+
+        let peek = server
+            .session_terminal_peek(Parameters(TerminalPeekInput {
+                workspace: workspace.clone(),
+                session_id: session_id.to_string(),
+                terminal_id: terminal_id.clone(),
+                offset: None,
+                limit: None,
+            }))
+            .await
+            .expect("peek observer");
+        let peek_payload = extract_json(peek);
+        assert_eq!(peek_payload["events"][0]["output"], "human output\n");
+
+        let closed = server
+            .session_terminal_close(Parameters(TerminalStatusInput {
+                workspace,
+                session_id: session_id.to_string(),
+                terminal_id,
+            }))
+            .await
+            .expect("close observer");
+        let closed_payload = extract_json(closed);
+        assert_eq!(closed_payload["status"], "closed");
     }
 
     #[tokio::test]

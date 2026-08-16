@@ -13,3 +13,4 @@ include!("store_tests/finish/ticket_enforcement.rs");
 include!("store_tests/finish/spec_enforcement.rs");
 include!("store_tests/finish/workspace_mutation_and_locking.rs");
 include!("store_tests/finish/workspace_lock_ordering.rs");
+include!("store_tests/terminals.rs");
