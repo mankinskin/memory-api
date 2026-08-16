@@ -31,7 +31,10 @@ fn resolve_store_root() -> PathBuf {
         return PathBuf::from(path);
     }
     memory_kernel::workspace::resolve_requested_store_root(
-        None, None, None, ".feedback",
+        None,
+        None,
+        None,
+        ".feedback",
     )
 }
 

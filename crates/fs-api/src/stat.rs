@@ -3,7 +3,10 @@ use std::time::UNIX_EPOCH;
 use crate::{
     error::FsApiError,
     request::StatRequest,
-    response::{EntryKind, StatResult},
+    response::{
+        EntryKind,
+        StatResult,
+    },
 };
 
 /// Get file or directory metadata without reading content.
@@ -19,10 +22,12 @@ pub fn stat(request: &StatRequest) -> Result<StatResult, FsApiError> {
         });
     }
 
-    let metadata = path.metadata().map_err(|e| FsApiError::CannotReadMetadata {
-        path: path.to_path_buf(),
-        source: e,
-    })?;
+    let metadata =
+        path.metadata()
+            .map_err(|e| FsApiError::CannotReadMetadata {
+                path: path.to_path_buf(),
+                source: e,
+            })?;
 
     let kind = if metadata.is_dir() {
         EntryKind::Directory

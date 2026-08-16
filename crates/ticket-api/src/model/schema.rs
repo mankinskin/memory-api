@@ -3,15 +3,15 @@ pub use memory_kernel::model::schema::*;
 pub use memory_kernel::model::schema::EntityTypeSchema as TicketTypeSchema;
 
 pub trait TicketTypeSchemaExt {
-	fn entry_state(&self) -> Option<&str>;
+    fn entry_state(&self) -> Option<&str>;
 }
 
 impl TicketTypeSchemaExt for TicketTypeSchema {
-	fn entry_state(&self) -> Option<&str> {
-		self.states
-			.iter()
-			.find(|state| state.as_str() == "open")
-			.map(String::as_str)
-			.or_else(|| self.states.first().map(String::as_str))
-	}
+    fn entry_state(&self) -> Option<&str> {
+        self.states
+            .iter()
+            .find(|state| state.as_str() == "open")
+            .map(String::as_str)
+            .or_else(|| self.states.first().map(String::as_str))
+    }
 }

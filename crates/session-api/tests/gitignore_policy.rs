@@ -1,7 +1,9 @@
 // Test gitignore rules for session artifacts (ticket 4817a5cc AC5)
 
-use std::path::PathBuf;
-use std::process::Command;
+use std::{
+    path::PathBuf,
+    process::Command,
+};
 
 /// Verify that .gitignore correctly tracks durable artifacts and ignores local/ephemeral ones.
 ///
@@ -53,7 +55,10 @@ fn gitignore_tracks_durable_ignores_local() {
 /// Check if a path is ignored by git using `git check-ignore`.
 ///
 /// Returns true if the path is ignored, false if it would be tracked.
-fn check_git_ignore(repo_root: &PathBuf, path: &str) -> bool {
+fn check_git_ignore(
+    repo_root: &PathBuf,
+    path: &str,
+) -> bool {
     let output = Command::new("git")
         .arg("check-ignore")
         .arg("-q") // Quiet mode: exit code only
@@ -69,7 +74,8 @@ fn check_git_ignore(repo_root: &PathBuf, path: &str) -> bool {
 
 /// Find the repository root by walking up from the current directory.
 fn find_repo_root() -> PathBuf {
-    let mut current = std::env::current_dir().expect("Failed to get current directory");
+    let mut current =
+        std::env::current_dir().expect("Failed to get current directory");
 
     loop {
         if current.join(".git").exists() {
@@ -77,7 +83,9 @@ fn find_repo_root() -> PathBuf {
         }
 
         if !current.pop() {
-            panic!("Repository root not found (no .git directory in ancestor tree)");
+            panic!(
+                "Repository root not found (no .git directory in ancestor tree)"
+            );
         }
     }
 }

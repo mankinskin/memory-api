@@ -1,3 +1,6 @@
 pub mod server;
 
-pub use server::{FsServer, run_mcp_server};
+pub use server::{
+    FsServer,
+    run_mcp_server,
+};

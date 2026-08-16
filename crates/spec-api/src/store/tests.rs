@@ -102,7 +102,9 @@ fn create_get_update_delete_spec() {
     let updated = store.update("root/overview", patch, None).unwrap();
     assert_eq!(updated.title(), Some("Overview 2"));
 
-    store.update_body("root/overview", "body v2", false).unwrap();
+    store
+        .update_body("root/overview", "body v2", false)
+        .unwrap();
     let full2 = store.get_full("root/overview").unwrap();
     assert_eq!(full2.1, "body v2");
 
@@ -132,7 +134,9 @@ fn update_body_allows_empty_content_with_force() {
     let spec = make_spec("root/empty-body-forced", "Empty Body Forced");
     store.create(&spec, "body v1", None).unwrap();
 
-    store.update_body("root/empty-body-forced", "", true).unwrap();
+    store
+        .update_body("root/empty-body-forced", "", true)
+        .unwrap();
     let full = store.get_full("root/empty-body-forced").unwrap();
     assert_eq!(full.1, "");
 }
@@ -323,8 +327,7 @@ fn health_reports_cross_workspace_and_dangling_depends_on_edges() {
 
     let report = child_store.health(&child_id.to_string()).unwrap();
     assert!(report.issues.iter().any(|issue| {
-        issue.id == child_id
-            && issue.issue.starts_with("cross_workspace_edge:")
+        issue.id == child_id && issue.issue.starts_with("cross_workspace_edge:")
     }));
     assert!(report.issues.iter().any(|issue| {
         issue.id == child_id && issue.issue.starts_with("dangling_edge:")

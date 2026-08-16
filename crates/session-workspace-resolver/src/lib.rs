@@ -335,7 +335,9 @@ pub enum ResolutionError {
     InvalidConfiguration(String),
     #[error("session id is required")]
     MissingSessionId,
-    #[error("session id '{session_id}' must be a UUID from the Copilot hook payload")]
+    #[error(
+        "session id '{session_id}' must be a UUID from the Copilot hook payload"
+    )]
     InvalidSessionId { session_id: String },
     #[error(
         "session '{session_id}' has no worktree assignment in the session store"

@@ -43,8 +43,10 @@ fn domain_names(catalog: &Value) -> Vec<String> {
 async fn ticket_capabilities_lists_ticket_spec_rule_workflows() {
     let (_tmp, server) = make_sandbox();
 
-    let result =
-        server.ticket_capabilities().await.expect("capabilities call");
+    let result = server
+        .ticket_capabilities()
+        .await
+        .expect("capabilities call");
     let catalog = extract_json(result);
 
     let domains = domain_names(&catalog);
@@ -71,14 +73,20 @@ async fn ticket_capabilities_lists_ticket_spec_rule_workflows() {
     );
 
     // Parity gaps must be documented.
-    assert!(catalog["parity_gaps"].as_array().is_some_and(|g| !g.is_empty()));
+    assert!(
+        catalog["parity_gaps"]
+            .as_array()
+            .is_some_and(|g| !g.is_empty())
+    );
 }
 
 #[tokio::test]
 async fn mcp_catalog_matches_shared_ticket_api_catalog() {
     let (_tmp, server) = make_sandbox();
-    let result =
-        server.ticket_capabilities().await.expect("capabilities call");
+    let result = server
+        .ticket_capabilities()
+        .await
+        .expect("capabilities call");
     let mcp_catalog = extract_json(result);
 
     // MCP surface must emit the exact shared catalog so CLI and MCP agree.

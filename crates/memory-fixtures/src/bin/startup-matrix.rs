@@ -1,9 +1,9 @@
 use memory_fixtures::{
-    run_startup_matrix,
-    startup_matrix_succeeded,
     StartupMatrixClass,
     StartupMatrixOutcome,
     StartupMatrixResult,
+    run_startup_matrix,
+    startup_matrix_succeeded,
 };
 use std::process::ExitCode;
 

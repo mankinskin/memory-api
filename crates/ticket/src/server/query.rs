@@ -62,7 +62,8 @@ impl TicketServer {
         &self,
         input: TicketRefInput,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace.unwrap_or_else(|| "default".to_string());
+        let workspace =
+            input.workspace.unwrap_or_else(|| "default".to_string());
         let id_str = input.id;
         let view = input.view;
         let parts = input.parts;
@@ -106,7 +107,8 @@ impl TicketServer {
         &self,
         input: TicketRefInput,
     ) -> Result<CallToolResult, McpError> {
-        let workspace = input.workspace.unwrap_or_else(|| "default".to_string());
+        let workspace =
+            input.workspace.unwrap_or_else(|| "default".to_string());
         let id_str = input.id;
 
         self.with_store_ext(&workspace.clone(), move |store| {
@@ -203,9 +205,11 @@ fn listed_ticket_summaries(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-    use std::fs;
-    use std::path::Path;
+    use std::{
+        collections::BTreeMap,
+        fs,
+        path::Path,
+    };
 
     use serde_json::Value;
     use ticket_api::storage::store::TicketStore;
@@ -226,7 +230,10 @@ mod tests {
             .expect("text content")
     }
 
-    fn copy_ticket_dir(source: &Path, destination: &Path) {
+    fn copy_ticket_dir(
+        source: &Path,
+        destination: &Path,
+    ) {
         fs::create_dir_all(destination).expect("create destination");
         for entry in fs::read_dir(source).expect("read source") {
             let entry = entry.expect("directory entry");
@@ -234,7 +241,8 @@ mod tests {
             if entry.file_type().expect("file type").is_dir() {
                 copy_ticket_dir(&entry.path(), &destination_path);
             } else {
-                fs::copy(entry.path(), destination_path).expect("copy ticket file");
+                fs::copy(entry.path(), destination_path)
+                    .expect("copy ticket file");
             }
         }
     }
@@ -310,8 +318,8 @@ mod tests {
             })
             .await
             .expect("get_ticket_tool with view=summary ok");
-        let json: Value = serde_json::from_str(&extract_text(&result))
-            .expect("valid json");
+        let json: Value =
+            serde_json::from_str(&extract_text(&result)).expect("valid json");
 
         let parts = json["ticket"]["parts"].as_array().expect("parts array");
         assert_eq!(parts.len(), 1);
@@ -319,7 +327,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_ticket_tool_reads_an_indexed_descendant_from_parent_workspace() {
+    async fn get_ticket_tool_reads_an_indexed_descendant_from_parent_workspace()
+    {
         let dir = tempfile::tempdir().expect("tempdir");
         let parent = TicketStore::init(dir.path()).expect("parent store");
         let child_root = dir.path().join("child").join(".ticket");
@@ -353,14 +362,18 @@ mod tests {
             })
             .await
             .expect("get indexed descendant ticket");
-        let json: Value = serde_json::from_str(&extract_text(&result))
-            .expect("valid json");
+        let json: Value =
+            serde_json::from_str(&extract_text(&result)).expect("valid json");
 
-        assert_eq!(json["ticket"]["id"].as_str(), Some(id.to_string().as_str()));
+        assert_eq!(
+            json["ticket"]["id"].as_str(),
+            Some(id.to_string().as_str())
+        );
     }
 
     #[tokio::test]
-    async fn get_ticket_tool_reports_searched_workspaces_when_prefix_is_missing() {
+    async fn get_ticket_tool_reports_searched_workspaces_when_prefix_is_missing()
+     {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = TicketStore::init(dir.path()).expect("open store");
         let expected_root = store.index_root.display().to_string();
@@ -416,7 +429,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn external_write_to_description_is_visible_to_get_ticket_description() {
+    async fn external_write_to_description_is_visible_to_get_ticket_description()
+     {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = TicketStore::init(dir.path()).expect("open store");
         let id = store
@@ -461,19 +475,22 @@ mod tests {
             })
             .await
             .expect("description after external write");
-        let json: Value = serde_json::from_str(&extract_text(&result))
-            .expect("valid json");
+        let json: Value =
+            serde_json::from_str(&extract_text(&result)).expect("valid json");
 
-        assert!(json["description"]
-            .as_str()
-            .expect("description string")
-            .contains("## External section"));
+        assert!(
+            json["description"]
+                .as_str()
+                .expect("description string")
+                .contains("## External section")
+        );
     }
 
     #[tokio::test]
     async fn external_write_of_new_ticket_is_visible_to_list() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let destination = TicketStore::init(dir.path()).expect("destination store");
+        let destination =
+            TicketStore::init(dir.path()).expect("destination store");
         destination
             .create(
                 None,
@@ -497,7 +514,8 @@ mod tests {
             .await
             .expect("initial list");
         let source_dir = tempfile::tempdir().expect("source tempdir");
-        let source = TicketStore::init(source_dir.path()).expect("source store");
+        let source =
+            TicketStore::init(source_dir.path()).expect("source store");
         let id = source
             .create(
                 None,
@@ -529,18 +547,25 @@ mod tests {
             })
             .await
             .expect("list after external ticket write");
-        let json: Value = serde_json::from_str(&extract_text(&result))
-            .expect("valid json");
+        let json: Value =
+            serde_json::from_str(&extract_text(&result)).expect("valid json");
 
-        assert!(json["items"].as_array().expect("items array").iter().any(
-            |item| item["id"].as_str() == Some(id.to_string().as_str()),
-        ));
+        assert!(
+            json["items"]
+                .as_array()
+                .expect("items array")
+                .iter()
+                .any(
+                    |item| item["id"].as_str() == Some(id.to_string().as_str()),
+                )
+        );
     }
 
     #[tokio::test]
     async fn residual_staleness_is_surfaced_not_silently_returned() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let destination = TicketStore::init(dir.path()).expect("destination store");
+        let destination =
+            TicketStore::init(dir.path()).expect("destination store");
         destination
             .create(
                 None,
@@ -564,7 +589,8 @@ mod tests {
             .await
             .expect("initial list");
         let source_dir = tempfile::tempdir().expect("source tempdir");
-        let source = TicketStore::init(source_dir.path()).expect("source store");
+        let source =
+            TicketStore::init(source_dir.path()).expect("source store");
         let id = source
             .create(
                 None,
@@ -595,8 +621,8 @@ mod tests {
             })
             .await
             .expect("read after external ticket write");
-        let json: Value = serde_json::from_str(&extract_text(&result))
-            .expect("valid json");
+        let json: Value =
+            serde_json::from_str(&extract_text(&result)).expect("valid json");
 
         assert_eq!(
             json["description"].as_str(),

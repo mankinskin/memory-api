@@ -241,7 +241,11 @@ pub struct UpdateArgsCli {
     /// Opt out of auto-walking multi-hop transitions. When set, a `--to-state`
     /// that would skip a required waypoint is rejected with recovery guidance
     /// instead of traversing the intermediate states.
-    #[arg(long = "single-hop", visible_alias = "strict", default_value_t = false)]
+    #[arg(
+        long = "single-hop",
+        visible_alias = "strict",
+        default_value_t = false
+    )]
     pub single_hop: bool,
     #[arg(long = "field")]
     pub fields: Vec<String>,
@@ -302,14 +306,16 @@ impl TryFrom<UpdateArgsCli> for UpdateArgs {
     type Error = String;
 
     fn try_from(cli: UpdateArgsCli) -> Result<Self, Self::Error> {
-        let description_mode_str = cli.description_mode.map(|mode| match mode {
-            DescriptionMode::Replace => "replace",
-            DescriptionMode::Append => "append",
-        });
-        let description_update = ticket_api::storage::DescriptionUpdate::decode(
-            cli.description,
-            description_mode_str,
-        )?;
+        let description_mode_str =
+            cli.description_mode.map(|mode| match mode {
+                DescriptionMode::Replace => "replace",
+                DescriptionMode::Append => "append",
+            });
+        let description_update =
+            ticket_api::storage::DescriptionUpdate::decode(
+                cli.description,
+                description_mode_str,
+            )?;
         Ok(UpdateArgs {
             id: cli.id,
             transition_states: cli.transition_states,

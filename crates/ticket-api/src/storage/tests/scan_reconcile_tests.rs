@@ -40,11 +40,13 @@ fn add_scan_root_allows_own_worktree_root() {
         })
         .unwrap();
 
-    assert!(store
-        .list_scan_roots()
-        .unwrap()
-        .iter()
-        .any(|scan_root| scan_root.path == root));
+    assert!(
+        store
+            .list_scan_roots()
+            .unwrap()
+            .iter()
+            .any(|scan_root| scan_root.path == root)
+    );
 }
 
 #[test]

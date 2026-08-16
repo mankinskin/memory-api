@@ -158,7 +158,8 @@ async fn update_ticket_patches_fields() {
             fields: Some(patch),
             state: None,
             transition_states: vec![],
-            description_update: ticket_api::storage::DescriptionUpdate::Unchanged,
+            description_update:
+                ticket_api::storage::DescriptionUpdate::Unchanged,
             single_hop: false,
         }),
     )
@@ -205,7 +206,8 @@ async fn update_ticket_transitions_state() {
             fields: None,
             state: Some("planned".to_string()),
             transition_states: vec![],
-            description_update: ticket_api::storage::DescriptionUpdate::Unchanged,
+            description_update:
+                ticket_api::storage::DescriptionUpdate::Unchanged,
             single_hop: false,
         }),
     )
@@ -304,9 +306,7 @@ async fn release_ticket_lease_returns_conflict_for_live_other_holder() {
         State(state),
         Extension(RequestIdExt("rid-conflict".to_string())),
         Path(id),
-        Query(MutationWorkspaceParam {
-            workspace,
-        }),
+        Query(MutationWorkspaceParam { workspace }),
         Json(ReleaseLeaseBody {
             requester: "agent-b".to_string(),
         }),

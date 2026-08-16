@@ -15,12 +15,12 @@ use serde::de::DeserializeOwned;
 
 use crate::{
     ExecutionSort,
+    IdentifiableArtifact,
     TestError,
+    TraceableArtifact,
     ValidationExecution,
     ValidationOutcome,
     ValidationSpec,
-    TraceableArtifact,
-    IdentifiableArtifact,
     benchmark::{
         BenchmarkExecution,
         BenchmarkQuery,
@@ -124,7 +124,10 @@ impl TestStoreConfig {
         execution: &ValidationExecution,
     ) -> Result<PathBuf, TestError> {
         // Compile-time check that ValidationExecution implements TraceableArtifact + IdentifiableArtifact
-        fn assert_interoperable<T: TraceableArtifact + IdentifiableArtifact<Id = str>>() {}
+        fn assert_interoperable<
+            T: TraceableArtifact + IdentifiableArtifact<Id = str>,
+        >() {
+        }
         assert_interoperable::<ValidationExecution>();
 
         execution.validate_interoperability_contract()?;
@@ -269,7 +272,10 @@ impl TestStoreConfig {
         benchmark: &BenchmarkExecution,
     ) -> Result<PathBuf, TestError> {
         // Compile-time check that BenchmarkExecution implements TraceableArtifact + IdentifiableArtifact
-        fn assert_interoperable<T: TraceableArtifact + IdentifiableArtifact<Id = str>>() {}
+        fn assert_interoperable<
+            T: TraceableArtifact + IdentifiableArtifact<Id = str>,
+        >() {
+        }
         assert_interoperable::<BenchmarkExecution>();
 
         benchmark.validate_interoperability_contract()?;
@@ -517,9 +523,10 @@ impl TestStoreConfig {
             let Some(run_id) = execution.provenance.run_id.as_ref() else {
                 continue;
             };
-            if !stale_spec_runs
-                .contains(&(execution.validation_spec_id.clone(), run_id.clone()))
-            {
+            if !stale_spec_runs.contains(&(
+                execution.validation_spec_id.clone(),
+                run_id.clone(),
+            )) {
                 continue;
             }
             let path = self.execution_path(&execution.id)?;

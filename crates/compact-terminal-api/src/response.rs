@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 /// Result of a run command execution.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

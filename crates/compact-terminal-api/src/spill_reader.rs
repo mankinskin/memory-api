@@ -6,14 +6,15 @@ use crate::{
 
 /// Read from a spill file with optional line range or grep.
 pub fn read_spill(
-    request: &ReadSpillRequest,
+    request: &ReadSpillRequest
 ) -> Result<ReadSpillResult, CompactTerminalError> {
-    let content = std::fs::read_to_string(&request.spill_file).map_err(
-        |source| CompactTerminalError::CannotReadSpillFile {
-            path: request.spill_file.clone(),
-            source,
-        },
-    )?;
+    let content =
+        std::fs::read_to_string(&request.spill_file).map_err(|source| {
+            CompactTerminalError::CannotReadSpillFile {
+                path: request.spill_file.clone(),
+                source,
+            }
+        })?;
 
     let lines: Vec<&str> = content.lines().collect();
     let total = lines.len();

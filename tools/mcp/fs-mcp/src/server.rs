@@ -10,26 +10,56 @@
 //! - `fs_delete_file`: Delete a file.
 //! - `fs_delete_dir`: Delete a directory (optionally recursive).
 
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::PathBuf,
+};
 
 use fs_api::{
-    CopyFileRequest, DeleteDirRequest, DeleteFileRequest, FsApiError, ListDirRequest,
-    ListDirResult, MoveFileRequest, MutationResult, RenameFileRequest, StatRequest, StatResult,
-    copy_file, delete_dir, delete_file, list_dir, move_file, rename_file, stat,
+    CopyFileRequest,
+    DeleteDirRequest,
+    DeleteFileRequest,
+    FsApiError,
+    ListDirRequest,
+    ListDirResult,
+    MoveFileRequest,
+    MutationResult,
+    RenameFileRequest,
+    StatRequest,
+    StatResult,
+    copy_file,
+    delete_dir,
+    delete_file,
+    list_dir,
+    move_file,
+    rename_file,
+    stat,
 };
 use rmcp::{
     ErrorData as McpError,
     ServerHandler,
     ServiceExt,
-    handler::server::{tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, Content},
-    schemars::{self, JsonSchema},
+    handler::server::{
+        tool::ToolRouter,
+        wrapper::Parameters,
+    },
+    model::{
+        CallToolResult,
+        Content,
+    },
+    schemars::{
+        self,
+        JsonSchema,
+    },
     tool,
     tool_handler,
     tool_router,
     transport::stdio,
 };
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 // ── Input types ─────────────────────────────────────────────────────────────
 
@@ -152,13 +182,19 @@ impl FsServer {
         }
     }
 
-    fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
-        let text = serde_json::to_string(value)
-            .map_err(|e| McpError::internal_error(format!("serialization: {e}"), None))?;
+    fn json_result<T: Serialize>(
+        value: &T
+    ) -> Result<CallToolResult, McpError> {
+        let text = serde_json::to_string(value).map_err(|e| {
+            McpError::internal_error(format!("serialization: {e}"), None)
+        })?;
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
-    async fn list_dir_tool(&self, input: ListDirInput) -> Result<CallToolResult, McpError> {
+    async fn list_dir_tool(
+        &self,
+        input: ListDirInput,
+    ) -> Result<CallToolResult, McpError> {
         let request = ListDirRequest {
             path: input.path,
             depth_limit: input.depth_limit,
@@ -168,26 +204,42 @@ impl FsServer {
             honor_ignore: input.honor_ignore,
         };
 
-        let result: ListDirResult = tokio::task::spawn_blocking(move || list_dir(&request))
-            .await
-            .map_err(|e| McpError::internal_error(format!("task error: {e}"), None))?
-            .map_err(|e: FsApiError| McpError::invalid_params(e.to_string(), None))?;
+        let result: ListDirResult =
+            tokio::task::spawn_blocking(move || list_dir(&request))
+                .await
+                .map_err(|e| {
+                    McpError::internal_error(format!("task error: {e}"), None)
+                })?
+                .map_err(|e: FsApiError| {
+                    McpError::invalid_params(e.to_string(), None)
+                })?;
 
         Self::json_result(&result)
     }
 
-    async fn stat_tool(&self, input: StatInput) -> Result<CallToolResult, McpError> {
+    async fn stat_tool(
+        &self,
+        input: StatInput,
+    ) -> Result<CallToolResult, McpError> {
         let request = StatRequest { path: input.path };
 
-        let result: StatResult = tokio::task::spawn_blocking(move || stat(&request))
-            .await
-            .map_err(|e| McpError::internal_error(format!("task error: {e}"), None))?
-            .map_err(|e: FsApiError| McpError::invalid_params(e.to_string(), None))?;
+        let result: StatResult =
+            tokio::task::spawn_blocking(move || stat(&request))
+                .await
+                .map_err(|e| {
+                    McpError::internal_error(format!("task error: {e}"), None)
+                })?
+                .map_err(|e: FsApiError| {
+                    McpError::invalid_params(e.to_string(), None)
+                })?;
 
         Self::json_result(&result)
     }
 
-    async fn move_file_tool(&self, input: MoveFileInput) -> Result<CallToolResult, McpError> {
+    async fn move_file_tool(
+        &self,
+        input: MoveFileInput,
+    ) -> Result<CallToolResult, McpError> {
         let root = match input.root {
             Some(r) => r,
             None => env::current_dir().map_err(|e| {
@@ -204,15 +256,23 @@ impl FsServer {
             root,
         };
 
-        let result: MutationResult = tokio::task::spawn_blocking(move || move_file(&request))
-            .await
-            .map_err(|e| McpError::internal_error(format!("task error: {e}"), None))?
-            .map_err(|e: FsApiError| McpError::invalid_params(e.to_string(), None))?;
+        let result: MutationResult =
+            tokio::task::spawn_blocking(move || move_file(&request))
+                .await
+                .map_err(|e| {
+                    McpError::internal_error(format!("task error: {e}"), None)
+                })?
+                .map_err(|e: FsApiError| {
+                    McpError::invalid_params(e.to_string(), None)
+                })?;
 
         Self::json_result(&result)
     }
 
-    async fn rename_file_tool(&self, input: RenameFileInput) -> Result<CallToolResult, McpError> {
+    async fn rename_file_tool(
+        &self,
+        input: RenameFileInput,
+    ) -> Result<CallToolResult, McpError> {
         let root = match input.root {
             Some(r) => r,
             None => env::current_dir().map_err(|e| {
@@ -228,15 +288,23 @@ impl FsServer {
             root,
         };
 
-        let result: MutationResult = tokio::task::spawn_blocking(move || rename_file(&request))
-            .await
-            .map_err(|e| McpError::internal_error(format!("task error: {e}"), None))?
-            .map_err(|e: FsApiError| McpError::invalid_params(e.to_string(), None))?;
+        let result: MutationResult =
+            tokio::task::spawn_blocking(move || rename_file(&request))
+                .await
+                .map_err(|e| {
+                    McpError::internal_error(format!("task error: {e}"), None)
+                })?
+                .map_err(|e: FsApiError| {
+                    McpError::invalid_params(e.to_string(), None)
+                })?;
 
         Self::json_result(&result)
     }
 
-    async fn copy_file_tool(&self, input: CopyFileInput) -> Result<CallToolResult, McpError> {
+    async fn copy_file_tool(
+        &self,
+        input: CopyFileInput,
+    ) -> Result<CallToolResult, McpError> {
         let root = match input.root {
             Some(r) => r,
             None => env::current_dir().map_err(|e| {
@@ -253,15 +321,23 @@ impl FsServer {
             root,
         };
 
-        let result: MutationResult = tokio::task::spawn_blocking(move || copy_file(&request))
-            .await
-            .map_err(|e| McpError::internal_error(format!("task error: {e}"), None))?
-            .map_err(|e: FsApiError| McpError::invalid_params(e.to_string(), None))?;
+        let result: MutationResult =
+            tokio::task::spawn_blocking(move || copy_file(&request))
+                .await
+                .map_err(|e| {
+                    McpError::internal_error(format!("task error: {e}"), None)
+                })?
+                .map_err(|e: FsApiError| {
+                    McpError::invalid_params(e.to_string(), None)
+                })?;
 
         Self::json_result(&result)
     }
 
-    async fn delete_file_tool(&self, input: DeleteFileInput) -> Result<CallToolResult, McpError> {
+    async fn delete_file_tool(
+        &self,
+        input: DeleteFileInput,
+    ) -> Result<CallToolResult, McpError> {
         let root = match input.root {
             Some(r) => r,
             None => env::current_dir().map_err(|e| {
@@ -271,20 +347,28 @@ impl FsServer {
                 )
             })?,
         };
-        let request = DeleteFileRequest { 
+        let request = DeleteFileRequest {
             path: input.path,
             root,
         };
 
-        let result: MutationResult = tokio::task::spawn_blocking(move || delete_file(&request))
-            .await
-            .map_err(|e| McpError::internal_error(format!("task error: {e}"), None))?
-            .map_err(|e: FsApiError| McpError::invalid_params(e.to_string(), None))?;
+        let result: MutationResult =
+            tokio::task::spawn_blocking(move || delete_file(&request))
+                .await
+                .map_err(|e| {
+                    McpError::internal_error(format!("task error: {e}"), None)
+                })?
+                .map_err(|e: FsApiError| {
+                    McpError::invalid_params(e.to_string(), None)
+                })?;
 
         Self::json_result(&result)
     }
 
-    async fn delete_dir_tool(&self, input: DeleteDirInput) -> Result<CallToolResult, McpError> {
+    async fn delete_dir_tool(
+        &self,
+        input: DeleteDirInput,
+    ) -> Result<CallToolResult, McpError> {
         let root = match input.root {
             Some(r) => r,
             None => env::current_dir().map_err(|e| {
@@ -300,10 +384,15 @@ impl FsServer {
             root,
         };
 
-        let result: MutationResult = tokio::task::spawn_blocking(move || delete_dir(&request))
-            .await
-            .map_err(|e| McpError::internal_error(format!("task error: {e}"), None))?
-            .map_err(|e: FsApiError| McpError::invalid_params(e.to_string(), None))?;
+        let result: MutationResult =
+            tokio::task::spawn_blocking(move || delete_dir(&request))
+                .await
+                .map_err(|e| {
+                    McpError::internal_error(format!("task error: {e}"), None)
+                })?
+                .map_err(|e: FsApiError| {
+                    McpError::invalid_params(e.to_string(), None)
+                })?;
 
         Self::json_result(&result)
     }

@@ -13,7 +13,13 @@ use std::{
 use serde::Serialize;
 use toolmon_policy_api::Policy;
 
-use crate::{gate::{Gate, ModelBudgetCalibration}, policy_impl::CostGatePolicy};
+use crate::{
+    gate::{
+        Gate,
+        ModelBudgetCalibration,
+    },
+    policy_impl::CostGatePolicy,
+};
 
 fn log(msg: &str) {
     eprintln!("[mcp-toolmon] {msg}");
@@ -53,11 +59,11 @@ pub fn load_gate() -> Option<Gate> {
                 budget_zero_price
             ));
             Some(g)
-        }
+        },
         Err(e) => {
             log(&format!("disabled (fail-open): {e}"));
             None
-        }
+        },
     }
 }
 
@@ -71,13 +77,18 @@ pub fn build_policy_from_env() -> Option<Arc<dyn Policy>> {
 /// dropped silently, matching the other `COST_GATE_*` optional-config
 /// conventions).
 pub fn telemetry_log_path_from_env() -> Option<PathBuf> {
-    std::env::var("COST_GATE_TELEMETRY_LOG").ok().map(PathBuf::from)
+    std::env::var("COST_GATE_TELEMETRY_LOG")
+        .ok()
+        .map(PathBuf::from)
 }
 
 /// Append any `Serialize` telemetry record as a JSONL line to `path`. Generic
 /// over the record type so this crate stays unaware of the transport's
 /// concrete telemetry shape (`proxy::CallTelemetry`).
-pub fn emit_telemetry_jsonl<T: Serialize>(path: Option<&PathBuf>, telemetry: &T) {
+pub fn emit_telemetry_jsonl<T: Serialize>(
+    path: Option<&PathBuf>,
+    telemetry: &T,
+) {
     let Some(path) = path else { return };
     let Ok(line) = serde_json::to_string(telemetry) else {
         return;
@@ -85,7 +96,11 @@ pub fn emit_telemetry_jsonl<T: Serialize>(path: Option<&PathBuf>, telemetry: &T)
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
         let _ = writeln!(file, "{line}");
     }
 }

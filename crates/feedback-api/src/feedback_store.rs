@@ -108,12 +108,15 @@ impl EntityFeedbackStore {
         urn: &EntityUrn,
     ) -> Result<Vec<FeedbackEntry>, String> {
         self.ensure_workspace_urn(urn)?;
-        let mut entries: Vec<FeedbackEntry> = read_ndjson::<FeedbackEntry>(&self.entries_path())?
-            .into_iter()
-            .filter(|item| &item.target == urn)
-            .collect();
+        let mut entries: Vec<FeedbackEntry> =
+            read_ndjson::<FeedbackEntry>(&self.entries_path())?
+                .into_iter()
+                .filter(|item| &item.target == urn)
+                .collect();
         entries.sort_by(|left, right| {
-            left.provenance.executed_at.cmp(&right.provenance.executed_at)
+            left.provenance
+                .executed_at
+                .cmp(&right.provenance.executed_at)
         });
         Ok(entries)
     }

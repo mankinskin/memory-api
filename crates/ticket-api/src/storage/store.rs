@@ -58,12 +58,12 @@ mod workflow_facts;
 
 pub use self::{
     migration::{
-        split_description,
+        MIGRATION_CREATED_PART_IDS_KEY,
         MigrationApplyReport,
         MigrationDryRunReport,
         MigrationSegment,
         TicketMigrationPlan,
-        MIGRATION_CREATED_PART_IDS_KEY,
+        split_description,
     },
     parts::{
         PART_HISTORY_CONTENT_KEY,
@@ -159,12 +159,10 @@ impl DescriptionUpdate {
     pub fn as_parts(&self) -> (Option<&str>, Option<DescriptionUpdateMode>) {
         match self {
             DescriptionUpdate::Unchanged => (None, None),
-            DescriptionUpdate::Replace(text) => {
-                (Some(text.as_str()), Some(DescriptionUpdateMode::Replace))
-            },
-            DescriptionUpdate::Append(text) => {
-                (Some(text.as_str()), Some(DescriptionUpdateMode::Append))
-            },
+            DescriptionUpdate::Replace(text) =>
+                (Some(text.as_str()), Some(DescriptionUpdateMode::Replace)),
+            DescriptionUpdate::Append(text) =>
+                (Some(text.as_str()), Some(DescriptionUpdateMode::Append)),
         }
     }
 }
@@ -316,14 +314,16 @@ impl TicketStore {
         // Resolve the schema before selecting the conventional entry state so
         // creation and off-schema recovery use the same rule.
         let schema = self.schema_registry.get(type_id).ok_or_else(|| {
-            StorageError::Validation(crate::error::SchemaValidationError::UnknownType {
-                type_id: type_id.to_string(),
-                registered: self
-                    .schema_registry
-                    .type_ids()
-                    .map(str::to_string)
-                    .collect(),
-            })
+            StorageError::Validation(
+                crate::error::SchemaValidationError::UnknownType {
+                    type_id: type_id.to_string(),
+                    registered: self
+                        .schema_registry
+                        .type_ids()
+                        .map(str::to_string)
+                        .collect(),
+                },
+            )
         })?;
 
         let mut manifest = TicketManifest::new(id, now);
@@ -472,9 +472,8 @@ impl TicketStore {
             self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
         if self.is_external_worktree_path(&indexed.path) {
             self.scan(false)?;
-            indexed = self
-                .get_indexed(id)?
-                .ok_or(StorageError::NotFound(*id))?;
+            indexed =
+                self.get_indexed(id)?.ok_or(StorageError::NotFound(*id))?;
         }
         TicketFs::read(&indexed.path)
     }
@@ -658,7 +657,6 @@ impl TicketStore {
             );
         }
 
-
         // Emit SSE hook event.
         if let Some(h) = self.hook() {
             h.ticket_upsert(
@@ -804,7 +802,8 @@ impl TicketStore {
                 if state.as_str() == "planned" {
                     step_manifest =
                         TicketFs::apply_plan_freeze(ticket_path, true)?;
-                } else if self.state_rank_for_type(type_id, Some(state.as_str()))
+                } else if self
+                    .state_rank_for_type(type_id, Some(state.as_str()))
                     < planned_rank
                 {
                     step_manifest =
@@ -982,8 +981,8 @@ impl TicketStore {
         let target_rank =
             self.state_rank_for_type(&indexed.type_id, Some(target_state));
         // Demotions/no-ops can never violate dependency ordering, only advances can.
-        let current_rank =
-            self.state_rank_for_type(&indexed.type_id, indexed.state.as_deref());
+        let current_rank = self
+            .state_rank_for_type(&indexed.type_id, indexed.state.as_deref());
         if target_rank <= current_rank {
             return Ok(());
         }

@@ -12,12 +12,12 @@ mod startup_matrix;
 mod startup_probe;
 
 pub use startup_matrix::{
-    run_startup_matrix,
-    run_startup_matrix_for,
-    startup_matrix_succeeded,
     StartupMatrixClass,
     StartupMatrixOutcome,
     StartupMatrixResult,
+    run_startup_matrix,
+    run_startup_matrix_for,
+    startup_matrix_succeeded,
 };
 pub use startup_probe::{
     BrowserFrontendPort,

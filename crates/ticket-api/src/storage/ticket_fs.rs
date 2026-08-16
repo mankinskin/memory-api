@@ -366,7 +366,8 @@ impl TicketFs {
         let entries = manifest.parts();
 
         if entries.is_empty() {
-            let content = Self::read_description(ticket_path).unwrap_or_default();
+            let content =
+                Self::read_description(ticket_path).unwrap_or_default();
             return Ok(PartsLoadReport {
                 parts: vec![LoadedPart {
                     id: implicit_objective_part_id(manifest.id),
@@ -400,8 +401,7 @@ impl TicketFs {
             });
         }
 
-        let orphans =
-            find_orphan_part_files(ticket_path, &referenced_paths)?;
+        let orphans = find_orphan_part_files(ticket_path, &referenced_paths)?;
         Ok(PartsLoadReport { parts, orphans })
     }
 
@@ -442,48 +442,49 @@ impl TicketFs {
         let lock_path = ticket_path.join(TICKET_LOCK_FILE);
         let lock_file = acquire_lock(&lock_path)?;
 
-        let result = (|| -> Result<(TicketManifest, Option<String>), StorageError> {
-            let mut manifest = Self::read(ticket_path)?;
-            let mut parts = manifest.parts();
+        let result =
+            (|| -> Result<(TicketManifest, Option<String>), StorageError> {
+                let mut manifest = Self::read(ticket_path)?;
+                let mut parts = manifest.parts();
 
-            if let Some(entry) = parts.iter().find(|p| p.id == part_id) {
-                let rel_path = entry.path.clone();
-                let prior =
-                    fs::read_to_string(ticket_path.join(&rel_path)).ok();
+                if let Some(entry) = parts.iter().find(|p| p.id == part_id) {
+                    let rel_path = entry.path.clone();
+                    let prior =
+                        fs::read_to_string(ticket_path.join(&rel_path)).ok();
+                    fs::write(ticket_path.join(&rel_path), content)?;
+                    return Ok((manifest, prior));
+                }
+
+                if parts.is_empty()
+                    && part_id == implicit_objective_part_id(manifest.id)
+                {
+                    let prior = Self::read_description(ticket_path);
+                    fs::write(ticket_path.join("description.md"), content)?;
+                    return Ok((manifest, prior));
+                }
+
+                // New part: create its file under parts/ and append a manifest
+                // entry. Never touches any other part's file. Reject a
+                // near-miss core-kind typo here — the only point where `kind`
+                // is actually persisted (an existing part's `kind` is fixed at
+                // creation and ignored above) — spec 24b3d22b AC2.
+                classify_part_kind(kind)?;
+                let parts_dir = ticket_path.join(TICKET_PARTS_DIR);
+                fs::create_dir_all(&parts_dir)?;
+                let rel_path = format!("{TICKET_PARTS_DIR}/{part_id}.md");
                 fs::write(ticket_path.join(&rel_path), content)?;
-                return Ok((manifest, prior));
-            }
-
-            if parts.is_empty()
-                && part_id == implicit_objective_part_id(manifest.id)
-            {
-                let prior = Self::read_description(ticket_path);
-                fs::write(ticket_path.join("description.md"), content)?;
-                return Ok((manifest, prior));
-            }
-
-            // New part: create its file under parts/ and append a manifest
-            // entry. Never touches any other part's file. Reject a
-            // near-miss core-kind typo here — the only point where `kind`
-            // is actually persisted (an existing part's `kind` is fixed at
-            // creation and ignored above) — spec 24b3d22b AC2.
-            classify_part_kind(kind)?;
-            let parts_dir = ticket_path.join(TICKET_PARTS_DIR);
-            fs::create_dir_all(&parts_dir)?;
-            let rel_path = format!("{TICKET_PARTS_DIR}/{part_id}.md");
-            fs::write(ticket_path.join(&rel_path), content)?;
-            parts.push(crate::model::ticket::TicketPart {
-                id: part_id,
-                kind: kind.to_string(),
-                path: rel_path,
-                frozen: false,
-                created_at: Utc::now(),
-                supersedes,
-            });
-            manifest.set_parts(parts);
-            write_manifest(ticket_path, &manifest)?;
-            Ok((manifest, None))
-        })();
+                parts.push(crate::model::ticket::TicketPart {
+                    id: part_id,
+                    kind: kind.to_string(),
+                    path: rel_path,
+                    frozen: false,
+                    created_at: Utc::now(),
+                    supersedes,
+                });
+                manifest.set_parts(parts);
+                write_manifest(ticket_path, &manifest)?;
+                Ok((manifest, None))
+            })();
 
         release_lock(&lock_file, &lock_path);
         result
@@ -582,7 +583,6 @@ impl TicketFs {
         result
     }
 
-
     /// f9e70385, AC1/AC5), invoked exclusively from the state-transition
     /// path (`TicketStore::update_with_options`) whenever a ticket enters
     /// or leaves `planned`. This is the sanctioned freeze/unfreeze
@@ -621,8 +621,7 @@ impl TicketFs {
                         continue;
                     }
                     let content = if kind == "objective" {
-                        Self::read_description(ticket_path)
-                            .unwrap_or_default()
+                        Self::read_description(ticket_path).unwrap_or_default()
                     } else {
                         String::new()
                     };
@@ -663,7 +662,6 @@ impl TicketFs {
         release_lock(&lock_file, &lock_path);
         result
     }
-
 
     pub fn update_edge_field(
         ticket_path: &Path,
@@ -872,8 +870,7 @@ fn find_orphan_part_files(
         if !path.is_file() {
             continue;
         }
-        let Some(file_name) = path.file_name().and_then(|n| n.to_str())
-        else {
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
         let relative = format!("{TICKET_PARTS_DIR}/{file_name}");

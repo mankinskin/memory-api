@@ -73,8 +73,7 @@ fn active_session_fixture() -> (TempDir, PathBuf) {
         .join(TEST_SESSION_ID)
         .join("feature");
     fs::create_dir_all(main_checkout.join(".git")).unwrap();
-    fs::create_dir_all(main_checkout.join(".git/worktrees/feature"))
-        .unwrap();
+    fs::create_dir_all(main_checkout.join(".git/worktrees/feature")).unwrap();
     fs::write(
         main_checkout.join(".git/worktrees/feature/HEAD"),
         "ref: refs/heads/agent/test\n",

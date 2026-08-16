@@ -28,7 +28,8 @@ pub fn parse_guards_from_markdown(body: &str) -> Vec<String> {
     for line in body.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with('#') {
-            let heading = trimmed.trim_start_matches('#').trim().to_ascii_lowercase();
+            let heading =
+                trimmed.trim_start_matches('#').trim().to_ascii_lowercase();
             in_guards = heading == "guards";
             continue;
         }
@@ -36,7 +37,9 @@ pub fn parse_guards_from_markdown(body: &str) -> Vec<String> {
         if in_guards && (trimmed.starts_with('-') || trimmed.starts_with('*')) {
             if let Some(start) = trimmed.find('`') {
                 if let Some(end) = trimmed[start + 1..].find('`') {
-                    guards.push(trimmed[start + 1..start + 1 + end].trim().to_string());
+                    guards.push(
+                        trimmed[start + 1..start + 1 + end].trim().to_string(),
+                    );
                 }
             }
         }
@@ -55,13 +58,9 @@ pub enum SpecVerificationOutcome {
     /// The spec declares no guards, so verified state is not applicable.
     NoGuards,
     /// One or more declared guards have no recorded execution yet.
-    Pending {
-        missing_guards: Vec<String>,
-    },
+    Pending { missing_guards: Vec<String> },
     /// Every declared guard has executed, but at least one did not pass.
-    Failed {
-        failed_guards: Vec<String>,
-    },
+    Failed { failed_guards: Vec<String> },
     /// Every declared guard passed; the spec was transitioned to `verified`.
     Verified,
 }
@@ -133,11 +132,9 @@ pub fn recompute_spec_verified_state(
     let failed_guards: Vec<String> = guards
         .iter()
         .filter(|guard| {
-            !latest_executions
-                .get(*guard)
-                .is_some_and(|exec| {
-                    matches!(exec.outcome, ValidationOutcome::Passed)
-                })
+            !latest_executions.get(*guard).is_some_and(|exec| {
+                matches!(exec.outcome, ValidationOutcome::Passed)
+            })
         })
         .cloned()
         .collect();
@@ -155,9 +152,15 @@ pub fn recompute_spec_verified_state(
             FeedbackSource::System,
             urn,
             Some(FeedbackRating::Helpful),
-            Some("spec guards passed and verified state recomputed".to_string()),
+            Some(
+                "spec guards passed and verified state recomputed".to_string(),
+            ),
             Some(FeedbackNoteKind::Note),
-            FeedbackProvenance::new(None, Some("spec-api/system".to_string()), None)?,
+            FeedbackProvenance::new(
+                None,
+                Some("spec-api/system".to_string()),
+                None,
+            )?,
         )?;
         let _ = store.record_entry(entry)?;
     }

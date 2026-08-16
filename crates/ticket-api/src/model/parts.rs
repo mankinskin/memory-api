@@ -5,7 +5,10 @@
 //! opaque attachment: preserved, listed, and retrievable, but not
 //! interpreted.
 
-use crate::error::{SchemaValidationError, StorageError};
+use crate::error::{
+    SchemaValidationError,
+    StorageError,
+};
 
 /// The schema-validated core part kinds understood by projections.
 pub const CORE_PART_KINDS: &[&str] = &[
@@ -97,7 +100,8 @@ impl ViewProfile {
                 "examples",
                 "acceptance_criteria",
             ]),
-            Self::Review => Some(&["acceptance_criteria", "review", "validation"]),
+            Self::Review =>
+                Some(&["acceptance_criteria", "review", "validation"]),
             Self::Full => None,
         }
     }
@@ -160,7 +164,10 @@ fn looks_like_core_kind_shape(kind: &str) -> bool {
 
 /// Levenshtein edit distance between two strings, used to detect a likely
 /// typo of a core kind rather than a deliberately different attachment kind.
-fn edit_distance(a: &str, b: &str) -> usize {
+fn edit_distance(
+    a: &str,
+    b: &str,
+) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
     let (n, m) = (a.len(), b.len());
@@ -170,9 +177,8 @@ fn edit_distance(a: &str, b: &str) -> usize {
         curr[0] = i;
         for j in 1..=m {
             let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
-            curr[j] = (prev[j] + 1)
-                .min(curr[j - 1] + 1)
-                .min(prev[j - 1] + cost);
+            curr[j] =
+                (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
         }
         std::mem::swap(&mut prev, &mut curr);
     }
@@ -224,7 +230,10 @@ pub fn classify_part_kind(kind: &str) -> Result<PartKindClass, StorageError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::{SchemaValidationError, StorageError};
+    use crate::error::{
+        SchemaValidationError,
+        StorageError,
+    };
 
     #[test]
     fn all_core_kinds_classify_as_core() {
@@ -270,10 +279,9 @@ mod tests {
     fn typo_of_core_kind_is_rejected_with_offending_kind_and_vocabulary() {
         let err = classify_part_kind("objectve").unwrap_err();
         match err {
-            StorageError::Validation(SchemaValidationError::InvalidCoreKind {
-                kind,
-                valid_kinds,
-            }) => {
+            StorageError::Validation(
+                SchemaValidationError::InvalidCoreKind { kind, valid_kinds },
+            ) => {
                 assert_eq!(kind, "objectve");
                 assert_eq!(
                     valid_kinds,
@@ -282,7 +290,7 @@ mod tests {
                         .map(|&k| k.to_string())
                         .collect::<Vec<_>>()
                 );
-            }
+            },
             other => panic!("expected InvalidCoreKind, got {other:?}"),
         }
     }
@@ -292,7 +300,9 @@ mod tests {
         let err = classify_part_kind("acceptance_criterion").unwrap_err();
         assert!(matches!(
             err,
-            StorageError::Validation(SchemaValidationError::InvalidCoreKind { .. })
+            StorageError::Validation(
+                SchemaValidationError::InvalidCoreKind { .. }
+            )
         ));
     }
 

@@ -248,14 +248,16 @@ pub(crate) fn cmd_store_index(
         .encode_toon()
         .map_err(|e| CliRunError::BadRequest(e.to_string()))?;
 
-    let readme_out = memory_kernel::generated_markdown::prepare_generated_output(
-        &artifacts.readme_markdown,
-        read_existing(&readme_path).as_deref(),
-    );
-    let sidecar_out = memory_kernel::generated_markdown::prepare_generated_output(
-        &sidecar_toon,
-        read_existing(&sidecar_path).as_deref(),
-    );
+    let readme_out =
+        memory_kernel::generated_markdown::prepare_generated_output(
+            &artifacts.readme_markdown,
+            read_existing(&readme_path).as_deref(),
+        );
+    let sidecar_out =
+        memory_kernel::generated_markdown::prepare_generated_output(
+            &sidecar_toon,
+            read_existing(&sidecar_path).as_deref(),
+        );
     let agent_hook_out =
         memory_kernel::generated_markdown::prepare_generated_output(
             &artifacts.agent_hook_markdown,
@@ -364,7 +366,7 @@ fn count_links_by_kind(findings: &[Value]) -> Value {
 /// refs, and bidirectional inconsistencies against the referenced spec
 /// store(s). Mirrors `spec validate-links` from the other direction.
 pub(crate) fn cmd_validate_links(
-    store: &TicketStore,
+    store: &TicketStore
 ) -> Result<Value, CliRunError> {
     let workspace_root = workspace::resolve_workspace_root_from_store_root(
         &store.index_root,
@@ -412,7 +414,8 @@ pub(crate) fn cmd_validate_links(
             }
 
             if referenced_root != canonical_spec_root
-                && try_get_spec(&canonical_spec_root, spec_ref.spec_id).is_some()
+                && try_get_spec(&canonical_spec_root, spec_ref.spec_id)
+                    .is_some()
             {
                 findings.push(json!({
                     "kind": "wrong_store_ref",
@@ -459,13 +462,13 @@ pub(crate) fn cmd_validate_links(
 mod validate_links_tests {
     use std::collections::BTreeMap;
 
-    use ticket_api::model::ticket::SpecRef;
     use spec_api::{
         SpecManifest,
         SpecStore,
         TicketRef,
     };
     use tempfile::TempDir;
+    use ticket_api::model::ticket::SpecRef;
 
     use super::{
         TicketStore,
@@ -719,7 +722,8 @@ pub(crate) fn cmd_serve(
             serve,
         };
 
-        let registry = WorkspaceRegistry::single_opened(std::sync::Arc::new(store));
+        let registry =
+            WorkspaceRegistry::single_opened(std::sync::Arc::new(store));
 
         let config = ServeConfig {
             host: args.host,

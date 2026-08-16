@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 /// Conflict kind for mutation operations.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

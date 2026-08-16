@@ -617,7 +617,8 @@ mod tests {
     // Dependency maps
     #[test]
     fn dependency_maps_basic() {
-        let tickets = vec![t("a", "Parent", "planned"), t("b", "Child", "planned")];
+        let tickets =
+            vec![t("a", "Parent", "planned"), t("b", "Child", "planned")];
         let edges = vec![e("a", "b")];
         let maps = DependencyMaps::build(&tickets, &edges);
         assert_eq!(maps.deps_of["a"], vec!["b"]);

@@ -203,7 +203,10 @@ fn resolve_index_root_from(
     )
 }
 
-fn absolute_path_from(path: &Path, cwd: Option<&Path>) -> PathBuf {
+fn absolute_path_from(
+    path: &Path,
+    cwd: Option<&Path>,
+) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else if let Some(cwd) = cwd {
@@ -225,7 +228,8 @@ fn export_command_schema_payload() -> Result<Value, CliRunError> {
 }
 
 fn capability_catalog_payload() -> Result<Value, CliRunError> {
-    let mut payload = ticket_api::contracts::capability_catalog::capability_catalog();
+    let mut payload =
+        ticket_api::contracts::capability_catalog::capability_catalog();
     if let Value::Object(map) = &mut payload {
         map.insert("command".to_string(), json!("catalog"));
         map.insert("status".to_string(), json!("ok"));

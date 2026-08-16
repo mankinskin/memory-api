@@ -178,7 +178,10 @@ mod tests {
                 "#
             ))
             .unwrap();
-            assert_eq!(cr.kind, expected, "kind = \"{value}\" should deserialize as {expected:?}");
+            assert_eq!(
+                cr.kind, expected,
+                "kind = \"{value}\" should deserialize as {expected:?}"
+            );
         }
     }
 
@@ -205,7 +208,10 @@ mod tests {
                 "#
             ))
             .unwrap();
-            assert_eq!(cr.kind, expected, "kind = \"{value}\" should deserialize as {expected:?}");
+            assert_eq!(
+                cr.kind, expected,
+                "kind = \"{value}\" should deserialize as {expected:?}"
+            );
         }
     }
 

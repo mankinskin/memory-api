@@ -2,8 +2,10 @@ use serde_json::{
     Value,
     json,
 };
-use ticket_api::storage::ticket_fs::TicketFs;
-use ticket_api::model::ticket::TicketManifestExt;
+use ticket_api::{
+    model::ticket::TicketManifestExt,
+    storage::ticket_fs::TicketFs,
+};
 use uuid::Uuid;
 
 use super::{
@@ -43,16 +45,20 @@ fn find_part_in_manifest(
     manifest: &ticket_api::model::ticket::TicketManifest,
     part_id: Uuid,
 ) -> Option<Value> {
-    manifest.parts().into_iter().find(|p| p.id == part_id).map(|p| {
-        json!({
-            "id": p.id,
-            "kind": p.kind,
-            "path": p.path,
-            "frozen": p.frozen,
-            "created_at": p.created_at,
-            "supersedes": p.supersedes,
+    manifest
+        .parts()
+        .into_iter()
+        .find(|p| p.id == part_id)
+        .map(|p| {
+            json!({
+                "id": p.id,
+                "kind": p.kind,
+                "path": p.path,
+                "frozen": p.frozen,
+                "created_at": p.created_at,
+                "supersedes": p.supersedes,
+            })
         })
-    })
 }
 
 impl TicketServer {
@@ -69,9 +75,11 @@ impl TicketServer {
                 let indexed = store
                     .get_indexed(&id)
                     .map_err(Self::store_err)?
-                    .ok_or_else(|| Self::store_err(
-                        ticket_api::error::StorageError::NotFound(id),
-                    ))?;
+                    .ok_or_else(|| {
+                        Self::store_err(
+                            ticket_api::error::StorageError::NotFound(id),
+                        )
+                    })?;
                 let manifest =
                     TicketFs::read(&indexed.path).map_err(Self::store_err)?;
                 let report = TicketFs::load_parts(&indexed.path, &manifest)
@@ -114,9 +122,11 @@ impl TicketServer {
                 let indexed = store
                     .get_indexed(&id)
                     .map_err(Self::store_err)?
-                    .ok_or_else(|| Self::store_err(
-                        ticket_api::error::StorageError::NotFound(id),
-                    ))?;
+                    .ok_or_else(|| {
+                        Self::store_err(
+                            ticket_api::error::StorageError::NotFound(id),
+                        )
+                    })?;
                 let manifest =
                     TicketFs::read(&indexed.path).map_err(Self::store_err)?;
                 let report = TicketFs::load_parts(&indexed.path, &manifest)
@@ -159,7 +169,13 @@ impl TicketServer {
             .with_store_ext(&workspace.clone(), move |store| {
                 let id = Self::resolve_uuid_with(store, &id_str)?;
                 let manifest = store
-                    .write_part(&id, part_id, &kind, &content, author.as_deref())
+                    .write_part(
+                        &id,
+                        part_id,
+                        &kind,
+                        &content,
+                        author.as_deref(),
+                    )
                     .map_err(Self::store_err)?;
                 Ok((id, manifest))
             })

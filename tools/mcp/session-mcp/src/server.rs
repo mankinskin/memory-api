@@ -639,15 +639,12 @@ impl From<HandoffUpwardContextInput> for SessionHandoffUpwardContextEntry {
             entity_urn: value.entity_urn,
             title: value.title,
             role: match value.role {
-                HandoffUpwardContextRoleInput::Epic => {
-                    SessionHandoffUpwardContextRole::Epic
-                },
-                HandoffUpwardContextRoleInput::Phase => {
-                    SessionHandoffUpwardContextRole::Phase
-                },
-                HandoffUpwardContextRoleInput::Parent => {
-                    SessionHandoffUpwardContextRole::Parent
-                },
+                HandoffUpwardContextRoleInput::Epic =>
+                    SessionHandoffUpwardContextRole::Epic,
+                HandoffUpwardContextRoleInput::Phase =>
+                    SessionHandoffUpwardContextRole::Phase,
+                HandoffUpwardContextRoleInput::Parent =>
+                    SessionHandoffUpwardContextRole::Parent,
             },
         }
     }
@@ -1123,10 +1120,7 @@ impl SessionServer {
     ) -> Result<CallToolResult, McpError> {
         let context = self
             .config_for_workspace(&input.workspace)?
-            .unpin_runtime_entity(
-                &input.session_id,
-                &input.entity_urn,
-            )
+            .unpin_runtime_entity(&input.session_id, &input.entity_urn)
             .map_err(Self::session_err)?;
         Self::json_result_with_handle(&input.session_id, &context)
     }
@@ -1317,11 +1311,7 @@ impl SessionServer {
         &self,
         Parameters(input): Parameters<WorkflowUpdateNodeInput>,
     ) -> Result<CallToolResult, McpError> {
-        let kind = input
-            .kind
-            .as_deref()
-            .map(parse_node_kind)
-            .transpose()?;
+        let kind = input.kind.as_deref().map(parse_node_kind).transpose()?;
         let requirement = input
             .requirement
             .as_deref()
@@ -1449,7 +1439,11 @@ impl SessionServer {
                     .map(Into::into)
                     .collect(),
                 higher_level_objective: input.higher_level_objective,
-                upward_context: input.upward_context.into_iter().map(Into::into).collect(),
+                upward_context: input
+                    .upward_context
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
                 target_files: input.target_files,
                 decisions: input.decisions,
                 non_goals: input.non_goals,
@@ -1662,8 +1656,11 @@ impl SessionServer {
         &self,
         Parameters(input): Parameters<GrantCreateInput>,
     ) -> Result<CallToolResult, McpError> {
-        use session_api::{create_grant, BudgetGrantScope};
-        
+        use session_api::{
+            BudgetGrantScope,
+            create_grant,
+        };
+
         let scope = match input.scope.to_lowercase().as_str() {
             "session" => BudgetGrantScope::Session,
             "subagent" => BudgetGrantScope::Subagent,
@@ -1675,9 +1672,9 @@ impl SessionServer {
                     ),
                     None,
                 ));
-            }
+            },
         };
-        
+
         let grant = create_grant(
             &self.config_for_workspace(&input.workspace)?,
             scope,
@@ -1686,7 +1683,7 @@ impl SessionServer {
             input.ttl_seconds,
         )
         .map_err(Self::session_err)?;
-        
+
         Self::json_result(&grant)
     }
 
@@ -1699,10 +1696,10 @@ impl SessionServer {
         Parameters(input): Parameters<GrantListInput>,
     ) -> Result<CallToolResult, McpError> {
         use session_api::list_grants;
-        
+
         let grants = list_grants(&self.config_for_workspace(&input.workspace)?)
             .map_err(Self::session_err)?;
-        
+
         Self::json_result(&grants)
     }
 
@@ -1715,13 +1712,13 @@ impl SessionServer {
         Parameters(input): Parameters<GrantRevokeInput>,
     ) -> Result<CallToolResult, McpError> {
         use session_api::revoke_grant;
-        
+
         let revoked = revoke_grant(
             &self.config_for_workspace(&input.workspace)?,
             &input.grant_id,
         )
         .map_err(Self::session_err)?;
-        
+
         Self::json_result(&serde_json::json!({
             "revoked": revoked,
             "grant_id": input.grant_id,
@@ -1736,8 +1733,11 @@ impl SessionServer {
         &self,
         Parameters(input): Parameters<EscalationCreateInput>,
     ) -> Result<CallToolResult, McpError> {
-        use session_api::{create_escalation, escalation_marker};
-        
+        use session_api::{
+            create_escalation,
+            escalation_marker,
+        };
+
         let escalation = create_escalation(
             &self.config_for_workspace(&input.workspace)?,
             input.blocking_decision,
@@ -1748,19 +1748,21 @@ impl SessionServer {
             input.from_model,
         )
         .map_err(Self::session_err)?;
-        
+
         // Include the marker in the response
         let mut result = serde_json::to_value(&escalation).map_err(|e| {
             McpError::internal_error(format!("serialization: {e}"), None)
         })?;
-        
+
         if let Some(obj) = result.as_object_mut() {
             obj.insert(
                 "marker".to_string(),
-                serde_json::Value::String(escalation_marker(&escalation.escalation_id)),
+                serde_json::Value::String(escalation_marker(
+                    &escalation.escalation_id,
+                )),
             );
         }
-        
+
         Self::json_result(&result)
     }
 
@@ -1772,8 +1774,11 @@ impl SessionServer {
         &self,
         Parameters(input): Parameters<EscalationListInput>,
     ) -> Result<CallToolResult, McpError> {
-        use session_api::{list_escalations, EscalationStatus};
-        
+        use session_api::{
+            EscalationStatus,
+            list_escalations,
+        };
+
         let status_filter = if let Some(status_str) = input.status {
             match status_str.to_lowercase().as_str() {
                 "open" => Some(EscalationStatus::Open),
@@ -1786,18 +1791,18 @@ impl SessionServer {
                         ),
                         None,
                     ));
-                }
+                },
             }
         } else {
             None
         };
-        
+
         let escalations = list_escalations(
             &self.config_for_workspace(&input.workspace)?,
             status_filter,
         )
         .map_err(Self::session_err)?;
-        
+
         Self::json_result(&escalations)
     }
 
@@ -1810,7 +1815,7 @@ impl SessionServer {
         Parameters(input): Parameters<EscalationGetInput>,
     ) -> Result<CallToolResult, McpError> {
         use session_api::get_escalation;
-        
+
         let escalation = get_escalation(
             &self.config_for_workspace(&input.workspace)?,
             &input.escalation_id,
@@ -1821,7 +1826,7 @@ impl SessionServer {
                 None,
             )
         })?;
-        
+
         Self::json_result(&escalation)
     }
 
@@ -1833,13 +1838,13 @@ impl SessionServer {
         &self,
         Parameters(input): Parameters<EscalationResolveInput>,
     ) -> Result<CallToolResult, McpError> {
+        use chrono::Utc;
         use session_api::{
-            resolve_escalation,
             EscalationAction,
             EscalationResolution,
+            resolve_escalation,
         };
-        use chrono::Utc;
-        
+
         let action = match input.action.to_lowercase().as_str() {
             "handled" => EscalationAction::Handled,
             "granted-offset" => EscalationAction::GrantedOffset,
@@ -1853,9 +1858,9 @@ impl SessionServer {
                     ),
                     None,
                 ));
-            }
+            },
         };
-        
+
         let resolution = EscalationResolution {
             action,
             note: input.note,
@@ -1863,14 +1868,14 @@ impl SessionServer {
             spawned_session_id: input.spawned_session_id,
             resolved_at: Utc::now(),
         };
-        
+
         let escalation = resolve_escalation(
             &self.config_for_workspace(&input.workspace)?,
             &input.escalation_id,
             resolution,
         )
         .map_err(Self::session_err)?;
-        
+
         Self::json_result(&escalation)
     }
 
@@ -2190,7 +2195,10 @@ mod tests {
         assert!(!result.is_error.unwrap_or(false));
         let payload = extract_json(result);
         assert_eq!(payload["count"], 1);
-        assert_eq!(payload["sessions"][0]["session_id"], "33333333-3333-4333-8333-333333333333");
+        assert_eq!(
+            payload["sessions"][0]["session_id"],
+            "33333333-3333-4333-8333-333333333333"
+        );
         assert_eq!(payload["sessions"][0]["matched_strength"], "strict");
 
         let unrelated = server
@@ -2476,23 +2484,18 @@ mod tests {
         let result = server
             .session_runtime_init(Parameters(RuntimeInitInput {
                 workspace: session_root.display().to_string(),
-                session_id: "22222222-2222-4222-8222-222222222222"
-                    .to_string(),
+                session_id: "22222222-2222-4222-8222-222222222222".to_string(),
                 predecessor_run_id: None,
                 force_new_run: false,
             }))
             .await
             .expect("runtime init");
         let payload = extract_json(result);
-        let handle = payload["session_id"]
-            .as_str()
-            .expect("top-line session_id");
+        let handle =
+            payload["session_id"].as_str().expect("top-line session_id");
         assert!(!handle.is_empty());
         // The handle matches the nested context handle (no drift).
-        assert_eq!(
-            payload["context"]["session_id"].as_str(),
-            Some(handle)
-        );
+        assert_eq!(payload["context"]["session_id"].as_str(), Some(handle));
 
         // A subsequent workflow call echoes the same handle in its result.
         let node = server
@@ -2680,8 +2683,7 @@ mod tests {
 
     #[test]
     fn workspace_validation_rejects_ambient_aliases() {
-        for value in [None, Some(""), Some("default"), Some("."), Some("..")]
-        {
+        for value in [None, Some(""), Some("default"), Some("."), Some("..")] {
             let err = workspace::validate_explicit_workspace_selector(value)
                 .expect_err("should reject ambient selector");
             let err_msg = err.to_string();

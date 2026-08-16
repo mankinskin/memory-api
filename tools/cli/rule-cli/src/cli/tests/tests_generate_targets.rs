@@ -362,10 +362,15 @@ fn sync_rules_round_trip_preserves_frontmatter_for_generated_target() {
     )
     .unwrap();
 
-    let output = dir.path().join(".agents").join("agents").join("roast.agent.md");
-    let edited = fs::read_to_string(&output)
-        .unwrap()
-        .replace("Original roast body.", "Edited roast body from generated artifact.");
+    let output = dir
+        .path()
+        .join(".agents")
+        .join("agents")
+        .join("roast.agent.md");
+    let edited = fs::read_to_string(&output).unwrap().replace(
+        "Original roast body.",
+        "Edited roast body from generated artifact.",
+    );
     fs::write(&output, edited).unwrap();
 
     dispatch::dispatch(
@@ -392,7 +397,9 @@ fn sync_rules_round_trip_preserves_frontmatter_for_generated_target() {
     let reopened = RuleStore::open(dir.path()).unwrap();
     let synced = reopened.get(&id.to_string()).unwrap();
     let body = synced.body().unwrap();
-    assert!(body.starts_with("---\nname: Roast Agent\nuser-invocable: true\n---\n"));
+    assert!(
+        body.starts_with("---\nname: Roast Agent\nuser-invocable: true\n---\n")
+    );
     assert!(body.contains("Edited roast body from generated artifact."));
 }
 
@@ -686,4 +693,3 @@ fn sync_targets_reports_changed_flag_and_skips_unchanged_writes() {
         "unchanged target must not be rewritten"
     );
 }
-

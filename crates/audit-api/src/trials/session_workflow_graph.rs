@@ -99,9 +99,9 @@ fn scan_session_workflow_graphs(
         }
 
         let context_path = session_path.join("context.json");
-        if let Some(graph) = extract_graph(&context_path, |value| {
-            value.get("workflow").cloned()
-        }) {
+        if let Some(graph) =
+            extract_graph(&context_path, |value| value.get("workflow").cloned())
+        {
             results.push((context_path, graph));
         }
 
@@ -137,7 +137,10 @@ fn extract_graph(
     Some(graph)
 }
 
-fn relative_path(repo_root: &Path, path: &Path) -> String {
+fn relative_path(
+    repo_root: &Path,
+    path: &Path,
+) -> String {
     path.strip_prefix(repo_root)
         .unwrap_or(path)
         .to_string_lossy()
@@ -155,8 +158,10 @@ mod tests {
     fn evaluate_reports_dangling_edge_in_context_json() {
         let temp_dir = TempDir::new().expect("tempdir");
         let repo_root = temp_dir.path();
-        let session_dir =
-            repo_root.join(".session").join("sessions").join("session-1");
+        let session_dir = repo_root
+            .join(".session")
+            .join("sessions")
+            .join("session-1");
         std::fs::create_dir_all(&session_dir).expect("create session dir");
 
         let context = json!({

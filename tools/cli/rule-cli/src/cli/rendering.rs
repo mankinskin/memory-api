@@ -337,9 +337,8 @@ pub(super) fn sync_targets_payload(
     // record that is now decoupled — the output was migrated to a hand-owned
     // file (marker stripped) or deleted. Decoupled records are pruned from the
     // tracking state without touching the file and never fail `--check`.
-    let (stale_generated, decoupled): (Vec<_>, Vec<_>) = stale
-        .into_iter()
-        .partition(|record| {
+    let (stale_generated, decoupled): (Vec<_>, Vec<_>) =
+        stale.into_iter().partition(|record| {
             output_is_orphaned_generated(Path::new(&record.output_path))
         });
 

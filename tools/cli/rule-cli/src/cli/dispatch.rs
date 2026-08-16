@@ -216,18 +216,21 @@ fn missing_rule_command(
     let workspace_root = index_root.parent().ok_or_else(|| {
         CliRunError::BadRequest("invalid rule index root".to_string())
     })?;
-    let ticket_store_root =
-        memory_kernel::workspace::resolve_store_root_from(workspace_root, ".ticket");
-    let feedback_store_root =
-        memory_kernel::workspace::resolve_store_root_from(workspace_root, ".feedback");
+    let ticket_store_root = memory_kernel::workspace::resolve_store_root_from(
+        workspace_root,
+        ".ticket",
+    );
+    let feedback_store_root = memory_kernel::workspace::resolve_store_root_from(
+        workspace_root,
+        ".feedback",
+    );
 
-    let ticket_store = ticket_api::storage::TicketStore::open_or_init(&ticket_store_root)
-        .map_err(|err| CliRunError::BadRequest(err.to_string()))?;
-    let feedback_store = EntityFeedbackStore::new(
-        &feedback_store_root,
-        args.workspace_slug,
-    )
-    .map_err(CliRunError::BadRequest)?;
+    let ticket_store =
+        ticket_api::storage::TicketStore::open_or_init(&ticket_store_root)
+            .map_err(|err| CliRunError::BadRequest(err.to_string()))?;
+    let feedback_store =
+        EntityFeedbackStore::new(&feedback_store_root, args.workspace_slug)
+            .map_err(CliRunError::BadRequest)?;
 
     let ticket_id = ticket_api::handle_missing_rule_match(
         &ticket_store,

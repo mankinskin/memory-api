@@ -112,7 +112,9 @@ fn snapshot_directory_entries(
             snapshot_directory_entries(root, &path, snapshot);
         } else {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            fs::read(&path).expect("read snapshot file").hash(&mut hasher);
+            fs::read(&path)
+                .expect("read snapshot file")
+                .hash(&mut hasher);
             snapshot.insert(relative, hasher.finish());
         }
     }
@@ -287,8 +289,11 @@ fn e2e_session_start_preserves_anchor_session_store_snapshot() {
     let before = snapshot_directory(&checkout.join(".session"));
     let session_id = "22222222-2222-4222-8222-222222222222";
     let transcript = local_fixture_a().replace(FIXTURE_SESSION_ID, session_id);
-    let transcript_path =
-        write_fixture_transcript(&checkout, "anchor-store-snapshot.jsonl", &transcript);
+    let transcript_path = write_fixture_transcript(
+        &checkout,
+        "anchor-store-snapshot.jsonl",
+        &transcript,
+    );
     let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
         .expect("cargo should expose session-capture-hook binary path for integration tests");
 
@@ -580,12 +585,18 @@ fn e2e_session_start_with_external_store_does_not_provision_cwd_checkout() {
     );
     assert_eq!(output.stdout, b"{}\n");
     let config = SessionStoreConfig::new(&store_root, "default");
-    let record = config
-        .read_session(FIXTURE_SESSION_ID)
-        .expect("provisioning diagnostic should remain readable after the hook exits");
-    let diagnostic = record.metadata.provisioning.expect("provisioning diagnostic");
+    let record = config.read_session(FIXTURE_SESSION_ID).expect(
+        "provisioning diagnostic should remain readable after the hook exits",
+    );
+    let diagnostic = record
+        .metadata
+        .provisioning
+        .expect("provisioning diagnostic");
     assert_eq!(diagnostic.outcome, "skipped");
-    assert_eq!(diagnostic.reason.as_deref(), Some("external_store_mismatch"));
+    assert_eq!(
+        diagnostic.reason.as_deref(),
+        Some("external_store_mismatch")
+    );
     assert_eq!(diagnostic.hook_event_name, "SessionStart");
     assert!(
         !store_root

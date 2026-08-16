@@ -1,6 +1,9 @@
 use super::*;
 use crate::{
-    error::{SchemaValidationError, StorageError},
+    error::{
+        SchemaValidationError,
+        StorageError,
+    },
     storage::ticket_fs::TicketFs,
 };
 
@@ -77,5 +80,10 @@ fn ticket_5a3d152c_valid_core_kind_still_writes_through_store_write_part() {
         .write_part(&id, part_id, "review", "looks good", None)
         .unwrap();
 
-    assert!(manifest.parts().iter().any(|p| p.id == part_id && p.kind == "review"));
+    assert!(
+        manifest
+            .parts()
+            .iter()
+            .any(|p| p.id == part_id && p.kind == "review")
+    );
 }

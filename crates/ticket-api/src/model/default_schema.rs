@@ -26,8 +26,8 @@ pub fn builtin_schemas() -> Vec<TicketTypeSchema> {
     DELIVERED_SCHEMA_TOML
         .iter()
         .map(|toml_src| {
-            let schema: TicketTypeSchema =
-                toml::from_str(toml_src).unwrap_or_else(|e| {
+            let schema: TicketTypeSchema = toml::from_str(toml_src)
+                .unwrap_or_else(|e| {
                     panic!("delivered ticket schema is invalid TOML: {e}")
                 });
             assert!(
@@ -48,7 +48,10 @@ mod tests {
         let schemas = builtin_schemas();
         assert_eq!(schemas.len(), DELIVERED_SCHEMA_TOML.len());
         for schema in &schemas {
-            assert!(!schema.type_id.is_empty(), "schema must declare a type_id");
+            assert!(
+                !schema.type_id.is_empty(),
+                "schema must declare a type_id"
+            );
             assert!(
                 !schema.states.is_empty(),
                 "{} schema must define states",

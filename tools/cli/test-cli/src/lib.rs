@@ -91,10 +91,8 @@ pub fn run(cli: TestCli) -> Result<CliOutput, CliRunError> {
         ),
     };
     let log_config = LogStoreConfig::new(log_root, cli.workspace_slug.clone());
-    let spec_root = resolve_spec_root(
-        &store_root,
-        cli.workspace_root.as_deref(),
-    );
+    let spec_root =
+        resolve_spec_root(&store_root, cli.workspace_root.as_deref());
 
     let payload = dispatch(&config, &log_config, &spec_root, cli.command)?;
 

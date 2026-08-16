@@ -14,8 +14,8 @@ use std::{
 use serde_json::Value;
 use thiserror::Error;
 use time::{
-    format_description::well_known::Rfc3339,
     OffsetDateTime,
+    format_description::well_known::Rfc3339,
 };
 
 use crate::{
@@ -692,18 +692,15 @@ mod tests {
     };
 
     use filetime::{
-        set_file_mtime,
         FileTime,
+        set_file_mtime,
     };
     use time::{
-        format_description::well_known::Rfc3339,
         OffsetDateTime,
+        format_description::well_known::Rfc3339,
     };
 
     use super::{
-        evaluate_reclaim_candidate,
-        provision_for_session,
-        reclaim_candidates,
         NeverActive,
         ProvisionError,
         ProvisionOutcome,
@@ -712,10 +709,13 @@ mod tests {
         ReclaimRejectionReason,
         SessionActivity,
         SessionStoreActivity,
+        evaluate_reclaim_candidate,
+        provision_for_session,
+        reclaim_candidates,
     };
     use crate::{
-        tests::Fixture,
         WorktreeRef,
+        tests::Fixture,
     };
 
     const SESSION_ID: &str = "12345678-1234-4234-8234-123456789abc";
@@ -1119,9 +1119,11 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(names, vec!["a-old", "b-new"]);
         assert!(candidates.iter().any(|worktree| worktree.path == old.path));
-        assert!(candidates
-            .iter()
-            .any(|worktree| worktree.path == newer.path));
+        assert!(
+            candidates
+                .iter()
+                .any(|worktree| worktree.path == newer.path)
+        );
     }
 
     #[test]
@@ -1399,9 +1401,12 @@ mod tests {
             "keep\n"
         );
         assert!(!git.branch_exists("agent/old").unwrap());
-        assert!(git
-            .branch_exists("agent/12345678-1234-4234-8234-123456789abc/session")
-            .unwrap());
+        assert!(
+            git.branch_exists(
+                "agent/12345678-1234-4234-8234-123456789abc/session"
+            )
+            .unwrap()
+        );
     }
 
     #[test]
@@ -1419,9 +1424,12 @@ mod tests {
         ));
         assert!(old.path.exists());
         assert!(git.branch_exists("agent/old").unwrap());
-        assert!(!git
-            .branch_exists("agent/12345678-1234-4234-8234-123456789abc/session")
-            .unwrap());
+        assert!(
+            !git.branch_exists(
+                "agent/12345678-1234-4234-8234-123456789abc/session"
+            )
+            .unwrap()
+        );
     }
 
     #[test]
@@ -1473,10 +1481,12 @@ mod tests {
             provision_for_session(&git, &NeverActive, SESSION_ID, &policy(1));
         assert_cap_reached(result);
         assert_eq!(git.list_worktrees().unwrap().len(), 1);
-        assert!(!fixture
-            .main
-            .join(".worktrees/12345678-1234-4234-8234-123456789abc/session")
-            .exists());
+        assert!(
+            !fixture
+                .main
+                .join(".worktrees/12345678-1234-4234-8234-123456789abc/session")
+                .exists()
+        );
     }
 
     #[test]
@@ -1507,10 +1517,12 @@ mod tests {
             &policy,
         ));
         assert!(old.path.exists());
-        assert!(!fixture
-            .main
-            .join(".worktrees/12345678-1234-4234-8234-123456789abc/session")
-            .exists());
+        assert!(
+            !fixture
+                .main
+                .join(".worktrees/12345678-1234-4234-8234-123456789abc/session")
+                .exists()
+        );
     }
 
     #[test]
@@ -1557,10 +1569,12 @@ mod tests {
                 .unwrap();
         assert!(matches!(outcome, ProvisionOutcome::Created(_)));
         assert!(old.path.exists());
-        assert!(fixture
-            .main
-            .join(".worktrees/12345678-1234-4234-8234-123456789abc/session")
-            .exists());
+        assert!(
+            fixture
+                .main
+                .join(".worktrees/12345678-1234-4234-8234-123456789abc/session")
+                .exists()
+        );
     }
 
     #[test]
@@ -1578,10 +1592,12 @@ mod tests {
             &policy(1),
         ));
         assert!(old.path.exists());
-        assert!(!fixture
-            .main
-            .join(".worktrees/12345678-1234-4234-8234-123456789abc/session")
-            .exists());
+        assert!(
+            !fixture
+                .main
+                .join(".worktrees/12345678-1234-4234-8234-123456789abc/session")
+                .exists()
+        );
     }
 
     #[test]

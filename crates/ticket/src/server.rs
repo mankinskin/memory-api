@@ -46,13 +46,14 @@ pub struct TicketServer {
 }
 
 pub fn open_canonical_store(
-    index_root: &Path,
+    index_root: &Path
 ) -> Result<TicketStore, ticket_api::error::StorageError> {
     let store = TicketStore::open(index_root)?;
-    let workspace_root = ticket_api::workspace::resolve_workspace_root_from_store_root(
-        &store.index_root,
-        ticket_api::workspace::TICKET_INDEX_DIR,
-    );
+    let workspace_root =
+        ticket_api::workspace::resolve_workspace_root_from_store_root(
+            &store.index_root,
+            ticket_api::workspace::TICKET_INDEX_DIR,
+        );
     store.reapply_workspace_policy(&workspace_root)?;
     Ok(store)
 }
@@ -148,7 +149,8 @@ impl TicketServer {
         store: &TicketStore,
         value: &str,
     ) -> Result<Uuid, McpError> {
-        match ticket_api::query_helpers::resolve_uuid_with_prefix(store, value) {
+        match ticket_api::query_helpers::resolve_uuid_with_prefix(store, value)
+        {
             Ok(id) => Ok(id),
             Err(ticket_api::error::StorageError::Other(message))
                 if message.starts_with("no ticket found matching prefix") =>
@@ -168,7 +170,7 @@ impl TicketServer {
                     format!("{message}; searched workspaces: {searched}"),
                     None,
                 ))
-            }
+            },
             Err(error) => Err(Self::store_err(error)),
         }
     }

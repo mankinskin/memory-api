@@ -4,9 +4,13 @@
 //! and returned unchanged, with no silent drops.
 
 use session_api::{
-    SessionHandoffPackage, SessionHandoffTargetTicket,
-    SessionHandoffUpwardContextEntry, SessionHandoffUpwardContextRole,
-    SessionRuntimeInitRequest, SessionStoreConfig, SessionValidationGate,
+    SessionHandoffPackage,
+    SessionHandoffTargetTicket,
+    SessionHandoffUpwardContextEntry,
+    SessionHandoffUpwardContextRole,
+    SessionRuntimeInitRequest,
+    SessionStoreConfig,
+    SessionValidationGate,
 };
 use std::path::PathBuf;
 
@@ -17,7 +21,10 @@ fn setup_test_store() -> (SessionStoreConfig, PathBuf) {
     (config, store_root)
 }
 
-fn init_test_session(config: &SessionStoreConfig, session_id: &str) {
+fn init_test_session(
+    config: &SessionStoreConfig,
+    session_id: &str,
+) {
     config
         .init_runtime_context(SessionRuntimeInitRequest {
             session_id: Some(session_id.to_string()),
@@ -32,7 +39,9 @@ fn target_ticket(id: &str) -> SessionHandoffTargetTicket {
         id: id.to_string(),
         why: "Required by the implementation unit".to_string(),
         state: "ready".to_string(),
-        acceptance_criteria: vec!["The implementation unit completes".to_string()],
+        acceptance_criteria: vec![
+            "The implementation unit completes".to_string(),
+        ],
     }
 }
 
@@ -57,7 +66,9 @@ fn open_escalations_field_persists_and_round_trips() {
         target_tickets: vec![target_ticket("ticket-123")],
         higher_level_objective: "Deliver the program objective".to_string(),
         upward_context: upward_context(),
-        target_files: vec!["memory-api/crates/session-api/src/lib.rs".to_string()],
+        target_files: vec![
+            "memory-api/crates/session-api/src/lib.rs".to_string(),
+        ],
         decisions: vec!["Use async/await".to_string()],
         non_goals: vec!["No refactoring".to_string()],
         context_anchors: vec!["Related PR #456".to_string()],
@@ -73,10 +84,18 @@ fn open_escalations_field_persists_and_round_trips() {
 
     // Create handoff record
     let record = config
-        .create_handoff_record(session_id, Some(package.clone()), validation, None)
+        .create_handoff_record(
+            session_id,
+            Some(package.clone()),
+            validation,
+            None,
+        )
         .expect("create handoff record");
 
-    assert_eq!(record.higher_level_objective, package.higher_level_objective);
+    assert_eq!(
+        record.higher_level_objective,
+        package.higher_level_objective
+    );
     assert_eq!(record.upward_context, package.upward_context);
 
     // ASSERT: open_escalations should persist unchanged
@@ -86,8 +105,16 @@ fn open_escalations_field_persists_and_round_trips() {
         record.open_escalations, package.open_escalations
     );
     assert_eq!(record.open_escalations.len(), 2);
-    assert!(record.open_escalations.contains(&"Need clarification on API design".to_string()));
-    assert!(record.open_escalations.contains(&"Blocked on upstream merge".to_string()));
+    assert!(
+        record
+            .open_escalations
+            .contains(&"Need clarification on API design".to_string())
+    );
+    assert!(
+        record
+            .open_escalations
+            .contains(&"Blocked on upstream merge".to_string())
+    );
 }
 
 #[test]
@@ -102,7 +129,9 @@ fn empty_open_escalations_is_persisted_as_empty_list() {
         target_tickets: vec![target_ticket("ticket-789")],
         higher_level_objective: "Deliver the program objective".to_string(),
         upward_context: upward_context(),
-        target_files: vec!["memory-api/crates/session-api/src/error.rs".to_string()],
+        target_files: vec![
+            "memory-api/crates/session-api/src/error.rs".to_string(),
+        ],
         decisions: vec!["Use trait bounds".to_string()],
         non_goals: vec!["No optimization yet".to_string()],
         context_anchors: vec!["Spec doc#12".to_string()],
@@ -115,7 +144,10 @@ fn empty_open_escalations_is_persisted_as_empty_list() {
         .create_handoff_record(session_id, Some(package.clone()), vec![], None)
         .expect("create handoff record");
 
-    assert_eq!(record.higher_level_objective, package.higher_level_objective);
+    assert_eq!(
+        record.higher_level_objective,
+        package.higher_level_objective
+    );
     assert_eq!(record.upward_context, package.upward_context);
 
     // ASSERT: empty open_escalations should persist as empty list (not absent/null)
@@ -135,7 +167,9 @@ fn validation_gate_command_field_persists_and_round_trips() {
         target_tickets: vec![target_ticket("ticket-101")],
         higher_level_objective: "Deliver the program objective".to_string(),
         upward_context: upward_context(),
-        target_files: vec!["memory-api/crates/session-api/src/store.rs".to_string()],
+        target_files: vec![
+            "memory-api/crates/session-api/src/store.rs".to_string(),
+        ],
         decisions: vec!["Use Criterion benchmarks".to_string()],
         non_goals: vec!["No UI tests".to_string()],
         context_anchors: vec!["Test plan doc".to_string()],
@@ -152,7 +186,12 @@ fn validation_gate_command_field_persists_and_round_trips() {
     }];
 
     let record = config
-        .create_handoff_record(session_id, Some(package), validation.clone(), None)
+        .create_handoff_record(
+            session_id,
+            Some(package),
+            validation.clone(),
+            None,
+        )
         .expect("create handoff record");
 
     assert_eq!(
@@ -184,7 +223,9 @@ fn legacy_target_ticket_strings_and_absent_context_fields_deserialize() {
         target_tickets: vec![target_ticket("ticket-legacy")],
         higher_level_objective: "Deliver the program objective".to_string(),
         upward_context: upward_context(),
-        target_files: vec!["memory-api/crates/session-api/src/lib.rs".to_string()],
+        target_files: vec![
+            "memory-api/crates/session-api/src/lib.rs".to_string(),
+        ],
         decisions: vec!["Use serde compatibility".to_string()],
         non_goals: vec!["No renderer changes".to_string()],
         context_anchors: vec!["Spec context".to_string()],
@@ -196,14 +237,19 @@ fn legacy_target_ticket_strings_and_absent_context_fields_deserialize() {
         .create_handoff_record(session_id, Some(package), vec![], None)
         .expect("create handoff record");
 
-    let mut legacy_json = serde_json::to_value(record).expect("serialize record");
+    let mut legacy_json =
+        serde_json::to_value(record).expect("serialize record");
     let object = legacy_json.as_object_mut().expect("record object");
     object.remove("higher_level_objective");
     object.remove("upward_context");
-    object.insert("target_tickets".to_string(), serde_json::json!(["ticket-legacy"]));
+    object.insert(
+        "target_tickets".to_string(),
+        serde_json::json!(["ticket-legacy"]),
+    );
 
     let legacy: session_api::SessionHandoffRecord =
-        serde_json::from_value(legacy_json).expect("deserialize legacy handoff");
+        serde_json::from_value(legacy_json)
+            .expect("deserialize legacy handoff");
     assert_eq!(legacy.target_tickets[0].id, "ticket-legacy");
     assert!(legacy.target_tickets[0].why.is_empty());
     assert!(legacy.higher_level_objective.is_empty());
@@ -221,7 +267,9 @@ fn ready_handoff_missing_upward_context_fails_before_writing_files() {
         target_tickets: vec![target_ticket("ticket-123")],
         higher_level_objective: String::new(),
         upward_context: vec![],
-        target_files: vec!["memory-api/crates/session-api/src/lib.rs".to_string()],
+        target_files: vec![
+            "memory-api/crates/session-api/src/lib.rs".to_string(),
+        ],
         decisions: vec!["Use serde".to_string()],
         non_goals: vec!["No renderer changes".to_string()],
         context_anchors: vec!["Spec context".to_string()],
@@ -230,8 +278,12 @@ fn ready_handoff_missing_upward_context_fails_before_writing_files() {
         predecessor_handoff: None,
     };
 
-    let result = config.create_handoff_record(session_id, Some(package), vec![], None);
-    assert!(matches!(result, Err(session_api::SessionError::HandoffPackageIncomplete { .. })));
+    let result =
+        config.create_handoff_record(session_id, Some(package), vec![], None);
+    assert!(matches!(
+        result,
+        Err(session_api::SessionError::HandoffPackageIncomplete { .. })
+    ));
     assert!(
         !store_root
             .join(".session")
@@ -253,7 +305,9 @@ fn non_ready_handoff_missing_upward_context_persists() {
         target_tickets: vec![target_ticket("ticket-123")],
         higher_level_objective: String::new(),
         upward_context: vec![],
-        target_files: vec!["memory-api/crates/session-api/src/lib.rs".to_string()],
+        target_files: vec![
+            "memory-api/crates/session-api/src/lib.rs".to_string(),
+        ],
         decisions: vec!["Use serde".to_string()],
         non_goals: vec!["No renderer changes".to_string()],
         context_anchors: vec!["Spec context".to_string()],

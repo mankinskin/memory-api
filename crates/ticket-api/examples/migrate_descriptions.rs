@@ -13,15 +13,15 @@ use std::{
     process::ExitCode,
 };
 
-use ticket_api::model::schema_registry::SchemaRegistry;
-use ticket_api::storage::store::TicketStore;
+use ticket_api::{
+    model::schema_registry::SchemaRegistry,
+    storage::store::TicketStore,
+};
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(index_root) = args.next() else {
-        eprintln!(
-            "usage: migrate_descriptions <index-root> [--apply]"
-        );
+        eprintln!("usage: migrate_descriptions <index-root> [--apply]");
         return ExitCode::FAILURE;
     };
     let apply = args.any(|a| a == "--apply");
@@ -31,7 +31,10 @@ fn main() -> ExitCode {
     let store = match TicketStore::open_with(&index_root, registry) {
         Ok(store) => store,
         Err(error) => {
-            eprintln!("failed to open store at {}: {error}", index_root.display());
+            eprintln!(
+                "failed to open store at {}: {error}",
+                index_root.display()
+            );
             return ExitCode::FAILURE;
         },
     };
@@ -47,9 +50,18 @@ fn main() -> ExitCode {
     println!("=== DRY RUN: {} ===", index_root.display());
     println!("scanned:                 {}", report.scanned);
     println!("migratable:               {}", report.migratable.len());
-    println!("no_recognized_headings:   {}", report.no_recognized_headings);
-    println!("skipped_no_description:   {}", report.skipped_no_description);
-    println!("skipped_already_migrated: {}", report.skipped_already_migrated);
+    println!(
+        "no_recognized_headings:   {}",
+        report.no_recognized_headings
+    );
+    println!(
+        "skipped_no_description:   {}",
+        report.skipped_no_description
+    );
+    println!(
+        "skipped_already_migrated: {}",
+        report.skipped_already_migrated
+    );
     println!("low_confidence:           {}", report.low_confidence.len());
     if !report.low_confidence.is_empty() {
         for id in &report.low_confidence {

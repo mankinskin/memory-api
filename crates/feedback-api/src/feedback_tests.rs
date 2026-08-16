@@ -362,7 +362,8 @@ fn feedback_provenance_round_trips_turn_and_tool_call_refs() {
     assert_eq!(provenance.tool_call_id.as_deref(), Some("call-7"));
 
     let json = serde_json::to_string(&provenance).unwrap();
-    let round_tripped: FeedbackProvenance = serde_json::from_str(&json).unwrap();
+    let round_tripped: FeedbackProvenance =
+        serde_json::from_str(&json).unwrap();
     assert_eq!(round_tripped, provenance);
 }
 
@@ -371,7 +372,8 @@ fn feedback_provenance_deserializes_pre_v2_records_without_turn_refs() {
     // Pre-existing on-disk records predate `turn_sequence`/`tool_call_id`;
     // both fields must default to `None` rather than fail deserialization.
     let legacy_json = r#"{"session_id":"session-1","author":"copilot","executed_at":"2025-01-01T00:00:00Z"}"#;
-    let provenance: FeedbackProvenance = serde_json::from_str(legacy_json).unwrap();
+    let provenance: FeedbackProvenance =
+        serde_json::from_str(legacy_json).unwrap();
 
     assert_eq!(provenance.session_id.as_deref(), Some("session-1"));
     assert_eq!(provenance.turn_sequence, None);
@@ -406,7 +408,10 @@ fn mined_entry_asserts_populated_backtrace_refs() {
     store.record_entry(entry).unwrap();
     let loaded = store.entries_for(&urn).unwrap();
     assert_eq!(loaded.len(), 1);
-    assert_eq!(loaded[0].provenance.session_id.as_deref(), Some("session-mined-1"));
+    assert_eq!(
+        loaded[0].provenance.session_id.as_deref(),
+        Some("session-mined-1")
+    );
     assert_eq!(loaded[0].provenance.turn_sequence, Some(3));
     assert_eq!(loaded[0].provenance.tool_call_id.as_deref(), Some("call-3"));
 }

@@ -19,7 +19,10 @@ fn create_rejects_off_schema_state() {
 
     match err {
         crate::error::StorageError::Validation(
-            crate::error::SchemaValidationError::OffSchemaState { state, allowed },
+            crate::error::SchemaValidationError::OffSchemaState {
+                state,
+                allowed,
+            },
         ) => {
             assert_eq!(state, "archived");
             assert!(allowed.contains(&"open".to_string()));
@@ -46,12 +49,12 @@ fn off_schema_state_recovers_only_to_entry_state_then_transitions_normally() {
         .unwrap();
 
     let mut manifest = store.get(&id).unwrap();
-    manifest.extra.insert(
-        "state".to_string(),
-        Value::String("archived".to_string()),
-    );
+    manifest
+        .extra
+        .insert("state".to_string(), Value::String("archived".to_string()));
     let ticket_path = store.get_indexed(&id).unwrap().unwrap().path;
-    let toml_str = memory_kernel::model::manifest_format::format_manifest_toml(&manifest);
+    let toml_str =
+        memory_kernel::model::manifest_format::format_manifest_toml(&manifest);
     std::fs::write(
         ticket_path.join(crate::model::filesystem::TICKET_MANIFEST_FILE),
         toml_str,
@@ -510,7 +513,8 @@ fn update_without_description_preserves_existing_description() {
     store.update(&id, patch, None, None, None, None).unwrap();
 
     let path = store.get_indexed(&id).unwrap().unwrap().path;
-    let description = crate::storage::ticket_fs::TicketFs::read_description(&path);
+    let description =
+        crate::storage::ticket_fs::TicketFs::read_description(&path);
     assert_eq!(
         description.as_deref(),
         Some("Original description"),
@@ -549,7 +553,8 @@ fn update_with_replace_mode_overwrites_description() {
         .unwrap();
 
     let path = store.get_indexed(&id).unwrap().unwrap().path;
-    let description = crate::storage::ticket_fs::TicketFs::read_description(&path);
+    let description =
+        crate::storage::ticket_fs::TicketFs::read_description(&path);
     assert_eq!(description.as_deref(), Some("New description"));
 }
 
@@ -584,7 +589,8 @@ fn update_with_append_mode_concatenates_description() {
         .unwrap();
 
     let path = store.get_indexed(&id).unwrap().unwrap().path;
-    let description = crate::storage::ticket_fs::TicketFs::read_description(&path);
+    let description =
+        crate::storage::ticket_fs::TicketFs::read_description(&path);
     assert_eq!(
         description.as_deref(),
         Some("Original description\nExtra note"),
@@ -625,7 +631,8 @@ fn update_captures_previous_description_in_history_regardless_of_mode() {
     let revisions = store.get_history(&id).unwrap();
     let last = revisions.last().expect("history revision recorded");
     assert_eq!(
-        last.fields.get(crate::storage::store::DESCRIPTION_HISTORY_KEY),
+        last.fields
+            .get(crate::storage::store::DESCRIPTION_HISTORY_KEY),
         Some(&Value::String("Original description".to_string())),
         "the pre-update description must be captured in history on every description change"
     );
@@ -709,15 +716,27 @@ fn ticket_3d952036_omitted_description_mode_is_rejected() {
     // silent default.
     let err = store
         .update_with_options(
-            &id, BTreeMap::new(), None, None, Some("New description"), None,
-            None, false,
+            &id,
+            BTreeMap::new(),
+            None,
+            None,
+            Some("New description"),
+            None,
+            None,
+            false,
         )
         .unwrap_err();
 
     // AC2: the error names both modes and states which preserves content.
     let message = err.to_string();
-    assert!(message.contains("replace"), "error must name 'replace': {message}");
-    assert!(message.contains("append"), "error must name 'append': {message}");
+    assert!(
+        message.contains("replace"),
+        "error must name 'replace': {message}"
+    );
+    assert!(
+        message.contains("append"),
+        "error must name 'append': {message}"
+    );
     assert!(
         message.to_lowercase().contains("preserv"),
         "error must state which mode preserves existing content: {message}"
@@ -756,11 +775,9 @@ fn ticket_3d952036_description_update_makes_missing_mode_unrepresentable() {
     // `description_mode` string (AC1/AC2), but the value produced by a
     // *successful* decode is always one of three fully-formed variants —
     // there is no fourth "content, no mode" shape to construct.
-    let err = DescriptionUpdate::decode(
-        Some("New description".to_string()),
-        None,
-    )
-    .unwrap_err();
+    let err =
+        DescriptionUpdate::decode(Some("New description".to_string()), None)
+            .unwrap_err();
     assert_eq!(err, REQUIRED_DESCRIPTION_MODE_ERROR);
 
     // Every successful decode round-trips through `as_parts` into exactly
@@ -790,11 +807,9 @@ fn ticket_3d952036_description_update_makes_missing_mode_unrepresentable() {
 
     // An unrecognized mode string is also rejected at the decode boundary,
     // never silently coerced into a variant.
-    let bad = DescriptionUpdate::decode(
-        Some("x".to_string()),
-        Some("overwrite"),
-    )
-    .unwrap_err();
+    let bad =
+        DescriptionUpdate::decode(Some("x".to_string()), Some("overwrite"))
+            .unwrap_err();
     assert!(
         bad.contains("invalid description_mode"),
         "unrecognized mode must be named in the error: {bad}"
@@ -818,8 +833,7 @@ fn ticket_3d952036_review_part_write_leaves_objective_byte_identical() {
         )
         .unwrap();
     let path = store.get_indexed(&id).unwrap().unwrap().path;
-    let objective_before =
-        fs::read(path.join("description.md")).unwrap();
+    let objective_before = fs::read(path.join("description.md")).unwrap();
 
     // AC3/AC4: a part-addressed write targeting a fresh review part id
     // must never read or write the objective / description.md.
@@ -841,8 +855,7 @@ fn ticket_3d952036_review_part_write_leaves_objective_byte_identical() {
         .find(|p| p.id == review_part_id)
         .expect("review part recorded in manifest");
     assert_eq!(review.kind, "review");
-    let review_content =
-        fs::read_to_string(path.join(&review.path)).unwrap();
+    let review_content = fs::read_to_string(path.join(&review.path)).unwrap();
     assert_eq!(review_content, "Looks good.");
 }
 
@@ -883,7 +896,8 @@ fn ticket_3d952036_per_part_history_and_undo_restores_only_that_part() {
         Some(&Value::String(review_id.to_string()))
     );
     assert_eq!(
-        last.fields.get(crate::storage::store::PART_HISTORY_CONTENT_KEY),
+        last.fields
+            .get(crate::storage::store::PART_HISTORY_CONTENT_KEY),
         Some(&Value::String("first pass".to_string()))
     );
 
@@ -1067,12 +1081,18 @@ fn f9e70385_write_to_frozen_part_is_rejected_and_file_byte_identical() {
     // both recovery paths (amendment w/ supersedes; transition back to a
     // pre-planned state).
     let message = err.to_string();
-    assert!(message.contains("objective"), "must name the kind: {message}");
+    assert!(
+        message.contains("objective"),
+        "must name the kind: {message}"
+    );
     assert!(
         message.contains(&objective.id.to_string()),
         "must name the part id: {message}"
     );
-    assert!(message.contains("planned"), "must name the freezing state: {message}");
+    assert!(
+        message.contains("planned"),
+        "must name the freezing state: {message}"
+    );
     assert!(
         message.contains("amendment") && message.contains("supersedes"),
         "must name the amendment recovery path: {message}"
@@ -1112,7 +1132,11 @@ fn f9e70385_review_write_on_planned_ticket_succeeds() {
 
     let path = store.get_indexed(&id).unwrap().unwrap().path;
     let manifest = store.get(&id).unwrap();
-    let review = manifest.parts().into_iter().find(|p| p.id == review_id).unwrap();
+    let review = manifest
+        .parts()
+        .into_iter()
+        .find(|p| p.id == review_id)
+        .unwrap();
     assert!(!review.frozen);
     assert_eq!(
         fs::read_to_string(path.join(&review.path)).unwrap(),
@@ -1141,7 +1165,12 @@ fn f9e70385_unfreeze_refreeze_cycle_appends_plan_revision() {
         .update(&id, BTreeMap::new(), None, Some("planned"), None, None)
         .unwrap();
     let manifest = store.get(&id).unwrap();
-    assert!(manifest.parts().iter().all(|p| p.frozen == (PLANNING_KINDS.contains(&p.kind.as_str()))));
+    assert!(
+        manifest
+            .parts()
+            .iter()
+            .all(|p| p.frozen == (PLANNING_KINDS.contains(&p.kind.as_str())))
+    );
     let revision_1 = manifest
         .extra
         .get("plan_revision")
@@ -1175,17 +1204,26 @@ fn f9e70385_unfreeze_refreeze_cycle_appends_plan_revision() {
         .update(&id, BTreeMap::new(), None, Some("planned"), None, None)
         .unwrap();
     let manifest = store.get(&id).unwrap();
-    assert!(manifest.parts().iter().all(|p| p.frozen == (PLANNING_KINDS.contains(&p.kind.as_str()))));
+    assert!(
+        manifest
+            .parts()
+            .iter()
+            .all(|p| p.frozen == (PLANNING_KINDS.contains(&p.kind.as_str())))
+    );
     let revision_2 = manifest
         .extra
         .get("plan_revision")
         .and_then(Value::as_u64)
         .unwrap();
-    assert_eq!(revision_2, 2, "re-entering planned must append a plan revision");
+    assert_eq!(
+        revision_2, 2,
+        "re-entering planned must append a plan revision"
+    );
 }
 
 #[test]
-fn f9e70385_amendment_records_supersedes_and_is_retrievable_alongside_frozen_part() {
+fn f9e70385_amendment_records_supersedes_and_is_retrievable_alongside_frozen_part()
+ {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();
 
@@ -1203,7 +1241,13 @@ fn f9e70385_amendment_records_supersedes_and_is_retrievable_alongside_frozen_par
 
     let requirements_id = Uuid::new_v4();
     store
-        .write_part(&id, requirements_id, "requirements", "Original requirements", None)
+        .write_part(
+            &id,
+            requirements_id,
+            "requirements",
+            "Original requirements",
+            None,
+        )
         .unwrap();
 
     store
@@ -1287,11 +1331,18 @@ fn f9e70385_undo_part_on_frozen_part_is_also_rejected() {
 
     // AC7: undo is a write like any other and must not bypass the gate.
     let err = store.undo_part(&id, design_id, None).unwrap_err();
-    assert!(matches!(err, crate::error::StorageError::FrozenPartWrite { .. }));
+    assert!(matches!(
+        err,
+        crate::error::StorageError::FrozenPartWrite { .. }
+    ));
 
     let path = store.get_indexed(&id).unwrap().unwrap().path;
     let manifest = store.get(&id).unwrap();
-    let design = manifest.parts().into_iter().find(|p| p.id == design_id).unwrap();
+    let design = manifest
+        .parts()
+        .into_iter()
+        .find(|p| p.id == design_id)
+        .unwrap();
     assert_eq!(
         fs::read_to_string(path.join(&design.path)).unwrap(),
         "design v2",
@@ -1347,7 +1398,10 @@ fn f9e70385_legacy_description_write_rejected_when_objective_frozen() {
             false,
         )
         .unwrap_err();
-    assert!(matches!(err, crate::error::StorageError::FrozenPartWrite { .. }));
+    assert!(matches!(
+        err,
+        crate::error::StorageError::FrozenPartWrite { .. }
+    ));
 
     let after_part = fs::read(path.join(&objective.path)).unwrap();
     let after_description = fs::read(path.join("description.md")).unwrap();
@@ -1362,7 +1416,8 @@ fn f9e70385_legacy_description_write_rejected_when_objective_frozen() {
 }
 
 #[test]
-fn bc74e91f_combined_freeze_and_description_write_materializes_matching_objective() {
+fn bc74e91f_combined_freeze_and_description_write_materializes_matching_objective()
+ {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();
 
@@ -1408,8 +1463,10 @@ fn bc74e91f_combined_freeze_and_description_write_materializes_matching_objectiv
         "objective should be frozen after entering planned"
     );
 
-    let objective_content = fs::read_to_string(path.join(&objective.path)).unwrap();
-    let description_content = fs::read_to_string(path.join("description.md")).unwrap();
+    let objective_content =
+        fs::read_to_string(path.join(&objective.path)).unwrap();
+    let description_content =
+        fs::read_to_string(path.join("description.md")).unwrap();
 
     assert_eq!(
         objective_content, written,
@@ -1427,5 +1484,3 @@ fn bc74e91f_combined_freeze_and_description_write_materializes_matching_objectiv
     let indexed = store.get_indexed(&id).unwrap().unwrap();
     assert_eq!(indexed.state.as_deref(), Some("planned"));
 }
-
-

@@ -241,7 +241,11 @@ fn cmd_board_worktrees(store: &TicketStore) -> Result<Value, CliRunError> {
                 sessions,
                 agents,
                 tickets,
-                if worktree.conflicted { "  CONFLICT" } else { "" },
+                if worktree.conflicted {
+                    "  CONFLICT"
+                } else {
+                    ""
+                },
             ));
         }
     }

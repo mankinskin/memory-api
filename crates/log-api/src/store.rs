@@ -17,8 +17,8 @@ use crate::{
     ValidationLogCapture,
 };
 use test_api::{
-    InteroperableArtifact,
     IdentifiableArtifact,
+    InteroperableArtifact,
     TraceableArtifact,
 };
 
@@ -79,7 +79,10 @@ impl LogStoreConfig {
         capture: &ValidationLogCapture,
     ) -> Result<PathBuf, LogError> {
         // Compile-time check that ValidationLogCapture implements InteroperableArtifact + IdentifiableArtifact
-        fn assert_interoperable<T: InteroperableArtifact + IdentifiableArtifact<Id = str>>() {}
+        fn assert_interoperable<
+            T: InteroperableArtifact + IdentifiableArtifact<Id = str>,
+        >() {
+        }
         assert_interoperable::<ValidationLogCapture>();
 
         capture.validate_interoperability_contract()?;
@@ -133,7 +136,10 @@ impl LogStoreConfig {
         session: &RuntimeLogSession,
     ) -> Result<PathBuf, LogError> {
         // Compile-time check that RuntimeLogSession implements TraceableArtifact + IdentifiableArtifact
-        fn assert_interoperable<T: TraceableArtifact + IdentifiableArtifact<Id = str>>() {}
+        fn assert_interoperable<
+            T: TraceableArtifact + IdentifiableArtifact<Id = str>,
+        >() {
+        }
         assert_interoperable::<RuntimeLogSession>();
 
         session.validate_interoperability_contract()?;

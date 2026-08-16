@@ -1,7 +1,7 @@
 use memory_fixtures::{
+    StartupMatrixClass,
     run_startup_matrix_for,
     startup_matrix_succeeded,
-    StartupMatrixClass,
 };
 
 #[test]

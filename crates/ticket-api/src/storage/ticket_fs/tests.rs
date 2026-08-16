@@ -78,10 +78,17 @@ fn append_history_still_works_after_a_malformed_line() {
             "append must still succeed even though history.ndjson has a \
              malformed line",
         );
-    assert_eq!(rev, 1, "malformed line is skipped, not counted as a revision");
+    assert_eq!(
+        rev, 1,
+        "malformed line is skipped, not counted as a revision"
+    );
 
     let revisions = TicketFs::read_history(&ticket_path).unwrap();
-    assert_eq!(revisions.len(), 1, "the newly appended revision is readable");
+    assert_eq!(
+        revisions.len(),
+        1,
+        "the newly appended revision is readable"
+    );
 }
 
 #[test]
@@ -96,8 +103,7 @@ fn update_with_null_patch_value_removes_the_key() {
 
     let mut delete_patch = BTreeMap::new();
     delete_patch.insert("handoff_package".to_string(), Value::Null);
-    let manifest =
-        TicketFs::update(&ticket_path, &delete_patch, None).unwrap();
+    let manifest = TicketFs::update(&ticket_path, &delete_patch, None).unwrap();
 
     assert!(
         !manifest.extra.contains_key("handoff_package"),
@@ -244,8 +250,7 @@ fn unknown_kind_part_round_trips_as_opaque_attachment() {
     let (_dir, ticket_path) = make_ticket_dir();
     let mut manifest = TicketFs::read(&ticket_path).unwrap();
 
-    let attachment =
-        TicketPart::new("handoff_package", "parts/handoff.md");
+    let attachment = TicketPart::new("handoff_package", "parts/handoff.md");
     write_part_file(&ticket_path, &attachment, "opaque payload");
     manifest.set_parts(vec![attachment.clone()]);
     std::fs::write(
@@ -306,10 +311,7 @@ fn ticket_fs_update_preserves_parts_table_when_patching_other_fields() {
     .unwrap();
 
     let mut patch = BTreeMap::new();
-    patch.insert(
-        "priority".to_string(),
-        Value::String("high".to_string()),
-    );
+    patch.insert("priority".to_string(), Value::String("high".to_string()));
     let updated = TicketFs::update(&ticket_path, &patch, None).unwrap();
 
     assert_eq!(
@@ -326,11 +328,27 @@ fn write_ref_appends_and_round_trips_all_six_kinds() {
     let (_dir, ticket_path) = make_ticket_dir();
 
     let entries = vec![
-        ("spec", format!("ce://default/spec/{}", uuid::Uuid::new_v4()), Some("contract".to_string())),
-        ("test_execution", "ce://default/test-execution/7f2c1a04".to_string(), None),
+        (
+            "spec",
+            format!("ce://default/spec/{}", uuid::Uuid::new_v4()),
+            Some("contract".to_string()),
+        ),
+        (
+            "test_execution",
+            "ce://default/test-execution/7f2c1a04".to_string(),
+            None,
+        ),
         ("log", "ce://default/log/build-2026-07-30".to_string(), None),
-        ("rule", format!("ce://default/rule/{}", uuid::Uuid::new_v4()), None),
-        ("file", "memory-api/crates/ticket-api/src/storage/store.rs".to_string(), Some("write path".to_string())),
+        (
+            "rule",
+            format!("ce://default/rule/{}", uuid::Uuid::new_v4()),
+            None,
+        ),
+        (
+            "file",
+            "memory-api/crates/ticket-api/src/storage/store.rs".to_string(),
+            Some("write path".to_string()),
+        ),
         ("commit", "abc1234".to_string(), None),
     ];
 
@@ -340,7 +358,11 @@ fn write_ref_appends_and_round_trips_all_six_kinds() {
 
     let manifest = TicketFs::read(&ticket_path).unwrap();
     let refs = manifest.refs();
-    assert_eq!(refs.len(), 6, "all six ref kinds must round-trip without loss");
+    assert_eq!(
+        refs.len(),
+        6,
+        "all six ref kinds must round-trip without loss"
+    );
     for (kind, urn, note) in &entries {
         let found = refs
             .iter()
@@ -369,12 +391,19 @@ fn write_ref_rejects_unknown_kind_with_vocabulary_in_error() {
 fn write_ref_rejects_malformed_urn_for_kind() {
     let (_dir, ticket_path) = make_ticket_dir();
 
-    assert!(TicketFs::write_ref(&ticket_path, "spec", "not-a-urn", None).is_err());
+    assert!(
+        TicketFs::write_ref(&ticket_path, "spec", "not-a-urn", None).is_err()
+    );
     assert!(TicketFs::write_ref(&ticket_path, "commit", "zz", None).is_err());
-    assert!(TicketFs::write_ref(&ticket_path, "file", "/etc/passwd", None).is_err());
+    assert!(
+        TicketFs::write_ref(&ticket_path, "file", "/etc/passwd", None).is_err()
+    );
 
     let manifest = TicketFs::read(&ticket_path).unwrap();
-    assert!(manifest.refs().is_empty(), "no malformed ref should persist");
+    assert!(
+        manifest.refs().is_empty(),
+        "no malformed ref should persist"
+    );
 }
 
 #[test]
@@ -471,5 +500,9 @@ fn ticket_fs_update_preserves_refs_table_when_patching_other_fields() {
     patch.insert("priority".to_string(), Value::String("high".to_string()));
     let updated = TicketFs::update(&ticket_path, &patch, None).unwrap();
 
-    assert_eq!(updated.refs().len(), 1, "an unrelated field patch must not drop [[refs]]");
+    assert_eq!(
+        updated.refs().len(),
+        1,
+        "an unrelated field patch must not drop [[refs]]"
+    );
 }

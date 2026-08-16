@@ -58,8 +58,9 @@ pub(super) fn resolve_workspace_root(
 ) -> Option<PathBuf> {
     workspace_root_override
         .map(|path| {
-            let store_root =
-                memory_kernel::workspace::resolve_store_root_from(path, ".rule");
+            let store_root = memory_kernel::workspace::resolve_store_root_from(
+                path, ".rule",
+            );
             memory_kernel::workspace::resolve_workspace_root_from_store_root(
                 &store_root,
                 ".rule",

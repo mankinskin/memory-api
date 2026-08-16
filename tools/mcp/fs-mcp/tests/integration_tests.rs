@@ -6,15 +6,28 @@
 //! - Tool registration and capability advertisement
 
 use fs_mcp::server::{
-    CopyFileInput, DeleteDirInput, DeleteFileInput, FsServer, ListDirInput, MoveFileInput,
-    RenameFileInput, StatInput,
+    CopyFileInput,
+    DeleteDirInput,
+    DeleteFileInput,
+    FsServer,
+    ListDirInput,
+    MoveFileInput,
+    RenameFileInput,
+    StatInput,
 };
-use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResult, RawContent};
-use rmcp::ServerHandler;
+use rmcp::{
+    ServerHandler,
+    handler::server::wrapper::Parameters,
+    model::{
+        CallToolResult,
+        RawContent,
+    },
+};
 use serde_json::Value;
-use std::fs;
-use std::path::PathBuf;
+use std::{
+    fs,
+    path::PathBuf,
+};
 use tempfile::TempDir;
 
 /// Extract JSON content from an MCP CallToolResult.
@@ -60,7 +73,8 @@ async fn test_list_dir_basic() {
 async fn test_list_dir_with_limit() {
     let tmp = TempDir::new().expect("tempdir");
     for i in 1..=100 {
-        fs::write(tmp.path().join(format!("file{}.txt", i)), "content").unwrap();
+        fs::write(tmp.path().join(format!("file{}.txt", i)), "content")
+            .unwrap();
     }
 
     let server = FsServer::new();
@@ -235,19 +249,20 @@ async fn test_delete_dir_recursive() {
 async fn test_security_symlink_escape_via_move() {
     let root_dir = TempDir::new().expect("tempdir");
     let outside_dir = TempDir::new().expect("tempdir");
-    
+
     let safe_file = root_dir.path().join("safe.txt");
     fs::write(&safe_file, "safe content").unwrap();
-    
+
     // Create symlink pointing outside root
     let symlink_path = root_dir.path().join("escape_link");
     #[cfg(unix)]
     std::os::unix::fs::symlink(outside_dir.path(), &symlink_path).unwrap();
     #[cfg(windows)]
-    std::os::windows::fs::symlink_dir(outside_dir.path(), &symlink_path).unwrap();
-    
+    std::os::windows::fs::symlink_dir(outside_dir.path(), &symlink_path)
+        .unwrap();
+
     let escape_dest = symlink_path.join("escaped.txt");
-    
+
     let server = FsServer::new();
     let input = MoveFileInput {
         from: safe_file.clone(),
@@ -255,7 +270,7 @@ async fn test_security_symlink_escape_via_move() {
         overwrite: false,
         root: Some(root_dir.path().to_path_buf()),
     };
-    
+
     // Should fail - symlink escape detected
     let result = server.fs_move_file(Parameters(input)).await;
     assert!(result.is_err(), "Expected symlink escape to be rejected");
@@ -266,19 +281,22 @@ async fn test_security_parent_directory_escape_via_delete() {
     let root_dir = TempDir::new().expect("tempdir");
     let nested = root_dir.path().join("nested");
     fs::create_dir(&nested).unwrap();
-    
+
     // Try to delete using ../ to escape root
     let escape_path = nested.join("..").join("..").join("etc").join("passwd");
-    
+
     let server = FsServer::new();
     let input = DeleteFileInput {
         path: escape_path.clone(),
         root: Some(root_dir.path().to_path_buf()),
     };
-    
+
     // Should fail - parent directory escape detected
     let result = server.fs_delete_file(Parameters(input)).await;
-    assert!(result.is_err(), "Expected parent directory escape to be rejected");
+    assert!(
+        result.is_err(),
+        "Expected parent directory escape to be rejected"
+    );
 }
 
 #[tokio::test]
@@ -286,10 +304,10 @@ async fn test_security_copy_with_valid_root() {
     let root_dir = TempDir::new().expect("tempdir");
     let src = root_dir.path().join("src.txt");
     let dst = root_dir.path().join("subdir").join("dst.txt");
-    
+
     fs::write(&src, "content").unwrap();
     fs::create_dir(root_dir.path().join("subdir")).unwrap();
-    
+
     let server = FsServer::new();
     let input = CopyFileInput {
         from: src.clone(),
@@ -297,10 +315,10 @@ async fn test_security_copy_with_valid_root() {
         overwrite: false,
         root: Some(root_dir.path().to_path_buf()),
     };
-    
+
     let result = server.fs_copy_file(Parameters(input)).await.unwrap();
     let json = extract_json(result);
-    
+
     let conflicts = json["conflicts"].as_array().unwrap();
     assert!(conflicts.is_empty());
     assert!(src.exists());
@@ -314,9 +332,9 @@ async fn test_security_root_defaults_to_cwd() {
     let root_dir = TempDir::new().expect("tempdir");
     let src = root_dir.path().join("src.txt");
     let dst = root_dir.path().join("dst.txt");
-    
+
     fs::write(&src, "content").unwrap();
-    
+
     let server = FsServer::new();
     // root: None should default to CWD in the server handler
     let input = MoveFileInput {
@@ -325,10 +343,13 @@ async fn test_security_root_defaults_to_cwd() {
         overwrite: false,
         root: None, // Should default to CWD
     };
-    
+
     // Since temp dir is likely outside CWD, this should fail validation
     let result = server.fs_move_file(Parameters(input)).await;
-    
+
     // Expect failure due to path traversal (temp dir outside CWD)
-    assert!(result.is_err(), "Expected path traversal error when temp dir is outside CWD");
+    assert!(
+        result.is_err(),
+        "Expected path traversal error when temp dir is outside CWD"
+    );
 }

@@ -505,9 +505,7 @@ mod tests {
         fs,
     };
 
-    use memory_kernel::workspace_policy::{
-        WORKSPACE_POLICY_FILE,
-    };
+    use memory_kernel::workspace_policy::WORKSPACE_POLICY_FILE;
     use tempfile::tempdir;
 
     use crate::{
@@ -609,7 +607,9 @@ mod tests {
         );
         let ticket_path = store.get_indexed(&id).unwrap().unwrap().path;
         let toml_str =
-            memory_kernel::model::manifest_format::format_manifest_toml(&manifest);
+            memory_kernel::model::manifest_format::format_manifest_toml(
+                &manifest,
+            );
         fs::write(
             ticket_path.join(crate::model::filesystem::TICKET_MANIFEST_FILE),
             toml_str,
@@ -657,7 +657,10 @@ mod tests {
             serde_json::Value::String("archived".to_string()),
         );
         let ticket_path = store.get_indexed(&id).unwrap().unwrap().path;
-        let toml_str = memory_kernel::model::manifest_format::format_manifest_toml(&manifest);
+        let toml_str =
+            memory_kernel::model::manifest_format::format_manifest_toml(
+                &manifest,
+            );
         fs::write(
             ticket_path.join(crate::model::filesystem::TICKET_MANIFEST_FILE),
             toml_str,

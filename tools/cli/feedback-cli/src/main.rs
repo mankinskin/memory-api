@@ -1,6 +1,12 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{
+    path::PathBuf,
+    str::FromStr,
+};
 
-use clap::{Parser, Subcommand};
+use clap::{
+    Parser,
+    Subcommand,
+};
 use feedback_api::{
     EntityFeedbackStore,
     EntityUrn,
@@ -73,14 +79,21 @@ enum Command {
 }
 
 fn parse_rating(raw: Option<String>) -> Result<Option<FeedbackRating>, String> {
-    raw.map(|value| FeedbackRating::from_str(&value)).transpose()
+    raw.map(|value| FeedbackRating::from_str(&value))
+        .transpose()
 }
 
-fn parse_note_kind(raw: Option<String>) -> Result<Option<FeedbackNoteKind>, String> {
-    raw.map(|value| FeedbackNoteKind::from_str(&value)).transpose()
+fn parse_note_kind(
+    raw: Option<String>
+) -> Result<Option<FeedbackNoteKind>, String> {
+    raw.map(|value| FeedbackNoteKind::from_str(&value))
+        .transpose()
 }
 
-fn store(store_root: PathBuf, workspace_slug: String) -> Result<EntityFeedbackStore, String> {
+fn store(
+    store_root: PathBuf,
+    workspace_slug: String,
+) -> Result<EntityFeedbackStore, String> {
     EntityFeedbackStore::new(store_root, workspace_slug)
 }
 
@@ -110,15 +123,9 @@ fn run() -> Result<(), String> {
             let target = EntityUrn::from_str(&target)?;
             let rating = parse_rating(rating)?;
             let note_kind = parse_note_kind(note_kind)?;
-            let provenance =
-                FeedbackProvenance::new(session_id, author, None)?;
+            let provenance = FeedbackProvenance::new(session_id, author, None)?;
             let entry = FeedbackEntry::new(
-                source,
-                target,
-                rating,
-                note,
-                note_kind,
-                provenance,
+                source, target, rating, note, note_kind, provenance,
             )?;
             let persisted = store.record_entry(entry)?;
             println!(
@@ -167,7 +174,8 @@ fn run() -> Result<(), String> {
         } => {
             let store = store(store_root, workspace_slug.clone())?;
             let target = EntityUrn::from_str(&target)?;
-            let author_id = author.unwrap_or_else(|| "transcript-miner".to_string());
+            let author_id =
+                author.unwrap_or_else(|| "transcript-miner".to_string());
             let _author = IngestAuthor::privileged_agent(author_id.clone())?;
             let entry = FeedbackEntry::new(
                 FeedbackSource::TranscriptMined,

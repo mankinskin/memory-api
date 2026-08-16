@@ -44,9 +44,8 @@ impl TicketServer {
                 direction.as_deref(),
                 &all_edges,
             )?;
-            let filters = parse_where_filters(&where_clauses).map_err(|message| {
-                McpError::invalid_params(message, None)
-            })?;
+            let filters = parse_where_filters(&where_clauses)
+                .map_err(|message| McpError::invalid_params(message, None))?;
             let tickets = apply_field_filters(tickets, &filters);
             let workflow = WorkflowModel::build(
                 store,

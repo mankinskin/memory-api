@@ -83,7 +83,13 @@ async fn get_ticket_with_explicit_parts_returns_exactly_those_kinds() {
         )
         .expect("create ticket");
     store
-        .write_part(&id, uuid::Uuid::new_v4(), "objective", "objective body", None)
+        .write_part(
+            &id,
+            uuid::Uuid::new_v4(),
+            "objective",
+            "objective body",
+            None,
+        )
         .expect("write objective part");
     store
         .write_part(
@@ -123,7 +129,10 @@ async fn get_ticket_with_explicit_parts_returns_exactly_those_kinds() {
         .iter()
         .map(|part| part["kind"].as_str().unwrap().to_string())
         .collect();
-    assert_eq!(kinds, vec!["objective".to_string(), "acceptance_criteria".to_string()]);
+    assert_eq!(
+        kinds,
+        vec!["objective".to_string(), "acceptance_criteria".to_string()]
+    );
 }
 
 #[tokio::test]

@@ -166,8 +166,7 @@ pub(crate) fn cmd_update(
     // domain `UpdateArgs`, whose single `description_update` field cannot
     // represent a description supplied without a mode (AC5 of ticket
     // 3d952036). Everything below this line uses the compile-time-safe type.
-    let args: UpdateArgs =
-        args.try_into().map_err(CliRunError::BadRequest)?;
+    let args: UpdateArgs = args.try_into().map_err(CliRunError::BadRequest)?;
     let id = super::resolve_uuid_prefix(&args.id, store)?;
     let author = resolve_author(args.author.as_deref());
 
@@ -514,7 +513,7 @@ mod tests {
             },
             &store,
         )
-            .expect("cmd_get succeeds");
+        .expect("cmd_get succeeds");
 
         assert_eq!(
             payload["ticket"]["path"].as_str(),

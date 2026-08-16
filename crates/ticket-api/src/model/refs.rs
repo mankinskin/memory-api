@@ -61,13 +61,15 @@ pub fn validate_ref_urn(
 ) -> Result<(), StorageError> {
     match kind {
         "spec" => {
-            let parsed = Urn::parse(urn).map_err(|_| invalid_urn_err(kind, urn))?;
+            let parsed =
+                Urn::parse(urn).map_err(|_| invalid_urn_err(kind, urn))?;
             if parsed.store != ContentKind::Spec {
                 return Err(invalid_urn_err(kind, urn));
             }
         },
         "rule" => {
-            let parsed = Urn::parse(urn).map_err(|_| invalid_urn_err(kind, urn))?;
+            let parsed =
+                Urn::parse(urn).map_err(|_| invalid_urn_err(kind, urn))?;
             if parsed.store != ContentKind::Rule {
                 return Err(invalid_urn_err(kind, urn));
             }
@@ -179,20 +181,38 @@ mod tests {
         assert!(validate_ref_urn("spec", &ok).is_ok());
         assert!(validate_ref_urn("spec", "not-a-urn").is_err());
         assert!(
-            validate_ref_urn("spec", &format!("ce://default/ticket/{}", uuid::Uuid::new_v4()))
-                .is_err()
+            validate_ref_urn(
+                "spec",
+                &format!("ce://default/ticket/{}", uuid::Uuid::new_v4())
+            )
+            .is_err()
         );
     }
 
     #[test]
     fn test_execution_urn_allows_non_uuid_id() {
-        assert!(validate_ref_urn("test_execution", "ce://default/test-execution/7f2c1a04").is_ok());
-        assert!(validate_ref_urn("test_execution", "ce://default/log/7f2c1a04").is_err());
+        assert!(
+            validate_ref_urn(
+                "test_execution",
+                "ce://default/test-execution/7f2c1a04"
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_ref_urn("test_execution", "ce://default/log/7f2c1a04")
+                .is_err()
+        );
     }
 
     #[test]
     fn file_ref_rejects_absolute_and_traversal_paths() {
-        assert!(validate_ref_urn("file", "memory-api/crates/ticket-api/src/storage/store.rs").is_ok());
+        assert!(
+            validate_ref_urn(
+                "file",
+                "memory-api/crates/ticket-api/src/storage/store.rs"
+            )
+            .is_ok()
+        );
         assert!(validate_ref_urn("file", "/etc/passwd").is_err());
         assert!(validate_ref_urn("file", "../secrets.toml").is_err());
         assert!(validate_ref_urn("file", "a\\b.rs").is_err());

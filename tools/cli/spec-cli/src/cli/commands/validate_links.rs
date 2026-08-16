@@ -151,13 +151,15 @@ fn count_by_kind(findings: &[Value]) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use ticket_api::model::ticket::SpecRef;
     use spec_api::{
         SpecManifest,
         TicketRef,
     };
     use tempfile::TempDir;
-    use ticket_api::storage::TicketStore;
+    use ticket_api::{
+        model::ticket::SpecRef,
+        storage::TicketStore,
+    };
 
     use super::{
         SpecStore,
@@ -206,8 +208,7 @@ mod tests {
         }]);
         spec_store.create(&spec_manifest, "body", None).unwrap();
 
-        let result =
-            cmd_validate_links(&spec_store, workspace_root).unwrap();
+        let result = cmd_validate_links(&spec_store, workspace_root).unwrap();
 
         assert_eq!(result["valid"], false);
         assert_eq!(result["checked"], 1);
@@ -238,8 +239,7 @@ mod tests {
         }]);
         spec_store.create(&spec_manifest, "body", None).unwrap();
 
-        let result =
-            cmd_validate_links(&spec_store, workspace_root).unwrap();
+        let result = cmd_validate_links(&spec_store, workspace_root).unwrap();
 
         assert_eq!(result["valid"], false);
         let findings = result["findings"].as_array().unwrap();
@@ -297,11 +297,9 @@ mod tests {
             .update(&ticket_id, patch, None, None, None, None)
             .unwrap();
 
-        let result =
-            cmd_validate_links(&spec_store, workspace_root).unwrap();
+        let result = cmd_validate_links(&spec_store, workspace_root).unwrap();
 
         assert_eq!(result["valid"], true);
         assert_eq!(result["findings"].as_array().unwrap().len(), 0);
     }
 }
-

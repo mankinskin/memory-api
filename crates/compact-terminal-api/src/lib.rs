@@ -22,7 +22,17 @@ pub mod response;
 pub mod spill_reader;
 
 pub use error::CompactTerminalError;
-pub use execute::{execute, DEFAULT_INLINE_LIMIT, DEFAULT_TIMEOUT_SECS};
-pub use request::{ReadSpillRequest, RunRequest};
-pub use response::{ReadSpillResult, RunResult};
+pub use execute::{
+    DEFAULT_INLINE_LIMIT,
+    DEFAULT_TIMEOUT_SECS,
+    execute,
+};
+pub use request::{
+    ReadSpillRequest,
+    RunRequest,
+};
+pub use response::{
+    ReadSpillResult,
+    RunResult,
+};
 pub use spill_reader::read_spill;

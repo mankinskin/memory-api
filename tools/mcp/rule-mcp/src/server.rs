@@ -93,9 +93,9 @@ impl RuleServer {
         workspace: &str,
     ) -> Result<PathBuf, McpError> {
         let workspace =
-            memory_kernel::workspace::validate_explicit_workspace_selector(Some(
-                workspace,
-            ))
+            memory_kernel::workspace::validate_explicit_workspace_selector(
+                Some(workspace),
+            )
             .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
         let resolved = memory_kernel::workspace::resolve_store_root_from(
             Path::new(workspace),
@@ -398,12 +398,12 @@ pub async fn run_mcp_server(
 mod tests {
     #[test]
     fn workspace_validation_rejects_ambient_aliases() {
-        for value in [None, Some(""), Some("default"), Some("."), Some("..")]
-        {
-            let err = memory_kernel::workspace::validate_explicit_workspace_selector(
-                value,
-            )
-            .expect_err("should reject ambient selector");
+        for value in [None, Some(""), Some("default"), Some("."), Some("..")] {
+            let err =
+                memory_kernel::workspace::validate_explicit_workspace_selector(
+                    value,
+                )
+                .expect_err("should reject ambient selector");
             let err_msg = err.to_string();
             assert!(
                 err_msg.contains("invalid workspace selector"),

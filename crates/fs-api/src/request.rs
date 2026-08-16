@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 /// Request to list directory contents with bounded output.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

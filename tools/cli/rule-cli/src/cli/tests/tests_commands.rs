@@ -218,19 +218,26 @@ fn missing_rule_command_relays_signal_to_ticket_and_feedback_stores() {
     assert_eq!(payload["ticket_created"], true);
 
     let ticket_id = payload["ticket_id"].as_str().unwrap();
-    let ticket_store_root =
-        memory_kernel::workspace::resolve_store_root_from(&workspace_root, ".ticket");
+    let ticket_store_root = memory_kernel::workspace::resolve_store_root_from(
+        &workspace_root,
+        ".ticket",
+    );
     let ticket_store =
-        ticket_api::storage::TicketStore::open_or_init(&ticket_store_root).unwrap();
+        ticket_api::storage::TicketStore::open_or_init(&ticket_store_root)
+            .unwrap();
     let parsed_id = uuid::Uuid::parse_str(ticket_id).unwrap();
     assert!(ticket_store.get(&parsed_id).is_ok());
 
-    let feedback_store_root =
-        memory_kernel::workspace::resolve_store_root_from(&workspace_root, ".feedback");
+    let feedback_store_root = memory_kernel::workspace::resolve_store_root_from(
+        &workspace_root,
+        ".feedback",
+    );
     let feedback_store =
-        feedback_api::EntityFeedbackStore::new(feedback_store_root, "default").unwrap();
+        feedback_api::EntityFeedbackStore::new(feedback_store_root, "default")
+            .unwrap();
     let ticket_urn =
-        feedback_api::EntityUrn::ticket("default", ticket_id.to_string()).unwrap();
+        feedback_api::EntityUrn::ticket("default", ticket_id.to_string())
+            .unwrap();
     let entries = feedback_store.entries_for(&ticket_urn).unwrap();
     assert_eq!(entries.len(), 1);
 }

@@ -92,16 +92,16 @@ use test_api::{
     ValidationProvenance,
     ValidationSpec,
 };
-use ticket_api::{
-    model::filesystem::ScanRoot,
-    storage::store::TicketStore,
-};
 use ticket::serve::{
     AppState,
     StreamBroker,
     WorkspaceRegistry,
+    routes::build_router,
 };
-use ticket::serve::routes::build_router;
+use ticket_api::{
+    model::filesystem::ScanRoot,
+    storage::store::TicketStore,
+};
 use tower::ServiceExt;
 
 use crate::domains::{

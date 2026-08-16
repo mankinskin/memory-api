@@ -89,13 +89,11 @@ fn ticket_matches_field_filters(
     };
 
     filters.iter().all(|(key, expected)| {
-        indexed_ticket_field(ticket, key)
-            .or_else(|| {
-                manifest.as_ref().and_then(|entity| {
-                    entity.extra.get(key).and_then(|value| value.as_str())
-                })
+        indexed_ticket_field(ticket, key).or_else(|| {
+            manifest.as_ref().and_then(|entity| {
+                entity.extra.get(key).and_then(|value| value.as_str())
             })
-            == Some(expected.as_str())
+        }) == Some(expected.as_str())
     })
 }
 

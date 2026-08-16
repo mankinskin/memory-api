@@ -1,27 +1,47 @@
-use std::{fs, io::ErrorKind};
+use std::{
+    fs,
+    io::ErrorKind,
+};
 
 use crate::{
     error::FsApiError,
-    request::{CopyFileRequest, DeleteDirRequest, DeleteFileRequest, MoveFileRequest, RenameFileRequest},
-    response::{Conflict, ConflictKind, MutationResult},
+    request::{
+        CopyFileRequest,
+        DeleteDirRequest,
+        DeleteFileRequest,
+        MoveFileRequest,
+        RenameFileRequest,
+    },
+    response::{
+        Conflict,
+        ConflictKind,
+        MutationResult,
+    },
     security::validate_path_within_root,
 };
 use ignore::WalkBuilder;
 
 /// Move a file or directory.
-pub fn move_file(request: &MoveFileRequest) -> Result<MutationResult, FsApiError> {
+pub fn move_file(
+    request: &MoveFileRequest
+) -> Result<MutationResult, FsApiError> {
     let mut conflicts = Vec::new();
     let mut affected_paths = Vec::new();
 
     // Validate paths against root and capture canonical paths.
-    let canonical_from = validate_path_within_root(&request.from, &request.root, "source")?;
-    let canonical_to = validate_path_within_root(&request.to, &request.root, "destination")?;
+    let canonical_from =
+        validate_path_within_root(&request.from, &request.root, "source")?;
+    let canonical_to =
+        validate_path_within_root(&request.to, &request.root, "destination")?;
 
     if !canonical_from.exists() {
         conflicts.push(Conflict {
             kind: ConflictKind::SourceMissing,
             path: canonical_from.to_path_buf(),
-            message: format!("source does not exist: {}", canonical_from.display()),
+            message: format!(
+                "source does not exist: {}",
+                canonical_from.display()
+            ),
         });
         return Ok(MutationResult {
             affected_paths,
@@ -33,7 +53,10 @@ pub fn move_file(request: &MoveFileRequest) -> Result<MutationResult, FsApiError
         conflicts.push(Conflict {
             kind: ConflictKind::DestinationExists,
             path: canonical_to.to_path_buf(),
-            message: format!("destination already exists: {}", canonical_to.display()),
+            message: format!(
+                "destination already exists: {}",
+                canonical_to.display()
+            ),
         });
         return Ok(MutationResult {
             affected_paths,
@@ -44,10 +67,12 @@ pub fn move_file(request: &MoveFileRequest) -> Result<MutationResult, FsApiError
     // Ensure parent directory exists.
     if let Some(parent) = canonical_to.parent() {
         if !parent.exists() {
-            fs::create_dir_all(parent).map_err(|e| FsApiError::CannotMoveFile {
-                from: canonical_from.to_path_buf(),
-                to: canonical_to.to_path_buf(),
-                source: e,
+            fs::create_dir_all(parent).map_err(|e| {
+                FsApiError::CannotMoveFile {
+                    from: canonical_from.to_path_buf(),
+                    to: canonical_to.to_path_buf(),
+                    source: e,
+                }
             })?;
         }
     }
@@ -77,19 +102,26 @@ pub fn move_file(request: &MoveFileRequest) -> Result<MutationResult, FsApiError
 }
 
 /// Rename a file or directory (in-place within parent directory).
-pub fn rename_file(request: &RenameFileRequest) -> Result<MutationResult, FsApiError> {
+pub fn rename_file(
+    request: &RenameFileRequest
+) -> Result<MutationResult, FsApiError> {
     let mut conflicts = Vec::new();
     let mut affected_paths = Vec::new();
 
     // Validate paths against root and capture canonical paths.
-    let canonical_from = validate_path_within_root(&request.from, &request.root, "source")?;
-    let canonical_to = validate_path_within_root(&request.to, &request.root, "destination")?;
+    let canonical_from =
+        validate_path_within_root(&request.from, &request.root, "source")?;
+    let canonical_to =
+        validate_path_within_root(&request.to, &request.root, "destination")?;
 
     if !canonical_from.exists() {
         conflicts.push(Conflict {
             kind: ConflictKind::SourceMissing,
             path: canonical_from.to_path_buf(),
-            message: format!("source does not exist: {}", canonical_from.display()),
+            message: format!(
+                "source does not exist: {}",
+                canonical_from.display()
+            ),
         });
         return Ok(MutationResult {
             affected_paths,
@@ -101,7 +133,10 @@ pub fn rename_file(request: &RenameFileRequest) -> Result<MutationResult, FsApiE
         conflicts.push(Conflict {
             kind: ConflictKind::DestinationExists,
             path: canonical_to.to_path_buf(),
-            message: format!("destination already exists: {}", canonical_to.display()),
+            message: format!(
+                "destination already exists: {}",
+                canonical_to.display()
+            ),
         });
         return Ok(MutationResult {
             affected_paths,
@@ -109,10 +144,12 @@ pub fn rename_file(request: &RenameFileRequest) -> Result<MutationResult, FsApiE
         });
     }
 
-    fs::rename(&canonical_from, &canonical_to).map_err(|e| FsApiError::CannotMoveFile {
-        from: canonical_from.to_path_buf(),
-        to: canonical_to.to_path_buf(),
-        source: e,
+    fs::rename(&canonical_from, &canonical_to).map_err(|e| {
+        FsApiError::CannotMoveFile {
+            from: canonical_from.to_path_buf(),
+            to: canonical_to.to_path_buf(),
+            source: e,
+        }
     })?;
 
     affected_paths.push(canonical_from.to_path_buf());
@@ -125,19 +162,26 @@ pub fn rename_file(request: &RenameFileRequest) -> Result<MutationResult, FsApiE
 }
 
 /// Copy a file.
-pub fn copy_file(request: &CopyFileRequest) -> Result<MutationResult, FsApiError> {
+pub fn copy_file(
+    request: &CopyFileRequest
+) -> Result<MutationResult, FsApiError> {
     let mut conflicts = Vec::new();
     let mut affected_paths = Vec::new();
 
     // Validate paths against root and capture canonical paths.
-    let canonical_from = validate_path_within_root(&request.from, &request.root, "source")?;
-    let canonical_to = validate_path_within_root(&request.to, &request.root, "destination")?;
+    let canonical_from =
+        validate_path_within_root(&request.from, &request.root, "source")?;
+    let canonical_to =
+        validate_path_within_root(&request.to, &request.root, "destination")?;
 
     if !canonical_from.exists() {
         conflicts.push(Conflict {
             kind: ConflictKind::SourceMissing,
             path: canonical_from.to_path_buf(),
-            message: format!("source does not exist: {}", canonical_from.display()),
+            message: format!(
+                "source does not exist: {}",
+                canonical_from.display()
+            ),
         });
         return Ok(MutationResult {
             affected_paths,
@@ -156,7 +200,10 @@ pub fn copy_file(request: &CopyFileRequest) -> Result<MutationResult, FsApiError
         conflicts.push(Conflict {
             kind: ConflictKind::DestinationExists,
             path: canonical_to.to_path_buf(),
-            message: format!("destination already exists: {}", canonical_to.display()),
+            message: format!(
+                "destination already exists: {}",
+                canonical_to.display()
+            ),
         });
         return Ok(MutationResult {
             affected_paths,
@@ -167,18 +214,22 @@ pub fn copy_file(request: &CopyFileRequest) -> Result<MutationResult, FsApiError
     // Ensure parent directory exists.
     if let Some(parent) = canonical_to.parent() {
         if !parent.exists() {
-            fs::create_dir_all(parent).map_err(|e| FsApiError::CannotCopyFile {
-                from: canonical_from.to_path_buf(),
-                to: canonical_to.to_path_buf(),
-                source: e,
+            fs::create_dir_all(parent).map_err(|e| {
+                FsApiError::CannotCopyFile {
+                    from: canonical_from.to_path_buf(),
+                    to: canonical_to.to_path_buf(),
+                    source: e,
+                }
             })?;
         }
     }
 
-    fs::copy(&canonical_from, &canonical_to).map_err(|e| FsApiError::CannotCopyFile {
-        from: canonical_from.to_path_buf(),
-        to: canonical_to.to_path_buf(),
-        source: e,
+    fs::copy(&canonical_from, &canonical_to).map_err(|e| {
+        FsApiError::CannotCopyFile {
+            from: canonical_from.to_path_buf(),
+            to: canonical_to.to_path_buf(),
+            source: e,
+        }
     })?;
 
     affected_paths.push(canonical_to.to_path_buf());
@@ -190,18 +241,24 @@ pub fn copy_file(request: &CopyFileRequest) -> Result<MutationResult, FsApiError
 }
 
 /// Delete a file.
-pub fn delete_file(request: &DeleteFileRequest) -> Result<MutationResult, FsApiError> {
+pub fn delete_file(
+    request: &DeleteFileRequest
+) -> Result<MutationResult, FsApiError> {
     let mut conflicts = Vec::new();
     let mut affected_paths = Vec::new();
 
     // Validate path against root and capture canonical path.
-    let canonical_path = validate_path_within_root(&request.path, &request.root, "file")?;
+    let canonical_path =
+        validate_path_within_root(&request.path, &request.root, "file")?;
 
     if !canonical_path.exists() {
         conflicts.push(Conflict {
             kind: ConflictKind::SourceMissing,
             path: canonical_path.to_path_buf(),
-            message: format!("file does not exist: {}", canonical_path.display()),
+            message: format!(
+                "file does not exist: {}",
+                canonical_path.display()
+            ),
         });
         return Ok(MutationResult {
             affected_paths,
@@ -216,9 +273,11 @@ pub fn delete_file(request: &DeleteFileRequest) -> Result<MutationResult, FsApiE
         )));
     }
 
-    fs::remove_file(&canonical_path).map_err(|e| FsApiError::CannotDeleteFile {
-        path: canonical_path.to_path_buf(),
-        source: e,
+    fs::remove_file(&canonical_path).map_err(|e| {
+        FsApiError::CannotDeleteFile {
+            path: canonical_path.to_path_buf(),
+            source: e,
+        }
     })?;
 
     affected_paths.push(canonical_path.to_path_buf());
@@ -235,18 +294,24 @@ pub fn delete_file(request: &DeleteFileRequest) -> Result<MutationResult, FsApiE
 ///
 /// When `recursive` is true, enforces a 10,000 entry limit to prevent unbounded
 /// deletion of large trees. The pre-count short-circuits on exceeding the limit.
-pub fn delete_dir(request: &DeleteDirRequest) -> Result<MutationResult, FsApiError> {
+pub fn delete_dir(
+    request: &DeleteDirRequest
+) -> Result<MutationResult, FsApiError> {
     let mut conflicts = Vec::new();
     let mut affected_paths = Vec::new();
 
     // Validate path against root and capture canonical path.
-    let canonical_path = validate_path_within_root(&request.path, &request.root, "directory")?;
+    let canonical_path =
+        validate_path_within_root(&request.path, &request.root, "directory")?;
 
     if !canonical_path.exists() {
         conflicts.push(Conflict {
             kind: ConflictKind::SourceMissing,
             path: canonical_path.to_path_buf(),
-            message: format!("directory does not exist: {}", canonical_path.display()),
+            message: format!(
+                "directory does not exist: {}",
+                canonical_path.display()
+            ),
         });
         return Ok(MutationResult {
             affected_paths,
@@ -266,7 +331,7 @@ pub fn delete_dir(request: &DeleteDirRequest) -> Result<MutationResult, FsApiErr
         // Short-circuit on exceeding the limit to avoid walking a hostile tree.
         // Count ALL entries, including errors, to prevent bypass via unreadable trees.
         const MAX_ENTRIES: usize = 10_000;
-        
+
         let walker = WalkBuilder::new(&canonical_path)
             .follow_links(false)
             .build();
@@ -283,14 +348,18 @@ pub fn delete_dir(request: &DeleteDirRequest) -> Result<MutationResult, FsApiErr
             }
         }
 
-        fs::remove_dir_all(&canonical_path).map_err(|e| FsApiError::CannotDeleteDirectory {
-            path: canonical_path.to_path_buf(),
-            source: e,
+        fs::remove_dir_all(&canonical_path).map_err(|e| {
+            FsApiError::CannotDeleteDirectory {
+                path: canonical_path.to_path_buf(),
+                source: e,
+            }
         })?;
     } else {
-        fs::remove_dir(&canonical_path).map_err(|e| FsApiError::CannotDeleteDirectory {
-            path: canonical_path.to_path_buf(),
-            source: e,
+        fs::remove_dir(&canonical_path).map_err(|e| {
+            FsApiError::CannotDeleteDirectory {
+                path: canonical_path.to_path_buf(),
+                source: e,
+            }
         })?;
     }
 

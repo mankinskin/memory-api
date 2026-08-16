@@ -7,11 +7,13 @@ use tempfile::tempdir;
 use uuid::Uuid;
 
 use crate::{
-    model::parts::{
-        CORE_PART_KINDS,
-        ViewProfile,
+    model::{
+        parts::{
+            CORE_PART_KINDS,
+            ViewProfile,
+        },
+        ticket::TicketManifestExt,
     },
-    model::ticket::TicketManifestExt,
     storage::{
         ReadProjection,
         TicketStore,
@@ -42,7 +44,13 @@ fn fixture_ticket_with_all_kinds() -> (tempfile::TempDir, TicketStore, Uuid) {
             continue;
         }
         store
-            .write_part(&id, Uuid::new_v4(), kind, &format!("{kind} content"), None)
+            .write_part(
+                &id,
+                Uuid::new_v4(),
+                kind,
+                &format!("{kind} content"),
+                None,
+            )
             .unwrap();
     }
     // The requirements part is the amendment's supersedes target so
@@ -66,13 +74,21 @@ fn fixture_ticket_with_all_kinds() -> (tempfile::TempDir, TicketStore, Uuid) {
 
     // One free-form attachment kind.
     store
-        .write_part(&id, Uuid::new_v4(), "handoff_notes", "attachment content", None)
+        .write_part(
+            &id,
+            Uuid::new_v4(),
+            "handoff_notes",
+            "attachment content",
+            None,
+        )
         .unwrap();
 
     (dir, store, id)
 }
 
-fn top_level_kinds(projection: &crate::storage::TicketProjection) -> BTreeSet<String> {
+fn top_level_kinds(
+    projection: &crate::storage::TicketProjection
+) -> BTreeSet<String> {
     projection.parts.iter().map(|p| p.kind.clone()).collect()
 }
 
@@ -82,7 +98,10 @@ fn summary_profile_returns_only_objective() {
     let projected = store
         .project(&id, &ReadProjection::Profile(ViewProfile::Summary))
         .unwrap();
-    assert_eq!(top_level_kinds(&projected), BTreeSet::from(["objective".to_string()]));
+    assert_eq!(
+        top_level_kinds(&projected),
+        BTreeSet::from(["objective".to_string()])
+    );
     assert!(projected.refs.is_none(), "summary must not include refs");
 }
 
@@ -122,10 +141,11 @@ fn review_profile_returns_exactly_acceptance_criteria_review_validation() {
     let projected = store
         .project(&id, &ReadProjection::Profile(ViewProfile::Review))
         .unwrap();
-    let expected: BTreeSet<String> = ["acceptance_criteria", "review", "validation"]
-        .into_iter()
-        .map(String::from)
-        .collect();
+    let expected: BTreeSet<String> =
+        ["acceptance_criteria", "review", "validation"]
+            .into_iter()
+            .map(String::from)
+            .collect();
     assert_eq!(top_level_kinds(&projected), expected);
     assert!(projected.refs.is_none(), "review must not include refs");
 }
@@ -167,9 +187,18 @@ fn explicit_parts_list_returns_exactly_those_kinds_in_deterministic_order() {
         first.parts.iter().map(|p| p.kind.clone()).collect();
     let second_kinds: Vec<String> =
         second.parts.iter().map(|p| p.kind.clone()).collect();
-    assert_eq!(first_kinds, vec!["objective".to_string(), "acceptance_criteria".to_string()]);
-    assert_eq!(first_kinds, second_kinds, "explicit-list order must be deterministic");
-    assert!(first.refs.is_none(), "explicit part list never auto-includes refs");
+    assert_eq!(
+        first_kinds,
+        vec!["objective".to_string(), "acceptance_criteria".to_string()]
+    );
+    assert_eq!(
+        first_kinds, second_kinds,
+        "explicit-list order must be deterministic"
+    );
+    assert!(
+        first.refs.is_none(),
+        "explicit part list never auto-includes refs"
+    );
     // No amendment inlining for explicit lists.
     assert!(first.parts.iter().all(|p| p.amendments.is_empty()));
 }
@@ -191,7 +220,10 @@ fn explicit_parts_list_absent_kind_yields_empty_not_error() {
         .unwrap();
     let projection = ReadProjection::Kinds(vec!["design".to_string()]);
     let projected = store.project(&id, &projection).unwrap();
-    assert!(projected.parts.is_empty(), "absent core kind yields no entry, not an error");
+    assert!(
+        projected.parts.is_empty(),
+        "absent core kind yields no entry, not an error"
+    );
 }
 
 #[test]
@@ -227,7 +259,10 @@ fn legacy_ticket_with_no_parts_table_projects_sanely_under_every_profile() {
         assert_eq!(projected.parts.len(), 1);
         let part = &projected.parts[0];
         assert_eq!(part.kind, "objective");
-        assert!(part.implicit, "legacy objective part must be marked implicit");
+        assert!(
+            part.implicit,
+            "legacy objective part must be marked implicit"
+        );
         assert_eq!(part.content, "Legacy description-only objective");
     }
 }
@@ -238,7 +273,10 @@ fn unknown_view_profile_is_rejected_naming_valid_vocabulary() {
     let message = err.to_string();
     assert!(message.contains("bogus"));
     for name in crate::model::parts::VIEW_PROFILE_NAMES {
-        assert!(message.contains(name), "error must name '{name}': {message}");
+        assert!(
+            message.contains(name),
+            "error must name '{name}': {message}"
+        );
     }
 }
 
@@ -246,16 +284,23 @@ fn unknown_view_profile_is_rejected_naming_valid_vocabulary() {
 fn unknown_part_kind_in_explicit_list_is_rejected() {
     let (_dir, store, id) = fixture_ticket_with_all_kinds();
     let err = store
-        .project(&id, &ReadProjection::Kinds(vec!["not_a_real_kind".to_string()]))
+        .project(
+            &id,
+            &ReadProjection::Kinds(vec!["not_a_real_kind".to_string()]),
+        )
         .unwrap_err();
     let message = err.to_string();
     assert!(message.contains("not_a_real_kind"));
-    assert!(message.contains("objective"), "error should name known vocabulary: {message}");
+    assert!(
+        message.contains("objective"),
+        "error should name known vocabulary: {message}"
+    );
 }
 
 #[test]
 fn both_view_and_parts_is_rejected() {
-    let err = ReadProjection::decode(Some("summary"), Some("objective")).unwrap_err();
+    let err =
+        ReadProjection::decode(Some("summary"), Some("objective")).unwrap_err();
     assert!(err.to_string().contains("both"));
 }
 
@@ -265,7 +310,8 @@ fn no_view_and_no_parts_decodes_to_none_for_default_summary() {
 }
 
 #[test]
-fn plan_profile_inlines_frozen_requirements_amendments_oldest_first_newest_last() {
+fn plan_profile_inlines_frozen_requirements_amendments_oldest_first_newest_last()
+ {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();
     let id = store
@@ -282,7 +328,13 @@ fn plan_profile_inlines_frozen_requirements_amendments_oldest_first_newest_last(
 
     let requirements_id = Uuid::new_v4();
     store
-        .write_part(&id, requirements_id, "requirements", "frozen requirements text", None)
+        .write_part(
+            &id,
+            requirements_id,
+            "requirements",
+            "frozen requirements text",
+            None,
+        )
         .unwrap();
 
     // Freeze planning parts by entering `planned`.
@@ -291,10 +343,22 @@ fn plan_profile_inlines_frozen_requirements_amendments_oldest_first_newest_last(
         .unwrap();
 
     store
-        .write_amendment_part(&id, Uuid::new_v4(), "amendment one", requirements_id, None)
+        .write_amendment_part(
+            &id,
+            Uuid::new_v4(),
+            "amendment one",
+            requirements_id,
+            None,
+        )
         .unwrap();
     store
-        .write_amendment_part(&id, Uuid::new_v4(), "amendment two", requirements_id, None)
+        .write_amendment_part(
+            &id,
+            Uuid::new_v4(),
+            "amendment two",
+            requirements_id,
+            None,
+        )
         .unwrap();
 
     let projected = store

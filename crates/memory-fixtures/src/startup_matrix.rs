@@ -1,10 +1,10 @@
 use crate::{
-    empty_workspace,
     BrowserFrontendPort,
     BrowserFrontendProbe,
     StartupProbe,
     StartupProbeError,
     StdioServerProbe,
+    empty_workspace,
 };
 use serde::Serialize;
 use std::{

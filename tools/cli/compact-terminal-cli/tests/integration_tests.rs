@@ -39,10 +39,7 @@ fn test_run_with_custom_inline_limit() {
 #[test]
 fn test_run_with_timeout() {
     let mut cmd = Command::cargo_bin("compact-terminal").unwrap();
-    cmd.arg("run")
-        .arg("echo quick")
-        .arg("--timeout")
-        .arg("5");
+    cmd.arg("run").arg("echo quick").arg("--timeout").arg("5");
 
     let output = cmd.output().unwrap();
     assert!(output.status.success());

@@ -35,11 +35,15 @@ mod tests {
     fn emits_signal_only_when_no_rule_matches() {
         let context_tags = vec!["policy".to_string()];
 
-        let no_match = emit_missing_rule_match_signal("query", &context_tags, false)
-            .expect("signal");
+        let no_match =
+            emit_missing_rule_match_signal("query", &context_tags, false)
+                .expect("signal");
         assert!(no_match.indicates_no_match());
         assert_eq!(no_match.query, "query");
 
-        assert!(emit_missing_rule_match_signal("query", &context_tags, true).is_none());
+        assert!(
+            emit_missing_rule_match_signal("query", &context_tags, true)
+                .is_none()
+        );
     }
 }

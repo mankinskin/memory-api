@@ -1,6 +1,9 @@
 use clap::error::ErrorKind;
 use memory_kernel::runtime::init_transport_tracing;
-use std::io::{self, Write};
+use std::io::{
+    self,
+    Write,
+};
 
 use ticket::cli::{
     CliOutput,
@@ -67,7 +70,10 @@ enum StdoutWrite {
     BrokenPipe,
 }
 
-fn finish_stdout(rendered: &str, exit_code: i32) -> ! {
+fn finish_stdout(
+    rendered: &str,
+    exit_code: i32,
+) -> ! {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
 
@@ -87,9 +93,8 @@ fn write_stdout<W: Write>(
 ) -> io::Result<StdoutWrite> {
     match writeln!(writer, "{rendered}") {
         Ok(()) => Ok(StdoutWrite::Written),
-        Err(err) if err.kind() == io::ErrorKind::BrokenPipe => {
-            Ok(StdoutWrite::BrokenPipe)
-        },
+        Err(err) if err.kind() == io::ErrorKind::BrokenPipe =>
+            Ok(StdoutWrite::BrokenPipe),
         Err(err) => Err(err),
     }
 }
@@ -110,9 +115,15 @@ fn validate_links_exit_code(envelope: &serde_json::Value) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{self, Write};
+    use std::io::{
+        self,
+        Write,
+    };
 
-    use super::{StdoutWrite, write_stdout};
+    use super::{
+        StdoutWrite,
+        write_stdout,
+    };
 
     struct BrokenPipeWriter;
 

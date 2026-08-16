@@ -51,26 +51,36 @@ fn materializes_fixture_and_exposes_store_roots() {
 fn materializes_representative_domain_seeds() {
     let fixture = materialize_fixture().expect("fixture should load");
 
-    assert!(fixture
-        .workspace_root
-        .join(".rule/rules/00000000-0000-0000-0000-0000000000c1/rule.toml")
-        .is_file());
-    assert!(fixture
-        .workspace_root
-        .join(".session/sessions/default/fixture-session/session.json")
-        .is_file());
-    assert!(fixture
-        .workspace_root
-        .join(".test-domain/default/executions/fixture-execution.json")
-        .is_file());
-    assert!(fixture
-        .workspace_root
-        .join(".log/default/captures/fixture-log-capture.json")
-        .is_file());
-    assert!(fixture
-        .workspace_root
-        .join("src/fixture_module.rs")
-        .is_file());
+    assert!(
+        fixture
+            .workspace_root
+            .join(".rule/rules/00000000-0000-0000-0000-0000000000c1/rule.toml")
+            .is_file()
+    );
+    assert!(
+        fixture
+            .workspace_root
+            .join(".session/sessions/default/fixture-session/session.json")
+            .is_file()
+    );
+    assert!(
+        fixture
+            .workspace_root
+            .join(".test-domain/default/executions/fixture-execution.json")
+            .is_file()
+    );
+    assert!(
+        fixture
+            .workspace_root
+            .join(".log/default/captures/fixture-log-capture.json")
+            .is_file()
+    );
+    assert!(
+        fixture
+            .workspace_root
+            .join("src/fixture_module.rs")
+            .is_file()
+    );
     assert!(fixture.workspace_root.join("docs/fixture.md").is_file());
 }
 

@@ -8,10 +8,10 @@ use serde::{
     Serialize,
 };
 use test_api::{
-    ValidationExecution,
-    ValidationLinks,
     IdentifiableArtifact,
     TraceableArtifact,
+    ValidationExecution,
+    ValidationLinks,
 };
 
 mod error;
@@ -135,7 +135,8 @@ impl ValidationLogCapture {
         }
 
         Err(crate::LogError::InteroperabilityContract {
-            record_kind: <Self as InteroperableArtifact>::artifact_class(self).to_string(),
+            record_kind: <Self as InteroperableArtifact>::artifact_class(self)
+                .to_string(),
             detail: gaps.join(", "),
         })
     }
@@ -422,7 +423,8 @@ impl RuntimeLogSession {
         }
 
         Err(crate::LogError::InteroperabilityContract {
-            record_kind: <Self as InteroperableArtifact>::artifact_class(self).to_string(),
+            record_kind: <Self as InteroperableArtifact>::artifact_class(self)
+                .to_string(),
             detail: gaps.join(", "),
         })
     }

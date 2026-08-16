@@ -6,12 +6,12 @@ use std::{
     },
 };
 
+use memory_fixtures::empty_workspace;
 use rule_api::{
     RuleFilter,
     RuleManifest,
     RuleStore,
 };
-use memory_fixtures::empty_workspace;
 use spec_api::{
     SpecManifest,
     SpecStore,
@@ -58,8 +58,8 @@ fn empty_filter_args() -> FilterArgs {
     }
 }
 
-fn create_nested_rule_fixture() -> (memory_fixtures::EmptyWorkspace, PathBuf, PathBuf, String)
-{
+fn create_nested_rule_fixture()
+-> (memory_fixtures::EmptyWorkspace, PathBuf, PathBuf, String) {
     let dir = empty_workspace().unwrap();
     let repo_root = dir.path().join("repo");
     let parent_index_root = repo_root.join(".rule");

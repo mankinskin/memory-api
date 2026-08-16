@@ -204,15 +204,17 @@ fn cmd_workspace_roots(store: &TicketStore) -> Result<Value, CliRunError> {
 }
 
 fn cmd_workspace_prune_roots(
-    store: &TicketStore,
+    store: &TicketStore
 ) -> Result<Value, CliRunError> {
     let pruned = store.prune_worktree_scan_roots()?;
     let roots = pruned
         .into_iter()
-        .map(|root| json!({
-            "path": root.path.display().to_string(),
-            "label": root.label,
-        }))
+        .map(|root| {
+            json!({
+                "path": root.path.display().to_string(),
+                "label": root.label,
+            })
+        })
         .collect::<Vec<_>>();
     Ok(json!({
         "command": "workspace_prune_roots",

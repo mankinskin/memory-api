@@ -27,9 +27,16 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{
+    Parser,
+    Subcommand,
+};
 use compact_terminal_api::{
-    CompactTerminalError, ReadSpillRequest, RunRequest, execute, read_spill,
+    CompactTerminalError,
+    ReadSpillRequest,
+    RunRequest,
+    execute,
+    read_spill,
 };
 
 /// compact-terminal — token-bounded terminal output.
@@ -120,14 +127,16 @@ fn main() -> Result<(), CompactTerminalError> {
             let result = execute(&request)?;
 
             // Print result as JSON for machine consumption
-            let json = serde_json::to_string_pretty(&result)
-                .map_err(|e| CompactTerminalError::InvalidRequest(
-                    format!("serialization error: {}", e)
-                ))?;
+            let json = serde_json::to_string_pretty(&result).map_err(|e| {
+                CompactTerminalError::InvalidRequest(format!(
+                    "serialization error: {}",
+                    e
+                ))
+            })?;
             println!("{}", json);
 
             Ok(())
-        }
+        },
 
         Command::ReadSpill {
             spill_file,
@@ -148,6 +157,6 @@ fn main() -> Result<(), CompactTerminalError> {
             print!("{}", result.content);
 
             Ok(())
-        }
+        },
     }
 }

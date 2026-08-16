@@ -24,17 +24,34 @@ pub mod list_dir;
 pub mod mutation;
 pub mod request;
 pub mod response;
-pub mod stat;
 mod security;
+pub mod stat;
 
 pub use error::FsApiError;
 pub use list_dir::list_dir;
-pub use mutation::{copy_file, delete_dir, delete_file, move_file, rename_file};
+pub use mutation::{
+    copy_file,
+    delete_dir,
+    delete_file,
+    move_file,
+    rename_file,
+};
 pub use request::{
-    CopyFileRequest, DeleteDirRequest, DeleteFileRequest, ListDirRequest, MoveFileRequest,
-    RenameFileRequest, StatRequest,
+    CopyFileRequest,
+    DeleteDirRequest,
+    DeleteFileRequest,
+    ListDirRequest,
+    MoveFileRequest,
+    RenameFileRequest,
+    StatRequest,
 };
 pub use response::{
-    Conflict, ConflictKind, DirEntry, EntryKind, ListDirResult, MutationResult, StatResult,
+    Conflict,
+    ConflictKind,
+    DirEntry,
+    EntryKind,
+    ListDirResult,
+    MutationResult,
+    StatResult,
 };
 pub use stat::stat;

@@ -1,4 +1,7 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{
+    path::PathBuf,
+    str::FromStr,
+};
 
 use feedback_api::{
     EntityFeedbackStore,
@@ -27,7 +30,10 @@ use rmcp::{
     tool_router,
     transport::stdio,
 };
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct IngestInput {
@@ -76,7 +82,10 @@ impl FeedbackServer {
         workspace: &str,
         workspace_slug: &str,
     ) -> Result<EntityFeedbackStore, McpError> {
-        let workspace = memory_kernel::workspace::validate_explicit_workspace_selector(Some(workspace))
+        let workspace =
+            memory_kernel::workspace::validate_explicit_workspace_selector(
+                Some(workspace),
+            )
             .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
         let root = memory_kernel::workspace::resolve_store_root_from(
             std::path::Path::new(workspace),
@@ -87,7 +96,7 @@ impl FeedbackServer {
     }
 
     fn json_result<T: Serialize>(
-        value: &T,
+        value: &T
     ) -> Result<CallToolResult, McpError> {
         let text = serde_json::to_string(value).map_err(|err| {
             McpError::internal_error(format!("serialization: {err}"), None)
@@ -121,19 +130,11 @@ impl FeedbackServer {
             .map(|value| FeedbackNoteKind::from_str(&value))
             .transpose()
             .map_err(|err| McpError::invalid_params(err, None))?;
-        let provenance = FeedbackProvenance::new(
-            input.session_id,
-            input.author,
-            None,
-        )
-        .map_err(|err| McpError::invalid_params(err, None))?;
+        let provenance =
+            FeedbackProvenance::new(input.session_id, input.author, None)
+                .map_err(|err| McpError::invalid_params(err, None))?;
         let entry = FeedbackEntry::new(
-            source,
-            target,
-            rating,
-            input.note,
-            note_kind,
-            provenance,
+            source, target, rating, input.note, note_kind, provenance,
         )
         .map_err(|err| McpError::invalid_params(err, None))?;
         let persisted = store
@@ -204,8 +205,12 @@ impl FeedbackServer {
             Some(FeedbackRating::Mixed),
             Some("transcript-mined signal".to_string()),
             Some(FeedbackNoteKind::Suggestion),
-            FeedbackProvenance::new(None, Some("feedback-mcp".to_string()), None)
-                .map_err(|err| McpError::invalid_params(err, None))?,
+            FeedbackProvenance::new(
+                None,
+                Some("feedback-mcp".to_string()),
+                None,
+            )
+            .map_err(|err| McpError::invalid_params(err, None))?,
         )
         .map_err(|err| McpError::invalid_params(err, None))?;
         let persisted = store
@@ -258,12 +263,12 @@ mod tests {
 
     #[test]
     fn workspace_validation_rejects_ambient_aliases() {
-        for value in [None, Some(""), Some("default"), Some("."), Some("..")]
-        {
-            let err = memory_kernel::workspace::validate_explicit_workspace_selector(
-                value,
-            )
-            .expect_err("should reject ambient selector");
+        for value in [None, Some(""), Some("default"), Some("."), Some("..")] {
+            let err =
+                memory_kernel::workspace::validate_explicit_workspace_selector(
+                    value,
+                )
+                .expect_err("should reject ambient selector");
             let err_msg = err.to_string();
             assert!(
                 err_msg.contains("invalid workspace selector"),

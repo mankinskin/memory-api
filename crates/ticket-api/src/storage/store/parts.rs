@@ -242,7 +242,8 @@ impl TicketStore {
             PART_HISTORY_ID_KEY.to_string(),
             Value::String(part_id_str),
         );
-        history_fields.insert(PART_HISTORY_CONTENT_KEY.to_string(), Value::Null);
+        history_fields
+            .insert(PART_HISTORY_CONTENT_KEY.to_string(), Value::Null);
         if let Err(error) = TicketFs::append_history(
             &indexed.path,
             history_fields,

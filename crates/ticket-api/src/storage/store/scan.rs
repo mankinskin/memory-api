@@ -125,14 +125,15 @@ impl TicketStore {
     /// Delete persisted sibling-worktree scan roots that can outlive the
     /// worktree and leave stale indexed ticket paths behind.
     pub fn prune_worktree_scan_roots(
-        &self,
+        &self
     ) -> Result<Vec<ScanRoot>, StorageError> {
         let persisted = self.index.list_scan_roots()?;
         let paths: Vec<_> = persisted
             .iter()
             .filter_map(|root| {
                 let path = self.resolve_scan_root_path(&root.path);
-                self.is_external_worktree_path(&path).then_some(root.path.clone())
+                self.is_external_worktree_path(&path)
+                    .then_some(root.path.clone())
             })
             .collect();
         self.index.remove_scan_roots(&paths)?;

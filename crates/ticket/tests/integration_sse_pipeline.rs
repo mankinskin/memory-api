@@ -12,17 +12,17 @@ use std::{
 };
 
 use tempfile::TempDir;
+use ticket::serve::stream::{
+    HookEmitter,
+    StreamBroker,
+    event::SseEvent,
+};
 use ticket_api::{
     model::{
         edge::EdgeRecord,
         filesystem::ScanRoot,
     },
     storage::store::TicketStore,
-};
-use ticket::serve::stream::{
-    HookEmitter,
-    StreamBroker,
-    event::SseEvent,
 };
 
 fn open_store_with_broker(

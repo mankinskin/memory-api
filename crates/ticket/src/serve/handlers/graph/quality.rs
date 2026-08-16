@@ -265,4 +265,3 @@ fn load_live_tickets(
         .filter_map(|id| store.get_indexed(id).ok().flatten())
         .collect()
 }
-

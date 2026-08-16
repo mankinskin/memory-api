@@ -40,7 +40,9 @@ fn catalog_lists_ticket_spec_rule_workflows() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|w| w["name"].as_str().is_some_and(|n| n.contains("generate"))),
+            .any(|w| w["name"]
+                .as_str()
+                .is_some_and(|n| n.contains("generate"))),
         "rule domain must expose an authoring/generation workflow"
     );
 
@@ -55,5 +57,9 @@ fn catalog_lists_ticket_spec_rule_workflows() {
     }
 
     // Parity gaps are explicit.
-    assert!(catalog["parity_gaps"].as_array().is_some_and(|g| !g.is_empty()));
+    assert!(
+        catalog["parity_gaps"]
+            .as_array()
+            .is_some_and(|g| !g.is_empty())
+    );
 }

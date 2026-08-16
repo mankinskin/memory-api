@@ -36,11 +36,26 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{
+    Parser,
+    Subcommand,
+};
 use fs_api::{
-    CopyFileRequest, DeleteDirRequest, DeleteFileRequest, FsApiError, ListDirRequest,
-    MoveFileRequest, RenameFileRequest, StatRequest, copy_file, delete_dir, delete_file, list_dir,
-    move_file, rename_file, stat,
+    CopyFileRequest,
+    DeleteDirRequest,
+    DeleteFileRequest,
+    FsApiError,
+    ListDirRequest,
+    MoveFileRequest,
+    RenameFileRequest,
+    StatRequest,
+    copy_file,
+    delete_dir,
+    delete_file,
+    list_dir,
+    move_file,
+    rename_file,
+    stat,
 };
 
 /// fs — bounded filesystem operations.
@@ -204,15 +219,20 @@ fn main() -> Result<(), FsApiError> {
 
             let result = list_dir(&request)?;
             print_output(&result, output_format)?;
-        }
+        },
 
         Command::Stat { path } => {
             let request = StatRequest { path };
             let result = stat(&request)?;
             print_output(&result, output_format)?;
-        }
+        },
 
-        Command::Move { from, to, overwrite, root } => {
+        Command::Move {
+            from,
+            to,
+            overwrite,
+            root,
+        } => {
             let root = match root {
                 Some(r) => r,
                 None => std::env::current_dir().map_err(|e| {
@@ -222,10 +242,15 @@ fn main() -> Result<(), FsApiError> {
                     ))
                 })?,
             };
-            let request = MoveFileRequest { from, to, overwrite, root };
+            let request = MoveFileRequest {
+                from,
+                to,
+                overwrite,
+                root,
+            };
             let result = move_file(&request)?;
             print_output(&result, output_format)?;
-        }
+        },
 
         Command::Rename { from, to, root } => {
             let root = match root {
@@ -240,9 +265,14 @@ fn main() -> Result<(), FsApiError> {
             let request = RenameFileRequest { from, to, root };
             let result = rename_file(&request)?;
             print_output(&result, output_format)?;
-        }
+        },
 
-        Command::Copy { from, to, overwrite, root } => {
+        Command::Copy {
+            from,
+            to,
+            overwrite,
+            root,
+        } => {
             let root = match root {
                 Some(r) => r,
                 None => std::env::current_dir().map_err(|e| {
@@ -252,10 +282,15 @@ fn main() -> Result<(), FsApiError> {
                     ))
                 })?,
             };
-            let request = CopyFileRequest { from, to, overwrite, root };
+            let request = CopyFileRequest {
+                from,
+                to,
+                overwrite,
+                root,
+            };
             let result = copy_file(&request)?;
             print_output(&result, output_format)?;
-        }
+        },
 
         Command::DeleteFile { path, root } => {
             let root = match root {
@@ -270,9 +305,13 @@ fn main() -> Result<(), FsApiError> {
             let request = DeleteFileRequest { path, root };
             let result = delete_file(&request)?;
             print_output(&result, output_format)?;
-        }
+        },
 
-        Command::DeleteDir { path, recursive, root } => {
+        Command::DeleteDir {
+            path,
+            recursive,
+            root,
+        } => {
             let root = match root {
                 Some(r) => r,
                 None => std::env::current_dir().map_err(|e| {
@@ -282,10 +321,14 @@ fn main() -> Result<(), FsApiError> {
                     ))
                 })?,
             };
-            let request = DeleteDirRequest { path, recursive, root };
+            let request = DeleteDirRequest {
+                path,
+                recursive,
+                root,
+            };
             let result = delete_dir(&request)?;
             print_output(&result, output_format)?;
-        }
+        },
     }
 
     Ok(())
@@ -304,16 +347,22 @@ fn print_output<T: serde::Serialize>(
     match format {
         OutputFormat::Json => {
             let json = serde_json::to_string_pretty(value).map_err(|e| {
-                FsApiError::InvalidRequest(format!("serialization error: {}", e))
+                FsApiError::InvalidRequest(format!(
+                    "serialization error: {}",
+                    e
+                ))
             })?;
             println!("{}", json);
-        }
+        },
         OutputFormat::Toon => {
             let toon = toon_format::encode_default(value).map_err(|e| {
-                FsApiError::InvalidRequest(format!("TOON encoding error: {}", e))
+                FsApiError::InvalidRequest(format!(
+                    "TOON encoding error: {}",
+                    e
+                ))
             })?;
             println!("{}", toon);
-        }
+        },
     }
     Ok(())
 }

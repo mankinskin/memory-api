@@ -13,7 +13,6 @@ mod interoperability;
 mod store;
 mod store_index;
 
-pub use interoperability::{InteroperableArtifact, IdentifiableArtifact, TraceableArtifact};
 pub use benchmark::{
     BenchmarkExecution,
     BenchmarkQuery,
@@ -21,6 +20,11 @@ pub use benchmark::{
     ingest_criterion_estimates,
 };
 pub use error::TestError;
+pub use interoperability::{
+    IdentifiableArtifact,
+    InteroperableArtifact,
+    TraceableArtifact,
+};
 pub use store::{
     ExecutionQuery,
     TestStoreConfig,
@@ -354,7 +358,8 @@ impl ValidationExecution {
         }
 
         Err(TestError::InteroperabilityContract {
-            record_kind: <Self as InteroperableArtifact>::artifact_class(self).to_string(),
+            record_kind: <Self as InteroperableArtifact>::artifact_class(self)
+                .to_string(),
             detail: gaps.join(", "),
         })
     }

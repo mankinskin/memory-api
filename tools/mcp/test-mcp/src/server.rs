@@ -231,9 +231,9 @@ impl TestServer {
         workspace_selector: &str,
     ) -> Result<TestStoreConfig, McpError> {
         let workspace_selector =
-            memory_kernel::workspace::validate_explicit_workspace_selector(Some(
-                workspace_selector,
-            ))
+            memory_kernel::workspace::validate_explicit_workspace_selector(
+                Some(workspace_selector),
+            )
             .map_err(|err| McpError::invalid_params(err.to_string(), None))?;
         let store_root = memory_kernel::workspace::resolve_store_root_from(
             std::path::Path::new(workspace_selector),

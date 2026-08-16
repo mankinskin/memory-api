@@ -151,7 +151,10 @@ fn check_in_and_lookup_roundtrip() {
         "--branch",
         "feature/x",
     ]);
-    assert_eq!(receipt["session_id"], "11111111-1111-4111-8111-111111111111");
+    assert_eq!(
+        receipt["session_id"],
+        "11111111-1111-4111-8111-111111111111"
+    );
     assert_eq!(receipt["branch"], "feature/x");
 
     let lookup = run_machine(&[
@@ -186,7 +189,10 @@ fn query_returns_seeded_session() {
         "agent-q",
     ]);
     assert_eq!(result["count"], 1);
-    assert_eq!(result["sessions"][0]["session_id"], "22222222-2222-4222-8222-222222222222");
+    assert_eq!(
+        result["sessions"][0]["session_id"],
+        "22222222-2222-4222-8222-222222222222"
+    );
 }
 
 #[test]
@@ -226,7 +232,10 @@ fn sessions_for_ticket_returns_seeded_session_at_strict_tier() {
         "strict",
     ]);
     assert_eq!(result["count"], 1);
-    assert_eq!(result["sessions"][0]["session_id"], "33333333-3333-4333-8333-333333333333");
+    assert_eq!(
+        result["sessions"][0]["session_id"],
+        "33333333-3333-4333-8333-333333333333"
+    );
     assert_eq!(result["sessions"][0]["branch"], "feature/ticket-abc");
     assert_eq!(result["sessions"][0]["matched_strength"], "strict");
 
@@ -287,7 +296,11 @@ fn peek_prompt_pack_reports_guarded_entries() {
     let store_root_str = store_root.to_string_lossy().to_string();
     let config =
         SessionStoreConfig::new(store_root.clone(), "default".to_string());
-    seed_compaction_session(&config, "55555555-5555-4555-8555-555555555555", "agent-c");
+    seed_compaction_session(
+        &config,
+        "55555555-5555-4555-8555-555555555555",
+        "agent-c",
+    );
 
     let pack = run_machine(&[
         "session",
@@ -327,7 +340,11 @@ fn peek_prompt_pack_meets_quantitative_compactness_gate() {
     let store_root_str = store_root.to_string_lossy().to_string();
     let config =
         SessionStoreConfig::new(store_root.clone(), "default".to_string());
-    seed_compaction_session(&config, "66666666-6666-4666-8666-666666666666", "agent-gate");
+    seed_compaction_session(
+        &config,
+        "66666666-6666-4666-8666-666666666666",
+        "agent-gate",
+    );
 
     let pack = run_machine(&[
         "session",

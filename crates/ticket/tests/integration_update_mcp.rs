@@ -3,11 +3,11 @@ use std::collections::BTreeMap;
 use rmcp::handler::server::wrapper::Parameters;
 use serde_json::Value;
 use tempfile::TempDir;
-use ticket_api::storage::store::TicketStore;
 use ticket::server::{
     TicketServer,
     UpdateTicketInput,
 };
+use ticket_api::storage::store::TicketStore;
 
 fn make_sandbox() -> (TempDir, TicketServer) {
     let tmp = TempDir::new().expect("tempdir");
@@ -55,7 +55,8 @@ async fn update_ticket_accepts_sparse_payload_and_returns_minimal_response() {
             fields: None,
             field_map: None,
             undo: false,
-            description_update: ticket_api::storage::DescriptionUpdate::Unchanged,
+            description_update:
+                ticket_api::storage::DescriptionUpdate::Unchanged,
             author: None,
             single_hop: false,
         }))
@@ -99,7 +100,8 @@ async fn update_ticket_blocked_transition_reports_recovery_fields() {
             fields: None,
             field_map: None,
             undo: false,
-            description_update: ticket_api::storage::DescriptionUpdate::Unchanged,
+            description_update:
+                ticket_api::storage::DescriptionUpdate::Unchanged,
             author: None,
             single_hop: true,
         }))
@@ -121,7 +123,9 @@ async fn update_ticket_blocked_transition_reports_recovery_fields() {
     );
 
     // The blocked transition must not have advanced the ticket.
-    let indexed = store.get_indexed(&ticket_id).expect("indexed").expect("some");
+    let indexed = store
+        .get_indexed(&ticket_id)
+        .expect("indexed")
+        .expect("some");
     assert_eq!(indexed.state.as_deref(), Some("open"));
 }
-

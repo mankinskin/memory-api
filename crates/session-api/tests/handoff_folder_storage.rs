@@ -4,11 +4,20 @@
 //! and handoff.md, with deterministic markdown content and full JSON round-trip.
 
 use session_api::{
-    PersistedSessionManifest, SessionError, SessionHandoffPackage, SessionHandoffTargetTicket,
-    SessionHandoffUpwardContextEntry, SessionHandoffUpwardContextRole,
-    SessionRuntimeInitRequest, SessionStoreConfig, SessionTicketStateResolver,
-    SessionWorkflowEdge, SessionWorkflowEdgeKind, SessionWorkflowNodeDraft,
-    SessionWorkflowNodeKind, SessionWorkflowNodeRequirement,
+    PersistedSessionManifest,
+    SessionError,
+    SessionHandoffPackage,
+    SessionHandoffTargetTicket,
+    SessionHandoffUpwardContextEntry,
+    SessionHandoffUpwardContextRole,
+    SessionRuntimeInitRequest,
+    SessionStoreConfig,
+    SessionTicketStateResolver,
+    SessionWorkflowEdge,
+    SessionWorkflowEdgeKind,
+    SessionWorkflowNodeDraft,
+    SessionWorkflowNodeKind,
+    SessionWorkflowNodeRequirement,
 };
 use std::{
     collections::BTreeMap,
@@ -22,7 +31,10 @@ fn setup_test_store() -> (SessionStoreConfig, PathBuf) {
     (config, store_root)
 }
 
-fn init_test_session(config: &SessionStoreConfig, session_id: &str) {
+fn init_test_session(
+    config: &SessionStoreConfig,
+    session_id: &str,
+) {
     config
         .init_runtime_context(SessionRuntimeInitRequest {
             session_id: Some(session_id.to_string()),
@@ -37,7 +49,9 @@ fn target_ticket(id: &str) -> SessionHandoffTargetTicket {
         id: id.to_string(),
         why: "Required by the implementation unit".to_string(),
         state: "ready".to_string(),
-        acceptance_criteria: vec!["The implementation unit completes".to_string()],
+        acceptance_criteria: vec![
+            "The implementation unit completes".to_string(),
+        ],
     }
 }
 
@@ -73,7 +87,9 @@ fn handoff_persists_as_folder_with_json_and_markdown() {
         target_tickets: vec![target_ticket("ticket-123")],
         higher_level_objective: "Deliver the program objective".to_string(),
         upward_context: upward_context(),
-        target_files: vec!["memory-api/crates/session-api/src/lib.rs".to_string()],
+        target_files: vec![
+            "memory-api/crates/session-api/src/lib.rs".to_string(),
+        ],
         decisions: vec!["Use async/await".to_string()],
         non_goals: vec!["No refactoring".to_string()],
         context_anchors: vec!["Related PR #456".to_string()],
@@ -104,34 +120,56 @@ fn handoff_persists_as_folder_with_json_and_markdown() {
     );
 
     let md_path = handoff_folder.join("handoff.md");
-    assert!(
-        md_path.exists(),
-        "handoff.md should exist at {:?}",
-        md_path
-    );
+    assert!(md_path.exists(), "handoff.md should exist at {:?}", md_path);
 
     // AC2: handoff.md deterministically reflects the record's fields
-    let md_content = std::fs::read_to_string(&md_path)
-        .expect("read handoff.md");
-    
+    let md_content =
+        std::fs::read_to_string(&md_path).expect("read handoff.md");
+
     // Check that key fields appear in the markdown
-    assert!(md_content.contains(handoff_id), "markdown should contain handoff_id");
-    assert!(md_content.contains(&result.record.objective), "markdown should contain objective");
-    assert!(md_content.contains("ticket-123"), "markdown should contain target ticket");
-    assert!(md_content.contains("memory-api/crates/session-api/src/lib.rs"), "markdown should contain target file");
-    assert!(md_content.contains("Use async/await"), "markdown should contain decision");
-    assert!(md_content.contains("No refactoring"), "markdown should contain non-goal");
-    assert!(md_content.contains("Related PR #456"), "markdown should contain context anchor");
-    assert!(md_content.contains("Database migration required"), "markdown should contain risk notes");
-    assert!(md_content.contains("Implementation Ready: true") || md_content.contains("**Implementation Ready**: true"), 
-        "markdown should show implementation_ready=true when escalations are empty");
+    assert!(
+        md_content.contains(handoff_id),
+        "markdown should contain handoff_id"
+    );
+    assert!(
+        md_content.contains(&result.record.objective),
+        "markdown should contain objective"
+    );
+    assert!(
+        md_content.contains("ticket-123"),
+        "markdown should contain target ticket"
+    );
+    assert!(
+        md_content.contains("memory-api/crates/session-api/src/lib.rs"),
+        "markdown should contain target file"
+    );
+    assert!(
+        md_content.contains("Use async/await"),
+        "markdown should contain decision"
+    );
+    assert!(
+        md_content.contains("No refactoring"),
+        "markdown should contain non-goal"
+    );
+    assert!(
+        md_content.contains("Related PR #456"),
+        "markdown should contain context anchor"
+    );
+    assert!(
+        md_content.contains("Database migration required"),
+        "markdown should contain risk notes"
+    );
+    assert!(
+        md_content.contains("Implementation Ready: true")
+            || md_content.contains("**Implementation Ready**: true"),
+        "markdown should show implementation_ready=true when escalations are empty"
+    );
 
     // AC3: JSON round-trip preserves all fields
-    let json_content = std::fs::read_to_string(&json_path)
-        .expect("read handoff.json");
+    let json_content =
+        std::fs::read_to_string(&json_path).expect("read handoff.json");
     let deserialized: session_api::SessionHandoffRecord =
-        serde_json::from_str(&json_content)
-            .expect("deserialize handoff.json");
+        serde_json::from_str(&json_content).expect("deserialize handoff.json");
 
     assert_eq!(deserialized.handoff_id, result.record.handoff_id);
     assert_eq!(deserialized.objective, result.record.objective);
@@ -157,7 +195,10 @@ fn handoff_persists_as_folder_with_json_and_markdown() {
     assert_eq!(deserialized.decisions, result.record.decisions);
     assert_eq!(deserialized.non_goals, result.record.non_goals);
     assert_eq!(deserialized.context_anchors, result.record.context_anchors);
-    assert_eq!(deserialized.open_escalations, result.record.open_escalations);
+    assert_eq!(
+        deserialized.open_escalations,
+        result.record.open_escalations
+    );
     assert_eq!(deserialized.risk_notes, result.record.risk_notes);
 }
 
@@ -173,7 +214,9 @@ fn handoff_markdown_shows_open_escalations_warning() {
         target_tickets: vec![target_ticket("ticket-456")],
         higher_level_objective: String::new(),
         upward_context: vec![],
-        target_files: vec!["memory-api/crates/session-api/src/error.rs".to_string()],
+        target_files: vec![
+            "memory-api/crates/session-api/src/error.rs".to_string(),
+        ],
         decisions: vec!["Decision made".to_string()],
         non_goals: vec!["Non-goal".to_string()],
         context_anchors: vec!["Anchor".to_string()],
@@ -191,18 +234,27 @@ fn handoff_markdown_shows_open_escalations_warning() {
 
     let handoff_folder = PathBuf::from(&result.record_path);
     let md_path = handoff_folder.join("handoff.md");
-    let md_content = std::fs::read_to_string(&md_path)
-        .expect("read handoff.md");
+    let md_content =
+        std::fs::read_to_string(&md_path).expect("read handoff.md");
 
     // When open_escalations is not empty, implementation_ready should be false
-    assert!(md_content.contains("Implementation Ready: false") || md_content.contains("**Implementation Ready**: false"), 
-        "markdown should show implementation_ready=false when escalations exist");
-    assert!(md_content.contains("Open Escalations"), 
-        "markdown should have an Open Escalations section");
-    assert!(md_content.contains("Need clarification"), 
-        "markdown should list first escalation");
-    assert!(md_content.contains("Blocked on upstream"), 
-        "markdown should list second escalation");
+    assert!(
+        md_content.contains("Implementation Ready: false")
+            || md_content.contains("**Implementation Ready**: false"),
+        "markdown should show implementation_ready=false when escalations exist"
+    );
+    assert!(
+        md_content.contains("Open Escalations"),
+        "markdown should have an Open Escalations section"
+    );
+    assert!(
+        md_content.contains("Need clarification"),
+        "markdown should list first escalation"
+    );
+    assert!(
+        md_content.contains("Blocked on upstream"),
+        "markdown should list second escalation"
+    );
 }
 
 #[test]
@@ -218,7 +270,9 @@ fn legacy_flat_json_handoffs_still_load() {
         target_tickets: vec![target_ticket("ticket-789")],
         higher_level_objective: "Deliver the program objective".to_string(),
         upward_context: upward_context(),
-        target_files: vec!["memory-api/crates/session-api/src/store.rs".to_string()],
+        target_files: vec![
+            "memory-api/crates/session-api/src/store.rs".to_string(),
+        ],
         decisions: vec!["Test decision".to_string()],
         non_goals: vec!["Test non-goal".to_string()],
         context_anchors: vec!["Test anchor".to_string()],
@@ -246,30 +300,31 @@ fn legacy_flat_json_handoffs_still_load() {
         .join("sessions")
         .join(session_id)
         .join("handoffs");
-    
+
     // Ensure the handoffs directory exists before writing the legacy file
-    std::fs::create_dir_all(&handoffs_dir)
-        .expect("create handoffs directory");
-    
+    std::fs::create_dir_all(&handoffs_dir).expect("create handoffs directory");
+
     let legacy_handoff_id = "legacy-handoff-id";
     let legacy_path = handoffs_dir.join(format!("{}.json", legacy_handoff_id));
-    
+
     let mut legacy_record = deserialized.clone();
     legacy_record.handoff_id = legacy_handoff_id.to_string();
-    
+
     std::fs::write(
         &legacy_path,
-        serde_json::to_string_pretty(&legacy_record).expect("serialize legacy record")
-    ).expect("write legacy flat JSON");
+        serde_json::to_string_pretty(&legacy_record)
+            .expect("serialize legacy record"),
+    )
+    .expect("write legacy flat JSON");
 
     // AC3: Legacy flat handoffs/<id>.json records still load
     assert!(legacy_path.exists(), "legacy flat JSON should exist");
-    let legacy_content = std::fs::read_to_string(&legacy_path)
-        .expect("read legacy flat JSON");
+    let legacy_content =
+        std::fs::read_to_string(&legacy_path).expect("read legacy flat JSON");
     let legacy_loaded: session_api::SessionHandoffRecord =
         serde_json::from_str(&legacy_content)
             .expect("deserialize legacy flat JSON");
-    
+
     assert_eq!(legacy_loaded.handoff_id, legacy_handoff_id);
     assert_eq!(legacy_loaded.objective, package.objective);
 }
@@ -326,9 +381,18 @@ fn handoff_markdown_includes_workflow_mermaid_diagram_when_nodes_exist() {
     let md_content = std::fs::read_to_string(handoff_folder.join("handoff.md"))
         .expect("read handoff.md");
 
-    assert!(md_content.contains("```mermaid"), "markdown should contain a fenced mermaid block");
-    assert!(md_content.contains("flowchart TD"), "mermaid block should contain flowchart TD");
-    assert!(md_content.contains("node_a"), "mermaid block should contain a line for the seeded node");
+    assert!(
+        md_content.contains("```mermaid"),
+        "markdown should contain a fenced mermaid block"
+    );
+    assert!(
+        md_content.contains("flowchart TD"),
+        "mermaid block should contain flowchart TD"
+    );
+    assert!(
+        md_content.contains("node_a"),
+        "mermaid block should contain a line for the seeded node"
+    );
     assert!(
         md_content.contains("\n\n```mermaid"),
         "fence must be preceded by a blank line or Markdown treats it as list continuation"
@@ -364,7 +428,10 @@ fn handoff_markdown_omits_mermaid_diagram_when_workflow_empty() {
     let md_content = std::fs::read_to_string(handoff_folder.join("handoff.md"))
         .expect("read handoff.md");
 
-    assert!(!md_content.contains("```mermaid"), "markdown should not contain a fenced mermaid block when workflow has no nodes");
+    assert!(
+        !md_content.contains("```mermaid"),
+        "markdown should not contain a fenced mermaid block when workflow has no nodes"
+    );
 }
 
 #[test]
@@ -373,19 +440,29 @@ fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
     let session_id = "10000000-0000-4000-8000-000000000006";
     let epic_id = uuid::Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
         .expect("valid epic id");
-    let phase_id = uuid::Uuid::parse_str("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
-        .expect("valid phase id");
-    let ticket_id = uuid::Uuid::parse_str("11111111-1111-4111-8111-111111111111")
-        .expect("valid ticket id");
+    let phase_id =
+        uuid::Uuid::parse_str("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+            .expect("valid phase id");
+    let ticket_id =
+        uuid::Uuid::parse_str("11111111-1111-4111-8111-111111111111")
+            .expect("valid ticket id");
     let ticket_store_root = store_root.join(".ticket");
-    let ticket_store = ticket_api::storage::TicketStore::open_or_init(&ticket_store_root)
-        .expect("open ticket store");
-    for (id, title) in [
-        (epic_id, "Program objective"),
-        (phase_id, "Delivery phase"),
-    ] {
+    let ticket_store =
+        ticket_api::storage::TicketStore::open_or_init(&ticket_store_root)
+            .expect("open ticket store");
+    for (id, title) in
+        [(epic_id, "Program objective"), (phase_id, "Delivery phase")]
+    {
         ticket_store
-            .create(Some(id), "task", Some(title), None, BTreeMap::new(), None, None)
+            .create(
+                Some(id),
+                "task",
+                Some(title),
+                None,
+                BTreeMap::new(),
+                None,
+                None,
+            )
             .expect("create ticket");
     }
     ticket_store
@@ -450,8 +527,10 @@ fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
     let result = config
         .create_handoff_result(session_id, Some(package), vec![], None)
         .expect("create handoff result");
-    let markdown = std::fs::read_to_string(PathBuf::from(result.record_path).join("handoff.md"))
-        .expect("read handoff markdown");
+    let markdown = std::fs::read_to_string(
+        PathBuf::from(result.record_path).join("handoff.md"),
+    )
+    .expect("read handoff markdown");
 
     assert!(markdown.starts_with(&format!(
         "# Handoff: {}\n\nShip a useful handoff package.",
@@ -467,10 +546,12 @@ fn handoff_markdown_renders_upward_context_and_resolved_ticket_table() {
     assert!(markdown.contains(&format!(
         "Program [aaaaaaaa Program objective](.ticket/tickets/{epic_id}/ticket.toml) is linked; [already {phase_id}](https://example.test) and `{ticket_id}` stay literal; 22222222 is unresolved."
     )));
-    assert!(markdown.contains(&format!(
-        "```bash\n{}\n```",
-        result.record.resume_command
-    )));
+    assert!(
+        markdown.contains(&format!(
+            "```bash\n{}\n```",
+            result.record.resume_command
+        ))
+    );
     assert!(markdown.contains(&format!(
         "workflow_ticket[\"Keep {ticket_id} literal in Mermaid"
     )));
@@ -499,8 +580,10 @@ fn handoff_markdown_degrades_when_target_ticket_is_unresolvable() {
     let result = config
         .create_handoff_result(session_id, Some(package), vec![], None)
         .expect("create handoff result");
-    let markdown = std::fs::read_to_string(PathBuf::from(result.record_path).join("handoff.md"))
-        .expect("read handoff markdown");
+    let markdown = std::fs::read_to_string(
+        PathBuf::from(result.record_path).join("handoff.md"),
+    )
+    .expect("read handoff markdown");
 
     assert!(markdown.contains("22222222-2222-4222-8222-222222222222"));
 }
@@ -571,7 +654,8 @@ fn create_handoff_result_rejects_dangling_edge_before_writing_files() {
     });
     std::fs::write(
         &manifest_path,
-        serde_json::to_string_pretty(&manifest).expect("serialize session.json"),
+        serde_json::to_string_pretty(&manifest)
+            .expect("serialize session.json"),
     )
     .expect("write context.json");
 
@@ -583,10 +667,8 @@ fn create_handoff_result_rejects_dangling_edge_before_writing_files() {
         result.map(|r| r.record.handoff_id)
     );
 
-    let handoffs_dir = _temp_dir
-        .join("sessions")
-        .join(session_id)
-        .join("handoffs");
+    let handoffs_dir =
+        _temp_dir.join("sessions").join(session_id).join("handoffs");
     if handoffs_dir.exists() {
         let entries: Vec<_> = std::fs::read_dir(&handoffs_dir)
             .expect("read handoffs dir")
@@ -628,15 +710,16 @@ fn create_handoff_result_rejects_unresolved_diagnostics_before_writing_files() {
         config.create_handoff_result(session_id, None, vec![], Some(&resolver));
 
     assert!(
-        matches!(result, Err(SessionError::WorkflowDiagnosticsUnresolved { .. })),
+        matches!(
+            result,
+            Err(SessionError::WorkflowDiagnosticsUnresolved { .. })
+        ),
         "expected WorkflowDiagnosticsUnresolved, got {:?}",
         result.map(|r| r.record.handoff_id)
     );
 
-    let handoffs_dir = _temp_dir
-        .join("sessions")
-        .join(session_id)
-        .join("handoffs");
+    let handoffs_dir =
+        _temp_dir.join("sessions").join(session_id).join("handoffs");
     if handoffs_dir.exists() {
         let entries: Vec<_> = std::fs::read_dir(&handoffs_dir)
             .expect("read handoffs dir")

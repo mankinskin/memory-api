@@ -20,11 +20,11 @@
 //! error" family of failures.
 
 use memory_kernel::runtime::init_transport_tracing;
-use ticket_api::storage::store::TicketStore;
 use ticket::serve::{
     ServeConfig,
     WorkspaceRegistry,
 };
+use ticket_api::storage::store::TicketStore;
 
 fn main() {
     let mut port: u16 = 4000;
@@ -74,11 +74,8 @@ fn main() {
             ticket_api::workspace::TICKET_INDEX_DIR,
         );
     let store = TicketStore::open(&root).expect("failed to open ticket store");
-    if ticket::serve::register_descendant_scan_roots(
-        &store,
-        &workspace_root,
-    )
-    .expect("failed to register descendant workspaces")
+    if ticket::serve::register_descendant_scan_roots(&store, &workspace_root)
+        .expect("failed to register descendant workspaces")
     {
         store
             .scan(true)

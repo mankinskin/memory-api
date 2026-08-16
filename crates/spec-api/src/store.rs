@@ -127,10 +127,12 @@ impl SpecStore {
         let index_root =
             workspace::resolve_store_root_from(index_root, SPEC_INDEX_DIR);
         if !index_root.join("entities.db").is_file() {
-            return Err(memory_kernel::error::StorageError::WorkspaceNotFound {
-                path: index_root,
-            }
-            .into());
+            return Err(
+                memory_kernel::error::StorageError::WorkspaceNotFound {
+                    path: index_root,
+                }
+                .into(),
+            );
         }
         let store = Self::open_internal(&index_root)?;
         tracing::info!(
@@ -545,12 +547,12 @@ impl SpecStore {
         );
 
         if let Some(classifier) = edge_classifier.as_ref() {
-            let all_edges = self.inner.list_all_edges().map_err(SpecError::Storage)?;
+            let all_edges =
+                self.inner.list_all_edges().map_err(SpecError::Storage)?;
             for spec in &specs {
-                for edge in all_edges
-                    .iter()
-                    .filter(|edge| edge.kind == "depends_on" && edge.from == spec.id)
-                {
+                for edge in all_edges.iter().filter(|edge| {
+                    edge.kind == "depends_on" && edge.from == spec.id
+                }) {
                     if self.inner.get_indexed(&edge.to)?.is_some() {
                         continue;
                     }

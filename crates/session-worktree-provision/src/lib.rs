@@ -20,10 +20,10 @@ pub mod policy;
 pub use policy::{
     NeverActive,
     ProvisionError,
-    ReclaimEligibility,
-    ReclaimRejectionReason,
     ProvisionOutcome,
     ProvisionPolicy,
+    ReclaimEligibility,
+    ReclaimRejectionReason,
     SessionActivity,
     SessionStoreActivity,
     WorktreeOwnership,
@@ -223,15 +223,17 @@ impl WorktreeGit {
             .iter()
             .filter_map(|entry| {
                 let status = entry.status();
-                if status == Status::CURRENT || status.contains(Status::IGNORED) {
+                if status == Status::CURRENT || status.contains(Status::IGNORED)
+                {
                     return None;
                 }
                 let path = entry.path()?;
-                let kind = if status.intersects(Status::INDEX_NEW | Status::WT_NEW) {
-                    DirtyPathKind::Untracked
-                } else {
-                    DirtyPathKind::Tracked
-                };
+                let kind =
+                    if status.intersects(Status::INDEX_NEW | Status::WT_NEW) {
+                        DirtyPathKind::Untracked
+                    } else {
+                        DirtyPathKind::Tracked
+                    };
                 Some(DirtyPath {
                     path: PathBuf::from(path),
                     kind,
@@ -437,14 +439,13 @@ impl WorktreeGit {
             .file_name()
             .and_then(|name| name.to_str())
             .expect("validated worktree path has a UTF-8 final component");
-        let path = self
-            .main_checkout
-            .join(".worktrees")
-            .join(relative_path);
+        let path = self.main_checkout.join(".worktrees").join(relative_path);
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|source| WorktreeGitError::Io {
-                path: parent.to_path_buf(),
-                source,
+            fs::create_dir_all(parent).map_err(|source| {
+                WorktreeGitError::Io {
+                    path: parent.to_path_buf(),
+                    source,
+                }
             })?;
         }
         self.worktree_add_new_branch(&path, branch, base)?;
@@ -492,9 +493,11 @@ impl WorktreeGit {
             .join(".worktrees")
             .join(new_relative_path);
         if let Some(parent) = new_path.parent() {
-            fs::create_dir_all(parent).map_err(|source| WorktreeGitError::Io {
-                path: parent.to_path_buf(),
-                source,
+            fs::create_dir_all(parent).map_err(|source| {
+                WorktreeGitError::Io {
+                    path: parent.to_path_buf(),
+                    source,
+                }
             })?;
         }
         self.worktree_move(&old.path, &new_path)?;
@@ -714,7 +717,9 @@ fn validate_name(name: &str) -> Result<(), WorktreeGitError> {
     Ok(())
 }
 
-fn validate_relative_worktree_path(path: &Path) -> Result<(), WorktreeGitError> {
+fn validate_relative_worktree_path(
+    path: &Path
+) -> Result<(), WorktreeGitError> {
     if path.as_os_str().is_empty()
         || path.is_absolute()
         || path.components().any(|component| {

@@ -19,11 +19,11 @@ use serde::{
 };
 
 use crate::{
-    TestError,
-    ValidationLinks,
-    InteroperableArtifact,
-    TraceableArtifact,
     IdentifiableArtifact,
+    InteroperableArtifact,
+    TestError,
+    TraceableArtifact,
+    ValidationLinks,
 };
 
 /// A single benchmark measurement for one operation, optionally compared
@@ -153,7 +153,8 @@ impl BenchmarkExecution {
         }
 
         Err(TestError::InteroperabilityContract {
-            record_kind: <Self as InteroperableArtifact>::artifact_class(self).to_string(),
+            record_kind: <Self as InteroperableArtifact>::artifact_class(self)
+                .to_string(),
             detail: gaps.join(", "),
         })
     }

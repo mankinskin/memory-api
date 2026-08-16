@@ -4,8 +4,8 @@ use std::{
 };
 
 use tempfile::TempDir;
-use ticket_api::storage::store::TicketStore;
 use ticket::server::TicketServer;
+use ticket_api::storage::store::TicketStore;
 
 pub(super) fn make_sandbox() -> (TempDir, TicketServer) {
     let tmp = TempDir::new().expect("tempdir");

@@ -5,13 +5,13 @@ use serde_json::{
     Value,
     json,
 };
-use ticket_api::{
-    model::edge::EdgeRecord,
-    storage::store::TicketStore,
-};
 use ticket::server::{
     BoardShowInput,
     NextTicketsInput,
+};
+use ticket_api::{
+    model::edge::EdgeRecord,
+    storage::store::TicketStore,
 };
 
 use super::support::{

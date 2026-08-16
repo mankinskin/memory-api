@@ -157,9 +157,7 @@ impl CompactTerminalServer {
             .map_err(|e| {
                 McpError::internal_error(format!("task error: {e}"), None)
             })?
-            .map_err(|e| {
-                McpError::invalid_params(e.to_string(), None)
-            })?;
+            .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(result.content)]))
     }

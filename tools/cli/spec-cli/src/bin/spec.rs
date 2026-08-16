@@ -85,4 +85,3 @@ fn validate_links_exit_code_from_text_payload(text: &str) -> i32 {
         Err(_) => 0,
     }
 }
-

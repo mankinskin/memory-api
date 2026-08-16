@@ -1,10 +1,17 @@
-use globset::{Glob, GlobSetBuilder};
+use globset::{
+    Glob,
+    GlobSetBuilder,
+};
 use ignore::WalkBuilder;
 
 use crate::{
     error::FsApiError,
     request::ListDirRequest,
-    response::{DirEntry, EntryKind, ListDirResult},
+    response::{
+        DirEntry,
+        EntryKind,
+        ListDirResult,
+    },
 };
 
 /// List directory contents with bounded output.
@@ -31,22 +38,30 @@ pub fn list_dir(request: &ListDirRequest) -> Result<ListDirResult, FsApiError> {
     }
 
     // Canonicalize to detect path traversal attempts.
-    let canonical_root = root.canonicalize().map_err(|e| FsApiError::CannotReadDirectory {
-        path: root.to_path_buf(),
-        source: e,
-    })?;
+    let canonical_root =
+        root.canonicalize()
+            .map_err(|e| FsApiError::CannotReadDirectory {
+                path: root.to_path_buf(),
+                source: e,
+            })?;
 
     // Build exclude globset.
     let exclude_matcher = if !request.exclude_globs.is_empty() {
         let mut builder = GlobSetBuilder::new();
         for pattern in &request.exclude_globs {
             let glob = Glob::new(pattern).map_err(|e| {
-                FsApiError::InvalidRequest(format!("invalid exclude glob '{}': {}", pattern, e))
+                FsApiError::InvalidRequest(format!(
+                    "invalid exclude glob '{}': {}",
+                    pattern, e
+                ))
             })?;
             builder.add(glob);
         }
         Some(builder.build().map_err(|e| {
-            FsApiError::InvalidRequest(format!("failed to build exclude globset: {}", e))
+            FsApiError::InvalidRequest(format!(
+                "failed to build exclude globset: {}",
+                e
+            ))
         })?)
     } else {
         None
@@ -57,12 +72,18 @@ pub fn list_dir(request: &ListDirRequest) -> Result<ListDirResult, FsApiError> {
         let mut builder = GlobSetBuilder::new();
         for pattern in &request.include_globs {
             let glob = Glob::new(pattern).map_err(|e| {
-                FsApiError::InvalidRequest(format!("invalid include glob '{}': {}", pattern, e))
+                FsApiError::InvalidRequest(format!(
+                    "invalid include glob '{}': {}",
+                    pattern, e
+                ))
             })?;
             builder.add(glob);
         }
         Some(builder.build().map_err(|e| {
-            FsApiError::InvalidRequest(format!("failed to build include globset: {}", e))
+            FsApiError::InvalidRequest(format!(
+                "failed to build include globset: {}",
+                e
+            ))
         })?)
     } else {
         None
@@ -88,7 +109,9 @@ pub fn list_dir(request: &ListDirRequest) -> Result<ListDirResult, FsApiError> {
         let canonical_root_clone = canonical_root.clone();
         let matcher_clone = matcher.clone();
         walker.filter_entry(move |entry| {
-            let Ok(relative_path) = entry.path().strip_prefix(&canonical_root_clone) else {
+            let Ok(relative_path) =
+                entry.path().strip_prefix(&canonical_root_clone)
+            else {
                 return true;
             };
 

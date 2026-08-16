@@ -14,7 +14,7 @@ fn make_test_server() -> TestServer {
     let tmp = tempfile::tempdir().expect("tempdir");
     let store_root = tmp.path().join(".test");
     std::fs::create_dir_all(&store_root).expect("create .test");
-    
+
     // Keep temp dir alive by leaking it (test cleanup handles this)
     let tmp_path = tmp.keep();
     TestServer::new(tmp_path.join(".test"), "test-workspace".to_string())

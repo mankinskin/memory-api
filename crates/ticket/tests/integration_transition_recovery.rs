@@ -49,7 +49,8 @@ fn blocked_transition_reports_current_allowed_and_intermediate_states() {
     );
     // Mandatory intermediate waypoint to reach the requested target is named.
     assert!(
-        stderr.contains("first transition through") && stderr.contains("planned"),
+        stderr.contains("first transition through")
+            && stderr.contains("planned"),
         "error should name the required intermediate state: {stderr}"
     );
 
@@ -84,7 +85,9 @@ fn transitions_command_shows_legal_transition_graph() {
 
     // The full transition graph and declared states are present.
     assert!(
-        overview["transitions"].as_array().is_some_and(|t| !t.is_empty()),
+        overview["transitions"]
+            .as_array()
+            .is_some_and(|t| !t.is_empty()),
         "transition graph should be non-empty"
     );
     let states: Vec<&str> = overview["states"]

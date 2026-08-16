@@ -182,14 +182,22 @@ fn write_current_work(
         let _ = writeln!(out, "  (no active board entries)");
         return;
     }
-    let has_worktree_metadata = current_work.iter().any(|entry| {
-        entry.worktree_path.is_some() || entry.branch.is_some()
-    });
+    let has_worktree_metadata = current_work
+        .iter()
+        .any(|entry| entry.worktree_path.is_some() || entry.branch.is_some());
     if has_worktree_metadata {
         let _ = writeln!(
             out,
             "  {:<10}  {:<8}  {:<24}  {:<14}  {:<16}  {:<16}  {:<16}  {:<18}  {:>6}",
-            "STATUS", "TICKET", "TITLE", "AGENT", "SESSION", "BRANCH", "WORKTREE", "INTENT", "HB AGE"
+            "STATUS",
+            "TICKET",
+            "TITLE",
+            "AGENT",
+            "SESSION",
+            "BRANCH",
+            "WORKTREE",
+            "INTENT",
+            "HB AGE"
         );
         let _ = writeln!(out, "  {}", "-".repeat(150));
         for entry in current_work {

@@ -6,12 +6,12 @@ use std::{
 use rmcp::handler::server::wrapper::Parameters;
 use serde_json::Value;
 use tempfile::TempDir;
-use ticket_api::storage::store::TicketStore;
 use ticket::server::{
     MoveApplyInput,
     MovePreflightInput,
     TicketServer,
 };
+use ticket_api::storage::store::TicketStore;
 
 fn run_git(
     repo_root: &std::path::Path,

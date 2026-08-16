@@ -7,8 +7,10 @@
 
 mod common;
 
-use std::fs;
-use std::process::Command;
+use std::{
+    fs,
+    process::Command,
+};
 
 use common::{
     TicketCommands,
@@ -153,12 +155,8 @@ fn update_description_requires_an_explicit_mode() {
     let s = Sandbox::new();
     let id = create_ticket(&s, "Needs description mode");
 
-    let (code, stderr) = s.ticket_fail(&[
-        "update",
-        &id,
-        "--description",
-        "Summary text",
-    ]);
+    let (code, stderr) =
+        s.ticket_fail(&["update", &id, "--description", "Summary text"]);
 
     assert_eq!(code, 1);
     assert!(
@@ -329,29 +327,19 @@ fn unclaim_clears_stale_orphaned_lease_without_board_entry() {
     let s = Sandbox::new();
     let id = create_ticket(&s, "Orphaned lease cleanup");
 
-    let claim = s.ticket_json(&[
-        "claim",
-        &id,
-        "--agent",
-        "agent-1",
-        "--ttl-secs",
-        "0",
-    ]);
+    let claim =
+        s.ticket_json(&["claim", &id, "--agent", "agent-1", "--ttl-secs", "0"]);
     assert_eq!(claim["status"], "ok");
 
-    let preview = s.ticket_json(&["board", "clean", "preview", "--include-stale"]);
+    let preview =
+        s.ticket_json(&["board", "clean", "preview", "--include-stale"]);
     let token = preview["token"]
         .as_str()
         .expect("clean preview token must be present")
         .to_string();
 
-    let apply = s.ticket_json(&[
-        "board",
-        "clean",
-        "apply",
-        &token,
-        "--include-stale",
-    ]);
+    let apply =
+        s.ticket_json(&["board", "clean", "apply", &token, "--include-stale"]);
     assert_eq!(apply["status"], "ok");
 
     let leases_before = s.ticket_json(&["leases"]);

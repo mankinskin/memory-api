@@ -210,10 +210,12 @@ impl TicketStore {
                 .find_path(current_state, target_state)
                 .ok_or_else(|| {
                     StorageError::Validation(
-                        schema.invalid_transition_error(
-                            current_state,
-                            target_state,
-                        ).into(),
+                        schema
+                            .invalid_transition_error(
+                                current_state,
+                                target_state,
+                            )
+                            .into(),
                     )
                 })?;
 
@@ -263,7 +265,8 @@ impl TicketStore {
         let mut event = BTreeMap::new();
         event.insert("_event".to_string(), Value::String("attach".to_string()));
         event.insert("asset".to_string(), Value::String(file_name));
-        if let Err(error) = TicketFs::append_history(&indexed.path, event, None) {
+        if let Err(error) = TicketFs::append_history(&indexed.path, event, None)
+        {
             tracing::error!(
                 ticket_id = %id,
                 path = %indexed.path.display(),

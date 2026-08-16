@@ -3,7 +3,10 @@ use serde_json::{
     json,
 };
 use ticket_api::{
-    model::ticket::TicketManifest,
+    model::ticket::{
+        TicketManifest,
+        TicketManifestExt,
+    },
     storage::{
         TicketStore,
         ticket_fs::{
@@ -11,7 +14,6 @@ use ticket_api::{
             TicketFs,
         },
     },
-    model::ticket::TicketManifestExt,
 };
 use uuid::Uuid;
 
@@ -122,16 +124,20 @@ fn find_part_in_manifest(
     manifest: &TicketManifest,
     part_id: Uuid,
 ) -> Option<Value> {
-    manifest.parts().into_iter().find(|p| p.id == part_id).map(|p| {
-        json!({
-            "id": p.id,
-            "kind": p.kind,
-            "path": p.path,
-            "frozen": p.frozen,
-            "created_at": p.created_at,
-            "supersedes": p.supersedes,
+    manifest
+        .parts()
+        .into_iter()
+        .find(|p| p.id == part_id)
+        .map(|p| {
+            json!({
+                "id": p.id,
+                "kind": p.kind,
+                "path": p.path,
+                "frozen": p.frozen,
+                "created_at": p.created_at,
+                "supersedes": p.supersedes,
+            })
         })
-    })
 }
 
 pub(crate) fn cmd_write_part(

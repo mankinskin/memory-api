@@ -90,12 +90,11 @@ pub(crate) fn dispatch_recording(
                 run_id: args.run_id,
             };
             let path = config.record_execution(&execution)?;
-            let (verified_spec_ids, spec_verification) =
-                recompute_linked_specs(
-                    spec_root,
-                    config,
-                    &execution.links.spec_ids,
-                );
+            let (verified_spec_ids, spec_verification) = recompute_linked_specs(
+                spec_root,
+                config,
+                &execution.links.spec_ids,
+            );
             to_value(&json!({
                 "status": "recorded",
                 "kind": "validation-execution",
@@ -130,7 +129,8 @@ pub(crate) fn dispatch_recording(
                 "path": path,
             }))
         },
-        TestCommand::Run(args) => run_harness(config, log_config, spec_root, args),
+        TestCommand::Run(args) =>
+            run_harness(config, log_config, spec_root, args),
         _ => unreachable!("handled in recording dispatch"),
     }
 }

@@ -14,7 +14,10 @@
 //! Note: File symlinks on Windows require Developer Mode or admin privileges, so junction-based
 //! tests provide the primary Windows coverage for symlink-style escape vectors.
 
-use std::path::{Path, PathBuf};
+use std::path::{
+    Path,
+    PathBuf,
+};
 
 use crate::error::FsApiError;
 
@@ -37,33 +40,39 @@ pub fn validate_path_within_root(
     _context: &str,
 ) -> Result<PathBuf, FsApiError> {
     // Canonicalize root first.
-    let canonical_root = root.canonicalize().map_err(|e| FsApiError::CannotReadDirectory {
-        path: root.to_path_buf(),
-        source: e,
-    })?;
+    let canonical_root =
+        root.canonicalize()
+            .map_err(|e| FsApiError::CannotReadDirectory {
+                path: root.to_path_buf(),
+                source: e,
+            })?;
 
     // Canonicalize the path to resolve symlinks.
     // If the path doesn't exist yet (e.g., a destination), try to canonicalize its parent.
     let canonical_path = if path.exists() {
-        path.canonicalize().map_err(|e| FsApiError::CannotReadMetadata {
-            path: path.to_path_buf(),
-            source: e,
-        })?
+        path.canonicalize()
+            .map_err(|e| FsApiError::CannotReadMetadata {
+                path: path.to_path_buf(),
+                source: e,
+            })?
     } else {
         // For non-existent paths, canonicalize the parent and append the filename.
         if let Some(parent) = path.parent() {
             if parent.as_os_str().is_empty() {
                 // Relative path with no parent - treat as current directory.
-                let mut cwd = std::env::current_dir().map_err(|e| FsApiError::IoError(e))?;
+                let mut cwd = std::env::current_dir()
+                    .map_err(|e| FsApiError::IoError(e))?;
                 if let Some(file_name) = path.file_name() {
                     cwd.push(file_name);
                 }
                 cwd
             } else if parent.exists() {
                 let mut canonical_parent =
-                    parent.canonicalize().map_err(|e| FsApiError::CannotReadDirectory {
-                        path: parent.to_path_buf(),
-                        source: e,
+                    parent.canonicalize().map_err(|e| {
+                        FsApiError::CannotReadDirectory {
+                            path: parent.to_path_buf(),
+                            source: e,
+                        }
                     })?;
                 if let Some(file_name) = path.file_name() {
                     canonical_parent.push(file_name);
@@ -175,7 +184,10 @@ mod tests {
         // Symlink points outside root - should be rejected.
         let result = validate_path_within_root(&link, root, "test");
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), FsApiError::PathTraversal { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            FsApiError::PathTraversal { .. }
+        ));
     }
 
     #[test]
@@ -193,16 +205,19 @@ mod tests {
         assert!(result.is_ok());
 
         let canonical = result.unwrap();
-        
+
         // Normalize both for comparison (handles Windows \\?\ prefix).
         let normalized_canonical = normalize_path(&canonical);
         let normalized_root = normalize_path(&root.canonicalize().unwrap());
-        
+
         // The canonical path should be under the root.
-        assert!(normalized_canonical.starts_with(&normalized_root),
+        assert!(
+            normalized_canonical.starts_with(&normalized_root),
             "canonical path {:?} should start with root {:?}",
-            normalized_canonical, normalized_root);
-        
+            normalized_canonical,
+            normalized_root
+        );
+
         // The canonical path should end with the expected filename.
         assert!(canonical.to_string_lossy().ends_with("newfile.txt"));
     }
@@ -212,7 +227,7 @@ mod tests {
     fn test_validate_junction_escape_rejected() {
         let temp = tempdir().unwrap();
         let root = temp.path();
-        
+
         // Create a target directory outside the root.
         let outside_temp = tempdir().unwrap();
         let outside_target = outside_temp.path();
@@ -223,22 +238,34 @@ mod tests {
         match junction::create(outside_target, &junction_path) {
             Ok(_) => {
                 // Junction points outside root - should be rejected.
-                let result = validate_path_within_root(&junction_path, root, "test");
+                let result =
+                    validate_path_within_root(&junction_path, root, "test");
                 assert!(result.is_err(), "junction escape should be rejected");
-                assert!(matches!(result.unwrap_err(), FsApiError::PathTraversal { .. }));
+                assert!(matches!(
+                    result.unwrap_err(),
+                    FsApiError::PathTraversal { .. }
+                ));
 
                 // Accessing a file through the junction should also be rejected.
                 let through_junction = junction_path.join("outside.txt");
-                let result = validate_path_within_root(&through_junction, root, "test");
-                assert!(result.is_err(), "path through junction should be rejected");
-                assert!(matches!(result.unwrap_err(), FsApiError::PathTraversal { .. }));
-            }
+                let result =
+                    validate_path_within_root(&through_junction, root, "test");
+                assert!(
+                    result.is_err(),
+                    "path through junction should be rejected"
+                );
+                assert!(matches!(
+                    result.unwrap_err(),
+                    FsApiError::PathTraversal { .. }
+                ));
+            },
             Err(e) => {
-                eprintln!("SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.", e);
+                eprintln!(
+                    "SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.",
+                    e
+                );
                 return;
-            }
+            },
         }
     }
 }
-
-

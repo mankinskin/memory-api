@@ -1,9 +1,22 @@
 //! Integration tests for fs-api.
 
 use fs_api::{
-    copy_file, delete_dir, delete_file, list_dir, move_file, rename_file, stat, ConflictKind,
-    CopyFileRequest, DeleteDirRequest, DeleteFileRequest, EntryKind, ListDirRequest,
-    MoveFileRequest, RenameFileRequest, StatRequest,
+    ConflictKind,
+    CopyFileRequest,
+    DeleteDirRequest,
+    DeleteFileRequest,
+    EntryKind,
+    ListDirRequest,
+    MoveFileRequest,
+    RenameFileRequest,
+    StatRequest,
+    copy_file,
+    delete_dir,
+    delete_file,
+    list_dir,
+    move_file,
+    rename_file,
+    stat,
 };
 use std::fs;
 use tempfile::tempdir;
@@ -37,7 +50,9 @@ fn test_list_dir_with_depth_cap() {
         .map(|e| e.path.to_string_lossy().to_string())
         .collect();
 
-    assert!(paths.contains(&"a".to_string()) || paths.contains(&"a/".to_string()));
+    assert!(
+        paths.contains(&"a".to_string()) || paths.contains(&"a/".to_string())
+    );
     assert!(
         paths.contains(&"a/file1.txt".to_string())
             || paths.contains(&"a\\file1.txt".to_string())
@@ -92,7 +107,12 @@ fn test_list_dir_with_include_filter() {
     let result = list_dir(&request).expect("list_dir failed");
 
     assert_eq!(result.entries.len(), 1);
-    assert!(result.entries[0].path.to_string_lossy().contains("file2.rs"));
+    assert!(
+        result.entries[0]
+            .path
+            .to_string_lossy()
+            .contains("file2.rs")
+    );
 }
 
 #[test]
@@ -186,9 +206,7 @@ fn test_stat_missing_path() {
     let temp = tempdir().expect("failed to create temp dir");
     let missing_path = temp.path().join("missing.txt");
 
-    let request = StatRequest {
-        path: missing_path,
-    };
+    let request = StatRequest { path: missing_path };
 
     let result = stat(&request).expect("stat failed");
 
@@ -445,7 +463,10 @@ fn test_move_file_rejects_symlink_escape_when_root_provided() {
     let result = move_file(&request);
     assert!(result.is_err());
     assert!(
-        matches!(result.unwrap_err(), fs_api::FsApiError::PathTraversal { .. }),
+        matches!(
+            result.unwrap_err(),
+            fs_api::FsApiError::PathTraversal { .. }
+        ),
         "Expected PathTraversal error for symlink escape"
     );
 }
@@ -479,7 +500,10 @@ fn test_copy_file_rejects_symlink_escape_when_root_provided() {
     let result = copy_file(&request);
     assert!(result.is_err());
     assert!(
-        matches!(result.unwrap_err(), fs_api::FsApiError::PathTraversal { .. }),
+        matches!(
+            result.unwrap_err(),
+            fs_api::FsApiError::PathTraversal { .. }
+        ),
         "Expected PathTraversal error for symlink escape"
     );
 }
@@ -509,7 +533,10 @@ fn test_delete_file_rejects_symlink_escape_when_root_provided() {
     let result = delete_file(&request);
     assert!(result.is_err());
     assert!(
-        matches!(result.unwrap_err(), fs_api::FsApiError::PathTraversal { .. }),
+        matches!(
+            result.unwrap_err(),
+            fs_api::FsApiError::PathTraversal { .. }
+        ),
         "Expected PathTraversal error for symlink escape"
     );
 
@@ -534,7 +561,8 @@ fn test_move_file_normal_paths_still_work_with_root() {
         root: root.to_path_buf(),
     };
 
-    let result = move_file(&request).expect("move_file should succeed for normal paths");
+    let result =
+        move_file(&request).expect("move_file should succeed for normal paths");
 
     assert!(result.conflicts.is_empty());
     assert!(!from.exists());
@@ -559,7 +587,8 @@ fn test_copy_file_normal_paths_still_work_with_root() {
         root: root.to_path_buf(),
     };
 
-    let result = copy_file(&request).expect("copy_file should succeed for normal paths");
+    let result =
+        copy_file(&request).expect("copy_file should succeed for normal paths");
 
     assert!(result.conflicts.is_empty());
     assert!(from.exists());
@@ -595,7 +624,10 @@ fn test_rename_file_rejects_symlink_escape_when_root_provided() {
     let result = rename_file(&request);
     assert!(result.is_err());
     assert!(
-        matches!(result.unwrap_err(), fs_api::FsApiError::PathTraversal { .. }),
+        matches!(
+            result.unwrap_err(),
+            fs_api::FsApiError::PathTraversal { .. }
+        ),
         "Expected PathTraversal error for symlink escape"
     );
 }
@@ -620,7 +652,9 @@ fn test_windows_path_canonicalization_no_false_positives() {
         root: root.to_path_buf(),
     };
 
-    let result = move_file(&request).expect("Windows path canonicalization should not cause false rejection");
+    let result = move_file(&request).expect(
+        "Windows path canonicalization should not cause false rejection",
+    );
     assert!(result.conflicts.is_empty());
 }
 
@@ -633,7 +667,7 @@ fn test_path_validation_rejects_escape_attempts() {
     let root = temp.path();
     let subdir = root.join("subdir");
     fs::create_dir(&subdir).unwrap();
-    
+
     let safe_file = subdir.join("safe.txt");
     fs::write(&safe_file, "content").unwrap();
 
@@ -650,7 +684,7 @@ fn test_path_validation_rejects_escape_attempts() {
 
     let result = move_file(&request);
     assert!(result.is_err(), "escape via .. should be rejected");
-    
+
     // Safe file should still exist (operation failed)
     assert!(safe_file.exists());
 
@@ -729,7 +763,8 @@ fn test_delete_dir_recursive_within_limit() {
         root: root.to_path_buf(),
     };
 
-    let result = delete_dir(&request).expect("delete should succeed within limit");
+    let result =
+        delete_dir(&request).expect("delete should succeed within limit");
     assert!(result.conflicts.is_empty());
     assert!(!dir.exists());
 }
@@ -746,7 +781,7 @@ fn test_delete_dir_recursive_within_limit() {
 fn test_list_dir_rejects_junction_escape() {
     let temp = tempdir().expect("failed to create temp dir");
     let root = temp.path();
-    
+
     // Create a target directory outside the root.
     let outside_temp = tempdir().expect("failed to create outside temp");
     let outside_target = outside_temp.path();
@@ -766,7 +801,7 @@ fn test_list_dir_rejects_junction_escape() {
             };
 
             let result = list_dir(&request).expect("list_dir should succeed");
-            
+
             // list_dir should not traverse through the junction to list files outside root.
             // The junction itself may appear as an entry, but content outside root should not.
             for entry in &result.entries {
@@ -777,11 +812,14 @@ fn test_list_dir_rejects_junction_escape() {
                     path_str
                 );
             }
-        }
+        },
         Err(e) => {
-            eprintln!("SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.", e);
+            eprintln!(
+                "SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.",
+                e
+            );
             return;
-        }
+        },
     }
 }
 
@@ -809,12 +847,18 @@ fn test_copy_file_rejects_junction_escape() {
             };
 
             let result = copy_file(&request);
-            assert!(result.is_err(), "copy through junction should be rejected");
-        }
+            assert!(
+                result.is_err(),
+                "copy through junction should be rejected"
+            );
+        },
         Err(e) => {
-            eprintln!("SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.", e);
+            eprintln!(
+                "SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.",
+                e
+            );
             return;
-        }
+        },
     }
 }
 
@@ -842,14 +886,20 @@ fn test_move_file_rejects_junction_escape() {
             };
 
             let result = move_file(&request);
-            assert!(result.is_err(), "move through junction should be rejected");
+            assert!(
+                result.is_err(),
+                "move through junction should be rejected"
+            );
             // Source should still exist (operation failed).
             assert!(source.exists());
-        }
+        },
         Err(e) => {
-            eprintln!("SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.", e);
+            eprintln!(
+                "SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.",
+                e
+            );
             return;
-        }
+        },
     }
 }
 
@@ -876,14 +926,20 @@ fn test_rename_file_rejects_junction_escape() {
             };
 
             let result = rename_file(&request);
-            assert!(result.is_err(), "rename through junction should be rejected");
+            assert!(
+                result.is_err(),
+                "rename through junction should be rejected"
+            );
             // Source should still exist (operation failed).
             assert!(source.exists());
-        }
+        },
         Err(e) => {
-            eprintln!("SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.", e);
+            eprintln!(
+                "SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.",
+                e
+            );
             return;
-        }
+        },
     }
 }
 
@@ -908,14 +964,20 @@ fn test_delete_file_rejects_junction_escape() {
             };
 
             let result = delete_file(&request);
-            assert!(result.is_err(), "delete through junction should be rejected");
+            assert!(
+                result.is_err(),
+                "delete through junction should be rejected"
+            );
             // Outside file should still exist (operation failed).
             assert!(outside_file.exists());
-        }
+        },
         Err(e) => {
-            eprintln!("SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.", e);
+            eprintln!(
+                "SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.",
+                e
+            );
             return;
-        }
+        },
     }
 }
 
@@ -942,14 +1004,20 @@ fn test_delete_dir_rejects_junction_escape() {
             };
 
             let result = delete_dir(&request);
-            assert!(result.is_err(), "delete_dir through junction should be rejected");
+            assert!(
+                result.is_err(),
+                "delete_dir through junction should be rejected"
+            );
             // Outside directory should still exist (operation failed).
             assert!(outside_dir.exists());
-        }
+        },
         Err(e) => {
-            eprintln!("SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.", e);
+            eprintln!(
+                "SKIPPED: Junction creation failed: {}. This test requires an NTFS filesystem.",
+                e
+            );
             return;
-        }
+        },
     }
 }
 
@@ -970,19 +1038,19 @@ fn test_delete_dir_counts_all_entries_including_errors() {
     // Create a structure where some entries will be unreadable.
     // Create subdirectories, make some unreadable, then create files in readable ones.
     // The goal is to have more than 10,000 total iterations even if many are errors.
-    
+
     // For practical testing, we'll create a smaller structure and verify the
     // counting logic counts errors. Create 50 dirs with 201 entries each = 10,050+
     // Then make half the directories unreadable to trigger walk errors.
-    
+
     for i in 0..50 {
         let subdir = dir.join(format!("sub{}", i));
         fs::create_dir(&subdir).unwrap();
-        
+
         for j in 0..201 {
             fs::write(subdir.join(format!("file{}.txt", j)), "x").unwrap();
         }
-        
+
         // Make every other directory unreadable to trigger errors during walk.
         if i % 2 == 0 {
             let mut perms = fs::metadata(&subdir).unwrap().permissions();
@@ -1000,7 +1068,7 @@ fn test_delete_dir_counts_all_entries_including_errors() {
     // Should fail due to entry limit, even though half the entries are unreadable.
     // If the fix is correct, it counts all walk iterations (errors + successes).
     let result = delete_dir(&request);
-    
+
     // Restore permissions for cleanup.
     for i in 0..50 {
         if i % 2 == 0 {
@@ -1012,8 +1080,15 @@ fn test_delete_dir_counts_all_entries_including_errors() {
             }
         }
     }
-    
-    assert!(result.is_err(), "delete should fail due to entry limit even with unreadable entries");
+
+    assert!(
+        result.is_err(),
+        "delete should fail due to entry limit even with unreadable entries"
+    );
     let err_msg = format!("{:?}", result.unwrap_err());
-    assert!(err_msg.contains("exceeds entry limit"), "error should mention entry limit: {}", err_msg);
+    assert!(
+        err_msg.contains("exceeds entry limit"),
+        "error should mention entry limit: {}",
+        err_msg
+    );
 }

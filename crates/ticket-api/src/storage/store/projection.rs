@@ -140,19 +140,21 @@ impl TicketStore {
         let report = TicketFs::load_parts(&indexed.path, &manifest)?;
 
         let (profile, selected_kinds) = match projection {
-            ReadProjection::Profile(profile) => {
-                (Some(*profile), profile.kinds().map(|k| {
+            ReadProjection::Profile(profile) => (
+                Some(*profile),
+                profile.kinds().map(|k| {
                     k.iter().map(|s| s.to_string()).collect::<Vec<_>>()
-                }))
-            },
+                }),
+            ),
             ReadProjection::Kinds(kinds) => {
                 validate_explicit_kinds(kinds, &report)?;
                 (None, Some(kinds.clone()))
             },
         };
 
-        let inline_amendments =
-            profile.map(ViewProfile::inlines_amendments).unwrap_or(false);
+        let inline_amendments = profile
+            .map(ViewProfile::inlines_amendments)
+            .unwrap_or(false);
         let parts =
             select_parts(&report, selected_kinds.as_deref(), inline_amendments);
 
@@ -205,8 +207,11 @@ fn select_parts(
     kinds: Option<&[String]>,
     inline_amendments: bool,
 ) -> Vec<ProjectedPart> {
-    let is_selected =
-        |kind: &str| kinds.map(|list| list.iter().any(|k| k == kind)).unwrap_or(true);
+    let is_selected = |kind: &str| {
+        kinds
+            .map(|list| list.iter().any(|k| k == kind))
+            .unwrap_or(true)
+    };
 
     let mut amendments_by_parent: BTreeMap<Uuid, Vec<&LoadedPart>> =
         BTreeMap::new();

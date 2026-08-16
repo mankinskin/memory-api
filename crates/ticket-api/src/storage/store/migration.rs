@@ -24,7 +24,8 @@ use crate::{
 /// History field key marking a revision as produced by the description
 /// migration, with the list of part ids it created (used by
 /// [`TicketStore::migration_undo`] to identify what to remove).
-pub const MIGRATION_CREATED_PART_IDS_KEY: &str = "__migration_created_part_ids__";
+pub const MIGRATION_CREATED_PART_IDS_KEY: &str =
+    "__migration_created_part_ids__";
 
 /// One contiguous, order-preserving slice of an original `description.md`,
 /// classified as either the recognised `kind` of a matched heading or
@@ -200,7 +201,9 @@ pub struct MigrationApplyReport {
 impl TicketStore {
     /// Scan every ticket in this store and classify it for migration
     /// without writing anything.
-    pub fn migration_dry_run(&self) -> Result<MigrationDryRunReport, StorageError> {
+    pub fn migration_dry_run(
+        &self
+    ) -> Result<MigrationDryRunReport, StorageError> {
         let mut report = MigrationDryRunReport::default();
         for ticket in self.list(None, None, None)? {
             report.scanned += 1;
@@ -368,17 +371,15 @@ impl TicketStore {
                     "no migration history revision found for ticket {id}"
                 ))
             })?;
-        let created_ids: Vec<Uuid> = match revision
-            .fields
-            .get(MIGRATION_CREATED_PART_IDS_KEY)
-        {
-            Some(serde_json::Value::Array(values)) => values
-                .iter()
-                .filter_map(|v| v.as_str())
-                .filter_map(|s| Uuid::parse_str(s).ok())
-                .collect(),
-            _ => Vec::new(),
-        };
+        let created_ids: Vec<Uuid> =
+            match revision.fields.get(MIGRATION_CREATED_PART_IDS_KEY) {
+                Some(serde_json::Value::Array(values)) => values
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .filter_map(|s| Uuid::parse_str(s).ok())
+                    .collect(),
+                _ => Vec::new(),
+            };
 
         TicketFs::remove_parts(&indexed.path, &created_ids)?;
 

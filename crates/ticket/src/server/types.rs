@@ -224,8 +224,10 @@ impl TryFrom<UpdateTicketInputWire> for UpdateTicketInput {
     type Error = String;
 
     fn try_from(wire: UpdateTicketInputWire) -> Result<Self, Self::Error> {
-        let description_update =
-            DescriptionUpdate::decode(wire.description, wire.description_mode.as_deref())?;
+        let description_update = DescriptionUpdate::decode(
+            wire.description,
+            wire.description_mode.as_deref(),
+        )?;
         Ok(UpdateTicketInput {
             workspace: wire.workspace,
             id: wire.id,
@@ -265,7 +267,6 @@ impl JsonSchema for UpdateTicketInput {
         false
     }
 }
-
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CloseTicketInput {

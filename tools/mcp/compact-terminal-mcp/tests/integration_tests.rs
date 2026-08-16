@@ -5,10 +5,19 @@
 //! - Error translation to McpError
 //! - Tool registration and capability advertisement
 
-use compact_terminal_mcp::server::{CompactTerminalServer, ReadSpillInput, RunInput};
-use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResult, RawContent};
-use rmcp::ServerHandler;
+use compact_terminal_mcp::server::{
+    CompactTerminalServer,
+    ReadSpillInput,
+    RunInput,
+};
+use rmcp::{
+    ServerHandler,
+    handler::server::wrapper::Parameters,
+    model::{
+        CallToolResult,
+        RawContent,
+    },
+};
 use serde_json::Value;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -61,7 +70,10 @@ async fn run_tool_inline_output_below_limit() {
 
     assert_eq!(json["exit_code"], 0);
     assert!(json["stdout"].as_str().unwrap().contains("hello"));
-    assert!(json.get("spill_file").is_none(), "should be inline, not spilled");
+    assert!(
+        json.get("spill_file").is_none(),
+        "should be inline, not spilled"
+    );
 }
 
 #[tokio::test]
@@ -84,7 +96,7 @@ async fn run_tool_spilled_output_above_limit() {
     assert!(json.get("total_lines").is_some(), "should be spilled");
     assert!(json.get("spill_file").is_some(), "should have spill_file");
     assert!(json.get("next_steps").is_some(), "should have next_steps");
-    
+
     let spill_path = json["spill_file"].as_str().unwrap();
     let spill_file = PathBuf::from(spill_path);
     assert!(spill_file.exists(), "spill file should exist on disk");
@@ -102,7 +114,8 @@ async fn read_spill_by_line_range() {
         inline_limit: Some(50),
         timeout_secs: Some(5),
     };
-    let run_result = server.run(Parameters(run_input)).await.expect("run failed");
+    let run_result =
+        server.run(Parameters(run_input)).await.expect("run failed");
     let run_json = extract_json(run_result);
     let spill_path = run_json["spill_file"].as_str().expect("spill_file");
 
@@ -113,7 +126,10 @@ async fn read_spill_by_line_range() {
         end: Some(15),
         grep: None,
     };
-    let read_result = server.read_spill(Parameters(read_input)).await.expect("read_spill failed");
+    let read_result = server
+        .read_spill(Parameters(read_input))
+        .await
+        .expect("read_spill failed");
     let content = extract_text(read_result);
 
     assert!(content.contains("10"), "should contain line 10");
@@ -132,7 +148,8 @@ async fn read_spill_grep_pattern() {
         inline_limit: Some(50),
         timeout_secs: Some(5),
     };
-    let run_result = server.run(Parameters(run_input)).await.expect("run failed");
+    let run_result =
+        server.run(Parameters(run_input)).await.expect("run failed");
     let run_json = extract_json(run_result);
     let spill_path = run_json["spill_file"].as_str().expect("spill_file");
 
@@ -143,7 +160,10 @@ async fn read_spill_grep_pattern() {
         end: None,
         grep: Some("error".to_string()),
     };
-    let read_result = server.read_spill(Parameters(read_input)).await.expect("read_spill failed");
+    let read_result = server
+        .read_spill(Parameters(read_input))
+        .await
+        .expect("read_spill failed");
     let content = extract_text(read_result);
 
     assert!(content.contains("matches"), "should report matches");
@@ -163,13 +183,15 @@ async fn read_spill_missing_file_returns_mcp_error() {
 
     let result = server.read_spill(Parameters(read_input)).await;
     assert!(result.is_err(), "should return an error for missing file");
-    
+
     let error = result.err().unwrap();
     // The server translates read_spill errors to McpError::invalid_params.
     // Verify it's a proper McpError (has code -32602 for invalid_params).
     let error_str = format!("{:?}", error);
-    assert!(error_str.contains("InvalidParams") || error_str.contains("-32602"), 
-        "missing file should translate to InvalidParams MCP error, got: {error_str}");
+    assert!(
+        error_str.contains("InvalidParams") || error_str.contains("-32602"),
+        "missing file should translate to InvalidParams MCP error, got: {error_str}"
+    );
 }
 
 #[tokio::test]

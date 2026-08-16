@@ -275,7 +275,14 @@ fn update_guards_transition_ahead_of_dependency_state() {
 
     // ready -> ready (equal rank) is allowed.
     store
-        .update(&dependent, BTreeMap::new(), Some(&[]), Some("planned"), None, None)
+        .update(
+            &dependent,
+            BTreeMap::new(),
+            Some(&[]),
+            Some("planned"),
+            None,
+            None,
+        )
         .unwrap();
 
     // Advancing the dependent past the blocker (still 'ready') is rejected.
@@ -410,7 +417,14 @@ fn update_allows_demotion_and_parking_despite_lagging_dependency() {
     // Demoting the dependent below its own current rank is allowed even though
     // the dependency (open) has not progressed.
     store
-        .update(&dependent, BTreeMap::new(), Some(&[]), Some("planned"), None, None)
+        .update(
+            &dependent,
+            BTreeMap::new(),
+            Some(&[]),
+            Some("planned"),
+            None,
+            None,
+        )
         .unwrap();
 
     // Parking a separate in-implementation ticket is also allowed.
@@ -434,7 +448,14 @@ fn update_allows_demotion_and_parking_despite_lagging_dependency() {
         })
         .unwrap();
     store
-        .update(&parked, BTreeMap::new(), Some(&[]), Some("on-hold"), None, None)
+        .update(
+            &parked,
+            BTreeMap::new(),
+            Some(&[]),
+            Some("on-hold"),
+            None,
+            None,
+        )
         .unwrap();
 }
 
@@ -476,7 +497,14 @@ fn update_still_guards_forward_transition_past_lagging_dependency() {
         .unwrap();
 
     let err = store
-        .update(&dependent, BTreeMap::new(), Some(&[]), Some("in-review"), None, None)
+        .update(
+            &dependent,
+            BTreeMap::new(),
+            Some(&[]),
+            Some("in-review"),
+            None,
+            None,
+        )
         .unwrap_err();
     assert!(
         matches!(err, StorageError::DependencyNotProgressed { .. }),
@@ -544,16 +572,7 @@ fn board_check_out_releases_orphaned_lease_when_entry_is_missing() {
         .unwrap();
 
     store
-        .board_check_in(
-            &ticket,
-            "agent-a",
-            0,
-            "work",
-            vec![],
-            None,
-            None,
-            None,
-        )
+        .board_check_in(&ticket, "agent-a", 0, "work", vec![], None, None, None)
         .unwrap();
     assert_eq!(store.list_leases().unwrap().len(), 1);
 
@@ -668,10 +687,26 @@ fn board_check_in_rejects_worktree_owned_by_another_session() {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();
     let first = store
-        .create(None, "tracker-improvement", Some("First"), Some("planned"), Default::default(), None, None)
+        .create(
+            None,
+            "tracker-improvement",
+            Some("First"),
+            Some("planned"),
+            Default::default(),
+            None,
+            None,
+        )
         .unwrap();
     let second = store
-        .create(None, "tracker-improvement", Some("Second"), Some("planned"), Default::default(), None, None)
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Second"),
+            Some("planned"),
+            Default::default(),
+            None,
+            None,
+        )
         .unwrap();
 
     store
@@ -700,7 +735,15 @@ fn board_check_in_rejects_worktree_owned_by_another_session() {
         .unwrap();
 
     let third = store
-        .create(None, "tracker-improvement", Some("Third"), Some("planned"), Default::default(), None, None)
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Third"),
+            Some("planned"),
+            Default::default(),
+            None,
+            None,
+        )
         .unwrap();
     let error = store
         .board_check_in(
@@ -724,7 +767,15 @@ fn board_check_in_requires_session_for_worktree_and_allows_unbound_entry() {
     let dir = tempdir().unwrap();
     let store = TicketStore::init(dir.path()).unwrap();
     let ticket = store
-        .create(None, "tracker-improvement", Some("Worktree binding"), Some("planned"), Default::default(), None, None)
+        .create(
+            None,
+            "tracker-improvement",
+            Some("Worktree binding"),
+            Some("planned"),
+            Default::default(),
+            None,
+            None,
+        )
         .unwrap();
 
     let error = store

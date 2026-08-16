@@ -279,7 +279,9 @@ mod tests {
     fn catalog_documents_parity_gaps() {
         let catalog = capability_catalog();
         assert!(
-            catalog["parity_gaps"].as_array().is_some_and(|g| !g.is_empty()),
+            catalog["parity_gaps"]
+                .as_array()
+                .is_some_and(|g| !g.is_empty()),
             "catalog must document parity gaps"
         );
     }

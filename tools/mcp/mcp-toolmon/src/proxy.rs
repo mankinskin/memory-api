@@ -58,24 +58,132 @@ struct PathArgument {
 }
 
 const PATH_ARGUMENT_REGISTRY: &[(&str, PathArgument)] = &[
-    ("fs_list_dir", PathArgument { name: "path", kind: PathArgumentKind::Path }),
-    ("fs_stat", PathArgument { name: "path", kind: PathArgumentKind::Path }),
-    ("fs_move_file", PathArgument { name: "from", kind: PathArgumentKind::Path }),
-    ("fs_move_file", PathArgument { name: "to", kind: PathArgumentKind::Path }),
-    ("fs_move_file", PathArgument { name: "root", kind: PathArgumentKind::Path }),
-    ("fs_rename_file", PathArgument { name: "from", kind: PathArgumentKind::Path }),
-    ("fs_rename_file", PathArgument { name: "root", kind: PathArgumentKind::Path }),
-    ("fs_copy_file", PathArgument { name: "from", kind: PathArgumentKind::Path }),
-    ("fs_copy_file", PathArgument { name: "to", kind: PathArgumentKind::Path }),
-    ("fs_copy_file", PathArgument { name: "root", kind: PathArgumentKind::Path }),
-    ("fs_delete_file", PathArgument { name: "path", kind: PathArgumentKind::Path }),
-    ("fs_delete_file", PathArgument { name: "root", kind: PathArgumentKind::Path }),
-    ("fs_delete_dir", PathArgument { name: "path", kind: PathArgumentKind::Path }),
-    ("fs_delete_dir", PathArgument { name: "root", kind: PathArgumentKind::Path }),
-    ("peek_read", PathArgument { name: "path", kind: PathArgumentKind::Path }),
-    ("peek_grep", PathArgument { name: "path", kind: PathArgumentKind::Path }),
-    ("peek_count", PathArgument { name: "path", kind: PathArgumentKind::Path }),
-    ("peek_skeleton", PathArgument { name: "path", kind: PathArgumentKind::Path }),
+    (
+        "fs_list_dir",
+        PathArgument {
+            name: "path",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_stat",
+        PathArgument {
+            name: "path",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_move_file",
+        PathArgument {
+            name: "from",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_move_file",
+        PathArgument {
+            name: "to",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_move_file",
+        PathArgument {
+            name: "root",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_rename_file",
+        PathArgument {
+            name: "from",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_rename_file",
+        PathArgument {
+            name: "root",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_copy_file",
+        PathArgument {
+            name: "from",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_copy_file",
+        PathArgument {
+            name: "to",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_copy_file",
+        PathArgument {
+            name: "root",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_delete_file",
+        PathArgument {
+            name: "path",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_delete_file",
+        PathArgument {
+            name: "root",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_delete_dir",
+        PathArgument {
+            name: "path",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "fs_delete_dir",
+        PathArgument {
+            name: "root",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "peek_read",
+        PathArgument {
+            name: "path",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "peek_grep",
+        PathArgument {
+            name: "path",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "peek_count",
+        PathArgument {
+            name: "path",
+            kind: PathArgumentKind::Path,
+        },
+    ),
+    (
+        "peek_skeleton",
+        PathArgument {
+            name: "path",
+            kind: PathArgumentKind::Path,
+        },
+    ),
 ];
 
 fn registered_path_argument(
@@ -346,11 +454,11 @@ fn resolve_workspace(
                 if looks_like_repository_root {
                     ResolutionError::MainCheckoutMutationBlocked.to_string()
                 } else {
-                ResolutionError::UnanchoredDefault {
-                    session_id: session_id.to_string(),
-                    candidates,
-                }
-                .to_string()
+                    ResolutionError::UnanchoredDefault {
+                        session_id: session_id.to_string(),
+                        candidates,
+                    }
+                    .to_string()
                 }
             },
             other => other.to_string(),
@@ -437,12 +545,13 @@ fn try_resolve_session_check_in_bootstrap_workspace(
     }
 
     let resolver = anchored_resolver()?;
-    let canonical_workspace = std::fs::canonicalize(&workspace_path).map_err(|error| {
-        format!(
-            "workspace '{}' could not be canonicalized: {error}",
-            workspace_path.display()
-        )
-    })?;
+    let canonical_workspace =
+        std::fs::canonicalize(&workspace_path).map_err(|error| {
+            format!(
+                "workspace '{}' could not be canonicalized: {error}",
+                workspace_path.display()
+            )
+        })?;
     let anchor_candidate = resolver
         .refused_candidates(DEFAULT_STORE_DIR)
         .map_err(|error| error.to_string())?
@@ -672,10 +781,11 @@ pub fn handle_client_message(
                             argument.kind == PathArgumentKind::Workspace
                         })
                         .and_then(|argument| {
-                            msg
-                                .get("params")
+                            msg.get("params")
                                 .and_then(|params| params.get("arguments"))
-                                .and_then(|arguments| arguments.get(argument.name))
+                                .and_then(|arguments| {
+                                    arguments.get(argument.name)
+                                })
                                 .and_then(Value::as_str)
                         });
                     let (target_root, store_root) =
@@ -684,19 +794,19 @@ pub fn handle_client_message(
                             &session_id,
                             workspace,
                         ) {
-                        Ok(resolved) => resolved,
-                        Err(error) => {
-                            let telemetry = immediate_telemetry(
-                                "reject-workspace",
-                                Some(caller_model),
-                            );
-                            return (
-                                ClientAction::Respond(error_result(
-                                    &id, &error,
-                                )),
-                                Some(telemetry),
-                            );
-                        },
+                            Ok(resolved) => resolved,
+                            Err(error) => {
+                                let telemetry = immediate_telemetry(
+                                    "reject-workspace",
+                                    Some(caller_model),
+                                );
+                                return (
+                                    ClientAction::Respond(error_result(
+                                        &id, &error,
+                                    )),
+                                    Some(telemetry),
+                                );
+                            },
                         };
                     let mut rewrites = Vec::new();
                     for argument in &path_arguments {
@@ -707,7 +817,8 @@ pub fn handle_client_message(
                             .and_then(Value::as_str);
                         let Some(value) = value else {
                             if argument.kind == PathArgumentKind::Workspace {
-                                rewrites.push((argument.name, target_root.clone()));
+                                rewrites
+                                    .push((argument.name, target_root.clone()));
                             }
                             continue;
                         };
@@ -716,8 +827,7 @@ pub fn handle_client_message(
                                 &tool,
                                 &session_id,
                                 Some(value),
-                            )
-                            {
+                            ) {
                                 let telemetry = immediate_telemetry(
                                     "reject-workspace",
                                     Some(caller_model),
@@ -1110,8 +1220,7 @@ mod tests {
             &test_gate(),
             "read_file",
             json!({"workspace": {"type": "string"}}),
-        )
-        else {
+        ) else {
             panic!("expected forwarded request");
         };
         assert_eq!(
@@ -1126,7 +1235,8 @@ mod tests {
     }
 
     #[test]
-    fn default_workspace_from_repo_root_resolves_root_store_then_blocks_main_checkout() {
+    fn default_workspace_from_repo_root_resolves_root_store_then_blocks_main_checkout()
+     {
         let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let temp = tempfile::tempdir().unwrap();
         let main_checkout = temp.path().join("repository");
@@ -1148,7 +1258,8 @@ mod tests {
     }
 
     #[test]
-    fn unassigned_session_check_in_with_direct_worktree_workspace_is_forwarded() {
+    fn unassigned_session_check_in_with_direct_worktree_workspace_is_forwarded()
+    {
         let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let temp = tempfile::tempdir().unwrap();
         let main_checkout = temp.path().join("repository");
@@ -1229,16 +1340,16 @@ mod tests {
         let working_dir =
             canonicalized_normalized(&std::env::current_dir().unwrap());
         assert!(
-            candidates
-                .iter()
-                .any(|candidate| normalized(candidate)
-                    .starts_with(&working_dir)),
+            candidates.iter().any(
+                |candidate| normalized(candidate).starts_with(&working_dir)
+            ),
             "expected a candidate anchored on {working_dir}, got {candidates:?}"
         );
     }
 
     #[test]
-    fn positional_worktree_discovery_overrides_legacy_main_checkout_assignment() {
+    fn positional_worktree_discovery_overrides_legacy_main_checkout_assignment()
+    {
         let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let (_temp, main_checkout, _worktree) =
             routing_fixture(SessionWorktreeStatus::Active, true);
@@ -1280,35 +1391,43 @@ mod tests {
             &test_gate(),
             "read_file",
             json!({"workspace": {"type": "string"}}),
-        )
-        else {
+        ) else {
             panic!("expected forwarded request");
         };
-        assert_eq!(forwarded["params"]["arguments"]["workspace"], json!(inside));
+        assert_eq!(
+            forwarded["params"]["arguments"]["workspace"],
+            json!(inside)
+        );
 
         let outside = main_checkout.join("outside");
         std::fs::create_dir_all(&outside).unwrap();
         let mut request = allowed_call();
         request["params"]["arguments"]["workspace"] =
             json!(outside.to_string_lossy());
-        let text = response_text(route_with_schema(
-            request,
-            &test_gate(),
-            "read_file",
-            json!({"workspace": {"type": "string"}}),
-        ).0);
+        let text = response_text(
+            route_with_schema(
+                request,
+                &test_gate(),
+                "read_file",
+                json!({"workspace": {"type": "string"}}),
+            )
+            .0,
+        );
         assert!(text.contains(outside.to_string_lossy().as_ref()));
         assert!(text.contains("resolved session worktree"));
 
         let mut request = allowed_call();
         request["params"]["arguments"]["workspace"] =
             json!(main_checkout.to_string_lossy());
-        let text = response_text(route_with_schema(
-            request,
-            &test_gate(),
-            "read_file",
-            json!({"workspace": {"type": "string"}}),
-        ).0);
+        let text = response_text(
+            route_with_schema(
+                request,
+                &test_gate(),
+                "read_file",
+                json!({"workspace": {"type": "string"}}),
+            )
+            .0,
+        );
         assert!(text.contains(main_checkout.to_string_lossy().as_ref()));
         assert!(text.contains("resolved session worktree"));
 
@@ -1319,8 +1438,7 @@ mod tests {
             &test_gate(),
             "read_file",
             json!({"workspace": {"type": "string"}}),
-        )
-        else {
+        ) else {
             panic!("expected forwarded request");
         };
         assert_eq!(
@@ -1341,8 +1459,7 @@ mod tests {
             &test_gate(),
             "read_file",
             json!({"workspace": {"type": "string"}}),
-        )
-        else {
+        ) else {
             panic!("expected forwarded request");
         };
         assert_eq!(
@@ -1375,8 +1492,14 @@ mod tests {
         ) else {
             panic!("expected forwarded request");
         };
-        assert_eq!(forwarded["params"]["arguments"]["path"], json!(normalized(&nested)));
-        assert_eq!(forwarded["params"]["arguments"]["untouched"], json!("value"));
+        assert_eq!(
+            forwarded["params"]["arguments"]["path"],
+            json!(normalized(&nested))
+        );
+        assert_eq!(
+            forwarded["params"]["arguments"]["untouched"],
+            json!("value")
+        );
         assert!(forwarded["params"]["arguments"].get("workspace").is_none());
 
         let mut request = call("peek_read", Some("gpt-5-mini"));
@@ -1395,12 +1518,15 @@ mod tests {
         std::fs::create_dir_all(&outside).unwrap();
         let mut request = call("peek_read", Some("gpt-5-mini"));
         request["params"]["arguments"]["path"] = json!(outside);
-        let text = response_text(route_with_schema(
-            request,
-            &test_gate(),
-            "peek_read",
-            json!({"path": {"type": "string"}}),
-        ).0);
+        let text = response_text(
+            route_with_schema(
+                request,
+                &test_gate(),
+                "peek_read",
+                json!({"path": {"type": "string"}}),
+            )
+            .0,
+        );
         assert!(text.contains("outside"));
 
         let mut request = call("unknown_tool", Some("gpt-5-mini"));
@@ -1413,7 +1539,10 @@ mod tests {
         ) else {
             panic!("expected forwarded request");
         };
-        assert_eq!(forwarded["params"]["arguments"]["workspace"], json!("unchanged"));
+        assert_eq!(
+            forwarded["params"]["arguments"]["workspace"],
+            json!("unchanged")
+        );
         unsafe { std::env::remove_var(MAIN_CHECKOUT_ENV) };
     }
 
@@ -1584,12 +1713,7 @@ mod tests {
             .unwrap()
             .insert(GRANT_ID_ARG.to_string(), json!("grant-123"));
         // Use a light tool (cost 1) that gpt-5-mini (budget ~97) can afford
-        match handle_client_message(
-            request,
-            Some(&g),
-            &mut p,
-            &mut pc,
-        ) {
+        match handle_client_message(request, Some(&g), &mut p, &mut pc) {
             (ClientAction::Forward(v), _) => {
                 let args = &v["params"]["arguments"];
                 assert!(

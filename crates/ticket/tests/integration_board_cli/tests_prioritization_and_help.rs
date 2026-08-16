@@ -289,7 +289,8 @@ fn board_show_excludes_history_and_board_history_lists_recent_completions() {
     let completed_ticket = create_ticket(&s, "Recently completed board work");
     let next_ticket = create_ticket(&s, "Ready board follow-up");
 
-    let ready = s.ticket_json(&["update", &next_ticket, "--to-state", "planned"]);
+    let ready =
+        s.ticket_json(&["update", &next_ticket, "--to-state", "planned"]);
     assert_eq!(ready["status"], "ok");
 
     let active = s.ticket_json(&[

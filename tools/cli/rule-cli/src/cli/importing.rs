@@ -216,7 +216,9 @@ fn apply_entry_updates_atomically(
         if let Err(error) = store.update_body(&entry.id, &entry.new_body) {
             let mut rollback_errors = Vec::new();
             for (id, original_body) in applied.iter().rev() {
-                if let Err(rollback_error) = store.update_body(id, original_body) {
+                if let Err(rollback_error) =
+                    store.update_body(id, original_body)
+                {
                     rollback_errors.push(format!("{id}: {rollback_error}"));
                 }
             }
