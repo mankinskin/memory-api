@@ -230,6 +230,9 @@ mod config {
     include!("store/config/terminals.rs");
 }
 
+#[cfg(test)]
+pub(crate) use config::WorktreeCheckInFailurePoint;
+
 #[path = "store_routing_types.rs"]
 mod store_routing_types;
 use crate::SessionWorkflowGraph;
@@ -1078,6 +1081,15 @@ impl SessionStorePlan {
     }
 
     pub fn persist(&self) -> Result<SessionStorePaths, SessionError> {
+        let store_root = self
+            .paths
+            .session_dir
+            .parent()
+            .and_then(Path::parent)
+            .ok_or_else(|| {
+                SessionError::InvalidStorePath(self.paths.session_dir.clone())
+            })?;
+        ensure_local_gitignore(store_root)?;
         fs::create_dir_all(&self.paths.session_dir).map_err(|source| {
             SessionError::Io {
                 path: self.paths.session_dir.clone(),

@@ -27,7 +27,9 @@ pub enum SessionError {
     #[error("terminal id '{0}' must be a UUID")]
     InvalidTerminalId(String),
 
-    #[error("terminal observer {terminal_id} was not found for session {session_id}")]
+    #[error(
+        "terminal observer {terminal_id} was not found for session {session_id}"
+    )]
     TerminalNotFound {
         session_id: String,
         terminal_id: String,
@@ -70,13 +72,30 @@ pub enum SessionError {
     #[error("worktree branch cannot be empty")]
     EmptyWorktreeBranch,
 
+    #[error("worktree {path} is not a registered managed worktree: {reason}")]
+    InvalidManagedWorktree { path: PathBuf, reason: String },
+
+    #[error(
+        "worktree {path} is checked out on branch {actual}, not {expected}"
+    )]
+    WorktreeBranchMismatch {
+        path: PathBuf,
+        expected: String,
+        actual: String,
+    },
+
     #[error("store path has no parent directory: {0}")]
     InvalidStorePath(PathBuf),
 
     #[error(
-        "session {session_id} does not have a persisted worktree assignment"
+        "session {session_id} has no main-checkout worktree registry entry; migration required"
     )]
     MissingWorktreeAssignment { session_id: String },
+
+    #[error(
+        "session {session_id} worktree registry points at missing worktree {path}"
+    )]
+    RegisteredWorktreeMissing { session_id: String, path: PathBuf },
 
     #[error("session {session_id} ownership mismatch for worktree check-in")]
     SessionOwnershipMismatch { session_id: String },

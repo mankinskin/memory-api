@@ -1,4 +1,7 @@
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    process::Command,
+};
 
 use chrono::Utc;
 use tempfile::tempdir;
@@ -126,12 +129,80 @@ fn run_machine(args: &[&str]) -> serde_json::Value {
     }
 }
 
+fn managed_worktree(
+    dir: &tempfile::TempDir,
+    session_id: &str,
+    slug: &str,
+    branch: &str,
+) -> PathBuf {
+    let main_checkout = dir.path();
+    assert!(
+        Command::new("git")
+            .current_dir(main_checkout)
+            .args(["init", "--quiet"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("git")
+            .current_dir(main_checkout)
+            .args(["config", "user.email", "tests@example.invalid"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("git")
+            .current_dir(main_checkout)
+            .args(["config", "user.name", "session-cli tests"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    std::fs::write(main_checkout.join("README.md"), "fixture\n").unwrap();
+    assert!(
+        Command::new("git")
+            .current_dir(main_checkout)
+            .args(["add", "README.md"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("git")
+            .current_dir(main_checkout)
+            .args(["commit", "--quiet", "-m", "fixture"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let path = main_checkout.join(".worktrees").join(session_id).join(slug);
+    assert!(
+        Command::new("git")
+            .current_dir(main_checkout)
+            .args(["worktree", "add", "--quiet", "-b", branch])
+            .arg(&path)
+            .arg("HEAD")
+            .status()
+            .unwrap()
+            .success()
+    );
+    std::fs::canonicalize(path).unwrap()
+}
+
 #[test]
 fn check_in_and_lookup_roundtrip() {
     let dir = tempdir().unwrap();
     let store_root: PathBuf = dir.path().join(".session");
     let store_root_str = store_root.to_string_lossy().to_string();
-    let worktree = dir.path().join("wt-1");
+    let worktree = managed_worktree(
+        &dir,
+        "11111111-1111-4111-8111-111111111111",
+        "wt-1",
+        "feature/x",
+    );
     let worktree_str = worktree.to_string_lossy().to_string();
 
     let receipt = run_machine(&[
@@ -200,7 +271,12 @@ fn sessions_for_ticket_returns_seeded_session_at_strict_tier() {
     let dir = tempdir().unwrap();
     let store_root: PathBuf = dir.path().join(".session");
     let store_root_str = store_root.to_string_lossy().to_string();
-    let worktree = dir.path().join("wt-ticket");
+    let worktree = managed_worktree(
+        &dir,
+        "33333333-3333-4333-8333-333333333333",
+        "wt-ticket",
+        "feature/ticket-abc",
+    );
     let worktree_str = worktree.to_string_lossy().to_string();
 
     run_machine(&[
@@ -295,7 +371,8 @@ fn terminal_observer_cli_round_trip() {
     let store_root = dir.path().join(".session");
     let store_root_str = store_root.to_string_lossy().to_string();
     let session_id = "77777777-7777-4777-8777-777777777777";
-    let config = SessionStoreConfig::new(store_root.clone(), "default".to_string());
+    let config =
+        SessionStoreConfig::new(store_root.clone(), "default".to_string());
     config
         .init_runtime_context(session_api::SessionRuntimeInitRequest {
             session_id: Some(session_id.to_string()),

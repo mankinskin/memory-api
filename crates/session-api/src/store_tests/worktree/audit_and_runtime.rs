@@ -3,9 +3,18 @@ fn check_in_worktree_rotates_when_existing_path_is_missing() {
     let tempdir = TempDir::new().unwrap();
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
-    let first_path = tempdir.path().join("worktrees").join("session-a");
-    let second_path =
-        tempdir.path().join("worktrees").join("session-a-rotated");
+    let first_path = managed_worktree(
+        &tempdir,
+        WORKTREE_SESSION_A,
+        "session-a",
+        "session/session-a",
+    );
+    let second_path = managed_worktree(
+        &tempdir,
+        WORKTREE_SESSION_A,
+        "session-a-rotated",
+        "session/session-a-rotated",
+    );
 
     config
         .check_in_worktree(sample_worktree_request(
@@ -24,7 +33,7 @@ fn check_in_worktree_rotates_when_existing_path_is_missing() {
             "github-copilot",
             "ticket-a",
             second_path.clone(),
-            "session/session-a",
+            "session/session-a-rotated",
         ))
         .unwrap();
 
@@ -43,7 +52,12 @@ fn cross_session_reuse_requires_adopt_flow() {
     let tempdir = TempDir::new().unwrap();
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
-    let shared_path = tempdir.path().join("worktrees").join("session-a");
+    let shared_path = managed_worktree(
+        &tempdir,
+        WORKTREE_SESSION_A,
+        "session-a",
+        "session/session-a",
+    );
 
     config
         .check_in_worktree(sample_worktree_request(
@@ -60,7 +74,7 @@ fn cross_session_reuse_requires_adopt_flow() {
         "github-copilot-2",
         "ticket-a",
         shared_path.clone(),
-        "session/session-b",
+        "session/session-a",
     );
     handoff.predecessor_session_id = Some(WORKTREE_SESSION_A.to_string());
 
@@ -69,7 +83,299 @@ fn cross_session_reuse_requires_adopt_flow() {
     assert!(matches!(
         error,
         SessionError::CrossSessionReuseRequiresAdopt { .. }
+    ), "unexpected error: {error:?}");
+}
+
+#[test]
+fn check_in_rolls_back_successor_registry_failure() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let successor_path = managed_worktree(
+        &tempdir,
+        WORKTREE_SESSION_B,
+        "session-b",
+        "session/session-b",
+    );
+
+    config.set_worktree_check_in_failure(Some(
+        WorktreeCheckInFailurePoint::AfterSuccessorRegistry,
     ));
+    assert!(config
+        .check_in_worktree(sample_worktree_request(
+            WORKTREE_SESSION_B,
+            "github-copilot",
+            "ticket-b",
+            successor_path,
+            "session/session-b",
+        ))
+        .is_err());
+
+    assert!(!tempdir
+        .path()
+        .join(".session/local/worktrees")
+        .join(format!("{WORKTREE_SESSION_B}.json"))
+        .exists());
+    assert!(!tempdir
+        .path()
+        .join("store/sessions")
+        .join(WORKTREE_SESSION_B)
+        .join("session.json")
+        .exists());
+}
+
+#[test]
+fn check_in_rolls_back_predecessor_update_failure() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let predecessor_path = managed_worktree(
+        &tempdir,
+        WORKTREE_SESSION_A,
+        "session-a",
+        "session/session-a",
+    );
+    let successor_path = managed_worktree(
+        &tempdir,
+        WORKTREE_SESSION_B,
+        "session-b",
+        "session/session-b",
+    );
+    config
+        .check_in_worktree(sample_worktree_request(
+            WORKTREE_SESSION_A,
+            "github-copilot",
+            "ticket-a",
+            predecessor_path,
+            "session/session-a",
+        ))
+        .unwrap();
+
+    let mut handoff = sample_worktree_request(
+        WORKTREE_SESSION_B,
+        "github-copilot-2",
+        "ticket-a",
+        successor_path,
+        "session/session-b",
+    );
+    handoff.predecessor_session_id = Some(WORKTREE_SESSION_A.to_string());
+    config.set_worktree_check_in_failure(Some(
+        WorktreeCheckInFailurePoint::AfterPredecessorUpdate,
+    ));
+    assert!(config.check_in_worktree(handoff).is_err());
+
+    assert_eq!(
+        config.lookup_worktree(WORKTREE_SESSION_A).unwrap().status,
+        SessionWorktreeStatus::Active
+    );
+    assert!(!tempdir
+        .path()
+        .join(".session/local/worktrees")
+        .join(format!("{WORKTREE_SESSION_B}.json"))
+        .exists());
+    assert!(!tempdir
+        .path()
+        .join("store/sessions")
+        .join(WORKTREE_SESSION_B)
+        .join("session.json")
+        .exists());
+}
+
+#[test]
+fn successful_rotation_supersedes_predecessor_once() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let predecessor_path = managed_worktree(
+        &tempdir,
+        WORKTREE_SESSION_A,
+        "session-a",
+        "session/session-a",
+    );
+    let successor_path = managed_worktree(
+        &tempdir,
+        WORKTREE_SESSION_B,
+        "session-b",
+        "session/session-b",
+    );
+    config
+        .check_in_worktree(sample_worktree_request(
+            WORKTREE_SESSION_A,
+            "github-copilot",
+            "ticket-a",
+            predecessor_path,
+            "session/session-a",
+        ))
+        .unwrap();
+
+    let mut handoff = sample_worktree_request(
+        WORKTREE_SESSION_B,
+        "github-copilot-2",
+        "ticket-a",
+        successor_path.clone(),
+        "session/session-b",
+    );
+    handoff.predecessor_session_id = Some(WORKTREE_SESSION_A.to_string());
+    config.check_in_worktree(handoff.clone()).unwrap();
+    let predecessor_registry = tempdir
+        .path()
+        .join(".session/local/worktrees")
+        .join(format!("{WORKTREE_SESSION_A}.json"));
+    let predecessor_after_rotation = std::fs::read(&predecessor_registry).unwrap();
+
+    let receipt = config.check_in_worktree(handoff).unwrap();
+
+    assert_eq!(receipt.allocation_mode, SessionWorktreeAllocationMode::Reused);
+    assert_eq!(receipt.worktree_path, successor_path);
+    assert_eq!(
+        config.lookup_worktree(WORKTREE_SESSION_A).unwrap().status,
+        SessionWorktreeStatus::Superseded
+    );
+    assert_eq!(
+        std::fs::read(predecessor_registry).unwrap(),
+        predecessor_after_rotation
+    );
+}
+
+#[test]
+fn duplicate_active_canonical_path_without_predecessor_is_a_conflict() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let first_path = managed_worktree(
+        &tempdir,
+        WORKTREE_SESSION_A,
+        "session-a",
+        "session/session-a",
+    );
+    let second_path = managed_worktree(
+        &tempdir,
+        WORKTREE_SESSION_B,
+        "session-b",
+        "session/session-b",
+    );
+    config
+        .check_in_worktree(sample_worktree_request(
+            WORKTREE_SESSION_A,
+            "github-copilot",
+            "ticket-a",
+            first_path,
+            "session/session-a",
+        ))
+        .unwrap();
+
+    let first_registry = tempdir
+        .path()
+        .join(".session/local/worktrees")
+        .join(format!("{WORKTREE_SESSION_A}.json"));
+    let mut registry: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&first_registry).unwrap(),
+    )
+    .unwrap();
+    registry["assignment"]["path"] = serde_json::json!(second_path);
+    std::fs::write(&first_registry, serde_json::to_vec_pretty(&registry).unwrap())
+        .unwrap();
+
+    let error = config
+        .check_in_worktree(sample_worktree_request(
+            WORKTREE_SESSION_B,
+            "github-copilot-2",
+            "ticket-b",
+            second_path,
+            "session/session-b",
+        ))
+        .unwrap_err();
+
+    assert!(matches!(error, SessionError::WorktreeConflict { .. }));
+}
+
+#[test]
+fn check_in_rejects_external_missing_and_branch_mismatched_worktrees() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let external = tempdir.path().join("external");
+    git2::Repository::init(&external).unwrap();
+    let external_error = config
+        .check_in_worktree(sample_worktree_request(
+            WORKTREE_SESSION_A,
+            "github-copilot",
+            "ticket-a",
+            external,
+            "session/session-a",
+        ))
+        .unwrap_err();
+    assert!(matches!(external_error, SessionError::InvalidManagedWorktree { .. }));
+
+    let missing_error = config
+        .check_in_worktree(sample_worktree_request(
+            WORKTREE_SESSION_A,
+            "github-copilot",
+            "ticket-a",
+            tempdir.path().join(".worktrees").join(WORKTREE_SESSION_A).join("missing"),
+            "session/session-a",
+        ))
+        .unwrap_err();
+    assert!(matches!(missing_error, SessionError::InvalidManagedWorktree { .. }));
+
+    let worktree = managed_worktree(
+        &tempdir,
+        WORKTREE_SESSION_A,
+        "session-a",
+        "session/session-a",
+    );
+    let branch_error = config
+        .check_in_worktree(sample_worktree_request(
+            WORKTREE_SESSION_A,
+            "github-copilot",
+            "ticket-a",
+            worktree,
+            "session/wrong-branch",
+        ))
+        .unwrap_err();
+    assert!(matches!(branch_error, SessionError::WorktreeBranchMismatch { .. }));
+}
+
+#[test]
+fn check_in_rejects_symlink_path_escape() {
+    let tempdir = TempDir::new().unwrap();
+    let config =
+        SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let target = managed_worktree(
+        &tempdir,
+        WORKTREE_SESSION_A,
+        "session-a",
+        "session/session-a",
+    );
+    let link = tempdir
+        .path()
+        .join(".worktrees")
+        .join(WORKTREE_SESSION_B)
+        .join("escaped");
+    std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    #[cfg(windows)]
+    if let Err(error) = std::os::windows::fs::symlink_dir(&target, &link) {
+        if error.kind() == std::io::ErrorKind::PermissionDenied
+            || error.raw_os_error() == Some(1314)
+        {
+            return;
+        }
+        panic!("failed to create test symlink: {error}");
+    }
+
+    let error = config
+        .check_in_worktree(sample_worktree_request(
+            WORKTREE_SESSION_B,
+            "github-copilot",
+            "ticket-b",
+            link,
+            "session/session-a",
+        ))
+        .unwrap_err();
+    assert!(matches!(error, SessionError::InvalidManagedWorktree { .. }));
 }
 
 #[test]
@@ -124,11 +430,13 @@ fn runtime_init_uses_the_provisioned_worktree_uuid() {
         .unwrap();
 
     assert_eq!(result.context.session_id, session_id);
-    assert!(store_root
-        .join("sessions")
-        .join(&result.context.session_id)
-        .join("session.json")
-        .is_file());
+    assert!(
+        store_root
+            .join("sessions")
+            .join(&result.context.session_id)
+            .join("session.json")
+            .is_file()
+    );
 }
 
 #[test]

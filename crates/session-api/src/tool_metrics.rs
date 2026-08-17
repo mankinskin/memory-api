@@ -932,7 +932,7 @@ mod tests {
     }
 
     fn sample_time_offset(days: i64) -> DateTime<Utc> {
-        sample_time() + Duration::days(days)
+        Utc::now() + Duration::days(days)
     }
 
     #[test]

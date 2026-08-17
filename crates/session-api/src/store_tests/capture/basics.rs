@@ -2,12 +2,12 @@ use chrono::TimeZone;
 use tempfile::TempDir;
 
 use crate::{
-    store::write_json,
     CopilotHookMessage,
     CopilotHookPayload,
     PersistedSessionEvents,
     PersistedSessionManifest,
     PersistedSessionTranscript,
+    SESSION_SCHEMA_VERSION,
     SessionAuditSelector,
     SessionCaptureRequest,
     SessionError,
@@ -25,7 +25,9 @@ use crate::{
     SessionWorktreeAllocationMode,
     SessionWorktreeCheckInRequest,
     SessionWorktreeStatus,
-    SESSION_SCHEMA_VERSION,
+    store::{
+        WorktreeCheckInFailurePoint,
+    },
 };
 use uuid::Uuid;
 
@@ -130,6 +132,40 @@ fn sample_worktree_request(
         branch: branch.to_string(),
         predecessor_session_id: None,
     }
+}
+
+fn managed_worktree(
+    tempdir: &TempDir,
+    session_id: &str,
+    slug: &str,
+    branch: &str,
+) -> std::path::PathBuf {
+    let main_checkout = tempdir.path();
+    let repository = git2::Repository::open(main_checkout)
+        .or_else(|_| git2::Repository::init(main_checkout))
+        .unwrap();
+    if repository.head().is_err() {
+        let mut index = repository.index().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repository.find_tree(tree_id).unwrap();
+        let signature =
+            git2::Signature::now("session-api tests", "tests@example.invalid")
+                .unwrap();
+        repository
+            .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+            .unwrap();
+    }
+
+    let path = main_checkout.join(".worktrees").join(session_id).join(slug);
+    let status = std::process::Command::new("git")
+        .current_dir(main_checkout)
+        .args(["worktree", "add", "-b", branch])
+        .arg(&path)
+        .arg("HEAD")
+        .status()
+        .unwrap();
+    assert!(status.success(), "failed to create managed test worktree");
+    std::fs::canonicalize(path).unwrap()
 }
 
 #[test]

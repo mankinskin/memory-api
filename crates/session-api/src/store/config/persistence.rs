@@ -170,6 +170,7 @@ impl SessionStoreConfig {
         context: &SessionRuntimeContext,
     ) -> Result<(), SessionError> {
         let paths = self.runtime_paths_for_workspace(&context.session_id)?;
+        ensure_local_gitignore(&self.root)?;
         fs::create_dir_all(&paths.workspace_dir).map_err(|source| {
             SessionError::Io {
                 path: paths.workspace_dir.clone(),

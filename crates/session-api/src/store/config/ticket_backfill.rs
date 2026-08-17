@@ -63,7 +63,12 @@ impl SessionStoreConfig {
 
             let mut changed = false;
 
-            if record.metadata.ticket_id.is_some() {
+            if record.metadata.ticket_id.is_some()
+                || entry
+                    .store
+                    .worktree_registry_entry(&entry.session_id)?
+                    .is_some()
+            {
                 report.already_linked_untouched += 1;
             } else if let Some(worktree) = record.metadata.worktree.clone() {
                 let short_id = parse_agent_branch_short_id(&worktree.branch)

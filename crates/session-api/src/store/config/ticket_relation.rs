@@ -11,7 +11,12 @@ impl SessionStoreConfig {
         ticket_id: &str,
         strength: RelationStrength,
     ) -> Result<Option<RelationStrength>, SessionError> {
-        if record.metadata.ticket_id.as_deref() == Some(ticket_id) {
+        let registry_entry = self.worktree_registry_entry(&record.session_id)?;
+        if registry_entry
+            .as_ref()
+            .is_some_and(|entry| entry.ticket_id == ticket_id)
+            || record.metadata.ticket_id.as_deref() == Some(ticket_id)
+        {
             return Ok(Some(RelationStrength::Strict));
         }
         if strength == RelationStrength::Strict {
@@ -106,10 +111,17 @@ impl SessionStoreConfig {
                 continue;
             };
 
-            let worktree = record.metadata.worktree.as_ref();
+            let registry_entry = entry.store.worktree_registry_entry(&record.session_id)?;
+            let worktree = registry_entry
+                .as_ref()
+                .map(|entry| &entry.assignment)
+                .or(record.metadata.worktree.as_ref());
             matches.push(TicketSessionMatch {
                 session_id: record.session_id,
-                agent_id: record.metadata.agent_id,
+                agent_id: registry_entry
+                    .as_ref()
+                    .map(|entry| entry.agent_id.clone())
+                    .or(record.metadata.agent_id),
                 started_at: record.started_at,
                 ended_at: record.captured_at,
                 branch: worktree.map(|assignment| assignment.branch.clone()),

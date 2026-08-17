@@ -72,19 +72,54 @@ fn active_session_fixture() -> (TempDir, PathBuf) {
         .join(".worktrees")
         .join(TEST_SESSION_ID)
         .join("feature");
-    fs::create_dir_all(main_checkout.join(".git")).unwrap();
-    fs::create_dir_all(main_checkout.join(".git/worktrees/feature")).unwrap();
-    fs::write(
-        main_checkout.join(".git/worktrees/feature/HEAD"),
-        "ref: refs/heads/agent/test\n",
-    )
-    .unwrap();
-    fs::create_dir_all(&worktree).unwrap();
-    fs::write(
-        worktree.join(".git"),
-        "gitdir: ../../../.git/worktrees/feature\n",
-    )
-    .unwrap();
+    assert!(
+        Command::new("git")
+            .current_dir(temp.path())
+            .args(["init", "--quiet", &main_checkout.to_string_lossy()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    for args in [
+        ["config", "user.email", "tests@example.invalid"],
+        ["config", "user.name", "mcp-toolmon integration tests"],
+    ] {
+        assert!(
+            Command::new("git")
+                .current_dir(&main_checkout)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    fs::write(main_checkout.join("README.md"), "fixture\n").unwrap();
+    assert!(
+        Command::new("git")
+            .current_dir(&main_checkout)
+            .args(["add", "README.md"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("git")
+            .current_dir(&main_checkout)
+            .args(["commit", "--quiet", "-m", "fixture"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("git")
+            .current_dir(&main_checkout)
+            .args(["worktree", "add", "--quiet", "-b", "agent/test"])
+            .arg(&worktree)
+            .arg("HEAD")
+            .status()
+            .unwrap()
+            .success()
+    );
     SessionWorkspaceResolver::new(ResolverConfig {
         main_checkout: main_checkout.clone(),
         workspace_slug: "default".to_string(),

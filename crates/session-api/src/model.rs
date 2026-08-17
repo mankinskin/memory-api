@@ -15,8 +15,8 @@ pub fn default_session_schema_version() -> u32 {
     SESSION_SCHEMA_VERSION
 }
 
-mod workflow;
 mod terminal;
+mod workflow;
 
 pub use handoff::{
     HandoffBacklogFilter,
@@ -329,6 +329,12 @@ pub enum SessionWorktreeAllocationMode {
     Rotated,
 }
 
+impl Default for SessionWorktreeAllocationMode {
+    fn default() -> Self {
+        Self::New
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SessionWorktreeStatus {
@@ -337,11 +343,20 @@ pub enum SessionWorktreeStatus {
     Invalidated,
 }
 
+impl Default for SessionWorktreeStatus {
+    fn default() -> Self {
+        Self::Active
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionWorktreeAssignment {
+    #[serde(default)]
     pub path: PathBuf,
     pub branch: String,
+    #[serde(default)]
     pub allocation_mode: SessionWorktreeAllocationMode,
+    #[serde(default)]
     pub status: SessionWorktreeStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub predecessor_session_id: Option<String>,

@@ -54,8 +54,59 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 fn active_session_fixture() -> (TempDir, PathBuf) {
     let temp = TempDir::new().unwrap();
     let main_checkout = temp.path().join("repository");
-    let worktree = main_checkout.join(".worktrees").join("feature");
-    fs::create_dir_all(&worktree).unwrap();
+    let session_id = "11111111-1111-4111-8111-111111111111";
+    let worktree = main_checkout
+        .join(".worktrees")
+        .join(session_id)
+        .join("feature");
+    assert!(
+        Command::new("git")
+            .current_dir(temp.path())
+            .args(["init", "--quiet", &main_checkout.to_string_lossy()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    for args in [
+        ["config", "user.email", "tests@example.invalid"],
+        ["config", "user.name", "mcp-toolmon reload tests"],
+    ] {
+        assert!(
+            Command::new("git")
+                .current_dir(&main_checkout)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    fs::write(main_checkout.join("README.md"), "fixture\n").unwrap();
+    assert!(
+        Command::new("git")
+            .current_dir(&main_checkout)
+            .args(["add", "README.md"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("git")
+            .current_dir(&main_checkout)
+            .args(["commit", "--quiet", "-m", "fixture"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("git")
+            .current_dir(&main_checkout)
+            .args(["worktree", "add", "--quiet", "-b", "agent/test"])
+            .arg(&worktree)
+            .arg("HEAD")
+            .status()
+            .unwrap()
+            .success()
+    );
     SessionWorkspaceResolver::new(ResolverConfig {
         main_checkout: main_checkout.clone(),
         workspace_slug: "default".to_string(),
@@ -64,7 +115,7 @@ fn active_session_fixture() -> (TempDir, PathBuf) {
     // The anchor store beneath the main checkout is the worktree registry.
     SessionStoreConfig::new(main_checkout.join(".session"), "default")
         .check_in_worktree(SessionWorktreeCheckInRequest {
-            session_id: "11111111-1111-4111-8111-111111111111".to_string(),
+            session_id: session_id.to_string(),
             owner_id: "agent".to_string(),
             ticket_id: "ticket".to_string(),
             worktree_path: worktree.clone(),

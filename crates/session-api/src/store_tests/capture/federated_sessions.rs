@@ -199,7 +199,12 @@ fn federated_ticket_relation_finds_worktree_only_session_and_skips_malformed_sou
             "55555555-5555-4555-8555-555555555555",
             "agent-worktree",
             "ticket-federated",
-            tempdir.path().join("wt"),
+            managed_worktree(
+                &tempdir,
+                "55555555-5555-4555-8555-555555555555",
+                "worktree",
+                "agent/worktree",
+            ),
             "agent/worktree",
         ))
         .unwrap();

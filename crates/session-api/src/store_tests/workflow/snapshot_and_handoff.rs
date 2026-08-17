@@ -425,7 +425,12 @@ fn handoff_package_validates_target_files_in_assigned_worktree() {
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
     let session_id = uuid::Uuid::new_v4().to_string();
-    let worktree = tempdir.path().join("assigned-worktree");
+    let worktree = managed_worktree(
+        &tempdir,
+        &session_id,
+        "handoff-worktree",
+        "agent/handoff-worktree",
+    );
     let target_file = worktree.join("handoff-fixtures/assigned-only.txt");
     std::fs::create_dir_all(target_file.parent().unwrap()).unwrap();
     std::fs::write(&target_file, "---\nname: Explainer Agent\n---\n").unwrap();

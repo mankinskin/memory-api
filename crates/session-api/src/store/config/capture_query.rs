@@ -8,6 +8,7 @@ impl SessionStoreConfig {
         event: CopilotHookEvent,
     ) -> Result<(), SessionError> {
         let paths = self.paths_for_session_id(session_id)?;
+        ensure_local_gitignore(&self.root)?;
         fs::create_dir_all(&paths.session_dir).map_err(|source| {
             SessionError::Io {
                 path: paths.session_dir.clone(),
@@ -117,17 +118,27 @@ impl SessionStoreConfig {
         session_id: &str,
     ) -> Result<SessionRecord, SessionError> {
         let paths = self.paths_for_session_id(session_id)?;
-        let manifest: PersistedSessionManifest =
-            read_json(&paths.manifest_path)?;
-        ensure_supported_schema_version(
-            &paths.manifest_path,
-            manifest.schema_version,
-        )?;
+        let mut record = self.read_session_manifest(session_id)?;
         let transcript: PersistedSessionTranscript =
             read_json(&paths.transcript_path)?;
         ensure_supported_schema_version(
             &paths.transcript_path,
             transcript.schema_version,
+        )?;
+        record.turns = transcript.turns;
+        Ok(record)
+    }
+
+    pub(crate) fn read_session_manifest(
+        &self,
+        session_id: &str,
+    ) -> Result<SessionRecord, SessionError> {
+        let paths = self.paths_for_session_id(session_id)?;
+        let manifest: PersistedSessionManifest =
+            read_json(&paths.manifest_path)?;
+        ensure_supported_schema_version(
+            &paths.manifest_path,
+            manifest.schema_version,
         )?;
 
         Ok(SessionRecord {
@@ -137,7 +148,7 @@ impl SessionStoreConfig {
             started_at: manifest.started_at,
             captured_at: manifest.captured_at,
             metadata: manifest.metadata,
-            turns: transcript.turns,
+            turns: Vec::new(),
             links: manifest.links,
             track_id: manifest.track_id,
             anchor_ticket_id: manifest.anchor_ticket_id,

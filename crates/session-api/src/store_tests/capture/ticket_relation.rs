@@ -5,13 +5,22 @@ use crate::{
 
 const TARGET_TICKET: &str = "ticket-target";
 
-fn seed_strict_session(config: &SessionStoreConfig, tempdir: &TempDir) {
+fn seed_strict_session(
+    config: &SessionStoreConfig,
+    tempdir: &TempDir,
+) {
+    let worktree_path = managed_worktree(
+        tempdir,
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "strict",
+        "agent/strict-branch",
+    );
     config
         .check_in_worktree(SessionWorktreeCheckInRequest {
             session_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_string(),
             owner_id: "agent-strict".to_string(),
             ticket_id: TARGET_TICKET.to_string(),
-            worktree_path: tempdir.path().join("wt-strict"),
+            worktree_path,
             branch: "agent/strict-branch".to_string(),
             predecessor_session_id: None,
         })
@@ -40,7 +49,9 @@ fn seed_mentioned_session(config: &SessionStoreConfig) {
         .unwrap();
     config
         .init_runtime_context(SessionRuntimeInitRequest {
-            session_id: Some("cccccccc-cccc-4ccc-8ccc-cccccccccccc".to_string()),
+            session_id: Some(
+                "cccccccc-cccc-4ccc-8ccc-cccccccccccc".to_string(),
+            ),
             ..Default::default()
         })
         .unwrap();
@@ -121,7 +132,25 @@ fn sessions_for_ticket_strict_matches_only_metadata_ticket_id() {
     assert_eq!(row.branch.as_deref(), Some("agent/strict-branch"));
     assert_eq!(
         row.worktree_path.as_deref(),
-        Some(tempdir.path().join("wt-strict").as_path())
+        Some(
+            tempdir
+                .path()
+                .join(".worktrees")
+                .join("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+                .join("strict")
+                .canonicalize()
+                .unwrap()
+                .as_path(),
+        )
+    );
+    let manifest = config
+        .read_session("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .unwrap();
+    assert_eq!(manifest.metadata.agent_id, None);
+    assert_eq!(manifest.metadata.ticket_id, None);
+    assert_eq!(
+        manifest.metadata.worktree.unwrap().branch,
+        "agent/strict-branch"
     );
     assert!(row.started_at <= row.ended_at);
     assert_eq!(row.matched_strength, RelationStrength::Strict);
@@ -139,7 +168,13 @@ fn sessions_for_ticket_linked_includes_strict_and_links_but_not_mentioned() {
 
     let ids: Vec<&str> =
         matches.iter().map(|row| row.session_id.as_str()).collect();
-    assert_eq!(ids, vec!["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]);
+    assert_eq!(
+        ids,
+        vec![
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        ]
+    );
 
     let strict = matches
         .iter()
@@ -168,7 +203,11 @@ fn sessions_for_ticket_mentioned_includes_all_structured_tiers_only() {
         matches.iter().map(|row| row.session_id.as_str()).collect();
     assert_eq!(
         ids,
-        vec!["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc"]
+        vec![
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+        ]
     );
 
     let mentioned = matches
@@ -182,18 +221,23 @@ fn sessions_for_ticket_mentioned_includes_all_structured_tiers_only() {
 /// discoverable at the strict tier immediately afterward, with no
 /// backfill or transcript reading involved.
 #[test]
-fn check_in_worktree_forward_captures_ticket_linkage_for_immediate_discovery()
-{
+fn check_in_worktree_forward_captures_ticket_linkage_for_immediate_discovery() {
     let tempdir = TempDir::new().unwrap();
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let worktree_path = managed_worktree(
+        &tempdir,
+        "f1111111-1111-4111-8111-111111111111",
+        "forward-capture",
+        "agent/forward-capture-branch",
+    );
 
     config
         .check_in_worktree(SessionWorktreeCheckInRequest {
             session_id: "f1111111-1111-4111-8111-111111111111".to_string(),
             owner_id: "agent-forward-capture".to_string(),
             ticket_id: TARGET_TICKET.to_string(),
-            worktree_path: tempdir.path().join("wt-forward-capture"),
+            worktree_path,
             branch: "agent/forward-capture-branch".to_string(),
             predecessor_session_id: None,
         })
@@ -204,7 +248,10 @@ fn check_in_worktree_forward_captures_ticket_linkage_for_immediate_discovery()
         .unwrap();
 
     assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0].session_id, "f1111111-1111-4111-8111-111111111111");
+    assert_eq!(
+        matches[0].session_id,
+        "f1111111-1111-4111-8111-111111111111"
+    );
     assert_eq!(matches[0].matched_strength, RelationStrength::Strict);
 }
 
@@ -215,13 +262,19 @@ fn sessions_for_ticket_skips_unreadable_session_and_returns_the_rest() {
     let tempdir = TempDir::new().unwrap();
     let config =
         SessionStoreConfig::new(tempdir.path().join("store"), "context-engine");
+    let worktree_path = managed_worktree(
+        &tempdir,
+        "f2222222-2222-4222-8222-222222222222",
+        "good",
+        "agent/good-branch",
+    );
 
     config
         .check_in_worktree(SessionWorktreeCheckInRequest {
             session_id: "f2222222-2222-4222-8222-222222222222".to_string(),
             owner_id: "agent-good".to_string(),
             ticket_id: TARGET_TICKET.to_string(),
-            worktree_path: tempdir.path().join("wt-good"),
+            worktree_path,
             branch: "agent/good-branch".to_string(),
             predecessor_session_id: None,
         })
@@ -242,5 +295,8 @@ fn sessions_for_ticket_skips_unreadable_session_and_returns_the_rest() {
         .unwrap();
 
     assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0].session_id, "f2222222-2222-4222-8222-222222222222");
+    assert_eq!(
+        matches[0].session_id,
+        "f2222222-2222-4222-8222-222222222222"
+    );
 }

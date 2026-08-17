@@ -418,7 +418,12 @@ fn backfill_is_idempotent_and_never_overwrites_real_check_in() {
             session_id: "44444444-4444-4444-8444-444444444444".to_string(),
             owner_id: "agent-real".to_string(),
             ticket_id: "manually-assigned-ticket".to_string(),
-            worktree_path: tempdir.path().join("wt-real"),
+            worktree_path: managed_worktree(
+                &tempdir,
+                "44444444-4444-4444-8444-444444444444",
+                "real",
+                "agent/22222222-different-slug",
+            ),
             branch: "agent/22222222-different-slug".to_string(),
             predecessor_session_id: None,
         })
@@ -446,10 +451,18 @@ fn backfill_is_idempotent_and_never_overwrites_real_check_in() {
             .read_session("44444444-4444-4444-8444-444444444444")
             .unwrap()
             .metadata
-            .ticket_id
-            .as_deref(),
-        Some("manually-assigned-ticket"),
-        "real check-in ticket_id must never be overwritten"
+            .ticket_id,
+        None,
+        "D1 keeps check-in ticket ownership out of the manifest"
+    );
+    assert_eq!(
+        config
+            .worktree_registry_entry("44444444-4444-4444-8444-444444444444")
+            .unwrap()
+            .unwrap()
+            .ticket_id,
+        "manually-assigned-ticket",
+        "real check-in ticket ownership must never be overwritten"
     );
     assert_eq!(
         config.read_session("session-branch").unwrap().metadata.ticket_id.as_deref(),

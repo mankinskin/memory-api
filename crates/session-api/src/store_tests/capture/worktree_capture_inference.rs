@@ -213,7 +213,12 @@ fn infer_worktree_from_environment_never_overwrites_real_check_in() {
             session_id: WORKTREE_SESSION_REAL.to_string(),
             owner_id: "agent-real".to_string(),
             ticket_id: checked_in_ticket.to_string(),
-            worktree_path: tempdir.path().join("wt-real"),
+            worktree_path: managed_worktree(
+                &tempdir,
+                WORKTREE_SESSION_REAL,
+                "real",
+                "agent/realbeef-real-slug",
+            ),
             branch: "agent/realbeef-real-slug".to_string(),
             predecessor_session_id: None,
         })
@@ -239,12 +244,16 @@ fn infer_worktree_from_environment_never_overwrites_real_check_in() {
         .unwrap();
 
     let record = config.read_session(WORKTREE_SESSION_REAL).unwrap();
-    assert_eq!(
-        record.metadata.ticket_id.as_deref(),
-        Some(checked_in_ticket)
-    );
+    assert_eq!(record.metadata.ticket_id, None);
     assert_eq!(
         record.metadata.worktree.unwrap().branch,
         "agent/realbeef-real-slug"
+    );
+    assert_eq!(
+        config
+            .lookup_worktree(WORKTREE_SESSION_REAL)
+            .unwrap()
+            .ticket_id,
+        checked_in_ticket
     );
 }

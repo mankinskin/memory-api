@@ -34,7 +34,9 @@ impl SessionStoreConfig {
             },
             Err(error) => return Err(error),
         };
-        if record.metadata.worktree.is_some() {
+        if record.metadata.worktree.is_some()
+            || self.worktree_registry_entry(session_id)?.is_some()
+        {
             return Ok(());
         }
 

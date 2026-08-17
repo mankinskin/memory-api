@@ -227,16 +227,12 @@ impl SessionStoreConfig {
         &self,
         session_id: &str,
     ) -> Result<PathBuf, SessionError> {
-        let paths = self.paths_for_session_id(session_id)?;
-        let manifest = read_json_if_exists::<PersistedSessionManifest>(
-            &paths.manifest_path,
-        )?;
-        let active_worktree = manifest.and_then(|manifest| {
-            manifest.metadata.worktree
-        }).and_then(|worktree| {
-            (worktree.status == SessionWorktreeStatus::Active)
-                .then_some(worktree.path)
-        });
+        let active_worktree = self.worktree_registry_entry(session_id)?.and_then(
+            |entry| {
+                (entry.assignment.status == SessionWorktreeStatus::Active)
+                    .then_some(entry.assignment.path)
+            },
+        );
         Ok(active_worktree.unwrap_or_else(workspace_root))
     }
 

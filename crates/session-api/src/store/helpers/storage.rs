@@ -88,6 +88,44 @@ pub(super) fn remove_file_if_exists(path: &Path) -> Result<(), SessionError> {
     }
 }
 
+pub(super) fn ensure_local_gitignore(
+    store_root: &Path,
+) -> Result<(), SessionError> {
+    fs::create_dir_all(store_root).map_err(|source| SessionError::Io {
+        path: store_root.to_path_buf(),
+        source,
+    })?;
+
+    let ignore_path = store_root.join(".gitignore");
+    let contents = match fs::read_to_string(&ignore_path) {
+        Ok(contents) => contents,
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            String::new()
+        }
+        Err(source) => {
+            return Err(SessionError::Io {
+                path: ignore_path,
+                source,
+            });
+        }
+    };
+    if contents.lines().any(|line| line.trim() == "local/") {
+        return Ok(());
+    }
+
+    let separator = if contents.is_empty() || contents.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    fs::write(&ignore_path, format!("{contents}{separator}local/\n")).map_err(
+        |source| SessionError::Io {
+            path: ignore_path,
+            source,
+        },
+    )
+}
+
 pub(super) fn write_json<T: Serialize>(
     path: &Path,
     value: &T,
@@ -300,6 +338,17 @@ pub(super) fn validate_worktree_request(
         return Err(SessionError::EmptyWorktreeBranch);
     }
     Ok(())
+}
+
+pub(super) fn canonicalize_worktree_path(
+    path: &Path,
+) -> Result<PathBuf, SessionError> {
+    fs::canonicalize(path).map_err(|source| {
+        SessionError::InvalidManagedWorktree {
+            path: path.to_path_buf(),
+            reason: source.to_string(),
+        }
+    })
 }
 
 pub(super) fn ensure_supported_schema_version(

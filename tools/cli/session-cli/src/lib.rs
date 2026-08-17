@@ -25,8 +25,8 @@ use session_api::{
     SessionHandoffUpwardContextEntry,
     SessionQuery,
     SessionRuntimeInitRequest,
-    SessionTerminalCreateRequest,
     SessionStoreConfig,
+    SessionTerminalCreateRequest,
     SessionValidationGate,
     SessionWorkflowEdge,
     SessionWorkflowEdgeKind,
@@ -912,10 +912,8 @@ fn dispatch(
             to_value(&event)
         },
         SessionCommand::TerminalStatus(args) => {
-            let manifest = config.terminal_status(
-                &args.session_id,
-                &args.terminal_id,
-            )?;
+            let manifest =
+                config.terminal_status(&args.session_id, &args.terminal_id)?;
             to_value(&manifest)
         },
         SessionCommand::TerminalPeek(args) => {
@@ -928,10 +926,8 @@ fn dispatch(
             to_value(&result)
         },
         SessionCommand::TerminalClose(args) => {
-            let manifest = config.close_terminal_observer(
-                &args.session_id,
-                &args.terminal_id,
-            )?;
+            let manifest = config
+                .close_terminal_observer(&args.session_id, &args.terminal_id)?;
             to_value(&manifest)
         },
         SessionCommand::ToolMetrics(args) => {

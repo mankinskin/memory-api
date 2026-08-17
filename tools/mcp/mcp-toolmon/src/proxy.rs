@@ -399,6 +399,74 @@ fn error_result(
 const MAIN_CHECKOUT_ENV: &str = "MCP_MAIN_CHECKOUT";
 const DEFAULT_STORE_DIR: &str = ".session";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ToolAccess {
+    Read,
+    Mutation,
+}
+
+const KNOWN_READ_TOOLS: &[&str] = &[
+    "fs_list_dir",
+    "fs_stat",
+    "get_part",
+    "get_ticket",
+    "get_ticket_description",
+    "health",
+    "health_check",
+    "list_edges",
+    "list_parts",
+    "list_tickets",
+    "list_workspaces",
+    "next_tickets",
+    "peek_count",
+    "peek_grep",
+    "peek_read",
+    "peek_skeleton",
+    "session_capabilities",
+    "session_escalation_get",
+    "session_escalation_list",
+    "session_grant_list",
+    "session_lookup",
+    "session_peek_range",
+    "session_peek_skeleton",
+    "session_query",
+    "session_runtime_render_instructions",
+    "session_runtime_view",
+    "session_sessions_for_ticket",
+    "session_subagent_rollups",
+    "session_terminal_peek",
+    "session_terminal_status",
+    "session_tool_metrics",
+    "session_workflow_render_mermaid",
+    "session_workflow_render_terminal",
+    "spec_get",
+    "spec_health",
+    "spec_list",
+    "spec_refs_validate",
+    "spec_search",
+    "spec_section_get",
+    "spec_section_list",
+    "spec_tree",
+    "subgraph",
+    "test_get_execution",
+    "test_get_spec",
+    "test_list_executions",
+    "test_list_specs",
+    "ticket_capabilities",
+    "topgraph",
+    "workflow",
+];
+
+/// Classifies MCP operations at the routing boundary. Unrecognized names are
+/// mutations so newly added tools remain protected until explicitly reviewed.
+fn tool_access(tool: &str) -> ToolAccess {
+    if KNOWN_READ_TOOLS.contains(&tool) {
+        ToolAccess::Read
+    } else {
+        ToolAccess::Mutation
+    }
+}
+
 /// Builds the resolver anchored on the checkout the servers were launched in.
 ///
 /// The anchor is inferred from the process working directory, which is the
@@ -423,6 +491,7 @@ fn anchored_resolver() -> Result<SessionWorkspaceResolver, String> {
 fn resolve_workspace(
     session_id: &str,
     workspace: Option<&str>,
+    access: ToolAccess,
 ) -> Result<(String, PathBuf), String> {
     let store_dir = DEFAULT_STORE_DIR.to_string();
     let resolver = anchored_resolver()?;
@@ -433,42 +502,67 @@ fn resolve_workspace(
         .filter(|value| !value.is_empty() && *value != "default")
         .filter(|value| !Path::new(value).is_absolute())
         .map(Path::new);
-    let resolved = resolver
-        .resolve(ResolveRequest {
-            session_id,
-            relative_workspace,
-            store_dir: &store_dir,
-        })
-        .map_err(|error| match error {
-            ResolutionError::MissingSessionWorktree { .. }
-                if workspace.is_none_or(|value| {
+    let resolved = match resolver.resolve(ResolveRequest {
+        session_id,
+        relative_workspace,
+        store_dir: &store_dir,
+    }) {
+        Ok(resolved) => resolved,
+        Err(ResolutionError::MissingSessionWorktree { .. })
+            if access == ToolAccess::Read
+                && workspace.is_none_or(|value| {
                     value.is_empty() || value == "default"
                 }) =>
-            {
-                let candidates =
-                    resolver.refused_candidates(&store_dir).unwrap_or_default();
-                let looks_like_repository_root = candidates.len() == 1
-                    && candidates[0]
-                        .parent()
-                        .is_some_and(|root| root.join(".worktrees").is_dir());
-                if looks_like_repository_root {
-                    ResolutionError::MainCheckoutMutationBlocked.to_string()
-                } else {
-                    ResolutionError::UnanchoredDefault {
-                        session_id: session_id.to_string(),
-                        candidates,
+        {
+            let store_root = resolver
+                .refused_candidates(&store_dir)
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .next()
+                .ok_or_else(|| {
+                    "read workspace resolution could not derive repository anchor"
+                        .to_string()
+                })?;
+            let target_root = store_root.parent().ok_or_else(|| {
+                format!(
+                    "read workspace store root '{}' has no repository parent",
+                    normalized_path(&store_root)
+                )
+            })?;
+            return Ok((normalized_path(target_root), store_root));
+        },
+        Err(error) =>
+            return Err(match error {
+                ResolutionError::MissingSessionWorktree { .. }
+                    if workspace.is_none_or(|value| {
+                        value.is_empty() || value == "default"
+                    }) =>
+                {
+                    let candidates = resolver
+                        .refused_candidates(&store_dir)
+                        .unwrap_or_default();
+                    let looks_like_repository_root = candidates.len() == 1
+                        && candidates[0].parent().is_some_and(|root| {
+                            root.join(".worktrees").is_dir()
+                        });
+                    if looks_like_repository_root {
+                        ResolutionError::MainCheckoutMutationBlocked.to_string()
+                    } else {
+                        ResolutionError::UnanchoredDefault {
+                            session_id: session_id.to_string(),
+                            candidates,
+                        }
+                        .to_string()
                     }
-                    .to_string()
-                }
-            },
-            other => other.to_string(),
-        })?;
-    if resolved.target_root() == resolved.repository_root() {
-        return Err(ResolutionError::MainCheckoutMutationBlocked.to_string());
+                },
+                other => other.to_string(),
+            }),
+    };
+    if access == ToolAccess::Mutation {
+        resolved
+            .require_mutation_target()
+            .map_err(|error| error.to_string())?;
     }
-    resolved
-        .require_mutation_target()
-        .map_err(|error| error.to_string())?;
     let store_root = resolved
         .store_root(&store_dir)
         .map_err(|error| error.to_string())?;
@@ -606,7 +700,8 @@ fn resolve_workspace_for_tool(
     session_id: &str,
     workspace: Option<&str>,
 ) -> Result<(String, PathBuf), String> {
-    match resolve_workspace(session_id, workspace) {
+    let access = tool_access(tool);
+    match resolve_workspace(session_id, workspace, access) {
         Ok(resolved) => Ok(resolved),
         Err(error) => {
             match try_resolve_session_check_in_bootstrap_workspace(
@@ -995,6 +1090,7 @@ mod tests {
             Path,
             PathBuf,
         },
+        process::Command,
         sync::Mutex,
     };
     use tempfile::TempDir;
@@ -1066,25 +1162,54 @@ mod tests {
             .join(".worktrees")
             .join(TEST_SESSION_ID)
             .join("feature");
-        std::fs::create_dir_all(main_checkout.join(".git")).unwrap();
-        std::fs::create_dir_all(main_checkout.join(".git/worktrees/feature"))
-            .unwrap();
-        std::fs::write(
-            main_checkout.join(".git/worktrees/feature/HEAD"),
-            "ref: refs/heads/agent/test\n",
-        )
-        .unwrap();
-        std::fs::create_dir_all(&worktree).unwrap();
-        std::fs::write(
-            worktree.join(".git"),
-            "gitdir: ../../../.git/worktrees/feature\n",
-        )
-        .unwrap();
-        let assigned_checkout = if use_main_checkout {
-            main_checkout.clone()
-        } else {
-            worktree.clone()
-        };
+        assert!(
+            Command::new("git")
+                .current_dir(temp.path())
+                .args(["init", "--quiet", &main_checkout.to_string_lossy()])
+                .status()
+                .unwrap()
+                .success()
+        );
+        for args in [
+            ["config", "user.email", "tests@example.invalid"],
+            ["config", "user.name", "mcp-toolmon tests"],
+        ] {
+            assert!(
+                Command::new("git")
+                    .current_dir(&main_checkout)
+                    .args(args)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        std::fs::write(main_checkout.join("README.md"), "fixture\n").unwrap();
+        assert!(
+            Command::new("git")
+                .current_dir(&main_checkout)
+                .args(["add", "README.md"])
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert!(
+            Command::new("git")
+                .current_dir(&main_checkout)
+                .args(["commit", "--quiet", "-m", "fixture"])
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert!(
+            Command::new("git")
+                .current_dir(&main_checkout)
+                .args(["worktree", "add", "--quiet", "-b", "agent/test"])
+                .arg(&worktree)
+                .arg("HEAD")
+                .status()
+                .unwrap()
+                .success()
+        );
         let _resolver = SessionWorkspaceResolver::new(ResolverConfig {
             main_checkout: main_checkout.clone(),
             workspace_slug: "default".to_string(),
@@ -1099,11 +1224,26 @@ mod tests {
                 session_id: TEST_SESSION_ID.to_string(),
                 owner_id: "agent".to_string(),
                 ticket_id: "ticket".to_string(),
-                worktree_path: assigned_checkout.clone(),
+                worktree_path: worktree.clone(),
                 branch: "agent/test".to_string(),
                 predecessor_session_id: None,
             })
             .unwrap();
+        if use_main_checkout {
+            let registry_path = main_checkout
+                .join(".session/local/worktrees")
+                .join(format!("{TEST_SESSION_ID}.json"));
+            let mut registry: Value =
+                serde_json::from_slice(&std::fs::read(&registry_path).unwrap())
+                    .unwrap();
+            registry["assignment"]["path"] =
+                json!(main_checkout.to_string_lossy());
+            std::fs::write(
+                registry_path,
+                serde_json::to_vec_pretty(&registry).unwrap(),
+            )
+            .unwrap();
+        }
         let path = main_checkout
             .join(format!(".session/sessions/{TEST_SESSION_ID}/session.json"));
         let mut record = store.read_session(TEST_SESSION_ID).unwrap();
@@ -1111,6 +1251,15 @@ mod tests {
         std::fs::write(path, serde_json::to_vec_pretty(&record).unwrap())
             .unwrap();
         (temp, main_checkout, worktree)
+    }
+
+    fn main_checkout_fixture() -> (TempDir, PathBuf) {
+        let temp = tempfile::tempdir().unwrap();
+        let main_checkout = temp.path().join("repository");
+        std::fs::create_dir_all(main_checkout.join(".git")).unwrap();
+        std::fs::create_dir_all(main_checkout.join(".session")).unwrap();
+        std::fs::create_dir_all(main_checkout.join(".worktrees")).unwrap();
+        (temp, main_checkout)
     }
 
     struct TestRouting {
@@ -1235,25 +1384,50 @@ mod tests {
     }
 
     #[test]
-    fn default_workspace_from_repo_root_resolves_root_store_then_blocks_main_checkout()
-     {
+    fn reads_from_main_checkout_are_forwarded() {
         let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
-        let temp = tempfile::tempdir().unwrap();
-        let main_checkout = temp.path().join("repository");
-        let worktree = main_checkout.join(".worktrees").join("feature");
-        std::fs::create_dir_all(main_checkout.join(".git")).unwrap();
-        std::fs::create_dir_all(main_checkout.join(".session")).unwrap();
-        std::fs::create_dir_all(worktree.join(".session")).unwrap();
+        let (_temp, main_checkout) = main_checkout_fixture();
         unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
-        let resolver = anchored_resolver().unwrap();
-        assert_eq!(
-            resolver.refused_candidates(DEFAULT_STORE_DIR).unwrap(),
-            vec![main_checkout.join(".session")]
-        );
-        let text = response_text(route(allowed_call(), &test_gate()).0);
-        assert!(text.contains("main checkout mutations are blocked"));
-        assert!(text.contains("run session_check_in"));
-        assert!(!text.contains(&normalized(&worktree.join(".session"))));
+        for tool in [
+            "list_workspaces",
+            "get_ticket",
+            "session_lookup",
+            "spec_get",
+            "test_list_specs",
+        ] {
+            let (ClientAction::Forward(forwarded), _) = route_with_schema(
+                call(tool, Some("gpt-5-mini")),
+                &test_gate(),
+                tool,
+                json!({"workspace": {"type": "string"}}),
+            ) else {
+                panic!("{tool} should forward from the main checkout");
+            };
+            assert_eq!(
+                forwarded["params"]["arguments"]["workspace"],
+                json!(normalized(&main_checkout))
+            );
+        }
+        unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
+    }
+
+    #[test]
+    fn mutations_and_unknown_tools_remain_blocked_from_main_checkout() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let (_temp, main_checkout) = main_checkout_fixture();
+        unsafe { std::env::set_var("MCP_MAIN_CHECKOUT", &main_checkout) };
+        for tool in ["update_ticket", "unknown_tool", "get_unknown"] {
+            let text = response_text(
+                route_with_schema(
+                    call(tool, Some("gpt-5-mini")),
+                    &test_gate(),
+                    tool,
+                    json!({"workspace": {"type": "string"}}),
+                )
+                .0,
+            );
+            assert!(text.contains("main checkout mutations are blocked"));
+        }
         unsafe { std::env::remove_var("MCP_MAIN_CHECKOUT") };
     }
 
@@ -1290,6 +1464,26 @@ mod tests {
             json!(normalized(&worktree))
         );
         unsafe { std::env::remove_var(MAIN_CHECKOUT_ENV) };
+    }
+
+    #[test]
+    fn tool_access_allows_registered_reads_and_guards_writes() {
+        for tool in KNOWN_READ_TOOLS {
+            assert_eq!(tool_access(tool), ToolAccess::Read, "{tool}");
+        }
+
+        for tool in [
+            "fs_copy_file",
+            "fs_delete_dir",
+            "fs_delete_file",
+            "fs_move_file",
+            "fs_rename_file",
+            "session_check_in",
+            "update_ticket",
+            "unknown_tool",
+        ] {
+            assert_eq!(tool_access(tool), ToolAccess::Mutation, "{tool}");
+        }
     }
 
     #[test]
