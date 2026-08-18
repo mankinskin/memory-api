@@ -144,31 +144,21 @@ impl RuleStore {
             initialized_store = Empty,
         );
         let _span_guard = span.enter();
-        match Self::open(index_root) {
-            Ok(store) => {
-                span.record("initialized_store", false);
-                tracing::info!(
-                    target: RULE_STORE_TRACE_TARGET,
-                    initialized_store = false,
-                    "rule_store_open_or_init_complete"
-                );
-                Ok(store)
-            },
-            Err(RuleError::Storage(StorageError::WorkspaceNotFound {
-                ..
-            })) => {
-                span.record("initialized_store", true);
+        let opened = memory_kernel::storage::open_or_init(
+            || Self::open(index_root),
+            || {
                 let mut store = Self::init(index_root)?;
                 store.scan(true)?;
-                tracing::info!(
-                    target: RULE_STORE_TRACE_TARGET,
-                    initialized_store = true,
-                    "rule_store_open_or_init_complete"
-                );
                 Ok(store)
             },
-            Err(error) => Err(error),
-        }
+        )?;
+        span.record("initialized_store", opened.was_initialized());
+        tracing::info!(
+            target: RULE_STORE_TRACE_TARGET,
+            initialized_store = opened.was_initialized(),
+            "rule_store_open_or_init_complete"
+        );
+        Ok(opened.into_inner())
     }
 
     fn open_internal(index_root: &Path) -> Result<Self, RuleError> {

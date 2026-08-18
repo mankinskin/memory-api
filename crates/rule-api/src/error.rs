@@ -27,3 +27,9 @@ pub enum RuleError {
     #[error("rule id mismatch: expected {expected}, got {actual}")]
     IdMismatch { expected: Uuid, actual: Uuid },
 }
+
+impl memory_kernel::storage::NotFoundError for RuleError {
+    fn is_workspace_not_found(&self) -> bool {
+        matches!(self, RuleError::Storage(StorageError::WorkspaceNotFound { .. }))
+    }
+}
