@@ -170,8 +170,8 @@ fn dispatch_ticket_cli(
 
 fn run_spec_cli(args: Vec<String>) -> Result<(), String> {
     let cli =
-        spec_cli::cli::parse_cli_from(args).map_err(|err| err.to_string())?;
-    spec_cli::cli::run(cli).map_err(|err| err.to_string())?;
+        spec::cli::parse_cli_from(args).map_err(|err| err.to_string())?;
+    spec::cli::run(cli).map_err(|err| err.to_string())?;
     Ok(())
 }
 

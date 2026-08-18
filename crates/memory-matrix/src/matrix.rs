@@ -37,7 +37,7 @@ use rule_mcp::server::{
     SearchRulesInput,
     UpdateRuleInput,
 };
-use spec_mcp::server::{
+use spec::mcp::server::{
     CreateSpecInput,
     GetSpecInput,
     ScanInput as SpecScanInput,
