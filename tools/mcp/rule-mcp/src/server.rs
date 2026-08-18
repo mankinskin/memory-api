@@ -137,7 +137,8 @@ impl RuleServer {
         f: impl FnOnce(&mut RuleStore) -> Result<T, McpError>,
     ) -> Result<T, McpError> {
         let _guard = self.store_lock.lock().await;
-        let mut store = RuleStore::open(&index_root).map_err(Self::rule_err)?;
+        let mut store =
+            RuleStore::open_or_init(&index_root).map_err(Self::rule_err)?;
         if let Some(workspace_root) = workspace_root_for_index_root(&index_root)
         {
             for root in discover_workspace_scan_roots(&workspace_root) {

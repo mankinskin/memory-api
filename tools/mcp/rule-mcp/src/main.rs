@@ -15,7 +15,7 @@ async fn main() {
 
     let index_root = resolve_index_root();
 
-    RuleStore::open(&index_root).unwrap_or_else(|err| {
+    RuleStore::open_or_init(&index_root).unwrap_or_else(|err| {
         eprintln!(
             "Failed to open rule store at {}: {err}",
             index_root.display()
