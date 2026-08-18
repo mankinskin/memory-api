@@ -11,7 +11,7 @@ impl AuditDomain {
     fn open(
         ctx: &MatrixCtx
     ) -> Result<audit_api::index::RepositoryIndex, String> {
-        audit_api::index::RepositoryIndex::open(&ctx.workspace_root)
+        audit_api::index::RepositoryIndex::open_or_init(&ctx.workspace_root)
             .map_err(|err| err.to_string())
     }
 }

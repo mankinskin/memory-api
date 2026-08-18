@@ -40,7 +40,7 @@ pub fn audit(
     let repo_root = repo_root.canonicalize()?;
     let file_config = AuditFileConfig::load(&repo_root)?;
     let started_at = Utc::now();
-    let index = RepositoryIndex::open(&repo_root)?;
+    let index = RepositoryIndex::open_or_init(&repo_root)?;
     let sync = index.sync_source_files(&file_config.exclude_paths)?;
     let indexed_files = index.indexed_files()?;
 

@@ -196,7 +196,7 @@ mod tests {
         std::fs::create_dir_all(target_workspace.join(AUDIT_INDEX_DIR))
             .unwrap();
 
-        let index = RepositoryIndex::open(&source_workspace).unwrap();
+        let index = RepositoryIndex::init(&source_workspace).unwrap();
         let audit_entity_id = Uuid::new_v4();
         let plan = index
             .plan_move_preflight(&audit_entity_id, &target_workspace)

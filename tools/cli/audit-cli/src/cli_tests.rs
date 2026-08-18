@@ -50,6 +50,7 @@ fn move_plans_blocked_when_audit_entity_has_no_folder() {
 
     let target_workspace = repo_root.join("target-workspace");
     std::fs::create_dir_all(target_workspace.join(".audit")).unwrap();
+    RepositoryIndex::init(&repo_root).unwrap();
 
     let cli = parse_cli_from([
         "audit",

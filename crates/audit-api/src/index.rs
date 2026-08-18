@@ -45,7 +45,37 @@ pub struct RepositoryIndex {
 }
 
 impl RepositoryIndex {
+    /// Open an existing repository index. Returns
+    /// [`AuditError::WorkspaceNotFound`] if `.audit/audit.sqlite3` does not
+    /// exist yet. Use [`RepositoryIndex::init`] or
+    /// [`RepositoryIndex::open_or_init`] to create a new one.
     pub fn open(repo_root: &Path) -> Result<Self, AuditError> {
+        if !repo_root.exists() {
+            return Err(AuditError::MissingRepoRoot(format_output_path(
+                repo_root,
+            )));
+        }
+
+        let db_path = repo_root.join(INDEX_DIR).join(INDEX_DB);
+        if !db_path.is_file() {
+            return Err(AuditError::WorkspaceNotFound {
+                path: format_output_path(repo_root),
+            });
+        }
+
+        let this = Self {
+            repo_root: repo_root.to_path_buf(),
+            db_path,
+        };
+        let conn = this.connect()?;
+        this.init_schema(&conn)?;
+        Ok(this)
+    }
+
+    /// Initialize a new repository index. Creates `.audit/` and the sqlite
+    /// database. Idempotent: if the index already exists it is opened
+    /// without error.
+    pub fn init(repo_root: &Path) -> Result<Self, AuditError> {
         if !repo_root.exists() {
             return Err(AuditError::MissingRepoRoot(format_output_path(
                 repo_root,
@@ -64,6 +94,16 @@ impl RepositoryIndex {
         let conn = this.connect()?;
         this.init_schema(&conn)?;
         Ok(this)
+    }
+
+    /// Open an existing repository index, or initialize a new one when it
+    /// does not exist yet.
+    pub fn open_or_init(repo_root: &Path) -> Result<Self, AuditError> {
+        memory_kernel::storage::open_or_init(
+            || Self::open(repo_root),
+            || Self::init(repo_root),
+        )
+        .map(memory_kernel::storage::Opened::into_inner)
     }
 
     pub fn db_path(&self) -> &Path {

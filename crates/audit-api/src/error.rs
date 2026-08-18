@@ -16,4 +16,14 @@ pub enum AuditError {
     CommandFailed { command: String, details: String },
     #[error("audit move failed: {0}")]
     Move(String),
+    #[error(
+        "workspace not initialized at {path}: run 'audit run' or 'RepositoryIndex::init' to create a new index"
+    )]
+    WorkspaceNotFound { path: String },
+}
+
+impl memory_kernel::storage::NotFoundError for AuditError {
+    fn is_workspace_not_found(&self) -> bool {
+        matches!(self, AuditError::WorkspaceNotFound { .. })
+    }
 }

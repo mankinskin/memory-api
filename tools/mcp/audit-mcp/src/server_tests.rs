@@ -49,6 +49,8 @@ async fn move_preflight_is_blocked_for_repository_level_audit_storage() {
         .expect("source audit dir");
     std::fs::create_dir_all(target_workspace.join(".audit"))
         .expect("target audit dir");
+    audit_api::index::RepositoryIndex::init(&source_workspace)
+        .expect("init source audit index");
 
     let server = AuditServer::new(source_workspace.clone());
     let result = server
