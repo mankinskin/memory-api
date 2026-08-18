@@ -16,7 +16,7 @@ path = "src/lib.rs"
 test-api = { path = "../../../crates/test-api" }
 log-api = { path = "../../../crates/log-api" }
 memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
-spec-api = { path = "../../../crates/spec-api" }
+spec-api = { git = "https://github.com/mankinskin/spec", branch = "main" }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

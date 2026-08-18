@@ -13,7 +13,7 @@ name = "spec_http"
 path = "src/lib.rs"
 
 [dependencies]
-spec-api = { path = "../../../crates/spec-api" }
+spec-api = { git = "https://github.com/mankinskin/spec", branch = "main" }
 memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
 viewer-api = { path = "../../../../viewer-api/viewer-api" }
 axum = { version = "0.8", features = ["macros"] }

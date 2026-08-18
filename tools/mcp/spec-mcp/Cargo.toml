@@ -13,7 +13,7 @@ name = "spec_mcp"
 path = "src/lib.rs"
 
 [dependencies]
-spec-api = { path = "../../../crates/spec-api" }
+spec-api = { git = "https://github.com/mankinskin/spec", branch = "main" }
 memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
 rmcp = { version = "0.14", features = ["server", "transport-io"] }
 serde = { version = "1", features = ["derive"] }

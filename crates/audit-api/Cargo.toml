@@ -21,9 +21,9 @@ sha2 = "0.10"
 syn = { version = "2", features = ["full", "visit"] }
 thiserror = "2"
 uuid = { version = "1", features = ["serde", "v4", "v5"] }
-ticket-api = { path = "../ticket-api" }
-spec-api = { path = "../spec-api" }
 memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
+ticket-api = { git = "https://github.com/mankinskin/ticket", branch = "main" }
+spec-api = { git = "https://github.com/mankinskin/spec", branch = "main" }
 rule-api = { path = "../rule-api" }
 session-api = { path = "../session-api" }
 

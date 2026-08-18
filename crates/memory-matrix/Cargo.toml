@@ -19,17 +19,16 @@ harness = false
 [dependencies]
 memory-fixtures = { git = "https://github.com/mankinskin/memory-fixtures", branch = "main" }
 memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = "main"  }
-ticket-api = { path = "../ticket-api" }
-spec-api = { path = "../spec-api" }
+ticket-api = { git = "https://github.com/mankinskin/ticket", branch = "main" }
+ticket = { git = "https://github.com/mankinskin/ticket", branch = "main", features = ["cli", "mcp", "http"] }
+spec-api = { git = "https://github.com/mankinskin/spec", branch = "main" }
+spec = { git = "https://github.com/mankinskin/spec", branch = "main", features = ["cli", "mcp", "http"] }
 rule-api = { path = "../rule-api" }
 audit-api = { path = "../audit-api" }
 session-api = { path = "../session-api" }
 test-api = { path = "../test-api" }
 log-api = { path = "../log-api" }
-ticket = { path = "../ticket", features = ["cli", "mcp", "http"] }
-spec-cli = { path = "../../tools/cli/spec-cli" }
 rule-cli = { path = "../../tools/cli/rule-cli" }
-spec-mcp = { path = "../../tools/mcp/spec-mcp" }
 rule-mcp = { path = "../../tools/mcp/rule-mcp" }
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
