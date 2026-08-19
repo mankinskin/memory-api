@@ -29,7 +29,7 @@ use rmcp::{
     handler::server::wrapper::Parameters,
     model::CallToolResult,
 };
-use rule_mcp::server::{
+use rule::mcp::server::{
     CreateRuleInput,
     RuleRefInput,
     RuleServer,

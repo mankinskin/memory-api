@@ -308,8 +308,8 @@ fn dispatch_spec_cli(
 
 fn run_rule_cli(args: Vec<String>) -> Result<(), String> {
     let cli =
-        rule_cli::cli::parse_cli_from(args).map_err(|err| err.to_string())?;
-    rule_cli::cli::run(cli).map_err(|err| err.to_string())?;
+        rule::cli::parse_cli_from(args).map_err(|err| err.to_string())?;
+    rule::cli::run(cli).map_err(|err| err.to_string())?;
     Ok(())
 }
 

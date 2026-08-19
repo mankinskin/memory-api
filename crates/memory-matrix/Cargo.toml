@@ -23,13 +23,12 @@ ticket-api = { git = "https://github.com/mankinskin/ticket", branch = "main" }
 ticket = { git = "https://github.com/mankinskin/ticket", branch = "main", features = ["cli", "mcp", "http"] }
 spec-api = { git = "https://github.com/mankinskin/spec", branch = "main" }
 spec = { git = "https://github.com/mankinskin/spec", branch = "main", features = ["cli", "mcp", "http"] }
-rule-api = { path = "../rule-api" }
+rule-api = { git = "https://github.com/mankinskin/rule", branch = "main" }
 audit-api = { path = "../audit-api" }
 session-api = { path = "../session-api" }
 test-api = { path = "../test-api" }
 log-api = { path = "../log-api" }
-rule-cli = { path = "../../tools/cli/rule-cli" }
-rule-mcp = { path = "../../tools/mcp/rule-mcp" }
+rule = { git = "https://github.com/mankinskin/rule", branch = "main", features = ["cli", "mcp"] }
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 rmcp = { version = "0.14", features = ["server", "transport-io"] }
