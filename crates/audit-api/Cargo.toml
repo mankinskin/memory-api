@@ -25,7 +25,7 @@ memory-kernel = { git = "https://github.com/mankinskin/memory-kernel", branch = 
 ticket-api = { git = "https://github.com/mankinskin/ticket", branch = "main" }
 spec-api = { git = "https://github.com/mankinskin/spec", branch = "main" }
 rule-api = { git = "https://github.com/mankinskin/rule", branch = "main" }
-session-api = { path = "../session-api" }
+session-api = { git = "https://github.com/mankinskin/session", branch = "main" }
 
 [dev-dependencies]
 tempfile = "3"

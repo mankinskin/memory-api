@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 serde_json = "1"
-session-api = { path = "../session-api" }
+session-api = { git = "https://github.com/mankinskin/session", branch = "main" }
 
 [dev-dependencies]
 chrono = { version = "0.4", features = ["serde"] }
