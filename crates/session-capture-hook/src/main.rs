@@ -81,15 +81,41 @@ fn run() -> Result<(), SessionError> {
     );
 
     let transcript_path = normalize_transcript_path(&args.transcript_path);
-    let routing_outcome = initialize_session_routing(
+    let mut routing_outcome = initialize_session_routing(
         &args.trigger,
         args.session_id.as_deref(),
         args.store_root.as_deref(),
     );
-    let store_root = resolve_capture_store_root(
+    let mut store_root = resolve_capture_store_root(
         args.store_root.clone(),
         args.session_id.as_deref(),
     );
+    // SessionStart provisions the worktree assignment; if that hook was
+    // missed (e.g. hooks were reconfigured mid-session), lazily provision on
+    // the first later event that carries a session id instead of skipping
+    // capture for the rest of the session's lifetime. Stop is excluded: a
+    // session that never provisioned during its own lifetime should not
+    // spring a fresh worktree into existence only at its very end.
+    if store_root.is_none()
+        && !args.trigger.eq_ignore_ascii_case("SessionStart")
+        && !args.trigger.eq_ignore_ascii_case("Stop")
+    {
+        tracing::warn!(
+            "no store root resolved on non-SessionStart trigger; attempting lazy provisioning fallback for a missed SessionStart"
+        );
+        let lazy_outcome = initialize_session_routing(
+            "SessionStart",
+            args.session_id.as_deref(),
+            args.store_root.as_deref(),
+        );
+        if lazy_outcome.is_some() {
+            routing_outcome = lazy_outcome;
+            store_root = resolve_capture_store_root(
+                args.store_root.clone(),
+                args.session_id.as_deref(),
+            );
+        }
+    }
     let Some(store_root) = store_root else {
         tracing::warn!("skip: no capture store root resolved");
         emit_hook_payload(routing_outcome.as_ref());
@@ -157,6 +183,17 @@ fn run() -> Result<(), SessionError> {
             "[session-capture-hook] worktree/ticket inference skipped: {error}"
         );
     }
+
+    // Self-heals the main checkout's registry (ticket 842d74cb D1) on every
+    // capture, not just fresh provisioning: a worktree resolves positionally
+    // regardless of whether main's own record for it still exists, so a
+    // deleted or never-written main-checkout record would otherwise stay
+    // missing for the rest of the session's lifetime.
+    mirror_worktree_assignment_to_main(
+        &config,
+        &plan.record.session_id,
+        &store_root,
+    );
 
     // Refresh tool metrics rollup (best-effort)
     refresh_tool_metrics_rollup(&config);
@@ -407,6 +444,30 @@ fn provision_session_worktree(
                 };
             },
         };
+
+    // Register the assignment in the main checkout's own store (ticket
+    // 842d74cb D1: main is the authoritative session-to-worktree registry),
+    // independent of and before whatever the worktree's own store captures.
+    let main_config = SessionStoreConfig::new(anchor.join(".session"), "default");
+    let branch = worktree
+        .branch
+        .clone()
+        .unwrap_or_else(|| format!("agent/{session_id}/session"));
+    let allocation_mode = match outcome {
+        "reused" => session_api::SessionWorktreeAllocationMode::Reused,
+        "reclaimed" => session_api::SessionWorktreeAllocationMode::Rotated,
+        _ => session_api::SessionWorktreeAllocationMode::New,
+    };
+    if let Err(error) = main_config.register_provisioned_worktree(
+        session_id,
+        &worktree.path,
+        &branch,
+        allocation_mode,
+    ) {
+        eprintln!(
+            "[session-capture-hook] main-checkout registration failed for session {session_id}: {error}"
+        );
+    }
 
     for outcome in rebuild_entity_indexes(&worktree.path) {
         report_index_rebuild_outcome(&worktree.path, outcome);
@@ -852,6 +913,62 @@ fn infer_capture_worktree(
     config.infer_worktree_from_environment(session_id, worktree_root)
 }
 
+/// Mirrors the worktree's own resolved assignment into the main checkout's
+/// registry (ticket 842d74cb D1), best-effort: a missing or unreadable main
+/// checkout must never fail capture, and re-reading the just-captured record
+/// (rather than trusting the in-memory `plan`) picks up whatever
+/// `infer_capture_worktree` just persisted.
+fn mirror_worktree_assignment_to_main(
+    config: &SessionStoreConfig,
+    session_id: &str,
+    store_root: &Path,
+) {
+    let Some(worktree_root) = store_root.parent() else {
+        return;
+    };
+    let Some(anchor) = anchor_checkout_for_worktree(worktree_root) else {
+        return;
+    };
+    if !anchor.join(".session").is_dir() {
+        return;
+    }
+    let record = match config.read_session(session_id) {
+        Ok(record) => record,
+        Err(error) => {
+            eprintln!(
+                "[session-capture-hook] main-checkout registry mirror skipped for session {session_id}: could not read worktree record: {error}"
+            );
+            return;
+        },
+    };
+    let Some(assignment) = record.metadata.worktree else {
+        return;
+    };
+    let main_config = SessionStoreConfig::new(anchor.join(".session"), "default");
+    if let Err(error) = main_config.register_provisioned_worktree(
+        session_id,
+        &assignment.path,
+        &assignment.branch,
+        assignment.allocation_mode,
+    ) {
+        eprintln!(
+            "[session-capture-hook] main-checkout registry mirror failed for session {session_id}: {error}"
+        );
+    }
+}
+
+/// Resolves the main checkout above a nested `.worktrees/<uuid>/<slug>`
+/// worktree directory. Returns `None` for a legacy flat layout or a worktree
+/// path with no `.worktrees` ancestor rather than guessing.
+fn anchor_checkout_for_worktree(worktree_root: &Path) -> Option<PathBuf> {
+    let session_dir = worktree_root.parent()?;
+    let worktrees_dir = session_dir.parent()?;
+    if worktrees_dir.file_name()?.to_str()? != ".worktrees" {
+        return None;
+    }
+    worktrees_dir.parent().map(Path::to_path_buf)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -1169,11 +1286,16 @@ mod tests {
                 .join("session")
                 .is_dir()
         );
-        assert_eq!(
-            std::fs::read_dir(main_checkout.join(".session"))
-                .unwrap()
-                .count(),
-            0
+        // Ticket 842d74cb D1: the main checkout is the authoritative
+        // session-to-worktree registry, so SessionStart seeds a minimal
+        // registration record there in addition to provisioning the worktree.
+        assert!(
+            main_checkout
+                .join(".session")
+                .join("sessions")
+                .join(session_id)
+                .join("session.json")
+                .is_file()
         );
     }
 

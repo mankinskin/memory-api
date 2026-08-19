@@ -1,18 +1,7 @@
 use std::{
-    collections::{
-        BTreeMap,
-        BTreeSet,
-    },
     fs,
-    hash::{
-        Hash,
-        Hasher,
-    },
     io::Write,
-    path::{
-        Path,
-        PathBuf,
-    },
+    path::PathBuf,
     process::{
         Command,
         Stdio,
@@ -89,51 +78,6 @@ fn run_hook_with_payload(
         .expect("wait for session-capture-hook")
 }
 
-fn snapshot_directory(root: &Path) -> BTreeMap<PathBuf, u64> {
-    let mut snapshot = BTreeMap::new();
-    snapshot_directory_entries(root, root, &mut snapshot);
-    snapshot
-}
-
-fn snapshot_directory_entries(
-    root: &Path,
-    directory: &Path,
-    snapshot: &mut BTreeMap<PathBuf, u64>,
-) {
-    for entry in fs::read_dir(directory).expect("read snapshot directory") {
-        let entry = entry.expect("read snapshot entry");
-        let path = entry.path();
-        let relative = path
-            .strip_prefix(root)
-            .expect("snapshot path belongs to root")
-            .to_path_buf();
-        if entry.file_type().expect("read snapshot file type").is_dir() {
-            snapshot.insert(relative, 0);
-            snapshot_directory_entries(root, &path, snapshot);
-        } else {
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            fs::read(&path)
-                .expect("read snapshot file")
-                .hash(&mut hasher);
-            snapshot.insert(relative, hasher.finish());
-        }
-    }
-}
-
-fn changed_snapshot_paths(
-    before: &BTreeMap<PathBuf, u64>,
-    after: &BTreeMap<PathBuf, u64>,
-) -> Vec<PathBuf> {
-    before
-        .keys()
-        .chain(after.keys())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .filter(|path| before.get(*path) != after.get(*path))
-        .cloned()
-        .collect()
-}
-
 #[test]
 fn e2e_session_start_provisions_and_captures_a_fresh_session() {
     let fixture = tempdir().expect("temp fixture dir");
@@ -177,11 +121,13 @@ fn e2e_session_start_provisions_and_captures_a_fresh_session() {
         "fresh SessionStart must capture a session record in its worktree"
     );
     assert!(
-        fs::read_dir(checkout.join(".session"))
-            .expect("read anchor session store")
-            .next()
-            .is_none(),
-        "fresh SessionStart must not create anchor session records"
+        checkout
+            .join(".session")
+            .join("sessions")
+            .join(session_id)
+            .join("session.json")
+            .is_file(),
+        "fresh SessionStart must register the session in the main checkout store"
     );
 
     let prompt = "Persist this submitted prompt.";
@@ -273,7 +219,8 @@ fn e2e_session_start_provisions_and_captures_a_fresh_session() {
 }
 
 #[test]
-fn e2e_session_start_preserves_anchor_session_store_snapshot() {
+fn e2e_session_start_registers_in_main_checkout_without_disturbing_other_sessions()
+ {
     let fixture = tempdir().expect("temp fixture dir");
     let checkout = fixture.path().join("checkout");
     create_fixture_checkout(&checkout);
@@ -286,7 +233,6 @@ fn e2e_session_start_preserves_anchor_session_store_snapshot() {
         .expect("create decoy session directory");
     fs::write(&decoy, "{\"session_id\":\"different-session\"}\n")
         .expect("write decoy session record");
-    let before = snapshot_directory(&checkout.join(".session"));
     let session_id = "22222222-2222-4222-8222-222222222222";
     let transcript = local_fixture_a().replace(FIXTURE_SESSION_ID, session_id);
     let transcript_path = write_fixture_transcript(
@@ -313,12 +259,18 @@ fn e2e_session_start_preserves_anchor_session_store_snapshot() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let after = snapshot_directory(&checkout.join(".session"));
-    assert_eq!(
-        before,
-        after,
-        "SessionStart must not add, modify, or delete main-checkout .session paths; changed paths: {:?}",
-        changed_snapshot_paths(&before, &after)
+    // Ticket 842d74cb D1: the main checkout is the authoritative
+    // session-to-worktree registry, so SessionStart seeds a minimal
+    // registration record there, but must not touch an unrelated session's
+    // existing record.
+    assert!(
+        checkout
+            .join(".session")
+            .join("sessions")
+            .join(session_id)
+            .join("session.json")
+            .is_file(),
+        "SessionStart should register the session in the main checkout store"
     );
     assert_eq!(
         fs::read_to_string(&decoy).expect("read decoy session record"),
@@ -440,6 +392,118 @@ fn e2e_missing_transcript_session_start_provisions_but_stop_does_not() {
     assert!(
         !stop_checkout.join(".worktrees").exists(),
         "Stop must not provision when the transcript is missing"
+    );
+}
+
+#[test]
+fn e2e_user_prompt_submit_lazily_provisions_a_missed_session_start() {
+    let fixture = tempdir().expect("temp fixture dir");
+    let checkout = fixture.path().join("checkout");
+    create_fixture_checkout(&checkout);
+    // Fixed valid UUID: SessionWorkspaceResolver rejects non-UUID session
+    // ids, and the isolated tempdir checkout makes a literal id safe to reuse.
+    let session_id = "44444444-4444-4444-8444-444444444444";
+    let transcript = local_fixture_a().replace(FIXTURE_SESSION_ID, session_id);
+    let transcript_path =
+        write_fixture_transcript(&checkout, "missed-start.jsonl", &transcript);
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
+
+    // No SessionStart ever ran for this session id; UserPromptSubmit is the
+    // first hook event it sees.
+    let output = run_hook_with_payload(
+        &hook_bin,
+        &checkout,
+        serde_json::json!({
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": session_id,
+            "transcript_path": transcript_path,
+            "prompt": "recover from a missed SessionStart",
+        }),
+    );
+
+    assert!(
+        output.status.success(),
+        "session-capture-hook failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let worktree = checkout.join(".worktrees").join(&session_id).join("session");
+    assert!(
+        worktree.is_dir(),
+        "UserPromptSubmit must lazily provision a missed SessionStart; stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        worktree
+            .join(".session")
+            .join("sessions")
+            .join(&session_id)
+            .join("session.json")
+            .is_file(),
+        "capture should persist once lazy provisioning resolves a store root"
+    );
+}
+
+#[test]
+fn e2e_user_prompt_submit_self_heals_a_deleted_main_checkout_registration() {
+    let fixture = tempdir().expect("temp fixture dir");
+    let checkout = fixture.path().join("checkout");
+    create_fixture_checkout(&checkout);
+    let session_id = "55555555-5555-4555-8555-555555555555";
+    let transcript = local_fixture_a().replace(FIXTURE_SESSION_ID, session_id);
+    let transcript_path =
+        write_fixture_transcript(&checkout, "self-heal.jsonl", &transcript);
+    let hook_bin = std::env::var("CARGO_BIN_EXE_session-capture-hook")
+        .expect("cargo should expose session-capture-hook binary path for integration tests");
+
+    let output = run_hook_with_payload(
+        &hook_bin,
+        &checkout,
+        serde_json::json!({
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "transcript_path": transcript_path,
+        }),
+    );
+    assert!(output.status.success());
+    let main_record = checkout
+        .join(".session")
+        .join("sessions")
+        .join(session_id)
+        .join("session.json");
+    assert!(
+        main_record.is_file(),
+        "SessionStart should register the session in the main checkout store"
+    );
+
+    // Simulate an operator deleting the main-checkout registration (or it
+    // never having been written by an older binary) while the worktree
+    // itself, and its own nested store, remain intact.
+    fs::remove_dir_all(main_record.parent().expect("main record parent"))
+        .expect("delete main-checkout registration");
+    assert!(!main_record.is_file());
+
+    let output = run_hook_with_payload(
+        &hook_bin,
+        &checkout,
+        serde_json::json!({
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": session_id,
+            "transcript_path": transcript_path,
+            "prompt": "trigger self-heal",
+        }),
+    );
+    assert!(
+        output.status.success(),
+        "session-capture-hook failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        main_record.is_file(),
+        "UserPromptSubmit must self-heal the deleted main-checkout registration; stderr={}",
+        String::from_utf8_lossy(&output.stderr)
     );
 }
 

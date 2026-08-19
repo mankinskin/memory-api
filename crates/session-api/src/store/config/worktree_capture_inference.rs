@@ -118,6 +118,46 @@ impl SessionStoreConfig {
         Ok(true)
     }
 
+    /// Writes a minimal registration record for a session the hook has just
+    /// provisioned (or reused) a worktree for, on `self` — call this with a
+    /// `SessionStoreConfig` pointed at the **main checkout's** `.session`
+    /// store so the assignment is discoverable there even before, or
+    /// regardless of, whatever the worktree's own store later captures
+    /// (ticket 842d74cb D1: the main checkout is the authoritative
+    /// session-to-worktree registry).
+    ///
+    /// A no-op when the session already carries a worktree assignment: this
+    /// only ever bootstraps the first sighting of a session id and never
+    /// overwrites a real capture or a later reassignment.
+    pub fn register_provisioned_worktree(
+        &self,
+        session_id: &str,
+        worktree_path: &Path,
+        branch: &str,
+        allocation_mode: SessionWorktreeAllocationMode,
+    ) -> Result<(), SessionError> {
+        let mut record = match self.read_session(session_id) {
+            Ok(record) => record,
+            Err(SessionError::NotFound { .. }) =>
+                self.new_inferred_record(session_id),
+            Err(error) => return Err(error),
+        };
+        if record.metadata.worktree.is_some() {
+            return Ok(());
+        }
+        record.metadata.worktree = Some(SessionWorktreeAssignment {
+            path: worktree_path.to_path_buf(),
+            branch: branch.to_string(),
+            allocation_mode,
+            status: SessionWorktreeStatus::Active,
+            predecessor_session_id: None,
+            predecessor_path: None,
+        });
+        record.captured_at = chrono::Utc::now();
+        self.persist_record(record)?;
+        Ok(())
+    }
+
     /// Minimal record for a session that has not been captured yet.
     fn new_inferred_record(
         &self,
