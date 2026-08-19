@@ -15,6 +15,9 @@ session-api = { path = "../session-api" }
 session-worktree-provision = { path = "../session-worktree-provision" }
 session-workspace-resolver = { path = "../session-workspace-resolver" }
 ticket-api = { git = "https://github.com/mankinskin/ticket", branch = "main" }
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [dev-dependencies]
 tempfile = "3"

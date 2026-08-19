@@ -111,8 +111,10 @@ pub(super) fn args_from_hook_stdin(
             ))
         })?;
     if stdin.trim().is_empty() {
+        tracing::warn!("hook stdin was empty");
         return Ok(args);
     }
+    tracing::debug!(stdin_len = stdin.len(), "read hook stdin");
     let payload: Value = serde_json::from_str(&stdin).map_err(|error| {
         SessionError::InvalidHookInput(format!(
             "invalid hook stdin json: {error}"

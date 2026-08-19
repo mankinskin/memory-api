@@ -41,6 +41,7 @@ use session_worktree_provision::{
 use ticket_api::storage::TicketStore;
 
 mod args;
+mod logging;
 
 use args::{
     args_from_hook_stdin,
@@ -50,12 +51,14 @@ use args::{
 };
 
 fn main() {
+    let _log_guard = logging::init_file_logging();
     match run() {
         Ok(()) => {},
         Err(SessionError::InvalidHookInput(message)) if message == "help" => {
             print_usage();
         },
         Err(error) => {
+            tracing::error!(%error, "session-capture-hook failed");
             eprintln!("[session-capture-hook] {error}");
             process::exit(1);
         },
@@ -63,12 +66,19 @@ fn main() {
 }
 
 fn run() -> Result<(), SessionError> {
+    tracing::debug!(args = ?std::env::args().collect::<Vec<_>>(), "invoked");
     let args = parse_args()?;
     let args = if args.from_hook_stdin {
         args_from_hook_stdin(args)?
     } else {
         args
     };
+    tracing::info!(
+        trigger = %args.trigger,
+        hook_event_name = ?args.hook_event_name,
+        session_id = ?args.session_id,
+        "parsed hook args"
+    );
 
     let transcript_path = normalize_transcript_path(&args.transcript_path);
     let routing_outcome = initialize_session_routing(
@@ -81,9 +91,11 @@ fn run() -> Result<(), SessionError> {
         args.session_id.as_deref(),
     );
     let Some(store_root) = store_root else {
+        tracing::warn!("skip: no capture store root resolved");
         emit_hook_payload(routing_outcome.as_ref());
         return Ok(());
     };
+    tracing::debug!(store_root = %store_root.display(), "resolved capture store root");
     let config = SessionStoreConfig::new(store_root.clone(), "default");
     let hook_event_name = hook_event_name(&args);
     let captured_hook_event = hook_event(&args, &hook_event_name);
@@ -93,6 +105,10 @@ fn run() -> Result<(), SessionError> {
         {
             config.persist_hook_event(session_id, event)?;
         }
+        tracing::warn!(
+            transcript_path = %transcript_path.display(),
+            "skip: transcript not found"
+        );
         eprintln!(
             "[session-capture-hook] skip: transcript not found at {}",
             transcript_path.display()
@@ -120,6 +136,7 @@ fn run() -> Result<(), SessionError> {
             Some(outcome.metadata(&hook_event_name));
     }
     plan.persist()?;
+    tracing::info!(session_id = %plan.record.session_id, "persisted capture plan");
     report_structured_feedback_signals(&plan);
     synthesize_follow_up_tickets(
         &plan,
