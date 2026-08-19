@@ -25,7 +25,7 @@ spec-api = { git = "https://github.com/mankinskin/spec", branch = "main" }
 spec = { git = "https://github.com/mankinskin/spec", branch = "main", features = ["cli", "mcp", "http"] }
 rule-api = { git = "https://github.com/mankinskin/rule", branch = "main" }
 audit-api = { path = "../audit-api" }
-session-api = { path = "../session-api" }
+session-api = { git = "https://github.com/mankinskin/session", branch = "main" }
 test-api = { path = "../test-api" }
 log-api = { path = "../log-api" }
 rule = { git = "https://github.com/mankinskin/rule", branch = "main", features = ["cli", "mcp"] }
