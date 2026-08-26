@@ -7,8 +7,10 @@
 
 use compact_terminal_mcp::server::{
     CompactTerminalServer,
+    PollProcessInput,
     ReadSpillInput,
     RunInput,
+    SendInputInput,
 };
 use rmcp::{
     ServerHandler,
@@ -63,6 +65,8 @@ async fn run_tool_inline_output_below_limit() {
         cwd: None,
         inline_limit: Some(4096),
         timeout_secs: Some(5),
+        stall_timeout_secs: None,
+        interactive: None,
     };
 
     let result = server.run(Parameters(input)).await.expect("run failed");
@@ -86,6 +90,8 @@ async fn run_tool_spilled_output_above_limit() {
         cwd: None,
         inline_limit: Some(100),
         timeout_secs: Some(5),
+        stall_timeout_secs: None,
+        interactive: None,
     };
 
     let result = server.run(Parameters(input)).await.expect("run failed");
@@ -113,6 +119,8 @@ async fn read_spill_by_line_range() {
         cwd: None,
         inline_limit: Some(50),
         timeout_secs: Some(5),
+        stall_timeout_secs: None,
+        interactive: None,
     };
     let run_result =
         server.run(Parameters(run_input)).await.expect("run failed");
@@ -147,6 +155,8 @@ async fn read_spill_grep_pattern() {
         cwd: None,
         inline_limit: Some(50),
         timeout_secs: Some(5),
+        stall_timeout_secs: None,
+        interactive: None,
     };
     let run_result =
         server.run(Parameters(run_input)).await.expect("run failed");
@@ -205,4 +215,78 @@ async fn server_advertises_tools_capability() {
         info.capabilities.tools.is_some(),
         "server must advertise tools capability (guards regression of missing .enable_tools())"
     );
+}
+
+#[tokio::test]
+async fn stalled_interactive_process_can_be_polled_and_receive_input() {
+    let tmp = TempDir::new().expect("tempdir");
+    let server = CompactTerminalServer::new(Some(tmp.path().to_path_buf()));
+
+    let run_input = RunInput {
+        command: "cat".to_string(),
+        cwd: None,
+        inline_limit: Some(4096),
+        timeout_secs: Some(3),
+        stall_timeout_secs: Some(1),
+        interactive: Some(true),
+    };
+    let run_result = server.run(Parameters(run_input)).await.expect("run failed");
+    let run_json = extract_json(run_result);
+    assert_eq!(run_json["kind"], "awaiting_input");
+    let handle_id = run_json["handle_id"].as_str().expect("handle_id").to_string();
+
+    let send_result = server
+        .send_input(Parameters(SendInputInput {
+            handle_id: handle_id.clone(),
+            input: "hello-from-mcp-test".to_string(),
+            append_newline: Some(true),
+        }))
+        .await
+        .expect("send_input failed");
+    let send_json = extract_json(send_result);
+    assert_eq!(send_json["kind"], "input_sent");
+
+    // Poll until the process is killed for exceeding its total timeout,
+    // confirming the echoed input was captured before that.
+    let mut stdout_partial = None;
+    for _ in 0..20 {
+        let poll_result = server
+            .poll_process(Parameters(PollProcessInput {
+                handle_id: handle_id.clone(),
+                wait_secs: Some(1),
+            }))
+            .await
+            .expect("poll_process failed");
+        let poll_json = extract_json(poll_result);
+        match poll_json["kind"].as_str().unwrap() {
+            "timed_out" => {
+                stdout_partial =
+                    Some(poll_json["stdout_partial"].as_str().unwrap().to_string());
+                break;
+            },
+            "awaiting_input" | "running" => {
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            },
+            other => panic!("unexpected poll kind: {other}"),
+        }
+    }
+    let stdout_partial =
+        stdout_partial.expect("process did not time out within the polling budget");
+    assert!(stdout_partial.contains("hello-from-mcp-test"));
+}
+
+#[tokio::test]
+async fn poll_process_reports_not_found_for_unknown_handle() {
+    let tmp = TempDir::new().expect("tempdir");
+    let server = CompactTerminalServer::new(Some(tmp.path().to_path_buf()));
+
+    let result = server
+        .poll_process(Parameters(PollProcessInput {
+            handle_id: "does-not-exist".to_string(),
+            wait_secs: Some(1),
+        }))
+        .await
+        .expect("poll_process failed");
+    let json = extract_json(result);
+    assert_eq!(json["kind"], "process_not_found");
 }

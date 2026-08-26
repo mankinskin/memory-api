@@ -20,10 +20,14 @@ use std::{
 };
 
 use compact_terminal_api::{
+    PollProcessRequest,
     ReadSpillRequest,
     RunRequest,
+    SendInputRequest,
     execute,
+    poll_process,
     read_spill,
+    send_input,
 };
 use rmcp::{
     ErrorData as McpError,
@@ -70,6 +74,17 @@ pub struct RunInput {
     /// Command timeout in seconds. Default: 60.
     #[serde(default)]
     pub timeout_secs: Option<u64>,
+
+    /// Seconds of silence (no new stdout/stderr) after which a still-running
+    /// process is reported back as possibly awaiting input instead of being
+    /// killed. Default: 20, capped at timeout_secs.
+    #[serde(default)]
+    pub stall_timeout_secs: Option<u64>,
+
+    /// Keep stdin open so send_input can write to the process later. Default:
+    /// false — stdin is closed immediately, matching plain one-shot execution.
+    #[serde(default)]
+    pub interactive: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -88,6 +103,30 @@ pub struct ReadSpillInput {
     /// Search pattern: returns matching line numbers (1-based) instead of content.
     #[serde(default)]
     pub grep: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct PollProcessInput {
+    /// Handle id returned by a previous run (or poll_process) call.
+    pub handle_id: String,
+
+    /// How long to wait for new activity before returning again. Default: 20s,
+    /// bounded by the process's remaining total timeout.
+    #[serde(default)]
+    pub wait_secs: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SendInputInput {
+    /// Handle id returned by a previous run call.
+    pub handle_id: String,
+
+    /// Text to write to the process's stdin.
+    pub input: String,
+
+    /// Append a trailing newline if input doesn't already end with one. Default: true.
+    #[serde(default)]
+    pub append_newline: Option<bool>,
 }
 
 // ── Server ────────────────────────────────────────────────────────────────────
@@ -127,6 +166,8 @@ impl CompactTerminalServer {
             inline_limit: input.inline_limit,
             timeout_secs: input.timeout_secs,
             spill_dir: Some(self.spill_dir.clone()),
+            stall_timeout_secs: input.stall_timeout_secs,
+            interactive: input.interactive,
         };
 
         let result = tokio::task::spawn_blocking(move || execute(&request))
@@ -161,6 +202,53 @@ impl CompactTerminalServer {
 
         Ok(CallToolResult::success(vec![Content::text(result.content)]))
     }
+
+    async fn poll_process_tool(
+        &self,
+        input: PollProcessInput,
+    ) -> Result<CallToolResult, McpError> {
+        let request = PollProcessRequest {
+            handle_id: input.handle_id,
+            wait_secs: input.wait_secs,
+        };
+
+        let result =
+            tokio::task::spawn_blocking(move || poll_process(&request))
+                .await
+                .map_err(|e| {
+                    McpError::internal_error(format!("task error: {e}"), None)
+                })?
+                .map_err(|e| {
+                    McpError::internal_error(
+                        format!("execution error: {e}"),
+                        None,
+                    )
+                })?;
+
+        Self::json_result(&result)
+    }
+
+    async fn send_input_tool(
+        &self,
+        input: SendInputInput,
+    ) -> Result<CallToolResult, McpError> {
+        let request = SendInputRequest {
+            handle_id: input.handle_id,
+            input: input.input,
+            append_newline: input.append_newline,
+        };
+
+        let result = tokio::task::spawn_blocking(move || send_input(&request))
+            .await
+            .map_err(|e| {
+                McpError::internal_error(format!("task error: {e}"), None)
+            })?
+            .map_err(|e| {
+                McpError::internal_error(format!("execution error: {e}"), None)
+            })?;
+
+        Self::json_result(&result)
+    }
 }
 
 // ── MCP tool surface (delegates to impl methods above) ────────────────────────
@@ -174,6 +262,12 @@ follow-up inspection using read_spill or peek.
 
 Use run() for all terminal commands instead of raw shell execution. This keeps
 token consumption bounded by preventing large outputs from flooding the context.
+
+If the process falls silent (no new stdout/stderr) for stall_timeout_secs
+(default 20s) while still running, this returns kind: awaiting_input instead of
+hanging until timeout_secs — check the `tail` field for a possible input prompt.
+The process is kept alive; use poll_process to keep waiting, or send_input
+(only works if this run was started with interactive: true) to respond.
 
 Follow-up pattern for spilled output:
   1. Check stdout_preview / stderr_preview for quick diagnosis.
@@ -205,6 +299,40 @@ Patterns:
     ) -> Result<CallToolResult, McpError> {
         self.read_spill_tool(input).await
     }
+
+    #[tool(description = "
+Keep waiting on (or re-check) a process previously started by run(), identified
+by the handle_id from its result.
+
+Use this after a run() call returns kind: awaiting_input or kind: running to
+continue watching a long-lived or possibly-stuck process without re-running it.
+Returns the same result shapes as run(): inline/spilled once it completes,
+awaiting_input if it stalls again, running if it's still busy after wait_secs,
+or timed_out once the process's total timeout is finally exceeded (it is
+killed at that point).
+")]
+    pub async fn poll_process(
+        &self,
+        Parameters(input): Parameters<PollProcessInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.poll_process_tool(input).await
+    }
+
+    #[tool(description = "
+Write input to a running process's stdin, identified by the handle_id from a
+previous run() result.
+
+Only works for processes started with interactive: true — otherwise stdin was
+already closed at spawn time and this returns a launch_error explaining that.
+Useful after run() (or poll_process) reports kind: awaiting_input, to respond
+to an interactive prompt instead of letting the process time out.
+")]
+    pub async fn send_input(
+        &self,
+        Parameters(input): Parameters<SendInputInput>,
+    ) -> Result<CallToolResult, McpError> {
+        self.send_input_tool(input).await
+    }
 }
 
 #[tool_handler]
@@ -219,7 +347,10 @@ impl ServerHandler for CompactTerminalServer {
             instructions: Some(
                 "Compact terminal MCP. Use run() for all shell commands. \
                  Long outputs are truncated inline and stored in a transient file. \
-                 Use read_spill() for targeted follow-up inspection."
+                 Use read_spill() for targeted follow-up inspection. If a process \
+                 stalls (kind: awaiting_input), use poll_process() to keep \
+                 watching it and send_input() to respond to prompts (requires \
+                 interactive: true at launch)."
                     .into(),
             ),
             capabilities: rmcp::model::ServerCapabilities::builder()

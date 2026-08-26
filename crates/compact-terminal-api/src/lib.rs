@@ -17,6 +17,7 @@
 
 pub mod error;
 pub mod execute;
+pub mod process;
 pub mod request;
 pub mod response;
 pub mod spill_reader;
@@ -24,12 +25,19 @@ pub mod spill_reader;
 pub use error::CompactTerminalError;
 pub use execute::{
     DEFAULT_INLINE_LIMIT,
+    DEFAULT_KILL_TIMEOUT_SECS,
+    DEFAULT_POLL_WAIT_SECS,
+    DEFAULT_STALL_TIMEOUT_SECS,
     DEFAULT_TIMEOUT_SECS,
     execute,
+    poll_process,
+    send_input,
 };
 pub use request::{
+    PollProcessRequest,
     ReadSpillRequest,
     RunRequest,
+    SendInputRequest,
 };
 pub use response::{
     ReadSpillResult,

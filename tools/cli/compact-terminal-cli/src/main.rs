@@ -33,10 +33,14 @@ use clap::{
 };
 use compact_terminal_api::{
     CompactTerminalError,
+    PollProcessRequest,
     ReadSpillRequest,
     RunRequest,
+    SendInputRequest,
     execute,
+    poll_process,
     read_spill,
+    send_input,
 };
 
 /// compact-terminal — token-bounded terminal output.
@@ -81,6 +85,17 @@ enum Command {
         /// Directory for spill files. Defaults to system temp dir.
         #[arg(long)]
         spill_dir: Option<PathBuf>,
+
+        /// Seconds of silence (no new stdout/stderr) before a still-running
+        /// process is reported as possibly awaiting input instead of being
+        /// killed (default: 20, capped at --timeout).
+        #[arg(long)]
+        stall_timeout: Option<u64>,
+
+        /// Keep stdin open so `send-input` can write to the process later.
+        /// Default: false — stdin is closed immediately (EOF).
+        #[arg(long)]
+        interactive: bool,
     },
 
     /// Read from a transient spill file returned by a previous run.
@@ -103,6 +118,32 @@ enum Command {
         #[arg(long)]
         grep: Option<String>,
     },
+
+    /// Keep waiting on (or re-check) a process previously started by `run`.
+    PollProcess {
+        /// Handle id printed by a previous `run` (or `poll-process`) call.
+        handle_id: String,
+
+        /// How long to wait for new activity before returning again
+        /// (default: 20s, bounded by the process's remaining total timeout).
+        #[arg(long)]
+        wait_secs: Option<u64>,
+    },
+
+    /// Write input to a running process's stdin.
+    ///
+    /// Only works for processes started with `--interactive`.
+    SendInput {
+        /// Handle id printed by a previous `run` call.
+        handle_id: String,
+
+        /// Text to write to the process's stdin.
+        input: String,
+
+        /// Do not append a trailing newline.
+        #[arg(long)]
+        no_newline: bool,
+    },
 }
 
 fn main() -> Result<(), CompactTerminalError> {
@@ -115,6 +156,8 @@ fn main() -> Result<(), CompactTerminalError> {
             inline_limit,
             timeout,
             spill_dir,
+            stall_timeout,
+            interactive,
         } => {
             let request = RunRequest {
                 command,
@@ -122,6 +165,8 @@ fn main() -> Result<(), CompactTerminalError> {
                 inline_limit: Some(inline_limit),
                 timeout_secs: Some(timeout),
                 spill_dir,
+                stall_timeout_secs: stall_timeout,
+                interactive: Some(interactive),
             };
 
             let result = execute(&request)?;
@@ -155,6 +200,52 @@ fn main() -> Result<(), CompactTerminalError> {
 
             // Print content directly
             print!("{}", result.content);
+
+            Ok(())
+        },
+
+        Command::PollProcess {
+            handle_id,
+            wait_secs,
+        } => {
+            let request = PollProcessRequest {
+                handle_id,
+                wait_secs,
+            };
+
+            let result = poll_process(&request)?;
+
+            let json = serde_json::to_string_pretty(&result).map_err(|e| {
+                CompactTerminalError::InvalidRequest(format!(
+                    "serialization error: {}",
+                    e
+                ))
+            })?;
+            println!("{}", json);
+
+            Ok(())
+        },
+
+        Command::SendInput {
+            handle_id,
+            input,
+            no_newline,
+        } => {
+            let request = SendInputRequest {
+                handle_id,
+                input,
+                append_newline: Some(!no_newline),
+            };
+
+            let result = send_input(&request)?;
+
+            let json = serde_json::to_string_pretty(&result).map_err(|e| {
+                CompactTerminalError::InvalidRequest(format!(
+                    "serialization error: {}",
+                    e
+                ))
+            })?;
+            println!("{}", json);
 
             Ok(())
         },
