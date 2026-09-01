@@ -108,11 +108,21 @@ pub fn rename_file(
     let mut conflicts = Vec::new();
     let mut affected_paths = Vec::new();
 
-    // Validate paths against root and capture canonical paths.
+    // Validate the source against root and capture its canonical path.
     let canonical_from =
         validate_path_within_root(&request.from, &request.root, "source")?;
+
+    // `to` is documented as just the new name, relative to `from`'s parent
+    // directory — not relative to the process's current working directory.
+    // Resolve it against the source's actual (canonical) parent before
+    // validating, so the rename lands next to `from` regardless of what
+    // directory the server happens to be running in.
+    let target_path = match canonical_from.parent() {
+        Some(parent) => parent.join(&request.to),
+        None => request.to.clone(),
+    };
     let canonical_to =
-        validate_path_within_root(&request.to, &request.root, "destination")?;
+        validate_path_within_root(&target_path, &request.root, "destination")?;
 
     if !canonical_from.exists() {
         conflicts.push(Conflict {

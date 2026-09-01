@@ -385,6 +385,34 @@ fn test_rename_file_succeeds() {
     assert!(to.exists());
 }
 
+/// Regression test: `to` is documented as "just the new name, relative to
+/// the parent directory", not relative to the server process's current
+/// working directory. Place `from` in a subdirectory of `root` (which is
+/// not the test process's cwd) and pass a bare filename for `to`; the
+/// renamed file must land next to `from`, not in `env::current_dir()`.
+#[test]
+fn test_rename_file_bare_name_resolves_relative_to_source_parent() {
+    let temp = tempdir().expect("failed to create temp dir");
+    let root = temp.path();
+    let subdir = root.join("subdir");
+    fs::create_dir(&subdir).unwrap();
+
+    let from = subdir.join("old.txt");
+    fs::write(&from, "content").unwrap();
+
+    let request = RenameFileRequest {
+        from: from.clone(),
+        to: std::path::PathBuf::from("new.txt"),
+        root: root.to_path_buf(),
+    };
+
+    let result = rename_file(&request).expect("rename_file failed");
+
+    assert!(result.conflicts.is_empty());
+    assert!(!from.exists());
+    assert!(subdir.join("new.txt").exists());
+}
+
 // ============================================================================
 // Security hardening tests
 // ============================================================================
