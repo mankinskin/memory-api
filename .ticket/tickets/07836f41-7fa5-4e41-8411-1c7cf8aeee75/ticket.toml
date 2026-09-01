@@ -1,8 +1,0 @@
-id = "07836f41-7fa5-4e41-8411-1c7cf8aeee75"
-created_at = "2026-05-16T21:01:54.244069700+00:00"
-title = "[ticket-cli] Make get/search/list workspace-aware across nested roots"
-state = "done"
-review_findings = "Pushback remediated and reverified. The HTTP workspace/list contract mismatch is fixed in memory-api/tools/http/ticket-http/src/serve/handlers/tickets/types.rs: owning_workspace_for_path now preserves the scan-root public label (best_label = root.label) instead of converting it to label--hash via canonical_workspace_name_for_index_root, and the now-unused registry imports were removed. Validation passed: rtk cargo test --manifest-path tools/http/ticket-http/Cargo.toml list_tickets_uses_scan_root_label_for_ticket_ref_workspace -- --nocapture (1 passed) and rtk cargo test --manifest-path tools/http/ticket-http/Cargo.toml listing -- --nocapture (17 passed). CLI, board, MCP, TOON, and generated guidance were previously reviewed coherent."
-review_status = "approved"
-type = "tracker-improvement"
-validation_status = "passed"

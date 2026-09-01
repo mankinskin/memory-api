@@ -1,8 +1,0 @@
-id = "5bd4fd1a-cd0e-4893-9d83-452cd5b533bb"
-created_at = "2026-05-12T17:35:27.839031900+00:00"
-title = "ticket-http: ticket list endpoint"
-state = "draft"
-component = "ticket-http"
-scope = "public"
-slug = "ticket-http/api/tickets"
-type = "specification"

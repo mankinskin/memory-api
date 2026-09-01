@@ -1,8 +1,0 @@
-id = "a62f28bd-8600-473f-a831-de4736ffc219"
-created_at = "2026-03-28T19:26:50.054347600+00:00"
-title = "[ticket-system] Per-ticket workflow paths: required_states field"
-state = "done"
-acceptance_criteria = "1. New schema field: required_states (list of state names a ticket must pass through before reaching done). 2. Schema field: allowed_workflows (list of named workflow paths, each a sequence of states). 3. Per-ticket override: ticket.toml can set required_states or workflow to constrain transitions. 4. validate_workflow() checks that a ticket has visited all required states before allowing transition to done. 5. Default workflow: new->ready->in-implementation->in-review->done. 6. At minimum in-review is always required before done."
-component = "ticket-api"
-priority = "high"
-type = "tracker-improvement"

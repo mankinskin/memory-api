@@ -1,9 +1,0 @@
-id = "694d74b4-028b-4602-8090-d6200d577d4a"
-created_at = "2026-06-15T00:22:42.465098900+00:00"
-title = "[ticket-vscode] Integrate Rust/WASM core into TS hosts and remove replaced legacy logic"
-state = "done"
-component = "ticket-vscode"
-depends_on = ["011563c2-59e7-48f1-a61f-d8fdc80d2f6e", "362448d4-ccf1-4b9d-90f3-d4577da83a65", "bfafde19-ddf7-47ef-966e-a1135be4efd6"]
-priority = "high"
-risk_level = "high"
-type = "tracker-improvement"

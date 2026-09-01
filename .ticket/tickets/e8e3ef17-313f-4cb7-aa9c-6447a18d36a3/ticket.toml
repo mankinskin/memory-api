@@ -1,8 +1,0 @@
-id = "e8e3ef17-313f-4cb7-aa9c-6447a18d36a3"
-created_at = "2026-06-30T16:16:28.154054800+00:00"
-title = "[memory-api] Implement path normalization kernel and migrate CLI/MCP/HTTP path surfaces"
-state = "done"
-depends_on = ["59d96577-09a8-44a7-b0ea-3d51b3a6fb05", "e3961a54-ea4c-4ce6-aee9-da67a15bf2c7"]
-effort = "12k tokens"
-linked = ["21e6c015-55c6-4807-8d55-16193ed687ed"]
-type = "tracker-improvement"

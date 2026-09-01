@@ -1,7 +1,0 @@
-id = "dee7de7a-4af0-468e-b779-309192e2e4db"
-created_at = "2026-05-07T11:42:05.232308400+00:00"
-title = "Create rule-api storage model and stable rule IDs"
-state = "done"
-component = "rule-api"
-priority = "high"
-type = "tracker-improvement"

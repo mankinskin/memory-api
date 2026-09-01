@@ -1,9 +1,0 @@
-id = "e3961a54-ea4c-4ce6-aee9-da67a15bf2c7"
-created_at = "2026-06-30T15:25:48.395781600+00:00"
-title = "[memory-api] Path normalization kernel design + UNC/verbatim regression guard tests"
-state = "done"
-effort = "3k tokens"
-linked = ["21e6c015-55c6-4807-8d55-16193ed687ed"]
-type = "tracker-improvement"
-validation_status = "passed"
-validation_summary = "Review passed. Verified path normalization regression guards and strict/canonical surfaces: `rtk cargo test -p memory-api strip_verbatim_prefix -- --nocapture` passed (5 tests). Related move fixture E2E also passed with no verbatim prefix leak: `rtk cargo test -p ticket-api cross_worktree_move_from_submodule_to_root_is_clean_and_reversible -- --nocapture`."

@@ -1,9 +1,0 @@
-id = "50307cce-5a93-4668-9481-a3af5985ea1b"
-created_at = "2026-06-28T23:02:34.090158300+00:00"
-title = "[ticket-vscode] Cover no-.ticket server launch without implicit init"
-state = "done"
-component = "ticket-vscode"
-depends_on = ["a9514081-35c2-4162-b62d-3baf4a14ec8b"]
-effort = "3k tokens"
-priority = "high"
-type = "tracker-improvement"

@@ -1,7 +1,0 @@
-id = "0b231549-d029-4465-997e-0ba4d5e0529e"
-created_at = "2026-04-21T10:51:08.163611100+00:00"
-title = "[spec][vscode] Write specification for ticket-vscode extension"
-state = "done"
-component = "ticket-vscode"
-priority = "high"
-type = "tracker-improvement"

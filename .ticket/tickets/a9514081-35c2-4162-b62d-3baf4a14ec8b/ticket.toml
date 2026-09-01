@@ -1,8 +1,0 @@
-id = "a9514081-35c2-4162-b62d-3baf4a14ec8b"
-created_at = "2026-06-28T23:02:34.191536900+00:00"
-title = "[spec] Define explicit-init-only memory store contract"
-state = "done"
-component = "spec"
-effort = "1.5k tokens"
-priority = "high"
-type = "tracker-improvement"

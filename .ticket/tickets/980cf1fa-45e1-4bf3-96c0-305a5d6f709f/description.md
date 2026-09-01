@@ -1,1 +1,0 @@
-Review pass: all 7 ACs met; validation node wedge repair is complete.

@@ -1,1 +1,0 @@
-Owning spec updated: explicit-init-only contract now forbids implicit root creation and defines validation matrix.

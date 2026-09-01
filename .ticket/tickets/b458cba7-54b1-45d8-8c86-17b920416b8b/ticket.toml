@@ -1,8 +1,0 @@
-id = "b458cba7-54b1-45d8-8c86-17b920416b8b"
-created_at = "2026-04-08T15:23:35.890670900+00:00"
-title = "API: Batch mutation endpoint for transactional multi-command execution"
-state = "cancelled"
-acceptance_criteria = "POST /api/batch endpoint accepting array of mutation commands; transactional execution with rollback on failure; reuses existing ticket-api batch infrastructure; returns per-command status"
-component = "ticket-http"
-priority = "high"
-type = "tracker-improvement"

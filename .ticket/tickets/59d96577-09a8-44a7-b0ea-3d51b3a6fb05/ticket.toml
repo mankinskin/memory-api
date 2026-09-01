@@ -1,5 +1,0 @@
-id = "59d96577-09a8-44a7-b0ea-3d51b3a6fb05"
-created_at = "2026-05-21T15:09:07.168662600+00:00"
-title = "[spec-cli][spec-mcp] Make spec workflows root-aware across nested .spec stores"
-state = "done"
-type = "tracker-improvement"

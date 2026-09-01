@@ -1,8 +1,0 @@
-id = "0c3f11d3-2475-470c-a191-beedd2c8e53c"
-created_at = "2026-05-05T23:01:28.461970500+00:00"
-title = "audit"
-state = "draft"
-component = "audit"
-scope = "system"
-slug = "audit"
-type = "specification"

@@ -1,9 +1,0 @@
-id = "e6bdafbe-3538-47a3-8837-1f8e74fb13e8"
-created_at = "2026-06-28T23:02:33.996001200+00:00"
-title = "[memory-api] Track explicit-init-only store creation validation"
-state = "done"
-component = "memory-api"
-depends_on = ["23f1c81b-3c71-4b4b-9e6f-81ee7c43a30b", "50307cce-5a93-4668-9481-a3af5985ea1b", "51e2210c-829b-4f7f-865e-99d120d8fd7d", "a9514081-35c2-4162-b62d-3baf4a14ec8b"]
-effort = "1k tokens"
-priority = "high"
-type = "tracker-improvement"

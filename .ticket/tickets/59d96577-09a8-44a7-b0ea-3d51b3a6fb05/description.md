@@ -1,1 +1,0 @@
-Fixed Windows workspace-root normalization in spec-cli refs payload rendering. Focused validation now passes (spec-cli refs tests plus package slices). Recorded native .test evidence under vt-spec-root-awareness-transport, including one blocked full-slice execution due Windows App Control os error 4551 and one focused passing execution.

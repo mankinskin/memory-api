@@ -1,8 +1,0 @@
-id = "02a79934-3782-4840-bfb6-caec08ee00c7"
-created_at = "2026-03-21T02:20:55.800882900+00:00"
-title = "Impl: enforce explicit index_root for exec/exec-batch agent protocol"
-state = "done"
-acceptance_criteria = "exec and exec-batch return structured error if no explicit index_root is provided via flag or TICKET_INDEX_ROOT env; no silent fallback to ~/.ticket-index"
-component = "storage"
-risk_level = "low"
-type = "tracker-improvement"

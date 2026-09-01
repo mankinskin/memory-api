@@ -1,7 +1,0 @@
-id = "185419e0-bea4-4c7b-abda-1e92193f32e7"
-created_at = "2026-06-06T16:26:53.726438+00:00"
-title = "[ticket-api] Allow bidirectional ticket state transitions by default"
-state = "done"
-type = "tracker-improvement"
-validation_status = "passed"
-validation_summary = "Validated 2026-06-27 with updated tools. cargo test -p ticket-api --lib: 67 passed/0 failed incl. update_allows_reverse_transitions_from_terminal_states. Live CLI: reverse in-implementation->ready succeeded; unconnected ready->done correctly rejected (schema validation). AC1 reverse-movement, AC2 reject-unconnected, AC3 regression-coverage all met."

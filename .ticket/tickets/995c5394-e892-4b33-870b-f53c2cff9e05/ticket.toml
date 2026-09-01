@@ -1,8 +1,0 @@
-id = "995c5394-e892-4b33-870b-f53c2cff9e05"
-created_at = "2026-03-21T02:20:55.627744100+00:00"
-title = "Impl: FsWatcher background daemon loop — auto-reconcile on FS events"
-state = "done"
-acceptance_criteria = "Background thread polls watcher events and calls integrate_entry; new ticket folder dropped on disk appears in `ticket list` within 500ms"
-component = "storage"
-risk_level = "low"
-type = "tracker-improvement"

@@ -1,7 +1,0 @@
-id = "050c5441-1d3a-46bc-9748-cfb7030a93bd"
-created_at = "2026-05-11T13:34:34.172133500+00:00"
-title = "Implement nested rule workspaces across submodule repositories"
-state = "done"
-component = "rule-api"
-priority = "high"
-type = "tracker-improvement"
