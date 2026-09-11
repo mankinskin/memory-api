@@ -58,19 +58,26 @@ const TAIL_BYTES: usize = 2000;
 /// Short outputs (≤ inline_limit bytes) are returned directly.
 /// Long outputs are summarised inline and stored in a transient file.
 ///
-/// If the process falls silent (no new stdout/stderr) for `stall_timeout_secs`
-/// while still running, this returns [`RunResult::AwaitingInput`] instead of
-/// blocking until `timeout_secs` — the process is kept alive in the background so
-/// a caller can inspect it (`poll_process`) or write to it (`send_input`).
+/// For interactive processes, if the process falls silent (no new stdout/stderr)
+/// for `stall_timeout_secs` while still running, this returns
+/// [`RunResult::AwaitingInput`] instead of blocking until `timeout_secs` — the
+/// process is kept alive in the background so a caller can inspect it
+/// (`poll_process`) or write to it (`send_input`). Non-interactive processes run
+/// until completion or `timeout_secs`.
 pub fn execute(
     request: &RunRequest
 ) -> Result<RunResult, CompactTerminalError> {
     let inline_limit = request.inline_limit.unwrap_or(DEFAULT_INLINE_LIMIT);
     let timeout_secs = request.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
-    let stall_timeout_secs = request
-        .stall_timeout_secs
-        .unwrap_or(DEFAULT_STALL_TIMEOUT_SECS)
-        .min(timeout_secs);
+    let interactive = request.interactive.unwrap_or(false);
+    let stall_timeout_secs = if interactive {
+        request
+            .stall_timeout_secs
+            .unwrap_or(DEFAULT_STALL_TIMEOUT_SECS)
+            .min(timeout_secs)
+    } else {
+        timeout_secs
+    };
     let spill_dir = request
         .spill_dir
         .clone()
@@ -114,7 +121,7 @@ pub fn execute(
     // Dropping stdin immediately (non-interactive) closes the pipe, sending EOF —
     // functionally identical to Stdio::null() for the child. Interactive callers
     // keep it open so `send_input` can write to it later.
-    let stdin = if request.interactive.unwrap_or(false) {
+    let stdin = if interactive {
         child.stdin.take()
     } else {
         child.stdin.take();

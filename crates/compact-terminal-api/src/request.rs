@@ -24,9 +24,9 @@ pub struct RunRequest {
     /// Directory where spill files will be written. Defaults to system temp dir.
     pub spill_dir: Option<PathBuf>,
 
-    /// Seconds of silence (no new stdout/stderr bytes) after which a still-running
-    /// process is reported back as possibly awaiting input instead of being killed.
-    /// Default: 20, capped at `timeout_secs`.
+    /// For interactive processes, seconds of silence (no new stdout/stderr bytes)
+    /// after which a still-running process is reported as possibly awaiting input.
+    /// Default: 20, capped at `timeout_secs`; ignored for non-interactive commands.
     pub stall_timeout_secs: Option<u64>,
 
     /// Keep stdin open so `send_input` can write to the process later. Default:

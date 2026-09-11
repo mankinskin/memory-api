@@ -75,9 +75,9 @@ pub struct RunInput {
     #[serde(default)]
     pub timeout_secs: Option<u64>,
 
-    /// Seconds of silence (no new stdout/stderr) after which a still-running
-    /// process is reported back as possibly awaiting input instead of being
-    /// killed. Default: 20, capped at timeout_secs.
+    /// For interactive processes, seconds of silence (no new stdout/stderr) after
+    /// which a still-running process is reported as possibly awaiting input.
+    /// Default: 20, capped at timeout_secs; ignored for non-interactive commands.
     #[serde(default)]
     pub stall_timeout_secs: Option<u64>,
 
@@ -263,11 +263,12 @@ follow-up inspection using read_spill or peek.
 Use run() for all terminal commands instead of raw shell execution. This keeps
 token consumption bounded by preventing large outputs from flooding the context.
 
-If the process falls silent (no new stdout/stderr) for stall_timeout_secs
-(default 20s) while still running, this returns kind: awaiting_input instead of
-hanging until timeout_secs — check the `tail` field for a possible input prompt.
-The process is kept alive; use poll_process to keep waiting, or send_input
-(only works if this run was started with interactive: true) to respond.
+For interactive processes, if the process falls silent (no new stdout/stderr)
+for stall_timeout_secs (default 20s), this returns kind: awaiting_input instead
+of hanging until timeout_secs. Non-interactive processes run until completion or
+timeout_secs. Check the `tail` field for a possible input prompt; use
+poll_process to keep waiting, or send_input (requires interactive: true) to
+respond.
 
 Follow-up pattern for spilled output:
   1. Check stdout_preview / stderr_preview for quick diagnosis.

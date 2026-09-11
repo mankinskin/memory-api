@@ -343,9 +343,7 @@ fn poll_process_reports_not_found_for_unknown_handle() {
 }
 
 #[test]
-fn send_input_without_interactive_reports_error() {
-    // Non-interactive: stdin is closed at spawn, so a command that never touches
-    // stdin (unlike `cat`) is needed to keep it running long enough to poll.
+fn non_interactive_process_waits_for_total_timeout() {
     let request = RunRequest {
         timeout_secs: Some(2),
         stall_timeout_secs: Some(1),
@@ -353,21 +351,13 @@ fn send_input_without_interactive_reports_error() {
     };
 
     let result = execute(&request).expect("execution failed");
-    let handle_id = match result {
-        RunResult::AwaitingInput { handle_id, .. } => handle_id,
-        other => panic!("expected AwaitingInput, got {other:?}"),
-    };
-
-    let send_result = send_input(&SendInputRequest {
-        handle_id: handle_id.clone(),
-        input: "irrelevant".to_string(),
-        append_newline: Some(true),
-    })
-    .expect("send_input failed");
-    assert!(matches!(send_result, RunResult::LaunchError { .. }));
-
-    // Clean up: let the process hit its total timeout so the test doesn't leak it.
-    poll_until_timed_out(&handle_id);
+    assert!(matches!(
+        result,
+        RunResult::TimedOut {
+            timeout_secs: 2,
+            ..
+        }
+    ));
 }
 
 /// Repeatedly poll a stalled/silent process until it is killed for exceeding its
