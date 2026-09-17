@@ -532,27 +532,18 @@ fn wait_for_readers_done(
     }
 }
 
-/// Kill the process tree, bounded by `bound`. On Windows this shells out to a
-/// helper script (there is no native process-group kill without job objects);
-/// that helper is itself given a bounded wait instead of a blocking `.status()`
-/// call, since a hung helper was otherwise indistinguishable from a hung command.
+/// Kill the process tree, bounded by `bound`.
 #[cfg(windows)]
 fn kill_child_tree_bounded(
     child: &mut std::process::Child,
-    pid_file: &Path,
+    _pid_file: &Path,
     bound: Duration,
 ) -> Result<(), String> {
-    let pid = std::fs::read_to_string(pid_file)
-        .map_err(|e| format!("cannot read pid file: {e}"))?;
-    let mut killer = Command::new("sh")
-        .args([
-            "-c",
-            "children() { ps -ef | awk -v parent=\"$1\" '$3 == parent { print $2 }'; }; kill_tree() { for descendant in $(children \"$1\"); do kill_tree \"$descendant\"; done; kill -KILL \"$1\" 2>/dev/null; }; kill_tree \"$1\"",
-            "sh",
-            &pid,
-        ])
+    let pid = child.id().to_string();
+    let mut killer = Command::new("taskkill.exe")
+        .args(["/PID", &pid, "/T", "/F"])
         .spawn()
-        .map_err(|e| format!("cannot spawn kill-tree helper: {e}"))?;
+        .map_err(|e| format!("cannot spawn taskkill helper: {e}"))?;
 
     let deadline = Instant::now() + bound;
     loop {
@@ -566,14 +557,15 @@ fn kill_child_tree_bounded(
                 let _ = killer.kill();
                 let _ = killer.wait();
                 return Err(format!(
-                    "kill-tree helper did not exit within {}s",
+                    "taskkill helper did not exit within {}s",
                     bound.as_secs()
                 ));
             },
             Err(_) => break,
         }
     }
-    // Helper failed or reported non-zero — fall back to killing just the shell we spawned.
+    // `taskkill` can report an already-exited child as an error. The direct
+    // fallback lets the caller's reap check determine the final state.
     child.kill().map_err(|e| format!("fallback kill failed: {e}"))
 }
 

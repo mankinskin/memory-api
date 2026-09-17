@@ -177,6 +177,17 @@ fn timeout_kills_and_reaps_shell_process() {
         }
     ));
 
+    #[cfg(windows)]
+    let status = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "$ids = Get-Content child.pid, grandchild.pid; foreach ($id in $ids) { if (Get-Process -Id $id -ErrorAction SilentlyContinue) { exit 0 } }; exit 1",
+        ])
+        .current_dir(temp_dir.path())
+        .status()
+        .expect("failed to check Windows process status");
+    #[cfg(not(windows))]
     let status = std::process::Command::new("sh")
         .arg("-c")
         .arg("for pid in $(cat child.pid grandchild.pid); do kill -0 \"$pid\" 2>/dev/null && exit 0; done; exit 1")
