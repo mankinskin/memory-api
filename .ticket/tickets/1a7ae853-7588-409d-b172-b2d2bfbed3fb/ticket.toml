@@ -1,0 +1,8 @@
+id = "1a7ae853-7588-409d-b172-b2d2bfbed3fb"
+created_at = "2026-07-25T16:31:54.513926100+00:00"
+title = "Make session workflow tools flexible and self-correcting for dynamic workflow authoring"
+state = "done"
+depends_on = ["3c6da958-f494-408f-b7dd-cc43997b8ead", "524bee64-3ba0-480b-80c7-4ab56cd45784", "729b72ac-9688-48be-847d-c864ffa037be", "781dd9ad-74a6-41a1-9dac-4fda185780d7", "dbb8fc83-a319-4f40-8124-149a24361068"]
+effort = "8700"
+type = "epic"
+component = "memory-api"

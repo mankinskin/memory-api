@@ -1,0 +1,6 @@
+id = "02723a9b-23ff-47b1-8306-0480be087ddd"
+created_at = "2026-05-21T16:20:04.559744300+00:00"
+title = "[ticket-cli][ticket-viewer] Fix nested-workspace discovery and stale list races"
+state = "done"
+type = "tracker-improvement"
+component = "memory-api"

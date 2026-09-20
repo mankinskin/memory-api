@@ -1,0 +1,4 @@
+{"rev":1,"ts":"2026-07-25T18:47:57.245461700+00:00","fields":{"state":"todo","title":"Model-aware MCP tool wrapper: block expensive-model calls and require delegation","type":"feature"}}
+{"rev":2,"ts":"2026-07-25T18:48:08.563757900+00:00","fields":{"depends_on":["445a2d76-5795-4d7a-aec8-d1536ec61416"],"state":"todo","title":"Model-aware MCP tool wrapper: block expensive-model calls and require delegation","type":"feature"}}
+{"rev":3,"ts":"2026-07-25T19:20:59.652064400+00:00","fields":{"depends_on":["445a2d76-5795-4d7a-aec8-d1536ec61416"],"state":"todo","title":"Model-aware MCP tool wrapper: block expensive-model calls and require delegation","type":"feature"},"author":"copilot-price-awareness"}
+{"rev":4,"ts":"2026-07-25T19:50:23.171857500+00:00","fields":{"depends_on":["445a2d76-5795-4d7a-aec8-d1536ec61416"],"state":"todo","title":"Model-aware MCP tool wrapper: block expensive-model calls and require delegation","type":"feature"},"author":"copilot-price-awareness"}

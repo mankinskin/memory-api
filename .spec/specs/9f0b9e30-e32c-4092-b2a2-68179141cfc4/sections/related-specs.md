@@ -1,0 +1,3 @@
+- Adjacent spec: `29ae5f6e-c202-41f1-ba88-a446aa872993` — empirical tool-metrics driven cost-gate classification.
+- This spec does not change tool-cost / budget classification; it only defines caller_model resolution semantics and transport-layer fallback behavior.
+- Keep the two specs separate so changes to resolution precedence, warning surfacing, or client schema text do not broaden the classification contract.

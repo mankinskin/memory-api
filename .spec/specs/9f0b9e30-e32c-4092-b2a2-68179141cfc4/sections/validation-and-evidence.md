@@ -1,0 +1,7 @@
+- Validation command: `rtk cargo test -p mcp-cost-gate`
+- Named regression tests:
+  - `parenthetical_client_qualifier_is_tolerated`
+  - `space_and_underscore_separators_are_normalized`
+  - `genuinely_unknown_model_still_rejected_after_normalization`
+- Spec reference validation: `mcp_spec_refs_validate` must resolve the code refs in this spec against the current workspace tree.
+- Expected evidence shape: a passing unit-test run plus a successful spec reference validation result; the spec is not complete if either the fallback-only transport behavior or the bounded rejection guidance regresses.

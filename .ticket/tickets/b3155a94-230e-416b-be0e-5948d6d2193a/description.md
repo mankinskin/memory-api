@@ -1,0 +1,1 @@
+Validation passed: cargo test -p session-api (28 passed). End-to-end hook invocation with transcriptPath/workspaceSlug + modern transcript events persists turns and is readable via session-cli peek-skeleton.

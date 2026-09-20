@@ -1,0 +1,8 @@
+id = "203248cb-0694-481b-a634-ba7d70962750"
+created_at = "2026-07-25T07:37:51.907776900+00:00"
+title = "[session-api][session-mcp] Separate behavioral vs descriptive workflow node kinds; add Spec kind"
+state = "done"
+effort = "1500"
+relates = ["7f1ed44f-73f3-40c9-9647-d899c64ec507", "8bb97b73-9dbc-43ee-9939-46b3ddf2612f"]
+type = "tracker-improvement"
+component = "memory-api"

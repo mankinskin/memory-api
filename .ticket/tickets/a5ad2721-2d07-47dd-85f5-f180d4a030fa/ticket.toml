@@ -1,0 +1,7 @@
+id = "a5ad2721-2d07-47dd-85f5-f180d4a030fa"
+created_at = "2026-07-25T18:47:57.203030300+00:00"
+title = "Model-aware MCP tool wrapper: block expensive-model calls and require delegation"
+state = "todo"
+depends_on = ["445a2d76-5795-4d7a-aec8-d1536ec61416"]
+type = "feature"
+component = "memory-api"

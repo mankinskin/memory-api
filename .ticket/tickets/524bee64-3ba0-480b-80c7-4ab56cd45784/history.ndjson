@@ -1,0 +1,6 @@
+{"rev":1,"ts":"2026-07-25T16:32:14.824909600+00:00","fields":{"state":"open","title":"Batch session workflow node/edge creation tools","type":"task"}}
+{"rev":2,"ts":"2026-07-25T17:06:33.527761200+00:00","fields":{"state":"in-review","title":"Batch session workflow node/edge creation tools","type":"task"},"author":"copilot-session-workflow-03baab6c"}
+{"rev":3,"ts":"2026-07-25T17:07:41.472850100+00:00","fields":{"effort":"3500","state":"in-review","title":"Batch session workflow node/edge creation tools","type":"task"},"author":"copilot-session-workflow-03baab6c"}
+{"rev":4,"ts":"2026-07-25T19:12:02.537570900+00:00","fields":{"depends_on":["dbb8fc83-a319-4f40-8124-149a24361068"],"effort":"3500","state":"in-review","title":"Batch session workflow node/edge creation tools","type":"task"}}
+{"rev":5,"ts":"2026-07-25T19:42:15.754008900+00:00","fields":{"effort":"3500","state":"in-review","title":"Batch session workflow node/edge creation tools","type":"task"}}
+{"rev":6,"ts":"2026-07-25T19:42:48.287724700+00:00","fields":{"effort":"3500","state":"done","title":"Batch session workflow node/edge creation tools","type":"task"},"author":"review-agent"}

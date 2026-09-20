@@ -1,0 +1,8 @@
+id = "3c6da958-f494-408f-b7dd-cc43997b8ead"
+created_at = "2026-07-25T16:32:38.407010300+00:00"
+title = "Surface `category` and add non-gating anchor URN for any workflow node kind"
+state = "done"
+depends_on = ["6cc88405-62f2-4e36-b95e-a37f498175eb"]
+effort = "2500"
+type = "task"
+component = "memory-api"

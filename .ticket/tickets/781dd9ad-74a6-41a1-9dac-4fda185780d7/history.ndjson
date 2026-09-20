@@ -1,0 +1,6 @@
+{"rev":1,"ts":"2026-07-25T16:32:14.754925600+00:00","fields":{"state":"open","title":"Self-correcting session workflow rejection errors (embed alternative pattern)","type":"task"}}
+{"rev":2,"ts":"2026-07-25T17:06:32.519100200+00:00","fields":{"state":"in-review","title":"Self-correcting session workflow rejection errors (embed alternative pattern)","type":"task"},"author":"copilot-session-workflow-03baab6c"}
+{"rev":3,"ts":"2026-07-25T17:07:40.530830300+00:00","fields":{"effort":"1500","state":"in-review","title":"Self-correcting session workflow rejection errors (embed alternative pattern)","type":"task"},"author":"copilot-session-workflow-03baab6c"}
+{"rev":4,"ts":"2026-07-25T19:12:02.644018400+00:00","fields":{"depends_on":["dbb8fc83-a319-4f40-8124-149a24361068"],"effort":"1500","state":"in-review","title":"Self-correcting session workflow rejection errors (embed alternative pattern)","type":"task"}}
+{"rev":5,"ts":"2026-07-25T19:42:09.045406200+00:00","fields":{"effort":"1500","state":"in-review","title":"Self-correcting session workflow rejection errors (embed alternative pattern)","type":"task"}}
+{"rev":6,"ts":"2026-07-25T19:42:42.832518800+00:00","fields":{"effort":"1500","state":"done","title":"Self-correcting session workflow rejection errors (embed alternative pattern)","type":"task"},"author":"review-agent"}

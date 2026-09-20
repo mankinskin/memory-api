@@ -1,0 +1,11 @@
+id = "2736c3dc-ac19-4095-8a4a-e0a61340c58b"
+created_at = "2026-07-25T13:57:12.484347200+00:00"
+title = "[workflow-tools][per-tool] Extract log tool as a single `log` domain crate (api + transport bins) + viewer frontend"
+state = "planning"
+component = "memory-api"
+depends_on = ["0da6894c-dcbb-4196-8ac7-b6fae7c40ec9", "1c452ff1-6edc-47c8-a73d-d07ce9b4d473", "866049e7-48c9-4b63-b0d2-dd4f987823dd", "a6d38372-0df2-437b-b06d-3984c290dbd1", "dbe0e955-c1b4-414d-820c-10c3fbbb5d3d"]
+effort = "1500"
+parts = [{ id = "a0db520c-41a3-4fc8-9360-ddc3e2c1a1f0", kind = "implementation_plan", path = "parts/a0db520c-41a3-4fc8-9360-ddc3e2c1a1f0.md", frozen = false, created_at = "2026-08-13T17:28:51.421858800Z" }]
+priority = "high"
+risk_level = "medium"
+type = "task"

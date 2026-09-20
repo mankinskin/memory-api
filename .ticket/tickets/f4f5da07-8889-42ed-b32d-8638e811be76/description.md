@@ -1,0 +1,1 @@
+Adjust `ticket board show` immediate action text so the suggested ticket includes its current state immediately after `Start`, wraps the title in quotes, and escapes inner quotes correctly.

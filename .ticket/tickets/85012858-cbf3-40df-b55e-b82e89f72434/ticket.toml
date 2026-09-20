@@ -1,0 +1,11 @@
+id = "85012858-cbf3-40df-b55e-b82e89f72434"
+created_at = "2026-08-06T00:21:27.263605700+00:00"
+title = "Research lifecycle engine design surfaces"
+state = "done"
+effort = "2k"
+parts = [{ id = "fc6afa37-8ab3-4c12-a72f-bb970078a4e0", kind = "notes", path = "parts/fc6afa37-8ab3-4c12-a72f-bb970078a4e0.md", frozen = false, created_at = "2026-08-06T00:26:37.697941600Z" }, { id = "2b715f98-0215-4c85-822d-0f8803e76634", kind = "notes", path = "parts/2b715f98-0215-4c85-822d-0f8803e76634.md", frozen = false, created_at = "2026-08-06T01:04:34.527490200Z" }, { id = "f4a6b357-92fa-4406-989b-67b8a477412a", kind = "objective", path = "parts/f4a6b357-92fa-4406-989b-67b8a477412a.md", frozen = false, created_at = "2026-08-06T01:39:56.350915100Z" }, { id = "0abd9981-1aeb-41dd-ad7b-0959ed677555", kind = "requirements", path = "parts/0abd9981-1aeb-41dd-ad7b-0959ed677555.md", frozen = false, created_at = "2026-08-06T01:40:06.215266600Z" }, { id = "dba74caa-d461-49dd-a0e2-58f436dee4e9", kind = "acceptance_criteria", path = "parts/dba74caa-d461-49dd-a0e2-58f436dee4e9.md", frozen = false, created_at = "2026-08-06T01:40:10.916094600Z" }, { id = "82ead919-f267-4334-9a90-d1627fd75b3e", kind = "notes", path = "parts/82ead919-f267-4334-9a90-d1627fd75b3e.md", frozen = false, created_at = "2026-08-06T01:50:32.036092400Z" }, { id = "00ef17bd-081e-4654-a949-1212c30aacd0", kind = "notes", path = "parts/00ef17bd-081e-4654-a949-1212c30aacd0.md", frozen = false, created_at = "2026-08-06T01:52:03.939266200Z" }]
+priority = "high"
+target_schema_type = "research"
+type = "tracker-improvement"
+workflow_role = "research"
+component = "memory-api"
