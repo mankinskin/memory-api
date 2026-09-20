@@ -1,0 +1,9 @@
+id = "40349f3f-8d04-4bf6-9241-b79425c10a97"
+created_at = "2026-08-04T15:48:41.072065800+00:00"
+title = "Copilot capture hook does not record worktree assignment, leaving every passively captured session unlinked"
+state = "done"
+linked = ["fa2ba34b-59ec-4321-a4ce-a3c3a9295ea3"]
+parts = [{ id = "73ace55c-e06e-4c1f-a49b-648f1df2e04a", kind = "notes", path = "parts/73ace55c-e06e-4c1f-a49b-648f1df2e04a.md", frozen = false, created_at = "2026-08-06T15:16:16.154519800Z" }]
+root_cause_of = ["2b75bac2-ff14-43c3-8e87-1e801772f309"]
+type = "tracker-improvement"
+component = "memory-api"

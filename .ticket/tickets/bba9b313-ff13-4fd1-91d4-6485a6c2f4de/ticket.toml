@@ -1,0 +1,6 @@
+id = "bba9b313-ff13-4fd1-91d4-6485a6c2f4de"
+created_at = "2026-08-04T13:23:36.261609400+00:00"
+title = "[session-api][session-cli][session-mcp] Add sessions_for_ticket query with selectable relation-strength tiers"
+state = "done"
+type = "task"
+component = "memory-api"

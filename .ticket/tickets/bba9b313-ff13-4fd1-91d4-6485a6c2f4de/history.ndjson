@@ -1,0 +1,4 @@
+{"rev":1,"ts":"2026-08-04T13:23:36.308361800+00:00","fields":{"state":"ready","title":"[session-api][session-cli][session-mcp] Add sessions_for_ticket query with selectable relation-strength tiers","type":"ticket"}}
+{"rev":2,"ts":"2026-08-04T14:16:06.374595800+00:00","fields":{"state":"ready","title":"[session-api][session-cli][session-mcp] Add sessions_for_ticket query with selectable relation-strength tiers","type":"task"}}
+{"rev":3,"ts":"2026-08-04T14:21:26.947077500+00:00","fields":{"state":"in-review","title":"[session-api][session-cli][session-mcp] Add sessions_for_ticket query with selectable relation-strength tiers","type":"task"}}
+{"rev":4,"ts":"2026-08-10T19:50:25.849957+00:00","fields":{"state":"done","title":"[session-api][session-cli][session-mcp] Add sessions_for_ticket query with selectable relation-strength tiers","type":"task"},"author":"github-copilot"}
