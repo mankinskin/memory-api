@@ -17,11 +17,11 @@ kind = "submodule"
 
 [[stores]]
 domain = "ticket-root"
-relative_path = ".ticket"
+relative_path = ".workflow-tools/ticket"
 
 [[stores]]
 domain = "spec-root"
-relative_path = ".spec"
+relative_path = ".workflow-tools/spec"
 
 [[stores]]
 domain = "rule-root"
@@ -49,16 +49,16 @@ relative_path = "src"
 
 [[stores]]
 domain = "ticket-submodule-a"
-relative_path = "submodule-a/.ticket"
+relative_path = "submodule-a/.workflow-tools/ticket"
 
 [[stores]]
 domain = "spec-submodule-a"
-relative_path = "submodule-a/.spec"
+relative_path = "submodule-a/.workflow-tools/spec"
 
 [[stores]]
 domain = "ticket-submodule-b"
-relative_path = "submodule-b/.ticket"
+relative_path = "submodule-b/.workflow-tools/ticket"
 
 [[stores]]
 domain = "spec-submodule-b"
-relative_path = "submodule-b/.spec"
+relative_path = "submodule-b/.workflow-tools/spec"

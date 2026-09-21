@@ -30,8 +30,7 @@ pub use startup_probe::{
 };
 
 const STORE_MARKERS: &[&str] = &[
-    ".ticket",
-    ".spec",
+    ".workflow-tools",
     ".rule",
     ".session",
     ".feedback",
@@ -214,7 +213,9 @@ pub fn materialize_fixture_with_generated_tickets(
     generated_ticket_count: usize
 ) -> Result<LoadedFixture, FixtureError> {
     let fixture = materialize_fixture()?;
-    let ticket_root = fixture.workspace_root.join(".ticket/tickets");
+    let ticket_root = fixture
+        .workspace_root
+        .join(".workflow-tools/ticket/tickets");
 
     for index in 0..generated_ticket_count {
         let id = format!("00000000-0000-0000-0000-{index:012x}");

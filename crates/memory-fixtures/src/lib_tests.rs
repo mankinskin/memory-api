@@ -88,7 +88,9 @@ fn materializes_representative_domain_seeds() {
 fn generates_benchmark_scale_ticket_variant() {
     let fixture = materialize_fixture_with_generated_tickets(50)
         .expect("fixture should load");
-    let generated_dir = fixture.workspace_root.join(".ticket/tickets");
+    let generated_dir = fixture
+        .workspace_root
+        .join(".workflow-tools/ticket/tickets");
     let entries = fs::read_dir(&generated_dir)
         .unwrap()
         .filter_map(Result::ok)

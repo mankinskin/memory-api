@@ -74,12 +74,16 @@ pub(super) fn seed_ticket_perf_scenario(
     options: TicketPerfFixtureOptions,
 ) -> Result<(Vec<String>, Vec<String>, Vec<PathBuf>), FixtureError> {
     let root_store = fixture.store_root("ticket-root").ok_or_else(|| {
-        FixtureError::MissingFixtureRoot(fixture.workspace_root.join(".ticket"))
+        FixtureError::MissingFixtureRoot(
+            fixture.workspace_root.join(".workflow-tools/ticket"),
+        )
     })?;
     let submodule_store =
         fixture.store_root("ticket-submodule-a").ok_or_else(|| {
             FixtureError::MissingFixtureRoot(
-                fixture.workspace_root.join("submodule-a/.ticket"),
+                fixture
+                    .workspace_root
+                    .join("submodule-a/.workflow-tools/ticket"),
             )
         })?;
 
@@ -170,7 +174,7 @@ pub(super) fn seed_tracked_reference_files(
                 workspace_root
                     .join("docs")
                     .join(format!("perf-move-root-{index:02}.md")),
-                "submodule-a/.ticket/tickets",
+                "submodule-a/.workflow-tools/ticket/tickets",
                 submodule_ticket_ids,
             )
         } else {
@@ -179,7 +183,7 @@ pub(super) fn seed_tracked_reference_files(
                     .join("submodule-a")
                     .join("docs")
                     .join(format!("perf-move-submodule-{index:02}.md")),
-                ".ticket/tickets",
+                ".workflow-tools/ticket/tickets",
                 submodule_ticket_ids,
             )
         };
@@ -199,7 +203,7 @@ pub(super) fn seed_tracked_reference_files(
                 let ticket_id = &root_ticket_ids
                     [(index + ref_index) % root_ticket_ids.len()];
                 body.push_str(&format!(
-                    "- root {ref_index:02}: .ticket/tickets/{ticket_id}/ticket.toml\n"
+                    "- root {ref_index:02}: .workflow-tools/ticket/tickets/{ticket_id}/ticket.toml\n"
                 ));
             }
         }
@@ -262,7 +266,7 @@ pub(super) fn seed_generated_tickets(
     workspace_root: &Path,
     count: usize,
 ) -> Result<(), FixtureError> {
-    let ticket_root = workspace_root.join(".ticket/tickets");
+    let ticket_root = workspace_root.join(".workflow-tools/ticket/tickets");
     for index in 0..count {
         let id = format!("00000000-0000-0000-0000-100000000{index:03x}");
         let ticket_dir = ticket_root.join(&id);

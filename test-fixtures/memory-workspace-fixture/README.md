@@ -10,11 +10,11 @@ The `fixtures.toml` manifest is the source of truth used by the `memory-fixtures
 ```
 memory-workspace-fixture/
 ├── fixtures.toml            # manifest: worktrees + store inventory
-├── .ticket/ .spec/          # root-level checked-in stores (seeded)
+├── .workflow-tools/ticket/ spec/  # root-level checked-in stores (seeded)
 ├── .rule/ .session/ .test-domain/ .log/  # generated representative stores
 ├── docs/ src/               # generated doc and audit inputs
-├── submodule-a/.ticket/ .spec/  # emulated submodule worktree A
-└── submodule-b/.ticket/ .spec/  # emulated submodule worktree B
+├── submodule-a/.workflow-tools/ticket/ spec/  # emulated submodule worktree A
+└── submodule-b/.workflow-tools/ticket/ spec/  # emulated submodule worktree B
 ```
 
 ## Consuming the fixture
@@ -39,7 +39,8 @@ root ticket store for the benchmark-scale variant.
 ## Adding a store type or scenario
 
 1. Add the seeded entity files under the appropriate worktree directory
-   (for example `.rule/rules/<id>/` or `submodule-a/.spec/specs/<uuid>/spec.toml`).
+   (for example `.rule/rules/<id>/` or
+   `submodule-a/.workflow-tools/spec/specs/<uuid>/spec.toml`).
 2. Register the store in `fixtures.toml` under a new `[[stores]]` entry with a unique
    `domain` and the `relative_path` to its hidden store directory.
 3. Reference the new domain from tests via `fixture.store_root("<domain>")`.
