@@ -1,0 +1,9 @@
+id = "1b34dbe7-7055-45ae-8c3c-068adef1ca84"
+created_at = "2026-07-04T06:07:08.116061600+00:00"
+title = "[profiling][ticket-api] Decompose integration and workflow sub-phase timings"
+state = "done"
+component = "memory-api"
+effort = "1.5k tokens"
+parts = [{ id = "ecb6b502-9636-46d9-92bd-4791a08d556e", kind = "objective", path = "parts/ecb6b502-9636-46d9-92bd-4791a08d556e.md", frozen = false, created_at = "2026-07-30T21:02:31.463035100Z" }, { id = "11857ae3-1e5a-4c38-bffb-4414642ba737", kind = "validation", path = "parts/11857ae3-1e5a-4c38-bffb-4414642ba737.md", frozen = false, created_at = "2026-07-30T21:02:31.466965100Z" }, { id = "441807ce-a3fe-41ed-aaef-d715d82b82f0", kind = "objective", path = "parts/441807ce-a3fe-41ed-aaef-d715d82b82f0.md", frozen = false, created_at = "2026-07-30T21:02:31.470612600Z" }]
+priority = "high"
+type = "tracker-improvement"

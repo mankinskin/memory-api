@@ -1,0 +1,9 @@
+id = "42780b6e-5dd1-491e-99ca-7e736357aaaf"
+created_at = "2026-07-28T14:02:13.992253400+00:00"
+title = "[PDF][T5] PDF creation: programmatic primitive plus optional sandboxed typst-cli path"
+state = "planning"
+depends_on = ["e9c0e280-859e-4d85-9bcf-3fcc9754d3fb"]
+effort = "16000"
+parts = [{ id = "c79f6c49-a6d9-4261-b800-510a9e85f6b4", kind = "objective", path = "parts/c79f6c49-a6d9-4261-b800-510a9e85f6b4.md", frozen = false, created_at = "2026-07-30T21:02:35.022723200Z" }, { id = "42f3bb95-96ce-4269-83f6-6e9f19b1d741", kind = "validation", path = "parts/42f3bb95-96ce-4269-83f6-6e9f19b1d741.md", frozen = false, created_at = "2026-07-30T21:02:35.026647200Z" }, { id = "3a6c4da9-f4cb-4cb0-8fc4-bff408ffeeb8", kind = "objective", path = "parts/3a6c4da9-f4cb-4cb0-8fc4-bff408ffeeb8.md", frozen = false, created_at = "2026-07-30T21:02:35.030428300Z" }]
+type = "task"
+component = "memory-api"

@@ -1,0 +1,9 @@
+id = "21402279-40cd-45ed-94dc-ff13e0e2da35"
+created_at = "2026-07-28T13:21:51.291057700+00:00"
+title = "T1: Scaffold pdf-api + pdf facade crates (feature-gated cli/mcp bins, workspace wiring)"
+state = "cancelled"
+component = "memory-api"
+effort = "1200"
+parts = [{ id = "616339dc-dfbb-4c04-ab62-fed6480e4342", kind = "objective", path = "parts/616339dc-dfbb-4c04-ab62-fed6480e4342.md", frozen = false, created_at = "2026-07-30T21:02:30.552143700Z" }, { id = "ed7530fb-9c1d-4011-a49f-842c67e3b330", kind = "validation", path = "parts/ed7530fb-9c1d-4011-a49f-842c67e3b330.md", frozen = false, created_at = "2026-07-30T21:02:30.556373200Z" }]
+risk_level = "low"
+type = "task"

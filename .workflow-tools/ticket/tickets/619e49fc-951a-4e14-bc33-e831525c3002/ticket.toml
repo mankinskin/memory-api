@@ -1,0 +1,13 @@
+id = "619e49fc-951a-4e14-bc33-e831525c3002"
+created_at = "2026-03-21T02:00:40.099512500+00:00"
+title = "Plan: fine-grained locking design for context-trace"
+state = "planning"
+acceptance_criteria = "Fine-grained locking implemented; concurrent reads don't block writes beyond minimum"
+component = "memory-api"
+doc_category = "plan"
+effort = "1200"
+parts = [{ id = "ee47f5f0-2f6f-40bd-92cf-4b35c5ffca77", kind = "objective", path = "parts/ee47f5f0-2f6f-40bd-92cf-4b35c5ffca77.md", frozen = false, created_at = "2026-07-30T21:02:30.460669200Z" }, { id = "2b6d2d30-ee42-4798-b6e0-78863c18f56d", kind = "validation", path = "parts/2b6d2d30-ee42-4798-b6e0-78863c18f56d.md", frozen = false, created_at = "2026-07-30T21:02:30.464956600Z" }]
+risk_level = "high"
+source_agent_files = "plans/20260115_PLAN_fine_grained_locking.md"
+tags = "#plan,#context-trace,#context-search,#context-insert,#context-read,#debugging,#testing,#refactoring,#api"
+type = "tracker-improvement"

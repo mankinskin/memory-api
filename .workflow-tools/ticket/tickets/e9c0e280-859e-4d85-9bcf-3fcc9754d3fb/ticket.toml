@@ -1,0 +1,9 @@
+id = "e9c0e280-859e-4d85-9bcf-3fcc9754d3fb"
+created_at = "2026-07-28T14:01:08.445417800+00:00"
+title = "[PDF][T2] pdf-api core: request/response types, PdfError, execute() dispatch, sandbox + write-safety layer"
+state = "planning"
+depends_on = ["c72f1fab-7d98-4f1d-983f-682eade2a23a"]
+effort = "20000"
+parts = [{ id = "992daee4-dccb-4f25-81b8-f591f9ff02c2", kind = "objective", path = "parts/992daee4-dccb-4f25-81b8-f591f9ff02c2.md", frozen = false, created_at = "2026-07-30T21:02:36.035281800Z" }, { id = "7f81db02-8ebb-4458-a4b3-5073e4817e83", kind = "validation", path = "parts/7f81db02-8ebb-4458-a4b3-5073e4817e83.md", frozen = false, created_at = "2026-07-30T21:02:36.039438100Z" }, { id = "9e344f91-f815-4ae0-ad92-6bcad283be29", kind = "objective", path = "parts/9e344f91-f815-4ae0-ad92-6bcad283be29.md", frozen = false, created_at = "2026-07-30T21:02:36.043039200Z" }]
+type = "task"
+component = "memory-api"

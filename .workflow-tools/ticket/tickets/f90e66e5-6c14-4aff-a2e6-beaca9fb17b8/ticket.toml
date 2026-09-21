@@ -1,0 +1,6 @@
+id = "f90e66e5-6c14-4aff-a2e6-beaca9fb17b8"
+created_at = "2026-07-30T18:55:03.498544200+00:00"
+title = "Fix remaining silent history-append failures in rule-api and spec-api"
+state = "planning"
+type = "defect"
+component = "memory-api"

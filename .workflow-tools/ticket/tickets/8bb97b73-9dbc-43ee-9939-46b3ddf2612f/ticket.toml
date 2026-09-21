@@ -1,0 +1,8 @@
+id = "8bb97b73-9dbc-43ee-9939-46b3ddf2612f"
+created_at = "2026-05-21T15:09:06.843715300+00:00"
+title = "[ticket-cli][ticket-mcp][session-mcp] Explain invalid state/enum transitions with allowed values"
+state = "done"
+effort = "1200"
+relates = ["fdf53556-2d84-4964-9575-f40032a02e85"]
+type = "tracker-improvement"
+component = "memory-api"

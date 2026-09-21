@@ -1,0 +1,8 @@
+id = "c7ed2ad2-8283-45cf-bda7-6b4c79c8eb45"
+created_at = "2026-07-31T15:37:41.659185+00:00"
+title = "T8: Split policy API and cost gate into separate crates (thin transport core)"
+state = "done"
+depends_on = ["15c66e77-379b-4a1f-b2a2-4cf1cb808af9"]
+linked = ["25780944-a784-4373-8991-88c2902b1556"]
+type = "task"
+component = "memory-api"

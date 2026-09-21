@@ -1,0 +1,113 @@
+# T7: `pdf-mcp` Transport — Named Tools
+
+## Objective
+
+Expose `pdf-api` as MCP named tools. This is the primary agent-facing surface
+and the deliverable the whole track exists for.
+
+## Files
+
+- `memory-api/crates/pdf/src/bin/pdf-mcp.rs` (replace T1 stub)
+- `memory-api/crates/pdf/src/mcp.rs` (new — server + tool definitions, gated by
+  the `mcp` feature)
+- `memory-api/crates/pdf/tests/mcp.rs` (new)
+
+## Design
+
+### Reference pattern
+
+`memory-api/tools/mcp/peek-mcp/src/server.rs` is the canonical named-tool
+pattern in this repo. Copy its structure:
+
+- One `#[derive(Debug, Deserialize, JsonSchema)]` input struct per tool.
+- A server struct carrying `tool_router: ToolRouter<Self>`, with `new()` /
+  `Default`.
+- A private `json_result<T: Serialize>` helper serializing the response into
+  `CallToolResult::success`.
+- A private error mapper converting `PdfError` into `McpError` —
+  `invalid_params` when `is_user_error()` is true (from T2), `internal_error`
+  otherwise.
+- `#[tool_router] impl` with one
+  `#[tool(name = "...", description = "...")]` async method per tool taking
+  `Parameters<Input>`.
+- `#[tool_handler] impl ServerHandler` setting `server_info` from
+  `env!("CARGO_PKG_NAME")` / `env!("CARGO_PKG_VERSION")`, an `instructions`
+  string describing the tool set, and
+  `ServerCapabilities::builder().enable_tools().build()`.
+- A `run_mcp_server()` doing `.serve(stdio()).await?.waiting()`.
+
+Note the placement difference: existing MCP servers live in
+`memory-api/tools/mcp/<name>-mcp/`, but per locked decision 1 this domain
+follows the facade-crate contract, so the server module lives inside the `pdf`
+crate behind the `mcp` feature and is launched by the `pdf-mcp` bin.
+
+### Named tools
+
+| Tool | Maps to |
+|---|---|
+| `pdf_extract_text` | `ExtractText` |
+| `pdf_merge` | `Merge` |
+| `pdf_split` | `Split` |
+| `pdf_edit_pages` | `EditPages` |
+| `pdf_get_metadata` | `GetMetadata` |
+| `pdf_set_metadata` | `SetMetadata` |
+| `pdf_create` | `Create` |
+| `pdf_extract_images` | `ExtractImages` (gated on T9) |
+
+Named tools, not a single `execute` passthrough — matching `peek-mcp`, so each
+tool carries its own JSON schema and description that an agent can reason about.
+
+### Tool descriptions
+
+These are what an agent reads to decide whether to call. Each must state what
+the tool does, that writes require an explicit output path, that clobbering
+requires `overwrite: true`, and that paths are confined to the sandbox root. The
+`pdf_create` description must state that typst mode requires `typst-cli` on
+PATH.
+
+### Sandbox root configuration
+
+The root cannot come only from caller-supplied request fields, or the sandbox is
+self-defeating — an agent could simply pass `/`. Configure it at server startup
+(CLI arg or env var), and have the server, not the caller, supply it to
+`pdf-api`. If a per-call root is accepted at all, it must be constrained to lie
+within the server-configured root. Document the chosen model in the server
+`instructions` string.
+
+### Output bounding
+
+The response must not dump a whole document into the agent's context. Bounding
+already lives in `pdf-api` (T3); the MCP layer stays thin and must not remove or
+bypass it.
+
+## Acceptance Criteria
+
+- [ ] Every implemented operation is registered as a named tool with a JSON
+      schema.
+- [ ] Tool descriptions state the write-safety and sandbox semantics.
+- [ ] User errors surface as `invalid_params`; internal errors as
+      `internal_error`.
+- [ ] The sandbox root is server-configured and cannot be widened by a caller —
+      asserted by a test that attempts it.
+- [ ] The server starts on stdio and responds to a tools/list request.
+- [ ] An end-to-end test drives at least: extract text, merge, split, and
+      metadata get/set through the MCP surface.
+- [ ] Text extraction responses stay bounded.
+- [ ] The bin only builds under `--features mcp`.
+- [ ] No PDF logic in the MCP layer.
+- [ ] `.vscode/mcp.json` (or the repo's MCP config location) documents how to
+      register the server, matching how existing servers are registered.
+
+## Validation
+
+```bash
+cargo test -p pdf --features mcp
+cargo build -p pdf --features mcp --bin pdf-mcp
+```
+
+Then register the server and exercise the tools live from an agent session;
+record the result.
+
+## Depends On
+
+T6.

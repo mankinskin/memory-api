@@ -1,0 +1,12 @@
+id = "f2882a13-58bd-4f42-b25c-092b564373c9"
+created_at = "2026-07-25T13:57:29.635214900+00:00"
+title = "[workflow-tools][per-tool] Pre-create interview tool repo as a single `interview` domain crate skeleton (placeholder)"
+state = "planning"
+component = "memory-api"
+depends_on = ["0da6894c-dcbb-4196-8ac7-b6fae7c40ec9", "1c452ff1-6edc-47c8-a73d-d07ce9b4d473", "dbe0e955-c1b4-414d-820c-10c3fbbb5d3d"]
+effort = "600"
+linked = ["7639449a-22a9-4bea-9fcf-517810bc9ddf"]
+parts = [{ id = "1882f0f7-1f05-437b-91d8-435046e326e5", kind = "implementation_plan", path = "parts/1882f0f7-1f05-437b-91d8-435046e326e5.md", frozen = false, created_at = "2026-08-13T17:28:55.577650400Z" }]
+priority = "medium"
+risk_level = "low"
+type = "task"

@@ -1,0 +1,5 @@
+{"rev":1,"ts":"2026-07-07T17:41:17.254273500+00:00","fields":{"state":"open","title":"[planning][workspace-policy] unify recovery hints across memory-api stores","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-07T17:41:21.158151100+00:00","fields":{"state":"in-implementation","title":"[planning][workspace-policy] unify recovery hints across memory-api stores","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-07-07T17:56:39.253900200+00:00","fields":{"state":"in-review","title":"[planning][workspace-policy] unify recovery hints across memory-api stores","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-07-23T13:33:37.305564100+00:00","fields":{"effort":"1200","state":"in-review","title":"[planning][workspace-policy] unify recovery hints across memory-api stores","type":"tracker-improvement"},"author":"github-copilot"}
+{"rev":5,"ts":"2026-08-10T19:50:00.218159900+00:00","fields":{"effort":"1200","state":"done","title":"[planning][workspace-policy] unify recovery hints across memory-api stores","type":"tracker-improvement"},"author":"github-copilot"}

@@ -1,0 +1,4 @@
+{"rev":1,"ts":"2026-07-08T12:36:20.473712900+00:00","fields":{"priority":"high","state":"open","title":"[audit-roadmap][file_length][batch-1a] memory-api core crates (7)","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-08T14:10:48.559570+00:00","fields":{"priority":"high","state":"in-implementation","title":"[audit-roadmap][file_length][batch-1a] memory-api core crates (7)","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-07-08T17:52:16.113867600+00:00","fields":{"priority":"high","state":"in-review","title":"[audit-roadmap][file_length][batch-1a] memory-api core crates (7)","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-07-08T18:29:42.974958400+00:00","fields":{"priority":"high","state":"done","title":"[audit-roadmap][file_length][batch-1a] memory-api core crates (7)","type":"tracker-improvement"}}

@@ -1,0 +1,11 @@
+id = "b24ffddf-eb6a-48b3-ada7-984c13436447"
+created_at = "2026-08-13T19:05:34.179184800+00:00"
+title = "Refresh repo map and hardcoded ticket-cli tool description"
+state = "in-review"
+component = "memory-api"
+depends_on = ["07a3eb2d-8868-4c36-a60a-e93cc787c065"]
+parts = [{ id = "a26b8222-3083-42d1-972a-53791432176b", kind = "acceptance_criteria", path = "parts/a26b8222-3083-42d1-972a-53791432176b.md", frozen = true, created_at = "2026-08-13T19:05:41.645356500Z" }, { id = "112ffd1b-7890-43b4-8633-30104371091a", kind = "objective", path = "parts/112ffd1b-7890-43b4-8633-30104371091a.md", frozen = true, created_at = "2026-08-14T15:32:35.253020100Z" }, { id = "61a033e4-5eda-40b1-b41a-7de59af0768b", kind = "requirements", path = "parts/61a033e4-5eda-40b1-b41a-7de59af0768b.md", frozen = true, created_at = "2026-08-14T15:32:35.255248900Z" }, { id = "542bbb52-6ceb-4957-950c-c0e457e22895", kind = "design", path = "parts/542bbb52-6ceb-4957-950c-c0e457e22895.md", frozen = true, created_at = "2026-08-14T15:32:35.255437100Z" }, { id = "fd8e37fd-62cb-48cc-9c34-6c77da409c85", kind = "examples", path = "parts/fd8e37fd-62cb-48cc-9c34-6c77da409c85.md", frozen = true, created_at = "2026-08-14T15:32:35.255607500Z" }]
+plan_revision = 1
+priority = "low"
+risk_level = "low"
+type = "task"

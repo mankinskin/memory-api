@@ -1,0 +1,9 @@
+id = "e135e28c-7878-472b-8dce-0f756482acb8"
+created_at = "2026-07-28T14:01:49.738570+00:00"
+title = "[PDF][T4] Document operations: merge, split, page delete/reorder/rotate, metadata read/write"
+state = "planning"
+depends_on = ["e9c0e280-859e-4d85-9bcf-3fcc9754d3fb"]
+effort = "20000"
+parts = [{ id = "fa5fe314-2051-4a68-948e-9338b9ec44c9", kind = "objective", path = "parts/fa5fe314-2051-4a68-948e-9338b9ec44c9.md", frozen = false, created_at = "2026-07-30T21:02:36.047817Z" }, { id = "9857519d-bd22-43bd-934c-e374ce048f21", kind = "validation", path = "parts/9857519d-bd22-43bd-934c-e374ce048f21.md", frozen = false, created_at = "2026-07-30T21:02:36.051924600Z" }, { id = "e8446744-1bcc-4f82-9109-d4fd29bcb11e", kind = "objective", path = "parts/e8446744-1bcc-4f82-9109-d4fd29bcb11e.md", frozen = false, created_at = "2026-07-30T21:02:36.055751400Z" }]
+type = "task"
+component = "memory-api"

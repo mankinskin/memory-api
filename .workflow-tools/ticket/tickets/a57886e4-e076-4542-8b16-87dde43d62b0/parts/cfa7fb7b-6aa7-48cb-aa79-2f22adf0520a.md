@@ -1,0 +1,1 @@
+Synthesized from duplicate ticket 56a17519 (2026-08-19), now cancelled. Added an explicit open scope question to resolve during planning: confirm whether a standalone doc-cli/doc-mcp genuinely does not exist (doc may be HTTP + viewer only), or whether cli/mcp access is only exposed indirectly. Do not fabricate cli/mcp bins with no legacy source if the answer is no.

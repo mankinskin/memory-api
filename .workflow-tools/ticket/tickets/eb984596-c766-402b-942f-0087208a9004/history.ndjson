@@ -1,0 +1,2 @@
+{"rev":1,"ts":"2026-07-29T10:59:23.747448100+00:00","fields":{"state":"open","title":"[tool-metrics][T3] Add measurement-coverage metric so unmeasured is distinguishable from healthy","type":"feature"}}
+{"rev":2,"ts":"2026-07-29T10:59:56.430246700+00:00","fields":{"depends_on":["44119807-53af-41b0-920a-ffbc985d425d"],"state":"open","title":"[tool-metrics][T3] Add measurement-coverage metric so unmeasured is distinguishable from healthy","type":"feature"}}

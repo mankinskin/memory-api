@@ -1,0 +1,11 @@
+id = "54114fc9-1a6f-4f9b-a0b5-0d13ac5188b7"
+created_at = "2026-07-30T14:36:26.556519500+00:00"
+title = "Spec: deterministic Rust execution controller for ticket-driven workflows"
+state = "planning"
+component = "memory-api"
+depends_on = ["1a240fdc-7de2-4494-8714-b2c81de09158", "7563ce30-bf9e-43fe-bca5-68473b1d9d79", "f35f4dd9-1a05-47ee-b334-809bb34e63a7", "feb5784c-ece7-40d3-9617-3faee2f6a753"]
+effort = "~3.5k tokens"
+parts = [{ id = "a153d76b-482c-4073-91b7-80e6a56bf32a", kind = "interview-decision", path = "parts/a153d76b-482c-4073-91b7-80e6a56bf32a.md", frozen = false, created_at = "2026-07-31T15:55:20.804688900Z" }]
+priority = "low"
+risk_level = "high"
+type = "task"

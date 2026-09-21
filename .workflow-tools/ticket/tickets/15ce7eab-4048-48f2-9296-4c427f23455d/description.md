@@ -1,0 +1,1 @@
+Starting implementation on move-kernel tracing spans/events so journal phase timings are visible through the tracing pipeline as well as the MoveJournal artifact.

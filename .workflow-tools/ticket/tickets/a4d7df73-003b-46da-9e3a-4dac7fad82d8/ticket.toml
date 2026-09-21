@@ -1,0 +1,9 @@
+id = "a4d7df73-003b-46da-9e3a-4dac7fad82d8"
+created_at = "2026-07-28T14:01:25.823874300+00:00"
+title = "[PDF][T3] Text extraction with page ranges, output bounding, and no-text-layer detection"
+state = "planning"
+depends_on = ["e9c0e280-859e-4d85-9bcf-3fcc9754d3fb"]
+effort = "10000"
+parts = [{ id = "28d8a441-b8e0-4ce1-91af-01d5f4a44294", kind = "objective", path = "parts/28d8a441-b8e0-4ce1-91af-01d5f4a44294.md", frozen = false, created_at = "2026-07-30T21:02:32.790779700Z" }, { id = "f2208cc7-3152-41c0-a076-0e6624893f7e", kind = "validation", path = "parts/f2208cc7-3152-41c0-a076-0e6624893f7e.md", frozen = false, created_at = "2026-07-30T21:02:32.794950600Z" }, { id = "6010d99f-cc7a-4cbe-b1fa-b5ff7dc18bec", kind = "objective", path = "parts/6010d99f-cc7a-4cbe-b1fa-b5ff7dc18bec.md", frozen = false, created_at = "2026-07-30T21:02:32.798851600Z" }]
+type = "task"
+component = "memory-api"

@@ -1,0 +1,11 @@
+id = "d3349747-b2f2-4dd4-b73c-dc016fec80d6"
+created_at = "2026-07-02T11:22:26.444702700+00:00"
+title = "[log-api] Add runtime log session model and cross-store links"
+state = "done"
+component = "memory-api"
+depends_on = ["84673399-75e6-4f36-8a17-4c666001e530"]
+effort = "2k tokens"
+parts = [{ id = "aecf91d4-bdf0-40fc-8762-d08b27a13aec", kind = "objective", path = "parts/aecf91d4-bdf0-40fc-8762-d08b27a13aec.md", frozen = false, created_at = "2026-07-30T21:02:31.577070200Z" }, { id = "8ab68d7b-dc88-4e81-8ef7-97b3225f8878", kind = "validation", path = "parts/8ab68d7b-dc88-4e81-8ef7-97b3225f8878.md", frozen = false, created_at = "2026-07-30T21:02:31.581128600Z" }, { id = "bd3e95b9-c6cf-4817-8c3e-b4b691e88bd3", kind = "objective", path = "parts/bd3e95b9-c6cf-4817-8c3e-b4b691e88bd3.md", frozen = false, created_at = "2026-07-30T21:02:31.585871Z" }]
+priority = "high"
+risk_level = "medium"
+type = "tracker-improvement"

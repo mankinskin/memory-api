@@ -1,0 +1,9 @@
+id = "2b1279bd-c42f-4b0e-8835-d0d645a733ab"
+created_at = "2026-06-17T12:23:43.053599800+00:00"
+title = "[architecture][memory-api] Neutral storage kernel and API migration"
+state = "planning"
+depends_on = ["13912e44-fee8-4aa5-b28f-68bbc22af401", "37e07148-c327-4530-8251-599c14dca04e", "999d9316-fc79-4bb1-b629-7cba52eced31", "e2768479-24d6-4f42-bdbe-ac509167dc62"]
+effort = "7600"
+priority = "high"
+type = "tracker-improvement"
+component = "memory-api"

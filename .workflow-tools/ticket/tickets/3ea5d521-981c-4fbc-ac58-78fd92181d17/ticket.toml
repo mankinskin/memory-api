@@ -1,0 +1,9 @@
+id = "3ea5d521-981c-4fbc-ac58-78fd92181d17"
+created_at = "2026-07-28T13:24:02.852303900+00:00"
+title = "T9: PDF embedded image extraction (last, cuttable)"
+state = "cancelled"
+component = "memory-api"
+effort = "1800"
+parts = [{ id = "8b8d8205-77e7-442b-9610-f406670d87b5", kind = "objective", path = "parts/8b8d8205-77e7-442b-9610-f406670d87b5.md", frozen = false, created_at = "2026-07-30T21:02:31.516774500Z" }, { id = "6398f2e8-ae65-4bc1-b0e6-28a53723f24e", kind = "validation", path = "parts/6398f2e8-ae65-4bc1-b0e6-28a53723f24e.md", frozen = false, created_at = "2026-07-30T21:02:31.520609800Z" }]
+risk_level = "medium"
+type = "task"

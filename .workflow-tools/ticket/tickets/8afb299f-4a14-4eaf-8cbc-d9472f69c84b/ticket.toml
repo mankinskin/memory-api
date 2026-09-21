@@ -1,0 +1,8 @@
+id = "8afb299f-4a14-4eaf-8cbc-d9472f69c84b"
+created_at = "2026-07-07T12:06:04.681704500+00:00"
+title = "[context-read] Expansion loop redesign tracker (de-retro cluster migration)"
+state = "planning"
+depends_on = ["978ce8a5-3936-467b-aca8-822eeecd1eb0"]
+effort = "1200"
+type = "tracker-improvement"
+component = "memory-api"

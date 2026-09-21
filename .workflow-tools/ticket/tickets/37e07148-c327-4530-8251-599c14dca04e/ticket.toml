@@ -1,0 +1,8 @@
+id = "37e07148-c327-4530-8251-599c14dca04e"
+created_at = "2026-06-17T14:03:22.874653600+00:00"
+title = "[architecture][memory-api] Implement neutral shared storage kernel APIs"
+state = "planning"
+effort = "3600"
+priority = "high"
+type = "tracker-improvement"
+component = "memory-api"

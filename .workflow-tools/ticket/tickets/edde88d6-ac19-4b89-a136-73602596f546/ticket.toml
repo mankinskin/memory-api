@@ -1,0 +1,8 @@
+id = "edde88d6-ac19-4b89-a136-73602596f546"
+created_at = "2026-07-05T19:02:55.398768900+00:00"
+title = "[audit-roadmap][2026-07-05] Full repository audit remediation tracker"
+state = "planning"
+depends_on = ["02622207-e102-4fae-b705-ca1cb12704ba", "1a2b326d-cf0c-4935-83a7-b80cf0ff0f32", "45ff05c9-7608-43c4-a98a-e1c44e4b7fbd", "5f9542bf-483a-4da6-9c78-fcbe588af973", "65d5885b-ec09-450e-b6c8-1607ec3e51c3", "6e89260d-2b89-4e0d-9f03-ed10907de19d", "ac990dfe-083d-413c-ba4a-7cfbbda677b0", "ad63d3da-1661-41e0-a0d3-3163bba324f9", "cb92b0d2-1361-44c6-8c92-fae3036ac97a", "f23c9450-1999-4fa2-9751-c67faa63fe00"]
+effort = "1200"
+type = "tracker-improvement"
+component = "memory-api"

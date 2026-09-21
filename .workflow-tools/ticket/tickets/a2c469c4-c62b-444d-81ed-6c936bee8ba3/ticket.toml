@@ -1,0 +1,11 @@
+id = "a2c469c4-c62b-444d-81ed-6c936bee8ba3"
+created_at = "2026-07-09T17:37:03.169152400+00:00"
+title = "[workflow-policy][benchmarks] Research and define end-to-end benchmark and execution-evidence policy"
+state = "done"
+component = "memory-api"
+effort = "5000"
+parts = [{ id = "a1e71ab3-252a-49df-beac-76db49b8a7a3", kind = "objective", path = "parts/a1e71ab3-252a-49df-beac-76db49b8a7a3.md", frozen = false, created_at = "2026-07-30T21:02:31.923617600Z" }, { id = "41d99c37-2ceb-4010-8902-12ac6f8d2415", kind = "validation", path = "parts/41d99c37-2ceb-4010-8902-12ac6f8d2415.md", frozen = false, created_at = "2026-07-30T21:02:31.927145600Z" }, { id = "32a290cf-52e9-4113-b245-4e2ccd7e1409", kind = "objective", path = "parts/32a290cf-52e9-4113-b245-4e2ccd7e1409.md", frozen = false, created_at = "2026-07-30T21:02:31.931416500Z" }]
+priority = "high"
+risk_level = "high"
+status_summary = "Bulk triage 2026-07-31: acceptance criteria assessed as substantially met; moved for review verification."
+type = "tracker-improvement"

@@ -1,0 +1,7 @@
+id = "887f5059-650a-4fd0-a47b-e07b4a1959db"
+created_at = "2026-07-30T18:54:02.593001+00:00"
+title = "Cross-workspace edge fixture fails with NotFound in serve::routes tests"
+state = "planning"
+linked = ["26da8f59-5d2d-41d9-9e87-7c74f200a9ce", "7bc328d7-5168-4f93-938d-09e4e09dcdb4"]
+type = "defect"
+component = "memory-api"

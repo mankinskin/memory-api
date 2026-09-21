@@ -1,0 +1,9 @@
+id = "528af270-a65c-4311-88ed-7a2e87d468bf"
+created_at = "2026-07-06T01:46:45.286987300+00:00"
+title = "[workspace-policy] 7/6 Cleanup retro fixture references + audit boundary rule"
+state = "done"
+depends_on = ["42094bd4-f818-460e-b48f-b1be3bcc1c80", "51d53f8f-5636-4185-b629-806816059caa"]
+effort = "2200"
+priority = "high"
+type = "tracker-improvement"
+component = "memory-api"

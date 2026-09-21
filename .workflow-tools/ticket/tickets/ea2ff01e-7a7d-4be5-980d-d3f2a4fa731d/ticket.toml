@@ -1,0 +1,9 @@
+id = "ea2ff01e-7a7d-4be5-980d-d3f2a4fa731d"
+created_at = "2026-07-28T13:22:52.048150300+00:00"
+title = "T5: PDF creation — programmatic primitive + optional typst-cli path"
+state = "cancelled"
+component = "memory-api"
+effort = "2000"
+parts = [{ id = "0be03fe5-6056-49cb-9974-c13010e1916e", kind = "objective", path = "parts/0be03fe5-6056-49cb-9974-c13010e1916e.md", frozen = false, created_at = "2026-07-30T21:02:31.566885100Z" }, { id = "3c612be8-d2af-49f5-bdf9-1da1abd17ce4", kind = "validation", path = "parts/3c612be8-d2af-49f5-bdf9-1da1abd17ce4.md", frozen = false, created_at = "2026-07-30T21:02:31.570662900Z" }]
+risk_level = "medium"
+type = "task"

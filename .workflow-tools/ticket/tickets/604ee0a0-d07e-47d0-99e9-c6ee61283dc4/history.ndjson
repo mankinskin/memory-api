@@ -1,0 +1,1 @@
+{"rev":1,"ts":"2026-07-29T17:26:14.420739800+00:00","fields":{"state":"open","title":"ticket-mcp update_ticket/add_edge/create_ticket report ok but silently drop writes (state, depends_on, component, priority)","type":"bug"}}

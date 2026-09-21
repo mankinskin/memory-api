@@ -1,0 +1,9 @@
+id = "0b7497a2-18ec-4e5a-b1d6-4c8a4cfac45d"
+created_at = "2026-07-28T13:22:52.399458700+00:00"
+title = "T3: PDF text extraction"
+state = "cancelled"
+component = "memory-api"
+effort = "1200"
+parts = [{ id = "0ec98820-20ce-4611-9acf-85a9c0d4e919", kind = "objective", path = "parts/0ec98820-20ce-4611-9acf-85a9c0d4e919.md", frozen = false, created_at = "2026-07-30T21:02:31.330318Z" }, { id = "d8e12590-2407-4089-bf32-06e526ac0561", kind = "validation", path = "parts/d8e12590-2407-4089-bf32-06e526ac0561.md", frozen = false, created_at = "2026-07-30T21:02:31.334278900Z" }]
+risk_level = "low"
+type = "task"

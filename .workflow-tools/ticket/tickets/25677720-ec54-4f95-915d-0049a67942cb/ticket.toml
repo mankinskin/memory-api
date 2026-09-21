@@ -1,0 +1,9 @@
+id = "25677720-ec54-4f95-915d-0049a67942cb"
+created_at = "2026-07-06T01:35:00.555824100+00:00"
+title = "[workspace-policy] 6/6 Regression tests across discovery/scan/query"
+state = "done"
+depends_on = ["42094bd4-f818-460e-b48f-b1be3bcc1c80", "6312c5c4-858a-4953-98cf-2f1258de2093", "c5ff717e-8b7e-480c-ab9a-fda0527d6966"]
+effort = "3000"
+priority = "high"
+type = "tracker-improvement"
+component = "memory-api"

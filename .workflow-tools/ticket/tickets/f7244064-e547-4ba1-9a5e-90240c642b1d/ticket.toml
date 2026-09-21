@@ -1,0 +1,9 @@
+id = "f7244064-e547-4ba1-9a5e-90240c642b1d"
+created_at = "2026-07-31T14:24:18.601741300+00:00"
+title = "mcp-toolmon: anomalously slow shutdown after crash-recovery cycle (~89s observed)"
+state = "planning"
+linked = "25780944-a784-4373-8991-88c2902b1556"
+parts = [{ id = "a0dcc3cb-87ff-4330-80c7-9155231ee304", kind = "objective", path = "parts/a0dcc3cb-87ff-4330-80c7-9155231ee304.md", frozen = true, created_at = "2026-07-31T16:35:55.672202600Z" }, { id = "e70e9cec-e1ad-4a19-8943-e90eaf618a2d", kind = "requirements", path = "parts/e70e9cec-e1ad-4a19-8943-e90eaf618a2d.md", frozen = true, created_at = "2026-07-31T16:35:55.672439700Z" }, { id = "f81c307e-e451-429e-8c8f-6a77860ad7b6", kind = "design", path = "parts/f81c307e-e451-429e-8c8f-6a77860ad7b6.md", frozen = true, created_at = "2026-07-31T16:35:55.672760500Z" }, { id = "c9a114b1-5979-4ef6-8104-179aac451dd3", kind = "examples", path = "parts/c9a114b1-5979-4ef6-8104-179aac451dd3.md", frozen = true, created_at = "2026-07-31T16:35:55.673010400Z" }, { id = "3a90a826-3d5b-4144-8a8d-1a6621e0cbb6", kind = "acceptance_criteria", path = "parts/3a90a826-3d5b-4144-8a8d-1a6621e0cbb6.md", frozen = true, created_at = "2026-07-31T16:35:55.673498100Z" }]
+plan_revision = 1
+type = "task"
+component = "memory-api"

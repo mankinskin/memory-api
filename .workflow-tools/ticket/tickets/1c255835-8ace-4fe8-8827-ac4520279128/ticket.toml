@@ -1,0 +1,9 @@
+id = "1c255835-8ace-4fe8-8827-ac4520279128"
+created_at = "2026-07-28T13:22:52.201942700+00:00"
+title = "T2: pdf-api core types, request/response dispatch, error enum, sandboxing + write-safety layer"
+state = "cancelled"
+component = "memory-api"
+effort = "3000"
+parts = [{ id = "1754564f-6fa1-44c3-aeb5-4a286785c46a", kind = "objective", path = "parts/1754564f-6fa1-44c3-aeb5-4a286785c46a.md", frozen = false, created_at = "2026-07-30T21:02:31.762121900Z" }, { id = "44e2d1f9-6f6b-4e61-8445-4c4d84798435", kind = "validation", path = "parts/44e2d1f9-6f6b-4e61-8445-4c4d84798435.md", frozen = false, created_at = "2026-07-30T21:02:31.766430600Z" }]
+risk_level = "medium"
+type = "task"

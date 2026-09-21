@@ -1,0 +1,6 @@
+id = "ce7b7bde-fa29-4ad0-9524-70629dcddd19"
+created_at = "2026-07-29T10:59:44.449317600+00:00"
+title = "[tool-metrics][T4] Recurrence guardrail: data-capture ACs must be verified by artifact read-back"
+state = "done"
+type = "tracker-improvement"
+component = "memory-api"

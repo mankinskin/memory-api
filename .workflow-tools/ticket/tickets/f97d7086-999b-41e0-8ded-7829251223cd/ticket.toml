@@ -1,0 +1,7 @@
+id = "f97d7086-999b-41e0-8ded-7829251223cd"
+created_at = "2026-07-07T17:41:17.174318+00:00"
+title = "[planning][workspace-policy] unify recovery hints across memory-api stores"
+state = "done"
+effort = "1200"
+type = "tracker-improvement"
+component = "memory-api"

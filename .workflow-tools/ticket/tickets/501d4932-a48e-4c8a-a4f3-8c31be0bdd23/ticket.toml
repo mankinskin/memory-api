@@ -1,0 +1,12 @@
+id = "501d4932-a48e-4c8a-a4f3-8c31be0bdd23"
+created_at = "2026-05-17T15:21:10.385841600+00:00"
+title = "[log-api] Add first-class validation log capture and retrieval"
+state = "planning"
+acceptance_criteria = "log-api crate exists for validation log capture and retrieval; logs have native identifiers and queryable metadata; links to tickets/specs/docs/test-api executions are first-class; design integrates with shared memory-system behavior instead of a workflow wrapper CLI"
+component = "memory-api"
+depends_on = ["0fb5a2e5-af2b-4b52-81a5-c3a49ffc3274", "75e9fef3-b624-4e12-9709-5d800222908c"]
+effort = "1200"
+priority = "high"
+risk_level = "high"
+tags = "log-api,workflow,validation,memory-api"
+type = "tracker-improvement"

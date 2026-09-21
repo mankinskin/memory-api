@@ -1,0 +1,9 @@
+id = "c5ff717e-8b7e-480c-ab9a-fda0527d6966"
+created_at = "2026-07-06T01:35:00.776785500+00:00"
+title = "[workspace-policy] 5/6 CLI/API surfaces for policy management"
+state = "done"
+depends_on = ["6312c5c4-858a-4953-98cf-2f1258de2093", "eecbcee9-d82d-469f-b728-56f7e5598006"]
+effort = "4000"
+priority = "medium"
+type = "tracker-improvement"
+component = "memory-api"

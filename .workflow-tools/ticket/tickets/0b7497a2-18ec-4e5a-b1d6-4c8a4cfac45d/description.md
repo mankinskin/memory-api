@@ -1,0 +1,33 @@
+## Objective
+
+Implement text extraction from PDF files using the crate selected by T0.
+
+## Target Files
+
+- `memory-api/crates/pdf-api/src/lib.rs` (or `src/text.rs` if the module is split out) — implement the `ExtractText` request variant body.
+- `memory-api/crates/pdf-api/tests/` — add an extraction test using a small fixture PDF.
+- `memory-api/crates/pdf-api/tests/fixtures/` (or similar) — a minimal test-fixture PDF containing known text content.
+
+## Design
+
+Implement the body of the `ExtractText { path }` request variant (added as a skeleton in T2) using whichever crate T0 selected for text extraction (candidate: `pdf-extract`, to be confirmed by T0). The response must return the extracted text as a `String` (or per-page `Vec<String>` if the selected crate exposes page boundaries — decide based on T0's findings and document the final response shape here once implemented).
+
+All path handling continues to route through the T2 sandboxing layer — no new path-validation logic is introduced in this ticket.
+
+Error cases to cover: file not found, path outside root (already covered by T2, but confirm this operation still routes through it), corrupt/non-PDF input, and PDF with no extractable text (should return empty string / empty page list, not an error).
+
+## Acceptance Criteria
+
+- [ ] `ExtractText` returns the correct text content for a known test-fixture PDF with plain text content.
+- [ ] `ExtractText` on a PDF with no text content returns success with empty text, not an error.
+- [ ] `ExtractText` on a non-existent path returns `PdfError` classified as user error.
+- [ ] `ExtractText` on a corrupt/non-PDF file returns `PdfError` classified appropriately (user error if it's clearly not a PDF, internal error if the crate fails unexpectedly on a valid-looking PDF).
+- [ ] `ExtractText` on a path outside the confinement root is rejected by the T2 sandboxing layer (existing test coverage extended to include this operation, not re-implemented).
+- [ ] `cargo test -p pdf-api` passes including the new extraction tests.
+
+## Validation Plan
+
+```bash
+cargo test -p pdf-api --lib extract_text
+```
+Test fixture: a small PDF with known plain-text content checked into `memory-api/crates/pdf-api/tests/fixtures/`, plus one deliberately corrupt/truncated file to exercise the error path.

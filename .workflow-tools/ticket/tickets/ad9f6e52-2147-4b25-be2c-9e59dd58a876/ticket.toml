@@ -1,0 +1,12 @@
+id = "ad9f6e52-2147-4b25-be2c-9e59dd58a876"
+created_at = "2026-05-17T15:21:08.996863700+00:00"
+title = "[doc-cli] Add CLI surface for doc-api"
+state = "planning"
+acceptance_criteria = "doc-cli crate exists as thin interface over doc-api; exposes initial inspection and validation commands; workflow metadata updates happen through shared-library behavior and normal doc-cli usage; CLI docs explain default workflow integration"
+component = "memory-api"
+depends_on = ["06778dd8-a894-4759-b8fc-f00f6dd21fa5"]
+effort = "1200"
+priority = "high"
+risk_level = "medium"
+tags = "doc-api,doc-cli,workflow,tooling"
+type = "tracker-improvement"

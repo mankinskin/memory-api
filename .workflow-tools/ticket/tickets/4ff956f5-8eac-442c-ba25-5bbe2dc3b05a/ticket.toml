@@ -1,0 +1,9 @@
+id = "4ff956f5-8eac-442c-ba25-5bbe2dc3b05a"
+created_at = "2026-07-28T13:22:52.123637600+00:00"
+title = "T4: PDF page operations (merge, split, reorder, delete) + metadata read/write"
+state = "cancelled"
+component = "memory-api"
+effort = "2500"
+parts = [{ id = "7d745f84-88c1-4d71-abeb-b08177ae3f6c", kind = "objective", path = "parts/7d745f84-88c1-4d71-abeb-b08177ae3f6c.md", frozen = false, created_at = "2026-07-30T21:02:31.691718200Z" }, { id = "f293a856-ee6b-4dbf-96c1-85a3590bd3a2", kind = "validation", path = "parts/f293a856-ee6b-4dbf-96c1-85a3590bd3a2.md", frozen = false, created_at = "2026-07-30T21:02:31.695551Z" }]
+risk_level = "medium"
+type = "task"

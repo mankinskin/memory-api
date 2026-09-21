@@ -1,0 +1,9 @@
+id = "9590bdcf-8c3c-4cd1-bd60-df2ec6ca65f1"
+created_at = "2026-07-28T14:03:18.683065800+00:00"
+title = "[PDF][T8] Author .agents/skills/pdf/SKILL.md, README index row, and crate docs"
+state = "planning"
+depends_on = ["0a602458-8965-41ed-8884-1f72dfdfa203"]
+effort = "8000"
+parts = [{ id = "ea55a162-5321-4313-bf86-9e976186ad0d", kind = "objective", path = "parts/ea55a162-5321-4313-bf86-9e976186ad0d.md", frozen = false, created_at = "2026-07-30T21:02:32.757813400Z" }, { id = "b987cbdb-46ab-4138-a14b-ce97c313e513", kind = "validation", path = "parts/b987cbdb-46ab-4138-a14b-ce97c313e513.md", frozen = false, created_at = "2026-07-30T21:02:32.761422300Z" }, { id = "7533ed6b-0fdf-4eb2-ba5c-a3e05f5f49e8", kind = "objective", path = "parts/7533ed6b-0fdf-4eb2-ba5c-a3e05f5f49e8.md", frozen = false, created_at = "2026-07-30T21:02:32.765062500Z" }]
+type = "task"
+component = "memory-api"

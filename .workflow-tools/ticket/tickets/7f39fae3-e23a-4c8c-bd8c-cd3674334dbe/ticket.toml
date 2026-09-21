@@ -1,0 +1,9 @@
+id = "7f39fae3-e23a-4c8c-bd8c-cd3674334dbe"
+created_at = "2026-07-28T14:04:00.179405300+00:00"
+title = "[PDF][Follow-up] pdf-http transport (deferred out of v1)"
+state = "planning"
+depends_on = ["0a602458-8965-41ed-8884-1f72dfdfa203"]
+effort = "10000"
+parts = [{ id = "95a8061a-ae78-4229-a254-3c57af92bf81", kind = "objective", path = "parts/95a8061a-ae78-4229-a254-3c57af92bf81.md", frozen = false, created_at = "2026-07-30T21:02:33.116031800Z" }, { id = "4c3f2f26-642d-42b2-a152-c3d8ec7ca4d6", kind = "notes", path = "parts/4c3f2f26-642d-42b2-a152-c3d8ec7ca4d6.md", frozen = false, created_at = "2026-07-30T21:02:33.119952200Z" }, { id = "254c518b-e983-47c4-a657-06801581a1d1", kind = "objective", path = "parts/254c518b-e983-47c4-a657-06801581a1d1.md", frozen = false, created_at = "2026-07-30T21:02:33.123909100Z" }]
+type = "task"
+component = "memory-api"

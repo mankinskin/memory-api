@@ -1,0 +1,7 @@
+id = "37dc83ab-af5c-4746-9c02-b27ffb8215a9"
+created_at = "2026-06-15T00:10:06.951244300+00:00"
+title = "[bug] Tantivy 0.22.1 fastfield panic breaks spec/store full-text search"
+state = "done"
+parts = [{ id = "3742d684-4a4a-4281-9b56-fb170cf7b446", kind = "objective", path = "parts/3742d684-4a4a-4281-9b56-fb170cf7b446.md", frozen = false, created_at = "2026-07-30T21:05:26.788898100Z" }, { id = "6fb04d8e-59a6-4810-91cf-3a5c5a73beb6", kind = "validation", path = "parts/6fb04d8e-59a6-4810-91cf-3a5c5a73beb6.md", frozen = false, created_at = "2026-07-30T21:05:26.792603500Z" }, { id = "bc1f817b-97ab-499e-b675-eb3af9474cbe", kind = "objective", path = "parts/bc1f817b-97ab-499e-b675-eb3af9474cbe.md", frozen = false, created_at = "2026-07-30T21:05:26.796451200Z" }]
+type = "tracker-improvement"
+component = "memory-api"

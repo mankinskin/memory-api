@@ -1,0 +1,13 @@
+id = "322a4737-9fae-4804-8053-6ea1c85205da"
+created_at = "2026-07-28T13:59:49.366553500+00:00"
+title = "[Epic] PDF domain crate: extract, edit, create, merge PDFs via MCP + skill"
+state = "planning"
+depends_on = ["9590bdcf-8c3c-4cd1-bd60-df2ec6ca65f1"]
+effort = "500"
+linked = ["7f39fae3-e23a-4c8c-bd8c-cd3674334dbe", "a59f35fb-9e37-4d27-8c0d-35b9229f5813"]
+parts = [{ id = "72bfc615-898f-41e7-8369-6317648fe800", kind = "objective", path = "parts/72bfc615-898f-41e7-8369-6317648fe800.md", frozen = true, created_at = "2026-07-31T09:20:15.789138600Z" }, { id = "9e2057da-5597-4789-9eb5-5fc0b1119f43", kind = "requirements", path = "parts/9e2057da-5597-4789-9eb5-5fc0b1119f43.md", frozen = true, created_at = "2026-07-31T09:20:15.789519800Z" }, { id = "04c3f624-e73d-4abc-99eb-4849b5f0a879", kind = "design", path = "parts/04c3f624-e73d-4abc-99eb-4849b5f0a879.md", frozen = true, created_at = "2026-07-31T09:20:15.789940900Z" }, { id = "19826132-7ba7-4024-a2b7-2148ff808add", kind = "examples", path = "parts/19826132-7ba7-4024-a2b7-2148ff808add.md", frozen = true, created_at = "2026-07-31T09:20:15.790150500Z" }, { id = "bf4df010-df23-48b9-a421-85cb446e7057", kind = "acceptance_criteria", path = "parts/bf4df010-df23-48b9-a421-85cb446e7057.md", frozen = true, created_at = "2026-07-31T09:20:15.790311200Z" }]
+plan_revision = 1
+spec = "pdf-tooling (83f05962-bae4-4e82-981a-18558030e34e)"
+status_summary = "Triage 2026-07-31: no implementation work landed; returned to planned for re-scoping."
+type = "feature"
+component = "memory-api"

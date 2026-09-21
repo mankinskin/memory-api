@@ -1,0 +1,9 @@
+id = "6312c5c4-858a-4953-98cf-2f1258de2093"
+created_at = "2026-07-06T01:35:00.704090700+00:00"
+title = "[workspace-policy] 2/6 Apply policy in discover_workspace_scan_roots"
+state = "done"
+depends_on = ["51d53f8f-5636-4185-b629-806816059caa"]
+effort = "3000"
+priority = "high"
+type = "tracker-improvement"
+component = "memory-api"

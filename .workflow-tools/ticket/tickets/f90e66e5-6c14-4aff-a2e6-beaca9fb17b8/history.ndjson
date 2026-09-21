@@ -1,0 +1,1 @@
+{"rev":1,"ts":"2026-07-30T18:55:03.555652400+00:00","fields":{"state":"open","title":"Fix remaining silent history-append failures in rule-api and spec-api","type":"defect"}}

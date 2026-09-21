@@ -1,0 +1,9 @@
+id = "57cd6a98-cee4-4c0e-a85c-667bef3d8085"
+created_at = "2026-07-28T13:24:02.779847200+00:00"
+title = "T7: pdf-mcp transport (named tools, error mapping, ServerHandler)"
+state = "cancelled"
+component = "memory-api"
+effort = "2000"
+parts = [{ id = "7b28a2c6-8093-468e-9e15-716b757b468a", kind = "objective", path = "parts/7b28a2c6-8093-468e-9e15-716b757b468a.md", frozen = false, created_at = "2026-07-30T21:02:31.623368Z" }, { id = "746d9564-0baa-412d-883a-3ffe1326b6dd", kind = "validation", path = "parts/746d9564-0baa-412d-883a-3ffe1326b6dd.md", frozen = false, created_at = "2026-07-30T21:02:31.626935300Z" }]
+risk_level = "medium"
+type = "task"

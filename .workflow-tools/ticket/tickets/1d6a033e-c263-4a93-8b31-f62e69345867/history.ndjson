@@ -1,0 +1,1 @@
+{"rev":1,"ts":"2026-07-29T17:24:04.648438300+00:00","fields":{"state":"open","title":"ticket-mcp add_edge fails with entity-not-found on entities that get_ticket/update_ticket can resolve","type":"bug"}}

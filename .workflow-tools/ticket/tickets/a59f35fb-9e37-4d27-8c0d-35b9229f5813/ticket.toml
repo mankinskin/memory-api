@@ -1,0 +1,9 @@
+id = "a59f35fb-9e37-4d27-8c0d-35b9229f5813"
+created_at = "2026-07-28T14:03:42.127907100+00:00"
+title = "[PDF][T9] Embedded image extraction with filter/colorspace handling (cuttable, blocks nothing)"
+state = "planning"
+depends_on = ["9590bdcf-8c3c-4cd1-bd60-df2ec6ca65f1"]
+effort = "18000"
+parts = [{ id = "28dfd194-fb45-4ef5-a3ee-e0498b9d3b83", kind = "objective", path = "parts/28dfd194-fb45-4ef5-a3ee-e0498b9d3b83.md", frozen = false, created_at = "2026-07-30T21:02:35.372547700Z" }, { id = "ca1086df-822f-4df7-a731-bbecb9e5702a", kind = "notes", path = "parts/ca1086df-822f-4df7-a731-bbecb9e5702a.md", frozen = false, created_at = "2026-07-30T21:02:35.376504900Z" }, { id = "eef1500c-35d9-4a4a-8e89-38dcbcc8eac5", kind = "objective", path = "parts/eef1500c-35d9-4a4a-8e89-38dcbcc8eac5.md", frozen = false, created_at = "2026-07-30T21:02:35.380072600Z" }, { id = "4e7e2980-ad16-4c91-8d7b-344b48642eeb", kind = "validation", path = "parts/4e7e2980-ad16-4c91-8d7b-344b48642eeb.md", frozen = false, created_at = "2026-07-30T21:02:35.384054300Z" }, { id = "f53d12a8-0571-47b1-b583-94173050f7e1", kind = "objective", path = "parts/f53d12a8-0571-47b1-b583-94173050f7e1.md", frozen = false, created_at = "2026-07-30T21:02:35.388269600Z" }]
+type = "task"
+component = "memory-api"

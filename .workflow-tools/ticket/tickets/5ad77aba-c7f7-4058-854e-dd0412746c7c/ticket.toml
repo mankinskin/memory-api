@@ -1,0 +1,8 @@
+id = "5ad77aba-c7f7-4058-854e-dd0412746c7c"
+created_at = "2026-05-21T15:09:07.800018400+00:00"
+title = "[ticket-mcp][spec-mcp][rule-api][session-mcp] Add self-describing capability catalog and help surfaces"
+state = "done"
+effort = "1200"
+relates = ["7d857543-be6b-42ba-8b7e-608b5bd7c046", "7f1ed44f-73f3-40c9-9647-d899c64ec507"]
+type = "tracker-improvement"
+component = "memory-api"

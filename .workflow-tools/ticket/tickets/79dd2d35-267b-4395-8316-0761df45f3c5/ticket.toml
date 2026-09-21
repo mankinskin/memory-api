@@ -1,0 +1,11 @@
+id = "79dd2d35-267b-4395-8316-0761df45f3c5"
+created_at = "2026-07-09T17:31:57.588005900+00:00"
+title = "[workflow-policy][memory-store] Research and define minimal domain-store bootstrap policy"
+state = "in-implementation"
+component = "memory-api"
+depends_on = ["e268a1e8-3f3a-433f-b4a0-d58c590b8d29"]
+effort = "5000"
+parts = [{ id = "27da134c-91fd-4ecd-9392-a8804d405e69", kind = "objective", path = "parts/27da134c-91fd-4ecd-9392-a8804d405e69.md", frozen = false, created_at = "2026-07-30T21:02:31.936318100Z" }, { id = "3be367ba-3e23-4389-b626-36ef7cefa6fe", kind = "validation", path = "parts/3be367ba-3e23-4389-b626-36ef7cefa6fe.md", frozen = false, created_at = "2026-07-30T21:02:31.940172Z" }, { id = "67c2faf4-f1f8-4956-a3ca-92d2eefa3ea0", kind = "objective", path = "parts/67c2faf4-f1f8-4956-a3ca-92d2eefa3ea0.md", frozen = false, created_at = "2026-07-30T21:02:31.943997400Z" }]
+priority = "high"
+risk_level = "high"
+type = "tracker-improvement"

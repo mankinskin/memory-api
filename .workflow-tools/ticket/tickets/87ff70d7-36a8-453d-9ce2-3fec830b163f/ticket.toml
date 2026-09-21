@@ -1,0 +1,9 @@
+id = "87ff70d7-36a8-453d-9ce2-3fec830b163f"
+created_at = "2026-07-04T06:07:08.383976800+00:00"
+title = "[profiling][validation] Validate profile evidence linkage across ticket/spec/journal"
+state = "done"
+component = "memory-api"
+effort = "1k tokens"
+parts = [{ id = "214b5b39-11ee-4b38-92b4-d1615676cb91", kind = "objective", path = "parts/214b5b39-11ee-4b38-92b4-d1615676cb91.md", frozen = false, created_at = "2026-07-30T21:02:28.840265400Z" }, { id = "27494998-e076-415e-8b97-dd2e5b196f48", kind = "validation", path = "parts/27494998-e076-415e-8b97-dd2e5b196f48.md", frozen = false, created_at = "2026-07-30T21:02:28.843939200Z" }, { id = "2afceeac-3150-43a8-8973-4e083ee90a30", kind = "objective", path = "parts/2afceeac-3150-43a8-8973-4e083ee90a30.md", frozen = false, created_at = "2026-07-30T21:02:28.847657700Z" }]
+priority = "medium"
+type = "tracker-improvement"

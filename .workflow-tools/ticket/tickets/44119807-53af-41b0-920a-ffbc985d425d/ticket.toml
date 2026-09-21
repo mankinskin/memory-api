@@ -1,0 +1,10 @@
+id = "44119807-53af-41b0-920a-ffbc985d425d"
+created_at = "2026-07-29T10:59:05.383798500+00:00"
+title = "[tool-metrics][T2] Capture tool output size at capture time with per-call source attribution"
+state = "done"
+depends_on = ["76941e78-f812-440c-9fbc-04d3bb88f11a"]
+parts = [{ id = "fa48f000-de0d-4800-a988-5e3549d30404", kind = "review", path = "parts/fa48f000-de0d-4800-a988-5e3549d30404.md", frozen = false, created_at = "2026-07-30T12:07:28.544410100Z" }, { id = "474155a3-64e9-4545-bced-ffe55f0d1bfd", kind = "notes", path = "parts/474155a3-64e9-4545-bced-ffe55f0d1bfd.md", frozen = false, created_at = "2026-07-30T12:14:11.789604600Z" }, { id = "a57b8e68-4fb1-48db-9dbf-8d5dd5f13c10", kind = "review", path = "parts/a57b8e68-4fb1-48db-9dbf-8d5dd5f13c10.md", frozen = false, created_at = "2026-07-30T16:42:10.000442600Z" }, { id = "f85ac953-ebe4-400d-9122-4d180a043bbe", kind = "review", path = "parts/f85ac953-ebe4-400d-9122-4d180a043bbe.md", frozen = false, created_at = "2026-07-30T17:15:50.116367500Z" }]
+related_specs = ["97f25cf8-f869-48d8-a48d-49d02badd188"]
+status_summary = "Triage 2026-07-31: implementation substantially landed; moved for review verification."
+type = "feature"
+component = "memory-api"

@@ -1,0 +1,9 @@
+id = "e70471d4-611a-4e8b-a612-5b4573868986"
+created_at = "2026-08-07T23:20:53.873738500+00:00"
+title = "Generalize mcp-toolmon path rewriting beyond the workspace argument"
+state = "done"
+component = "memory-api"
+parts = [{ id = "e377d02a-9a8b-4e3b-a01b-377b41d90c95", kind = "objective", path = "parts/e377d02a-9a8b-4e3b-a01b-377b41d90c95.md", frozen = true, created_at = "2026-08-08T00:02:58.993989400Z" }, { id = "a8412ae2-a141-4f16-b51f-7460e01b9118", kind = "requirements", path = "parts/a8412ae2-a141-4f16-b51f-7460e01b9118.md", frozen = true, created_at = "2026-08-08T00:02:58.994329300Z" }, { id = "d6c1beb0-3a7b-44a7-b488-5e7cc299534f", kind = "design", path = "parts/d6c1beb0-3a7b-44a7-b488-5e7cc299534f.md", frozen = true, created_at = "2026-08-08T00:02:58.994703300Z" }, { id = "f5c47c45-d256-4a28-8a82-48cba3a2e872", kind = "examples", path = "parts/f5c47c45-d256-4a28-8a82-48cba3a2e872.md", frozen = true, created_at = "2026-08-08T00:02:58.994909900Z" }, { id = "a200af45-a689-47a6-a5a6-71329407d9c4", kind = "acceptance_criteria", path = "parts/a200af45-a689-47a6-a5a6-71329407d9c4.md", frozen = true, created_at = "2026-08-08T00:02:58.995077500Z" }, { id = "f4a633d0-4bfa-4610-b04e-61a2730619aa", kind = "review", path = "parts/f4a633d0-4bfa-4610-b04e-61a2730619aa.md", frozen = false, created_at = "2026-08-08T11:50:18.245200700Z" }]
+plan_revision = 1
+priority = "high"
+type = "task"

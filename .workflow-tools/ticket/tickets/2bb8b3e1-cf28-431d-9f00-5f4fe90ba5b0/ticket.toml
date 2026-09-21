@@ -1,0 +1,7 @@
+id = "2bb8b3e1-cf28-431d-9f00-5f4fe90ba5b0"
+created_at = "2026-07-04T15:46:21.399125400+00:00"
+title = "[memory-matrix] Close failure-bundle gaps for review readiness"
+state = "cancelled"
+effort = "1200"
+type = "tracker-improvement"
+component = "memory-api"

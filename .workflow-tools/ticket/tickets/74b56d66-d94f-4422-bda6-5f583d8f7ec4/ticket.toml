@@ -1,0 +1,9 @@
+id = "74b56d66-d94f-4422-bda6-5f583d8f7ec4"
+created_at = "2026-07-30T12:07:28.555624300+00:00"
+title = "[tool-metrics][T2 follow-up] Confirm live-session AC1 evidence for output_char_sizes via hook_payload"
+state = "planning"
+depends_on = ["44119807-53af-41b0-920a-ffbc985d425d"]
+parts = [{ id = "ed03aff5-f2a0-4faa-8e45-b848705a3e71", kind = "notes", path = "parts/ed03aff5-f2a0-4faa-8e45-b848705a3e71.md", frozen = false, created_at = "2026-07-30T12:14:11.794059700Z" }]
+related_specs = ["97f25cf8-f869-48d8-a48d-49d02badd188"]
+type = "task"
+component = "memory-api"

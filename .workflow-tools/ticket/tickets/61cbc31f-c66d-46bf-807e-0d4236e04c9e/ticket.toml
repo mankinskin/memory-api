@@ -1,0 +1,7 @@
+id = "61cbc31f-c66d-46bf-807e-0d4236e04c9e"
+created_at = "2026-05-16T21:01:54.102991900+00:00"
+title = "[ticket-cli] Explain why tickets are absent from next"
+state = "planning"
+effort = "1200"
+type = "tracker-improvement"
+component = "memory-api"

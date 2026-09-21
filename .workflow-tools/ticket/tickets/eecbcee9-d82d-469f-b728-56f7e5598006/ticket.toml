@@ -1,0 +1,9 @@
+id = "eecbcee9-d82d-469f-b728-56f7e5598006"
+created_at = "2026-07-06T01:35:00.634535300+00:00"
+title = "[workspace-policy] 3/6 Scan-root policy metadata + scan-time enforcement"
+state = "done"
+depends_on = ["51d53f8f-5636-4185-b629-806816059caa"]
+effort = "4000"
+priority = "high"
+type = "tracker-improvement"
+component = "memory-api"

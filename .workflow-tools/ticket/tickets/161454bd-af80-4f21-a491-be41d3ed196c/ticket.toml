@@ -1,0 +1,6 @@
+id = "161454bd-af80-4f21-a491-be41d3ed196c"
+created_at = "2026-08-04T14:22:25.124486500+00:00"
+title = "[ticket-api] Reject ticket creation when `type` has no registered schema"
+state = "done"
+type = "bug"
+component = "memory-api"

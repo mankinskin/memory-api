@@ -1,0 +1,4 @@
+{"rev":1,"ts":"2026-07-08T21:21:50.101870900+00:00","fields":{"state":"in-implementation","title":"[spec-system] Migrate all specs to aligned behavior-first structure","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-08T21:25:49.278281400+00:00","fields":{"state":"in-review","title":"[spec-system] Migrate all specs to aligned behavior-first structure","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-07-08T21:37:36.745560300+00:00","fields":{"state":"in-review","title":"[spec-system] Migrate all specs to aligned behavior-first structure","type":"tracker-improvement"},"author":"github-copilot"}
+{"rev":4,"ts":"2026-07-08T21:37:42.602875+00:00","fields":{"state":"done","title":"[spec-system] Migrate all specs to aligned behavior-first structure","type":"tracker-improvement"},"author":"github-copilot"}

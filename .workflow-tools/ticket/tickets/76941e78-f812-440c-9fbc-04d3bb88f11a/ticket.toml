@@ -1,0 +1,7 @@
+id = "76941e78-f812-440c-9fbc-04d3bb88f11a"
+created_at = "2026-07-29T10:58:44.769531100+00:00"
+title = "[tool-metrics][T1] Probe: establish which source actually carries tool output size"
+state = "done"
+handoff_package = { handoff_id = "9720e4dd-d4c3-4707-a758-2c4407ebd4ff", objective = "Run the T1 probe (ticket 76941e78): capture a real PostToolUse hook stdin payload to a checked-in fixture and determine, per candidate source, exactly which field yields tool output size, in what units, and with what call coverage - then record a ranked source-precedence recommendation for T2. No production code path changes in this unit.", target_tickets = ["76941e78-f812-440c-9fbc-04d3bb88f11a", "341f4bf2-6172-40c2-97d6-b1b184350fb1"], target_files = [".github/hooks/hooks.json", "memory-api/crates/session-api/src/bin/copilot-capture-hook/args.rs", "memory-api/crates/session-api/src/hook/tool_execution.rs", "memory-api/crates/session-api/src/tool_metrics.rs", "tools/agent-hooks/preflight-write.sh"], validation = [{ validation_spec_id = "val-session-api-lib-suite", required = true, outcome = "passed", command = "cargo test -p session-api" }], open_escalations = [] }
+type = "task"
+component = "memory-api"

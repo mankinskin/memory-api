@@ -1,0 +1,9 @@
+id = "ab1a7235-cae2-4393-91ea-864e0b2c71d4"
+created_at = "2026-07-28T13:24:02.705433600+00:00"
+title = "[superseded by 7f39fae3] pdf-http transport (follow-up, out of v1 scope)"
+state = "backlog"
+component = "memory-api"
+effort = "1200"
+parts = [{ id = "d2a400f8-302f-459d-ad29-6e181125a0c2", kind = "objective", path = "parts/d2a400f8-302f-459d-ad29-6e181125a0c2.md", frozen = false, created_at = "2026-07-30T21:02:30.129374500Z" }, { id = "7ecc7b67-828f-4f66-b6ba-2e10c0c1a8bc", kind = "validation", path = "parts/7ecc7b67-828f-4f66-b6ba-2e10c0c1a8bc.md", frozen = false, created_at = "2026-07-30T21:02:30.133358100Z" }]
+risk_level = "low"
+type = "task"

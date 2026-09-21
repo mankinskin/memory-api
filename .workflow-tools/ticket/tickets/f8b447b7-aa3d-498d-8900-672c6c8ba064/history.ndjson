@@ -1,0 +1,6 @@
+{"rev":1,"ts":"2026-06-27T10:50:55.968952100+00:00","fields":{"state":"open","title":"[memory-api][curation] Generic entity usage counting & feedback ratings","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-06-27T10:51:42.262149900+00:00","fields":{"state":"open","title":"[memory-api][curation] Generic entity usage counting & feedback ratings","type":"tracker-improvement"}}
+{"rev":3,"ts":"2026-06-27T10:53:36.883832600+00:00","fields":{"effort":"4000","state":"open","title":"[memory-api][curation] Generic entity usage counting & feedback ratings","type":"tracker-improvement"}}
+{"rev":4,"ts":"2026-06-27T10:54:10.357558800+00:00","fields":{"effort":"4000","state":"open","title":"[memory-api][curation] Generic entity usage counting & feedback ratings","type":"tracker-improvement"}}
+{"rev":5,"ts":"2026-06-27T10:54:35.612820200+00:00","fields":{"effort":"4000","state":"planned","title":"[memory-api][curation] Generic entity usage counting & feedback ratings","type":"tracker-improvement"}}
+{"rev":6,"ts":"2026-06-27T12:56:57.033247200+00:00","fields":{"effort":"4000","state":"cancelled","title":"[memory-api][curation] Generic entity usage counting & feedback ratings","type":"tracker-improvement"},"author":"copilot-design"}

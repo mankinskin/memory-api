@@ -1,0 +1,2 @@
+{"rev":1,"ts":"2026-05-21T15:09:07.563341200+00:00","fields":{"state":"open","title":"[ticket-cli][spec-cli] Normalize sibling CLI grammar and JSON envelopes","type":"tracker-improvement"}}
+{"rev":2,"ts":"2026-07-23T13:33:31.664730400+00:00","fields":{"effort":"1200","state":"open","title":"[ticket-cli][spec-cli] Normalize sibling CLI grammar and JSON envelopes","type":"tracker-improvement"},"author":"github-copilot"}

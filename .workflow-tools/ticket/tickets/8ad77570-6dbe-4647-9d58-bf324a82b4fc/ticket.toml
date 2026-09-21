@@ -1,0 +1,10 @@
+id = "8ad77570-6dbe-4647-9d58-bf324a82b4fc"
+created_at = "2026-07-04T16:51:09.041589200+00:00"
+title = "[memory-matrix] Promote subprocess failure-bundle log_session_ids linkage"
+state = "done"
+coordination_blockers = "60a2a388,12197242"
+depends_on = ["cc78d33d-1744-4945-bb77-f0fd1142568e"]
+evidence_store_path = ".test/default/executions/exec-8ad77570-log-session-linkage-20260705.json"
+type = "tracker-improvement"
+validation_execution_id = "exec-8ad77570-log-session-linkage-20260705"
+component = "memory-api"

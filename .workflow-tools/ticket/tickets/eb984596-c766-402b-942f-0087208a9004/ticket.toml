@@ -1,0 +1,7 @@
+id = "eb984596-c766-402b-942f-0087208a9004"
+created_at = "2026-07-29T10:59:23.705335+00:00"
+title = "[tool-metrics][T3] Add measurement-coverage metric so unmeasured is distinguishable from healthy"
+state = "planning"
+depends_on = ["44119807-53af-41b0-920a-ffbc985d425d"]
+type = "feature"
+component = "memory-api"

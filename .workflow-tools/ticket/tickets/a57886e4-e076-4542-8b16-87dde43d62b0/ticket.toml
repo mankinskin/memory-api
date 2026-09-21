@@ -1,0 +1,11 @@
+id = "a57886e4-e076-4542-8b16-87dde43d62b0"
+created_at = "2026-07-25T13:56:52.372465900+00:00"
+title = "[workflow-tools][per-tool] Extract doc tool as a single `doc` domain crate (api + transport bins) + viewer frontend"
+state = "planning"
+component = "memory-api"
+depends_on = ["0da6894c-dcbb-4196-8ac7-b6fae7c40ec9", "1c452ff1-6edc-47c8-a73d-d07ce9b4d473", "dbe0e955-c1b4-414d-820c-10c3fbbb5d3d"]
+effort = "1500"
+parts = [{ id = "fdbd677f-3872-4260-8e02-c923207b30b5", kind = "implementation_plan", path = "parts/fdbd677f-3872-4260-8e02-c923207b30b5.md", frozen = false, created_at = "2026-08-13T17:28:35.211085400Z" }, { id = "cfa7fb7b-6aa7-48cb-aa79-2f22adf0520a", kind = "amendment", path = "parts/cfa7fb7b-6aa7-48cb-aa79-2f22adf0520a.md", frozen = false, created_at = "2026-08-19T00:35:59.484416300Z", supersedes = "fdbd677f-3872-4260-8e02-c923207b30b5" }]
+priority = "high"
+risk_level = "medium"
+type = "task"

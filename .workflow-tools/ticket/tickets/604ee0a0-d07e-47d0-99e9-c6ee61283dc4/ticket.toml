@@ -1,0 +1,6 @@
+id = "604ee0a0-d07e-47d0-99e9-c6ee61283dc4"
+created_at = "2026-07-29T17:26:14.377488600+00:00"
+title = "ticket-mcp update_ticket/add_edge/create_ticket report ok but silently drop writes (state, depends_on, component, priority)"
+state = "planning"
+type = "bug"
+component = "memory-api"

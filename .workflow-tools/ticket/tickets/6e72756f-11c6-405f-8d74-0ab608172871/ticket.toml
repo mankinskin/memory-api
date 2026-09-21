@@ -1,0 +1,11 @@
+id = "6e72756f-11c6-405f-8d74-0ab608172871"
+created_at = "2026-07-09T17:26:51.146230400+00:00"
+title = "[workflow-policy] Tracker: durable store bootstrap, benchmark, and tracing/log guidance"
+state = "in-implementation"
+component = "memory-api"
+depends_on = ["79dd2d35-267b-4395-8316-0761df45f3c5", "a2c469c4-c62b-444d-81ed-6c936bee8ba3", "a71c2da8-0972-4c2d-9754-0a0e06db5272"]
+effort = "3000"
+parts = [{ id = "52c93f80-6ca5-41a0-9b1e-38eaf365f5ef", kind = "objective", path = "parts/52c93f80-6ca5-41a0-9b1e-38eaf365f5ef.md", frozen = false, created_at = "2026-07-30T21:02:31.736236Z" }, { id = "1198592b-3177-4224-b749-67c6bc13853e", kind = "validation", path = "parts/1198592b-3177-4224-b749-67c6bc13853e.md", frozen = false, created_at = "2026-07-30T21:02:31.740436400Z" }, { id = "7b3af23c-9851-4823-a7f8-495be55546f8", kind = "objective", path = "parts/7b3af23c-9851-4823-a7f8-495be55546f8.md", frozen = false, created_at = "2026-07-30T21:02:31.744105700Z" }]
+priority = "high"
+risk_level = "high"
+type = "tracker-improvement"

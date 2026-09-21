@@ -1,0 +1,8 @@
+id = "84a9f497-fe5a-4c04-b1e1-ab99245e6ea0"
+created_at = "2026-07-28T13:20:55.269452+00:00"
+title = "PDF domain capability (pdf-api/pdf) exposed via CLI + MCP"
+state = "cancelled"
+component = "memory-api"
+effort = "40000"
+risk_level = "medium"
+type = "epic"

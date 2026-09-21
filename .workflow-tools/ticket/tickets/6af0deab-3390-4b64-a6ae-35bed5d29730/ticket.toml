@@ -1,0 +1,11 @@
+id = "6af0deab-3390-4b64-a6ae-35bed5d29730"
+created_at = "2026-07-25T13:57:29.484178900+00:00"
+title = "[workflow-tools][per-tool] Extract peek tool as a single `peek` domain crate (api + transport bins incl. compact-terminal)"
+state = "planning"
+component = "memory-api"
+depends_on = ["0da6894c-dcbb-4196-8ac7-b6fae7c40ec9", "1c452ff1-6edc-47c8-a73d-d07ce9b4d473", "dbe0e955-c1b4-414d-820c-10c3fbbb5d3d"]
+effort = "1200"
+parts = [{ id = "abcc42ba-206c-4d18-a14b-c6ddb94886f3", kind = "implementation_plan", path = "parts/abcc42ba-206c-4d18-a14b-c6ddb94886f3.md", frozen = false, created_at = "2026-08-13T17:28:16.262680200Z" }]
+priority = "medium"
+risk_level = "medium"
+type = "task"

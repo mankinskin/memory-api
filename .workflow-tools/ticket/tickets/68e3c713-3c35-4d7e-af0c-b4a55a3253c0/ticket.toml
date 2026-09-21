@@ -1,0 +1,7 @@
+id = "68e3c713-3c35-4d7e-af0c-b4a55a3253c0"
+created_at = "2026-05-16T21:01:53.693736100+00:00"
+title = "[ticket-cli] Fix next --filter matching for prefix and substring queries"
+state = "planning"
+effort = "1200"
+type = "tracker-improvement"
+component = "memory-api"
