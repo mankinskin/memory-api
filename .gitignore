@@ -55,3 +55,9 @@ packages/
 # Incremental scan fingerprints (derived runtime state; rebuilt on scan)
 scan_fingerprints.json
 scan_fingerprints.json.tmp
+
+# Raw workstation telemetry; curated reports remain trackable.
+**/.feedback/entries/
+**/.workflow-tools/feedback/entries/
+**/.test/**/executions/
+**/.workflow-tools/test/**/executions/
