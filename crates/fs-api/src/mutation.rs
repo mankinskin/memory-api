@@ -178,26 +178,33 @@ pub fn copy_file(
     let mut conflicts = Vec::new();
     let mut affected_paths = Vec::new();
 
-    // Validate paths against root and capture canonical paths.
-    let canonical_from =
-        validate_path_within_root(&request.from, &request.root, "source")?;
+    // Only the destination is confined to the root: a copy reads its source
+    // without modifying it, so any existing file may be copied in.
     let canonical_to =
         validate_path_within_root(&request.to, &request.root, "destination")?;
-
-    if !canonical_from.exists() {
-        conflicts.push(Conflict {
-            kind: ConflictKind::SourceMissing,
-            path: canonical_from.to_path_buf(),
-            message: format!(
-                "source does not exist: {}",
-                canonical_from.display()
-            ),
-        });
-        return Ok(MutationResult {
-            affected_paths,
-            conflicts,
-        });
-    }
+    let canonical_from = match fs::canonicalize(&request.from) {
+        Ok(path) => path,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            conflicts.push(Conflict {
+                kind: ConflictKind::SourceMissing,
+                path: request.from.clone(),
+                message: format!(
+                    "source does not exist: {}",
+                    request.from.display()
+                ),
+            });
+            return Ok(MutationResult {
+                affected_paths,
+                conflicts,
+            });
+        },
+        Err(e) => {
+            return Err(FsApiError::InvalidRequest(format!(
+                "cannot resolve source {}: {e}",
+                request.from.display()
+            )));
+        },
+    };
 
     if !canonical_from.is_file() {
         return Err(FsApiError::InvalidRequest(format!(

@@ -129,17 +129,17 @@ pub struct RenameFileInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CopyFileInput {
-    /// Source path.
+    /// Source path: any existing regular file; it is read-only and may be outside `root`.
     pub from: PathBuf,
 
-    /// Destination path.
+    /// Destination path; must stay inside `root`. Missing parent directories are created.
     pub to: PathBuf,
 
     /// Whether to overwrite existing destination.
     #[serde(default)]
     pub overwrite: bool,
 
-    /// Root directory for security validation.
+    /// Root directory confining the destination.
     #[serde(default)]
     pub root: Option<PathBuf>,
 }
@@ -461,6 +461,10 @@ Use move_file for relocating across directories.
     #[tool(description = "
 Copy a file to a new location. Conflict detection: reports DestinationExists
 unless overwrite is true.
+
+The source may be any existing regular file, including one outside root (it is
+only read). Only the destination is confined to root; missing destination
+parent directories are created.
 
 Does not copy directories — use list_dir and copy individual files for directory
 copies.

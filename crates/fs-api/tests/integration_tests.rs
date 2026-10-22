@@ -308,6 +308,212 @@ fn test_copy_file_succeeds() {
     assert_eq!(fs::read_to_string(&to).unwrap(), "content");
 }
 
+// Regression (bugfix-3ce26d30-w4): copying INTO the root from a readable
+// source OUTSIDE the root must succeed; only the destination is contained.
+#[test]
+fn test_copy_file_accepts_source_outside_root() {
+    let root_temp = tempdir().expect("failed to create root temp dir");
+    let outside_temp = tempdir().expect("failed to create outside temp dir");
+    let root = root_temp.path();
+    let from = outside_temp.path().join("external.txt");
+    let to = root.join("imported.txt");
+    fs::write(&from, "external content").unwrap();
+
+    let request = CopyFileRequest {
+        from: from.clone(),
+        to: to.clone(),
+        overwrite: false,
+        root: root.to_path_buf(),
+    };
+
+    let result = copy_file(&request)
+        .expect("copy from outside root into root should succeed");
+    assert!(result.conflicts.is_empty());
+    assert!(from.exists(), "source must be left untouched");
+    assert_eq!(fs::read_to_string(&to).unwrap(), "external content");
+}
+
+#[test]
+fn test_copy_file_outside_source_into_nested_missing_dir() {
+    let root_temp = tempdir().unwrap();
+    let outside_temp = tempdir().unwrap();
+    let from = outside_temp.path().join("external.txt");
+    fs::write(&from, "nested").unwrap();
+    let to = root_temp.path().join("a").join("b").join("imported.txt");
+
+    let request = CopyFileRequest {
+        from,
+        to: to.clone(),
+        overwrite: false,
+        root: root_temp.path().to_path_buf(),
+    };
+
+    copy_file(&request).expect("nested destination should be created");
+    assert_eq!(fs::read_to_string(&to).unwrap(), "nested");
+}
+
+// Regression (bugfix-3ce26d30-w4): a destination with several missing
+// ancestors inside the root must be accepted (copy creates them).
+#[test]
+fn test_copy_file_in_root_into_deeply_missing_dir() {
+    let root_temp = tempdir().unwrap();
+    let root = root_temp.path();
+    let from = root.join("src.txt");
+    fs::write(&from, "deep").unwrap();
+    let to = root.join("x").join("y").join("z").join("dst.txt");
+
+    let request = CopyFileRequest {
+        from,
+        to: to.clone(),
+        overwrite: false,
+        root: root.to_path_buf(),
+    };
+
+    copy_file(&request).expect("deeply nested destination should be created");
+    assert_eq!(fs::read_to_string(&to).unwrap(), "deep");
+}
+
+#[test]
+fn test_copy_file_rejects_parent_traversal_through_missing_dirs() {
+    let root_temp = tempdir().unwrap();
+    let root = root_temp.path();
+    let from = root.join("src.txt");
+    fs::write(&from, "x").unwrap();
+    let to = root
+        .join("missing")
+        .join("..")
+        .join("..")
+        .join("escaped.txt");
+
+    let request = CopyFileRequest {
+        from,
+        to: to.clone(),
+        overwrite: false,
+        root: root.to_path_buf(),
+    };
+
+    let result = copy_file(&request);
+    assert!(result.is_err(), "'..' through missing dirs must be rejected");
+    assert!(!root.parent().unwrap().join("escaped.txt").exists());
+}
+
+#[test]
+fn test_copy_file_outside_source_still_rejects_outside_destination() {
+    let root_temp = tempdir().unwrap();
+    let outside_temp = tempdir().unwrap();
+    let from = outside_temp.path().join("external.txt");
+    fs::write(&from, "x").unwrap();
+    let to = outside_temp.path().join("escaped.txt");
+
+    let request = CopyFileRequest {
+        from,
+        to: to.clone(),
+        overwrite: false,
+        root: root_temp.path().to_path_buf(),
+    };
+
+    let result = copy_file(&request);
+    assert!(
+        matches!(result, Err(fs_api::FsApiError::PathTraversal { .. })),
+        "destination outside root must be rejected, got {result:?}"
+    );
+    assert!(!to.exists());
+}
+
+#[test]
+fn test_copy_file_missing_outside_source_reports_conflict() {
+    let root_temp = tempdir().unwrap();
+    let outside_temp = tempdir().unwrap();
+    let from = outside_temp.path().join("does-not-exist.txt");
+    let to = root_temp.path().join("imported.txt");
+
+    let request = CopyFileRequest {
+        from,
+        to: to.clone(),
+        overwrite: false,
+        root: root_temp.path().to_path_buf(),
+    };
+
+    let result = copy_file(&request).expect("missing source is a conflict");
+    assert!(
+        result
+            .conflicts
+            .iter()
+            .any(|c| c.kind == ConflictKind::SourceMissing),
+        "expected SourceMissing conflict, got {:?}",
+        result.conflicts
+    );
+    assert!(!to.exists());
+}
+
+#[test]
+fn test_copy_file_directory_outside_source_rejected() {
+    let root_temp = tempdir().unwrap();
+    let outside_temp = tempdir().unwrap();
+    let to = root_temp.path().join("imported");
+
+    let request = CopyFileRequest {
+        from: outside_temp.path().to_path_buf(),
+        to: to.clone(),
+        overwrite: false,
+        root: root_temp.path().to_path_buf(),
+    };
+
+    let result = copy_file(&request);
+    assert!(
+        matches!(result, Err(fs_api::FsApiError::InvalidRequest(_))),
+        "directory source must be rejected, got {result:?}"
+    );
+    assert!(!to.exists());
+}
+
+#[test]
+fn test_copy_file_outside_source_respects_existing_destination() {
+    let root_temp = tempdir().unwrap();
+    let outside_temp = tempdir().unwrap();
+    let from = outside_temp.path().join("external.txt");
+    fs::write(&from, "new").unwrap();
+    let to = root_temp.path().join("existing.txt");
+    fs::write(&to, "old").unwrap();
+
+    let request = CopyFileRequest {
+        from,
+        to: to.clone(),
+        overwrite: false,
+        root: root_temp.path().to_path_buf(),
+    };
+
+    let result = copy_file(&request).expect("existing dest is a conflict");
+    assert!(
+        result
+            .conflicts
+            .iter()
+            .any(|c| c.kind == ConflictKind::DestinationExists)
+    );
+    assert_eq!(fs::read_to_string(&to).unwrap(), "old");
+}
+
+#[test]
+fn test_move_file_still_rejects_source_outside_root() {
+    let root_temp = tempdir().unwrap();
+    let outside_temp = tempdir().unwrap();
+    let from = outside_temp.path().join("external.txt");
+    fs::write(&from, "keep").unwrap();
+
+    let request = MoveFileRequest {
+        from: from.clone(),
+        to: root_temp.path().join("moved.txt"),
+        overwrite: false,
+        root: root_temp.path().to_path_buf(),
+    };
+
+    assert!(
+        move_file(&request).is_err(),
+        "move must keep source containment (it deletes the source)"
+    );
+    assert!(from.exists());
+}
+
 #[test]
 fn test_delete_file_succeeds() {
     let temp = tempdir().expect("failed to create temp dir");

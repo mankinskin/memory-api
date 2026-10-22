@@ -66,23 +66,45 @@ pub fn validate_path_within_root(
                     cwd.push(file_name);
                 }
                 cwd
-            } else if parent.exists() {
-                let mut canonical_parent =
-                    parent.canonicalize().map_err(|e| {
+            } else {
+                // Canonicalize the nearest existing ancestor and append the
+                // missing tail. The tail may only contain normal components,
+                // so `..` cannot escape through not-yet-created directories.
+                let mut ancestor = parent;
+                let mut tail = Vec::new();
+                if let Some(file_name) = path.file_name() {
+                    tail.push(file_name.to_os_string());
+                }
+                while !ancestor.exists() {
+                    // `file_name()` is None for `..`/`.`; a missing tail
+                    // must consist of normal components only.
+                    let Some(name) = ancestor.file_name() else {
+                        return Err(FsApiError::PathTraversal {
+                            path: path.to_path_buf(),
+                        });
+                    };
+                    tail.push(name.to_os_string());
+                    match ancestor.parent() {
+                        Some(next) if !next.as_os_str().is_empty() => {
+                            ancestor = next;
+                        },
+                        _ => {
+                            return Err(FsApiError::PathNotFound {
+                                path: parent.to_path_buf(),
+                            });
+                        },
+                    }
+                }
+                let suffix: PathBuf = tail.iter().rev().collect();
+                let mut canonical_ancestor =
+                    ancestor.canonicalize().map_err(|e| {
                         FsApiError::CannotReadDirectory {
-                            path: parent.to_path_buf(),
+                            path: ancestor.to_path_buf(),
                             source: e,
                         }
                     })?;
-                if let Some(file_name) = path.file_name() {
-                    canonical_parent.push(file_name);
-                }
-                canonical_parent
-            } else {
-                // Parent doesn't exist either - cannot validate.
-                return Err(FsApiError::PathNotFound {
-                    path: parent.to_path_buf(),
-                });
+                canonical_ancestor.push(suffix);
+                canonical_ancestor
             }
         } else {
             // No parent (e.g., root path) - use as-is.
