@@ -4,16 +4,16 @@ memory-api is the repository that exposes the core crates and operator surfaces 
 
 Direct child READMEs and the ticket crate manifest:
 
-- [tools/cli/rule-cli/README.md](tools/cli/rule-cli/README.md)
-- [tools/cli/spec-cli/README.md](tools/cli/spec-cli/README.md)
-- [crates/ticket/Cargo.toml](crates/ticket/Cargo.toml)
-- [tools/cli/audit-cli/README.md](tools/cli/audit-cli/README.md)
-- [tools/http/spec-http/README.md](tools/http/spec-http/README.md)
-- [crates/ticket/Cargo.toml (`ticket-http` configuration)](crates/ticket/Cargo.toml)
-- [tools/mcp/rule-mcp/README.md](tools/mcp/rule-mcp/README.md)
-- [tools/mcp/spec-mcp/README.md](tools/mcp/spec-mcp/README.md)
-- [crates/ticket/Cargo.toml (`ticket-mcp` configuration)](crates/ticket/Cargo.toml)
-- [tools/mcp/audit-mcp/README.md](tools/mcp/audit-mcp/README.md)
+- `tools/cli/rule-cli/README.md`
+- `tools/cli/spec-cli/README.md`
+- `crates/ticket/Cargo.toml`
+- `tools/cli/audit-cli/README.md`
+- `tools/http/spec-http/README.md`
+- `crates/ticket/Cargo.toml`
+- `tools/mcp/rule-mcp/README.md`
+- `tools/mcp/spec-mcp/README.md`
+- `crates/ticket/Cargo.toml`
+- `tools/mcp/audit-mcp/README.md`
 
 Installable and executable surfaces in this repository include the `rule`, `spec`, `ticket`, and `audit` CLIs, the `rule-mcp`, `spec-mcp`, `ticket-mcp`, and `audit-mcp` MCP servers, and the `spec-http` and `ticket-http` HTTP binaries.
 
@@ -107,7 +107,7 @@ cargo install --path crates/ticket --bin ticket --features cli
 cargo install --path tools/cli/audit-cli --bin audit
 ```
 
-After that, verify the install with `rule --help`, `spec --help`, `ticket --help`, and `audit --help`. The command-specific docs live in [tools/cli/rule-cli/README.md](tools/cli/rule-cli/README.md), [tools/cli/spec-cli/README.md](tools/cli/spec-cli/README.md), the [`ticket` crate manifest](crates/ticket/Cargo.toml), and [tools/cli/audit-cli/README.md](tools/cli/audit-cli/README.md). The `ticket` crate exposes `ticket`, `ticket-mcp`, and `ticket-http` behind the `cli`, `mcp`, and `http` features respectively.
+After that, verify the install with `rule --help`, `spec --help`, `ticket --help`, and `audit --help`. The command-specific docs live in `tools/cli/rule-cli/README.md`, `tools/cli/spec-cli/README.md`, the `crates/ticket/Cargo.toml`, and `tools/cli/audit-cli/README.md`. The `ticket` crate exposes `ticket`, `ticket-mcp`, and `ticket-http` behind the `cli`, `mcp`, and `http` features respectively.
 
 ### Set up a workspace repository
 
@@ -122,10 +122,10 @@ audit run .
 
 When you add the first rule, spec, or ticket, the canonical `rules/`, `specs/`, and `tickets/` folders are created automatically inside those local tool roots.
 
-- `rule list` and `rule sync-targets ...` are documented in [tools/cli/rule-cli/README.md](tools/cli/rule-cli/README.md).
-- `spec list` and `spec refs <spec-id> validate` are documented in [tools/cli/spec-cli/README.md](tools/cli/spec-cli/README.md).
-- `ticket board show` is provided by the [`ticket` crate's `cli` feature](crates/ticket/Cargo.toml).
-- `audit run .` is documented in [tools/cli/audit-cli/README.md](tools/cli/audit-cli/README.md).
+- `rule list` and `rule sync-targets ...` are documented in `tools/cli/rule-cli/README.md`.
+- `spec list` and `spec refs <spec-id> validate` are documented in `tools/cli/spec-cli/README.md`.
+- `ticket board show` is provided by the `crates/ticket/Cargo.toml`.
+- `audit run .` is documented in `tools/cli/audit-cli/README.md`.
 
 ### Common repo-local tasks
 
@@ -140,5 +140,5 @@ audit run .
 - Validate a specification's code references through `spec-api` tooling.
 - Inspect active board state through the `ticket-api` command surface.
 - Run repository-level audits through `audit-api`.
-- The HTTP command surfaces live in [tools/http/spec-http/README.md](tools/http/spec-http/README.md) and the [`ticket` crate's `http` feature](crates/ticket/Cargo.toml).
-- The MCP command surfaces live in [tools/mcp/rule-mcp/README.md](tools/mcp/rule-mcp/README.md), [tools/mcp/spec-mcp/README.md](tools/mcp/spec-mcp/README.md), the [`ticket` crate's `mcp` feature](crates/ticket/Cargo.toml), and [tools/mcp/audit-mcp/README.md](tools/mcp/audit-mcp/README.md).
+- The HTTP command surfaces live in `tools/http/spec-http/README.md` and the `crates/ticket/Cargo.toml`.
+- The MCP command surfaces live in `tools/mcp/rule-mcp/README.md`, `tools/mcp/spec-mcp/README.md`, the `crates/ticket/Cargo.toml`, and `tools/mcp/audit-mcp/README.md`.
